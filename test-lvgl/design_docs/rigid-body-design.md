@@ -3,173 +3,220 @@
 ## The Problem
 
 Currently, rigid materials (WOOD, METAL) are represented as individual particles with cohesion forces. This causes issues:
-- Horizontal structures fall apart (no normal force from below → no friction)
+- Horizontal structures fall apart (each cell moves independently)
 - High cohesion creates COM drift and pressure waves
-- No concept of structural integrity or breaking stress
+- No concept of structural integrity
 
-**Goal:** Enable rigid structures to maintain their shape under load, while still allowing breaking/fracture under extreme stress.
+**Goal:** Enable organism structures (trees) to move as rigid units while still participating in grid-based physics.
 
-## Core Design Questions
+## Design Decisions
 
-### 1. Structure Identification
-**Q:** How do we identify what constitutes a "rigid structure"?
+### Structure Identification: Organism-Only
 
-**Options:**
-- A) Flood-fill connected rigid cells of same material
-- B) Flood-fill rigid cells of same organism_id (for trees)
-- C) Explicit structure tagging (manual or procedural)
+Rigid structures are identified by `organism_id != 0`. Only cells belonging to a tree organism form rigid structures. This means:
+- Adjacent WOOD/METAL cells without an organism move as individual particles
+- Tree cells (SEED, WOOD, ROOT, LEAF with same organism_id) move as one unit
+- Simpler implementation, focused on the primary use case (trees)
 
-**Consideration:** Should a pile of METAL blocks form one structure, or separate structures? What about WOOD cells that are adjacent but from different trees?
+**Removed:** The `is_rigid` material property is being removed from the simulation. It was primarily used by the support system which is also being removed.
 
-### 2. Structure Representation
-**Q:** How do we represent a rigid structure in data?
+### Structure Representation: Minimal (Phase 1)
 
-**Minimal Approach:**
 ```cpp
 struct RigidStructure {
-    std::vector<Vector2i> cells;        // Grid positions in structure
-    Vector2d center_of_mass;            // Continuous coords
+    std::vector<Vector2i> cells;
+    Vector2d center_of_mass;
     double total_mass;
-    Vector2d velocity;                  // Linear velocity
-    uint32_t organism_id;               // 0 for non-organism structures
-};
-```
-Is this enough to track the structure's cells properly?
-
-**Full Rigid Body:**
-```cpp
-struct RigidBody {
-    std::vector<Vector2i> cells;        // Grid positions
-    Vector2d position;                  // Continuous COM position
-    double rotation;                    // Angle in radians
-    double total_mass;
-    double moment_of_inertia;
-    Vector2d linear_velocity;
-    double angular_velocity;
+    Vector2d velocity;
     uint32_t organism_id;
-    MaterialType material;
 };
 ```
 
-**Decision:** Start minimal (no rotation), add complexity later?
+Phase 1 focuses on translation only. Rotation (moment of inertia, angular velocity) comes later.
 
-### 3. Grid Integration
-**Q:** How does the rigid body interact with the grid representation?
+### Physics Integration: Approach 2 (Skip + Resolve)
 
-**Two-way mapping:**
-- **Body → Grid:** Update grid cells based on body position/rotation
-- **Grid → Body:** Gather forces from grid interactions
+Rather than post-hoc velocity averaging, we:
+1. Identify rigid structures at frame start
+2. Skip rigid structure cells during per-cell force resolution
+3. Gather forces from structure cells and apply unified F=ma
+4. Set all structure cells to the unified velocity
 
-**Challenges:**
-- Partial cell occupancy (body spans multiple cells)
-- COM placement within cells
-- Material fill_ratio calculation
+This is cleaner than letting per-cell physics run and then overriding.
 
-### 4. Force Gathering
-**Q:** How do we collect forces from grid interactions and apply to rigid body?
+## Removed Systems
 
-**Approach:**
-1. Grid interactions (pressure, collisions, etc.) create forces on individual cells
-2. Sum forces across all cells in rigid body
-3. Calculate torque for off-center forces: τ = r × F
-4. Apply to rigid body: F_total, τ_total
+### Support System (Removed)
 
-**Question:** Do we still run normal physics on individual cells, then aggregate? Or bypass cell-level physics entirely?
+The `WorldSupportCalculator` and all support-related code is being removed:
+- `has_any_support` and `has_vertical_support` flags on Cell
+- `applySupportForces()` in World
+- `WorldSupportCalculator` class entirely
 
-### 5. Movement & Integration
-**Q:** How do we update rigid body position and update grid?
+Support was an attempt to make structures stable by canceling gravity for "supported" cells. The rigid body system replaces this need - structures stay together because they move as one unit, not because individual cells are marked as supported.
 
-**Simple approach (translation only):**
+### is_rigid Material Property (Removed)
+
+The `is_rigid` flag on `MaterialProperties` is being removed:
+- Was used by support system (removed)
+- Was used to skip pressure forces for rigid materials
+- Individual rigid-material cells will now behave like high-viscosity particles
+
+## Implementation Plan
+
+### Phase 1: Cleanup
+
+**1.1 Remove Support System**
+- Delete `WorldSupportCalculator.h` and `WorldSupportCalculator.cpp`
+- Remove `has_any_support`, `has_vertical_support` from Cell
+- Remove `applySupportForces()` from World
+- Remove support-related code from WorldCollisionCalculator, WorldViscosityCalculator
+- Remove from CMakeLists.txt
+- Update any tests that reference support
+
+**1.2 Remove is_rigid**
+- Remove `is_rigid` from `MaterialProperties` struct
+- Remove `isMaterialRigid()` function
+- Update code that checks `is_rigid` (pressure forces, etc.)
+
+### Phase 2: Rigid Body Foundation
+
+**2.1 Update WorldRigidBodyCalculator**
+
+Already implemented:
+- `findConnectedStructure()` - flood-fill to find connected cells
+- `findAllStructures()` - find all structures in world
+- `calculateStructureCOM()` - weighted center of mass
+- `calculateStructureMass()` - total mass
+- `gatherStructureForces()` - sum pending forces
+
+Need to update:
+- Change from `isMaterialRigid()` to `organism_id != 0` for structure membership
+- Add `applyUnifiedVelocity()` - compute and set unified velocity for structure
+
+**2.2 Integrate into Physics Loop**
+
+Current loop:
 ```
-1. Gather forces from grid
-2. F = ma → update velocity
-3. Update center of mass: COM += velocity * dt
-4. Move material in grid cells to follow COM
+advanceTime(deltaTime)
+├── Pressure phases
+├── resolveForces()
+│   ├── Accumulate forces (gravity, pressure, cohesion, etc.)
+│   └── Apply F=ma to each cell → velocity
+├── Velocity limiting
+├── updateTransfers() → compute material moves
+├── processMaterialMoves() → execute moves
+└── TreeManager::update()
 ```
 
-**Full approach (with rotation):**
+Modified loop:
 ```
-1. Gather forces and torques
-2. F = ma → update linear_velocity
-3. τ = Iα → update angular_velocity
-4. Update position and rotation
-5. Remap body shape to grid based on new pose
+advanceTime(deltaTime)
+├── Pressure phases
+├── identifyRigidStructures() → structures, rigid_cell_set  [NEW]
+├── resolveForces(rigid_cell_set)  [MODIFIED]
+│   ├── Accumulate forces (all cells)
+│   └── Apply F=ma only to NON-rigid cells
+├── resolveRigidBodies(structures)  [NEW]
+│   ├── For each structure: gather forces, F=ma, set unified velocity
+├── Velocity limiting
+├── updateTransfers()
+├── processMaterialMoves()
+└── TreeManager::update()
 ```
 
-### 6. Collision Detection
-**Q:** How do we handle rigid body collisions?
+### Phase 3: Movement & Collisions
 
-**Body-Body Collisions:**
-- Detect overlap in grid
-- Calculate contact points and normals
-- Apply impulses to resolve
+**3.1 Structure Movement**
+- When structure velocity moves COMs across cell boundaries
+- Identify "leading edge" cells that will enter new grid positions
+- Calculate resistance from destination cells
+- Either displace particles or reflect/stop structure
 
-**Body-Particle Collisions:**
-- Rigid body cells interact with fluid/loose particles
-- Treat as grid interactions?
+**3.2 Structure-Particle Interaction**
+- Structure pushes through fluids (water parts around it)
+- Structure displaces loose particles (dirt, sand get pushed aside)
+- High-resistance materials slow/stop structure
 
-### 7. Breaking & Fracture
-**Q:** When and how do structures break?
+### Phase 4: Future (Not This Sprint)
 
-**Stress-based approach:**
-1. Track stress/strain in structure
-2. When stress exceeds material strength → fracture
-3. Split structure into fragments
+- Rotation (angular velocity, moment of inertia, torques)
+- Fracture mechanics (structures breaking apart)
+- Non-organism rigid bodies (welded metal structures)
 
-**Force-based approach:**
-1. If total force on structure > threshold → break weakest connection
-2. Flood-fill to identify new separate structures
+## Tests
 
-**Simple approach:**
-1. Just don't break - structures stay rigid until manually destroyed
-2. Add fracture later
+### Unit Tests (WorldRigidBodyCalculator)
 
-## Proposed Phased Implementation
+**Already implemented:**
+- `SingleWoodCellFormsStructure`
+- `NonRigidCellReturnsEmpty`
+- `LShapedWoodConnects`
+- `DiagonalDoesNotConnect`
+- `DifferentOrganismIdDoesNotConnect`
+- `SameOrganismIdConnects`
+- `FindAllStructuresFindsMultiple`
+- `CalculateMassIsSumOfCellMasses`
+- `CalculateCOMIsWeightedCenter`
+- `GatherForcesIsSumOfPendingForces`
 
-### Phase 1: Minimal Rigid Structures (Translation Only)
-- Identify connected rigid cells via flood fill
-- Store as RigidStructure (COM, velocity, cells)
-- Velocity averaging across structure
-- No rotation, no fracture
-- Goal: Horizontal branches stop falling
+**To implement:**
+- `ApplyUnifiedVelocitySetsAllCellsToSameVelocity`
+- `OrganismCellsFormStructure` (updated identification)
+- `NonOrganismRigidCellsDoNotFormStructure`
 
-### Phase 2: Force Integration
-- Gather forces from grid properly
-- Apply F=ma to structures
-- Interact with pressure, fluids
-- Goal: Structures respond to external forces realistically
+### Integration Tests (Physics Behavior)
 
-### Phase 3: Rotation & Full Rigid Body
-- Add rotation angle and angular velocity
-- Calculate moment of inertia
-- Apply torques
-- Remap to grid with rotation
-- Goal: Structures can rotate, tip over
+**To implement:**
+- `FloatingStructureFallsTogether` - Structure in air falls as unit
+- `WoodStructureInWaterMovesAsUnit` - Buoyancy affects whole structure
+- `MultipleStructuresMoveIndependently` - Two trees move separately
+- `StructureOnGroundStops` - Collision with WALL stops structure
+- `LooseParticlesUnaffectedByStructureLogic` - Non-organism cells still work
 
-### Phase 4: Fracture Mechanics
-- Track stress in structures
-- Break connections under stress
-- Fragment into multiple bodies
-- Goal: Structures can break apart
+### Test Scenario: Wood in Water
 
-## Open Questions
+```
+Row 0: AIR    AIR   AIR   AIR
+Row 1: WATER  WOOD  WOOD  WATER   (WOOD cells have organism_id=1)
+Row 2: WATER  WATER WATER WATER
+```
 
-1. **Performance:** How many rigid bodies can we track? 100s? 1000s?
-2. **Organism integration:** Should organism bones replace or complement rigid bodies?
-3. **Material mixing:** What if a structure has both WOOD and ROOT cells?
-4. **Grid consistency:** How do we ensure grid state stays consistent with body state?
-5. **Serialization:** How do we save/load rigid body state?
+Expectations:
+- Both WOOD cells have identical velocity at all times
+- WOOD floats (density < water) or sinks slowly
+- Water flows around the structure
 
-## Alternative: Constraint-Based Approach
+## Files to Modify
 
-Instead of tracking rigid bodies separately, use constraint solving:
-- Each rigid connection is a distance constraint
-- Each timestep: apply forces, then project onto constraints
-- XPBD (Extended Position Based Dynamics) style
-- Simpler implementation, more integrated with grid
+### Remove
+- `src/core/WorldSupportCalculator.h`
+- `src/core/WorldSupportCalculator.cpp`
 
-**Trade-off:** Less physically accurate, but easier to implement and integrate.
+### Modify
+- `src/core/Cell.h` - remove support flags
+- `src/core/MaterialType.h` - remove is_rigid
+- `src/core/MaterialType.cpp` - remove is_rigid from properties
+- `src/core/World.h` - add resolveRigidBodies declaration
+- `src/core/World.cpp` - modify advanceTime, resolveForces; add resolveRigidBodies
+- `src/core/WorldRigidBodyCalculator.h` - add applyUnifiedVelocity
+- `src/core/WorldRigidBodyCalculator.cpp` - update identification, add velocity method
+- `src/core/WorldCollisionCalculator.cpp` - remove is_rigid/support checks
+- `src/core/WorldViscosityCalculator.cpp` - remove support checks
+- `src/core/RenderMessage.h` - remove support fields
+- `src/core/RenderMessageUtils.h` - remove support serialization
+- `CMakeLists.txt` - remove WorldSupportCalculator
 
----
+### Tests to Update
+- `src/core/organisms/tests/CantileverSupport_test.cpp` - remove or repurpose
+- Various tests that check `has_any_support`
 
-*Notes for discussion...*
+## Work Sequence
+
+1. **Remove support system** (cleanup)
+2. **Remove is_rigid** (cleanup)
+3. **Update structure identification** (organism_id based)
+4. **Add applyUnifiedVelocity** + tests
+5. **Integrate into World::advanceTime**
+6. **Integration tests** (falling, floating, etc.)
+7. **Structure movement/collisions** (leading edge handling)

@@ -273,6 +273,7 @@ add_library(sparkle-duck-server-lib STATIC
     src/core/WorldFrictionCalculator.cpp
     src/core/WorldInterpolationTool.cpp
     src/core/WorldPressureCalculator.cpp
+    src/core/WorldRigidBodyCalculator.cpp
     src/core/WorldSupportCalculator.cpp
     src/core/WorldVelocityLimitCalculator.cpp
     src/core/WorldViscosityCalculator.cpp
@@ -425,6 +426,7 @@ add_executable(sparkle-duck-tests
     src/tests/Vector2i_test.cpp
     src/tests/HorizontalMomentum_test.cpp
     src/tests/WaterEqualization_test.cpp
+    src/tests/WorldRigidBodyCalculator_test.cpp
 
     # Bitmap tests.
     src/core/bitmaps/tests/CellBitmap_test.cpp
