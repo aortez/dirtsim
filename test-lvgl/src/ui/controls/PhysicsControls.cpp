@@ -1,8 +1,10 @@
 #include "PhysicsControls.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "server/api/PhysicsSettingsGet.h"
 #include "server/api/PhysicsSettingsSet.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <atomic>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -494,8 +496,8 @@ std::vector<PhysicsControls::ColumnConfig> PhysicsControls::createColumnConfigs(
     };
 }
 
-PhysicsControls::PhysicsControls(lv_obj_t* container, WebSocketClient* wsClient)
-    : container_(container), wsClient_(wsClient)
+PhysicsControls::PhysicsControls(lv_obj_t* container, Network::WebSocketService* wsService)
+    : container_(container), wsService_(wsService), settings_(getDefaultPhysicsSettings())
 {
     // Create 3-column layout.
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
@@ -664,6 +666,14 @@ void PhysicsControls::createControlWidget(lv_obj_t* column, Control& control)
             control.switchWidget = lv_obj_get_child(control.widget, 0);
             control.sliderWidget = lv_obj_get_child(control.widget, 2);
 
+            // Add RELEASED event handler to slider for throttling.
+            // The onSliderChange callback handles VALUE_CHANGED, but we want to send
+            // commands only on RELEASED to avoid flooding the connection.
+            if (control.sliderWidget) {
+                lv_obj_add_event_cb(
+                    control.sliderWidget, onGenericValueChange, LV_EVENT_RELEASED, this);
+            }
+
             // Map widgets to control for fast lookup.
             widgetToControl_[control.widget] = &control;
             if (control.switchWidget) {
@@ -769,6 +779,18 @@ void PhysicsControls::onGenericValueChange(lv_event_t* e)
 {
     lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
 
+    // Throttle updates - only sync on RELEASED, not while dragging.
+    lv_event_code_t code = lv_event_get_code(e);
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        // Update local settings but don't send to server yet.
+        // Just update the internal value for display purposes.
+        return;
+    }
+    else if (code != LV_EVENT_RELEASED) {
+        // Only process RELEASED events.
+        return;
+    }
+
     // Get user data - try widget first (for toggleSlider), then event as fallback.
     // toggleSlider sets user_data on the slider widget via lv_obj_set_user_data().
     PhysicsControls* self = static_cast<PhysicsControls*>(lv_obj_get_user_data(target));
@@ -792,13 +814,14 @@ void PhysicsControls::onGenericValueChange(lv_event_t* e)
     int value = lv_slider_get_value(target);
     double scaledValue = value * control->config.valueScale;
 
-    spdlog::info("PhysicsControls: {} changed to {:.2f}", control->config.label, scaledValue);
+    spdlog::info("PhysicsControls: {} released at {:.2f}", control->config.label, scaledValue);
 
     // Call the value setter if it exists.
     if (control->config.valueSetter) {
         control->config.valueSetter(self->settings_, scaledValue);
     }
 
+    // Only sync when slider is released, not while dragging.
     self->syncSettings();
 }
 
@@ -920,30 +943,46 @@ void PhysicsControls::updateFromSettings(const PhysicsSettings& settings)
 
 void PhysicsControls::fetchSettings()
 {
-    if (!wsClient_ || !wsClient_->isConnected()) {
+    if (!wsService_ || !wsService_->isConnected()) {
         spdlog::warn("PhysicsControls: Cannot fetch settings - not connected");
         return;
     }
 
     spdlog::info("PhysicsControls: Fetching physics settings from server");
 
+    // Send binary command to server.
+    static std::atomic<uint64_t> nextId{ 1 };
     const Api::PhysicsSettingsGet::Command cmd{};
-    wsClient_->sendCommand(cmd);
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+
+    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error(
+            "PhysicsControls: Failed to send PhysicsSettingsGet: {}", result.errorValue());
+    }
 
     // Response will be handled by UI state machine and used to update controls.
 }
 
 void PhysicsControls::syncSettings()
 {
-    if (!wsClient_ || !wsClient_->isConnected()) {
+    if (!wsService_ || !wsService_->isConnected()) {
         spdlog::warn("PhysicsControls: Cannot sync settings - not connected");
         return;
     }
 
     spdlog::debug("PhysicsControls: Syncing physics settings to server");
 
+    // Send binary command to server.
+    static std::atomic<uint64_t> nextId{ 1 };
     const Api::PhysicsSettingsSet::Command cmd{ .settings = settings_ };
-    wsClient_->sendCommand(cmd);
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+
+    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error(
+            "PhysicsControls: Failed to send PhysicsSettingsSet: {}", result.errorValue());
+    }
 }
 
 } // namespace Ui

@@ -5,10 +5,15 @@
 #include "ui/rendering/RenderMode.h"
 
 namespace DirtSim {
+
+// Forward declaration.
+namespace Network {
+class WebSocketService;
+}
+
 namespace Ui {
 
-// Forward declarations.
-class WebSocketClient;
+// Forward declaration.
 class EventSink;
 
 /**
@@ -20,7 +25,7 @@ class CoreControls {
 public:
     CoreControls(
         lv_obj_t* container,
-        WebSocketClient* wsClient,
+        Network::WebSocketService* wsService,
         EventSink& eventSink,
         RenderMode initialMode = RenderMode::ADAPTIVE);
     ~CoreControls();
@@ -38,7 +43,7 @@ public:
 
 private:
     lv_obj_t* container_;
-    WebSocketClient* wsClient_;
+    Network::WebSocketService* wsService_;
     EventSink& eventSink_;
     RenderMode currentRenderMode_; // Track current mode to preserve it.
 

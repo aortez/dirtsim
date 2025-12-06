@@ -6,7 +6,6 @@
 #include "core/network/WebSocketService.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
@@ -31,61 +30,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 {
     spdlog::info("Disconnected: Connect command received (host={}, port={})", cmd.host, cmd.port);
 
-    // Get WebSocket client from state machine.
-    auto* wsClient = sm.getWebSocketClient();
-    if (!wsClient) {
-        spdlog::error("Disconnected: No WebSocket client available");
-        return Disconnected{};
-    }
-
-    // Set up callbacks before connecting.
-    wsClient->onConnected([&sm]() {
-        spdlog::info("Disconnected: DSSM connection established");
-        // Queue ServerConnectedEvent to trigger state transition.
-        sm.queueEvent(ServerConnectedEvent{});
-    });
-
-    wsClient->onDisconnected([&sm]() {
-        spdlog::warn("Disconnected: DSSM connection lost");
-        sm.queueEvent(ServerDisconnectedEvent{ "Connection closed" });
-    });
-
-    wsClient->onError([&sm](const std::string& error) {
-        spdlog::error("Disconnected: DSSM connection error: {}", error);
-        sm.queueEvent(ServerDisconnectedEvent{ error });
-    });
-
-    wsClient->onMessage([&sm](const std::string& message) {
-        // Capture callback fire time immediately for latency tracking.
-        auto callbackFiredTime = std::chrono::steady_clock::now();
-
-        spdlog::debug("UI: Received message from DSSM (length: {})", message.length());
-
-        // Time message parsing (JSON parse + WorldData deserialization).
-        auto& timers = sm.getTimers();
-        timers.startTimer("parse_message");
-        auto event = MessageParser::parse(message);
-        timers.stopTimer("parse_message");
-
-        if (event) {
-            // Track when we finish client-side processing.
-            auto processingCompleteTime = std::chrono::steady_clock::now();
-            double callbackToQueueMs = std::chrono::duration<double, std::milli>(
-                                           processingCompleteTime - callbackFiredTime)
-                                           .count();
-
-            // Track total client-side processing time.
-            timers.startTimer("client_total_processing");
-            timers.stopTimer("client_total_processing");
-
-            // Log for debugging (will be noisy, but we can track patterns).
-            spdlog::trace(
-                "UI: Message processed in {:.2f}ms (callback → queue)", callbackToQueueMs);
-
-            sm.queueEvent(*event);
-        }
-    });
-
     // Connect using WebSocketService (unified client for commands AND RenderMessages).
     auto* wsService = sm.getWebSocketService();
     if (wsService) {
@@ -105,13 +49,28 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             sm.queueEvent(ServerDisconnectedEvent{ error });
         });
 
-        // Setup binary callback for RenderMessages.
+        // Setup binary callback for both RenderMessages and command responses.
         wsService->onBinary([&sm](const std::vector<std::byte>& bytes) {
-            spdlog::debug(
-                "WebSocketService: Received binary RenderMessage ({} bytes)", bytes.size());
+            spdlog::debug("WebSocketService: Received binary message ({} bytes)", bytes.size());
+
+            // Try to deserialize as MessageEnvelope first (command responses).
+            try {
+                Network::MessageEnvelope envelope = Network::deserialize_envelope(bytes);
+                if (envelope.message_type.find("_response") != std::string::npos) {
+                    // This is a command response - just log and discard it.
+                    // We send commands fire-and-forget, so we don't need the responses.
+                    spdlog::debug(
+                        "WebSocketService: Received {} response, discarding",
+                        envelope.message_type);
+                    return;
+                }
+            }
+            catch (const std::exception&) {
+                // Not a MessageEnvelope, might be a RenderMessage - continue.
+            }
 
             try {
-                // Deserialize RenderMessage.
+                // Deserialize as RenderMessage.
                 RenderMessage renderMsg;
                 zpp::bits::in in(bytes);
                 in(renderMsg).or_throw();

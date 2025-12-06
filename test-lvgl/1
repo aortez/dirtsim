@@ -1,0 +1,19 @@
+CMake Deprecation Warning at build-debug/_deps/msgpack-src/CMakeLists.txt:1 (CMAKE_MINIMUM_REQUIRED):
+  Compatibility with CMake < 3.5 will be removed from a future version of
+  CMake.
+
+  Update the VERSION argument <min> value or use a ...<max> suffix to tell
+  CMake that the project does not need compatibility with older versions.
+
+
+Including Wayland support
+Including X11 support
+Including FBDEV support
+[2025-12-05 22:24:01.640] [server] [info] GridOfCells cache: ENABLED
+[2025-12-05 22:24:01.640] [server] [info] OpenMP parallelization: ENABLED
+[2025-12-05 22:24:01.640] [server] [info] Using default config: logging-config.json
+[2025-12-05 22:24:01.640] [server] [info] Loaded logging config from logging-config.json
+[2025-12-05 22:24:01.640] [server] [info] Using rotating file sink: sparkle-duck.log (max 100 MB, 3 files)
+[OpenH264] this = 0x0x7b9644001940, Warning:ParamValidation(), AdaptiveQuant(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7b9644001940, Warning:ParamValidation(), BackgroundDetection(1) is not supported yet for screen content, auto turned off
+[OpenH264] this = 0x0x7b9644001940, Warning:bEnableFrameSkip = 0,bitrate can't be controlled for RC_QUALITY_MODE,RC_BITRATE_MODE and RC_TIMESTAMP_MODE without enabling skip frame.

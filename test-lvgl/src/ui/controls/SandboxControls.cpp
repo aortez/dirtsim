@@ -1,9 +1,11 @@
 #include "SandboxControls.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "server/api/ScenarioConfigSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SpawnDirtBall.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <atomic>
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -12,8 +14,8 @@ namespace DirtSim {
 namespace Ui {
 
 SandboxControls::SandboxControls(
-    lv_obj_t* container, WebSocketClient* wsClient, const SandboxConfig& config)
-    : container_(container), wsClient_(wsClient)
+    lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config)
+    : container_(container), wsService_(wsService)
 {
     // Scenario label.
     lv_obj_t* scenarioLabel = lv_label_create(container_);
@@ -212,9 +214,9 @@ SandboxConfig SandboxControls::getCurrentConfig() const
 
 void SandboxControls::sendConfigUpdate(const ScenarioConfig& config)
 {
-    if (!wsClient_ || !wsClient_->isConnected()) return;
+    if (!wsService_ || !wsService_->isConnected()) return;
 
-    // Track rapid calls
+    // Track rapid calls.
     static int updateCount = 0;
     static auto lastUpdateTime = std::chrono::steady_clock::now();
     auto now = std::chrono::steady_clock::now();
@@ -239,7 +241,14 @@ void SandboxControls::sendConfigUpdate(const ScenarioConfig& config)
 
     spdlog::info(
         "SandboxControls: Sending config update (update #{} in {}ms)", updateCount, elapsed);
-    wsClient_->sendCommand(cmd);
+
+    // Send binary command.
+    static std::atomic<uint64_t> nextId{ 1 };
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error("SandboxControls: Failed to send ScenarioConfigSet: {}", result.errorValue());
+    }
 }
 
 void SandboxControls::onAddSeedClicked(lv_event_t* e)
@@ -252,11 +261,18 @@ void SandboxControls::onAddSeedClicked(lv_event_t* e)
 
     spdlog::info("SandboxControls: Add Seed button clicked");
 
-    if (self->wsClient_ && self->wsClient_->isConnected()) {
+    if (self->wsService_ && self->wsService_->isConnected()) {
         const Api::SeedAdd::Command cmd{ .x = static_cast<int>(self->worldWidth_ / 2), .y = 5 };
 
         spdlog::info("SandboxControls: Sending seed_add at ({}, {})", cmd.x, cmd.y);
-        self->wsClient_->sendCommand(cmd);
+
+        // Send binary command.
+        static std::atomic<uint64_t> nextId{ 1 };
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("SandboxControls: Failed to send SeedAdd: {}", result.errorValue());
+        }
     }
 }
 
@@ -270,11 +286,18 @@ void SandboxControls::onDropDirtBallClicked(lv_event_t* e)
 
     spdlog::info("SandboxControls: Drop Dirt Ball button clicked");
 
-    if (self->wsClient_ && self->wsClient_->isConnected()) {
+    if (self->wsService_ && self->wsService_->isConnected()) {
         const Api::SpawnDirtBall::Command cmd{};
 
         spdlog::info("SandboxControls: Sending spawn_dirt_ball command");
-        self->wsClient_->sendCommand(cmd);
+
+        // Send binary command.
+        static std::atomic<uint64_t> nextId{ 1 };
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("SandboxControls: Failed to send SpawnDirtBall: {}", result.errorValue());
+        }
     }
 }
 

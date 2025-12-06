@@ -4,10 +4,13 @@
 #include "lvgl/lvgl.h"
 
 namespace DirtSim {
-namespace Ui {
 
-// Forward declarations.
-class WebSocketClient;
+// Forward declaration.
+namespace Network {
+class WebSocketService;
+}
+
+namespace Ui {
 
 /**
  * @brief Sandbox scenario-specific controls.
@@ -16,7 +19,8 @@ class WebSocketClient;
  */
 class SandboxControls {
 public:
-    SandboxControls(lv_obj_t* container, WebSocketClient* wsClient, const SandboxConfig& config);
+    SandboxControls(
+        lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config);
     ~SandboxControls();
 
     /**
@@ -31,7 +35,7 @@ public:
 
 private:
     lv_obj_t* container_;
-    WebSocketClient* wsClient_;
+    Network::WebSocketService* wsService_;
 
     // Flag to prevent updates during initialization
     bool initializing_ = true;

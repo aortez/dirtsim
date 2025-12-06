@@ -11,6 +11,12 @@ typedef struct _lv_obj_t lv_obj_t;
 typedef struct _lv_event_t lv_event_t;
 
 namespace DirtSim {
+
+// Forward declaration.
+namespace Network {
+class WebSocketService;
+}
+
 namespace Ui {
 
 // Forward declarations.
@@ -20,7 +26,6 @@ class SandboxControls;
 class PhysicsControls;
 class CellRenderer;
 class NeuralGridRenderer;
-class WebSocketClient;
 class EventSink;
 
 /**
@@ -34,7 +39,8 @@ class EventSink;
  */
 class SimPlayground {
 public:
-    SimPlayground(UiComponentManager* uiManager, WebSocketClient* wsClient, EventSink& eventSink);
+    SimPlayground(
+        UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink);
     ~SimPlayground();
 
     /**
@@ -87,7 +93,7 @@ public:
 private:
     UiComponentManager* uiManager_;
     RenderMode renderMode_ = RenderMode::ADAPTIVE; // Persists across scenario changes.
-    WebSocketClient* wsClient_;
+    Network::WebSocketService* wsService_;
     EventSink& eventSink_;
 
     // UI components.

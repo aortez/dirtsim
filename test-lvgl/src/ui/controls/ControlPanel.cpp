@@ -4,7 +4,6 @@
 #include "server/api/SimRun.h"
 #include "server/api/SpawnDirtBall.h"
 #include "ui/state-machine/EventSink.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -12,8 +11,9 @@
 namespace DirtSim {
 namespace Ui {
 
-ControlPanel::ControlPanel(lv_obj_t* container, WebSocketClient* wsClient, EventSink& eventSink)
-    : container_(container), wsClient_(wsClient), eventSink_(eventSink)
+ControlPanel::ControlPanel(
+    lv_obj_t* container, [[maybe_unused]] void* wsClient, EventSink& eventSink)
+    : container_(container), wsClient_(nullptr), eventSink_(eventSink)
 {
     if (!container_) {
         spdlog::error("ControlPanel: Null container provided");
@@ -254,18 +254,9 @@ void ControlPanel::onScenarioChanged(lv_event_t* e)
     std::string scenario_id = scenarioIds[selectedIdx];
     spdlog::info("ControlPanel: Scenario changed to '{}'", scenario_id);
 
-    // Send sim_run command with new scenario_id to DSSM server.
-    if (panel->wsClient_ && panel->wsClient_->isConnected()) {
-        const DirtSim::Api::SimRun::Command cmd{
-            .timestep = 0.016, .max_steps = -1, .scenario_id = scenario_id, .max_frame_ms = 16
-        };
-
-        spdlog::info("ControlPanel: Sending sim_run with scenario '{}'", scenario_id);
-        panel->wsClient_->sendCommand(cmd);
-    }
-    else {
-        spdlog::warn("ControlPanel: WebSocket not connected, cannot switch scenario");
-    }
+    // DISABLED: ControlPanel is unused dead code.
+    // TODO: Delete ControlPanel entirely or migrate to WebSocketService.
+    spdlog::warn("ControlPanel: Scenario change disabled (ControlPanel is deprecated)");
 }
 
 void ControlPanel::onAddSeedClicked(lv_event_t* e)
@@ -275,18 +266,8 @@ void ControlPanel::onAddSeedClicked(lv_event_t* e)
     if (!panel) return;
 
     spdlog::info("ControlPanel: Add Seed button clicked");
-
-    // Send seed_add command to DSSM server.
-    // Place seed at top-center of world (world is typically 28x28, so use 14, 5).
-    if (panel->wsClient_ && panel->wsClient_->isConnected()) {
-        const DirtSim::Api::SeedAdd::Command cmd{
-            .x = static_cast<int>(panel->worldWidth_ / 2), // Horizontal center.
-            .y = 5                                         // Near top (below wall boundary).
-        };
-
-        spdlog::info("ControlPanel: Sending seed_add at ({}, {})", cmd.x, cmd.y);
-        panel->wsClient_->sendCommand(cmd);
-    }
+    // DISABLED: ControlPanel is unused dead code.
+    spdlog::warn("ControlPanel: Add Seed disabled (ControlPanel is deprecated)");
 }
 
 void ControlPanel::onDropDirtBallClicked(lv_event_t* e)
@@ -296,14 +277,8 @@ void ControlPanel::onDropDirtBallClicked(lv_event_t* e)
     if (!panel) return;
 
     spdlog::info("ControlPanel: Drop Dirt Ball button clicked");
-
-    // Send spawn_dirt_ball command to DSSM server.
-    if (panel->wsClient_ && panel->wsClient_->isConnected()) {
-        const DirtSim::Api::SpawnDirtBall::Command cmd{};
-
-        spdlog::info("ControlPanel: Sending spawn_dirt_ball command");
-        panel->wsClient_->sendCommand(cmd);
-    }
+    // DISABLED: ControlPanel is unused dead code.
+    spdlog::warn("ControlPanel: Drop Dirt Ball disabled (ControlPanel is deprecated)");
 }
 
 void ControlPanel::onQuitClicked(lv_event_t* e)
@@ -314,11 +289,7 @@ void ControlPanel::onQuitClicked(lv_event_t* e)
 
     spdlog::info("ControlPanel: Quit button clicked");
 
-    // Send exit command to DSSM server.
-    if (panel->wsClient_ && panel->wsClient_->isConnected()) {
-        const Api::Exit::Command cmd{};
-        panel->wsClient_->sendCommand(cmd);
-    }
+    // DISABLED: ControlPanel is unused dead code.
 
     // Also exit the UI itself.
     auto exitCmd = UiApi::Exit::Command{};
@@ -454,16 +425,10 @@ void ControlPanel::onSandboxRainSliderChanged(lv_event_t* e)
 // Command Sending
 // ============================================================================
 
-void ControlPanel::sendConfigUpdate(const ScenarioConfig& config)
+void ControlPanel::sendConfigUpdate([[maybe_unused]] const ScenarioConfig& config)
 {
-    if (!wsClient_ || !wsClient_->isConnected()) {
-        spdlog::warn("ControlPanel: Cannot send config update, not connected to DSSM");
-        return;
-    }
-
-    const Api::ScenarioConfigSet::Command cmd{ .config = config };
-    wsClient_->sendCommand(cmd);
-    spdlog::debug("ControlPanel: Sent scenario config update to DSSM");
+    // DISABLED: ControlPanel is unused dead code.
+    spdlog::warn("ControlPanel: sendConfigUpdate disabled (ControlPanel is deprecated)");
 }
 
 void ControlPanel::sendDebugUpdate(bool enabled)

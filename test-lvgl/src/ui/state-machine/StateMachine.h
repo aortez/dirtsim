@@ -26,7 +26,6 @@ namespace Ui {
 class UiComponentManager;
 class WebRtcStreamer;
 class WebSocketServer;
-class WebSocketClient;
 } // namespace Ui
 } // namespace DirtSim
 
@@ -54,10 +53,9 @@ public:
     EventProcessor eventProcessor;
 
     // WebSocket connections.
-    std::unique_ptr<WebSocketServer> wsServer_; // Server for accepting remote commands (OLD).
-    std::unique_ptr<WebSocketClient> wsClient_; // Client for connecting to DSSM server (OLD).
-    std::unique_ptr<Network::WebSocketService>
-        wsService_; // NEW: Unified service (client + server).
+    std::unique_ptr<WebSocketServer>
+        wsServer_; // Server for accepting remote commands (OLD - TODO: migrate to wsService_).
+    std::unique_ptr<Network::WebSocketService> wsService_; // Unified service (client + server).
 
     // UI management.
     std::unique_ptr<UiComponentManager> uiManager_; // LVGL screen and container management.
@@ -66,13 +64,7 @@ public:
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
 
     /**
-     * @brief Get WebSocket client for DSSM connection (OLD).
-     * @return Pointer to WebSocket client (non-owning).
-     */
-    WebSocketClient* getWebSocketClient() { return wsClient_.get(); }
-
-    /**
-     * @brief Get WebSocketService (NEW unified client + server).
+     * @brief Get WebSocketService (unified client + server).
      * @return Pointer to WebSocketService (non-owning).
      */
     Network::WebSocketService* getWebSocketService() { return wsService_.get(); }

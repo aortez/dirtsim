@@ -1,4 +1,6 @@
 #include "CoreControls.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "server/api/Reset.h"
 #include "server/api/WorldResize.h"
 #include "ui/rendering/CellRenderer.h"
@@ -7,8 +9,8 @@
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/PixelRendererToggle.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <atomic>
 #include <lvgl/src/misc/lv_palette.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
@@ -17,9 +19,12 @@ namespace DirtSim {
 namespace Ui {
 
 CoreControls::CoreControls(
-    lv_obj_t* container, WebSocketClient* wsClient, EventSink& eventSink, RenderMode initialMode)
+    lv_obj_t* container,
+    Network::WebSocketService* wsService,
+    EventSink& eventSink,
+    RenderMode initialMode)
     : container_(container),
-      wsClient_(wsClient),
+      wsService_(wsService),
       eventSink_(eventSink),
       currentRenderMode_(initialMode)
 {
@@ -214,9 +219,14 @@ void CoreControls::onResetClicked(lv_event_t* e)
 
     spdlog::info("CoreControls: Reset button clicked");
 
-    // Send reset command to server.
+    // Send binary reset command to server.
+    static std::atomic<uint64_t> nextId{ 1 };
     const Api::Reset::Command cmd{};
-    self->wsClient_->sendCommand(cmd);
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error("CoreControls: Failed to send Reset: {}", result.errorValue());
+    }
 }
 
 void CoreControls::onDebugToggled(lv_event_t* e)
@@ -294,12 +304,18 @@ void CoreControls::onWorldSizeToggled(lv_event_t* e)
 
     spdlog::info("CoreControls: World size toggle switched to {}", enabled ? "ON" : "OFF");
 
-    // When toggled off, the slider defaults to value 1
-    // When toggled on, it uses the slider's current value
+    // When toggled off, the slider defaults to value 1.
+    // When toggled on, it uses the slider's current value.
+    static std::atomic<uint64_t> nextId{ 1 };
+
     if (!enabled) {
         // Send resize command with size 1x1 (minimum world size).
         const Api::WorldResize::Command cmd{ .width = 1, .height = 1 };
-        self->wsClient_->sendCommand(cmd);
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
+        }
         spdlog::info("CoreControls: Resizing world to 1x1 (toggle off)");
     }
     else {
@@ -308,14 +324,22 @@ void CoreControls::onWorldSizeToggled(lv_event_t* e)
             spdlog::error("CoreControls: worldSizeSlider_ is null!");
             // Use default value if slider is not available.
             const Api::WorldResize::Command cmd{ .width = 28, .height = 28 };
-            self->wsClient_->sendCommand(cmd);
+            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+            if (result.isError()) {
+                spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
+            }
             spdlog::info("CoreControls: Resizing world to 28x28 (default, slider unavailable)");
         }
         else {
             int32_t value = lv_slider_get_value(self->worldSizeSlider_);
             const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
                                                  .height = static_cast<uint32_t>(value) };
-            self->wsClient_->sendCommand(cmd);
+            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+            if (result.isError()) {
+                spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
+            }
             spdlog::info("CoreControls: Resizing world to {}x{} (toggle on)", value, value);
         }
     }
@@ -353,14 +377,19 @@ void CoreControls::onWorldSizeChanged(lv_event_t* e)
         self->pendingWorldSize_ = 0;
     }
 
-    // Only send resize if the toggle is enabled
+    // Only send resize if the toggle is enabled.
     if (self->worldSizeSwitch_ && lv_obj_has_state(self->worldSizeSwitch_, LV_STATE_CHECKED)) {
         spdlog::info("CoreControls: World size slider released at {}", value);
 
-        // Send WorldResize API command.
+        // Send binary WorldResize API command.
+        static std::atomic<uint64_t> nextId{ 1 };
         const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
                                              .height = static_cast<uint32_t>(value) };
-        self->wsClient_->sendCommand(cmd);
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
+        }
         spdlog::info("CoreControls: Resizing world to {}x{}", value, value);
     }
 }

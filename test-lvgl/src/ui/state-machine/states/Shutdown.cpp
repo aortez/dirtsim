@@ -1,6 +1,6 @@
 #include "State.h"
+#include "core/network/WebSocketService.h"
 #include "ui/state-machine/StateMachine.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include "ui/state-machine/network/WebSocketServer.h"
 #include <spdlog/spdlog.h>
 
@@ -16,9 +16,9 @@ void Shutdown::onEnter(StateMachine& sm)
     // Note: We just disconnect without sending exit command. The server is headless
     // and should keep running independently. If server shutdown is needed, it should
     // be done via separate mechanism (e.g., CLI tool).
-    if (sm.wsClient_ && sm.wsClient_->isConnected()) {
+    if (sm.wsService_ && sm.wsService_->isConnected()) {
         spdlog::info("Shutdown: Disconnecting from DSSM server");
-        sm.wsClient_->disconnect();
+        sm.wsService_->disconnect();
     }
 
     // Stop WebSocket server if running.

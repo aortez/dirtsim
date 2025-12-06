@@ -163,25 +163,15 @@ struct HttpServer::Impl {
             uiLastResponse: null
         };
 
-        // Update the status display with elapsed time.
+        // Update the status display (timing info is now in individual peer cards).
         function updateStatusDisplay() {
             var status = document.getElementById('status');
             var parts = [];
 
-            parts.push('Server: ' + (serverConn.isConnected() ? 'connected' : 'disconnected'));
-            if (globalState.serverLastResponse) {
-                var elapsed = Date.now() - globalState.serverLastResponse.getTime();
-                parts.push('last: ' + formatElapsed(elapsed) + ' ago');
-            }
-
-            parts.push('| UI: ' + (uiConn.isConnected() ? 'connected' : 'disconnected'));
-            if (globalState.uiLastResponse) {
-                var elapsed = Date.now() - globalState.uiLastResponse.getTime();
-                parts.push('last: ' + formatElapsed(elapsed) + ' ago');
-            }
-
             if (globalState.lastUpdate) {
-                parts.push('| Updated: ' + formatTime(globalState.lastUpdate));
+                parts.push('Updated: ' + formatTime(globalState.lastUpdate));
+            } else {
+                parts.push('Discovering...');
             }
 
             status.textContent = parts.join(' ');

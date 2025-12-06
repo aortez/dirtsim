@@ -5,7 +5,6 @@
 #include "ui/UiComponentManager.h"
 #include "ui/rendering/JuliaFractal.h"
 #include "ui/state-machine/StateMachine.h"
-#include "ui/state-machine/network/WebSocketClient.h"
 #include <lvgl/lvgl.h>
 #include <lvgl/src/misc/lv_timer_private.h>
 #include <nlohmann/json.hpp>

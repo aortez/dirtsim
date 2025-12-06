@@ -9,8 +9,7 @@
 namespace DirtSim {
 namespace Ui {
 
-// Forward declarations.
-class WebSocketClient;
+// Forward declaration.
 class EventSink;
 
 /**
@@ -28,10 +27,10 @@ public:
     /**
      * @brief Create control panel.
      * @param container Parent LVGL container for controls.
-     * @param wsClient WebSocket client for sending commands to DSSM.
+     * @param wsClient Unused (legacy parameter for compatibility).
      * @param eventSink Event sink for UI-local commands.
      */
-    ControlPanel(lv_obj_t* container, WebSocketClient* wsClient, EventSink& eventSink);
+    ControlPanel(lv_obj_t* container, void* wsClient, EventSink& eventSink);
 
     /**
      * @brief Destructor - cleans up LVGL widgets.
@@ -49,7 +48,7 @@ public:
 
 private:
     lv_obj_t* container_;
-    WebSocketClient* wsClient_;
+    void* wsClient_; // Unused (dead code, ControlPanel never instantiated).
     EventSink& eventSink_;
     std::string currentScenarioId_;
     uint32_t worldWidth_ = 28;  // Current world width (updated from WorldData).

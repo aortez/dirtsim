@@ -2,13 +2,15 @@
 #include "controls/CoreControls.h"
 #include "controls/PhysicsControls.h"
 #include "controls/SandboxControls.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
 #include "server/api/SimRun.h"
 #include "state-machine/EventSink.h"
-#include "state-machine/network/WebSocketClient.h"
 #include "ui/UiComponentManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <atomic>
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -16,17 +18,17 @@ namespace DirtSim {
 namespace Ui {
 
 SimPlayground::SimPlayground(
-    UiComponentManager* uiManager, WebSocketClient* wsClient, EventSink& eventSink)
-    : uiManager_(uiManager), wsClient_(wsClient), eventSink_(eventSink)
+    UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink)
+    : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
 {
     // Create core controls in left panel.
     lv_obj_t* coreContainer = uiManager_->getCoreControlsContainer();
     coreControls_ =
-        std::make_unique<CoreControls>(coreContainer, wsClient_, eventSink_, renderMode_);
+        std::make_unique<CoreControls>(coreContainer, wsService_, eventSink_, renderMode_);
 
     // Create physics controls in bottom panel.
     lv_obj_t* physicsContainer = uiManager_->getPhysicsControlsContainer();
-    physicsControls_ = std::make_unique<PhysicsControls>(physicsContainer, wsClient_);
+    physicsControls_ = std::make_unique<PhysicsControls>(physicsContainer, wsService_);
 
     // Create scenario dropdown in scenario controls container (persistent across scenarios).
     lv_obj_t* scenarioContainer = uiManager_->getScenarioControlsContainer();
@@ -100,7 +102,7 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
             lv_obj_t* scenarioContainer = uiManager_->getScenarioControlsContainer();
             const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
             sandboxControls_ =
-                std::make_unique<SandboxControls>(scenarioContainer, wsClient_, config);
+                std::make_unique<SandboxControls>(scenarioContainer, wsService_, config);
         }
         // TODO: Add other scenario control creators here.
 
@@ -177,7 +179,8 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
     spdlog::info("SimPlayground: Scenario changed to '{}'", scenario_id);
 
     // Send sim_run command with new scenario_id to DSSM server.
-    if (playground->wsClient_ && playground->wsClient_->isConnected()) {
+    if (playground->wsService_ && playground->wsService_->isConnected()) {
+        static std::atomic<uint64_t> nextId{ 1 };
         const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
                                                  .max_steps = -1,
                                                  .scenario_id = scenario_id,
@@ -187,7 +190,13 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
             "SimPlayground: Sending sim_run with scenario '{}', max_frame_ms={}",
             scenario_id,
             cmd.max_frame_ms);
-        playground->wsClient_->sendCommand(cmd);
+
+        // Send binary command.
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = playground->wsService_->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("SimPlayground: Failed to send SimRun: {}", result.errorValue());
+        }
     }
     else {
         spdlog::warn("SimPlayground: WebSocket not connected, cannot switch scenario");

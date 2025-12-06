@@ -327,7 +327,6 @@ add_library(sparkle-duck-ui-lib STATIC
     # UI network.
     src/ui/state-machine/network/CommandDeserializerJson.cpp
     src/ui/state-machine/network/MessageParser.cpp
-    src/ui/state-machine/network/WebSocketClient.cpp
     src/ui/state-machine/network/WebSocketServer.cpp
 
     # UI components.

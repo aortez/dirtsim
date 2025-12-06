@@ -7,10 +7,13 @@
 #include <vector>
 
 namespace DirtSim {
-namespace Ui {
 
-// Forward declarations.
-class WebSocketClient;
+// Forward declaration.
+namespace Network {
+class WebSocketService;
+}
+
+namespace Ui {
 
 /**
  * @brief Physics parameter controls for tuning simulation behavior.
@@ -24,7 +27,7 @@ class WebSocketClient;
  */
 class PhysicsControls {
 public:
-    PhysicsControls(lv_obj_t* container, WebSocketClient* wsClient);
+    PhysicsControls(lv_obj_t* container, Network::WebSocketService* wsService);
     ~PhysicsControls();
 
     /**
@@ -71,7 +74,7 @@ private:
     };
 
     lv_obj_t* container_;
-    WebSocketClient* wsClient_;
+    Network::WebSocketService* wsService_;
 
     // Current physics settings (local copy, synced with server).
     PhysicsSettings settings_;

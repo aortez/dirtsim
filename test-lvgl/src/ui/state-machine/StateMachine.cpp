@@ -4,7 +4,6 @@
 #include "api/WebRtcCandidate.h"
 #include "core/encoding/H264Encoder.h"
 #include "core/network/WebSocketService.h"
-#include "network/WebSocketClient.h"
 #include "network/WebSocketServer.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
@@ -20,17 +19,13 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     spdlog::info("Ui::StateMachine initialized in state: {}", getCurrentStateName());
 
-    // Create OLD WebSocket server for accepting remote commands.
+    // Create OLD WebSocket server for accepting remote commands (CLI port 7070).
+    // TODO: Migrate to wsService_->listen(7070) once ready.
     wsServer_ = std::make_unique<WebSocketServer>(*this, wsPort);
     wsServer_->start();
     spdlog::info("Ui::StateMachine: WebSocket server listening on port {}", wsPort);
 
-    // Create OLD WebSocket client for connecting to DSSM server.
-    wsClient_ = std::make_unique<WebSocketClient>();
-    wsClient_->setEventSink(this); // StateMachine implements EventSink.
-    spdlog::info("Ui::StateMachine: WebSocket client created (not yet connected)");
-
-    // Create NEW unified WebSocketService (will replace both above).
+    // Create unified WebSocketService (replaces old wsClient_).
     wsService_ = std::make_unique<Network::WebSocketService>();
     setupWebSocketService();
     spdlog::info("Ui::StateMachine: WebSocketService initialized");
@@ -70,9 +65,10 @@ void StateMachine::setupWebSocketService()
     wsService_->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
 
+    // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
+    // Don't set it here or it will overwrite that handler!
+
     // TODO: Register remaining UI commands (ScreenGrab, DrawDebugToggle, etc.).
-    // TODO: Setup client-side connection to server (port 8080).
-    // TODO: Setup RenderMessage binary callback for world updates.
 
     spdlog::info("Ui::StateMachine: WebSocketService handlers registered");
 }
@@ -81,15 +77,12 @@ StateMachine::~StateMachine()
 {
     spdlog::info("Ui::StateMachine shutting down from state: {}", getCurrentStateName());
 
-    // Stop and clean up WebSocket client (unique_ptr handles deletion).
-    if (wsClient_) {
-        wsClient_->disconnect();
-    }
-
     // Stop and clean up WebSocket server (unique_ptr handles deletion).
     if (wsServer_) {
         wsServer_->stop();
     }
+
+    // WebSocketService cleanup handled by unique_ptr.
 }
 
 void StateMachine::mainLoopRun()
@@ -161,8 +154,8 @@ void StateMachine::handleEvent(const Event& event)
 
         UiApi::StatusGet::Okay status{
             .state = getCurrentStateName(),
-            .connected_to_server = wsClient_ && wsClient_->isConnected(),
-            .server_url = "", // TODO: Store and return actual server URL.
+            .connected_to_server = wsService_ && wsService_->isConnected(),
+            .server_url = wsService_ ? wsService_->getUrl() : "",
             .display_width =
                 display ? static_cast<uint32_t>(lv_display_get_horizontal_resolution(display)) : 0U,
             .display_height =

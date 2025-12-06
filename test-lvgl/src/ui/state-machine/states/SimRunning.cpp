@@ -1,11 +1,13 @@
 #include "State.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "server/api/RenderFormatSet.h"
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/PhysicsControls.h"
 #include "ui/rendering/DisplayStreamer.h"
 #include "ui/state-machine/StateMachine.h"
-#include "ui/state-machine/network/WebSocketClient.h"
+#include <atomic>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -18,19 +20,28 @@ void SimRunning::onEnter(StateMachine& sm)
     spdlog::info("SimRunning: Simulation is running, displaying world updates");
 
     // Subscribe to render messages from the server.
-    if (sm.getWebSocketClient()) {
+    if (sm.getWebSocketService() && sm.getWebSocketService()->isConnected()) {
+        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
-        sm.getWebSocketClient()->sendCommand(cmd);
-        spdlog::info(
-            "SimRunning: Subscribed to render messages (format={})",
-            debugDrawEnabled ? "DEBUG" : "BASIC");
+
+        // Send binary command.
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = sm.getWebSocketService()->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("SimRunning: Failed to send RenderFormatSet: {}", result.errorValue());
+        }
+        else {
+            spdlog::info(
+                "SimRunning: Subscribed to render messages (format={})",
+                debugDrawEnabled ? "DEBUG" : "BASIC");
+        }
     }
 
     // Create playground if not already created.
     if (!playground_) {
         playground_ = std::make_unique<SimPlayground>(
-            sm.getUiComponentManager(), sm.getWebSocketClient(), sm);
+            sm.getUiComponentManager(), sm.getWebSocketService(), sm);
         spdlog::info("SimRunning: Created simulation playground");
     }
 
@@ -97,12 +108,21 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     spdlog::info("SimRunning: Debug draw mode {}", debugDrawEnabled ? "enabled" : "disabled");
 
     // Auto-switch render format based on debug mode.
-    if (sm.getWebSocketClient()) {
+    if (sm.getWebSocketService() && sm.getWebSocketService()->isConnected()) {
+        static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
-        sm.getWebSocketClient()->sendCommand(cmd);
-        spdlog::info(
-            "SimRunning: Sent render_format_set to {}", debugDrawEnabled ? "DEBUG" : "BASIC");
+
+        // Send binary command.
+        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto result = sm.getWebSocketService()->sendBinary(Network::serialize_envelope(envelope));
+        if (result.isError()) {
+            spdlog::error("SimRunning: Failed to send RenderFormatSet: {}", result.errorValue());
+        }
+        else {
+            spdlog::info(
+                "SimRunning: Sent render_format_set to {}", debugDrawEnabled ? "DEBUG" : "BASIC");
+        }
     }
 
     cwc.sendResponse(Response::okay(UiApi::DrawDebugToggle::Okay{ debugDrawEnabled }));
