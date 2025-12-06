@@ -1,10 +1,35 @@
 # WebSocket Client Library Design
 
-## ✅ IMPLEMENTATION STATUS (2025-12-05)
+## ✅ IMPLEMENTATION STATUS (2025-12-06)
 
-**COMPLETE:** WebSocketService unified architecture - MAJOR REFACTOR!
+**COMPLETE:** WebSocketService unified architecture - UI migration finished!
 
-### 🌱 What's Working (2025-12-05)
+### 🎉 Latest Update (2025-12-06 Evening)
+
+Completed UI controls migration! All interactive controls now use binary protocol.
+
+**What was fixed:**
+- All UI controls (PhysicsControls, CoreControls, SandboxControls) migrated to WebSocketService
+- Binary command sending with MessageEnvelope protocol
+- Removed dual WebSocket connection issue (wsClient_ + wsService_ → wsService_ only)
+- Fixed physics slider freeze bug (PhysicsSettings now initialized with defaults)
+- Binary callback properly handles both RenderMessages and command responses
+- Deleted old Ui::WebSocketClient class entirely (443 lines removed)
+
+**Controls now working:**
+- ✅ Physics sliders (gravity, pressure, cohesion, etc.) - send on release, no flooding
+- ✅ Drop Seed / Drop Dirt Ball buttons
+- ✅ World Size slider
+- ✅ Scenario selector dropdown
+- ✅ All toggles and switches
+
+**Architecture cleanup:**
+- Single WebSocket connection per UI instance
+- Consistent binary protocol throughout
+- No more JSON in UI→Server communication
+- Command responses consumed asynchronously (no blocking)
+
+### 🌱 What's Working (2025-12-06)
 
 **WebSocketService (Network::WebSocketService)**
 - ✅ Renamed from WebSocketClient to WebSocketService
@@ -30,17 +55,19 @@
 - ✅ Binary protocol with full response data display
 - ✅ CamelCase command names everywhere
 
-**UI Migration (In Progress)**
-- ✅ UI sends binary commands to server (SimRun, etc.)
-- ✅ UI receives RenderMessages via WebSocketService
-- ✅ Single connection (replaces dual client/server)
-- ✅ Rendering works, simulation runs
-- ⏳ Old Ui::WebSocketClient still present (ready for removal)
+**UI Migration (COMPLETE!)**
+- ✅ All UI controls migrated to WebSocketService (PhysicsControls, CoreControls, SandboxControls)
+- ✅ Binary command sending with envelope protocol
+- ✅ Single unified connection (no more dual wsClient_/wsService_)
+- ✅ Binary callback handles both RenderMessages and command responses
+- ✅ PhysicsSettings initialized with defaults (prevents timescale=0 bugs)
+- ✅ Old Ui::WebSocketClient deleted (443 lines removed)
+- ✅ All controls functional (sliders, buttons, toggles)
 
 ### Known Issues
 1. **libdatachannel buffering:** RenderMessages arrive in bursts with ~2 second initial delay. Messages buffer in libdatachannel WebSocket and deliver all at once instead of streaming. System works but rendering startup is delayed. Need to investigate rtc::WebSocketConfiguration settings.
 2. **Response serialization:** Some commands (PeersGet, TimerStatsGet) have complex response types that ReflectSerializer can't auto-serialize. Need custom toJson() implementations.
-3. **Old code cleanup:** Ui::WebSocketClient, Ui::WebSocketServer, and Server::WebSocketServer still in codebase but unused. Ready for deletion.
+3. **Remaining old code:** Ui::WebSocketServer still used for CLI commands on port 7070. Ready to migrate to wsService_->listen(7070) when needed.
 
 ---
 
