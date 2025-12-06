@@ -1,0 +1,138 @@
+/* Dirt Sim Garden Dashboard Styles */
+
+body {
+    font-family: monospace;
+    background: #1a1a1a;
+    color: #00ff00;
+    padding: 20px;
+}
+
+h1 {
+    color: #00ff00;
+    margin-bottom: 10px;
+}
+
+#status {
+    margin: 10px 0;
+    color: #ffff00;
+}
+
+.peers {
+    margin-top: 20px;
+}
+
+.peer {
+    border: 1px solid #00ff00;
+    padding: 10px;
+    margin: 10px 0;
+    background: #0a0a0a;
+}
+
+.peer.disconnected {
+    border-color: #555;
+    opacity: 0.5;
+}
+
+.peer h3 {
+    margin: 0 0 5px 0;
+    color: #00ff00;
+}
+
+.peer.disconnected h3 {
+    color: #888;
+}
+
+.peer-info {
+    font-size: 12px;
+    margin: 3px 0;
+}
+
+.peer.disconnected .peer-info {
+    color: #666;
+}
+
+.debug-container {
+    margin-top: 20px;
+}
+
+.debug-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.debug-header h3 {
+    color: #ff6600;
+    margin: 0;
+}
+
+.debug-controls button {
+    margin-left: 5px;
+    padding: 3px 8px;
+    background: #333;
+    color: #ff6600;
+    border: 1px solid #ff6600;
+    cursor: pointer;
+    font-family: monospace;
+    font-size: 11px;
+}
+
+.debug-controls button:hover {
+    background: #555;
+}
+
+.debug-controls button.active {
+    background: #ff6600;
+    color: #000;
+}
+
+#debug {
+    padding: 10px;
+    border: 1px solid #ff6600;
+    background: #0a0a0a;
+    font-size: 10px;
+    color: #ff6600;
+    height: 400px;
+    overflow-y: auto;
+}
+
+#debug.paused {
+    border-color: #ffaa00;
+}
+
+/* Video and control buttons. */
+.peer video {
+    max-width: 320px;
+    border: 1px solid #00ff00;
+    margin-top: 10px;
+    background: #000;
+    cursor: crosshair;
+}
+
+.peer-controls {
+    margin-top: 5px;
+}
+
+.peer-controls button {
+    padding: 5px 10px;
+    background: #333;
+    color: #0f0;
+    border: 1px solid #0f0;
+    cursor: pointer;
+    margin-right: 5px;
+}
+
+.peer-controls button:hover {
+    background: #444;
+}
+
+.peer-controls button.danger {
+    background: #330000;
+    color: #f00;
+    border: 1px solid #f00;
+}
+
+.peer-controls button.danger:hover {
+    background: #440000;
+}

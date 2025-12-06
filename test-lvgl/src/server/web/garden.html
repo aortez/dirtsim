@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Dirt Sim Garden</title>
+    <!-- WebRTC uses native browser support, no external libraries needed. -->
+    <style>
+{{GARDEN_CSS}}
+    </style>
+</head>
+<body>
+    <h1>Dirt Sim Garden</h1>
+    <div id="status">Discovering...</div>
+    <div class="peers" id="peers"></div>
+    <div class="debug-container">
+        <div class="debug-header">
+            <h3>Debug Log</h3>
+            <div class="debug-controls">
+                <button id="pauseBtn" onclick="togglePause()">Pause</button>
+                <button onclick="copyDebugLog(event)">Copy</button>
+                <button onclick="clearDebugLog()">Clear</button>
+            </div>
+        </div>
+        <div id="debug"></div>
+    </div>
+    <script>
+{{GARDEN_JS}}
+    </script>
+</body>
+</html>

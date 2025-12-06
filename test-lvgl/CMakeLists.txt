@@ -74,6 +74,15 @@ FetchContent_MakeAvailable(zpp_bits)
 
 # qlibs/reflect is header-only, downloaded to src/core/reflect
 
+# Embed web resources (HTML, CSS, JS) at build time.
+include(cmake/EmbedWebResources.cmake)
+embed_web_resources(
+    OUTPUT ${CMAKE_BINARY_DIR}/generated/WebResources.h
+    HTML src/server/web/garden.html
+    CSS src/server/web/garden.css
+    JS src/server/web/garden.js
+)
+
 set(CONF_PATH "${PROJECT_SOURCE_DIR}/lv_conf.h")
 
 foreach(BACKEND_NAME "SDL" "LINUX_DRM" "LINUX_FBDEV" "X11" "WAYLAND" "OPENGLES")
@@ -285,8 +294,9 @@ add_library(sparkle-duck-server-lib STATIC
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
 )
-target_include_directories(sparkle-duck-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS})
+target_include_directories(sparkle-duck-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(sparkle-duck-server-lib PUBLIC sparkle-duck-core datachannel-static ${AVAHI_LIBRARIES})
+add_dependencies(sparkle-duck-server-lib web_resources_generate)
 target_compile_options(sparkle-duck-server-lib PRIVATE -Wall -Wextra -Werror)
 
 # Link OpenMP for parallel physics calculations (cohesion, adhesion loops).

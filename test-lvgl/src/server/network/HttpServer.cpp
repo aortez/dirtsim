@@ -1,5 +1,6 @@
 #include "HttpServer.h"
 
+#include <WebResources.h>
 #include <cpp-httplib/httplib.h>
 
 #include <atomic>

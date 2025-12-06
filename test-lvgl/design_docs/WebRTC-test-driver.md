@@ -1,226 +1,195 @@
-# Sparkle Duck WebSocket Server
+# Sparkle Duck Architecture
 
-## Current Status - DUAL SYSTEM OPERATIONAL ✅
+## System Overview
 
-**DSSM Server:** Headless WebSocket server with autonomous physics simulation and frame notifications.
-**UI Client:** LVGL-based UI with WebSocket client/server, connects to DSSM for simulation viewing.
+Sparkle Duck is a **client-server physics simulation** with interactive UI and web-based monitoring. The architecture separates physics computation (headless server) from visualization (UI client) for performance and flexibility.
 
-### Quick Start
-
-```bash
-# Start server
-./build/bin/sparkle-duck-server --port 8080
-
-# Start simulation
-./build/bin/cli ws://localhost:8080 sim_run '{}'
-
-# Add materials
-./build/bin/cli ws://localhost:8080 cell_set '{"x": 14, "y": 5, "material": "WATER", "fill": 1.0}'
-
-# View world
-./build/bin/cli ws://localhost:8080 diagram_get
-
-# Shutdown
-./build/bin/cli ws://localhost:8080 exit
+```
+┌─────────────────┐         ┌──────────────────┐         ┌─────────────┐
+│  Browser        │         │   UI Client      │         │   Server    │
+│  Dashboard      │◄─JSON──►│   (LVGL)         │◄─Binary─►│   (DSSM)    │
+│  (JavaScript)   │         │                  │         │  Headless   │
+│                 │         │  Port 7070       │         │  Port 8080  │
+│  • Monitor      │         │  • Rendering     │         │  • Physics  │
+│  • Control      │         │  • Controls      │         │  • World    │
+│  • WebRTC video │         │  • WebRTC stream │         │  • Broadcast│
+└─────────────────┘         └──────────────────┘         └─────────────┘
 ```
 
-## Network Services
+## Communication Patterns
 
-### HTTP Dashboard (port 8081)
+### Server (DSSM) - Port 8080
 
-The server provides a web dashboard at `http://localhost:8081/garden` for monitoring all Sparkle Duck instances on the network.
+**Role:** Headless physics engine broadcasting world state.
+
+**Binary protocol:** High-frequency world updates to UI clients
+- RenderMessage broadcasts at simulation FPS (up to 60fps)
+- ~100KB per frame, zpp_bits serialized
+- Auto-throttled per client
+
+**JSON protocol:** CLI commands and external tools
+- StateGet, SimRun, CellSet, etc.
+- Human-readable, debuggable
+- Used by `./build/bin/cli server <command>`
+
+### UI Client - Port 7070
+
+**Dual role:** Client to server + server for external control.
+
+**As client (to server):**
+- Connects to DSSM on port 8080
+- Receives RenderMessage broadcasts (binary)
+- Sends commands (SimRun, CellSet, etc.)
+
+**As server (from browser/CLI):**
+- Listens on port 7070
+- Accepts control commands (StatusGet, MouseDown, etc.)
+- Streams video via WebRTC
+
+### Browser Dashboard
+
+**Connects to:** UI port 7070 (JSON), Server port 8080 (JSON)
 
 **Features:**
-- Auto-discovers instances via mDNS/Avahi peer discovery
-- Shows real-time state for both server (physics) and UI
-- Refreshes every 5 seconds
-- Works across network (monitors remote Raspberry Pi instances)
+- Real-time status monitoring
+- WebRTC video streaming (H.264, 30fps)
+- Mouse event forwarding to LVGL UI
+- Remote control (SimRun, Exit, etc.)
 
-**Peer Discovery:**
-- PeerDiscovery service browses for `_sparkle-duck._tcp` mDNS services
-- Dashboard queries `peers_get` API to find all instances
-- Always includes localhost (8080 physics, 7070 UI) plus discovered remote peers
-- Displays hostname, port, role (physics/ui), and current state
+**WebRTC signaling:**
+- Synchronous SDP offer in StreamStart response
+- Trickle ICE candidates via sendToClient()
+- Connection setup: ~20ms
 
-**State Display:**
-- Physics server: "Running (scenario, step N)" or "Idle (ready)"
-- UI: State machine state (StartMenu, SimRunning, Paused, etc.)
+### CLI Tool
 
-**Implementation:**
-- HttpServer.cpp: Serves static HTML with embedded JavaScript
-- Uses WebSocket API for status queries with correlation ID filtering
-- Gracefully handles WorldData broadcasts from active simulations
+**Pure client:** Sends JSON commands, displays responses.
 
-## API Commands
+```bash
+# Server commands
+./build/bin/cli server StateGet
+./build/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 1000}'
 
-### DSSM Server API (port 8080)
+# UI commands
+./build/bin/cli ui StatusGet --address ws://localhost:7070
+./build/bin/cli ui Exit
 
-| Command | Description | Parameters |
-|---------|-------------|------------|
-| `sim_run` | Start autonomous simulation | `{timestep, max_steps}` |
-| `cell_get` | Get cell state | `{x, y}` |
-| `cell_set` | Place material | `{x, y, material, fill}` |
-| `diagram_get` | Get emoji visualization | none |
-| `state_get` | Get complete world JSON | none |
-| `status_get` | Get server status (scenario, timestep, size) | none |
-| `peers_get` | Get discovered network peers | none |
-| `gravity_set` | Set gravity | `{gravity}` |
-| `reset` | Reset simulation | none |
-| `exit` | Shutdown server | none |
-
-**Frame Notifications:** Server broadcasts `{type: "frame_ready", stepNumber, timestamp}` after each physics step.
-
-### UI Server API (port 7070)
-
-| Command | Description | Parameters |
-|---------|-------------|------------|
-| `sim_run` | Start simulation (forwards to DSSM) | none |
-| `sim_pause` | Pause simulation | none |
-| `sim_stop` | Stop simulation and return to start menu | none |
-| `status_get` | Get UI state (state, connected, fps, display size) | none |
-| `screenshot` | Capture screenshot | `{filepath}` (optional) |
-| `mouse_down` | Mouse press event | `{pixelX, pixelY}` |
-| `mouse_move` | Mouse drag event | `{pixelX, pixelY}` |
-| `mouse_up` | Mouse release event | `{pixelX, pixelY}` |
-| `exit` | Shutdown UI | none |
-
-## Architecture
-
-### API Pattern
-
-```cpp
-namespace DirtSim::Api::CommandName {
-    struct Command { /* params */ };
-    struct Okay { /* response data */ };
-    using Response = Result<Okay, ApiError>;
-    using Cwc = CommandWithCallback<Command, Response>;
-}
+# Quick smoke test
+./build/bin/cli integration_test
 ```
 
-### DSSM Server States
+## Core Components
 
-`Startup` → `Idle` → `SimRunning` ↔ `SimPaused` → `Shutdown`
+### WebSocketService
 
-- Each state in separate header
-- Generic error responses for unhandled commands
-- SimRunning owns World, broadcasts frame_ready after each step
+Unified client+server WebSocket library with type-safe command handlers.
 
-### UI Client States
+**Location:** `src/core/network/` (see `README.md` for full design)
 
-`Startup` → `Disconnected` ↔ `StartMenu` → `SimRunning` ↔ `Paused` → `Shutdown`
+**Key features:**
+- Dual-role (client + server in one instance)
+- Binary (zpp_bits) + JSON protocol support
+- One-line handler registration
+- Directed messaging via connection IDs
 
-- **Disconnected:** No DSSM connection, shows connection UI
-- **StartMenu:** Connected to DSSM, ready to start simulation
-- **SimRunning:** Receives frame_ready → requests state_get → renders world
-- **Paused:** Simulation stopped, world frozen
+### State Machines
 
-### Communication Flow
+**Server (DSSM):** `Idle` → `SimRunning` ↔ `SimPaused` → `Shutdown`
+- Owns World, advances physics, broadcasts updates
+- Stateless API handlers (StateGet, StatusGet, etc.)
 
-```
-UI (client) ←WebSocket→ DSSM (server)
-    ↓                         ↓
-port 7070              port 8080
-(accepts remote      (accepts commands,
- UI commands)         broadcasts frames)
-```
+**UI:** `Disconnected` → `StartMenu` → `SimRunning` ↔ `Paused` → `Shutdown`
+- Renders world, handles input, streams video
+- Connects to DSSM server for world data
 
-**Frame Update Cycle:**
-1. DSSM advances physics → broadcasts `frame_ready`
-2. UI receives notification → requests `state_get`
-3. DSSM responds with WorldData JSON
-4. UI parses via ReflectSerializer → renders to LVGL
+### Physics System
 
-### Key Implementation Details
+**World:** Grid-based pure-material simulation (9 material types, fill ratios)
 
-**State machine pattern:** States returning same type must be moved back into variant (preserves state data).
+**Location:** `src/core/` - shared by both server and UI for local simulation
 
-**Serialization:** WorldData + ReflectSerializer = zero-boilerplate JSON.
-- toJSON(): `return ReflectSerializer::to_json(data);` (1 line!)
-- fromJSON(): `data = ReflectSerializer::from_json<WorldData>(doc);` (1 line!)
+**Calculators:** Stateless physics (pressure, cohesion, friction, etc.) - see `design_docs/GridMechanics.md`
 
-**Stateless calculators:** All physics calculators are stateless, methods take World& parameter.
-- No world_ reference stored
-- Trivially copyable
-- World copy/move now = default
+### WebRTC Streaming
 
-**Error handling:** Compile-time safety with `static_assert`, runtime generic errors for unhandled commands.
+**WebRtcStreamer:** H.264 video encoding and RTP transmission.
+
+**Flow:**
+1. Browser sends `StreamStart` with clientId
+2. UI creates peer connection, returns SDP offer synchronously
+3. ICE candidates trickle via `sendToClient(connectionId, candidate)`
+4. Browser sends answer via `WebRtcAnswer`
+5. Connection established, frames flow at 30fps
+
+**Encoding:** OpenH264 at 5Mbps, baseline profile, ~33ms frame interval.
 
 ## Directory Structure
 
 ```
 src/
-├── core/                           # Shared components
-│   ├── World.{h,cpp}              # Physics system
-│   ├── WorldData.h                # Serializable state (auto via ReflectSerializer)
-│   ├── Cell.{h,cpp}               # Cell with JSON serialization
-│   ├── World*Calculator.{h,cpp}   # Stateless physics calculators (7 types)
-│   ├── ReflectSerializer.h        # Zero-boilerplate JSON serialization
-│   └── CommandWithCallback.h     # Async command pattern
+├── core/                      # Shared: physics, networking, types
+│   ├── World.{h,cpp}         # Physics grid simulation
+│   ├── network/              # WebSocketService + BinaryProtocol
+│   └── CommandWithCallback.h # Async command pattern
 │
-├── server/                        # DSSM - Headless physics server
-│   ├── main.cpp                  # Server entry point
-│   ├── StateMachine.{h,cpp}      # State machine (Startup → Idle → SimRunning)
-│   ├── Event.h                   # Server events
-│   ├── states/                   # Server states (5 states)
-│   ├── api/                      # API commands (15+ commands)
-│   ├── network/                  # WebSocketServer, HttpServer, PeerDiscovery
-│   │   ├── WebSocketServer       # Broadcasts frame_ready notifications (port 8080)
-│   │   ├── HttpServer            # Web dashboard (port 8081/garden)
-│   │   ├── PeerDiscovery         # mDNS/Avahi service discovery
-│   │   └── CommandDeserializer   # JSON → Command
-│   └── scenarios/                # Scenario system
+├── server/                    # DSSM headless server
+│   ├── StateMachine          # Server state machine
+│   ├── states/               # Idle, SimRunning, SimPaused, Shutdown
+│   ├── api/                  # API commands (20+ commands)
+│   ├── network/              # HttpServer, PeerDiscovery
+│   └── scenarios/            # World generators
 │
-├── ui/                           # UI Client - LVGL display + remote control
-│   ├── main.cpp                 # UI entry point
-│   ├── state-machine/           # UI State machine
-│   │   ├── StateMachine.{h,cpp} # (Startup → Disconnected → StartMenu → SimRunning)
-│   │   ├── Event.h              # UI events
-│   │   ├── states/              # UI states (6 states)
-│   │   ├── api/                 # UI API commands (7 commands)
-│   │   └── network/             # WebSocket client + server
-│   │       ├── WebSocketServer  # Accepts remote UI commands (port 7070)
-│   │       └── WebSocketClient  # Connects to DSSM (receives frame notifications)
-│   ├── SimulatorUI.{h,cpp}      # LVGL UI components (TODO: integrate)
-│   ├── rendering/               # CellRenderer (TODO: integrate)
-│   └── lib/                     # LVGL backends (wayland, x11, fbdev)
+├── ui/                        # LVGL UI client
+│   ├── state-machine/        # UI state machine
+│   │   ├── states/          # Disconnected, StartMenu, SimRunning, etc.
+│   │   ├── api/             # UI API commands (15 commands)
+│   │   └── network/         # CommandDeserializerJson
+│   ├── rendering/           # CellRenderer, WebRtcStreamer
+│   ├── controls/            # PhysicsControls, SandboxControls
+│   └── lib/                 # Display backends (Wayland, X11, FBDEV)
 │
-└── cli/                         # CLI client
-    ├── main.cpp                # Programmatic command registry
-    └── WebSocketClient.{h,cpp} # Single-request client
+└── cli/                      # Command-line client
+    ├── CommandDispatcher    # Type-safe command routing
+    └── BenchmarkRunner      # Performance testing
 ```
 
-## Next Steps
+## Quick Reference
 
-**Cleanup:**
-- Remove obsolete UIUpdateConsumer/SharedSimState (if any remain)
-- Fix UI build (separate from server)
+**Start everything:**
+```bash
+./build/bin/cli run-all              # Server + UI together
+```
 
-**Features:**
-- ✅ mDNS service discovery (implemented via PeerDiscovery + HttpServer dashboard)
-- C++ remote test suite
-- WebRTC video streaming
-- Server SimStop command (currently server stays in SimRunning, needs explicit stop)
+**Access points:**
+- DSSM server: `ws://localhost:8080`
+- UI control: `ws://localhost:7070`
+- Web dashboard: `http://localhost:8080/garden`
 
-## Historical Notes
+**Remote Pi:**
+- SSH: `ssh dirtsim.local`
+- WebSockets: `ws://dirtsim.local:8080`, `ws://dirtsim.local:7070`
+- Dashboard: `http://dirtsim.local:8080/garden`
 
-See git history for details on:
-- nlohmann/json migration (removed LVGL dependencies)
-- Aggregate types + reflection-based serialization
-- Directory restructure (core/, server/, ui/)
-- Removal of SimulationManager, WorldInterface, CellInterface
+**Testing:**
+```bash
+make test                            # Unit tests
+./build/bin/cli integration_test    # End-to-end smoke test
+./build-release/bin/cli benchmark   # Performance metrics
+```
 
-## Misc Ideas
+## Design Philosophy
 
-- Variable timestep based on last frame time
-- Require UI connection before starting simulation (optional mode)
-- Scenario-specific WorldEventGenerator configuration
-- The directory `uism` should be `state-machine`.
-- Fix alphabetical order here:
-⎿  Updated /home/oldman/workspace/sparkle-duck/test-lvgl/CMakeLists.txt with 1 addition
-     147        src/ui/state-machine/states/StartMenu.cpp
-     148        src/ui/state-machine/states/Startup.cpp
-     149        src/ui/state-machine/network/CommandDeserializerJson.cpp
-     150 +      src/ui/state-machine/network/WebSocketClient.cpp
-     151        src/ui/state-machine/network/WebSocketServer.cpp
-     152        src/ui/state-machine/api/Exit.cpp
-     153        src/ui/state-machine/api/MouseDown.cpp
+**Separation of concerns:** Physics and rendering are independent processes. Server runs headless, UI connects as needed.
+
+**Type safety:** All API commands are strongly typed. Compiler catches errors before runtime.
+
+**Protocol efficiency:** Binary for high-frequency data, JSON for human/browser interaction.
+
+**Minimal coupling:** Core physics has no UI dependencies. State machines coordinate without direct references.
+
+## Related Documents
+
+- `src/core/network/README.md` - WebSocketService design details
+- `design_docs/GridMechanics.md` - Physics system specification
+- `design_docs/plant.md` - Tree organism feature
+- `design_docs/coding_convention.md` - Code style guide
