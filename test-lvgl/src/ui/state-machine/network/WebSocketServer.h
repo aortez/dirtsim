@@ -34,7 +34,14 @@ public:
      */
     uint16_t getPort() const;
 
+    /**
+     * @brief Broadcast a text message to all connected clients.
+     * @param message The message to broadcast.
+     */
+    void broadcastText(const std::string& message);
+
 private:
+    std::vector<std::weak_ptr<rtc::WebSocket>> clients_;
     DirtSim::StateMachineInterface<Event>& stateMachine_;
     std::unique_ptr<rtc::WebSocketServer> server_;
     CommandDeserializerJson deserializer_;

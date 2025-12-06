@@ -16,12 +16,15 @@ struct _lv_display_t;
 // Forward declarations for network and UI components.
 namespace DirtSim {
 
+class H264Encoder;
+
 namespace Network {
 class WebSocketService;
 }
 
 namespace Ui {
 class UiComponentManager;
+class WebRtcStreamer;
 class WebSocketServer;
 class WebSocketClient;
 } // namespace Ui
@@ -59,6 +62,9 @@ public:
     // UI management.
     std::unique_ptr<UiComponentManager> uiManager_; // LVGL screen and container management.
 
+    // WebRTC video streaming.
+    std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
+
     /**
      * @brief Get WebSocket client for DSSM connection (OLD).
      * @return Pointer to WebSocket client (non-owning).
@@ -85,6 +91,12 @@ public:
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }
 
     /**
+     * @brief Get WebRTC streamer for video streaming.
+     * @return Pointer to WebRtcStreamer (non-owning).
+     */
+    WebRtcStreamer* getWebRtcStreamer() { return webRtcStreamer_.get(); }
+
+    /**
      * @brief Get performance timers for instrumentation.
      * @return Reference to timers.
      */
@@ -93,6 +105,7 @@ public:
 private:
     Timers timers_; // Performance instrumentation timers.
     State::Any fsmState{ State::Startup{} };
+    std::unique_ptr<H264Encoder> h264Encoder_; // Lazy-initialized H.264 encoder.
 
     void transitionTo(State::Any newState);
 

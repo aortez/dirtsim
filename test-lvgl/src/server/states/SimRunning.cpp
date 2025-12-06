@@ -193,7 +193,7 @@ void SimRunning::tick(StateMachine& dsm)
         timers.startTimer("broadcast_render_message");
 
         if (dsm.getWebSocketService()) {
-            spdlog::info(
+            spdlog::debug(
                 "SimRunning: Broadcasting via WebSocketService to {} clients",
                 dsm.getWebSocketService()->isListening() ? "listening" : "not listening");
             // Pack WorldData into RenderMessage (simplified - BASIC format).

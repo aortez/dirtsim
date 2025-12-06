@@ -14,6 +14,9 @@
 #include "api/SimRun.h"
 #include "api/SimStop.h"
 #include "api/StatusGet.h"
+#include "api/StreamStart.h"
+#include "api/WebRtcAnswer.h"
+#include "api/WebRtcCandidate.h"
 #include "core/PhysicsSettings.h"
 #include "core/api/UiUpdateEvent.h"
 #include <concepts>
@@ -140,7 +143,10 @@ using Event = std::variant<
     DirtSim::UiApi::SimPause::Cwc,
     DirtSim::UiApi::SimRun::Cwc,
     DirtSim::UiApi::SimStop::Cwc,
-    DirtSim::UiApi::StatusGet::Cwc>;
+    DirtSim::UiApi::StatusGet::Cwc,
+    DirtSim::UiApi::StreamStart::Cwc,
+    DirtSim::UiApi::WebRtcAnswer::Cwc,
+    DirtSim::UiApi::WebRtcCandidate::Cwc>;
 
 /**
  * @brief Helper to get event name from variant.

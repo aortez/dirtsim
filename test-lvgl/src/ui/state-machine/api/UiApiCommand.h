@@ -14,6 +14,9 @@
 #include "SimRun.h"
 #include "SimStop.h"
 #include "StatusGet.h"
+#include "StreamStart.h"
+#include "WebRtcAnswer.h"
+#include "WebRtcCandidate.h"
 #include <variant>
 
 namespace DirtSim {
@@ -36,7 +39,10 @@ using UiApiCommand = std::variant<
     UiApi::SimPause::Command,
     UiApi::SimRun::Command,
     UiApi::SimStop::Command,
-    UiApi::StatusGet::Command>;
+    UiApi::StatusGet::Command,
+    UiApi::StreamStart::Command,
+    UiApi::WebRtcAnswer::Command,
+    UiApi::WebRtcCandidate::Command>;
 
 } // namespace Ui
 } // namespace DirtSim

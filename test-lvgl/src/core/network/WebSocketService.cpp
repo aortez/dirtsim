@@ -1,4 +1,5 @@
 #include "WebSocketService.h"
+#include "server/api/ApiCommand.h"
 #include <chrono>
 #include <cstring>
 #include <spdlog/spdlog.h>
@@ -434,8 +435,9 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
             onClientMessage(ws, binaryData);
         }
         else {
-            // Text/JSON message - not supported (binary-only).
-            spdlog::warn("WebSocketService: Received text message (binary-only mode, ignoring)");
+            // Text/JSON message - route to JSON command handlers.
+            const rtc::string& textData = std::get<rtc::string>(data);
+            onClientMessageJson(ws, textData);
         }
     });
 
@@ -445,6 +447,7 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
         connectedClients_.erase(
             std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
             connectedClients_.end());
+        clientProtocols_.erase(ws);
     });
 
     // Set up error handler.
@@ -455,6 +458,9 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const rtc::binary& data)
 {
     spdlog::debug("WebSocketService: Received binary message ({} bytes)", data.size());
+
+    // Track that this client uses binary protocol.
+    clientProtocols_[ws] = Protocol::BINARY;
 
     // Convert to std::vector<std::byte>.
     std::vector<std::byte> bytes(data.size());
@@ -486,6 +492,91 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
 
     // Call handler.
     it->second(envelope.payload, ws, envelope.id);
+}
+
+void WebSocketService::onClientMessageJson(
+    std::shared_ptr<rtc::WebSocket> ws, const std::string& jsonText)
+{
+    spdlog::debug("WebSocketService: Received JSON message ({} bytes)", jsonText.size());
+
+    // Track that this client uses JSON protocol.
+    clientProtocols_[ws] = Protocol::JSON;
+
+    // Parse JSON to extract command name and correlation ID.
+    nlohmann::json jsonMsg;
+    try {
+        jsonMsg = nlohmann::json::parse(jsonText);
+    }
+    catch (const nlohmann::json::exception& e) {
+        spdlog::error("WebSocketService: Failed to parse JSON: {}", e.what());
+        return;
+    }
+
+    // Extract command name and correlation ID.
+    std::string commandName;
+    uint64_t correlationId = 0;
+
+    if (jsonMsg.contains("command")) {
+        commandName = jsonMsg["command"].get<std::string>();
+    }
+    else {
+        spdlog::error("WebSocketService: JSON message missing 'command' field");
+        return;
+    }
+
+    if (jsonMsg.contains("id")) {
+        correlationId = jsonMsg["id"].get<uint64_t>();
+    }
+
+    spdlog::debug("WebSocketService: JSON command '{}', id={}", commandName, correlationId);
+
+    // Check if JSON deserializer is configured.
+    if (!jsonDeserializer_) {
+        spdlog::error("WebSocketService: No JSON deserializer configured - ignoring JSON message");
+        nlohmann::json errorResponse = {
+            { "id", correlationId }, { "error", "JSON protocol not configured on this service" }
+        };
+        ws->send(errorResponse.dump());
+        return;
+    }
+
+    // Deserialize JSON command using injected deserializer.
+    auto cmdResult = jsonDeserializer_(jsonText);
+
+    if (cmdResult.isError()) {
+        spdlog::error(
+            "WebSocketService: JSON deserialization failed: {}", cmdResult.errorValue().message);
+        nlohmann::json errorResponse = { { "id", correlationId },
+                                         { "error", cmdResult.errorValue().message } };
+        ws->send(errorResponse.dump());
+        return;
+    }
+
+    // Check if JSON dispatcher is configured.
+    if (!jsonDispatcher_) {
+        spdlog::error("WebSocketService: No JSON dispatcher configured - ignoring JSON command");
+        nlohmann::json errorResponse = {
+            { "id", correlationId }, { "error", "JSON dispatcher not configured on this service" }
+        };
+        ws->send(errorResponse.dump());
+        return;
+    }
+
+    // Create handler invoker that dispatcher can use to call registered handlers.
+    auto invokeHandler =
+        [this,
+         ws](std::string commandName, std::vector<std::byte> payload, uint64_t correlationId) {
+            auto it = commandHandlers_.find(commandName);
+            if (it != commandHandlers_.end()) {
+                it->second(payload, ws, correlationId);
+            }
+            else {
+                spdlog::warn("WebSocketService: No handler registered for '{}'", commandName);
+            }
+        };
+
+    // Dispatch to injected handler (server/UI provides the implementation).
+    jsonDispatcher_(cmdResult.value(), ws, correlationId, invokeHandler);
 }
 
 } // namespace Network

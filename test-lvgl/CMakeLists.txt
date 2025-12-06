@@ -17,7 +17,7 @@ FetchContent_MakeAvailable(googletest)
 FetchContent_Declare(
     libdatachannel
     GIT_REPOSITORY https://github.com/paullouisageneau/libdatachannel.git
-    GIT_TAG v0.23.2
+    GIT_TAG v0.24.0
 )
 # Disable tests and examples for libdatachannel.
 set(NO_EXAMPLES ON CACHE BOOL "" FORCE)
@@ -49,6 +49,12 @@ find_package(Boost REQUIRED)
 # Find Avahi for mDNS peer discovery.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(AVAHI REQUIRED avahi-client)
+
+# Find OpenH264 for H.264 video encoding.
+pkg_check_modules(OPENH264 REQUIRED openh264)
+
+# libyuv for YUV color space conversion (no pkg-config, link directly).
+# Headers at /usr/include/libyuv.h, library at /usr/lib/x86_64-linux-gnu/libyuv.so
 
 # Find OpenMP for parallel physics calculations.
 find_package(OpenMP)
@@ -198,9 +204,12 @@ add_library(sparkle-duck-core STATIC
 
     # Network layer.
     src/core/network/WebSocketService.cpp
+
+    # Video encoding.
+    src/core/encoding/H264Encoder.cpp
 )
-target_include_directories(sparkle-duck-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR})
-target_link_libraries(sparkle-duck-core PUBLIC nlohmann_json::nlohmann_json msgpack-cxx spdlog::spdlog datachannel-static)
+target_include_directories(sparkle-duck-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
+target_link_libraries(sparkle-duck-core PUBLIC nlohmann_json::nlohmann_json msgpack-cxx spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
 target_compile_options(sparkle-duck-core PRIVATE -Wall -Wextra -Werror)
 
 # Server library - physics engine and server logic.
@@ -311,6 +320,9 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/state-machine/api/SimRun.cpp
     src/ui/state-machine/api/SimStop.cpp
     src/ui/state-machine/api/StatusGet.cpp
+    src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/WebRtcAnswer.cpp
+    src/ui/state-machine/api/WebRtcCandidate.cpp
 
     # UI network.
     src/ui/state-machine/network/CommandDeserializerJson.cpp
@@ -328,6 +340,7 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
+    src/ui/rendering/WebRtcStreamer.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
     src/ui/controls/PhysicsControls.cpp

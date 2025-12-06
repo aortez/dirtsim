@@ -107,7 +107,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 
         // Setup binary callback for RenderMessages.
         wsService->onBinary([&sm](const std::vector<std::byte>& bytes) {
-            spdlog::info(
+            spdlog::debug(
                 "WebSocketService: Received binary RenderMessage ({} bytes)", bytes.size());
 
             try {
@@ -148,7 +148,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                                    .timestamp = now };
 
                 sm.queueEvent(evt);
-                spdlog::info("WebSocketService: Queued UiUpdateEvent (step {})", evt.stepCount);
             }
             catch (const std::exception& e) {
                 spdlog::error("WebSocketService: Failed to process RenderMessage: {}", e.what());

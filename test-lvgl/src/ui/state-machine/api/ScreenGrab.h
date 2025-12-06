@@ -15,8 +15,51 @@ namespace ScreenGrab {
 
 DEFINE_API_NAME(ScreenGrab);
 
+// Output format for screen capture.
+enum class Format : uint8_t {
+    Raw = 0, // ARGB8888 raw pixel data.
+    H264 = 1 // H.264 encoded video frame.
+};
+
+// JSON serialization for Format enum (string-based for readability).
+inline void to_json(nlohmann::json& j, const Format& f)
+{
+    switch (f) {
+        case Format::Raw:
+            j = "raw";
+            break;
+        case Format::H264:
+            j = "h264";
+            break;
+        default:
+            j = "raw";
+            break;
+    }
+}
+
+inline void from_json(const nlohmann::json& j, Format& f)
+{
+    if (j.is_string()) {
+        std::string s = j.get<std::string>();
+        if (s == "h264") {
+            f = Format::H264;
+        }
+        else {
+            f = Format::Raw;
+        }
+    }
+    else if (j.is_number()) {
+        f = static_cast<Format>(j.get<uint8_t>());
+    }
+    else {
+        f = Format::Raw;
+    }
+}
+
 struct Command {
-    double scale = 1.0; // Resolution scale factor (0.25 = 4x smaller, 1.0 = full res).
+    double scale = 1.0;          // Resolution scale factor (0.25 = 4x smaller, 1.0 = full res).
+    Format format = Format::Raw; // Output format: Raw (ARGB8888) or H264.
+    int quality = 23;            // H.264 CRF quality (0-51, lower = better). Ignored for Raw.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
@@ -24,12 +67,16 @@ struct Command {
 };
 
 struct Okay {
-    std::string pixels; // Base64-encoded raw ARGB8888 pixel data.
+    std::string data; // Base64-encoded image data (raw ARGB8888 or H.264 NAL units).
     uint32_t width;
     uint32_t height;
+    Format format;          // Format of data: Raw or H264.
+    uint64_t timestampMs;   // Frame capture timestamp (milliseconds since epoch).
+    bool isKeyframe = true; // True if this is a complete frame (always true for Raw).
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
+    static Okay fromJson(const nlohmann::json& j);
 };
 
 using OkayType = Okay;

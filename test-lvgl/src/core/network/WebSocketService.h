@@ -53,6 +53,18 @@ public:
     using BinaryCallback = std::function<void(const std::vector<std::byte>&)>;
     using ConnectionCallback = std::function<void()>;
     using ErrorCallback = std::function<void(const std::string&)>;
+    using JsonDeserializer = std::function<Result<ApiCommand, ApiError>(const std::string&)>;
+    // Helper passed to JSON dispatcher for invoking registered handlers.
+    using HandlerInvoker = std::function<void(
+        std::string commandName, std::vector<std::byte> payload, uint64_t correlationId)>;
+
+    // JSON dispatcher receives ApiCommand variant and handler invoker.
+    // It visits the variant, creates typed CWCs with JSON callbacks, and invokes handlers.
+    using JsonCommandDispatcher = std::function<void(
+        ApiCommand cmdVariant,
+        std::shared_ptr<rtc::WebSocket> ws,
+        uint64_t correlationId,
+        HandlerInvoker invokeHandler)>;
 
     WebSocketService();
     ~WebSocketService();
@@ -133,6 +145,25 @@ public:
     void onDisconnected(ConnectionCallback callback) { disconnectedCallback_ = callback; }
     void onError(ErrorCallback callback) { errorCallback_ = callback; }
 
+    /**
+     * @brief Set JSON deserializer for server-side JSON protocol support.
+     *
+     * Allows server/UI to inject their command deserializer without coupling
+     * WebSocketService to specific command types.
+     */
+    void setJsonDeserializer(JsonDeserializer deserializer) { jsonDeserializer_ = deserializer; }
+
+    /**
+     * @brief Set JSON command dispatcher for handling deserialized commands.
+     *
+     * The dispatcher receives the deserialized ApiCommand variant and is responsible
+     * for visiting it, creating appropriate CWCs, and calling handlers.
+     */
+    void setJsonCommandDispatcher(JsonCommandDispatcher dispatcher)
+    {
+        jsonDispatcher_ = dispatcher;
+    }
+
     // =========================================================================
     // Server-side methods (listening for connections).
     // =========================================================================
@@ -191,7 +222,7 @@ public:
         spdlog::debug("WebSocketService: Registering handler for '{}'", cmdName);
 
         // Wrap typed handler in generic handler that handles serialization.
-        commandHandlers_[cmdName] = [handler, cmdName](
+        commandHandlers_[cmdName] = [this, handler, cmdName](
                                         const std::vector<std::byte>& payload,
                                         std::shared_ptr<rtc::WebSocket> ws,
                                         uint64_t correlationId) {
@@ -206,20 +237,52 @@ public:
                 return;
             }
 
-            // Build CWC with callback that sends response.
+            // Build CWC with callback that sends response in appropriate format.
             CwcT cwc;
             cwc.command = cmd;
-            cwc.callback = [ws, correlationId, cmdName](ResponseT&& response) {
-                // Serialize response → envelope → binary.
-                auto envelope =
-                    Network::make_response_envelope(correlationId, std::string(cmdName), response);
-                auto bytes = Network::serialize_envelope(envelope);
+            cwc.callback = [this, ws, correlationId, cmdName](ResponseT&& response) {
+                // Check which protocol this client is using.
+                auto protocolIt = clientProtocols_.find(ws);
+                Protocol clientProtocol =
+                    (protocolIt != clientProtocols_.end()) ? protocolIt->second : Protocol::BINARY;
 
-                // Send binary response.
-                rtc::binary binaryMsg(bytes.begin(), bytes.end());
-                spdlog::debug(
-                    "WebSocketService: Sending {} response ({} bytes)", cmdName, bytes.size());
-                ws->send(binaryMsg);
+                if (clientProtocol == Protocol::JSON) {
+                    // Send JSON response.
+                    nlohmann::json jsonResponse;
+                    if (response.isError()) {
+                        jsonResponse = { { "id", correlationId },
+                                         { "error", response.errorValue().message } };
+                    }
+                    else {
+                        // Handle commands that return std::monostate (no response data).
+                        if constexpr (std::is_same_v<decltype(response.value()), std::monostate>) {
+                            jsonResponse = { { "id", correlationId }, { "success", true } };
+                        }
+                        else {
+                            jsonResponse = response.value().toJson();
+                            jsonResponse["id"] = correlationId;
+                            jsonResponse["success"] = true;
+                        }
+                    }
+                    std::string jsonText = jsonResponse.dump();
+                    spdlog::debug(
+                        "WebSocketService: Sending {} JSON response ({} bytes)",
+                        cmdName,
+                        jsonText.size());
+                    ws->send(jsonText);
+                }
+                else {
+                    // Send binary response.
+                    auto envelope = Network::make_response_envelope(
+                        correlationId, std::string(cmdName), response);
+                    auto bytes = Network::serialize_envelope(envelope);
+                    rtc::binary binaryMsg(bytes.begin(), bytes.end());
+                    spdlog::debug(
+                        "WebSocketService: Sending {} binary response ({} bytes)",
+                        cmdName,
+                        bytes.size());
+                    ws->send(binaryMsg);
+                }
             };
 
             // Call handler - it will call cwc.sendResponse() or cwc.callback() when ready.
@@ -282,9 +345,14 @@ private:
     std::unique_ptr<rtc::WebSocketServer> server_;
     std::map<std::string, CommandHandler> commandHandlers_;
     std::vector<std::shared_ptr<rtc::WebSocket>> connectedClients_;
+    std::map<std::shared_ptr<rtc::WebSocket>, Protocol>
+        clientProtocols_;                  // Track protocol per client.
+    JsonDeserializer jsonDeserializer_;    // Injected JSON deserializer (server/UI provides).
+    JsonCommandDispatcher jsonDispatcher_; // Injected JSON command dispatcher (server/UI provides).
 
     void onClientConnected(std::shared_ptr<rtc::WebSocket> ws);
     void onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const rtc::binary& data);
+    void onClientMessageJson(std::shared_ptr<rtc::WebSocket> ws, const std::string& jsonText);
 
     // Instrumentation.
     Timers timers_;

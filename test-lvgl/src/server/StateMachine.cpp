@@ -7,6 +7,7 @@
 #include "core/World.h" // Must be first for complete type in variant.
 #include "core/WorldData.h"
 #include "core/network/WebSocketService.h"
+#include "network/CommandDeserializerJson.h"
 #include "network/PeerDiscovery.h"
 #include "scenarios/Scenario.h"
 #include "scenarios/ScenarioRegistry.h"
@@ -106,6 +107,89 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     setWebSocketService(&service);
 
     // =========================================================================
+    // JSON protocol support - inject deserializer and dispatcher.
+    // =========================================================================
+
+    // Inject JSON deserializer.
+    service.setJsonDeserializer([](const std::string& json) {
+        CommandDeserializerJson deserializer;
+        return deserializer.deserialize(json);
+    });
+
+    // Inject JSON command dispatcher.
+    service.setJsonCommandDispatcher([this](
+                                         ApiCommand cmdVariant,
+                                         std::shared_ptr<rtc::WebSocket> ws,
+                                         uint64_t correlationId,
+                                         Network::WebSocketService::HandlerInvoker invokeHandler) {
+// Visit the variant and dispatch to appropriate handler.
+#define DISPATCH_JSON_CMD_WITH_RESP(NamespaceType)                                          \
+    if (auto* cmd = std::get_if<NamespaceType::Command>(&cmdVariant)) {                     \
+        NamespaceType::Cwc cwc;                                                             \
+        cwc.command = *cmd;                                                                 \
+        cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
+            nlohmann::json j;                                                               \
+            if (resp.isError()) {                                                           \
+                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
+            }                                                                               \
+            else {                                                                          \
+                j = resp.value().toJson();                                                  \
+                j["id"] = correlationId;                                                    \
+                j["success"] = true;                                                        \
+            }                                                                               \
+            ws->send(j.dump());                                                             \
+        };                                                                                  \
+        auto payload = Network::serialize_payload(cwc.command);                             \
+        invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
+        return;                                                                             \
+    }
+
+#define DISPATCH_JSON_CMD_EMPTY(NamespaceType)                                              \
+    if (auto* cmd = std::get_if<NamespaceType::Command>(&cmdVariant)) {                     \
+        NamespaceType::Cwc cwc;                                                             \
+        cwc.command = *cmd;                                                                 \
+        cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
+            nlohmann::json j;                                                               \
+            if (resp.isError()) {                                                           \
+                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
+            }                                                                               \
+            else {                                                                          \
+                j = { { "id", correlationId }, { "success", true } };                       \
+            }                                                                               \
+            ws->send(j.dump());                                                             \
+        };                                                                                  \
+        auto payload = Network::serialize_payload(cwc.command);                             \
+        invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
+        return;                                                                             \
+    }
+        DISPATCH_JSON_CMD_WITH_RESP(Api::CellGet);
+        DISPATCH_JSON_CMD_EMPTY(Api::CellSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::DiagramGet);
+        DISPATCH_JSON_CMD_EMPTY(Api::Exit);
+        DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PeersGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PerfStatsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::PhysicsSettingsGet);
+        DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::RenderFormatGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::RenderFormatSet);
+        DISPATCH_JSON_CMD_EMPTY(Api::Reset);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::ScenarioConfigSet);
+        DISPATCH_JSON_CMD_EMPTY(Api::SeedAdd);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::SimRun);
+        DISPATCH_JSON_CMD_EMPTY(Api::SpawnDirtBall);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
+        DISPATCH_JSON_CMD_EMPTY(Api::WorldResize);
+
+#undef DISPATCH_JSON_CMD_WITH_RESP
+#undef DISPATCH_JSON_CMD_EMPTY
+
+        spdlog::warn("StateMachine: Unknown JSON command type in variant");
+    });
+
+    // =========================================================================
     // Immediate handlers - respond right away without queuing.
     // =========================================================================
 
@@ -122,21 +206,31 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::StateGet::Response::okay(std::move(okay)));
     });
 
-    // StatusGet - return lightweight status from cached data.
+    // StatusGet - return lightweight status (always includes state, world data if available).
     service.registerHandler<Api::StatusGet::Cwc>([this](Api::StatusGet::Cwc cwc) {
+        Api::StatusGet::Okay status;
+
+        // Always include current state machine state.
+        status.state = getCurrentStateName();
+
+        // Populate from world data if available (Idle state won't have cached data).
         auto cachedPtr = getCachedWorldData();
-        if (!cachedPtr) {
-            cwc.sendResponse(
-                Api::StatusGet::Response::error(ApiError{ "No world data available" }));
-            return;
+        if (cachedPtr) {
+            status.timestep = cachedPtr->timestep;
+            status.scenario_id = cachedPtr->scenario_id;
+            status.width = cachedPtr->width;
+            status.height = cachedPtr->height;
         }
 
-        Api::StatusGet::Okay status;
-        status.timestep = cachedPtr->timestep;
-        status.scenario_id = cachedPtr->scenario_id;
-        status.width = cachedPtr->width;
-        status.height = cachedPtr->height;
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
+    });
+
+    // PeersGet - return discovered mDNS peers.
+    service.registerHandler<Api::PeersGet::Cwc>([this](Api::PeersGet::Cwc cwc) {
+        auto peers = pImpl->peerDiscovery_.getPeers();
+        Api::PeersGet::Okay response;
+        response.peers = std::move(peers);
+        cwc.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
     });
 
     // RenderFormatGet - return default format (TODO: track per-client).

@@ -23,26 +23,6 @@
 namespace DirtSim {
 namespace Server {
 
-namespace {
-/**
- * @brief Convert PascalCase to snake_case for command names.
- *
- * This allows the C++ API to use PascalCase (e.g., "SimRun") and the
- * WebSocket API to use snake_case (e.g., "sim_run").
- */
-std::string toSnakeCase(const std::string& str)
-{
-    std::string result;
-    for (char c : str) {
-        if (std::isupper(c) && !result.empty()) {
-            result += '_';
-        }
-        result += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return result;
-}
-} // namespace
-
 Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::string& commandJson)
 {
     // Parse JSON command.
@@ -65,72 +45,72 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
             ApiError("Command must have 'command' field with string value"));
     }
 
-    std::string commandName = toSnakeCase(cmd["command"].get<std::string>());
+    std::string commandName = cmd["command"].get<std::string>();
     spdlog::debug("Deserializing command: {}", commandName);
 
     // Dispatch to appropriate handler.
     try {
-        if (commandName == "cell_get") {
+        if (commandName == Api::CellGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::CellGet::Command::fromJson(cmd));
         }
-        else if (commandName == "cell_set") {
+        else if (commandName == Api::CellSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::CellSet::Command::fromJson(cmd));
         }
-        else if (commandName == "diagram_get") {
+        else if (commandName == Api::DiagramGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::DiagramGet::Command::fromJson(cmd));
         }
-        else if (commandName == "exit") {
+        else if (commandName == Api::Exit::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Exit::Command::fromJson(cmd));
         }
-        else if (commandName == "gravity_set") {
+        else if (commandName == Api::GravitySet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::GravitySet::Command::fromJson(cmd));
         }
-        else if (commandName == "peers_get") {
+        else if (commandName == Api::PeersGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::PeersGet::Command::fromJson(cmd));
         }
-        else if (commandName == "perf_stats_get") {
+        else if (commandName == Api::PerfStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::PerfStatsGet::Command::fromJson(cmd));
         }
-        else if (commandName == "physics_settings_get") {
+        else if (commandName == Api::PhysicsSettingsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::PhysicsSettingsGet::Command::fromJson(cmd));
         }
-        else if (commandName == "physics_settings_set") {
+        else if (commandName == Api::PhysicsSettingsSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::PhysicsSettingsSet::Command::fromJson(cmd));
         }
-        else if (commandName == "render_format_get") {
+        else if (commandName == Api::RenderFormatGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::RenderFormatGet::Command::fromJson(cmd));
         }
-        else if (commandName == "render_format_set") {
+        else if (commandName == Api::RenderFormatSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::RenderFormatSet::Command::fromJson(cmd));
         }
-        else if (commandName == "reset") {
+        else if (commandName == Api::Reset::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Reset::Command::fromJson(cmd));
         }
-        else if (commandName == "scenario_config_set") {
+        else if (commandName == Api::ScenarioConfigSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::ScenarioConfigSet::Command::fromJson(cmd));
         }
-        else if (commandName == "seed_add") {
+        else if (commandName == Api::SeedAdd::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SeedAdd::Command::fromJson(cmd));
         }
-        else if (commandName == "sim_run") {
+        else if (commandName == Api::SimRun::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SimRun::Command::fromJson(cmd));
         }
-        else if (commandName == "spawn_dirt_ball") {
+        else if (commandName == Api::SpawnDirtBall::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SpawnDirtBall::Command::fromJson(cmd));
         }
-        else if (commandName == "state_get") {
+        else if (commandName == Api::StateGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::StateGet::Command::fromJson(cmd));
         }
-        else if (commandName == "status_get") {
+        else if (commandName == Api::StatusGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::StatusGet::Command::fromJson(cmd));
         }
-        else if (commandName == "timer_stats_get") {
+        else if (commandName == Api::TimerStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::TimerStatsGet::Command::fromJson(cmd));
         }
-        else if (commandName == "world_resize") {
+        else if (commandName == Api::WorldResize::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::WorldResize::Command::fromJson(cmd));
         }
         // Legacy aliases for backward compatibility.

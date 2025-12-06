@@ -29,14 +29,18 @@ struct HttpServer::Impl {
 <head>
     <meta charset="utf-8">
     <title>Dirt Sim Garden</title>
+    <!-- WebRTC - native browser support, no external libraries needed. -->
     <style>
         body { font-family: monospace; background: #1a1a1a; color: #00ff00; padding: 20px; }
         h1 { color: #00ff00; margin-bottom: 10px; }
         #status { margin: 10px 0; color: #ffff00; }
         .peers { margin-top: 20px; }
         .peer { border: 1px solid #00ff00; padding: 10px; margin: 10px 0; background: #0a0a0a; }
+        .peer.disconnected { border-color: #555; opacity: 0.5; }
         .peer h3 { margin: 0 0 5px 0; color: #00ff00; }
+        .peer.disconnected h3 { color: #888; }
         .peer-info { font-size: 12px; margin: 3px 0; }
+        .peer.disconnected .peer-info { color: #666; }
         .debug-container { margin-top: 20px; }
         .debug-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         .debug-header h3 { color: #ff6600; margin: 0; }
@@ -130,10 +134,10 @@ struct HttpServer::Impl {
             var msg = cmdName + ' [id=' + id + ']: ';
             if (response.success === false || (response.error && !response.success)) {
                 msg += 'ERROR: ' + response.error;
-            } else if (response.success === true || response.value !== undefined || response.state !== undefined || response.pixels !== undefined) {
+            } else if (response.success === true || response.value !== undefined || response.state !== undefined || response.data !== undefined) {
                 msg += 'OK';
                 var keys = Object.keys(response).filter(function(k) {
-                    return k !== 'success' && k !== 'id' && k !== 'pixels';
+                    return k !== 'success' && k !== 'id' && k !== 'data';
                 });
                 if (keys.length > 0) {
                     msg += ' (' + keys.slice(0, 4).map(function(k) {
@@ -143,8 +147,8 @@ struct HttpServer::Impl {
                         return k + '=' + v;
                     }).join(', ') + ')';
                 }
-                if (response.pixels) {
-                    msg += ' +pixels[' + response.pixels.length + ' bytes]';
+                if (response.data) {
+                    msg += ' +data[' + response.data.length + ' bytes]';
                 }
             } else {
                 msg += 'UNKNOWN FORMAT: ' + JSON.stringify(response).substring(0, 50);
@@ -242,11 +246,11 @@ struct HttpServer::Impl {
                     };
 
                     if (event.data instanceof Blob) {
-                        logDebug(name + ': Receiving Blob (' + event.data.size + ' bytes)...');
-                        event.data.text().then(processMessage).catch(function(e) {
-                            logDebug(name + ': Blob decode error: ' + e.message);
-                        });
+                        // Binary message - server broadcasts binary RenderMessages to all clients.
+                        // Dashboard doesn't decode these (uses ScreenGrab instead). Ignore silently.
+                        return;
                     } else {
+                        // Text message - parse as JSON response.
                         processMessage(event.data);
                     }
                 };
@@ -329,7 +333,13 @@ struct HttpServer::Impl {
         var serverConn = createPersistentConnection(
             'Server',
             'ws://' + window.location.hostname + ':8080',
-            function(connected) { updateStatusDisplay(); }
+            function(connected) {
+                updateStatusDisplay();
+                if (connected) {
+                    // Discover peers immediately when server connects.
+                    discoverPeers();
+                }
+            }
         );
 
         var uiConn = createPersistentConnection(
@@ -342,7 +352,9 @@ struct HttpServer::Impl {
         function displayPeers(peers) {
             globalState.lastUpdate = new Date();
             var container = document.getElementById('peers');
-            container.innerHTML = '';
+
+            // DON'T clear innerHTML - it destroys the video element and srcObject!
+            // Instead, update existing elements or create new ones.
 
             // Always add localhost peers first (not advertised via mDNS).
             var allPeers = [
@@ -357,25 +369,58 @@ struct HttpServer::Impl {
 
             for (var i = 0; i < allPeers.length; i++) {
                 var peer = allPeers[i];
-                var div = document.createElement('div');
-                div.className = 'peer';
-                div.id = 'peer-' + peer.host + '-' + peer.port;
+
+                // Reuse existing div if it exists (preserves video element!).
+                var divId = 'peer-' + peer.host + '-' + peer.port;
+                var div = document.getElementById(divId);
+                if (!div) {
+                    div = document.createElement('div');
+                    div.className = 'peer';
+                    div.id = divId;
+                    container.appendChild(div);
+                }
 
                 var conn = (peer.port === 8080) ? serverConn : uiConn;
-                var connStatus = conn.isConnected() ? 'connected' : 'disconnected';
+                var isConnected = conn.isConnected();
+                var connStatus = isConnected ? 'connected' : 'disconnected';
 
-                var html = '<h3>' + peer.name + ' <small style="color:#888">(' + connStatus + ')</small></h3>' +
+                // Apply disconnected styling if not connected.
+                if (!isConnected) {
+                    div.classList.add('disconnected');
+                } else {
+                    div.classList.remove('disconnected');
+                }
+
+                // Show disconnect duration if applicable.
+                var statusText = connStatus;
+                if (!isConnected && conn.lastResponse) {
+                    var disconnectTime = Date.now() - conn.lastResponse.getTime();
+                    statusText += ' for ' + formatElapsed(disconnectTime);
+                }
+
+                var html = '<h3>' + peer.name + ' <small style="color:#888">(' + statusText + ')</small></h3>' +
                     '<div class="peer-info">Host: ' + peer.host + ':' + peer.port + '</div>' +
                     '<div class="peer-info">Role: ' + peer.role + '</div>' +
                     '<div class="peer-info">State: <span id="state-' + peer.host + '-' + peer.port + '">...</span></div>';
 
                 if (peer.role === 'ui') {
-                    html += '<div class="peer-info">Screenshot: <span id="screenshot-status-' + peer.host + '-' + peer.port + '">waiting...</span></div>';
-                    html += '<canvas id="screenshot-' + peer.host + '-' + peer.port + '" style="max-width: 320px; border: 1px solid #00ff00; margin-top: 10px;"></canvas>';
+                    html += '<div class="peer-info">Stream: <span id="stream-status-' + peer.host + '-' + peer.port + '">waiting...</span></div>';
+                    html += '<video id="video-' + peer.host + '-' + peer.port + '" autoplay muted playsinline style="max-width: 320px; border: 1px solid #00ff00; margin-top: 10px; background: #000; cursor: crosshair;"></video>';
+                    html += '<div style="margin-top: 5px;">';
+                    html += '<button onclick="startWebRtcStream()" style="padding: 5px 10px; background: #333; color: #0f0; border: 1px solid #0f0; cursor: pointer; margin-right: 5px;">Start Stream</button>';
+                    html += '<button onclick="sendExitCommand()" style="padding: 5px 10px; background: #330000; color: #f00; border: 1px solid #f00; cursor: pointer;">Exit</button>';
+                    html += '</div>';
                 }
 
-                div.innerHTML = html;
-                container.appendChild(div);
+                // Only update innerHTML if this is a new div (otherwise we destroy video element!).
+                if (!div.querySelector('video')) {
+                    div.innerHTML = html;
+                }
+                else {
+                    // Update just the status text, not the whole HTML.
+                    var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
+                    if (stateSpan) stateSpan.textContent = '...';  // Will be updated by queryStatus.
+                }
 
                 // Query status using persistent connections.
                 queryStatus(peer);
@@ -386,7 +431,7 @@ struct HttpServer::Impl {
 
         function queryStatus(peer) {
             var conn = (peer.port === 8080) ? serverConn : uiConn;
-            conn.send('status_get', null, function(response) {
+            conn.send('StatusGet', null, function(response) {
                 var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
                 if (stateSpan) {
                     var state = 'Unknown';
@@ -405,70 +450,196 @@ struct HttpServer::Impl {
         }
 
         function discoverPeers() {
-            serverConn.send('peers_get', null, function(response) {
+            serverConn.send('PeersGet', null, function(response) {
                 if (response.value && response.value.peers) {
                     displayPeers(response.value.peers);
+                } else {
+                    // No peers discovered, just show local.
+                    displayPeers([]);
                 }
             });
         }
 
-        // Screenshot loop using persistent UI connection.
-        var screenshotInterval = null;
-        var lastScreenshotTime = null;
+        // WebRTC video streaming.
+        var peerConnection = null;
+        var webrtcClientId = 'browser-' + Math.random().toString(36).substr(2, 9);
 
-        function startScreenshotLoop() {
-            if (screenshotInterval) return;
+        function startWebRtcStream() {
+            var statusSpan = document.getElementById('stream-status-localhost-7070');
+            var video = document.getElementById('video-localhost-7070');
 
-            function fetchScreenshot() {
-                var statusSpan = document.getElementById('screenshot-status-localhost-7070');
-
-                if (!uiConn.isConnected()) {
-                    if (statusSpan) statusSpan.textContent = 'UI not connected';
-                    return;
-                }
-
-                if (statusSpan) statusSpan.textContent = 'requesting...';
-
-                uiConn.send('screen_grab', { scale: 0.25 }, function(response) {
-                    if (response.pixels) {
-                        lastScreenshotTime = new Date();
-                        var canvas = document.getElementById('screenshot-localhost-7070');
-                        if (canvas) {
-                            var ctx = canvas.getContext('2d');
-                            canvas.width = response.width;
-                            canvas.height = response.height;
-                            var pixelData = atob(response.pixels);
-                            var imageData = ctx.createImageData(response.width, response.height);
-                            // Convert ARGB8888 (B,G,R,A in little-endian) to RGBA for canvas.
-                            for (var i = 0; i < pixelData.length; i += 4) {
-                                imageData.data[i + 0] = pixelData.charCodeAt(i + 2); // R
-                                imageData.data[i + 1] = pixelData.charCodeAt(i + 1); // G
-                                imageData.data[i + 2] = pixelData.charCodeAt(i + 0); // B
-                                imageData.data[i + 3] = pixelData.charCodeAt(i + 3); // A
-                            }
-                            ctx.putImageData(imageData, 0, 0);
-                        }
-                        if (statusSpan) statusSpan.textContent = response.width + 'x' + response.height + ' @ ' + formatTime(lastScreenshotTime);
-                    } else if (response.error) {
-                        if (statusSpan) statusSpan.textContent = 'error: ' + response.error;
-                    }
-                }, 8000);
+            if (!uiConn.isConnected()) {
+                if (statusSpan) statusSpan.textContent = 'UI not connected';
+                return;
             }
 
-            // Fetch screenshots every 2 seconds (server throttles to 1/sec anyway).
-            screenshotInterval = setInterval(fetchScreenshot, 2000);
-            // Also fetch one immediately.
-            setTimeout(fetchScreenshot, 500);
+            if (peerConnection) {
+                logDebug('WebRTC: Closing existing connection');
+                peerConnection.close();
+            }
+
+            if (statusSpan) statusSpan.textContent = 'requesting...';
+            logDebug('WebRTC: Requesting stream for client ' + webrtcClientId);
+
+            // Create peer connection (will be used when we receive offer).
+            var config = { iceServers: [] };  // No STUN needed for same network.
+            peerConnection = new RTCPeerConnection(config);
+
+            // Handle incoming video track.
+            peerConnection.ontrack = function(event) {
+                logDebug('WebRTC: Received track: ' + event.track.kind);
+                if (event.track.kind === 'video' && video) {
+                    video.srcObject = event.streams[0];
+                    if (statusSpan) statusSpan.textContent = 'streaming';
+
+                    // Debug: Watch for track/stream ending.
+                    event.track.onended = function() {
+                        logDebug('WebRTC: Track ENDED!');
+                    };
+                    event.track.onmute = function() {
+                        logDebug('WebRTC: Track MUTED!');
+                    };
+                    event.streams[0].onremovetrack = function() {
+                        logDebug('WebRTC: Stream LOST TRACK!');
+                    };
+                    event.streams[0].oninactive = function() {
+                        logDebug('WebRTC: Stream INACTIVE!');
+                    };
+                }
+            };
+
+            // Handle ICE candidates.
+            peerConnection.onicecandidate = function(event) {
+                if (event.candidate) {
+                    logDebug('WebRTC: Sending ICE candidate');
+                    uiConn.send('WebRtcCandidate', {
+                        clientId: webrtcClientId,
+                        candidate: event.candidate.candidate,
+                        mid: event.candidate.sdpMid
+                    });
+                }
+            };
+
+            // Connection state changes.
+            peerConnection.onconnectionstatechange = function() {
+                logDebug('WebRTC: Connection state: ' + peerConnection.connectionState);
+                if (statusSpan) {
+                    statusSpan.textContent = peerConnection.connectionState;
+                }
+            };
+
+            // Request the server to send us an offer.
+            uiConn.send('StreamStart', {
+                clientId: webrtcClientId
+            }, function(response) {
+                logDebug('WebRTC: Stream initiation acknowledged, waiting for offer...');
+            });
         }
 
-        // Start discovery once connections are ready.
-        setTimeout(function() {
-            discoverPeers();
-            startScreenshotLoop();
-        }, 1000);
+        // Listen for WebRTC offers from server (broadcast via WebSocket).
+        function handleWebRtcSignaling(message) {
+            try {
+                var data = JSON.parse(message);
+                var statusSpan = document.getElementById('stream-status-localhost-7070');
 
-        // Refresh peer list periodically.
-        setInterval(discoverPeers, 5000);
+                // Server sends offer to us.
+                if (data.type === 'offer' && data.clientId === webrtcClientId && peerConnection) {
+                    logDebug('WebRTC: Received offer from server');
+                    var desc = new RTCSessionDescription({ type: 'offer', sdp: data.sdp });
+                    peerConnection.setRemoteDescription(desc).then(function() {
+                        logDebug('WebRTC: Remote description (offer) set, creating answer');
+                        return peerConnection.createAnswer();
+                    }).then(function(answer) {
+                        logDebug('WebRTC: Created answer');
+                        return peerConnection.setLocalDescription(answer);
+                    }).then(function() {
+                        logDebug('WebRTC: Sending answer to server');
+                        uiConn.send('WebRtcAnswer', {
+                            clientId: webrtcClientId,
+                            sdp: peerConnection.localDescription.sdp
+                        });
+                    }).catch(function(error) {
+                        logDebug('WebRTC: Error handling offer: ' + error.message);
+                        if (statusSpan) statusSpan.textContent = 'error: ' + error.message;
+                    });
+                }
+            } catch (e) {
+                // Not a signaling message, ignore.
+            }
+        }
+
+        // Hook into WebSocket message handler for signaling.
+        var originalOnMessage = uiConn.socket ? uiConn.socket.onmessage : null;
+        function setupSignalingHook() {
+            if (uiConn.socket) {
+                var oldHandler = uiConn.socket.onmessage;
+                uiConn.socket.onmessage = function(event) {
+                    if (typeof event.data === 'string') {
+                        handleWebRtcSignaling(event.data);
+                    }
+                    if (oldHandler) oldHandler.call(uiConn.socket, event);
+                };
+            }
+        }
+        setTimeout(setupSignalingHook, 2000);
+
+        // Exit command - sends Exit to UI.
+        function sendExitCommand() {
+            if (!uiConn.isConnected()) {
+                logDebug('Cannot send Exit - UI not connected');
+                return;
+            }
+            uiConn.send('Exit', {}, function(response) {
+                logDebug('Exit command sent');
+            });
+        }
+
+        // Mouse event forwarding to LVGL UI.
+        function setupMouseForwarding() {
+            var video = document.getElementById('video-localhost-7070');
+            if (!video) return;
+
+            function sendMouseEvent(eventType, x, y) {
+                if (!uiConn.isConnected()) return;
+
+                // Scale coordinates from video display size to LVGL resolution.
+                var scaleX = video.videoWidth / video.clientWidth;
+                var scaleY = video.videoHeight / video.clientHeight;
+                var lvglX = Math.floor(x * scaleX);
+                var lvglY = Math.floor(y * scaleY);
+
+                uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
+            }
+
+            video.addEventListener('mousedown', function(e) {
+                var rect = video.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                sendMouseEvent('MouseDown', x, y);
+            });
+
+            video.addEventListener('mousemove', function(e) {
+                var rect = video.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                sendMouseEvent('MouseMove', x, y);
+            });
+
+            video.addEventListener('mouseup', function(e) {
+                var rect = video.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                sendMouseEvent('MouseUp', x, y);
+            });
+
+            logDebug('Mouse forwarding enabled for video element');
+        }
+
+        // Set up mouse forwarding after a delay (video element needs to exist).
+        setTimeout(setupMouseForwarding, 3000);
+
+        // Refresh peer list periodically (initial discovery happens when server connects).
+        setInterval(discoverPeers, 2000);
     </script>
 </body>
 </html>)HTML";

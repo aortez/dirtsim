@@ -25,6 +25,7 @@ struct Command {
 };
 
 struct Okay {
+    std::string state; // Current state machine state (always present).
     uint64_t timestep = 0;
     std::string scenario_id;
     uint32_t width = 0;
@@ -34,7 +35,7 @@ struct Okay {
     nlohmann::json toJson() const;
 
     // zpp_bits serialization.
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 using OkayType = Okay;

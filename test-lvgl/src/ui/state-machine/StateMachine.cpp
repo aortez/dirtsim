@@ -1,10 +1,15 @@
 #include "StateMachine.h"
+#include "api/StreamStart.h"
+#include "api/WebRtcAnswer.h"
+#include "api/WebRtcCandidate.h"
+#include "core/encoding/H264Encoder.h"
 #include "core/network/WebSocketService.h"
 #include "network/WebSocketClient.h"
 #include "network/WebSocketServer.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/UiComponentManager.h"
+#include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
 
@@ -33,6 +38,21 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
     spdlog::info("Ui::StateMachine: UiComponentManager created");
+
+    // Create WebRTC streamer for video streaming.
+    webRtcStreamer_ = std::make_unique<WebRtcStreamer>();
+    webRtcStreamer_->setDisplay(disp);
+
+    // Set up signaling callback to send answers back to clients.
+    webRtcStreamer_->setSignalingCallback(
+        [this](const std::string& clientId, const std::string& message) {
+            // Send the signaling message (SDP answer) to the client via WebSocket.
+            if (wsServer_) {
+                wsServer_->broadcastText(message);
+                spdlog::debug("WebRtcStreamer: Sent signaling message to client {}", clientId);
+            }
+        });
+    spdlog::info("Ui::StateMachine: WebRtcStreamer created");
 }
 
 void StateMachine::setupWebSocketService()
@@ -123,6 +143,11 @@ void StateMachine::updateAnimations()
             }
         },
         fsmState);
+
+    // Send WebRTC video frames to connected clients.
+    if (webRtcStreamer_ && webRtcStreamer_->hasClients()) {
+        webRtcStreamer_->sendFrame();
+    }
 }
 
 void StateMachine::handleEvent(const Event& event)
@@ -172,21 +197,144 @@ void StateMachine::handleEvent(const Event& event)
             return;
         }
 
-        // Encode raw pixels to base64 (no PNG compression).
-        std::string base64Pixels = base64Encode(screenshotData->pixels);
+        std::string base64Data;
+        bool isKeyframe = true;
+        uint64_t timestampMs = 0;
+        UiApi::ScreenGrab::Format responseFormat = cwc.command.format;
 
-        spdlog::info(
-            "Ui::StateMachine: ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
-            screenshotData->width,
-            screenshotData->height,
-            screenshotData->pixels.size(),
-            base64Pixels.size());
+        if (cwc.command.format == UiApi::ScreenGrab::Format::H264) {
+            // H.264 encoding requested.
+            // Lazy-initialize encoder if needed or if size changed.
+            // Round to even for comparison (encoder internally uses even dimensions).
+            uint32_t evenWidth = screenshotData->width & ~1u;
+            uint32_t evenHeight = screenshotData->height & ~1u;
+
+            if (!h264Encoder_ || h264Encoder_->getWidth() != evenWidth
+                || h264Encoder_->getHeight() != evenHeight) {
+                h264Encoder_ = std::make_unique<H264Encoder>();
+                if (!h264Encoder_->initialize(screenshotData->width, screenshotData->height)) {
+                    spdlog::error("Ui::StateMachine: Failed to initialize H.264 encoder");
+                    cwc.sendResponse(UiApi::ScreenGrab::Response::error(
+                        ApiError("Failed to initialize H.264 encoder")));
+                    return;
+                }
+            }
+
+            // Encode frame.
+            auto encoded = h264Encoder_->encode(
+                screenshotData->pixels.data(), screenshotData->width, screenshotData->height);
+            if (!encoded) {
+                spdlog::error("Ui::StateMachine: H.264 encoding failed");
+                cwc.sendResponse(
+                    UiApi::ScreenGrab::Response::error(ApiError("H.264 encoding failed")));
+                return;
+            }
+
+            base64Data = base64Encode(encoded->data);
+            isKeyframe = encoded->isKeyframe;
+            timestampMs = encoded->timestampMs;
+
+            spdlog::info(
+                "Ui::StateMachine: ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264 "
+                "-> {} bytes base64, keyframe={})",
+                screenshotData->width,
+                screenshotData->height,
+                screenshotData->pixels.size(),
+                encoded->data.size(),
+                base64Data.size(),
+                isKeyframe);
+        }
+        else {
+            // Raw ARGB8888 format.
+            base64Data = base64Encode(screenshotData->pixels);
+
+            auto now = std::chrono::system_clock::now();
+            timestampMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
+                    .count());
+
+            spdlog::info(
+                "Ui::StateMachine: ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
+                screenshotData->width,
+                screenshotData->height,
+                screenshotData->pixels.size(),
+                base64Data.size());
+        }
+
         try {
-            cwc.sendResponse(UiApi::ScreenGrab::Response::okay(
-                { base64Pixels, screenshotData->width, screenshotData->height }));
+            // For H.264, use encoder's dimensions (may be rounded to even).
+            // For raw, use screenshot dimensions.
+            uint32_t responseWidth = screenshotData->width;
+            uint32_t responseHeight = screenshotData->height;
+            if (cwc.command.format == UiApi::ScreenGrab::Format::H264 && h264Encoder_) {
+                responseWidth = h264Encoder_->getWidth();
+                responseHeight = h264Encoder_->getHeight();
+            }
+
+            UiApi::ScreenGrab::Okay response{ .data = std::move(base64Data),
+                                              .width = responseWidth,
+                                              .height = responseHeight,
+                                              .format = responseFormat,
+                                              .timestampMs = timestampMs,
+                                              .isKeyframe = isKeyframe };
+            cwc.sendResponse(UiApi::ScreenGrab::Response::okay(std::move(response)));
         }
         catch (const std::exception& e) {
             spdlog::warn("Ui::StateMachine: Failed to send response: {}", e.what());
+        }
+        return;
+    }
+
+    // Handle StreamStart - browser requests to start video stream.
+    if (std::holds_alternative<UiApi::StreamStart::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::StreamStart::Cwc>(event);
+        spdlog::info("Ui::StateMachine: StreamStart from client {}", cwc.command.clientId);
+
+        if (webRtcStreamer_) {
+            webRtcStreamer_->initiateStream(cwc.command.clientId);
+            // Note: The actual SDP offer is sent via the signaling callback.
+            UiApi::StreamStart::Okay response{ .initiated = true };
+            cwc.sendResponse(UiApi::StreamStart::Response::okay(std::move(response)));
+        }
+        else {
+            cwc.sendResponse(
+                UiApi::StreamStart::Response::error(ApiError("WebRTC streamer not available")));
+        }
+        return;
+    }
+
+    // Handle WebRtcAnswer - browser's answer to our offer.
+    if (std::holds_alternative<UiApi::WebRtcAnswer::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::WebRtcAnswer::Cwc>(event);
+        spdlog::info("Ui::StateMachine: WebRtcAnswer from client {}", cwc.command.clientId);
+
+        if (webRtcStreamer_) {
+            webRtcStreamer_->handleAnswer(cwc.command.clientId, cwc.command.sdp);
+            UiApi::WebRtcAnswer::Okay response{ .accepted = true };
+            cwc.sendResponse(UiApi::WebRtcAnswer::Response::okay(std::move(response)));
+        }
+        else {
+            cwc.sendResponse(
+                UiApi::WebRtcAnswer::Response::error(ApiError("WebRTC streamer not available")));
+        }
+        return;
+    }
+
+    // Handle WebRtcCandidate universally (works in all states).
+    if (std::holds_alternative<UiApi::WebRtcCandidate::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::WebRtcCandidate::Cwc>(event);
+        spdlog::debug(
+            "Ui::StateMachine: Processing WebRtcCandidate from client {}", cwc.command.clientId);
+
+        if (webRtcStreamer_) {
+            webRtcStreamer_->handleCandidate(
+                cwc.command.clientId, cwc.command.candidate, cwc.command.mid);
+            UiApi::WebRtcCandidate::Okay response{ .added = true };
+            cwc.sendResponse(UiApi::WebRtcCandidate::Response::okay(std::move(response)));
+        }
+        else {
+            cwc.sendResponse(
+                UiApi::WebRtcCandidate::Response::error(ApiError("WebRTC streamer not available")));
         }
         return;
     }

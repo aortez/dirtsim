@@ -383,6 +383,37 @@ SSH config is already set up so just:
 ssh dirtsim.local
 ```
 
+### WebRTC Video Streaming
+
+The HTTP server (port 8080) serves a web dashboard at `/garden` that displays real-time video streams from connected UI instances via WebRTC.
+
+**Architecture:**
+- UI application runs headless with LVGL display
+- WebRtcStreamer captures frames at 30fps and encodes to H.264 (OpenH264)
+- Server creates WebRTC offer and sends to browser via WebSocket signaling
+- Browser creates answer and establishes peer connection
+- H.264 frames flow via RTP/SRTP, decoded natively by browser
+
+**Access the dashboard:**
+```bash
+# Local
+http://localhost:8080/garden
+
+# Remote (Pi)
+http://dirtsim.local:8080/garden
+```
+
+**Implementation:**
+- **Server**: `src/ui/rendering/WebRtcStreamer.{h,cpp}` - Manages peer connections and H.264 RTP streaming
+- **Signaling**: `StreamStart`, `WebRtcAnswer`, `WebRtcCandidate` commands via WebSocket (port 7070)
+- **Client**: Native browser RTCPeerConnection (no external libraries needed)
+- **Encoding**: OpenH264 at 5Mbps, baseline profile, 30fps
+
+**Key design choice:** Server sends WebRTC offer (not browser) because the sender of media should be the offerer per WebRTC spec.
+
+**Future enhancement - Full remote UI control:**
+Currently mouse events (MouseDown/Move/Up) are forwarded from browser to server but only handled in SimRunning state for custom world interaction. To enable full remote control of LVGL widgets (buttons, sliders, toggles in all states), mouse events need to be injected into LVGL's input device (indev) system instead of state machine handlers. This would allow remote interaction with the entire UI including StartMenu, control panels, etc. Implementation would involve creating a custom LVGL indev that reads from remote mouse state.
+
 ## References
 ### Lvgl reference:
 If you need to, read the docs here:

@@ -85,7 +85,7 @@ std::optional<ScreenshotData> captureDisplayPixels(_lv_display_t* display, doubl
     // Free the draw buffer.
     lv_draw_buf_destroy(drawBuf);
 
-    spdlog::info(
+    spdlog::debug(
         "DisplayCapture: Captured {}x{} -> {}x{} (scale={:.2f}, {} bytes)",
         bufWidth,
         bufHeight,

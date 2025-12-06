@@ -2,6 +2,9 @@
 
 #include "server/api/ApiError.h"
 #include "ui/state-machine/api/ScreenGrab.h"
+#include "ui/state-machine/api/StreamStart.h"
+#include "ui/state-machine/api/WebRtcAnswer.h"
+#include "ui/state-machine/api/WebRtcCandidate.h"
 
 #include <chrono>
 #include <spdlog/spdlog.h>
@@ -58,11 +61,35 @@ static void safeSend(
     }
 }
 
+void WebSocketServer::broadcastText(const std::string& message)
+{
+    // Clean up expired weak pointers and send to valid clients.
+    auto it = clients_.begin();
+    while (it != clients_.end()) {
+        if (auto ws = it->lock()) {
+            try {
+                ws->send(message);
+            }
+            catch (const std::exception& e) {
+                spdlog::warn("UI WebSocketServer: Failed to broadcast to client: {}", e.what());
+            }
+            ++it;
+        }
+        else {
+            it = clients_.erase(it);
+        }
+    }
+    spdlog::debug("UI WebSocketServer: Broadcast message to {} clients", clients_.size());
+}
+
 void WebSocketServer::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
     spdlog::info("UI WebSocket client connected");
 
-    // Per-client state for throttling expensive operations like screen_grab.
+    // Track this client for broadcasting.
+    clients_.push_back(ws);
+
+    // Per-client state for throttling expensive operations like ScreenGrab.
     auto clientLastScreenshot = std::make_shared<std::chrono::steady_clock::time_point>();
 
     // Set up message handler for this client.
@@ -107,9 +134,9 @@ void WebSocketServer::onMessage(
         spdlog::warn("UI WebSocket: Failed to extract correlation ID: {}", e.what());
     }
 
-    // Per-client throttle for screen_grab (before queuing to state machine).
+    // Per-client throttle for ScreenGrab (before queuing to state machine).
     // This prevents dead socket requests from consuming the global throttle quota.
-    if (commandName == "screen_grab" && clientLastScreenshot) {
+    if (commandName == "ScreenGrab" && clientLastScreenshot) {
         static constexpr std::chrono::milliseconds minInterval{ 1000 };
         auto now = std::chrono::steady_clock::now();
         auto elapsed =
@@ -117,7 +144,7 @@ void WebSocketServer::onMessage(
 
         if (elapsed < minInterval) {
             spdlog::info(
-                "UI WebSocketServer: screen_grab throttled for this client ({} ms since last, min "
+                "UI WebSocketServer: ScreenGrab throttled for this client ({} ms since last, min "
                 "{}ms)",
                 elapsed.count(),
                 minInterval.count());
@@ -127,7 +154,7 @@ void WebSocketServer::onMessage(
             if (correlationId) {
                 json["id"] = *correlationId;
             }
-            safeSend(ws, json.dump(), "screen_grab throttle");
+            safeSend(ws, json.dump(), "ScreenGrab throttle");
             return;
         }
         // Update per-client timestamp (will be updated again on successful capture).
@@ -323,6 +350,46 @@ Event WebSocketServer::createCwcForCommand(
                     }
                     safeSend(ws, json.dump(), "Response");
                 };
+                return cwc;
+            }
+            else if constexpr (std::is_same_v<CommandType, UiApi::StreamStart::Command>) {
+                UiApi::StreamStart::Cwc cwc;
+                cwc.command = cmd;
+                cwc.callback = [this, ws, correlationId](UiApi::StreamStart::Response&& response) {
+                    nlohmann::json json =
+                        nlohmann::json::parse(serializer_.serialize(std::move(response)));
+                    if (correlationId.has_value()) {
+                        json["id"] = correlationId.value();
+                    }
+                    safeSend(ws, json.dump(), "Response");
+                };
+                return cwc;
+            }
+            else if constexpr (std::is_same_v<CommandType, UiApi::WebRtcAnswer::Command>) {
+                UiApi::WebRtcAnswer::Cwc cwc;
+                cwc.command = cmd;
+                cwc.callback = [this, ws, correlationId](UiApi::WebRtcAnswer::Response&& response) {
+                    nlohmann::json json =
+                        nlohmann::json::parse(serializer_.serialize(std::move(response)));
+                    if (correlationId.has_value()) {
+                        json["id"] = correlationId.value();
+                    }
+                    safeSend(ws, json.dump(), "Response");
+                };
+                return cwc;
+            }
+            else if constexpr (std::is_same_v<CommandType, UiApi::WebRtcCandidate::Command>) {
+                UiApi::WebRtcCandidate::Cwc cwc;
+                cwc.command = cmd;
+                cwc.callback =
+                    [this, ws, correlationId](UiApi::WebRtcCandidate::Response&& response) {
+                        nlohmann::json json =
+                            nlohmann::json::parse(serializer_.serialize(std::move(response)));
+                        if (correlationId.has_value()) {
+                            json["id"] = correlationId.value();
+                        }
+                        safeSend(ws, json.dump(), "Response");
+                    };
                 return cwc;
             }
             else {
