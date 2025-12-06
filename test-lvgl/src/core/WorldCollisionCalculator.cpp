@@ -15,6 +15,17 @@
 
 using namespace DirtSim;
 
+namespace {
+
+// Helper: Check if material should have elastic collisions (METAL, WOOD, SEED, WALL).
+bool isCollisionRigid(MaterialType type)
+{
+    return type == MaterialType::METAL || type == MaterialType::WOOD || type == MaterialType::SEED
+        || type == MaterialType::WALL;
+}
+
+} // namespace
+
 // =================================================================
 // COLLISION DETECTION.
 // =================================================================
@@ -148,8 +159,8 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
             return CollisionType::ELASTIC_REFLECTION; // Metal vs wall.
         }
         if ((from == MaterialType::METAL && to == MaterialType::METAL)
-            || (from == MaterialType::METAL && isMaterialRigid(to))
-            || (to == MaterialType::METAL && isMaterialRigid(from))) {
+            || (from == MaterialType::METAL && isCollisionRigid(to))
+            || (to == MaterialType::METAL && isCollisionRigid(from))) {
             return CollisionType::ELASTIC_REFLECTION; // Metal vs rigid materials.
         }
         return CollisionType::INELASTIC_COLLISION; // Metal vs soft materials.
@@ -161,7 +172,7 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
     }
 
     // WOOD interactions - moderately elastic (0.6 elasticity)
-    if (from == MaterialType::WOOD && isMaterialRigid(to)) {
+    if (from == MaterialType::WOOD && isCollisionRigid(to)) {
         return CollisionType::ELASTIC_REFLECTION;
     }
 
@@ -171,7 +182,7 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
     }
 
     // Rigid-to-rigid collisions based on elasticity.
-    if (isMaterialRigid(from) && isMaterialRigid(to)) {
+    if (isCollisionRigid(from) && isCollisionRigid(to)) {
         double avg_elasticity = (fromProps.elasticity + toProps.elasticity) / 2.0;
         return (avg_elasticity > 0.5) ? CollisionType::ELASTIC_REFLECTION
                                       : CollisionType::INELASTIC_COLLISION;
@@ -1002,16 +1013,16 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         return false;
     }
 
-    // Check if target is rigid AND supported.
-    // Unsupported rigid materials (floating in water) can be displaced by buoyancy.
-    // Supported rigid materials (resting on ground) cannot be displaced.
-    const MaterialProperties& to_props = getMaterialProperties(toCell.material_type);
-    if (to_props.is_rigid && toCell.has_any_support) {
+    // Organism cells resist displacement (handled by rigid body physics).
+    if (toCell.organism_id != 0) {
         LoggingChannels::swap()->debug(
-            "Swap denied: cannot displace supported rigid material {}",
-            getMaterialName(toCell.material_type));
+            "Swap denied: cannot displace organism cell {} (organism_id={})",
+            getMaterialName(toCell.material_type),
+            toCell.organism_id);
         return false;
     }
+
+    const MaterialProperties& to_props = getMaterialProperties(toCell.material_type);
 
     // PATH OF LEAST RESISTANCE CHECK.
     // When a vertical swap would displace a fluid (but not AIR), check if that
@@ -1086,14 +1097,10 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         // Cohesion makes materials stick together (dirt > sand).
         double cohesion_resistance = 1.0 + to_props.cohesion;
 
-        // Supported materials are much harder to displace.
-        double support_factor =
-            toCell.has_any_support ? settings.horizontal_non_fluid_target_resistance : 1.0;
-
         // Fluids are easier to displace than solids.
         double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
 
-        double to_resistance = to_mass * cohesion_resistance * support_factor * fluid_factor;
+        double to_resistance = to_mass * cohesion_resistance * fluid_factor;
 
         // Swap if momentum overcomes resistance.
         const double threshold = settings.horizontal_flow_resistance_factor;
@@ -1153,8 +1160,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         // For vertical swaps, no fluid_factor - must move the mass regardless of fluidity.
         double to_mass = to_props.density * toCell.fill_ratio;
         double cohesion_resistance = 1.0 + to_props.cohesion;
-        double support_factor = toCell.has_any_support ? 5.0 : 1.0;
-        double to_resistance = to_mass * cohesion_resistance * support_factor;
+        double to_resistance = to_mass * cohesion_resistance;
 
         // Swap if effective momentum overcomes resistance.
         const double threshold = world.getPhysicsSettings().horizontal_flow_resistance_factor;
@@ -1165,8 +1171,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 "Vertical swap DENIED: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
                 "{:.3f}, "
                 "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
-                "{:.3f}, "
-                "support: {:.1f}) | threshold: {:.3f} | dir.y: {} ({})",
+                "{:.3f}) | threshold: {:.3f} | dir.y: {} ({})",
                 getMaterialName(fromCell.material_type),
                 getMaterialName(toCell.material_type),
                 fromX,
@@ -1180,7 +1185,6 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 to_resistance,
                 to_mass,
                 to_props.cohesion,
-                support_factor,
                 to_resistance * threshold,
                 direction.y,
                 direction.y > 0 ? "DOWN" : "UP");
@@ -1192,8 +1196,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 "Vertical swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
                 "{:.3f}, "
                 "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
-                "{:.3f}, "
-                "support: {:.1f}) | threshold: {:.3f} | dir.y: {} ({})",
+                "{:.3f}) | threshold: {:.3f} | dir.y: {} ({})",
                 getMaterialName(fromCell.material_type),
                 getMaterialName(toCell.material_type),
                 fromX,
@@ -1207,7 +1210,6 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 to_resistance,
                 to_mass,
                 to_props.cohesion,
-                support_factor,
                 to_resistance * threshold,
                 direction.y,
                 direction.y > 0 ? "DOWN" : "UP");
@@ -1456,23 +1458,6 @@ WorldCollisionCalculator::VelocityComponents WorldCollisionCalculator::decompose
     components.normal = normalized_normal * components.normal_scalar;
     components.tangential = velocity - components.normal;
     return components;
-}
-
-bool WorldCollisionCalculator::isMaterialRigid(MaterialType material)
-{
-    switch (material) {
-        case MaterialType::METAL:
-        case MaterialType::WOOD:
-        case MaterialType::WALL:
-            return true;
-        case MaterialType::WATER:
-        case MaterialType::DIRT:
-        case MaterialType::SAND:
-        case MaterialType::LEAF:
-        case MaterialType::AIR:
-        default:
-            return false;
-    }
 }
 
 double WorldCollisionCalculator::calculateCohesionStrength(

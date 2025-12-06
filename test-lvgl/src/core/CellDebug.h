@@ -20,7 +20,6 @@ struct CellDebug {
     Vector2d accumulated_com_cohesion_force = {};
     Vector2d accumulated_friction_force = {};
     Vector2d accumulated_gravity_force = {};
-    Vector2d accumulated_support_force = {};
     Vector2d accumulated_pressure_force = {};
 
     // Physics debug values.

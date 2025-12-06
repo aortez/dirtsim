@@ -16,7 +16,6 @@
 #include "WorldFrictionCalculator.h"
 #include "WorldInterpolationTool.h"
 #include "WorldPressureCalculator.h"
-#include "WorldSupportCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
 #include "WorldViscosityCalculator.h"
 #include "organisms/TreeManager.h"
@@ -47,9 +46,7 @@ struct World::Impl {
     // Persistent grid cache (initialized after data_ in constructor).
     std::optional<GridOfCells> grid_;
 
-    // Calculators (previously public).
-    // WorldSupportCalculator, WorldFrictionCalculator removed - now constructed locally with
-    // GridOfCells reference.
+    // Calculators. WorldFrictionCalculator is constructed locally with GridOfCells reference.
     WorldPressureCalculator pressure_calculator_;
     WorldCollisionCalculator collision_calculator_;
     WorldAdhesionCalculator adhesion_calculator_;
@@ -424,20 +421,6 @@ void World::advanceTime(double deltaTimeSeconds)
     }
     GridOfCells& grid = *pImpl->grid_;
 
-    // EXPERIMENT: Support calculation disabled.
-    // Testing if friction + cohesion alone can create stable structures.
-    // {
-    //     ScopeTimer supportMapTimer(pImpl->timers_, "compute_support_map");
-    //     WorldSupportCalculator support_calc{ grid };
-    //     support_calc.computeSupportMapBottomUp(*this);
-    // }
-
-    // EXPERIMENT: Organism support disabled.
-    // if (tree_manager_) {
-    //     ScopeTimer organismTimer(pImpl->timers_, "organism_support");
-    //     tree_manager_->computeOrganismSupport(*this);
-    // }
-
     // Inject hydrostatic pressure from gravity.
     if (pImpl->physicsSettings_.pressure_hydrostatic_strength > 0.0) {
         ScopeTimer hydroTimer(pImpl->timers_, "hydrostatic_pressure");
@@ -578,57 +561,6 @@ void World::applyGravity()
 
             // Debug tracking.
             debug_info[idx].accumulated_gravity_force = gravityForce;
-        }
-    }
-}
-
-void World::applySupportForces()
-{
-    // Cache pImpl members as local references.
-    std::vector<Cell>& cells = pImpl->data_.cells;
-    std::vector<CellDebug>& debug_info = pImpl->data_.debug_info;
-    const double gravity = pImpl->physicsSettings_.gravity;
-    const uint32_t width = pImpl->data_.width;
-    const uint32_t height = pImpl->data_.height;
-
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            const size_t idx = y * width + x;
-            Cell& cell = cells[idx];
-
-            if (cell.isEmpty() || cell.isWall()) {
-                continue;
-            }
-
-            // Apply support forces to any material with support.
-            const MaterialProperties& props = getMaterialProperties(cell.material_type);
-            if (!cell.has_any_support) {
-                continue; // No support at all.
-            }
-
-            // Simple support: cancel gravity for supported structures.
-            // TODO: Later, make this proportional to pressure/load from above.
-            Vector2d gravity_force(0.0, props.density * gravity);
-            Vector2d support_force = gravity_force * -1.0; // Equal and opposite.
-
-            // Partial support for non-rigid materials.
-            if (!props.is_rigid) {
-                support_force = support_force * 0.5;
-            }
-
-            cell.addPendingForce(support_force);
-
-            // Debug tracking.
-            debug_info[idx].accumulated_support_force = support_force;
-
-            spdlog::debug(
-                "Support force at ({},{}): gravity=({:.3f},{:.3f}), support=({:.3f},{:.3f})",
-                x,
-                y,
-                gravity_force.x,
-                gravity_force.y,
-                support_force.x,
-                support_force.y);
         }
     }
 }
@@ -776,13 +708,6 @@ void World::applyPressureForces()
                 continue;
             }
 
-            // Rigid materials don't flow from pressure - they transmit stress instead.
-            // Only fluids and granular materials respond to pressure gradients.
-            const MaterialProperties& props = getMaterialProperties(cell.material_type);
-            if (props.is_rigid) {
-                continue;
-            }
-
             // Get total pressure for this cell.
             double total_pressure = cell.pressure;
             if (total_pressure < MIN_MATTER_THRESHOLD) {
@@ -797,6 +722,7 @@ void World::applyPressureForces()
             // Only apply force if system is out of equilibrium.
             if (gradient.magnitude() > 0.001) {
                 // Get material-specific hydrostatic weight to scale pressure response.
+                const MaterialProperties& props = getMaterialProperties(cell.material_type);
                 double hydrostatic_weight = props.hydrostatic_weight;
 
                 Vector2d pressure_force = gradient * settings.pressure_scale * hydrostatic_weight;
@@ -843,12 +769,6 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
         applyGravity();
     }
 
-    // Apply support forces (counteract gravity for supported rigid structures).
-    {
-        ScopeTimer supportTimer(timers, "resolve_forces_apply_support");
-        applySupportForces();
-    }
-
     // Apply air resistance forces.
     {
         ScopeTimer airResistanceTimer(timers, "resolve_forces_apply_air_resistance");
@@ -870,7 +790,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     // Apply contact-based friction forces.
     {
         ScopeTimer frictionTimer(timers, "resolve_forces_apply_friction");
-        // Construct friction calculator with grid reference (like WorldSupportCalculator pattern).
+        // Construct friction calculator with grid reference.
         // Cast away const for debug writes (safe - doesn't affect physics state).
         WorldFrictionCalculator friction_calc{ const_cast<GridOfCells&>(grid) };
         friction_calc.setFrictionStrength(settings.friction_strength);

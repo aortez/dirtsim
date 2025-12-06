@@ -707,8 +707,6 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                       << wood0.pressure_gradient.y << ")\n";
             std::cout << "  pending_force: (" << wood0.pending_force.x << ", "
                       << wood0.pending_force.y << ")\n";
-            std::cout << "  has_any_support: " << wood0.has_any_support << "\n";
-            std::cout << "  has_vertical_support: " << wood0.has_vertical_support << "\n";
 
             // WOOD[1] details.
             std::cout << "WOOD[1] at (" << wood1_pos.x << ", " << wood1_pos.y << "):\n";
@@ -722,8 +720,6 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                       << wood1.pressure_gradient.y << ")\n";
             std::cout << "  pending_force: (" << wood1.pending_force.x << ", "
                       << wood1.pending_force.y << ")\n";
-            std::cout << "  has_any_support: " << wood1.has_any_support << "\n";
-            std::cout << "  has_vertical_support: " << wood1.has_vertical_support << "\n";
 
             // Show SEED details if it moved.
             if (seed_moved) {
@@ -733,8 +729,6 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                 std::cout << "  com: (" << seed_cell.com.x << ", " << seed_cell.com.y << ")\n";
                 std::cout << "  velocity: (" << seed_cell.velocity.x << ", " << seed_cell.velocity.y
                           << ")\n";
-                std::cout << "  has_any_support: " << seed_cell.has_any_support << "\n";
-                std::cout << "  has_vertical_support: " << seed_cell.has_vertical_support << "\n";
                 last_seed_pos = current_seed_pos;
             }
 

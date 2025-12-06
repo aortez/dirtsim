@@ -27,8 +27,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
-        .is_fluid = true,
-        .is_rigid = false },
+        .is_fluid = true },
 
       // ========== DIRT ==========
       { .density = 1.5,
@@ -45,8 +44,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.75,
         .stick_velocity = 0.1,
         .friction_transition_width = 0.10,
-        .is_fluid = false,
-        .is_rigid = false },
+        .is_fluid = false },
 
       // ========== LEAF ==========
       { .density = 0.3,
@@ -63,8 +61,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.3,
         .stick_velocity = 0.03,
         .friction_transition_width = 0.06,
-        .is_fluid = false,
-        .is_rigid = false },
+        .is_fluid = false },
 
       // ========== METAL ==========
       { .density = 7.8,
@@ -81,8 +78,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.01,
         .friction_transition_width = 0.02,
-        .is_fluid = false,
-        .is_rigid = true },
+        .is_fluid = false },
 
       // ========== ROOT ==========
       // Underground tree tissue that grips soil and forms networks.
@@ -100,8 +96,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.8,
         .stick_velocity = 0.03,
         .friction_transition_width = 0.05,
-        .is_fluid = false,
-        .is_rigid = false },
+        .is_fluid = false },
 
       // ========== SAND ==========
       { .density = 1.8,
@@ -118,8 +113,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.4,
         .stick_velocity = 0.04,
         .friction_transition_width = 0.08,
-        .is_fluid = false,
-        .is_rigid = false },
+        .is_fluid = false },
 
       // ========== SEED ==========
       { .density = 1.5,
@@ -136,8 +130,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.9,
         .stick_velocity = 0.02,
         .friction_transition_width = 0.03,
-        .is_fluid = false,
-        .is_rigid = true },
+        .is_fluid = false },
 
       // ========== WALL ==========
       { .density = 1000.0,
@@ -154,8 +147,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
-        .is_fluid = false,
-        .is_rigid = true },
+        .is_fluid = false },
 
       // ========== WATER ==========
       { .density = 1.0,
@@ -172,8 +164,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.01,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.001,
-        .is_fluid = true,
-        .is_rigid = false },
+        .is_fluid = true },
 
       // ========== WOOD ==========
       { .density = 0.3,
@@ -190,8 +181,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.9,
         .stick_velocity = 0.02,
         .friction_transition_width = 0.03,
-        .is_fluid = false,
-        .is_rigid = true } }
+        .is_fluid = false } }
 };
 
 // Material name lookup table.
@@ -214,11 +204,6 @@ double getMaterialDensity(MaterialType type)
 bool isMaterialFluid(MaterialType type)
 {
     return getMaterialProperties(type).is_fluid;
-}
-
-bool isMaterialRigid(MaterialType type)
-{
-    return getMaterialProperties(type).is_rigid;
 }
 
 const char* getMaterialName(MaterialType type)

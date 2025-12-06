@@ -609,11 +609,7 @@ TEST_P(ParameterizedBuoyancyTest, MaterialBuoyancyBehavior)
                 debug.accumulated_friction_force.y,
                 cell.pending_force.x,
                 cell.pending_force.y);
-            spdlog::info(
-                "    Support: any={}, vertical={}, friction_coeff={:.3f}",
-                cell.has_any_support,
-                cell.has_vertical_support,
-                debug.cached_friction_coefficient);
+            spdlog::info("    friction_coeff={:.3f}", debug.cached_friction_coefficient);
         }
 
         Vector2d vel_before =
@@ -920,7 +916,6 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
                         spdlog::info(
                             "      Expected net force: {:.4f} (should be negative = upward)",
                             gravity_force + pressure_grad.y);
-                        spdlog::info("      Has support: {}", c.has_any_support);
                     }
                 }
             }

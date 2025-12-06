@@ -23,13 +23,11 @@ void CellTracker::recordFrame(int /*frame*/)
                                .pending_force = cell.pending_force,
                                .bone_force = debug.accumulated_bone_force,
                                .gravity_force = debug.accumulated_gravity_force,
-                               .support_force = debug.accumulated_support_force,
                                .cohesion_force = debug.accumulated_com_cohesion_force,
                                .adhesion_force = debug.accumulated_adhesion_force,
                                .viscous_force = debug.accumulated_viscous_force,
                                .friction_force = debug.accumulated_friction_force,
-                               .pressure_force = debug.accumulated_pressure_force,
-                               .has_support = cell.has_any_support });
+                               .pressure_force = debug.accumulated_pressure_force });
 
             // Keep only last N frames.
             if (cell_history_[pos].size() > history_size_) {
@@ -78,15 +76,12 @@ bool CellTracker::checkForDisplacements(int frame)
                       << cell.pending_force.y << ")\n";
             std::cout << "    Gravity: (" << debug.accumulated_gravity_force.x << ", "
                       << debug.accumulated_gravity_force.y << ")\n";
-            std::cout << "    Support: (" << debug.accumulated_support_force.x << ", "
-                      << debug.accumulated_support_force.y << ")\n";
             std::cout << "    Cohesion: (" << debug.accumulated_com_cohesion_force.x << ", "
                       << debug.accumulated_com_cohesion_force.y << ")\n";
             std::cout << "    Adhesion: (" << debug.accumulated_adhesion_force.x << ", "
                       << debug.accumulated_adhesion_force.y << ")\n";
             std::cout << "    Viscosity: (" << debug.accumulated_viscous_force.x << ", "
                       << debug.accumulated_viscous_force.y << ")\n";
-            std::cout << "    Has Support: " << (cell.has_any_support ? "yes" : "no") << "\n";
 
             std::cout << "  Diagram:\n"
                       << WorldDiagramGeneratorEmoji::generateEmojiDiagram(world_) << "\n";
@@ -157,8 +152,7 @@ void CellTracker::printHistory(const Vector2i& pos, int current_frame) const
             int frame_num = current_frame - static_cast<int>(history.size() - h);
             // Calculate sum of known forces (now including bones!).
             double known_sum = fd.cohesion_force.x + fd.adhesion_force.x + fd.viscous_force.x
-                + fd.friction_force.x + fd.bone_force.x + fd.gravity_force.x + fd.support_force.x
-                + fd.pressure_force.x;
+                + fd.friction_force.x + fd.bone_force.x + fd.gravity_force.x + fd.pressure_force.x;
             double diff = fd.pending_force.x - known_sum;
             std::cout << "    " << std::setw(5) << frame_num << " | " << std::setw(5) << std::fixed
                       << std::setprecision(2) << fd.com.x << " | " << std::setw(5) << fd.velocity.x
@@ -170,19 +164,16 @@ void CellTracker::printHistory(const Vector2i& pos, int current_frame) const
         }
 
         std::cout << "\n    VERTICAL FORCES (Y direction):\n";
-        std::cout
-            << "    Frame | COM.y | Vel.y | Grav.y | Supp.y | Coh.y | Visc.y | Total.y | Sup\n";
-        std::cout
-            << "    ------|-------|-------|--------|--------|-------|--------|---------|----\n";
+        std::cout << "    Frame | COM.y | Vel.y | Grav.y | Coh.y | Visc.y | Total.y\n";
+        std::cout << "    ------|-------|-------|--------|-------|--------|--------\n";
         for (size_t h = 0; h < history.size(); h++) {
             const auto& fd = history[h];
             int frame_num = current_frame - static_cast<int>(history.size() - h);
             std::cout << "    " << std::setw(5) << frame_num << " | " << std::setw(5) << std::fixed
                       << std::setprecision(2) << fd.com.y << " | " << std::setw(5) << fd.velocity.y
-                      << " | " << std::setw(6) << fd.gravity_force.y << " | " << std::setw(6)
-                      << fd.support_force.y << " | " << std::setw(5) << fd.cohesion_force.y << " | "
-                      << std::setw(6) << fd.viscous_force.y << " | " << std::setw(7)
-                      << fd.pending_force.y << " | " << (fd.has_support ? "Y" : "N") << "\n";
+                      << " | " << std::setw(6) << fd.gravity_force.y << " | " << std::setw(5)
+                      << fd.cohesion_force.y << " | " << std::setw(6) << fd.viscous_force.y << " | "
+                      << std::setw(7) << fd.pending_force.y << "\n";
         }
     }
 }
@@ -209,9 +200,8 @@ void CellTracker::printTableRow(int frame, bool force_print) const
                   << std::setprecision(2) << cell.com.x << "," << std::setw(5) << cell.com.y
                   << ") | (" << std::setw(5) << cell.velocity.x << "," << std::setw(5)
                   << cell.velocity.y << ") | " << std::setw(4) << debug.accumulated_gravity_force.y
-                  << " | " << std::setw(4) << debug.accumulated_support_force.y << " | "
-                  << std::setw(4) << debug.accumulated_com_cohesion_force.y << " | " << std::setw(4)
-                  << debug.accumulated_adhesion_force.y << " | " << std::setw(5)
+                  << " | " << std::setw(4) << debug.accumulated_com_cohesion_force.y << " | "
+                  << std::setw(4) << debug.accumulated_adhesion_force.y << " | " << std::setw(5)
                   << cell.pending_force.y << "\n";
     }
 }

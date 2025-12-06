@@ -1,6 +1,8 @@
 // Dirt Sim Garden Dashboard
 // WebSocket connections, WebRTC streaming, and peer management.
 
+/* exported clearDebugLog, copyDebugLog, sendExitCommand, togglePause, toggleWebRtcStream */
+
 //=============================================================================
 // Utility Functions
 //=============================================================================
@@ -415,6 +417,19 @@ function updateStreamButton(text, enabled) {
     }
 }
 
+function updateVideoState(state) {
+    var video = document.getElementById('video-localhost-7070');
+    if (!video) return;
+
+    // Remove all state classes.
+    video.classList.remove('streaming', 'stopped', 'error');
+
+    // Add appropriate class.
+    if (state) {
+        video.classList.add(state);
+    }
+}
+
 function toggleWebRtcStream() {
     if (streamActive && peerConnection) {
         stopWebRtcStream();
@@ -432,6 +447,7 @@ function stopWebRtcStream() {
         peerConnection = null;
         streamActive = false;
         updateStreamButton('Start Stream', true);
+        updateVideoState('stopped');
         if (statusSpan) statusSpan.textContent = 'stopped';
     }
 }
@@ -461,6 +477,7 @@ function startWebRtcStream() {
             video.srcObject = event.streams[0];
             streamActive = true;
             updateStreamButton('Stop Stream', true);
+            updateVideoState('streaming');
             if (statusSpan) statusSpan.textContent = 'streaming';
 
             // Clean up on track end.
@@ -491,14 +508,16 @@ function startWebRtcStream() {
             statusSpan.textContent = state;
         }
 
-        // Update button based on connection state.
+        // Update button and video state based on connection.
         if (state === 'connected') {
             streamActive = true;
             updateStreamButton('Stop Stream', true);
+            updateVideoState('streaming');
         } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
             streamActive = false;
             updateStreamButton('Start Stream', true);
-            if (statusSpan) statusSpan.textContent = 'disconnected';
+            updateVideoState(state === 'failed' ? 'error' : 'stopped');
+            if (statusSpan) statusSpan.textContent = state === 'failed' ? 'failed' : 'disconnected';
         }
     };
 
@@ -509,6 +528,7 @@ function startWebRtcStream() {
         if (!response || !response.sdpOffer) {
             logDebug('WebRTC: No SDP offer in StreamStart response');
             updateStreamButton('Start Stream', true);
+            updateVideoState('error');
             if (statusSpan) statusSpan.textContent = 'failed';
             return;
         }
@@ -530,6 +550,7 @@ function startWebRtcStream() {
         }).catch(function(error) {
             logDebug('WebRTC: Error processing offer: ' + error.message);
             updateStreamButton('Start Stream', true);
+            updateVideoState('error');
             if (statusSpan) statusSpan.textContent = 'error: ' + error.message;
         });
     });
@@ -562,7 +583,7 @@ function handleWebRtcSignaling(message) {
                 if (statusSpan) statusSpan.textContent = 'error: ' + error.message;
             });
         }
-    } catch (e) {
+    } catch (_unused) {
         // Not a signaling message, ignore.
     }
 }

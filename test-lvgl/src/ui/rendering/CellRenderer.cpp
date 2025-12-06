@@ -743,13 +743,11 @@ void CellRenderer::renderWorldData(
             }
         }
 
-        // Debug draw: Support indicators, vectors, then COM last (so COM is never obscured).
+        // Debug draw: Vectors and COM.
         if (debugDraw) {
-            uint32_t cells_with_support = 0;
             uint32_t non_air_cells = 0;
 
-            // First pass: Draw support indicators (small corner dots).
-            const int SUPPORT_DOT_SIZE = std::max(3, static_cast<int>(3 * scaleX_));
+            // First pass: Draw cell details.
             for (uint32_t y = 0; y < worldData.height; ++y) {
                 for (uint32_t x = 0; x < worldData.width; ++x) {
                     uint32_t idx = y * worldData.width + x;
@@ -759,53 +757,6 @@ void CellRenderer::renderWorldData(
                     if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
 
                     non_air_cells++;
-                    if (cell.has_any_support) {
-                        cells_with_support++;
-                    }
-
-                    int32_t cellX = x * scaledCellWidth_;
-                    int32_t cellY = y * scaledCellHeight_;
-
-                    // Draw support indicator in top-left corner.
-                    if (cell.has_any_support) {
-                        spdlog::info(
-                            "Support visualization: Cell at ({},{}) has_any_support=true", x, y);
-                        // Green dot for supported cells.
-                        uint32_t support_color = 0xFF00FF00; // ARGB: green.
-
-                        // Draw small square in top-left corner.
-                        for (int dy = 0; dy < SUPPORT_DOT_SIZE; dy++) {
-                            for (int dx = 0; dx < SUPPORT_DOT_SIZE; dx++) {
-                                int px = cellX + dx + 1; // +1 to avoid cell border.
-                                int py = cellY + dy + 1;
-                                if (px >= 0 && px < static_cast<int>(canvasWidth_) && py >= 0
-                                    && py < static_cast<int>(canvasHeight_)) {
-                                    pixels[py * canvasWidth_ + px] = support_color;
-                                }
-                            }
-                        }
-
-                        // If vertical support specifically, add a second indicator.
-                        if (cell.has_vertical_support) {
-                            spdlog::info(
-                                "Support visualization: Cell at ({},{}) has_vertical_support=true",
-                                x,
-                                y);
-                            // Brighter green for vertical support (bottom-left corner).
-                            uint32_t vertical_color = 0xFF00FF00; // Same green, could be different.
-                            int bottom_y = cellY + scaledCellHeight_ - SUPPORT_DOT_SIZE - 1;
-                            for (int dy = 0; dy < SUPPORT_DOT_SIZE; dy++) {
-                                for (int dx = 0; dx < SUPPORT_DOT_SIZE; dx++) {
-                                    int px = cellX + dx + 1;
-                                    int py = bottom_y + dy;
-                                    if (px >= 0 && px < static_cast<int>(canvasWidth_) && py >= 0
-                                        && py < static_cast<int>(canvasHeight_)) {
-                                        pixels[py * canvasWidth_ + px] = vertical_color;
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
@@ -1016,33 +967,6 @@ void CellRenderer::renderCellLVGL(
 
             int square_size = std::max(2, static_cast<int>(6 * scaleX_));
             int half_size = square_size / 2;
-
-            // Support indicators (green dots in corners).
-            const int SUPPORT_DOT_SIZE = std::max(2, static_cast<int>(3 * scaleX_));
-            if (cell.has_any_support) {
-                // Top-left corner - any support.
-                lv_draw_rect_dsc_t support_dsc;
-                lv_draw_rect_dsc_init(&support_dsc);
-                support_dsc.bg_color = lv_color_hex(0x00FF00); // Green.
-                support_dsc.bg_opa = LV_OPA_COVER;
-                support_dsc.border_width = 0;
-                support_dsc.radius = 0;
-
-                lv_area_t support_coords = {
-                    cellX + 1, cellY + 1, cellX + SUPPORT_DOT_SIZE, cellY + SUPPORT_DOT_SIZE
-                };
-                lv_draw_rect(&layer, &support_dsc, &support_coords);
-
-                // Bottom-left corner - vertical support.
-                if (cell.has_vertical_support) {
-                    lv_area_t vertical_coords = { cellX + 1,
-                                                  cellY + static_cast<int>(scaledCellHeight_)
-                                                      - SUPPORT_DOT_SIZE - 1,
-                                                  cellX + SUPPORT_DOT_SIZE,
-                                                  cellY + static_cast<int>(scaledCellHeight_) - 1 };
-                    lv_draw_rect(&layer, &support_dsc, &vertical_coords);
-                }
-            }
 
             // COM indicator (yellow square)
             lv_draw_rect_dsc_t com_rect_dsc;

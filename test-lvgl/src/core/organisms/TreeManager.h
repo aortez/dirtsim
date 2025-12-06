@@ -33,17 +33,6 @@ public:
 
     void notifyTransfers(const std::vector<OrganismTransfer>& transfers);
 
-    /**
-     * Compute realistic organism support for all trees.
-     *
-     * Trees are supported if connected to anchor points (ground, seed).
-     * Uses flood-fill to mark reachable cells as supported.
-     * Disconnected branches will lose support and fall.
-     *
-     * Should be called after main support calculation.
-     */
-    void computeOrganismSupport(World& world);
-
     void applyBoneForces(World& world, double deltaTime);
 
 private:

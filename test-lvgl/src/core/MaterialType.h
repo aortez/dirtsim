@@ -45,7 +45,6 @@ struct MaterialProperties {
     double friction_transition_width; // How quickly friction transitions from static to kinetic
                                       // (0.02-0.1).
     bool is_fluid;                    // True for materials that flow freely.
-    bool is_rigid;                    // True for materials that only compress, don't flow.
 };
 
 /**
@@ -62,11 +61,6 @@ double getMaterialDensity(MaterialType type);
  * Check if a material is a fluid.
  */
 bool isMaterialFluid(MaterialType type);
-
-/**
- * Check if a material is rigid (compression-only).
- */
-bool isMaterialRigid(MaterialType type);
 
 /**
  * Get a human-readable name for a material type.

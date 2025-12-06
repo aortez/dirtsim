@@ -17,7 +17,7 @@ TEST_BINARY := sparkle-duck-tests
 TEST_SLOW_BINARY := sparkle-duck-tests-slow
 MAIN_BINARY := sparkle-duck
 
-.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format lint lint-fix help
+.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help
 
 all: release
 
@@ -111,6 +111,22 @@ lint-fix:
 	fi
 	@npm run lint:fix
 
+format-check:
+	@echo "Checking C++ formatting..."
+	@NEEDS_FORMAT=$$(find src -name "*.cpp" -o -name "*.h" | xargs clang-format --style=file --dry-run -Werror 2>&1) || { \
+		echo "$$NEEDS_FORMAT"; \
+		echo ""; \
+		echo "❌ Some files need formatting. Run 'make format' to fix."; \
+		exit 1; \
+	}
+	@echo "✅ C++ formatting OK"
+
+check: format-check lint build-tests
+	@echo "Running unit tests..."
+	@./$(BUILD_DEBUG_DIR)/$(BIN_DIR)/$(TEST_BINARY) --gtest_brief=1
+	@echo ""
+	@echo "✅ All checks passed!"
+
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DEBUG_DIR) $(BUILD_RELEASE_DIR) $(BIN_DIR) lib
@@ -136,9 +152,11 @@ help:
 	@echo "  visual-tests - Run tests with visual output enabled"
 	@echo "  run          - Run the main sparkle-duck executable"
 	@echo "  run-asan     - Run with AddressSanitizer to detect memory errors"
-	@echo "  format       - Format source code using clang-format"
+	@echo "  format       - Format C++ source code using clang-format"
+	@echo "  format-check - Check C++ formatting without modifying"
 	@echo "  lint         - Lint JavaScript files with ESLint"
 	@echo "  lint-fix     - Lint and auto-fix JavaScript files"
+	@echo "  check        - Run all checks (format-check, lint, tests) - used by CI"
 	@echo "  clean        - Remove build directory and binaries"
 	@echo "  clean-cmake  - Remove in-source CMake artifacts"
 	@echo "  help         - Show this help message"

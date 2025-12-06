@@ -26,13 +26,11 @@ public:
         Vector2d pending_force;
         Vector2d bone_force;
         Vector2d gravity_force;
-        Vector2d support_force;
         Vector2d cohesion_force;
         Vector2d adhesion_force;
         Vector2d viscous_force;
         Vector2d friction_force;
         Vector2d pressure_force;
-        bool has_support;
     };
 
     struct TrackedCell {

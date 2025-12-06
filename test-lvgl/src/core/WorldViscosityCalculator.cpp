@@ -64,9 +64,8 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     uint32_t x,
     uint32_t y,
     double viscosity_strength,
-    const GridOfCells* grid) const
+    const GridOfCells* /*grid*/) const
 {
-    (void)grid; // Unused: now using cell.has_any_support instead of grid->supportBitmap().
 
     // Cache data reference to avoid repeated pImpl dereferences.
     const WorldData& data = world.getData();
@@ -96,31 +95,7 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     // Velocity difference drives viscous force.
     Vector2d velocity_difference = avg_neighbor_velocity - cell.velocity;
 
-    // Check for solid support.
-    // Assert that support bitmap matches cell field (debug/verify consistency).
-    if (grid && GridOfCells::USE_CACHE) {
-        bool bitmap_support = grid->supportBitmap().isSet(x, y);
-        bool cell_support = cell.has_any_support;
-
-        if (bitmap_support != cell_support) {
-            spdlog::error(
-                "SUPPORT MISMATCH at [{},{}]: bitmap={}, cell.has_any_support={}",
-                x,
-                y,
-                bitmap_support,
-                cell_support);
-            spdlog::error(
-                "  Cell: material={}, fill={:.2f}, has_vertical={}, has_any={}",
-                static_cast<int>(cell.material_type),
-                cell.fill_ratio,
-                cell.has_vertical_support,
-                cell.has_any_support);
-            // Abort to catch this immediately during testing.
-            std::abort();
-        }
-    }
-
-    // EXPERIMENT: Simplified viscosity - no motion state or support modulation.
+    // Simplified viscosity - no motion state or support modulation.
     // Just use base material viscosity to test if physics work without support concept.
     double effective_viscosity = props.viscosity;
 

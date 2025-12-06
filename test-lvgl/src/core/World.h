@@ -21,7 +21,6 @@ struct PhysicsSettings;
 class WorldPressureCalculator;
 class WorldCollisionCalculator;
 class WorldFrictionCalculator;
-class WorldSupportCalculator;
 class WorldAdhesionCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
@@ -270,7 +269,6 @@ public:
 
 private:
     void applyGravity();
-    void applySupportForces();
     void applyAirResistance();
     void applyCohesionForces(const GridOfCells& grid);
     void applyPressureForces();

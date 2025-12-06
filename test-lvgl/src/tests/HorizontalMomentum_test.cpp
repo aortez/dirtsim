@@ -155,10 +155,6 @@ TEST_F(HorizontalMomentumTest, DirtMaintainsHorizontalVelocity)
                             cell.pressure_gradient.x,
                             cell.pressure_gradient.y);
                         spdlog::info("    pressure={:.3f}", cell.pressure);
-                        spdlog::info(
-                            "    support: any={}, vertical={}",
-                            cell.has_any_support,
-                            cell.has_vertical_support);
                         printWorld(step);
                     }
 

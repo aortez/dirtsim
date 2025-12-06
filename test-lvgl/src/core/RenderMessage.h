@@ -44,10 +44,8 @@ struct BasicCell {
  * All floating-point values are converted to fixed-point integers.
  */
 struct DebugCell {
-    uint8_t material_type;        // MaterialType enum value (0-9).
-    uint8_t fill_ratio;           // Quantized [0.0, 1.0] → [0, 255].
-    uint8_t has_any_support;      // Boolean: cell has structural support.
-    uint8_t has_vertical_support; // Boolean: cell has vertical support specifically.
+    uint8_t material_type; // MaterialType enum value (0-9).
+    uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
 
     int16_t com_x;      // Center of mass X: [-1.0, 1.0] → [-32767, 32767].
     int16_t com_y;      // Center of mass Y: [-1.0, 1.0] → [-32767, 32767].
@@ -59,7 +57,7 @@ struct DebugCell {
 
     Vector2<float> pressure_gradient; // Pressure gradient vector.
 
-    using serialize = zpp::bits::members<11>;
+    using serialize = zpp::bits::members<9>;
 };
 
 /**

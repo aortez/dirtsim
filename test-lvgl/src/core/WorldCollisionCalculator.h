@@ -271,13 +271,6 @@ public:
     VelocityComponents decomposeVelocity(
         const Vector2d& velocity, const Vector2d& surface_normal) const;
 
-    /**
-     * @brief Check if a material is considered rigid for collision purposes.
-     * @param material Material type to check.
-     * @return True if material is rigid (METAL, WOOD, WALL, etc.).
-     */
-    static bool isMaterialRigid(MaterialType material);
-
     double calculateCohesionStrength(
         const Cell& cell, const World& world, uint32_t x, uint32_t y) const;
 

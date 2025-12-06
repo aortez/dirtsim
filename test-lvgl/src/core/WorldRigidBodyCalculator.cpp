@@ -29,7 +29,9 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
     }
 
     const Cell& start_cell = data.at(start.x, start.y);
-    if (!isMaterialRigid(start_cell.material_type)) {
+
+    // Structures are organism-only (organism_id != 0).
+    if (start_cell.organism_id == 0) {
         return result;
     }
 
@@ -38,7 +40,7 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
         return result;
     }
 
-    // Use start cell's organism_id if none specified.
+    // Use start cell's organism_id.
     uint32_t match_organism = organism_id != 0 ? organism_id : start_cell.organism_id;
 
     std::unordered_set<Vector2i, Vector2iHash> visited;
@@ -65,12 +67,9 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
             }
 
             const Cell& neighbor_cell = data.at(neighbor.x, neighbor.y);
-            if (!isMaterialRigid(neighbor_cell.material_type)) {
-                continue;
-            }
 
-            // Match organism_id if we're tracking one.
-            if (match_organism != 0 && neighbor_cell.organism_id != match_organism) {
+            // Only connect cells with same organism_id.
+            if (neighbor_cell.organism_id != match_organism) {
                 continue;
             }
 
@@ -87,8 +86,7 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
     return result;
 }
 
-std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(
-    const World& world, bool organism_only) const
+std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(const World& world) const
 {
     std::vector<RigidStructure> structures;
     const auto& data = world.getData();
@@ -102,10 +100,9 @@ std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(
             }
 
             const Cell& cell = data.at(x, y);
-            if (!isMaterialRigid(cell.material_type)) {
-                continue;
-            }
-            if (organism_only && cell.organism_id == 0) {
+
+            // Structures are organism-only.
+            if (cell.organism_id == 0) {
                 continue;
             }
 

@@ -12,19 +12,13 @@ class Cell;
 class GridOfCells;
 class MaterialNeighborhood;
 class World;
-class WorldSupportCalculator;
 
 /**
- * @brief Calculates cohesion forces for World physics
+ * @brief Calculates cohesion forces for World physics.
  *
- * This class encapsulates all cohesion-related calculations including:
- * - Traditional resistance-based cohesion (movement threshold)
+ * This class encapsulates cohesion-related calculations including:
+ * - Resistance-based cohesion (movement threshold)
  * - Center-of-mass cohesion forces (attractive clustering)
- *
- * The cohesion system implements dual physics:
- * 1. Resistance cohesion: Prevents material movement when neighboring support exists (uses
- * WorldSupportCalculator)
- * 2. Force cohesion: Adds attractive forces toward connected material clusters
  */
 class WorldCohesionCalculator : public WorldCalculatorBase {
 public:

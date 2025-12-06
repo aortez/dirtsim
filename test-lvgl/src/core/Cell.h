@@ -49,11 +49,6 @@ struct Cell {
     // Physics force accumulation.
     Vector2d pending_force = {};
 
-    // Computed structural support (updated each frame).
-    bool has_any_support = false;
-    bool has_vertical_support = false;
-    // TODO - should this be vertical and horizontal support? maybe clearer/less bugs?
-
     // =================================================================
     // MATERIAL PROPERTIES
     // =================================================================

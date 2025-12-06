@@ -179,11 +179,7 @@ TEST_F(WaterEqualizationTest, WaterFlowsThroughOpening)
                     debug_2_5.accumulated_friction_force.y,
                     cell_2_5.pending_force.x,
                     cell_2_5.pending_force.y);
-                spdlog::info(
-                    "    Support: any={}, vertical={}, friction_coeff={:.3f}",
-                    cell_2_5.has_any_support,
-                    cell_2_5.has_vertical_support,
-                    debug_2_5.cached_friction_coefficient);
+                spdlog::info("    friction_coeff={:.3f}", debug_2_5.cached_friction_coefficient);
             }
         }
     }

@@ -5,7 +5,6 @@
 #include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
-#include "WorldSupportCalculator.h"
 #include "bitmaps/MaterialNeighborhood.h"
 #include "spdlog/spdlog.h"
 #include <algorithm>
@@ -214,26 +213,6 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         centering_force = centering_direction * centering_magnitude * CENTERING_WEIGHT;
     }
 
-    // EXPERIMENT: Removed support-based centering enforcement.
-    if (false && props.is_rigid) {
-        double current_centering = centering_force.magnitude();
-        if (current_centering < 10.0) {
-            // Supported rigid cells need strong centering to prevent drift.
-            double offset_sq = com.x * com.x + com.y * com.y;
-            if (offset_sq > 0.000001) {
-                double offset = std::sqrt(offset_sq);
-                Vector2d center_dir = com * (-1.0 / offset);
-                centering_force = center_dir * (offset * 50.0); // Strong pull to center!
-                spdlog::info(
-                    "STRONG CENTERING at ({},{}): offset={:.3f}, force magnitude={:.3f}",
-                    x,
-                    y,
-                    offset,
-                    centering_force.magnitude());
-            }
-        }
-    }
-
     Vector2d final_force = centering_force;
 
     double clustering_force_sq =
@@ -414,25 +393,6 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         double centering_magnitude =
             props.cohesion * com_offset * cell.fill_ratio * connection_factor;
         centering_force = centering_direction * centering_magnitude * CENTERING_WEIGHT;
-    }
-
-    // EXPERIMENT: Removed support-based centering enforcement (cached path).
-    if (false && props.is_rigid) {
-        double current_centering = centering_force.magnitude();
-        if (current_centering < 10.0) {
-            double offset_sq = com.x * com.x + com.y * com.y;
-            if (offset_sq > 0.000001) {
-                double offset = std::sqrt(offset_sq);
-                Vector2d center_dir = com * (-1.0 / offset);
-                centering_force = center_dir * (offset * 50.0);
-                spdlog::info(
-                    "STRONG CENTERING (cached) at ({},{}): offset={:.3f}, force={:.3f}",
-                    x,
-                    y,
-                    offset,
-                    centering_force.magnitude());
-            }
-        }
     }
 
     // Combine forces with alignment check (matching non-cached version).

@@ -29,8 +29,7 @@ public:
     RigidStructure findConnectedStructure(
         const World& world, Vector2i start, uint32_t organism_id = 0) const;
 
-    std::vector<RigidStructure> findAllStructures(
-        const World& world, bool organism_only = true) const;
+    std::vector<RigidStructure> findAllStructures(const World& world) const;
 
     Vector2d calculateStructureCOM(const World& world, const RigidStructure& structure) const;
 

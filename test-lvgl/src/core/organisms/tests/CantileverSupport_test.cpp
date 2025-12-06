@@ -83,9 +83,7 @@ TEST(CantileverSupportTest, DISABLED_HorizontalBeamStaysSupported)
                                   << std::setw(5) << cell.velocity.x << "," << std::setw(5)
                                   << cell.velocity.y << ") | (" << std::setw(5)
                                   << cell.pending_force.x << "," << std::setw(5)
-                                  << cell.pending_force.y << ") | "
-                                  << (cell.has_any_support ? "Y" : "N")
-                                  << (cell.has_vertical_support ? "v" : "h") << "\n";
+                                  << cell.pending_force.y << ")\n";
                     }
                 }
             }
