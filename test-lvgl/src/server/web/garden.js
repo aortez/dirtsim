@@ -347,7 +347,7 @@ function displayPeers(peers) {
             html += '<div class="peer-info">Stream: <span id="stream-status-' + peer.host + '-' + peer.port + '">waiting...</span></div>';
             html += '<video id="video-' + peer.host + '-' + peer.port + '" autoplay muted playsinline></video>';
             html += '<div class="peer-controls">';
-            html += '<button onclick="startWebRtcStream()">Start Stream</button>';
+            html += '<button id="stream-btn-' + peer.host + '-' + peer.port + '" onclick="toggleWebRtcStream()">Start Stream</button>';
             html += '<button class="danger" onclick="sendExitCommand()">Exit</button>';
             html += '</div>';
         }
@@ -405,7 +405,40 @@ function discoverPeers() {
 //=============================================================================
 
 var peerConnection = null;
-var webrtcClientId = 'browser-' + Math.random().toString(36).substr(2, 9);
+var streamActive = false;
+
+function generateClientId() {
+    return 'browser-' + Math.random().toString(36).substr(2, 9);
+}
+
+function updateStreamButton(text, enabled) {
+    var btn = document.getElementById('stream-btn-localhost-7070');
+    if (btn) {
+        btn.textContent = text;
+        btn.disabled = !enabled;
+    }
+}
+
+function toggleWebRtcStream() {
+    if (streamActive && peerConnection) {
+        stopWebRtcStream();
+    } else {
+        startWebRtcStream();
+    }
+}
+
+function stopWebRtcStream() {
+    var statusSpan = document.getElementById('stream-status-localhost-7070');
+
+    if (peerConnection) {
+        logDebug('WebRTC: Stopping stream');
+        peerConnection.close();
+        peerConnection = null;
+        streamActive = false;
+        updateStreamButton('Start Stream', true);
+        if (statusSpan) statusSpan.textContent = 'stopped';
+    }
+}
 
 function startWebRtcStream() {
     var statusSpan = document.getElementById('stream-status-localhost-7070');
@@ -413,15 +446,15 @@ function startWebRtcStream() {
 
     if (!uiConn.isConnected()) {
         if (statusSpan) statusSpan.textContent = 'UI not connected';
+        updateStreamButton('Start Stream', false);
         return;
     }
 
-    if (peerConnection) {
-        logDebug('WebRTC: Closing existing connection');
-        peerConnection.close();
-    }
+    // Generate fresh client ID for each connection attempt.
+    var webrtcClientId = generateClientId();
 
-    if (statusSpan) statusSpan.textContent = 'requesting...';
+    if (statusSpan) statusSpan.textContent = 'connecting...';
+    updateStreamButton('Connecting...', false);
     logDebug('WebRTC: Requesting stream for client ' + webrtcClientId);
 
     // Create peer connection (will be used when we receive offer).
@@ -433,20 +466,14 @@ function startWebRtcStream() {
         logDebug('WebRTC: Received track: ' + event.track.kind);
         if (event.track.kind === 'video' && video) {
             video.srcObject = event.streams[0];
+            streamActive = true;
+            updateStreamButton('Stop Stream', true);
             if (statusSpan) statusSpan.textContent = 'streaming';
 
-            // Debug: Watch for track/stream ending.
+            // Clean up on track end.
             event.track.onended = function() {
-                logDebug('WebRTC: Track ENDED!');
-            };
-            event.track.onmute = function() {
-                logDebug('WebRTC: Track MUTED!');
-            };
-            event.streams[0].onremovetrack = function() {
-                logDebug('WebRTC: Stream LOST TRACK!');
-            };
-            event.streams[0].oninactive = function() {
-                logDebug('WebRTC: Stream INACTIVE!');
+                logDebug('WebRTC: Track ended');
+                stopWebRtcStream();
             };
         }
     };
@@ -465,9 +492,20 @@ function startWebRtcStream() {
 
     // Connection state changes.
     peerConnection.onconnectionstatechange = function() {
-        logDebug('WebRTC: Connection state: ' + peerConnection.connectionState);
+        var state = peerConnection.connectionState;
+        logDebug('WebRTC: Connection state: ' + state);
         if (statusSpan) {
-            statusSpan.textContent = peerConnection.connectionState;
+            statusSpan.textContent = state;
+        }
+
+        // Update button based on connection state.
+        if (state === 'connected') {
+            streamActive = true;
+            updateStreamButton('Stop Stream', true);
+        } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+            streamActive = false;
+            updateStreamButton('Start Stream', true);
+            if (statusSpan) statusSpan.textContent = 'disconnected';
         }
     };
 
@@ -477,6 +515,8 @@ function startWebRtcStream() {
     }, function(response) {
         if (!response || !response.sdpOffer) {
             logDebug('WebRTC: No SDP offer in StreamStart response');
+            updateStreamButton('Start Stream', true);
+            if (statusSpan) statusSpan.textContent = 'failed';
             return;
         }
 
@@ -496,7 +536,7 @@ function startWebRtcStream() {
             });
         }).catch(function(error) {
             logDebug('WebRTC: Error processing offer: ' + error.message);
-            var statusSpan = document.getElementById('stream-status-localhost-7070');
+            updateStreamButton('Start Stream', true);
             if (statusSpan) statusSpan.textContent = 'error: ' + error.message;
         });
     });
@@ -579,7 +619,7 @@ function setupMouseForwarding() {
         var lvglX = Math.floor(x * scaleX);
         var lvglY = Math.floor(y * scaleY);
 
-        uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
+        // uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
     }
 
     video.addEventListener('mousedown', function(e) {

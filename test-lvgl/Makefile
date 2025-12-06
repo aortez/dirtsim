@@ -17,7 +17,7 @@ TEST_BINARY := sparkle-duck-tests
 TEST_SLOW_BINARY := sparkle-duck-tests-slow
 MAIN_BINARY := sparkle-duck
 
-.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format help
+.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format lint lint-fix help
 
 all: release
 
