@@ -1,6 +1,16 @@
 cmake_minimum_required(VERSION 3.10)
 project(lvgl)
 
+# Use ccache for faster rebuilds when available.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+    message(STATUS "Found ccache: ${CCACHE_PROGRAM}")
+    set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+    set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}")
+else()
+    message(STATUS "ccache not found - builds will not be cached")
+endif()
+
 # Allow linking to targets from subdirectories.
 cmake_policy(SET CMP0079 NEW)
 
@@ -338,6 +348,7 @@ add_library(sparkle-duck-ui-lib STATIC
 
     # UI components.
     src/ui/DisplayCapture.cpp
+    src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/rendering/CellRenderer.cpp
@@ -430,6 +441,7 @@ add_executable(sparkle-duck-tests
     src/tests/Cell_serialization_test.cpp
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp
+    src/tests/RigidBodyIntegration_test.cpp
     src/tests/TimersTest.cpp
     src/tests/Vector2d_test.cpp
     src/tests/Vector2i_test.cpp

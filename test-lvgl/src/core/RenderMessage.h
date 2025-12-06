@@ -38,7 +38,7 @@ struct BasicCell {
 };
 
 /**
- * @brief Debug cell data for physics visualization (24 bytes).
+ * @brief Debug cell data for physics visualization.
  *
  * Includes material, fill ratio, and quantized physics data for debug overlays.
  * All floating-point values are converted to fixed-point integers.

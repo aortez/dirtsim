@@ -23,6 +23,7 @@ class WebSocketService;
 }
 
 namespace Ui {
+class RemoteInputDevice;
 class UiComponentManager;
 class WebRtcStreamer;
 } // namespace Ui
@@ -55,7 +56,8 @@ public:
     std::unique_ptr<Network::WebSocketService> wsService_; // Unified service (client + server).
 
     // UI management.
-    std::unique_ptr<UiComponentManager> uiManager_; // LVGL screen and container management.
+    std::unique_ptr<UiComponentManager> uiManager_;        // LVGL screen and container management.
+    std::unique_ptr<RemoteInputDevice> remoteInputDevice_; // Remote mouse input from WebSocket.
 
     // WebRTC video streaming.
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
@@ -78,6 +80,12 @@ public:
      * @return Pointer to UI manager (non-owning).
      */
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }
+
+    /**
+     * @brief Get remote input device for WebSocket mouse events.
+     * @return Pointer to RemoteInputDevice (non-owning).
+     */
+    RemoteInputDevice* getRemoteInputDevice() { return remoteInputDevice_.get(); }
 
     /**
      * @brief Get WebRTC streamer for video streaming.

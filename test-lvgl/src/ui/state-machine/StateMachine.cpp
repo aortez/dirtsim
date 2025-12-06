@@ -8,6 +8,7 @@
 #include "network/CommandDeserializerJson.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
+#include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
@@ -38,6 +39,10 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
     spdlog::info("Ui::StateMachine: UiComponentManager created");
+
+    // Create remote input device for WebSocket mouse events.
+    remoteInputDevice_ = std::make_unique<RemoteInputDevice>(disp);
+    spdlog::info("Ui::StateMachine: RemoteInputDevice created");
 
     // Create WebRTC streamer for video streaming.
     // ICE candidates are sent via wsService_->sendToClient() in the StreamStart handler.

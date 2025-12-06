@@ -273,6 +273,7 @@ private:
     void applyCohesionForces(const GridOfCells& grid);
     void applyPressureForces();
     void resolveForces(double deltaTime, const GridOfCells& grid);
+    void resolveRigidBodies(double deltaTime);
     void updateTransfers(double deltaTime);
     void processVelocityLimiting(double deltaTime);
     void processMaterialMoves();

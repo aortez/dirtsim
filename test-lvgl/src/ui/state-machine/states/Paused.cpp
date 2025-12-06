@@ -1,4 +1,5 @@
 #include "State.h"
+#include "ui/RemoteInputDevice.h"
 #include "ui/state-machine/StateMachine.h"
 #include <spdlog/spdlog.h>
 
@@ -131,25 +132,42 @@ State::Any Paused::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
     return Shutdown{};
 }
 
-State::Any Paused::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Paused::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("Paused: Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+
+    // Update remote input device state (enables LVGL widget interaction even when paused).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(true);
+    }
 
     cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
     return Paused{ std::move(worldData) };
 }
 
-State::Any Paused::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Paused::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("Paused: Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+
+    // Update remote input device position (enables LVGL widget interaction even when paused).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
 
     cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
     return Paused{ std::move(worldData) };
 }
 
-State::Any Paused::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Paused::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("Paused: Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+
+    // Update remote input device state (enables LVGL widget interaction even when paused).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(false);
+    }
 
     cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
     return Paused{ std::move(worldData) };

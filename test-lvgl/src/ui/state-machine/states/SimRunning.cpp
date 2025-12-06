@@ -2,6 +2,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/RenderFormatSet.h"
+#include "ui/RemoteInputDevice.h"
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/PhysicsControls.h"
@@ -125,31 +126,42 @@ State::Any SimRunning::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/
     return Shutdown{};
 }
 
-State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& /*sm*/)
+State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("SimRunning: Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
-    // TODO: Handle mouse interaction with running world.
+    // Update remote input device state (enables LVGL widget interaction).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(true);
+    }
 
     cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& /*sm*/)
+State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("SimRunning: Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
-    // TODO: Handle mouse drag with running world.
+    // Update remote input device position (enables LVGL widget interaction).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
 
     cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& /*sm*/)
+State::Any SimRunning::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 {
     spdlog::debug("SimRunning: Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
-    // TODO: Handle mouse release with running world.
+    // Update remote input device state (enables LVGL widget interaction).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(false);
+    }
 
     cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
     return std::move(*this);

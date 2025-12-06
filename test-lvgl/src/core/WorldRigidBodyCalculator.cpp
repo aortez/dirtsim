@@ -78,10 +78,16 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
         }
     }
 
-    // Calculate mass and COM for the found structure.
+    // Calculate mass, COM, and initial velocity for the found structure.
     result.total_mass = calculateStructureMass(world, result);
     result.center_of_mass = calculateStructureCOM(world, result);
     result.organism_id = match_organism;
+
+    // Initialize velocity from first cell (all cells should have same velocity after first frame).
+    if (!result.empty()) {
+        const Cell& first_cell = world.getData().at(result.cells[0].x, result.cells[0].y);
+        result.velocity = first_cell.velocity;
+    }
 
     return result;
 }
@@ -175,4 +181,29 @@ Vector2d WorldRigidBodyCalculator::gatherStructureForces(
     }
 
     return net_force;
+}
+
+void WorldRigidBodyCalculator::applyUnifiedVelocity(
+    World& world, RigidStructure& structure, double deltaTime) const
+{
+    if (structure.empty() || structure.total_mass < 0.0001) {
+        return;
+    }
+
+    // Gather total force acting on structure.
+    Vector2d total_force = gatherStructureForces(world, structure);
+
+    // F = ma → a = F/m.
+    Vector2d acceleration = total_force * (1.0 / structure.total_mass);
+
+    // Update structure velocity.
+    structure.velocity.x += acceleration.x * deltaTime;
+    structure.velocity.y += acceleration.y * deltaTime;
+
+    // Apply unified velocity to all cells in structure.
+    auto& data = world.getData();
+    for (const auto& pos : structure.cells) {
+        Cell& cell = data.at(pos.x, pos.y);
+        cell.velocity = structure.velocity;
+    }
 }

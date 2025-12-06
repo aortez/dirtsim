@@ -2,6 +2,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/SimRun.h"
+#include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
 #include "ui/rendering/JuliaFractal.h"
 #include "ui/state-machine/StateMachine.h"
@@ -392,23 +393,37 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     return SimRunning{};
 }
 
-State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& /*sm*/)
+State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
-    // Mouse events not handled in StartMenu - silently ignore.
+    // Update remote input device state (enables LVGL widget interaction in StartMenu).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(true);
+    }
+
     cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
     return std::move(*this);
 }
 
-State::Any StartMenu::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& /*sm*/)
+State::Any StartMenu::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
 {
-    // Mouse events not handled in StartMenu - silently ignore.
+    // Update remote input device position (enables LVGL widget interaction in StartMenu).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
+
     cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
     return std::move(*this);
 }
 
-State::Any StartMenu::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& /*sm*/)
+State::Any StartMenu::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 {
-    // Mouse events not handled in StartMenu - silently ignore.
+    // Update remote input device state (enables LVGL widget interaction in StartMenu).
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(false);
+    }
+
     cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
     return std::move(*this);
 }

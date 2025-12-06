@@ -36,6 +36,8 @@ public:
     double calculateStructureMass(const World& world, const RigidStructure& structure) const;
 
     Vector2d gatherStructureForces(const World& world, const RigidStructure& structure) const;
+
+    void applyUnifiedVelocity(World& world, RigidStructure& structure, double deltaTime) const;
 };
 
 } // namespace DirtSim

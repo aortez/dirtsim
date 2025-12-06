@@ -16,6 +16,7 @@
 #include "WorldFrictionCalculator.h"
 #include "WorldInterpolationTool.h"
 #include "WorldPressureCalculator.h"
+#include "WorldRigidBodyCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
 #include "WorldViscosityCalculator.h"
 #include "organisms/TreeManager.h"
@@ -450,6 +451,9 @@ void World::advanceTime(double deltaTimeSeconds)
     // Apply forces using the diffused pressure field.
     resolveForces(scaledDeltaTime, grid);
 
+    // Resolve rigid body physics for organism structures.
+    resolveRigidBodies(scaledDeltaTime);
+
     {
         ScopeTimer velocityTimer(pImpl->timers_, "velocity_limiting");
         processVelocityLimiting(scaledDeltaTime);
@@ -850,6 +854,11 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
 
                 Cell& cell = data.at(x, y);
 
+                // Skip organism cells - they're handled by resolveRigidBodies().
+                if (cell.organism_id != 0) {
+                    continue;
+                }
+
                 // Get the total pending force (includes gravity, pressure, cohesion,
                 // adhesion, friction, viscosity, bones, etc).
                 Vector2d net_force = cell.pending_force;
@@ -884,6 +893,30 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 }
             }
         }
+    }
+}
+
+void World::resolveRigidBodies(double deltaTime)
+{
+    ScopeTimer timer(pImpl->timers_, "resolve_rigid_bodies");
+
+    WorldRigidBodyCalculator rigid_calc;
+
+    // Find all organism structures.
+    std::vector<RigidStructure> structures = rigid_calc.findAllStructures(*this);
+
+    spdlog::debug("Found {} rigid structures", structures.size());
+
+    // Apply unified velocity to each structure.
+    for (auto& structure : structures) {
+        rigid_calc.applyUnifiedVelocity(*this, structure, deltaTime);
+
+        spdlog::debug(
+            "Structure (organism_id={}, {} cells): unified velocity=({:.3f}, {:.3f})",
+            structure.organism_id,
+            structure.size(),
+            structure.velocity.x,
+            structure.velocity.y);
     }
 }
 

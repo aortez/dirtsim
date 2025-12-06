@@ -195,3 +195,69 @@ TEST_F(RigidBodyCalculatorTest, GatherForcesIsSumOfPendingForces)
     EXPECT_DOUBLE_EQ(force.x, 1.5);
     EXPECT_DOUBLE_EQ(force.y, 1.0);
 }
+
+TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocitySetsAllCellsToSameVelocity)
+{
+    auto world = createWorld(5, 5);
+
+    // Create 3-cell structure with different pending forces.
+    world->getData().at(1, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    world->getData().at(1, 2).organism_id = 1;
+    world->getData().at(1, 2).pending_force = { 1.0, -2.0 };
+
+    world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).pending_force = { 0.0, -1.0 };
+
+    world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).pending_force = { -1.0, -1.0 };
+
+    auto structure = calculator.findConnectedStructure(*world, { 1, 2 });
+    double dt = 0.016;
+    calculator.applyUnifiedVelocity(*world, structure, dt);
+
+    // All cells should have identical velocity.
+    const Cell& cell1 = world->getData().at(1, 2);
+    const Cell& cell2 = world->getData().at(2, 2);
+    const Cell& cell3 = world->getData().at(3, 2);
+
+    EXPECT_DOUBLE_EQ(cell1.velocity.x, cell2.velocity.x);
+    EXPECT_DOUBLE_EQ(cell1.velocity.x, cell3.velocity.x);
+    EXPECT_DOUBLE_EQ(cell1.velocity.y, cell2.velocity.y);
+    EXPECT_DOUBLE_EQ(cell1.velocity.y, cell3.velocity.y);
+
+    // Velocity should be based on total force / total mass.
+    // Total force: (1-1, -2-1-1) = (0, -4).
+    // Total mass: 3 * wood_density.
+    double wood_density = getMaterialProperties(MaterialType::WOOD).density;
+    double total_mass = 3.0 * wood_density;
+    double expected_vy = (-4.0 / total_mass) * dt;
+
+    EXPECT_NEAR(cell1.velocity.x, 0.0, 0.001);
+    EXPECT_NEAR(cell1.velocity.y, expected_vy, 0.001);
+}
+
+TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocityUpdatesStructureVelocity)
+{
+    auto world = createWorld(5, 5);
+
+    world->getData().at(2, 2).replaceMaterial(MaterialType::METAL, 1.0);
+    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).pending_force = { 10.0, -5.0 };
+
+    auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
+    EXPECT_DOUBLE_EQ(structure.velocity.x, 0.0); // Initial velocity.
+    EXPECT_DOUBLE_EQ(structure.velocity.y, 0.0);
+
+    double dt = 0.016;
+    calculator.applyUnifiedVelocity(*world, structure, dt);
+
+    // Structure velocity should be updated.
+    double metal_density = getMaterialProperties(MaterialType::METAL).density;
+    double expected_vx = (10.0 / metal_density) * dt;
+    double expected_vy = (-5.0 / metal_density) * dt;
+
+    EXPECT_NEAR(structure.velocity.x, expected_vx, 0.001);
+    EXPECT_NEAR(structure.velocity.y, expected_vy, 0.001);
+}
