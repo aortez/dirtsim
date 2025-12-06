@@ -392,6 +392,27 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     return SimRunning{};
 }
 
+State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& /*sm*/)
+{
+    // Mouse events not handled in StartMenu - silently ignore.
+    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
+    return std::move(*this);
+}
+
+State::Any StartMenu::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& /*sm*/)
+{
+    // Mouse events not handled in StartMenu - silently ignore.
+    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
+    return std::move(*this);
+}
+
+State::Any StartMenu::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& /*sm*/)
+{
+    // Mouse events not handled in StartMenu - silently ignore.
+    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
+    return std::move(*this);
+}
+
 } // namespace State
 } // namespace Ui
 } // namespace DirtSim

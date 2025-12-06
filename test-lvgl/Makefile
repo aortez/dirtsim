@@ -95,6 +95,22 @@ format:
 	@echo "Formatting source code..."
 	@find src -name "*.cpp" -o -name "*.h" | xargs clang-format --style=file -i
 
+lint:
+	@echo "Linting JavaScript..."
+	@if [ ! -d "node_modules" ]; then \
+		echo "Installing npm dependencies..."; \
+		npm install; \
+	fi
+	@npm run lint
+
+lint-fix:
+	@echo "Linting and fixing JavaScript..."
+	@if [ ! -d "node_modules" ]; then \
+		echo "Installing npm dependencies..."; \
+		npm install; \
+	fi
+	@npm run lint:fix
+
 clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DEBUG_DIR) $(BUILD_RELEASE_DIR) $(BIN_DIR) lib
@@ -121,6 +137,8 @@ help:
 	@echo "  run          - Run the main sparkle-duck executable"
 	@echo "  run-asan     - Run with AddressSanitizer to detect memory errors"
 	@echo "  format       - Format source code using clang-format"
+	@echo "  lint         - Lint JavaScript files with ESLint"
+	@echo "  lint-fix     - Lint and auto-fix JavaScript files"
 	@echo "  clean        - Remove build directory and binaries"
 	@echo "  clean-cmake  - Remove in-source CMake artifacts"
 	@echo "  help         - Show this help message"

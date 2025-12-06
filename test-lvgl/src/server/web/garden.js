@@ -307,8 +307,8 @@ function displayPeers(peers) {
         allPeers.push(peers[i]);
     }
 
-    for (var i = 0; i < allPeers.length; i++) {
-        var peer = allPeers[i];
+    for (var j = 0; j < allPeers.length; j++) {
+        var peer = allPeers[j];
 
         // Reuse existing div if it exists (preserves video element!).
         var divId = 'peer-' + peer.host + '-' + peer.port;
@@ -355,11 +355,10 @@ function displayPeers(peers) {
         // Only update innerHTML if this is a new div (otherwise we destroy video element!).
         if (!div.querySelector('video')) {
             div.innerHTML = html;
-        }
-        else {
+        } else {
             // Update just the status text, not the whole HTML.
             var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
-            if (stateSpan) stateSpan.textContent = '...';  // Will be updated by queryStatus.
+            if (stateSpan) stateSpan.textContent = '...'; // Will be updated by queryStatus.
         }
 
         // Query status using persistent connections.
@@ -406,10 +405,7 @@ function discoverPeers() {
 
 var peerConnection = null;
 var streamActive = false;
-
-function generateClientId() {
-    return 'browser-' + Math.random().toString(36).substr(2, 9);
-}
+var webrtcClientId = 'browser-' + Math.random().toString(36).substr(2, 9);
 
 function updateStreamButton(text, enabled) {
     var btn = document.getElementById('stream-btn-localhost-7070');
@@ -450,15 +446,12 @@ function startWebRtcStream() {
         return;
     }
 
-    // Generate fresh client ID for each connection attempt.
-    var webrtcClientId = generateClientId();
-
     if (statusSpan) statusSpan.textContent = 'connecting...';
     updateStreamButton('Connecting...', false);
     logDebug('WebRTC: Requesting stream for client ' + webrtcClientId);
 
     // Create peer connection (will be used when we receive offer).
-    var config = { iceServers: [] };  // No STUN needed for same network.
+    var config = { iceServers: [] }; // No STUN needed for same network.
     peerConnection = new RTCPeerConnection(config);
 
     // Handle incoming video track.
@@ -619,7 +612,7 @@ function setupMouseForwarding() {
         var lvglX = Math.floor(x * scaleX);
         var lvglY = Math.floor(y * scaleY);
 
-        // uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
+        uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
     }
 
     video.addEventListener('mousedown', function(e) {
