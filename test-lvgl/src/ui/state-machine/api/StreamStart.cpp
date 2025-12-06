@@ -20,7 +20,7 @@ Command Command::fromJson(const nlohmann::json& j)
 
 nlohmann::json Okay::toJson() const
 {
-    return nlohmann::json{ { "initiated", initiated } };
+    return nlohmann::json{ { "initiated", initiated }, { "sdpOffer", sdpOffer } };
 }
 
 Okay Okay::fromJson(const nlohmann::json& j)
@@ -28,6 +28,9 @@ Okay Okay::fromJson(const nlohmann::json& j)
     Okay ok;
     if (j.contains("initiated")) {
         ok.initiated = j["initiated"].get<bool>();
+    }
+    if (j.contains("sdpOffer")) {
+        ok.sdpOffer = j["sdpOffer"].get<std::string>();
     }
     return ok;
 }

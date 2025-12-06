@@ -19,7 +19,7 @@
 
 namespace DirtSim {
 
-class World; // Forward declaration.
+class World;
 
 namespace Network {
 
@@ -53,15 +53,17 @@ public:
     using BinaryCallback = std::function<void(const std::vector<std::byte>&)>;
     using ConnectionCallback = std::function<void()>;
     using ErrorCallback = std::function<void(const std::string&)>;
-    using JsonDeserializer = std::function<Result<ApiCommand, ApiError>(const std::string&)>;
+    // Generic JSON deserializer - returns std::any to support both Server and UI command variants.
+    using JsonDeserializer = std::function<std::any(const std::string&)>;
+
     // Helper passed to JSON dispatcher for invoking registered handlers.
     using HandlerInvoker = std::function<void(
         std::string commandName, std::vector<std::byte> payload, uint64_t correlationId)>;
 
-    // JSON dispatcher receives ApiCommand variant and handler invoker.
+    // JSON dispatcher receives command variant (as std::any) and handler invoker.
     // It visits the variant, creates typed CWCs with JSON callbacks, and invokes handlers.
     using JsonCommandDispatcher = std::function<void(
-        ApiCommand cmdVariant,
+        std::any cmdVariant,
         std::shared_ptr<rtc::WebSocket> ws,
         uint64_t correlationId,
         HandlerInvoker invokeHandler)>;
@@ -193,6 +195,29 @@ public:
     void broadcastBinary(const std::vector<std::byte>& data);
 
     /**
+     * @brief Send a text message to a specific client by connection ID.
+     *
+     * Used for sending follow-up messages after the initial command response,
+     * such as WebRTC ICE candidates.
+     *
+     * @param connectionId The connection identifier (from CWC.command.connectionId).
+     * @param message The text message to send.
+     * @return Result indicating success or error.
+     */
+    Result<std::monostate, std::string> sendToClient(
+        const std::string& connectionId, const std::string& message);
+
+    /**
+     * @brief Get the connection ID for a WebSocket.
+     *
+     * Creates a new ID if this is a new connection.
+     *
+     * @param ws The WebSocket connection.
+     * @return The connection ID string.
+     */
+    std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws);
+
+    /**
      * @brief Register a typed command handler (server-side).
      *
      * Handler receives CommandWithCallback and calls sendResponse() when done.
@@ -240,6 +265,12 @@ public:
             // Build CWC with callback that sends response in appropriate format.
             CwcT cwc;
             cwc.command = cmd;
+
+            // Populate connectionId if the Command type has that field.
+            if constexpr (requires { cwc.command.connectionId; }) {
+                cwc.command.connectionId = getConnectionId(ws);
+            }
+
             cwc.callback = [this, ws, correlationId, cmdName](ResponseT&& response) {
                 // Check which protocol this client is using.
                 auto protocolIt = clientProtocols_.find(ws);
@@ -346,7 +377,13 @@ private:
     std::map<std::string, CommandHandler> commandHandlers_;
     std::vector<std::shared_ptr<rtc::WebSocket>> connectedClients_;
     std::map<std::shared_ptr<rtc::WebSocket>, Protocol>
-        clientProtocols_;                  // Track protocol per client.
+        clientProtocols_; // Track protocol per client.
+
+    // Connection ID registry for directed messaging.
+    std::atomic<uint64_t> nextConnectionId_{ 1 };
+    std::map<std::string, std::weak_ptr<rtc::WebSocket>> connectionRegistry_; // ID -> connection.
+    std::map<std::shared_ptr<rtc::WebSocket>, std::string> connectionIds_;    // connection -> ID.
+
     JsonDeserializer jsonDeserializer_;    // Injected JSON deserializer (server/UI provides).
     JsonCommandDispatcher jsonDispatcher_; // Injected JSON command dispatcher (server/UI provides).
 

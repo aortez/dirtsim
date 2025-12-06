@@ -306,8 +306,6 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/state-machine/states/Startup.cpp
 
     # UI API commands.
-    src/ui/state-machine/api/DisplayStreamStart.cpp
-    src/ui/state-machine/api/DisplayStreamStop.cpp
     src/ui/state-machine/api/DrawDebugToggle.cpp
     src/ui/state-machine/api/Exit.cpp
     src/ui/state-machine/api/MouseDown.cpp
@@ -327,14 +325,12 @@ add_library(sparkle-duck-ui-lib STATIC
     # UI network.
     src/ui/state-machine/network/CommandDeserializerJson.cpp
     src/ui/state-machine/network/MessageParser.cpp
-    src/ui/state-machine/network/WebSocketServer.cpp
 
     # UI components.
     src/ui/DisplayCapture.cpp
     src/ui/UiComponentManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/rendering/CellRenderer.cpp
-    src/ui/rendering/DisplayStreamer.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp

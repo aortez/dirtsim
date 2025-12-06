@@ -36,12 +36,8 @@ void WebRtcStreamer::setDisplay(lv_display_t* display)
     spdlog::info("WebRtcStreamer: Display set");
 }
 
-void WebRtcStreamer::setSignalingCallback(SignalingCallback callback)
-{
-    signalingCallback_ = std::move(callback);
-}
-
-void WebRtcStreamer::initiateStream(const std::string& clientId)
+std::string WebRtcStreamer::initiateStream(
+    const std::string& clientId, IceCandidateCallback onIceCandidate)
 {
     spdlog::info("WebRtcStreamer: Initiating stream for client {}", clientId);
 
@@ -56,13 +52,10 @@ void WebRtcStreamer::initiateStream(const std::string& clientId)
     config.portRangeBegin = 0; // Use any available port.
     config.portRangeEnd = 0;
 
-    // Enable more verbose logs from libdatachannel for debugging.
-    // config.iceTransportPolicy = rtc::TransportPolicy::All;
-
     auto pc = std::make_shared<rtc::PeerConnection>(config);
 
     // Set up state change callback.
-    pc->onStateChange([this, clientId](rtc::PeerConnection::State state) {
+    pc->onStateChange([clientId](rtc::PeerConnection::State state) {
         spdlog::info("WebRtcStreamer: Client {} state: {}", clientId, static_cast<int>(state));
 
         if (state == rtc::PeerConnection::State::Disconnected
@@ -72,33 +65,30 @@ void WebRtcStreamer::initiateStream(const std::string& clientId)
         }
     });
 
-    // Gathering state callback - send offer when gathering is complete.
-    pc->onGatheringStateChange([this, clientId, wpc = std::weak_ptr<rtc::PeerConnection>(pc)](
-                                   rtc::PeerConnection::GatheringState state) {
+    // ICE candidate callback - trickle ICE candidates to browser as they're gathered.
+    pc->onLocalCandidate([clientId, onIceCandidate](rtc::Candidate candidate) {
+        if (!onIceCandidate) {
+            spdlog::warn("WebRtcStreamer: ICE callback null for client {}", clientId);
+            return;
+        }
+
+        // Format ICE candidate as JSON for browser.
+        nlohmann::json message = { { "type", "candidate" },
+                                   { "clientId", clientId },
+                                   { "candidate", std::string(candidate) },
+                                   { "mid", candidate.mid() } };
+
+        spdlog::info(
+            "WebRtcStreamer: Sending ICE candidate for client {} (mid={})",
+            clientId,
+            candidate.mid());
+        onIceCandidate(message.dump());
+    });
+
+    // Log gathering state changes for debugging.
+    pc->onGatheringStateChange([clientId](rtc::PeerConnection::GatheringState state) {
         spdlog::info(
             "WebRtcStreamer: Client {} gathering state: {}", clientId, static_cast<int>(state));
-        if (state == rtc::PeerConnection::GatheringState::Complete) {
-            auto pc = wpc.lock();
-            if (!pc) {
-                return;
-            }
-
-            auto description = pc->localDescription();
-            if (!description) {
-                spdlog::error("WebRtcStreamer: No local description for {}", clientId);
-                return;
-            }
-
-            // Send offer to browser via signaling callback.
-            nlohmann::json message = { { "type", "offer" },
-                                       { "clientId", clientId },
-                                       { "sdp", std::string(description.value()) } };
-
-            if (signalingCallback_) {
-                signalingCallback_(clientId, message.dump());
-                spdlog::info("WebRtcStreamer: Sent offer to client {}", clientId);
-            }
-        }
     });
 
     // Add video track with H.264.
@@ -149,6 +139,7 @@ void WebRtcStreamer::initiateStream(const std::string& clientId)
     conn.videoTrack = track;
     conn.rtpConfig = rtpConfig;
     conn.srReporter = srReporter;
+    conn.onIceCandidate = onIceCandidate;
     conn.ready = false;
 
     clients_[clientId] = std::move(conn);
@@ -156,13 +147,26 @@ void WebRtcStreamer::initiateStream(const std::string& clientId)
     // Set local description to generate offer and trigger ICE gathering.
     try {
         pc->setLocalDescription();
-        spdlog::info("WebRtcStreamer: Created offer for client {}", clientId);
     }
     catch (const std::exception& e) {
         spdlog::error("WebRtcStreamer: Failed to create offer: {}", e.what());
         clients_.erase(clientId);
-        return;
+        return ""; // Return empty string on error.
     }
+
+    // Get the SDP offer immediately (trickle ICE - candidates come separately).
+    auto description = pc->localDescription();
+    if (!description) {
+        spdlog::error("WebRtcStreamer: No local description for {}", clientId);
+        clients_.erase(clientId);
+        return "";
+    }
+
+    std::string sdpOffer = std::string(description.value());
+    spdlog::info(
+        "WebRtcStreamer: Created offer for client {} ({} bytes)", clientId, sdpOffer.size());
+
+    return sdpOffer;
 }
 
 void WebRtcStreamer::handleAnswer(const std::string& clientId, const std::string& sdpAnswer)

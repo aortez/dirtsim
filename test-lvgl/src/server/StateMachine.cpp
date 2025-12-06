@@ -111,17 +111,23 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     // =========================================================================
 
     // Inject JSON deserializer.
-    service.setJsonDeserializer([](const std::string& json) {
+    service.setJsonDeserializer([](const std::string& json) -> std::any {
         CommandDeserializerJson deserializer;
-        return deserializer.deserialize(json);
+        auto result = deserializer.deserialize(json);
+        if (result.isError()) {
+            throw std::runtime_error(result.errorValue().message);
+        }
+        return result.value(); // Return ApiCommand variant wrapped in std::any.
     });
 
     // Inject JSON command dispatcher.
     service.setJsonCommandDispatcher([this](
-                                         ApiCommand cmdVariant,
+                                         std::any cmdAny,
                                          std::shared_ptr<rtc::WebSocket> ws,
                                          uint64_t correlationId,
                                          Network::WebSocketService::HandlerInvoker invokeHandler) {
+        // Cast back to ApiCommand variant.
+        ApiCommand cmdVariant = std::any_cast<ApiCommand>(cmdAny);
 // Visit the variant and dispatch to appropriate handler.
 #define DISPATCH_JSON_CMD_WITH_RESP(NamespaceType)                                          \
     if (auto* cmd = std::get_if<NamespaceType::Command>(&cmdVariant)) {                     \

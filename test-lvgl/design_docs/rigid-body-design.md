@@ -34,6 +34,7 @@ struct RigidStructure {
     uint32_t organism_id;               // 0 for non-organism structures
 };
 ```
+Is this enough to track the structure's cells properly?
 
 **Full Rigid Body:**
 ```cpp

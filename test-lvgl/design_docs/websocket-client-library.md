@@ -1,518 +1,540 @@
-# WebSocket Client Library Design
+# WebSocketService Design Specification
 
-## ✅ IMPLEMENTATION STATUS (2025-12-06)
+## Overview
 
-**COMPLETE:** WebSocketService unified architecture - UI migration finished!
+**WebSocketService** is a unified WebSocket library supporting both client and server roles simultaneously, with type-safe command/response patterns and dual protocol support (binary zpp_bits + JSON).
 
-### 🎉 Latest Update (2025-12-06 Evening)
+**Location:** `src/core/network/WebSocketService.{h,cpp}`
 
-Completed UI controls migration! All interactive controls now use binary protocol.
+**Purpose:** Type-safe network communication with minimal boilerplate.
 
-**What was fixed:**
-- All UI controls (PhysicsControls, CoreControls, SandboxControls) migrated to WebSocketService
-- Binary command sending with MessageEnvelope protocol
-- Removed dual WebSocket connection issue (wsClient_ + wsService_ → wsService_ only)
-- Fixed physics slider freeze bug (PhysicsSettings now initialized with defaults)
-- Binary callback properly handles both RenderMessages and command responses
-- Deleted old Ui::WebSocketClient class entirely (443 lines removed)
+## Design Principles
 
-**Controls now working:**
-- ✅ Physics sliders (gravity, pressure, cohesion, etc.) - send on release, no flooding
-- ✅ Drop Seed / Drop Dirt Ball buttons
-- ✅ World Size slider
-- ✅ Scenario selector dropdown
-- ✅ All toggles and switches
+### 1. Dual-Role Architecture
 
-**Architecture cleanup:**
-- Single WebSocket connection per UI instance
-- Consistent binary protocol throughout
-- No more JSON in UI→Server communication
-- Command responses consumed asynchronously (no blocking)
+A single `WebSocketService` instance can act as both client and server:
 
-### 🌱 What's Working (2025-12-06)
+**Client role:**
+- Connect to remote endpoints
+- Send typed commands, receive typed responses
+- Handle unsolicited messages via callbacks
 
-**WebSocketService (Network::WebSocketService)**
-- ✅ Renamed from WebSocketClient to WebSocketService
-- ✅ Unified client + server roles in single class
-- ✅ Binary-only protocol (JSON removed from internal communication)
-- ✅ `listen(port)` - Server-side listening
-- ✅ `registerHandler<CwcT>(handler)` - Type-safe command handler registration
-- ✅ `broadcastBinary(data)` - Broadcast to all connected clients
-- ✅ CommandWithCallback integration for async handlers
+**Server role:**
+- Listen for incoming connections
+- Handle commands via registered handlers
+- Broadcast or send directed messages to clients
 
-**Server Migration (Server::StateMachine)**
-- ✅ All 20 API commands registered in `setupWebSocketService()`
-- ✅ Immediate handlers: StateGet, StatusGet, RenderFormatGet, RenderFormatSet
-- ✅ Queued handlers: All others queue to state machine
-- ✅ RenderMessage broadcasting working
-- ✅ Old Server::WebSocketServer unused (ready for deletion)
+Example - UI StateMachine uses both:
+```cpp
+// Server role: listen for CLI/browser commands
+wsService_->listen(7070);
+wsService_->registerHandler<UiApi::StatusGet::Cwc>(handler);
 
-**CLI Refactor (Client::CommandDispatcher)**
-- ✅ Type-safe dispatcher using template metaprogramming
-- ✅ Auto-registers commands with response deserializers
-- ✅ Fluent syntax: `cli server StatusGet`, `cli ui SimPause`
-- ✅ Default addresses (no more typing URLs!)
-- ✅ Binary protocol with full response data display
-- ✅ CamelCase command names everywhere
-
-**UI Migration (COMPLETE!)**
-- ✅ All UI controls migrated to WebSocketService (PhysicsControls, CoreControls, SandboxControls)
-- ✅ Binary command sending with envelope protocol
-- ✅ Single unified connection (no more dual wsClient_/wsService_)
-- ✅ Binary callback handles both RenderMessages and command responses
-- ✅ PhysicsSettings initialized with defaults (prevents timescale=0 bugs)
-- ✅ Old Ui::WebSocketClient deleted (443 lines removed)
-- ✅ All controls functional (sliders, buttons, toggles)
-
-### Known Issues
-1. **libdatachannel buffering:** RenderMessages arrive in bursts with ~2 second initial delay. Messages buffer in libdatachannel WebSocket and deliver all at once instead of streaming. System works but rendering startup is delayed. Need to investigate rtc::WebSocketConfiguration settings.
-2. **Response serialization:** Some commands (PeersGet, TimerStatsGet) have complex response types that ReflectSerializer can't auto-serialize. Need custom toJson() implementations.
-3. **Remaining old code:** Ui::WebSocketServer still used for CLI commands on port 7070. Ready to migrate to wsService_->listen(7070) when needed.
-
----
-
-## Original Problem Statement
-
-We previously had **two separate** WebSocketClient implementations:
-
-1. **UI WebSocketClient** (`src/ui/state-machine/network/WebSocketClient.{h,cpp}`)
-   - Wraps `rtc::WebSocket` from libdatachannel
-   - Sends commands to DSSM server (port 8080)
-   - Receives binary RenderMessages, converts to UiUpdateEvents
-   - Integrated with UI EventSink for state machine routing
-   - Frame throttling (60 FPS max)
-   - Blocking `sendAndReceive(string) -> string` for request/response
-
-2. **CLI WebSocketClient** (`src/cli/WebSocketClient.{h,cpp}`)
-   - Also wraps `rtc::WebSocket`
-   - Sends commands to server or UI
-   - Simple blocking send/receive
-   - No EventSink dependency
-   - Used for scripting and testing
-
-**Code duplication:** Both implement similar core functionality (connect, send, receive, timeout handling) but can't share code.
-
-## Problems
-
-1. **Duplication**: Connection management, send/receive logic duplicated between UI and CLI clients
-2. **Type safety**: Both use `bool` or `string` returns, losing error context
-3. **Inflexibility**: Can't easily add new clients (test harnesses, peer-to-peer, monitoring tools)
-4. **Coupling**: UI client tightly coupled to EventSink and UiUpdateEvent
-5. **Error handling**: Empty string `""` or `false` loses information about what failed
-
-## Proposed Architecture
-
-Create a **general-purpose WebSocketClient library** that any component can use:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  WebSocketClient (general library)                              │
-│                                                                  │
-│  Core Features:                                                 │
-│  - Connection management (connect, disconnect, isConnected)     │
-│  - Send text/binary messages                                    │
-│  - Async receive via callbacks                                  │
-│  - Type-safe command/response (template-based)                  │
-│  - Proper error handling (Result types)                         │
-│  - No component-specific dependencies                           │
-└─────────────────────────────────────────────────────────────────┘
-                              ↑
-                              │ (use as-is or wrap)
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-┌───────────────┐   ┌─────────────────┐   ┌────────────────┐
-│  UiClient     │   │  CliClient      │   │  PeerClient    │
-│  (+ EventSink)│   │  (simple)       │   │  (p2p comms)   │
-└───────────────┘   └─────────────────┘   └────────────────┘
+// Client role: connect to DSSM server for world data
+wsService_->connect("ws://localhost:8080");
+wsService_->sendCommand<Api::StateGet::Command>({});
 ```
 
-**Specific wrappers** add component-specific features:
-- UiClient: EventSink integration, RenderMessage → UiUpdateEvent conversion
-- CliClient: Simple blocking semantics for scripts
-- PeerClient: Server-to-server communication
+### 2. Protocol Flexibility
 
-## API Design
+Two wire formats, auto-detected by WebSocket frame type:
 
-### Core WebSocketClient
+**Binary (zpp_bits):**
+- Zero-copy serialization
+- Compact representation
+- Used for high-frequency data (RenderMessages at 60fps)
+
+**JSON:**
+- Human-readable
+- Browser-native (JavaScript)
+- Used by CLI and web dashboard
+
+The service tracks which protocol each client uses and responds in the same format.
+
+### 3. Type Safety
+
+Commands are strongly-typed structs:
 
 ```cpp
-namespace DirtSim {
-namespace Network {
+// Define command structure
+namespace Api::StateGet {
+    struct Command { };  // No parameters needed
+    struct Okay {
+        std::string state;
+        uint32_t width;
+        uint32_t height;
+    };
+    using Response = Result<Okay, ApiError>;
+    using Cwc = CommandWithCallback<Command, Response>;
+}
 
-class WebSocketClient {
-public:
-    // Connection management.
-    Result<void, std::string> connect(const std::string& url);
-    void disconnect();
-    bool isConnected() const;
-    std::string getUrl() const;
-
-    // Raw send (returns immediately).
-    Result<void, std::string> send(const std::string& message);
-    Result<void, std::string> sendBinary(const std::vector<std::byte>& data);
-
-    // Blocking send and receive with timeout.
-    Result<std::string, std::string> sendAndReceive(
-        const std::string& message,
-        int timeoutMs = 5000);
-
-    // Type-safe command/response (blocking).
-    template <ApiCommandType CommandT>
-    Result<typename CommandT::OkayType, std::string> sendAndReceive(
-        const CommandT& cmd,
-        int timeoutMs = 5000)
-    {
-        // Serialize command to JSON.
-        nlohmann::json json = cmd.toJson();
-        json["command"] = CommandT::name();
-
-        // Send and wait for response.
-        auto jsonResult = sendAndReceive(json.dump(), timeoutMs);
-        if (jsonResult.isError()) {
-            return Result<typename CommandT::OkayType, std::string>::error(
-                jsonResult.errorValue());
-        }
-
-        // Parse response JSON.
-        nlohmann::json responseJson;
-        try {
-            responseJson = nlohmann::json::parse(jsonResult.value());
-        } catch (const std::exception& e) {
-            return Result<typename CommandT::OkayType, std::string>::error(
-                std::string("Invalid JSON response: ") + e.what());
-        }
-
-        // Check for error response.
-        if (responseJson.contains("error")) {
-            return Result<typename CommandT::OkayType, std::string>::error(
-                responseJson["error"].get<std::string>());
-        }
-
-        // Deserialize success response.
-        if (!responseJson.contains("value")) {
-            return Result<typename CommandT::OkayType, std::string>::error(
-                "Response missing 'value' field");
-        }
-
-        try {
-            // Handle monostate vs structured response.
-            if constexpr (std::is_same_v<typename CommandT::OkayType, std::monostate>) {
-                return Result<typename CommandT::OkayType, std::string>::okay(
-                    std::monostate{});
-            } else {
-                auto okay = ReflectSerializer::from_json<typename CommandT::OkayType>(
-                    responseJson["value"]);
-                return Result<typename CommandT::OkayType, std::string>::okay(
-                    std::move(okay));
-            }
-        } catch (const std::exception& e) {
-            return Result<typename CommandT::OkayType, std::string>::error(
-                std::string("Failed to deserialize response: ") + e.what());
-        }
-    }
-
-    // Async receive via callback (for streaming/events).
-    using MessageCallback = std::function<void(const std::string&)>;
-    using BinaryCallback = std::function<void(const std::vector<std::byte>&)>;
-    void onMessage(MessageCallback callback);
-    void onBinary(BinaryCallback callback);
-
-    // Connection event callbacks.
-    using ConnectionCallback = std::function<void()>;
-    using ErrorCallback = std::function<void(const std::string&)>;
-    void onConnected(ConnectionCallback callback);
-    void onDisconnected(ConnectionCallback callback);
-    void onError(ErrorCallback callback);
-
-private:
-    std::shared_ptr<rtc::WebSocket> ws_;
-    std::string url_;
-
-    // For blocking sendAndReceive.
-    std::string response_;
-    bool responseReceived_;
-    std::mutex responseMutex_;
-    std::condition_variable responseCv_;
-
-    // Callbacks.
-    MessageCallback messageCallback_;
-    BinaryCallback binaryCallback_;
-    ConnectionCallback connectedCallback_;
-    ConnectionCallback disconnectedCallback_;
-    ErrorCallback errorCallback_;
-};
-
-} // namespace Network
-} // namespace DirtSim
+// Compiler enforces correct types
+auto result = wsService->sendCommand<Api::StateGet::Command>({});
+if (result.isOkay()) {
+    auto state = result.value();  // Type: StateGet::Okay
+    spdlog::info("Server state: {}", state.state);
+}
 ```
 
-### Component-Specific Wrappers
+Type errors caught at compile time. No casting, no variant visiting at call sites.
 
-**UI Client (with EventSink integration):**
+### 4. Zero-Boilerplate Handlers
+
+Register command handlers in one line:
+
 ```cpp
-namespace DirtSim {
-namespace Ui {
+// Immediate response
+wsService->registerHandler<Api::StatusGet::Cwc>([](Api::StatusGet::Cwc cwc) {
+    cwc.sendResponse(Api::StatusGet::Response::okay(getStatus()));
+});
 
-class UiWebSocketClient : public Network::WebSocketClient {
-public:
-    void setEventSink(EventSink* sink);
-
-private:
-    EventSink* eventSink_;
-
-    // Override binary callback to convert RenderMessage -> UiUpdateEvent.
-    void handleBinaryMessage(const std::vector<std::byte>& data);
-};
-
-} // namespace Ui
-} // namespace DirtSim
+// Queued to state machine
+wsService->registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) {
+    queueEvent(cwc);  // State machine calls sendResponse() when ready
+});
 ```
 
-**CLI Client (simple pass-through):**
+Infrastructure handles deserialization, response serialization, protocol detection, and error handling.
+
+### 5. Directed Messaging
+
+Send messages to specific clients (not just broadcast):
+
 ```cpp
-// CLI can just use Network::WebSocketClient directly, no wrapper needed.
+// Connection IDs auto-assigned when clients connect
+std::string connId = wsService->getConnectionId(ws);
+
+// Send to specific client
+wsService->sendToClient(connId, jsonMessage);
 ```
 
-## Migration Plan
+**Use case:** WebRTC signaling - ICE candidates must go to the specific peer that initiated the stream, not broadcast to all connected browsers.
 
-See **Migration Phases** in the "Binary Protocol: All-in on zpp_bits" section below for the detailed plan.
+## Architecture
 
-**Summary:**
-1. **Phase 1a:** Define `MessageEnvelope` struct and test serialization.
-2. **Phase 1b:** Add dual-format support to server (JSON + binary).
-3. **Phase 2:** Create general `WebSocketClient` with binary support.
-4. **Phase 3:** Migrate CLI to binary protocol.
-5. **Phase 4:** Migrate UI client.
-6. **Phase 5:** Optional cleanup of JSON path.
+### Component Diagram
 
-## Benefits
+```
+┌────────────────────────────────────────────────────┐
+│              WebSocketService                      │
+│                                                    │
+│  Client Methods          Server Methods            │
+│  ───────────────         ────────────────          │
+│  • connect(url)          • listen(port)            │
+│  • sendCommand<T>()      • registerHandler<T>()    │
+│  • disconnect()          • sendToClient(id, msg)   │
+│  • onBinary(callback)    • broadcastBinary(data)   │
+│                          • stopListening()         │
+│                                                    │
+│  Internal Infrastructure:                          │
+│  • Correlation ID tracking (request/response)      │
+│  • Per-client protocol detection (binary/JSON)     │
+│  • Connection registry (ID ↔ WebSocket mapping)    │
+│  • Result<T, Error> return types                   │
+└────────────────────────────────────────────────────┘
+```
 
-1. **Code reuse**: Write connection/send/receive logic once
-2. **Type safety**: `Result<OkayType, Error>` instead of `bool`/`string`
-3. **Better errors**: Know exactly what failed (timeout, disconnected, parse error, etc.)
-4. **Flexibility**: Easy to add new clients (test harnesses, peer discovery, monitoring)
-5. **Consistency**: Same API across all components
-6. **Maintainability**: Bug fixes and improvements benefit all clients
+### Message Envelope (Binary Protocol)
 
-## Binary Protocol: All-in on zpp_bits
-
-### Motivation
-
-We've evolved through several serialization formats:
-1. **JSON** - Universal, human-readable, but verbose and slow for large data.
-2. **MessagePack** - More compact, but still too slow for frame data.
-3. **zpp_bits** - Blazing fast, zero-copy, compile-time reflection. Currently used for RenderMessages.
-
-**Decision:** Go all-in on zpp_bits for command/response as well as world data.
-
-**Rationale:**
-- **Performance**: zpp_bits is significantly faster than JSON/MessagePack.
-- **Consistency**: One serialization format everywhere simplifies code and mental model.
-- **CLI as universal interface**: External tools can use CLI to send commands; they don't need to speak binary directly.
-- **Existing infrastructure**: Command structs are aggregates that zpp_bits handles automatically.
-
-### Binary Protocol Design
-
-#### Envelope Struct
-
-A single unified envelope for both commands and responses:
+Binary messages use a typed envelope:
 
 ```cpp
-// src/core/network/BinaryProtocol.h
-
-namespace DirtSim {
-namespace Network {
-
-/// Unified message envelope for binary protocol.
-/// Works for both commands (client→server) and responses (server→client).
 struct MessageEnvelope {
-    uint64_t id;                      // Correlation ID for request/response matching.
-    std::string message_type;         // Message type ("state_get", "state_get_response", etc.).
-    std::vector<std::byte> payload;   // zpp_bits serialized content.
+    uint64_t id;                     // Correlation ID for matching requests/responses
+    std::string message_type;        // "StateGet", "StateGet_response", etc.
+    std::vector<std::byte> payload;  // Command or Result (zpp_bits serialized)
 };
-
-} // namespace Network
-} // namespace DirtSim
 ```
 
-**For commands:**
-- `message_type` = command name (e.g., "state_get", "sim_run")
-- `payload` = zpp_bits serialized `Command` struct
+The entire envelope is zpp_bits serialized before sending.
 
-**For responses:**
-- `message_type` = command name + "_response" (e.g., "state_get_response")
-- `payload` = zpp_bits serialized `Result<OkayType, ApiError>`
+### CommandWithCallback Pattern
 
-The `Result` type already encodes success/failure, so no separate `is_error` flag needed.
+Commands are bundled with their response callbacks:
 
-#### Wire Format
+```cpp
+template <typename CommandT, typename ResponseT>
+struct CommandWithCallback {
+    CommandT command;
+    std::function<void(ResponseT)> callback;
 
-WebSocket frame types determine the protocol:
-- **Text frame** → JSON protocol (legacy, for backward compatibility).
-- **Binary frame** → zpp_bits protocol (new, preferred).
-
-This enables a smooth dual-format transition period.
-
-#### Message Flow
-
-```
-Client                                      Server
-──────                                      ──────
-Command struct
-    │
-    ▼
-serialize Command to payload (zpp_bits)
-    │
-    ▼
-MessageEnvelope{id, "state_get", payload}
-    │
-    ▼
-serialize envelope (zpp_bits)
-    │
-    ▼
-send as binary frame ─────────────────────► receive binary frame
-                                                │
-                                                ▼
-                                           deserialize envelope (zpp_bits)
-                                                │
-                                                ▼
-                                           route by message_type
-                                                │
-                                                ▼
-                                           deserialize payload to Command type
-                                                │
-                                                ▼
-                                           execute handler → Result<OkayType, ApiError>
-                                                │
-                                                ▼
-                                           serialize Result to payload (zpp_bits)
-                                                │
-                                                ▼
-                                           MessageEnvelope{id, "state_get_response", payload}
-                                                │
-                                                ▼
-receive binary frame ◄───────────────────── send as binary frame
-    │
-    ▼
-deserialize envelope (zpp_bits)
-    │
-    ▼
-deserialize payload to Result<OkayType, ApiError>
-    │
-    ▼
-return Result to caller
+    void sendResponse(ResponseT&& response);  // Invoke callback once
+};
 ```
 
-### Dual-Format Migration Strategy
+**Benefits:**
+- Handler receives everything needed to respond
+- Can queue CWC to state machine for async processing
+- Response callback already knows which client to send to
+- Prevents double-send bugs (asserts if called twice)
 
-The key insight: **nothing breaks during migration**. Server learns to speak both protocols, then clients migrate one at a time.
+## Usage Examples
 
-```
-┌─────────────────────────────────────┐
-│            Server                    │
-│  ┌─────────────────────────────┐    │
-│  │     Message Handler         │    │
-│  │  ┌───────────┬───────────┐  │    │
-│  │  │ Text Frame│Binary Frame│ │    │
-│  │  │  (JSON)   │ (zpp_bits) │ │    │
-│  │  └─────┬─────┴─────┬─────┘  │    │
-│  │        │           │        │    │
-│  │        ▼           ▼        │    │
-│  │   JSON Handler  Binary      │    │
-│  │   (existing)    Handler     │    │
-│  │                 (new)       │    │
-│  └─────────────────────────────┘    │
-│                                      │
-│  Response in SAME FORMAT as request  │
-└─────────────────────────────────────┘
-          ▲                 ▲
-          │                 │
-     JSON │                 │ Binary
-          │                 │
-   ┌──────┴──┐         ┌────┴────┐
-   │Old Client│         │New Client│
-   │  (JSON)  │         │(zpp_bits)│
-   └──────────┘         └──────────┘
-```
+### Server: Accept Connections and Handle Commands
 
-### Migration Phases
+```cpp
+// Create and configure service
+auto wsService = std::make_unique<Network::WebSocketService>();
 
-#### Phase 1a: Define Binary Protocol (no behavior change)
-- Create `src/core/network/BinaryProtocol.h` with unified `MessageEnvelope` struct.
-- Add zpp_bits serialization support.
-- Unit tests for envelope serialization roundtrip.
-- Unit tests for `Result<T, ApiError>` serialization roundtrip.
+// Register binary handlers (one-liners)
+wsService->registerHandler<Api::StateGet::Cwc>([this](Api::StateGet::Cwc cwc) {
+    cwc.sendResponse(Api::StateGet::Response::okay(getCurrentState()));
+});
 
-#### Phase 1b: Server Dual-Format Support (backward compatible)
-- Modify server message handler to detect frame type.
-- Text frame → existing JSON path (unchanged).
-- Binary frame → new zpp_bits path.
-- Response uses same format as request.
-- All existing tests pass (they use JSON).
-- Add new tests for binary path.
+wsService->registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) {
+    queueEvent(cwc);  // State machine responds later
+});
 
-#### Phase 2: General WebSocketClient Library
-- Create `src/core/network/WebSocketClient.{h,cpp}`.
-- Support both JSON and binary protocols.
-- Add `sendCommand<T>` with format selection (default: binary).
-- Result<> return types for proper error handling.
-- Correlation ID support for multiplexed requests.
+// Set up JSON protocol support (for CLI/browser clients)
+wsService->setJsonDeserializer([](const std::string& json) -> std::any {
+    CommandDeserializerJson deserializer;
+    auto result = deserializer.deserialize(json);
+    if (result.isError()) {
+        throw std::runtime_error(result.errorValue().message);
+    }
+    return result.value();  // Return ApiCommand variant in std::any
+});
 
-#### Phase 3: Migrate CLI Client
-- Replace `src/cli/WebSocketClient` with `Network::WebSocketClient`.
-- CLI uses binary protocol by default.
-- Add `--json` flag for debugging (sends JSON instead).
-- Test all CLI commands work with binary protocol.
+wsService->setJsonCommandDispatcher([this](
+    std::any cmdAny,
+    std::shared_ptr<rtc::WebSocket> ws,
+    uint64_t correlationId,
+    HandlerInvoker invokeHandler) {
+    // Cast to your variant type and dispatch
+    ApiCommand cmd = std::any_cast<ApiCommand>(cmdAny);
+    // Use macros or visitor pattern to invoke registered handlers
+});
 
-#### Phase 4: Migrate UI Client
-- Create thin `UiWebSocketClient` wrapper.
-- Adds EventSink integration for RenderMessage routing.
-- Uses binary protocol for commands.
-- Test UI interactions.
-
-#### Phase 5: Cleanup (optional)
-- Consider removing JSON command path from server.
-- Or keep it for debugging/external tool compatibility.
-- Update documentation.
-
-### CLI as Universal Interface
-
-External tools that need to communicate with the system can use CLI:
-
-```bash
-# CLI handles binary protocol internally, presents JSON to user.
-./cli state_get ws://localhost:8080
-# Output: {"worldData": {...}}
-
-# Or pipe JSON in.
-echo '{"scenario_id": "sandbox"}' | ./cli sim_run ws://localhost:8080
+// Start listening
+auto result = wsService->listen(8080);
 ```
 
-This keeps the binary protocol as an internal optimization while maintaining a human-friendly interface.
+### Client: Connect and Send Commands
 
-## Resolved Questions
+```cpp
+// Create service
+auto wsService = std::make_unique<Network::WebSocketService>();
 
-1. **Header-only vs compiled?** Template methods (sendCommand<T>) in header, blocking logic in .cpp.
-2. **Binary message routing?** Callbacks let each client decide how to handle binary data.
-3. **Namespace?** `DirtSim::Network` - it's specifically about networking.
-4. **Serialization format?** zpp_bits for everything (commands and world data).
+// Connect to server
+auto connectResult = wsService->connect("ws://localhost:8080");
+if (connectResult.isError()) {
+    spdlog::error("Connection failed: {}", connectResult.errorValue());
+    return;
+}
 
-## Open Questions
+// Send typed command (blocks until response)
+auto stateResult = wsService->sendCommand<Api::StateGet::Command>({});
+if (stateResult.isOkay()) {
+    auto state = stateResult.value();
+    spdlog::info("World size: {}x{}", state.width, state.height);
+}
 
-1. Should we also generalize WebSocketServer with the same dual-format support?
-2. Do we need async (non-blocking) send with futures/callbacks?
-3. Should CLI keep a `--json` debug mode, or is that unnecessary complexity?
+// Handle broadcasts
+wsService->onBinary([](const std::vector<std::byte>& data) {
+    // Deserialize RenderMessage and update display
+});
 
-## Implementation Notes
+// Cleanup
+wsService->disconnect();
+```
 
-- Keep the existing EventSink integration working (don't break UI)
-- Use `rtc::WebSocket` as the underlying transport (already working well)
-- Type-safe template methods should be header-only for zero-cost abstraction
-- Blocking methods can be in .cpp file
-- Consider thread safety for blocking receive (mutex + condition variable)
+### Commands That Need Follow-Up Messages
 
-## Related Work
+For commands that need to send additional messages after the initial response (like WebRTC ICE candidates):
 
-- Current WebSocket clients already use `rtc::WebSocket` from libdatachannel
-- ResponseSerializerJson and CommandDeserializerJson provide (de)serialization
-- All API commands now have `OkayType` aliases (preparation for this work)
+**1. Add `connectionId` field to command:**
+```cpp
+struct StreamStart::Command {
+    std::string clientId;     // Application-level client identifier
+    std::string connectionId; // Auto-populated by registerHandler
+};
+```
+
+**2. Infrastructure auto-populates it:**
+```cpp
+// In registerHandler template (automatic)
+if constexpr (requires { cwc.command.connectionId; }) {
+    cwc.command.connectionId = getConnectionId(ws);
+}
+```
+
+**3. Handler uses it for directed messaging:**
+```cpp
+wsService->registerHandler<UiApi::StreamStart::Cwc>([this](UiApi::StreamStart::Cwc cwc) {
+    std::string connectionId = cwc.command.connectionId;
+
+    // Create callback for follow-up messages
+    auto sendIceCandidate = [this, connectionId](const std::string& json) {
+        wsService_->sendToClient(connectionId, json);
+    };
+
+    // Process command with callback
+    std::string offer = webRtcStreamer_->initiateStream(
+        cwc.command.clientId,
+        sendIceCandidate  // Called later when ICE candidates are ready
+    );
+
+    // Send initial response
+    cwc.sendResponse(UiApi::StreamStart::Response::okay({
+        .initiated = true,
+        .sdpOffer = offer
+    }));
+});
+```
+
+## Key Design Decisions
+
+### Dual Protocol: Binary + JSON
+
+**Why support both?**
+- **Binary:** Performance-critical paths (60fps world updates, ~100KB per frame)
+- **JSON:** Human tooling (CLI output), browser compatibility, debugging
+
+**How it works:**
+- WebSocket frame type determines protocol (binary frame vs text frame)
+- Service tracks per-client preference
+- Response sent in same format as request
+
+**Trade-off:** Slight complexity in handler registration, but enables gradual migration and tool compatibility.
+
+### std::any for Generic Variant Support
+
+**Problem:** Different components use different command variant types
+- Server: `ApiCommand` (20 server commands)
+- UI: `UiApiCommand` (15 UI commands)
+
+**Solution:** JsonCommandDispatcher uses `std::any`
+```cpp
+using JsonCommandDispatcher = std::function<void(
+    std::any cmdVariant,  // Can hold ApiCommand OR UiApiCommand
+    std::shared_ptr<rtc::WebSocket> ws,
+    uint64_t correlationId,
+    HandlerInvoker invokeHandler
+)>;
+```
+
+Each component's dispatcher casts to its own variant type. Type-safe within each component, flexible across components.
+
+### String-Based Connection IDs
+
+**Alternative considered:** Store `std::shared_ptr<rtc::WebSocket>` in command structs.
+
+**Problems with WebSocket pointers:**
+- Not serializable (zpp_bits can't handle shared_ptr to opaque types)
+- Tight coupling to libdatachannel
+- Can't work across process boundaries
+
+**String-based IDs:**
+- Serializable
+- Decoupled from transport layer
+- Service manages ID→WebSocket mapping internally
+- Auto-generated ("conn_1", "conn_2", etc.)
+
+**When to use:** Add `std::string connectionId;` field to commands that need directed follow-up messaging (WebRTC signaling, streaming protocols, etc.).
+
+### Synchronous vs Async Responses
+
+**WebRTC case study:** StreamStart originally used async callback for SDP offer.
+
+**Original flow:**
+1. StreamStart arrives
+2. Immediate response: `{"initiated": true}`
+3. Later (async): SDP offer sent via broadcast callback
+4. Browser waits for separate offer message
+
+**New flow:**
+1. StreamStart arrives
+2. Generate SDP offer synchronously
+3. Response includes offer: `{"initiated": true, "sdpOffer": "v=0..."}`
+4. Browser processes offer immediately
+
+**Benefits:**
+- Faster connection setup (~20ms vs ~200ms)
+- Simpler browser code (no separate message listener)
+- Cleaner request/response semantics
+- Trickle ICE is modern WebRTC standard
+
+**Trade-off:** Handler blocks slightly longer (~20ms), but it's worth it for cleaner design.
+
+## Wire Protocol
+
+### Binary Frame
+
+```
+WebSocket Binary Frame
+│
+├─ MessageEnvelope (zpp_bits serialized)
+│  ├─ id: uint64_t
+│  ├─ message_type: string
+│  └─ payload: vector<byte>
+│     │
+│     └─ Command struct OR Result<Okay, Error> (zpp_bits)
+```
+
+### JSON Frame
+
+```json
+// Command
+{
+  "id": 12345,
+  "command": "StateGet"
+}
+
+// Success Response
+{
+  "id": 12345,
+  "success": true,
+  "state": "Idle",
+  "width": 100,
+  "height": 100
+}
+
+// Error Response
+{
+  "id": 12345,
+  "error": "World not initialized"
+}
+```
+
+## Implementation Details
+
+### Handler Registration Flow
+
+When you call `registerHandler<CwcT>(handler)`:
+
+1. **Extract command name** from `CommandT::name()`
+2. **Create generic wrapper** that:
+   - Deserializes payload → typed Command
+   - Populates `connectionId` (if field exists)
+   - Creates CWC with response callback
+   - Detects client protocol (JSON/binary)
+   - Serializes response in appropriate format
+3. **Store in command registry** keyed by command name
+
+### Connection ID Auto-Population
+
+Uses C++20 `requires` for compile-time field detection:
+
+```cpp
+if constexpr (requires { cwc.command.connectionId; }) {
+    cwc.command.connectionId = getConnectionId(ws);
+}
+```
+
+Zero overhead for commands without the field. Commands opt-in by declaring:
+```cpp
+struct MyCommand {
+    // ... other fields ...
+    std::string connectionId;  // Infrastructure fills this
+};
+```
+
+### Error Handling
+
+**Expected errors** (network timeout, command validation failure):
+- Returned as `Result<T, Error>`
+- Sent back to client with correlation ID
+- Client handles gracefully
+
+**Programmer errors** (invalid serialization, null checks):
+- Throw exceptions
+- Logged and connection may close
+- Should not happen in correct code
+
+### Thread Safety
+
+- **Client-side:** Blocking `sendCommand` uses mutex + condition variable for response waiting
+- **Server-side:** Handler callbacks may be invoked from WebSocket thread
+- **State machine queueing:** Use `queueEvent(cwc)` to move processing to main thread
+
+## Best Practices
+
+### When to Use Directed Messaging
+
+Add `connectionId` to commands that need follow-up messages:
+- ✅ WebRTC signaling (ICE candidates after initial offer)
+- ✅ Streaming protocols (chunked data delivery)
+- ✅ Long-running operations with progress updates
+- ❌ Simple request/response (use CWC callback instead)
+
+### When to Queue vs Respond Immediately
+
+**Immediate response** (in registerHandler callback):
+- Read-only queries (StatusGet, StateGet)
+- Fast operations (<1ms)
+- No state machine interaction needed
+
+**Queued response** (via state machine):
+- State transitions (SimRun, Reset)
+- Operations requiring exclusive access
+- Anything that might take >1ms
+
+### Protocol Selection
+
+**Use binary when:**
+- High frequency (>10Hz updates)
+- Large payloads (>1KB)
+- Between internal services
+
+**Use JSON when:**
+- CLI tool output (humans read it)
+- Browser clients (JavaScript native)
+- Debugging protocol issues
+- External tool integration
+
+## Component Integration
+
+### Server (DSSM)
+- Listens on port 8080
+- 20 API commands registered
+- Broadcasts RenderMessages to connected UIs (binary)
+- Accepts JSON from CLI for debugging
+
+### UI Client
+- Dual role: client (to server) + server (for CLI/browser)
+- Connects to server port 8080 for world data (binary)
+- Listens on port 7070 for control commands (JSON from browser)
+- 15 UI commands registered
+
+### CLI Tool
+- Pure client role
+- Sends JSON commands (human-friendly)
+- Type-safe CommandDispatcher wraps WebSocketService
+
+### Browser Dashboard
+- Connects to UI port 7070
+- Sends JSON commands (StatusGet, StreamStart, etc.)
+- Receives JSON responses
+- WebRTC video via separate signaling
+
+## Files
+
+**Core:**
+- `src/core/network/WebSocketService.{h,cpp}` - Main service
+- `src/core/network/BinaryProtocol.h` - MessageEnvelope, serialization helpers
+- `src/core/CommandWithCallback.h` - CWC template
+
+**Server:**
+- `src/server/StateMachine.cpp::setupWebSocketService()` - Handler registration
+- `src/server/network/CommandDeserializerJson.{h,cpp}` - JSON → ApiCommand
+
+**UI:**
+- `src/ui/state-machine/StateMachine.cpp::setupWebSocketService()` - Handler registration
+- `src/ui/state-machine/network/CommandDeserializerJson.{h,cpp}` - JSON → UiApiCommand
+
+**CLI:**
+- `src/cli/CommandDispatcher.{h,cpp}` - Type-safe command interface
+
+## Current Limitations
+
+1. **libdatachannel buffering:** RenderMessages may arrive in bursts with ~2s initial delay. Investigate rtc::WebSocketConfiguration settings for tuning.
+
+2. **Complex response types:** Some responses (PeersGet, TimerStatsGet) have nested structures that ReflectSerializer can't auto-serialize. Require custom toJson() implementations.
+
+## Future Enhancements
+
+1. **Binary CLI mode** - Optional `--binary` flag for performance testing without JSON overhead
+2. **Connection pooling** - Reuse connections for multiple requests
+3. **Compression** - zstd for large payloads (fractal snapshots, full world dumps)
+4. **Peer-to-peer** - Server-to-server mesh networking using WebSocketService
+5. **Request pipelining** - Send multiple commands before waiting for responses

@@ -2,6 +2,12 @@
 
 #include <cassert>
 #include <functional>
+#include <memory>
+
+// Forward declaration for source connection tracking.
+namespace rtc {
+class WebSocket;
+}
 
 /**
  * @brief Bundles a command with its response callback for async command handling.

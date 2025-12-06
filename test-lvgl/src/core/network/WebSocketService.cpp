@@ -422,6 +422,55 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
     }
 }
 
+std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws)
+{
+    // Check if we already have an ID for this connection.
+    auto it = connectionIds_.find(ws);
+    if (it != connectionIds_.end()) {
+        return it->second;
+    }
+
+    // Generate new ID.
+    uint64_t id = nextConnectionId_.fetch_add(1);
+    std::string connectionId = "conn_" + std::to_string(id);
+
+    // Register in both maps.
+    connectionIds_[ws] = connectionId;
+    connectionRegistry_[connectionId] = ws;
+
+    spdlog::debug("WebSocketService: Assigned connection ID '{}' to client", connectionId);
+    return connectionId;
+}
+
+Result<std::monostate, std::string> WebSocketService::sendToClient(
+    const std::string& connectionId, const std::string& message)
+{
+    // Look up the connection.
+    auto it = connectionRegistry_.find(connectionId);
+    if (it == connectionRegistry_.end()) {
+        return Result<std::monostate, std::string>::error("Unknown connection ID: " + connectionId);
+    }
+
+    // Check if connection is still alive.
+    auto ws = it->second.lock();
+    if (!ws || !ws->isOpen()) {
+        // Clean up stale entry.
+        connectionRegistry_.erase(it);
+        return Result<std::monostate, std::string>::error("Connection closed: " + connectionId);
+    }
+
+    // Send the message.
+    try {
+        ws->send(message);
+        spdlog::debug(
+            "WebSocketService: Sent message to {} ({} bytes)", connectionId, message.size());
+        return Result<std::monostate, std::string>::okay({});
+    }
+    catch (const std::exception& e) {
+        return Result<std::monostate, std::string>::error(std::string("Send failed: ") + e.what());
+    }
+}
+
 void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
     spdlog::info("WebSocketService: Client connected");
@@ -448,6 +497,13 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
             std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
             connectedClients_.end());
         clientProtocols_.erase(ws);
+
+        // Clean up connection registry.
+        auto idIt = connectionIds_.find(ws);
+        if (idIt != connectionIds_.end()) {
+            connectionRegistry_.erase(idIt->second);
+            connectionIds_.erase(idIt);
+        }
     });
 
     // Set up error handler.
@@ -541,13 +597,13 @@ void WebSocketService::onClientMessageJson(
     }
 
     // Deserialize JSON command using injected deserializer.
-    auto cmdResult = jsonDeserializer_(jsonText);
-
-    if (cmdResult.isError()) {
-        spdlog::error(
-            "WebSocketService: JSON deserialization failed: {}", cmdResult.errorValue().message);
-        nlohmann::json errorResponse = { { "id", correlationId },
-                                         { "error", cmdResult.errorValue().message } };
+    std::any cmdAny;
+    try {
+        cmdAny = jsonDeserializer_(jsonText);
+    }
+    catch (const std::exception& e) {
+        spdlog::error("WebSocketService: JSON deserialization failed: {}", e.what());
+        nlohmann::json errorResponse = { { "id", correlationId }, { "error", e.what() } };
         ws->send(errorResponse.dump());
         return;
     }
@@ -576,7 +632,7 @@ void WebSocketService::onClientMessageJson(
         };
 
     // Dispatch to injected handler (server/UI provides the implementation).
-    jsonDispatcher_(cmdResult.value(), ws, correlationId, invokeHandler);
+    jsonDispatcher_(cmdAny, ws, correlationId, invokeHandler);
 }
 
 } // namespace Network

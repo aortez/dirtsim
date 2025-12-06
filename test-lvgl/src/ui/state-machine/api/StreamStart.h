@@ -19,10 +19,14 @@ DEFINE_API_NAME(StreamStart);
  * @brief Command to initiate WebRTC video streaming.
  *
  * Browser sends this to request a video stream. Server responds by creating
- * a peer connection, adding video track, and sending a WebRTC offer back.
+ * a peer connection, adding video track, and returning the WebRTC offer.
  */
 struct Command {
-    std::string clientId; // Unique client identifier.
+    std::string clientId; // Unique client identifier (from browser).
+
+    // Populated by WebSocketService - identifies the WebSocket connection for
+    // sending follow-up messages (ICE candidates) back to this client.
+    std::string connectionId;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
@@ -30,10 +34,14 @@ struct Command {
 };
 
 /**
- * @brief Response - server will send offer via separate WebSocket message.
+ * @brief Response containing the WebRTC SDP offer.
+ *
+ * The offer is returned synchronously. ICE candidates will be sent
+ * as separate messages via the same WebSocket connection.
  */
 struct Okay {
     bool initiated = true;
+    std::string sdpOffer; // The WebRTC SDP offer for the browser to answer.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

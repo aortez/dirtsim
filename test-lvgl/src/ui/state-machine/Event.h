@@ -1,7 +1,5 @@
 #pragma once
 
-#include "api/DisplayStreamStart.h"
-#include "api/DisplayStreamStop.h"
 #include "api/DrawDebugToggle.h"
 #include "api/Exit.h"
 #include "api/MouseDown.h"
@@ -130,8 +128,6 @@ using Event = std::variant<
     PhysicsSettingsReceivedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)
-    DirtSim::UiApi::DisplayStreamStart::Cwc,
-    DirtSim::UiApi::DisplayStreamStop::Cwc,
     DirtSim::UiApi::DrawDebugToggle::Cwc,
     DirtSim::UiApi::Exit::Cwc,
     DirtSim::UiApi::MouseDown::Cwc,

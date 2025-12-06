@@ -1,7 +1,6 @@
 #include "State.h"
 #include "core/network/WebSocketService.h"
 #include "ui/state-machine/StateMachine.h"
-#include "ui/state-machine/network/WebSocketServer.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -16,15 +15,15 @@ void Shutdown::onEnter(StateMachine& sm)
     // Note: We just disconnect without sending exit command. The server is headless
     // and should keep running independently. If server shutdown is needed, it should
     // be done via separate mechanism (e.g., CLI tool).
-    if (sm.wsService_ && sm.wsService_->isConnected()) {
-        spdlog::info("Shutdown: Disconnecting from DSSM server");
-        sm.wsService_->disconnect();
-    }
-
-    // Stop WebSocket server if running.
-    if (sm.wsServer_) {
-        spdlog::info("Shutdown: Stopping WebSocket server");
-        sm.wsServer_->stop();
+    if (sm.wsService_) {
+        if (sm.wsService_->isConnected()) {
+            spdlog::info("Shutdown: Disconnecting from DSSM server");
+            sm.wsService_->disconnect();
+        }
+        if (sm.wsService_->isListening()) {
+            spdlog::info("Shutdown: Stopping WebSocket server");
+            sm.wsService_->stopListening();
+        }
     }
 
     // Clean up LVGL resources.

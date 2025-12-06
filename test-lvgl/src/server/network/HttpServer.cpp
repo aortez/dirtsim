@@ -518,11 +518,34 @@ struct HttpServer::Impl {
                 }
             };
 
-            // Request the server to send us an offer.
+            // Request stream and process offer synchronously.
             uiConn.send('StreamStart', {
                 clientId: webrtcClientId
             }, function(response) {
-                logDebug('WebRTC: Stream initiation acknowledged, waiting for offer...');
+                if (!response || !response.sdpOffer) {
+                    logDebug('WebRTC: No SDP offer in StreamStart response');
+                    return;
+                }
+
+                logDebug('WebRTC: Received offer in response (' + response.sdpOffer.length + ' bytes)');
+                var desc = new RTCSessionDescription({ type: 'offer', sdp: response.sdpOffer });
+                peerConnection.setRemoteDescription(desc).then(function() {
+                    logDebug('WebRTC: Remote description (offer) set, creating answer');
+                    return peerConnection.createAnswer();
+                }).then(function(answer) {
+                    logDebug('WebRTC: Created answer');
+                    return peerConnection.setLocalDescription(answer);
+                }).then(function() {
+                    logDebug('WebRTC: Sending answer to server');
+                    uiConn.send('WebRtcAnswer', {
+                        clientId: webrtcClientId,
+                        sdp: peerConnection.localDescription.sdp
+                    });
+                }).catch(function(error) {
+                    logDebug('WebRTC: Error processing offer: ' + error.message);
+                    var statusSpan = document.getElementById('stream-status-localhost-7070');
+                    if (statusSpan) statusSpan.textContent = 'error: ' + error.message;
+                });
             });
         }
 

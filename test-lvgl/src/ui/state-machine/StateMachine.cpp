@@ -3,13 +3,15 @@
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
 #include "core/encoding/H264Encoder.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
-#include "network/WebSocketServer.h"
+#include "network/CommandDeserializerJson.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/UiComponentManager.h"
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
+#include <rtc/rtc.hpp>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -19,34 +21,28 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     spdlog::info("Ui::StateMachine initialized in state: {}", getCurrentStateName());
 
-    // Create OLD WebSocket server for accepting remote commands (CLI port 7070).
-    // TODO: Migrate to wsService_->listen(7070) once ready.
-    wsServer_ = std::make_unique<WebSocketServer>(*this, wsPort);
-    wsServer_->start();
-    spdlog::info("Ui::StateMachine: WebSocket server listening on port {}", wsPort);
-
-    // Create unified WebSocketService (replaces old wsClient_).
+    // Create unified WebSocketService for both client (to server) and server (for CLI) roles.
     wsService_ = std::make_unique<Network::WebSocketService>();
     setupWebSocketService();
-    spdlog::info("Ui::StateMachine: WebSocketService initialized");
+
+    // Start listening for CLI/browser commands on the specified port.
+    auto listenResult = wsService_->listen(wsPort);
+    if (listenResult.isError()) {
+        spdlog::error(
+            "Ui::StateMachine: Failed to listen on port {}: {}", wsPort, listenResult.errorValue());
+    }
+    else {
+        spdlog::info("Ui::StateMachine: WebSocketService listening on port {}", wsPort);
+    }
 
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
     spdlog::info("Ui::StateMachine: UiComponentManager created");
 
     // Create WebRTC streamer for video streaming.
+    // ICE candidates are sent via wsService_->sendToClient() in the StreamStart handler.
     webRtcStreamer_ = std::make_unique<WebRtcStreamer>();
     webRtcStreamer_->setDisplay(disp);
-
-    // Set up signaling callback to send answers back to clients.
-    webRtcStreamer_->setSignalingCallback(
-        [this](const std::string& clientId, const std::string& message) {
-            // Send the signaling message (SDP answer) to the client via WebSocket.
-            if (wsServer_) {
-                wsServer_->broadcastText(message);
-                spdlog::debug("WebRtcStreamer: Sent signaling message to client {}", clientId);
-            }
-        });
     spdlog::info("Ui::StateMachine: WebRtcStreamer created");
 }
 
@@ -64,11 +60,121 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
     wsService_->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::ScreenGrab::Cwc>(
+        [this](UiApi::ScreenGrab::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::StreamStart::Cwc>(
+        [this](UiApi::StreamStart::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::WebRtcAnswer::Cwc>(
+        [this](UiApi::WebRtcAnswer::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::WebRtcCandidate::Cwc>(
+        [this](UiApi::WebRtcCandidate::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::Exit::Cwc>(
+        [this](UiApi::Exit::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::MouseDown::Cwc>(
+        [this](UiApi::MouseDown::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::MouseMove::Cwc>(
+        [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::MouseUp::Cwc>(
+        [this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::DrawDebugToggle::Cwc>(
+        [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::PixelRendererToggle::Cwc>(
+        [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
+    wsService_->registerHandler<UiApi::RenderModeSelect::Cwc>(
+        [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
     // Don't set it here or it will overwrite that handler!
 
-    // TODO: Register remaining UI commands (ScreenGrab, DrawDebugToggle, etc.).
+    // =========================================================================
+    // JSON protocol support - for CLI and browser clients.
+    // =========================================================================
+
+    // Inject JSON deserializer.
+    wsService_->setJsonDeserializer([](const std::string& json) -> std::any {
+        CommandDeserializerJson deserializer;
+        auto result = deserializer.deserialize(json);
+        if (result.isError()) {
+            // Throw on error - WebSocketService will catch and send error response.
+            throw std::runtime_error(result.errorValue().message);
+        }
+        return result.value(); // Return UiApiCommand variant wrapped in std::any.
+    });
+
+    // Inject JSON command dispatcher.
+    wsService_->setJsonCommandDispatcher(
+        [this](
+            std::any cmdAny,
+            std::shared_ptr<rtc::WebSocket> ws,
+            uint64_t correlationId,
+            Network::WebSocketService::HandlerInvoker invokeHandler) {
+            // Cast back to UiApiCommand variant.
+            UiApiCommand cmdVariant = std::any_cast<UiApiCommand>(cmdAny);
+// Macro to dispatch JSON commands with response data.
+#define DISPATCH_UI_CMD_WITH_RESP(NamespaceType)                                            \
+    if (auto* cmd = std::get_if<NamespaceType::Command>(&cmdVariant)) {                     \
+        NamespaceType::Cwc cwc;                                                             \
+        cwc.command = *cmd;                                                                 \
+        cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
+            nlohmann::json j;                                                               \
+            if (resp.isError()) {                                                           \
+                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
+            }                                                                               \
+            else {                                                                          \
+                j = resp.value().toJson();                                                  \
+                j["id"] = correlationId;                                                    \
+                j["success"] = true;                                                        \
+            }                                                                               \
+            ws->send(j.dump());                                                             \
+        };                                                                                  \
+        auto payload = Network::serialize_payload(cwc.command);                             \
+        invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
+        return;                                                                             \
+    }
+
+// Macro to dispatch JSON commands with empty response (success: true only).
+#define DISPATCH_UI_CMD_EMPTY(NamespaceType)                                                \
+    if (auto* cmd = std::get_if<NamespaceType::Command>(&cmdVariant)) {                     \
+        NamespaceType::Cwc cwc;                                                             \
+        cwc.command = *cmd;                                                                 \
+        cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
+            nlohmann::json j;                                                               \
+            if (resp.isError()) {                                                           \
+                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
+            }                                                                               \
+            else {                                                                          \
+                j = { { "id", correlationId }, { "success", true } };                       \
+            }                                                                               \
+            ws->send(j.dump());                                                             \
+        };                                                                                  \
+        auto payload = Network::serialize_payload(cwc.command);                             \
+        invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
+        return;                                                                             \
+    }
+
+            // Dispatch all UI commands.
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::DrawDebugToggle);
+            DISPATCH_UI_CMD_EMPTY(UiApi::Exit);
+            DISPATCH_UI_CMD_EMPTY(UiApi::MouseDown);
+            DISPATCH_UI_CMD_EMPTY(UiApi::MouseMove);
+            DISPATCH_UI_CMD_EMPTY(UiApi::MouseUp);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::PixelRendererToggle);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::RenderModeSelect);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::ScreenGrab);
+            DISPATCH_UI_CMD_EMPTY(UiApi::SimPause);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SimRun);
+            DISPATCH_UI_CMD_EMPTY(UiApi::SimStop);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);
+
+            // If we get here, command wasn't recognized.
+            spdlog::warn("Ui::StateMachine: Unknown JSON command in dispatcher");
+
+#undef DISPATCH_UI_CMD_WITH_RESP
+#undef DISPATCH_UI_CMD_EMPTY
+        });
 
     spdlog::info("Ui::StateMachine: WebSocketService handlers registered");
 }
@@ -76,11 +182,6 @@ void StateMachine::setupWebSocketService()
 StateMachine::~StateMachine()
 {
     spdlog::info("Ui::StateMachine shutting down from state: {}", getCurrentStateName());
-
-    // Stop and clean up WebSocket server (unique_ptr handles deletion).
-    if (wsServer_) {
-        wsServer_->stop();
-    }
 
     // WebSocketService cleanup handled by unique_ptr.
 }
@@ -281,18 +382,41 @@ void StateMachine::handleEvent(const Event& event)
     // Handle StreamStart - browser requests to start video stream.
     if (std::holds_alternative<UiApi::StreamStart::Cwc>(event)) {
         auto& cwc = std::get<UiApi::StreamStart::Cwc>(event);
-        spdlog::info("Ui::StateMachine: StreamStart from client {}", cwc.command.clientId);
+        spdlog::info(
+            "Ui::StateMachine: StreamStart from client {} (connectionId={})",
+            cwc.command.clientId,
+            cwc.command.connectionId);
 
-        if (webRtcStreamer_) {
-            webRtcStreamer_->initiateStream(cwc.command.clientId);
-            // Note: The actual SDP offer is sent via the signaling callback.
-            UiApi::StreamStart::Okay response{ .initiated = true };
-            cwc.sendResponse(UiApi::StreamStart::Response::okay(std::move(response)));
-        }
-        else {
+        if (!webRtcStreamer_) {
             cwc.sendResponse(
                 UiApi::StreamStart::Response::error(ApiError("WebRTC streamer not available")));
+            return;
         }
+
+        // Create callback for sending ICE candidates back to this client.
+        std::string connectionId = cwc.command.connectionId;
+        auto onIceCandidate = [this, connectionId](const std::string& candidateJson) {
+            if (wsService_) {
+                auto result = wsService_->sendToClient(connectionId, candidateJson);
+                if (result.isError()) {
+                    spdlog::warn(
+                        "Ui::StateMachine: Failed to send ICE candidate: {}", result.errorValue());
+                }
+            }
+        };
+
+        // Initiate stream and get SDP offer synchronously.
+        std::string sdpOffer =
+            webRtcStreamer_->initiateStream(cwc.command.clientId, onIceCandidate);
+
+        if (sdpOffer.empty()) {
+            cwc.sendResponse(
+                UiApi::StreamStart::Response::error(ApiError("Failed to create WebRTC offer")));
+            return;
+        }
+
+        UiApi::StreamStart::Okay response{ .initiated = true, .sdpOffer = std::move(sdpOffer) };
+        cwc.sendResponse(UiApi::StreamStart::Response::okay(std::move(response)));
         return;
     }
 

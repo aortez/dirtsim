@@ -1,6 +1,4 @@
 #include "CommandDeserializerJson.h"
-#include "ui/state-machine/api/DisplayStreamStart.h"
-#include "ui/state-machine/api/DisplayStreamStop.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/MouseDown.h"
@@ -48,15 +46,7 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
 
     // Dispatch to appropriate handler.
     try {
-        if (commandName == UiApi::DisplayStreamStart::Command::name()) {
-            return Result<UiApiCommand, ApiError>::okay(
-                UiApi::DisplayStreamStart::Command::fromJson(cmd));
-        }
-        else if (commandName == UiApi::DisplayStreamStop::Command::name()) {
-            return Result<UiApiCommand, ApiError>::okay(
-                UiApi::DisplayStreamStop::Command::fromJson(cmd));
-        }
-        else if (commandName == UiApi::DrawDebugToggle::Command::name()) {
+        if (commandName == UiApi::DrawDebugToggle::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::DrawDebugToggle::Command::fromJson(cmd));
         }

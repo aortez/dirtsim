@@ -30,16 +30,16 @@ namespace Ui {
  * Uses libdatachannel for WebRTC implementation.
  *
  * Signaling flow:
- * 1. Browser sends SDP offer via WebSocket
- * 2. Server creates PeerConnection, adds video track
- * 3. Server responds with SDP answer via WebSocket
- * 4. Connection established, frames flow via RTP
+ * 1. Browser sends StreamStart request via WebSocket
+ * 2. Server creates PeerConnection, adds video track, returns SDP offer synchronously
+ * 3. ICE candidates are sent to browser as they're gathered (via provided callback)
+ * 4. Browser sends SDP answer via WebRtcAnswer command
+ * 5. Connection established, frames flow via RTP
  */
 class WebRtcStreamer {
 public:
-    // Callback to send signaling messages back to client.
-    using SignalingCallback =
-        std::function<void(const std::string& clientId, const std::string& message)>;
+    // Callback to send ICE candidates to the client.
+    using IceCandidateCallback = std::function<void(const std::string& candidateJson)>;
 
     WebRtcStreamer();
     ~WebRtcStreamer();
@@ -54,19 +54,16 @@ public:
     void setDisplay(lv_display_t* display);
 
     /**
-     * @brief Set callback for sending signaling messages.
-     */
-    void setSignalingCallback(SignalingCallback callback);
-
-    /**
      * @brief Initiate streaming to a browser client.
      *
-     * Creates peer connection, adds video track, and generates offer.
-     * The offer is sent via the signaling callback.
+     * Creates peer connection, adds video track, and returns SDP offer synchronously.
+     * ICE candidates will be sent via the provided callback as they're gathered.
      *
-     * @param clientId Unique identifier for this client.
+     * @param clientId Unique identifier for this client (from browser).
+     * @param onIceCandidate Callback invoked for each ICE candidate to send to browser.
+     * @return The SDP offer string for the browser to answer.
      */
-    void initiateStream(const std::string& clientId);
+    std::string initiateStream(const std::string& clientId, IceCandidateCallback onIceCandidate);
 
     /**
      * @brief Handle incoming SDP answer from browser client.
@@ -114,12 +111,12 @@ private:
         std::shared_ptr<rtc::Track> videoTrack;
         std::shared_ptr<rtc::RtpPacketizationConfig> rtpConfig;
         std::shared_ptr<rtc::RtcpSrReporter> srReporter;
+        IceCandidateCallback onIceCandidate; // Callback for sending ICE candidates.
         bool ready = false;
         std::chrono::steady_clock::time_point startTime;
     };
 
     lv_display_t* display_ = nullptr;
-    SignalingCallback signalingCallback_;
     std::unique_ptr<H264Encoder> encoder_;
 
     mutable std::mutex clientsMutex_;

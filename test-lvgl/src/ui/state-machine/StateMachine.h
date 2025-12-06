@@ -25,7 +25,6 @@ class WebSocketService;
 namespace Ui {
 class UiComponentManager;
 class WebRtcStreamer;
-class WebSocketServer;
 } // namespace Ui
 } // namespace DirtSim
 
@@ -53,8 +52,6 @@ public:
     EventProcessor eventProcessor;
 
     // WebSocket connections.
-    std::unique_ptr<WebSocketServer>
-        wsServer_; // Server for accepting remote commands (OLD - TODO: migrate to wsService_).
     std::unique_ptr<Network::WebSocketService> wsService_; // Unified service (client + server).
 
     // UI management.

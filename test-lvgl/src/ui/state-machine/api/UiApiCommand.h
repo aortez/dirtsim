@@ -1,7 +1,5 @@
 #pragma once
 
-#include "DisplayStreamStart.h"
-#include "DisplayStreamStop.h"
 #include "DrawDebugToggle.h"
 #include "Exit.h"
 #include "MouseDown.h"
@@ -26,8 +24,6 @@ namespace Ui {
  * @brief Variant containing all UI API command types.
  */
 using UiApiCommand = std::variant<
-    UiApi::DisplayStreamStart::Command,
-    UiApi::DisplayStreamStop::Command,
     UiApi::DrawDebugToggle::Command,
     UiApi::Exit::Command,
     UiApi::MouseDown::Command,
