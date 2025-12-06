@@ -55,13 +55,14 @@ std::string WebRtcStreamer::initiateStream(
     auto pc = std::make_shared<rtc::PeerConnection>(config);
 
     // Set up state change callback.
-    pc->onStateChange([clientId](rtc::PeerConnection::State state) {
+    pc->onStateChange([this, clientId](rtc::PeerConnection::State state) {
         spdlog::info("WebRtcStreamer: Client {} state: {}", clientId, static_cast<int>(state));
 
         if (state == rtc::PeerConnection::State::Disconnected
             || state == rtc::PeerConnection::State::Failed
             || state == rtc::PeerConnection::State::Closed) {
-            spdlog::info("WebRtcStreamer: Client {} disconnected", clientId);
+            spdlog::info("WebRtcStreamer: Client {} disconnected, cleaning up", clientId);
+            removeClient(clientId);
         }
     });
 

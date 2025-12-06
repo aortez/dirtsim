@@ -23,9 +23,8 @@ Sparkle Duck is a **client-server physics simulation** with interactive UI and w
 **Role:** Headless physics engine broadcasting world state.
 
 **Binary protocol:** High-frequency world updates to UI clients
-- RenderMessage broadcasts at simulation FPS (up to 60fps)
-- ~100KB per frame, zpp_bits serialized
-- Auto-throttled per client
+- RenderMessage broadcasts at simulation FPS
+- small, fast, zpp_bits serialized
 
 **JSON protocol:** CLI commands and external tools
 - StateGet, SimRun, CellSet, etc.
