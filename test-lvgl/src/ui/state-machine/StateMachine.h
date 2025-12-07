@@ -22,6 +22,10 @@ namespace Network {
 class WebSocketService;
 }
 
+namespace Server {
+class PeerAdvertisement;
+} // namespace Server
+
 namespace Ui {
 class RemoteInputDevice;
 class UiComponentManager;
@@ -102,7 +106,8 @@ public:
 private:
     Timers timers_; // Performance instrumentation timers.
     State::Any fsmState{ State::Startup{} };
-    std::unique_ptr<H264Encoder> h264Encoder_; // Lazy-initialized H.264 encoder.
+    std::unique_ptr<H264Encoder> h264Encoder_;          // Lazy-initialized H.264 encoder.
+    std::unique_ptr<Server::PeerAdvertisement> peerAd_; // mDNS service advertisement.
 
     void transitionTo(State::Any newState);
 

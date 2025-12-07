@@ -53,9 +53,6 @@ public:
     EventProcessor& getEventProcessor();
     const EventProcessor& getEventProcessor() const;
 
-    class WebSocketServer* getWebSocketServer();
-    void setWebSocketServer(class WebSocketServer* server);
-
     Network::WebSocketService* getWebSocketService();
     void setWebSocketService(Network::WebSocketService* service);
 
@@ -76,6 +73,13 @@ public:
 
     PeerDiscovery& getPeerDiscovery();
     const PeerDiscovery& getPeerDiscovery() const;
+
+    /**
+     * @brief Start advertising this server via mDNS/Avahi.
+     * @param port The WebSocket port to advertise.
+     * @param serviceName Human-readable service name (e.g., hostname).
+     */
+    void startPeerAdvertisement(uint16_t port, const std::string& serviceName = "sparkle-duck");
 
     uint32_t defaultWidth = 28;
     uint32_t defaultHeight = 28;

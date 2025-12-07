@@ -6,6 +6,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
+#include "server/network/PeerAdvertisement.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
@@ -14,6 +15,7 @@
 #include <chrono>
 #include <rtc/rtc.hpp>
 #include <spdlog/spdlog.h>
+#include <unistd.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -49,6 +51,20 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     webRtcStreamer_ = std::make_unique<WebRtcStreamer>();
     webRtcStreamer_->setDisplay(disp);
     spdlog::info("Ui::StateMachine: WebRtcStreamer created");
+
+    // Start mDNS/Avahi advertisement so other nodes can discover us.
+    char hostname[256] = "sparkle-duck-ui";
+    gethostname(hostname, sizeof(hostname));
+    peerAd_ = std::make_unique<Server::PeerAdvertisement>();
+    peerAd_->setServiceName(std::string(hostname) + "-ui");
+    peerAd_->setPort(wsPort);
+    peerAd_->setRole(Server::PeerRole::Ui);
+    if (peerAd_->start()) {
+        spdlog::info("Ui::StateMachine: PeerAdvertisement started on port {}", wsPort);
+    }
+    else {
+        spdlog::warn("Ui::StateMachine: PeerAdvertisement failed to start");
+    }
 }
 
 void StateMachine::setupWebSocketService()

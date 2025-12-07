@@ -8,6 +8,7 @@
 #include "core/WorldData.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
+#include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
 #include "scenarios/Scenario.h"
 #include "scenarios/ScenarioRegistry.h"
@@ -29,9 +30,9 @@ struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     ScenarioRegistry scenarioRegistry_;
     Timers timers_;
+    PeerAdvertisement peerAdvertisement_;
     PeerDiscovery peerDiscovery_;
     State::Any fsmState_{ State::Startup{} };
-    class WebSocketServer* wsServer_ = nullptr;
     Network::WebSocketService* wsService_ = nullptr;
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
@@ -56,8 +57,23 @@ StateMachine::StateMachine() : pImpl()
 
 StateMachine::~StateMachine()
 {
+    pImpl->peerAdvertisement_.stop();
     pImpl->peerDiscovery_.stop();
     spdlog::info("Server::StateMachine shutting down from state: {}", getCurrentStateName());
+}
+
+void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
+{
+    pImpl->peerAdvertisement_.setServiceName(serviceName);
+    pImpl->peerAdvertisement_.setPort(port);
+    pImpl->peerAdvertisement_.setRole(PeerRole::Physics);
+
+    if (pImpl->peerAdvertisement_.start()) {
+        spdlog::info("PeerAdvertisement started: {} on port {}", serviceName, port);
+    }
+    else {
+        spdlog::warn("PeerAdvertisement failed to start (Avahi may not be available)");
+    }
 }
 
 // =================================================================
@@ -77,16 +93,6 @@ EventProcessor& StateMachine::getEventProcessor()
 const EventProcessor& StateMachine::getEventProcessor() const
 {
     return pImpl->eventProcessor_;
-}
-
-WebSocketServer* StateMachine::getWebSocketServer()
-{
-    return pImpl->wsServer_;
-}
-
-void StateMachine::setWebSocketServer(WebSocketServer* server)
-{
-    pImpl->wsServer_ = server;
 }
 
 Network::WebSocketService* StateMachine::getWebSocketService()
@@ -246,12 +252,16 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::RenderFormatGet::Response::okay(std::move(okay)));
     });
 
-    // RenderFormatSet - accept but don't track yet (TODO: per-client tracking).
-    service.registerHandler<Api::RenderFormatSet::Cwc>([](Api::RenderFormatSet::Cwc cwc) {
-        // Just acknowledge for now.
+    service.registerHandler<Api::RenderFormatSet::Cwc>([&service](Api::RenderFormatSet::Cwc cwc) {
+        auto ws = service.getClientByConnectionId(cwc.command.connectionId);
+        if (ws) {
+            service.setClientRenderFormat(ws, cwc.command.format);
+        }
+
         Api::RenderFormatSet::Okay okay;
-        okay.active_format = RenderFormat::BASIC;
-        okay.message = "Format acknowledged (tracking not implemented yet)";
+        okay.active_format = cwc.command.format;
+        okay.message = std::string("Render format set to ")
+            + (cwc.command.format == RenderFormat::BASIC ? "BASIC" : "DEBUG");
         cwc.sendResponse(Api::RenderFormatSet::Response::okay(std::move(okay)));
     });
 

@@ -272,8 +272,8 @@ add_library(sparkle-duck-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
+    src/server/network/PeerAdvertisement.cpp
     src/server/network/PeerDiscovery.cpp
-    src/server/network/WebSocketServer.cpp
 
     # Scenarios.
     src/server/scenarios/ScenarioRegistry.cpp

@@ -4,12 +4,12 @@
 #include "core/Timers.h"
 #include "core/network/WebSocketService.h"
 #include "network/HttpServer.h"
-#include "network/WebSocketServer.h"
 #include <args.hxx>
 #include <csignal>
 #include <memory>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
+#include <unistd.h>
 
 using namespace DirtSim;
 
@@ -112,6 +112,12 @@ int main(int argc, char** argv)
     // Create headless state machine.
     auto stateMachine = std::make_unique<Server::StateMachine>();
     g_stateMachine = stateMachine.get();
+
+    // Start mDNS/Avahi advertisement so other nodes can discover us.
+    // Use hostname as service name for identification on the network.
+    char hostname[256] = "sparkle-duck";
+    gethostname(hostname, sizeof(hostname));
+    stateMachine->startPeerAdvertisement(port, hostname);
 
     // Set up signal handler for graceful shutdown.
     std::signal(SIGINT, signalHandler);

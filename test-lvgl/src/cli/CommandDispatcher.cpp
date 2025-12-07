@@ -16,8 +16,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::DiagramGet::Command, Api::DiagramGet::Okay>();
     registerCommand<Api::Exit::Command, std::monostate>();
     registerCommand<Api::GravitySet::Command, std::monostate>();
-    // registerCommand<Api::PeersGet::Command, Api::PeersGet::Okay>();  // TODO: PeerInfo needs JSON
-    // serialization.
+    registerCommand<Api::PeersGet::Command, Api::PeersGet::Okay>();
     registerCommand<Api::PerfStatsGet::Command, Api::PerfStatsGet::Okay>();
     registerCommand<Api::PhysicsSettingsGet::Command, Api::PhysicsSettingsGet::Okay>();
     registerCommand<Api::PhysicsSettingsSet::Command, std::monostate>();
@@ -30,8 +29,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::SpawnDirtBall::Command, std::monostate>();
     registerCommand<Api::StateGet::Command, Api::StateGet::Okay>();
     registerCommand<Api::StatusGet::Command, Api::StatusGet::Okay>();
-    // registerCommand<Api::TimerStatsGet::Command, Api::TimerStatsGet::Okay>();  // TODO:
-    // TimerEntry needs JSON serialization.
+    registerCommand<Api::TimerStatsGet::Command, Api::TimerStatsGet::Okay>();
     registerCommand<Api::WorldResize::Command, std::monostate>();
 
     spdlog::info("CommandDispatcher: Registered {} commands", handlers_.size());
