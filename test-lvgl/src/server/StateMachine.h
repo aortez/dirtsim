@@ -81,6 +81,8 @@ public:
      */
     void startPeerAdvertisement(uint16_t port, const std::string& serviceName = "sparkle-duck");
 
+    void broadcastRenderMessage(const WorldData& data);
+
     uint32_t defaultWidth = 28;
     uint32_t defaultHeight = 28;
 

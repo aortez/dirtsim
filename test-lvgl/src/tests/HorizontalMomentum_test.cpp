@@ -21,7 +21,7 @@ protected:
     void SetUp() override
     {
         // Initialize logging channels.
-        LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug);
+        LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "tests");
 
         // Enable swap logging at debug level to see all swap decisions.
         LoggingChannels::swap()->set_level(spdlog::level::debug);

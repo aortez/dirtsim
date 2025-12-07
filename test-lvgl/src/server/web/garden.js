@@ -344,6 +344,22 @@ function displayPeers(peers) {
             div.classList.remove('disconnected');
         }
 
+        // If this is the currently focused peer, update focus view styling too.
+        if (currentFocusedPeer &&
+            currentFocusedPeer.host === peer.host &&
+            currentFocusedPeer.port === peer.port) {
+            var focusVideo = document.querySelector('#focus-body video');
+            if (focusVideo) {
+                if (!isConnected) {
+                    focusVideo.style.filter = 'grayscale(100%) brightness(0.5)';
+                    focusVideo.style.borderColor = '#333';
+                } else {
+                    focusVideo.style.filter = '';
+                    focusVideo.style.borderColor = '';
+                }
+            }
+        }
+
         // Show disconnect duration if applicable.
         var statusText = connStatus;
         if (!isConnected && conn.lastResponse) {
@@ -369,7 +385,12 @@ function displayPeers(peers) {
         if (!div.querySelector('video')) {
             div.innerHTML = html;
         } else {
-            // Update just the status text, not the whole HTML.
+            // Update the header status (connected/disconnected) without destroying video.
+            var h3 = div.querySelector('h3');
+            if (h3) {
+                h3.innerHTML = peer.name + ' <small style="color:#888">(' + statusText + ')</small>';
+            }
+            // Update the state span.
             var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
             if (stateSpan) stateSpan.textContent = '...'; // Will be updated by queryStatus.
         }
@@ -402,7 +423,7 @@ function queryStatus(peer) {
 }
 
 function discoverPeers() {
-    serverConn.send('PeersGet', null, function(response) {
+    var sent = serverConn.send('PeersGet', null, function(response) {
         if (response.value && response.value.peers) {
             displayPeers(response.value.peers);
         } else {
@@ -410,6 +431,11 @@ function discoverPeers() {
             displayPeers([]);
         }
     });
+
+    // If send failed (server disconnected), still update display to show disconnected state.
+    if (!sent) {
+        displayPeers([]);
+    }
 }
 
 //=============================================================================
@@ -725,6 +751,9 @@ function focusPeer(peer) {
 
     currentFocusedPeer = peer;
 
+    // Enable focus mode (shrinks overview previews).
+    document.querySelector('.main-container').classList.add('focus-mode');
+
     // Update UI - hide empty state, show content.
     document.getElementById('focus-empty').style.display = 'none';
     document.getElementById('focus-content').style.display = 'block';
@@ -804,6 +833,9 @@ function clearFocus() {
     removeMouseForwarding();
 
     currentFocusedPeer = null;
+
+    // Disable focus mode (restores overview preview sizes).
+    document.querySelector('.main-container').classList.remove('focus-mode');
 
     // Update UI - show empty state, hide content.
     document.getElementById('focus-empty').style.display = 'flex';

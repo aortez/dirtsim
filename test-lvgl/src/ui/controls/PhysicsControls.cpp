@@ -950,18 +950,28 @@ void PhysicsControls::fetchSettings()
 
     spdlog::info("PhysicsControls: Fetching physics settings from server");
 
-    // Send binary command to server.
     static std::atomic<uint64_t> nextId{ 1 };
     const Api::PhysicsSettingsGet::Command cmd{};
     auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
 
-    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
-    if (result.isError()) {
-        spdlog::error(
-            "PhysicsControls: Failed to send PhysicsSettingsGet: {}", result.errorValue());
+    auto envelopeResult = wsService_->sendBinaryAndReceive(envelope, 1000);
+    if (envelopeResult.isError()) {
+        spdlog::error("PhysicsControls: Failed to send command: {}", envelopeResult.errorValue());
+        return;
     }
 
-    // Response will be handled by UI state machine and used to update controls.
+    auto response =
+        Network::extract_result<Api::PhysicsSettingsGet::Okay, ApiError>(envelopeResult.value());
+
+    if (response.isValue()) {
+        const auto& settings = response.value().settings;
+        spdlog::info(
+            "PhysicsControls: Received settings from server (gravity={:.2f})", settings.gravity);
+        updateFromSettings(settings);
+    }
+    else {
+        spdlog::error("PhysicsControls: Server error: {}", response.errorValue().message);
+    }
 }
 
 void PhysicsControls::syncSettings()

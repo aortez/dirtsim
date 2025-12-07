@@ -151,55 +151,8 @@ void StartMenu::onStartButtonClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!sm) return;
 
-    spdlog::info("StartMenu: Start button clicked, sending sim_run to DSSM via binary protocol");
-
-    // Send sim_run command using WebSocketService (binary protocol).
-    auto* wsService = sm->getWebSocketService();
-    if (wsService && wsService->isConnected()) {
-        const DirtSim::Api::SimRun::Command cmd{
-            .timestep = 0.016,
-            .max_steps = -1,
-            .scenario_id = "sandbox",
-            .max_frame_ms = 16 // Cap at 60 FPS for UI visualization.
-        };
-
-        // Build and send binary envelope.
-        auto envelope = DirtSim::Network::make_command_envelope(1, cmd);
-        auto result = wsService->sendBinaryAndReceive(envelope, 1000);
-
-        if (result.isError()) {
-            spdlog::error("StartMenu: SimRun failed: {}", result.errorValue());
-            return;
-        }
-
-        // Deserialize binary response.
-        try {
-            const auto& responseEnvelope = result.value();
-            auto response =
-                DirtSim::Network::extract_result<DirtSim::Api::SimRun::Okay, DirtSim::ApiError>(
-                    responseEnvelope);
-
-            if (response.isError()) {
-                spdlog::error("StartMenu: SimRun error: {}", response.errorValue().message);
-                return;
-            }
-
-            // Check if server is now running.
-            if (response.value().running) {
-                spdlog::info("StartMenu: Server confirmed running, transitioning to SimRunning");
-                sm->queueEvent(ServerRunningConfirmedEvent{});
-            }
-            else {
-                spdlog::warn("StartMenu: Server not running after sim_run");
-            }
-        }
-        catch (const std::exception& ex) {
-            spdlog::error("StartMenu: Failed to parse sim_run response: {}", ex.what());
-        }
-    }
-    else {
-        spdlog::error("StartMenu: Cannot start simulation, not connected to DSSM");
-    }
+    // Queue event for state machine to process (keep LVGL callback thin).
+    sm->queueEvent(StartButtonClickedEvent{});
 }
 
 void StartMenu::updateAnimations()
@@ -328,8 +281,39 @@ void StartMenu::onDisplayResized(lv_event_t* e)
     fractal->resize(newWidth, newHeight);
 }
 
-State::Any StartMenu::onEvent(const ServerRunningConfirmedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
+    spdlog::info("StartMenu: Start button clicked, sending SimRun to server");
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        spdlog::error("StartMenu: Cannot start simulation, not connected to server");
+        return StartMenu{};
+    }
+
+    const Api::SimRun::Command cmd{
+        .timestep = 0.016, .max_steps = -1, .scenario_id = "sandbox", .max_frame_ms = 16
+    };
+
+    auto envelope = Network::make_command_envelope(1, cmd);
+    auto result = wsService.sendBinaryAndReceive(envelope, 2000);
+
+    if (result.isError()) {
+        spdlog::error("StartMenu: SimRun failed: {}", result.errorValue());
+        return StartMenu{};
+    }
+
+    auto response = Network::extract_result<Api::SimRun::Okay, ApiError>(result.value());
+    if (response.isError()) {
+        spdlog::error("StartMenu: SimRun error: {}", response.errorValue().message);
+        return StartMenu{};
+    }
+
+    if (!response.value().running) {
+        spdlog::warn("StartMenu: Server not running after SimRun");
+        return StartMenu{};
+    }
+
     spdlog::info("StartMenu: Server confirmed running, transitioning to SimRunning");
     return SimRunning{};
 }
@@ -359,8 +343,8 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     spdlog::info("StartMenu: SimRun command received");
 
     // Get WebSocketService to send command to DSSM (binary protocol).
-    auto* wsService = sm.getWebSocketService();
-    if (!wsService || !wsService->isConnected()) {
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
         spdlog::error("StartMenu: Not connected to DSSM server");
         cwc.sendResponse(UiApi::SimRun::Response::error(ApiError("Not connected to DSSM server")));
         return StartMenu{};
@@ -375,7 +359,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     };
 
     auto envelope = DirtSim::Network::make_command_envelope(1, cmd);
-    auto result = wsService->sendBinaryAndReceive(envelope, 1000);
+    auto result = wsService.sendBinaryAndReceive(envelope, 1000);
 
     if (result.isError()) {
         spdlog::error("StartMenu: Failed to send sim_run: {}", result.errorValue());

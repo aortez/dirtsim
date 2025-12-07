@@ -11,10 +11,15 @@ NC='\033[0m' # No Color
 
 # Parse arguments
 INSTALL_CROSS=false
+INSTALL_YOCTO=false
 for arg in "$@"; do
     case $arg in
         --cross)
             INSTALL_CROSS=true
+            shift
+            ;;
+        --yocto)
+            INSTALL_YOCTO=true
             shift
             ;;
         --help|-h)
@@ -22,6 +27,7 @@ for arg in "$@"; do
             echo ""
             echo "Options:"
             echo "  --cross    Install aarch64 cross-compilation toolchain"
+            echo "  --yocto    Install Yocto build dependencies (kas, bitbake reqs)"
             echo "  --help     Show this help message"
             exit 0
             ;;
@@ -30,8 +36,12 @@ done
 
 echo -e "${BLUE}=== Sparkle Duck Dependency Setup ===${NC}\n"
 if [ "$INSTALL_CROSS" = true ]; then
-    echo -e "${YELLOW}Including cross-compilation toolchain (aarch64)${NC}\n"
+    echo -e "${YELLOW}Including cross-compilation toolchain (aarch64)${NC}"
 fi
+if [ "$INSTALL_YOCTO" = true ]; then
+    echo -e "${YELLOW}Including Yocto build dependencies${NC}"
+fi
+echo ""
 
 # Detect OS
 if [ -f /etc/os-release ]; then
@@ -89,6 +99,33 @@ install_ubuntu_debian() {
         PACKAGES+=(
             "gcc-aarch64-linux-gnu"
             "g++-aarch64-linux-gnu"
+        )
+    fi
+
+    # Add Yocto build packages if requested.
+    if [ "$INSTALL_YOCTO" = true ]; then
+        PACKAGES+=(
+            "chrpath"
+            "cpio"
+            "debianutils"
+            "diffstat"
+            "file"
+            "gawk"
+            "iputils-ping"
+            "libacl1"
+            "liblz4-tool"
+            "locales"
+            "pipx"
+            "python3-git"
+            "python3-jinja2"
+            "python3-pexpect"
+            "python3-subunit"
+            "socat"
+            "texinfo"
+            "unzip"
+            "wget"
+            "xz-utils"
+            "zstd"
         )
     fi
 
@@ -255,6 +292,42 @@ if [ "$INSTALL_CROSS" = true ]; then
     fi
 fi
 
+# Setup Yocto-specific requirements if requested.
+if [ "$INSTALL_YOCTO" = true ]; then
+    echo -e "\n${BLUE}Setting up Yocto build environment...${NC}"
+
+    # Install kas via pipx.
+    if command_exists "kas"; then
+        VERSION=$(kas --version 2>/dev/null | head -n1 || echo "version unknown")
+        echo -e "${GREEN}✓${NC} kas: $VERSION"
+    else
+        echo -e "${YELLOW}Installing kas via pipx...${NC}"
+        pipx install kas
+        pipx ensurepath
+        echo -e "${GREEN}✓${NC} kas installed via pipx"
+    fi
+
+    # Enable user namespaces for BitBake (Ubuntu 24.04+).
+    USERNS_SYSCTL="/etc/sysctl.d/60-yocto-userns.conf"
+    USERNS_VALUE=$(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo "n/a")
+
+    if [ "$USERNS_VALUE" = "0" ]; then
+        echo -e "${GREEN}✓${NC} User namespaces already enabled"
+    elif [ "$USERNS_VALUE" = "1" ]; then
+        echo -e "${YELLOW}⚠${NC} User namespaces restricted (BitBake needs them)"
+        if [ -f "$USERNS_SYSCTL" ]; then
+            echo -e "${YELLOW}  Sysctl config exists but not applied. Run: sudo sysctl -p $USERNS_SYSCTL${NC}"
+        else
+            echo -e "${YELLOW}  Creating sysctl config to enable user namespaces...${NC}"
+            echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee "$USERNS_SYSCTL" > /dev/null
+            sudo sysctl -p "$USERNS_SYSCTL"
+            echo -e "${GREEN}✓${NC} User namespaces enabled"
+        fi
+    else
+        echo -e "${GREEN}✓${NC} User namespace restriction not applicable on this system"
+    fi
+fi
+
 echo -e "\n${BLUE}=== Setup Complete ===${NC}"
 
 if [ "$ALL_OK" = true ]; then
@@ -269,6 +342,11 @@ if [ "$ALL_OK" = true ]; then
         echo -e "  5. Sync sysroot from Pi:  ${YELLOW}make cross-sysroot${NC}"
         echo -e "  6. Cross-compile:         ${YELLOW}make cross-release${NC}"
         echo -e "  7. Deploy to Pi:          ${YELLOW}./deploy-to-pi.sh -x${NC}"
+    fi
+    if [ "$INSTALL_YOCTO" = true ]; then
+        echo -e "\nYocto build:"
+        echo -e "  cd ../yocto"
+        echo -e "  kas build kas-dirtsim.yml  ${YELLOW}# First build takes 2-4 hours${NC}"
     fi
     echo -e "\nFor more information, see README.md"
 else

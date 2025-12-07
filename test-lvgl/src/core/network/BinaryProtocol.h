@@ -99,12 +99,6 @@ inline std::vector<std::byte> serialize_envelope(const MessageEnvelope& envelope
     return data;
 }
 
-/**
- * @brief Deserialize a MessageEnvelope from bytes.
- * @param data The bytes to deserialize.
- * @return Deserialized envelope.
- * @throws std::exception on deserialization failure.
- */
 inline MessageEnvelope deserialize_envelope(const std::vector<std::byte>& data)
 {
     MessageEnvelope envelope;
@@ -113,12 +107,6 @@ inline MessageEnvelope deserialize_envelope(const std::vector<std::byte>& data)
     return envelope;
 }
 
-/**
- * @brief Serialize a payload (any zpp_bits-compatible type) to bytes.
- * @tparam T The type to serialize.
- * @param payload The payload to serialize.
- * @return Serialized bytes.
- */
 template <typename T>
 std::vector<std::byte> serialize_payload(const T& payload)
 {
@@ -128,13 +116,6 @@ std::vector<std::byte> serialize_payload(const T& payload)
     return data;
 }
 
-/**
- * @brief Deserialize a payload from bytes.
- * @tparam T The type to deserialize to.
- * @param data The bytes to deserialize.
- * @return Deserialized payload.
- * @throws std::exception on deserialization failure.
- */
 template <typename T>
 T deserialize_payload(const std::vector<std::byte>& data)
 {
@@ -149,13 +130,6 @@ T deserialize_payload(const std::vector<std::byte>& data)
 #pragma GCC diagnostic pop
 }
 
-/**
- * @brief Create a command envelope ready to send.
- * @tparam CommandT The command type.
- * @param id Correlation ID.
- * @param cmd The command to send.
- * @return MessageEnvelope ready for serialization.
- */
 template <typename CommandT>
 MessageEnvelope make_command_envelope(uint64_t id, const CommandT& cmd)
 {
@@ -166,15 +140,6 @@ MessageEnvelope make_command_envelope(uint64_t id, const CommandT& cmd)
     return envelope;
 }
 
-/**
- * @brief Create a response envelope ready to send.
- * @tparam OkayT The success type.
- * @tparam ErrorT The error type.
- * @param id Correlation ID (should match the request).
- * @param command_name The original command name.
- * @param result The result to send.
- * @return MessageEnvelope ready for serialization.
- */
 template <typename OkayT, typename ErrorT>
 MessageEnvelope make_response_envelope(
     uint64_t id, const std::string& command_name, const Result<OkayT, ErrorT>& result)
@@ -186,14 +151,6 @@ MessageEnvelope make_response_envelope(
     return envelope;
 }
 
-/**
- * @brief Extract a result from a response envelope.
- * @tparam OkayT The expected success type.
- * @tparam ErrorT The expected error type.
- * @param envelope The response envelope.
- * @return The deserialized result.
- * @throws std::exception on deserialization failure.
- */
 template <typename OkayT, typename ErrorT>
 Result<OkayT, ErrorT> extract_result(const MessageEnvelope& envelope)
 {

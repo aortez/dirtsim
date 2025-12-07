@@ -91,10 +91,10 @@ struct RequestWorldUpdateCommand {
 };
 
 /**
- * @brief Server confirmed it's running (response to sim_run command).
+ * @brief User clicked Start button in StartMenu.
  */
-struct ServerRunningConfirmedEvent {
-    static constexpr const char* name() { return "ServerRunningConfirmedEvent"; }
+struct StartButtonClickedEvent {
+    static constexpr const char* name() { return "StartButtonClickedEvent"; }
 };
 
 /**
@@ -120,7 +120,7 @@ using Event = std::variant<
     ConnectToServerCommand,
     ServerConnectedEvent,
     ServerDisconnectedEvent,
-    ServerRunningConfirmedEvent,
+    StartButtonClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates

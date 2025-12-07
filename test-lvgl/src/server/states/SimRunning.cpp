@@ -1,20 +1,16 @@
 #include "State.h"
 #include "core/Cell.h"
-#include "core/RenderMessage.h"
-#include "core/RenderMessageUtils.h"
 #include "core/Timers.h"
-#include "core/World.h" // Must be before State.h for complete type.
+#include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/TreeManager.h"
 #include "server/StateMachine.h"
-#include "server/network/WebSocketServer.h"
 #include "server/scenarios/Scenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
-#include <zpp_bits.h>
 
 namespace DirtSim {
 namespace Server {
@@ -184,35 +180,13 @@ void SimRunning::tick(StateMachine& dsm)
     spdlog::debug("SimRunning: Advanced simulation, total step {})", stepCount);
 
     // Send frame to UI clients after every physics update.
-    // Broadcast render messages to connected clients.
-    if (dsm.getWebSocketService() || dsm.getWebSocketServer()) {
+    if (dsm.getWebSocketService()) {
         auto& timers = dsm.getTimers();
 
-        // Broadcast RenderMessage to all clients.
         auto broadcastStart = std::chrono::steady_clock::now();
         timers.startTimer("broadcast_render_message");
 
-        if (dsm.getWebSocketService()) {
-            spdlog::debug(
-                "SimRunning: Broadcasting via WebSocketService to {} clients",
-                dsm.getWebSocketService()->isListening() ? "listening" : "not listening");
-            // Pack WorldData into RenderMessage (simplified - BASIC format).
-            const WorldData& data = world->getData();
-            RenderMessage renderMsg =
-                RenderMessageUtils::packRenderMessage(data, RenderFormat::BASIC);
-
-            // Serialize with zpp_bits.
-            std::vector<std::byte> bytes;
-            zpp::bits::out out(bytes);
-            out(renderMsg).or_throw();
-
-            // Broadcast via WebSocketService.
-            dsm.getWebSocketService()->broadcastBinary(bytes);
-        }
-        else if (dsm.getWebSocketServer()) {
-            // Fall back to old server.
-            dsm.getWebSocketServer()->broadcastRenderMessage(*world);
-        }
+        dsm.broadcastRenderMessage(world->getData());
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -571,30 +545,24 @@ State::Any SimRunning::onEvent(const Api::SpawnDirtBall::Cwc& cwc, StateMachine&
 
 State::Any SimRunning::onEvent(const Api::PhysicsSettingsGet::Cwc& cwc, StateMachine& /*dsm*/)
 {
-    using Response = Api::PhysicsSettingsGet::Response;
+    using namespace Api::PhysicsSettingsGet;
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
+    assert(world && "World must exist in SimRunning state");
 
     spdlog::info("PhysicsSettingsGet: Sending current physics settings");
 
-    Api::PhysicsSettingsGet::Okay okay;
+    Okay okay;
     okay.settings = world->getPhysicsSettings();
 
-    cwc.sendResponse(Response::okay(std::move(okay)));
+    cwc.sendResponse(Response::okay(okay));
     return std::move(*this);
 }
 
 State::Any SimRunning::onEvent(const Api::PhysicsSettingsSet::Cwc& cwc, StateMachine& /*dsm*/)
 {
-    using Response = Api::PhysicsSettingsSet::Response;
+    assert(world && "World must exist in SimRunning state");
 
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
+    using Response = Api::PhysicsSettingsSet::Response;
 
     spdlog::info("PhysicsSettingsSet: Applying new physics settings");
 

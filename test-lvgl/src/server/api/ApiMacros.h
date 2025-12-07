@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ReflectSerializer.h"
 #include "core/reflect.h"
 
 namespace DirtSim {
@@ -27,5 +28,32 @@ namespace DirtSim {
     {                                        \
         return api_name;                     \
     }
+
+/**
+ * @brief Add automatic JSON serialization using reflection.
+ *
+ * Usage: API_JSON_SERIALIZABLE(TypeName) inside Command/Okay struct definitions.
+ * Generates toJson() and fromJson() using ReflectSerializer.
+ */
+#define API_JSON_SERIALIZABLE(TypeName)                   \
+    nlohmann::json toJson() const                         \
+    {                                                     \
+        return ReflectSerializer::to_json(*this);         \
+    }                                                     \
+    static TypeName fromJson(const nlohmann::json& j)     \
+    {                                                     \
+        return ReflectSerializer::from_json<TypeName>(j); \
+    }
+
+/**
+ * @brief Define standard API typedefs at namespace level.
+ *
+ * Usage: API_STANDARD_TYPES() after Command and Okay struct definitions.
+ * Creates OkayType, Response, and Cwc typedefs.
+ */
+#define API_STANDARD_TYPES()                     \
+    using OkayType = Okay;                       \
+    using Response = Result<OkayType, ApiError>; \
+    using Cwc = CommandWithCallback<Command, Response>;
 
 } // namespace DirtSim

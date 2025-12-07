@@ -9,11 +9,8 @@ namespace State {
 
 /**
  * @brief Disconnected state - no DSSM server connection.
- * Shows connection UI (host/port input, connect button).
  */
 struct Disconnected {
-    void onEnter(StateMachine& sm);
-    void onExit(StateMachine& sm);
 
     Any onEvent(const ConnectToServerCommand& cmd, StateMachine& sm);
     Any onEvent(const ServerConnectedEvent& evt, StateMachine& sm);

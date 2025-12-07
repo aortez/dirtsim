@@ -18,12 +18,13 @@ DEFINE_API_NAME(RenderFormatSet);
 
 struct Command {
     RenderFormat format;
+    std::string connectionId;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {

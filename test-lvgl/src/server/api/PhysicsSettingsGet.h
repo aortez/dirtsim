@@ -14,26 +14,26 @@ namespace PhysicsSettingsGet {
 
 DEFINE_API_NAME(PhysicsSettingsGet);
 
+struct Okay;
+
 struct Command {
     API_COMMAND_NAME();
-    nlohmann::json toJson() const;
-    static Command fromJson(const nlohmann::json& j);
+    API_JSON_SERIALIZABLE(Command);
 
     using serialize = zpp::bits::members<0>;
+    using OkayType = Okay;
 };
 
 struct Okay {
     PhysicsSettings settings;
 
     API_COMMAND_NAME();
-    nlohmann::json toJson() const;
+    API_JSON_SERIALIZABLE(Okay);
 
     using serialize = zpp::bits::members<1>;
 };
 
-using OkayType = Okay;
-using Response = Result<OkayType, ApiError>;
-using Cwc = CommandWithCallback<Command, Response>;
+API_STANDARD_TYPES();
 
 } // namespace PhysicsSettingsGet
 } // namespace Api

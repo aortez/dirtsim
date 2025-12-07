@@ -13,36 +13,31 @@ struct EventQueue {
 EventProcessor::EventProcessor() : eventQueue(std::make_shared<EventQueue>())
 {}
 
-void EventProcessor::processEvent(StateMachine& sm, const Event& eventVariant)
-{
-    sm.handleEvent(eventVariant);
-}
-
 void EventProcessor::processEventsFromQueue(StateMachine& sm)
 {
-    size_t initialQueueDepth = eventQueue->queue.size();
-
-    // Log queue depth if there are events to process.
-    if (initialQueueDepth > 0) {
-        spdlog::info("Server::EventProcessor: Processing {} queued events", initialQueueDepth);
+    {
+        const size_t initialQueueDepth = eventQueue->queue.size();
+        if (initialQueueDepth > 0) {
+            spdlog::debug("EventProcessor: Processing {} queued events", initialQueueDepth);
+        }
     }
 
     while (!eventQueue->queue.empty()) {
         auto event = eventQueue->queue.tryPop();
         if (event.has_value()) {
             size_t remaining = eventQueue->queue.size();
-            spdlog::info(
-                "Server::EventProcessor: Processing event: {} (queue depth: {})",
+            spdlog::debug(
+                "EventProcessor: Processing event: {} (queue depth: {})",
                 getEventName(event.value()),
                 remaining);
-            processEvent(sm, event.value());
+            sm.handleEvent(event.value());
         }
     }
 }
 
 void EventProcessor::enqueueEvent(const Event& event)
 {
-    spdlog::debug("Server::EventProcessor: Enqueuing event: {}", getEventName(event));
+    spdlog::debug("EventProcessor: Enqueuing event: {}", getEventName(event));
     eventQueue->queue.push(event);
 }
 

@@ -7,13 +7,12 @@
 #include "core/StateMachineInterface.h"
 #include "core/Timers.h"
 #include "states/State.h"
+
 #include <memory>
 #include <string>
 
-// Forward declaration for LVGL display structure.
 struct _lv_display_t;
 
-// Forward declarations for network and UI components.
 namespace DirtSim {
 
 class H264Encoder;
@@ -44,70 +43,44 @@ public:
     ~StateMachine();
 
     void mainLoopRun();
+
     void queueEvent(const Event& event) override;
+
     void handleEvent(const Event& event);
 
     std::string getCurrentStateName() const override;
+
     void processEvents() override;
 
-    // Update background animations (called every main loop iteration).
+    void setupWebSocketService();
+
     void updateAnimations();
 
     _lv_display_t* display = nullptr;
     EventProcessor eventProcessor;
 
-    // WebSocket connections.
-    std::unique_ptr<Network::WebSocketService> wsService_; // Unified service (client + server).
+    std::unique_ptr<Network::WebSocketService> wsService_;
 
-    // UI management.
-    std::unique_ptr<UiComponentManager> uiManager_;        // LVGL screen and container management.
-    std::unique_ptr<RemoteInputDevice> remoteInputDevice_; // Remote mouse input from WebSocket.
+    std::unique_ptr<UiComponentManager> uiManager_;
+    std::unique_ptr<RemoteInputDevice> remoteInputDevice_;
 
-    // WebRTC video streaming.
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
 
-    /**
-     * @brief Get WebSocketService (unified client + server).
-     * @return Pointer to WebSocketService (non-owning).
-     */
-    Network::WebSocketService* getWebSocketService() { return wsService_.get(); }
+    Network::WebSocketService& getWebSocketService();
 
-    /**
-     * @brief Setup WebSocketService for UI operation.
-     *
-     * Configures both client role (connect to server) and server role (listen for CLI).
-     */
-    void setupWebSocketService();
-
-    /**
-     * @brief Get UI manager for LVGL screen/container access.
-     * @return Pointer to UI manager (non-owning).
-     */
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }
 
-    /**
-     * @brief Get remote input device for WebSocket mouse events.
-     * @return Pointer to RemoteInputDevice (non-owning).
-     */
     RemoteInputDevice* getRemoteInputDevice() { return remoteInputDevice_.get(); }
 
-    /**
-     * @brief Get WebRTC streamer for video streaming.
-     * @return Pointer to WebRtcStreamer (non-owning).
-     */
     WebRtcStreamer* getWebRtcStreamer() { return webRtcStreamer_.get(); }
 
-    /**
-     * @brief Get performance timers for instrumentation.
-     * @return Reference to timers.
-     */
     Timers& getTimers() { return timers_; }
 
 private:
-    Timers timers_; // Performance instrumentation timers.
+    Timers timers_;
     State::Any fsmState{ State::Startup{} };
-    std::unique_ptr<H264Encoder> h264Encoder_;          // Lazy-initialized H.264 encoder.
-    std::unique_ptr<Server::PeerAdvertisement> peerAd_; // mDNS service advertisement.
+    std::unique_ptr<H264Encoder> h264Encoder_;
+    std::unique_ptr<Server::PeerAdvertisement> peerAd_;
 
     void transitionTo(State::Any newState);
 

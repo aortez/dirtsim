@@ -2,6 +2,7 @@
 
 #include "BinaryProtocol.h"
 #include "core/CommandWithCallback.h"
+#include "core/RenderMessage.h"
 #include "core/Result.h"
 #include "core/Timers.h"
 #include "server/api/ApiCommand.h"
@@ -20,6 +21,7 @@
 namespace DirtSim {
 
 class World;
+struct WorldData;
 
 namespace Network {
 
@@ -103,12 +105,12 @@ public:
     // =========================================================================
 
     /**
-     * @brief Send raw text message (fire-and-forget).
+     * @brief Send raw text message (fire-and-forget - prefer sync over this).
      */
     Result<std::monostate, std::string> sendText(const std::string& message);
 
     /**
-     * @brief Send raw binary message (fire-and-forget).
+     * @brief Send raw binary message (fire-and-forget - prefer sync over this).
      */
     Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& data);
 
@@ -188,11 +190,15 @@ public:
      */
     bool isListening() const;
 
-    /**
-     * @brief Broadcast binary message to all connected clients.
-     * @param data Binary data to send.
-     */
     void broadcastBinary(const std::vector<std::byte>& data);
+
+    void broadcastRenderMessage(const WorldData& data);
+
+    void setClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws, RenderFormat format);
+
+    RenderFormat getClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws) const;
+
+    std::shared_ptr<rtc::WebSocket> getClientByConnectionId(const std::string& connectionId);
 
     /**
      * @brief Send a text message to a specific client by connection ID.
@@ -207,13 +213,12 @@ public:
     Result<std::monostate, std::string> sendToClient(
         const std::string& connectionId, const std::string& message);
 
+    Result<std::monostate, std::string> sendToClient(
+        const std::string& connectionId, const std::vector<std::byte>& data);
+
     /**
      * @brief Get the connection ID for a WebSocket.
-     *
      * Creates a new ID if this is a new connection.
-     *
-     * @param ws The WebSocket connection.
-     * @return The connection ID string.
      */
     std::string getConnectionId(std::shared_ptr<rtc::WebSocket> ws);
 
@@ -376,8 +381,8 @@ private:
     std::unique_ptr<rtc::WebSocketServer> server_;
     std::map<std::string, CommandHandler> commandHandlers_;
     std::vector<std::shared_ptr<rtc::WebSocket>> connectedClients_;
-    std::map<std::shared_ptr<rtc::WebSocket>, Protocol>
-        clientProtocols_; // Track protocol per client.
+    std::map<std::shared_ptr<rtc::WebSocket>, Protocol> clientProtocols_;
+    std::map<std::shared_ptr<rtc::WebSocket>, RenderFormat> clientRenderFormats_;
 
     // Connection ID registry for directed messaging.
     std::atomic<uint64_t> nextConnectionId_{ 1 };

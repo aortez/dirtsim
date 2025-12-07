@@ -2,10 +2,14 @@
 #include "Event.h"
 #include "EventProcessor.h"
 #include "api/PeersGet.h"
+#include "core/LoggingChannels.h"
+#include "core/RenderMessage.h"
+#include "core/RenderMessageUtils.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h" // Must be first for complete type in variant.
 #include "core/WorldData.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/PeerAdvertisement.h"
@@ -26,6 +30,11 @@ namespace Server {
 // PIMPL IMPLEMENTATION STRUCT
 // =================================================================
 
+struct SubscribedClient {
+    std::string connectionId;
+    RenderFormat renderFormat;
+};
+
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     ScenarioRegistry scenarioRegistry_;
@@ -37,12 +46,14 @@ struct StateMachine::Impl {
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
 
+    std::vector<SubscribedClient> subscribedClients_;
+
     Impl() : scenarioRegistry_(ScenarioRegistry::createDefault()) {}
 };
 
 StateMachine::StateMachine() : pImpl()
 {
-    spdlog::info(
+    LoggingChannels::state()->info(
         "Server::StateMachine initialized in headless mode in state: {}", getCurrentStateName());
     // Note: World will be created by SimRunning state when simulation starts.
 
@@ -59,7 +70,8 @@ StateMachine::~StateMachine()
 {
     pImpl->peerAdvertisement_.stop();
     pImpl->peerDiscovery_.stop();
-    spdlog::info("Server::StateMachine shutting down from state: {}", getCurrentStateName());
+    LoggingChannels::state()->info(
+        "Server::StateMachine shutting down from state: {}", getCurrentStateName());
 }
 
 void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
@@ -252,18 +264,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::RenderFormatGet::Response::okay(std::move(okay)));
     });
 
-    service.registerHandler<Api::RenderFormatSet::Cwc>([&service](Api::RenderFormatSet::Cwc cwc) {
-        auto ws = service.getClientByConnectionId(cwc.command.connectionId);
-        if (ws) {
-            service.setClientRenderFormat(ws, cwc.command.format);
-        }
-
-        Api::RenderFormatSet::Okay okay;
-        okay.active_format = cwc.command.format;
-        okay.message = std::string("Render format set to ")
-            + (cwc.command.format == RenderFormat::BASIC ? "BASIC" : "DEBUG");
-        cwc.sendResponse(Api::RenderFormatSet::Response::okay(std::move(okay)));
-    });
+    service.registerHandler<Api::RenderFormatSet::Cwc>(
+        [this](Api::RenderFormatSet::Cwc cwc) { queueEvent(cwc); });
 
     // =========================================================================
     // Queued handlers - queue to state machine for processing.
@@ -446,7 +448,40 @@ void StateMachine::processEvents()
 
 void StateMachine::handleEvent(const Event& event)
 {
-    spdlog::debug("Server::StateMachine: Handling event: {}", getEventName(event));
+    LoggingChannels::state()->debug(
+        "Server::StateMachine: Handling event: {}", getEventName(event));
+
+    // Handle RenderFormatSet globally (works in any state).
+    if (std::holds_alternative<Api::RenderFormatSet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::RenderFormatSet::Cwc>(event.getVariant());
+        const std::string& connectionId = cwc.command.connectionId;
+        assert(!connectionId.empty() && "RenderFormatSet: connectionId must be populated!");
+
+        // Add or update client subscription.
+        auto it = std::find_if(
+            pImpl->subscribedClients_.begin(),
+            pImpl->subscribedClients_.end(),
+            [&connectionId](const SubscribedClient& c) { return c.connectionId == connectionId; });
+
+        if (it != pImpl->subscribedClients_.end()) {
+            it->renderFormat = cwc.command.format;
+        }
+        else {
+            pImpl->subscribedClients_.push_back({ connectionId, cwc.command.format });
+        }
+
+        spdlog::info(
+            "StateMachine: Client '{}' subscribed (format={}, total={})",
+            connectionId,
+            cwc.command.format == RenderFormat::BASIC ? "BASIC" : "DEBUG",
+            pImpl->subscribedClients_.size());
+
+        Api::RenderFormatSet::Okay okay;
+        okay.active_format = cwc.command.format;
+        okay.message = "Subscribed to render messages";
+        cwc.sendResponse(Api::RenderFormatSet::Response::okay(std::move(okay)));
+        return;
+    }
 
     std::visit(
         [this](auto&& evt) {
@@ -513,7 +548,7 @@ void StateMachine::transitionTo(State::Any newState)
     pImpl->fsmState_ = std::move(newState);
 
     std::string newStateName = getCurrentStateName();
-    spdlog::info("STATE_TRANSITION: {} -> {}", oldStateName, newStateName);
+    LoggingChannels::state()->info("Server::StateMachine: {} -> {}", oldStateName, newStateName);
 
     // Call onEnter for new state.
     std::visit([this](auto& state) { callOnEnter(state); }, pImpl->fsmState_.getVariant());
@@ -523,7 +558,7 @@ void StateMachine::transitionTo(State::Any newState)
 
 State::Any StateMachine::onEvent(const QuitApplicationCommand& /*cmd.*/)
 {
-    spdlog::info("Global handler: QuitApplicationCommand received");
+    LoggingChannels::state()->info("Global handler: QuitApplicationCommand received");
     setShouldExit(true);
     return State::Shutdown{};
 }
@@ -552,6 +587,43 @@ State::Any StateMachine::onEvent(const GetSimStatsCommand& /*cmd.*/)
             return T{};
         },
         pImpl->fsmState_.getVariant());
+}
+
+void StateMachine::broadcastRenderMessage(const WorldData& data)
+{
+    if (pImpl->subscribedClients_.empty()) {
+        spdlog::info("StateMachine: broadcastRenderMessage called but no subscribed clients");
+        return;
+    }
+
+    spdlog::debug(
+        "StateMachine: Broadcasting to {} subscribed clients (step {})",
+        pImpl->subscribedClients_.size(),
+        data.timestep);
+
+    for (const auto& client : pImpl->subscribedClients_) {
+        RenderMessage msg = RenderMessageUtils::packRenderMessage(data, client.renderFormat);
+
+        // Serialize RenderMessage to payload.
+        std::vector<std::byte> payload;
+        zpp::bits::out payloadOut(payload);
+        payloadOut(msg).or_throw();
+
+        // Wrap in MessageEnvelope for consistent protocol.
+        Network::MessageEnvelope envelope{ .id = 0, // No correlation for server pushes.
+                                           .message_type = "RenderMessage",
+                                           .payload = std::move(payload) };
+
+        std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
+
+        auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
+        if (result.isError()) {
+            spdlog::error(
+                "StateMachine: Failed to send RenderMessage to '{}': {}",
+                client.connectionId,
+                result.errorValue());
+        }
+    }
 }
 
 } // namespace Server

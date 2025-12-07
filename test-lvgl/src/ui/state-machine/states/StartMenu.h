@@ -21,7 +21,7 @@ struct StartMenu {
     void onExit(StateMachine& sm);
 
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
-    Any onEvent(const ServerRunningConfirmedEvent& evt, StateMachine& sm);
+    Any onEvent(const StartButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);

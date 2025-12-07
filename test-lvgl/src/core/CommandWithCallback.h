@@ -43,9 +43,9 @@ struct CommandWithCallback {
 
     /**
      * @brief Get event name for logging.
-     * @return Generic name for API commands.
+     * @return Actual command type name.
      */
-    static constexpr const char* name() { return "ApiCommand"; }
+    static constexpr auto name() { return CommandT::name(); }
 
     mutable bool responseSent = false;
 };

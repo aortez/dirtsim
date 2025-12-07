@@ -13,7 +13,6 @@ class EventProcessor {
 public:
     EventProcessor();
 
-    void processEvent(StateMachine& sm, const Event& event);
     void processEventsFromQueue(StateMachine& sm);
     void enqueueEvent(const Event& event);
 

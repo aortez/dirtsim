@@ -2,6 +2,7 @@
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
+#include "core/LoggingChannels.h"
 #include "core/encoding/H264Encoder.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
@@ -22,7 +23,7 @@ namespace Ui {
 
 StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
-    spdlog::info("Ui::StateMachine initialized in state: {}", getCurrentStateName());
+    LoggingChannels::state()->info("StateMachine initialized in state: {}", getCurrentStateName());
 
     // Create unified WebSocketService for both client (to server) and server (for CLI) roles.
     wsService_ = std::make_unique<Network::WebSocketService>();
@@ -31,26 +32,26 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     // Start listening for CLI/browser commands on the specified port.
     auto listenResult = wsService_->listen(wsPort);
     if (listenResult.isError()) {
-        spdlog::error(
-            "Ui::StateMachine: Failed to listen on port {}: {}", wsPort, listenResult.errorValue());
+        LoggingChannels::network()->error(
+            "Failed to listen on port {}: {}", wsPort, listenResult.errorValue());
     }
     else {
-        spdlog::info("Ui::StateMachine: WebSocketService listening on port {}", wsPort);
+        LoggingChannels::network()->info("WebSocketService listening on port {}", wsPort);
     }
 
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
-    spdlog::info("Ui::StateMachine: UiComponentManager created");
+    LoggingChannels::state()->info("UiComponentManager created");
 
     // Create remote input device for WebSocket mouse events.
     remoteInputDevice_ = std::make_unique<RemoteInputDevice>(disp);
-    spdlog::info("Ui::StateMachine: RemoteInputDevice created");
+    LoggingChannels::state()->info("RemoteInputDevice created");
 
     // Create WebRTC streamer for video streaming.
     // ICE candidates are sent via wsService_->sendToClient() in the StreamStart handler.
     webRtcStreamer_ = std::make_unique<WebRtcStreamer>();
     webRtcStreamer_->setDisplay(disp);
-    spdlog::info("Ui::StateMachine: WebRtcStreamer created");
+    LoggingChannels::state()->info("WebRtcStreamer created");
 
     // Start mDNS/Avahi advertisement so other nodes can discover us.
     char hostname[256] = "sparkle-duck-ui";
@@ -60,16 +61,16 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     peerAd_->setPort(wsPort);
     peerAd_->setRole(Server::PeerRole::Ui);
     if (peerAd_->start()) {
-        spdlog::info("Ui::StateMachine: PeerAdvertisement started on port {}", wsPort);
+        LoggingChannels::network()->info("PeerAdvertisement started on port {}", wsPort);
     }
     else {
-        spdlog::warn("Ui::StateMachine: PeerAdvertisement failed to start");
+        LoggingChannels::network()->warn("PeerAdvertisement failed to start");
     }
 }
 
 void StateMachine::setupWebSocketService()
 {
-    spdlog::info("Ui::StateMachine: Setting up WebSocketService command handlers...");
+    LoggingChannels::network()->info("Setting up WebSocketService command handlers...");
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
@@ -191,37 +192,34 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);
 
             // If we get here, command wasn't recognized.
-            spdlog::warn("Ui::StateMachine: Unknown JSON command in dispatcher");
+            LoggingChannels::network()->warn("Unknown JSON command in dispatcher");
 
 #undef DISPATCH_UI_CMD_WITH_RESP
 #undef DISPATCH_UI_CMD_EMPTY
         });
 
-    spdlog::info("Ui::StateMachine: WebSocketService handlers registered");
+    LoggingChannels::network()->info("WebSocketService handlers registered");
 }
 
 StateMachine::~StateMachine()
 {
-    spdlog::info("Ui::StateMachine shutting down from state: {}", getCurrentStateName());
+    LoggingChannels::state()->info(
+        "StateMachine shutting down from state: {}", getCurrentStateName());
 
     // WebSocketService cleanup handled by unique_ptr.
 }
 
 void StateMachine::mainLoopRun()
 {
-    spdlog::info("Starting UI main event loop");
+    LoggingChannels::state()->info("Starting main event loop");
 
-    // Initialize by sending init complete event.
     queueEvent(InitCompleteEvent{});
 
-    // Main event processing loop.
     while (!shouldExit()) {
         processEvents();
-        // TODO: LVGL event processing integration.
-        // TODO: WebSocket client/server event processing.
     }
 
-    spdlog::info("UI main event loop exiting (shouldExit=true)");
+    LoggingChannels::state()->info("Main event loop exiting (shouldExit=true)");
 }
 
 void StateMachine::queueEvent(const Event& event)
@@ -245,7 +243,7 @@ void StateMachine::updateAnimations()
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
     if (currentTime - lastLogTime >= 10.0) {
         double loopFps = callCount / (currentTime - lastLogTime);
-        spdlog::info("StateMachine: Main loop FPS = {:.1f}", loopFps);
+        LoggingChannels::state()->info("Main loop FPS = {:.1f}", loopFps);
         callCount = 0;
         lastLogTime = currentTime;
     }
@@ -267,11 +265,19 @@ void StateMachine::updateAnimations()
 
 void StateMachine::handleEvent(const Event& event)
 {
-    spdlog::debug("Ui::StateMachine: Handling event: {}", getEventName(event));
+    {
+        const std::string msg = "Handling global event: " + getEventName(event);
+        if (getEventName(event) == "UiUpdateEvent") {
+            LoggingChannels::state()->debug("{}", msg);
+        }
+        else {
+            LoggingChannels::state()->info("{}", msg);
+        }
+    }
 
     // Handle StatusGet universally (works in all states).
     if (std::holds_alternative<UiApi::StatusGet::Cwc>(event)) {
-        spdlog::debug("Ui::StateMachine: Processing StatusGet command");
+        LoggingChannels::state()->debug("Processing StatusGet command");
         auto& cwc = std::get<UiApi::StatusGet::Cwc>(event);
 
         UiApi::StatusGet::Okay status{
@@ -285,29 +291,28 @@ void StateMachine::handleEvent(const Event& event)
             .fps = 0.0 // TODO: Track and return actual FPS.
         };
 
-        spdlog::debug("Ui::StateMachine: Sending StatusGet response (state={})", status.state);
+        LoggingChannels::state()->debug("Sending StatusGet response (state={})", status.state);
         cwc.sendResponse(UiApi::StatusGet::Response::okay(std::move(status)));
         return;
     }
 
-    // Handle ScreenGrab universally (works in all states).
-    // Note: Throttling is handled per-client in WebSocketServer before queuing.
+    // Handle ScreenGrab.
     if (std::holds_alternative<UiApi::ScreenGrab::Cwc>(event)) {
         auto& cwc = std::get<UiApi::ScreenGrab::Cwc>(event);
 
-        spdlog::info(
-            "Ui::StateMachine: Processing ScreenGrab command (scale={})", cwc.command.scale);
+        LoggingChannels::state()->info(
+            "Processing ScreenGrab command (scale={})", cwc.command.scale);
 
         // Capture display pixels.
         auto screenshotData = captureDisplayPixels(display, cwc.command.scale);
         if (!screenshotData) {
-            spdlog::error("Ui::StateMachine: Failed to capture display pixels");
+            LoggingChannels::state()->error("Failed to capture display pixels");
             try {
                 cwc.sendResponse(
                     UiApi::ScreenGrab::Response::error(ApiError("Failed to capture display")));
             }
             catch (const std::exception& e) {
-                spdlog::warn("Ui::StateMachine: Failed to send error response: {}", e.what());
+                LoggingChannels::state()->warn("Failed to send error response: {}", e.what());
             }
             return;
         }
@@ -328,7 +333,7 @@ void StateMachine::handleEvent(const Event& event)
                 || h264Encoder_->getHeight() != evenHeight) {
                 h264Encoder_ = std::make_unique<H264Encoder>();
                 if (!h264Encoder_->initialize(screenshotData->width, screenshotData->height)) {
-                    spdlog::error("Ui::StateMachine: Failed to initialize H.264 encoder");
+                    LoggingChannels::state()->error("Failed to initialize H.264 encoder");
                     cwc.sendResponse(UiApi::ScreenGrab::Response::error(
                         ApiError("Failed to initialize H.264 encoder")));
                     return;
@@ -339,7 +344,7 @@ void StateMachine::handleEvent(const Event& event)
             auto encoded = h264Encoder_->encode(
                 screenshotData->pixels.data(), screenshotData->width, screenshotData->height);
             if (!encoded) {
-                spdlog::error("Ui::StateMachine: H.264 encoding failed");
+                LoggingChannels::state()->error("H.264 encoding failed");
                 cwc.sendResponse(
                     UiApi::ScreenGrab::Response::error(ApiError("H.264 encoding failed")));
                 return;
@@ -349,8 +354,8 @@ void StateMachine::handleEvent(const Event& event)
             isKeyframe = encoded->isKeyframe;
             timestampMs = encoded->timestampMs;
 
-            spdlog::info(
-                "Ui::StateMachine: ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264 "
+            LoggingChannels::state()->info(
+                "ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264 "
                 "-> {} bytes base64, keyframe={})",
                 screenshotData->width,
                 screenshotData->height,
@@ -368,8 +373,8 @@ void StateMachine::handleEvent(const Event& event)
                 std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
                     .count());
 
-            spdlog::info(
-                "Ui::StateMachine: ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
+            LoggingChannels::state()->info(
+                "ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
                 screenshotData->width,
                 screenshotData->height,
                 screenshotData->pixels.size(),
@@ -395,7 +400,7 @@ void StateMachine::handleEvent(const Event& event)
             cwc.sendResponse(UiApi::ScreenGrab::Response::okay(std::move(response)));
         }
         catch (const std::exception& e) {
-            spdlog::warn("Ui::StateMachine: Failed to send response: {}", e.what());
+            LoggingChannels::state()->warn("Failed to send response: {}", e.what());
         }
         return;
     }
@@ -403,8 +408,8 @@ void StateMachine::handleEvent(const Event& event)
     // Handle StreamStart - browser requests to start video stream.
     if (std::holds_alternative<UiApi::StreamStart::Cwc>(event)) {
         auto& cwc = std::get<UiApi::StreamStart::Cwc>(event);
-        spdlog::info(
-            "Ui::StateMachine: StreamStart from client {} (connectionId={})",
+        LoggingChannels::network()->info(
+            "StreamStart from client {} (connectionId={})",
             cwc.command.clientId,
             cwc.command.connectionId);
 
@@ -420,8 +425,8 @@ void StateMachine::handleEvent(const Event& event)
             if (wsService_) {
                 auto result = wsService_->sendToClient(connectionId, candidateJson);
                 if (result.isError()) {
-                    spdlog::warn(
-                        "Ui::StateMachine: Failed to send ICE candidate: {}", result.errorValue());
+                    LoggingChannels::network()->warn(
+                        "Failed to send ICE candidate: {}", result.errorValue());
                 }
             }
         };
@@ -444,7 +449,7 @@ void StateMachine::handleEvent(const Event& event)
     // Handle WebRtcAnswer - browser's answer to our offer.
     if (std::holds_alternative<UiApi::WebRtcAnswer::Cwc>(event)) {
         auto& cwc = std::get<UiApi::WebRtcAnswer::Cwc>(event);
-        spdlog::info("Ui::StateMachine: WebRtcAnswer from client {}", cwc.command.clientId);
+        LoggingChannels::network()->info("WebRtcAnswer from client {}", cwc.command.clientId);
 
         if (webRtcStreamer_) {
             webRtcStreamer_->handleAnswer(cwc.command.clientId, cwc.command.sdp);
@@ -461,8 +466,8 @@ void StateMachine::handleEvent(const Event& event)
     // Handle WebRtcCandidate universally (works in all states).
     if (std::holds_alternative<UiApi::WebRtcCandidate::Cwc>(event)) {
         auto& cwc = std::get<UiApi::WebRtcCandidate::Cwc>(event);
-        spdlog::debug(
-            "Ui::StateMachine: Processing WebRtcCandidate from client {}", cwc.command.clientId);
+        LoggingChannels::network()->debug(
+            "Processing WebRtcCandidate from client {}", cwc.command.clientId);
 
         if (webRtcStreamer_) {
             webRtcStreamer_->handleCandidate(
@@ -499,14 +504,14 @@ void StateMachine::handleEvent(const Event& event)
                             // UiUpdateEvent can arrive in any state (server keeps sending updates).
                             // States that care (SimRunning) have specific handlers.
                             // Other states (Paused, etc.) gracefully ignore without warning.
-                            spdlog::info(
-                                "Ui::StateMachine: Ignoring UiUpdateEvent in state {}",
+                            LoggingChannels::state()->info(
+                                "Ignoring UiUpdateEvent in state {}",
                                 State::getCurrentStateName(fsmState));
                             // Stay in current state - no transition.
                         }
                         else {
-                            spdlog::warn(
-                                "Ui::StateMachine: State {} does not handle event {}",
+                            LoggingChannels::state()->warn(
+                                "State {} does not handle event {}",
                                 State::getCurrentStateName(fsmState),
                                 getEventName(Event{ evt }));
 
@@ -534,6 +539,12 @@ std::string StateMachine::getCurrentStateName() const
     return State::getCurrentStateName(fsmState);
 }
 
+Network::WebSocketService& StateMachine::getWebSocketService()
+{
+    assert(wsService_ && "wsService_ is null!");
+    return *wsService_.get();
+}
+
 void StateMachine::transitionTo(State::Any newState)
 {
     std::string oldStateName = State::getCurrentStateName(fsmState);
@@ -543,7 +554,7 @@ void StateMachine::transitionTo(State::Any newState)
     fsmState = std::move(newState);
 
     std::string newStateName = State::getCurrentStateName(fsmState);
-    spdlog::info("Ui::StateMachine: {} -> {}", oldStateName, newStateName);
+    LoggingChannels::state()->info("Ui::StateMachine: {} -> {}", oldStateName, newStateName);
 
     std::visit([this](auto&& state) { callOnEnter(state); }, fsmState);
 }

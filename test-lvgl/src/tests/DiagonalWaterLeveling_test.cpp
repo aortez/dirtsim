@@ -23,7 +23,7 @@ protected:
     void SetUp() override
     {
         // Initialize logging channels.
-        LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug);
+        LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "tests");
 
         // Suppress swap logging noise.
         LoggingChannels::swap()->set_level(spdlog::level::off);
