@@ -160,6 +160,11 @@ h1 {
     color: #666;
 }
 
+.peer.disconnected video {
+    filter: grayscale(100%) brightness(0.5);
+    border-color: #333;
+}
+
 .debug-container {
     margin-top: 20px;
 }
@@ -218,8 +223,13 @@ h1 {
     background: #000;
     cursor: default;
     opacity: 0.7;
-    transition: border-color 0.3s, opacity 0.3s;
+    transition: border-color 0.3s, opacity 0.3s, max-width 0.3s, filter 0.5s;
     position: relative;
+}
+
+/* Shrink preview videos when in focus mode. */
+.main-container.focus-mode .overview-column .peer video {
+    max-width: 160px;
 }
 
 .peer video:hover {
@@ -283,4 +293,11 @@ h1 {
 
 .peer-controls button.danger:hover {
     background: #440000;
+}
+
+/* Focus view video - constrain to viewport size. */
+#focus-body video {
+    max-width: 100%;
+    max-height: calc(100vh - 200px);
+    object-fit: contain;
 }
