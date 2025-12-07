@@ -6,7 +6,6 @@
 #include "core/network/WebSocketService.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
-#include <cmath>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
@@ -31,10 +30,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 {
     spdlog::info("Disconnected: Connect command received (host={}, port={})", cmd.host, cmd.port);
 
-    // Connect using WebSocketService (unified client for commands AND RenderMessages).
     auto* wsService = sm.getWebSocketService();
     if (wsService) {
-        // Setup callbacks BEFORE connecting (connection may complete immediately for localhost).
+        // Setup callbacks before connecting.
         wsService->onConnected([&sm]() {
             spdlog::info("WebSocketService: Connected to server");
             sm.queueEvent(ServerConnectedEvent{});
@@ -50,25 +48,11 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             sm.queueEvent(ServerDisconnectedEvent{ error });
         });
 
-        // Setup binary callback for both RenderMessages and command responses.
+        // Setup binary callback for RenderMessage pushes from server.
+        // Note: Command responses are routed via WebSocketService's pendingRequests_ map,
+        // so this callback only receives RenderMessage payloads (already extracted from envelope).
         wsService->onBinary([&sm](const std::vector<std::byte>& bytes) {
-            spdlog::debug("WebSocketService: Received binary message ({} bytes)", bytes.size());
-
-            // Try to deserialize as MessageEnvelope first (command responses).
-            try {
-                Network::MessageEnvelope envelope = Network::deserialize_envelope(bytes);
-                if (envelope.message_type.find("_response") != std::string::npos) {
-                    // This is a command response - just log and discard it.
-                    // We send commands fire-and-forget, so we don't need the responses.
-                    spdlog::debug(
-                        "WebSocketService: Received {} response, discarding",
-                        envelope.message_type);
-                    return;
-                }
-            }
-            catch (const std::exception&) {
-                // Not a MessageEnvelope, might be a RenderMessage - continue.
-            }
+            spdlog::info("Received binary message ({} bytes)", bytes.size());
 
             try {
                 // Deserialize as RenderMessage.
@@ -90,13 +74,10 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 worldData.cells.resize(numCells);
 
                 if (renderMsg.format == RenderFormat::DEBUG) {
-                    // DEBUG format: includes COM, velocity, pressure data.
+                    spdlog::info("RenderMessage UNPACK: DEBUG format, {} cells", numCells);
+
                     const DebugCell* debugCells =
                         reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
-
-                    // Diagnostic: count non-zero COMs to verify data is flowing.
-                    int nonZeroComs = 0;
-                    double maxComDeviation = 0.0;
 
                     for (size_t i = 0; i < numCells; ++i) {
                         auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
@@ -106,21 +87,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                         worldData.cells[i].velocity = unpacked.velocity;
                         worldData.cells[i].pressure = unpacked.pressure_hydro;
                         worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
-
-                        // Track COM deviation from center.
-                        double deviation = std::abs(unpacked.com.x) + std::abs(unpacked.com.y);
-                        if (deviation > 0.001) {
-                            nonZeroComs++;
-                            maxComDeviation = std::max(maxComDeviation, deviation);
-                        }
                     }
-
-                    spdlog::info(
-                        "RenderMessage UNPACK: DEBUG format, {} cells, {} non-zero COMs, max "
-                        "deviation={:.4f}",
-                        numCells,
-                        nonZeroComs,
-                        maxComDeviation);
                 }
                 else {
                     // BASIC format: material + fill only.
