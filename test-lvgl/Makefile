@@ -12,6 +12,31 @@ BIN_DIR := bin
 # Number of parallel jobs (use all available cores).
 JOBS := $(shell nproc 2>/dev/null || echo 4)
 
+# Check if ccache is available.
+CCACHE := $(shell which ccache 2>/dev/null)
+
+# Helper to show ccache stats for this build (hits/misses since last zero).
+define show_ccache_stats
+	@if [ -n "$(CCACHE)" ]; then \
+		STATS=$$(ccache --print-stats 2>/dev/null); \
+		DIRECT=$$(echo "$$STATS" | grep "^direct_cache_hit" | cut -f2); \
+		PREPROC=$$(echo "$$STATS" | grep "^preprocessed_cache_hit" | cut -f2); \
+		MISSES=$$(echo "$$STATS" | grep "^cache_miss" | cut -f2); \
+		DIRECT=$${DIRECT:-0}; PREPROC=$${PREPROC:-0}; MISSES=$${MISSES:-0}; \
+		HITS=$$((DIRECT + PREPROC)); \
+		TOTAL=$$((HITS + MISSES)); \
+		if [ $$TOTAL -gt 0 ]; then \
+			PCT=$$((HITS * 100 / TOTAL)); \
+			echo "📦 ccache: $$HITS/$$TOTAL hits ($$PCT%)"; \
+		fi; \
+	fi
+endef
+
+# Helper to zero ccache stats before build.
+define zero_ccache_stats
+	@if [ -n "$(CCACHE)" ]; then ccache --zero-stats > /dev/null 2>&1; fi
+endef
+
 # Test binary names.
 TEST_BINARY := sparkle-duck-tests
 TEST_SLOW_BINARY := sparkle-duck-tests-slow
@@ -23,8 +48,10 @@ all: release
 
 release:
 	@echo "Building release version..."
+	$(call zero_ccache_stats)
 	@cmake -B $(BUILD_RELEASE_DIR) -S . -DCMAKE_BUILD_TYPE=Release
 	@$(MAKE) -C $(BUILD_RELEASE_DIR) -j$(JOBS)
+	$(call show_ccache_stats)
 
 release-verify: release
 	@echo "Running tests to verify build..."
@@ -32,19 +59,23 @@ release-verify: release
 
 debug:
 	@echo "Building debug version..."
+	$(call zero_ccache_stats)
 	@cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
 		-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG" \
 		-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG"
 	@$(MAKE) -C $(BUILD_DEBUG_DIR) -j$(JOBS)
+	$(call show_ccache_stats)
 
 asan:
 	@echo "Building debug version with AddressSanitizer..."
+	$(call zero_ccache_stats)
 	@cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
 		-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG -fsanitize=address -fno-omit-frame-pointer" \
 		-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG -fsanitize=address -fno-omit-frame-pointer" \
 		-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
 	@$(MAKE) -C $(BUILD_DEBUG_DIR) -j$(JOBS)
+	$(call show_ccache_stats)
 	@echo "ASAN build complete. Use 'make run-asan' or 'make test-asan' to run with AddressSanitizer."
 
 build-tests: debug
