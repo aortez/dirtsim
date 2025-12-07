@@ -107,6 +107,8 @@ var globalState = {
     uiLastResponse: null
 };
 
+let currentFocusedPeer = null;
+
 function updateStatusDisplay() {
     var status = document.getElementById('status');
     var parts = [];
@@ -489,6 +491,18 @@ function startWebRtcStream() {
             updateVideoState('streaming');
             if (statusSpan) statusSpan.textContent = 'streaming';
 
+            // If this peer is currently focused, update the focus video too.
+            if (currentFocusedPeer && currentFocusedPeer.port === 7070) {
+                var focusVideo = document.querySelector('#focus-body video');
+                if (focusVideo) {
+                    focusVideo.srcObject = event.streams[0];
+                    focusVideo.play().catch(function(err) {
+                        logDebug('Focus video play error: ' + err.message);
+                    });
+                    logDebug('Updated focus video with new stream');
+                }
+            }
+
             // Clean up on track end.
             event.track.onended = function() {
                 logDebug('WebRTC: Track ended');
@@ -703,9 +717,12 @@ function removeMouseForwarding() {
 // Focus View and Resizer
 //=============================================================================
 
-var currentFocusedPeer = null;
-
 function focusPeer(peer) {
+    // Prevent duplicate focus operations.
+    if (currentFocusedPeer && currentFocusedPeer.host === peer.host && currentFocusedPeer.port === peer.port) {
+        return;
+    }
+
     currentFocusedPeer = peer;
 
     // Update UI - hide empty state, show content.
@@ -722,6 +739,12 @@ function focusPeer(peer) {
         // Clone the entire card.
         focusBody.innerHTML = sourceDiv.innerHTML;
 
+        // Hide the control buttons in focus view (overview keeps them for control).
+        var focusControls = focusBody.querySelector('.peer-controls');
+        if (focusControls) {
+            focusControls.style.display = 'none';
+        }
+
         // Make the video in focus view larger and interactive.
         var focusVideo = focusBody.querySelector('video');
         if (focusVideo) {
@@ -729,8 +752,33 @@ function focusPeer(peer) {
             focusVideo.style.width = '100%';
             focusVideo.style.cursor = 'crosshair';
 
+            // Copy the MediaStream from the original video to the cloned video.
+            var sourceVideo = sourceDiv.querySelector('video');
+            if (sourceVideo) {
+                logDebug('Source video found: srcObject=' + (sourceVideo.srcObject ? 'YES' : 'NO') +
+                         ', paused=' + sourceVideo.paused + ', readyState=' + sourceVideo.readyState);
+
+                if (sourceVideo.srcObject) {
+                    focusVideo.srcObject = sourceVideo.srcObject;
+                    focusVideo.play().catch(function(err) {
+                        logDebug('Focus video play error: ' + err.message);
+                    });
+                    logDebug('Copied video stream to focus view');
+                } else {
+                    logDebug('Source video has no srcObject - will auto-start stream');
+                }
+            } else {
+                logDebug('No source video element found in overview card');
+            }
+
             // Set up mouse forwarding on the focus video (only for UI peers).
             if (peer.role === 'ui') {
+                // Auto-start stream if not already active.
+                if (!streamActive) {
+                    logDebug('Auto-starting stream for focused UI peer');
+                    startWebRtcStream();
+                }
+
                 // Wait a moment for video to be ready.
                 setTimeout(function() {
                     setupMouseForwarding(focusVideo);
@@ -787,7 +835,6 @@ document.getElementById('resizer').addEventListener('mousedown', function(e) {
 document.addEventListener('mousemove', function(e) {
     if (!isResizing) return;
 
-    var container = document.querySelector('.main-container');
     var overview = document.querySelector('.overview-column');
     var deltaX = e.clientX - lastDownX;
     lastDownX = e.clientX;

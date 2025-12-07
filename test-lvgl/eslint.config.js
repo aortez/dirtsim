@@ -71,7 +71,7 @@ export default [
             // =================================================================
             "no-shadow": "warn",
             "no-undef": "error",
-            "no-unused-vars": ["warn", {
+            "no-unused-vars": ["error", {
                 "vars": "all",
                 "args": "none",
                 "varsIgnorePattern": "^_",

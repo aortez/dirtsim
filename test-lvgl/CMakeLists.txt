@@ -1,5 +1,10 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 project(lvgl)
+
+# Suppress FindBoost deprecation warning (we use Boost's config mode when available).
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
 
 # Use ccache for faster rebuilds when available.
 find_program(CCACHE_PROGRAM ccache)
@@ -14,12 +19,12 @@ endif()
 # Allow linking to targets from subdirectories.
 cmake_policy(SET CMP0079 NEW)
 
-# Add Google Test
+# Add Google Test (1.15.2 fixes CMake deprecation warnings).
 include(FetchContent)
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git
-    GIT_TAG release-1.12.1
+    GIT_TAG v1.15.2
 )
 FetchContent_MakeAvailable(googletest)
 
@@ -42,11 +47,11 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Add msgpack-c for binary serialization.
+# Add msgpack-c for binary serialization (7.0.0 fixes CMake deprecation warnings).
 FetchContent_Declare(
     msgpack
     GIT_REPOSITORY https://github.com/msgpack/msgpack-c.git
-    GIT_TAG cpp-6.1.0
+    GIT_TAG cpp-7.0.0
 )
 set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
