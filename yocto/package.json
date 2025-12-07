@@ -1,0 +1,13 @@
+{
+  "name": "sparkle-duck-yocto",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Yocto build and flash tools for Sparkle Duck",
+  "scripts": {
+    "flash": "node scripts/flash.mjs"
+  },
+  "bin": {
+    "sd-flash": "./scripts/flash.mjs"
+  }
+}

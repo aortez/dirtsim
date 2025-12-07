@@ -1,0 +1,81 @@
+# KAS configuration for Sparkle Duck Yocto build
+# Stage 1: Bare Earth - minimal bootable image with SSH and NetworkManager
+#
+# Usage:
+#   kas build kas-dirtsim.yml
+
+header:
+  version: 14
+
+distro: poky
+
+machine: raspberrypi5
+
+repos:
+  # Core Yocto - the foundation.
+  poky:
+    url: "https://git.yoctoproject.org/poky"
+    branch: scarthgap
+    layers:
+      meta:
+      meta-poky:
+
+  # Raspberry Pi BSP.
+  meta-raspberrypi:
+    url: "https://git.yoctoproject.org/meta-raspberrypi"
+    branch: scarthgap
+
+  # OpenEmbedded layers for NetworkManager and other goodies.
+  meta-openembedded:
+    url: "https://git.openembedded.org/meta-openembedded"
+    branch: scarthgap
+    layers:
+      meta-oe:
+      meta-networking:
+      meta-python:
+
+  # Our custom layer - the dirtsim greenhouse.
+  meta-dirtsim:
+    path: meta-dirtsim
+
+local_conf_header:
+  # Machine and build configuration.
+  base: |
+    # Accept restricted licenses (Pi WiFi firmware).
+    LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
+
+    # Use systemd as init system.
+    INIT_MANAGER = "systemd"
+
+    # Set hostname.
+    hostname:pn-base-files = "dirtsim"
+
+    # Use wic for SD card image.
+    IMAGE_FSTYPES = "wic.gz wic.bmap"
+
+    # Faster builds - adjust to your CPU cores.
+    BB_NUMBER_THREADS = "8"
+    PARALLEL_MAKE = "-j 8"
+
+    # Download directory (shared across builds).
+    DL_DIR = "${TOPDIR}/../downloads"
+
+    # Shared state cache (speeds up rebuilds).
+    SSTATE_DIR = "${TOPDIR}/../sstate-cache"
+
+  # Raspberry Pi specific configuration.
+  rpi: |
+    # Enable serial console (UART) for debugging.
+    ENABLE_UART = "1"
+
+    # Disable rainbow splash for cleaner boot.
+    DISABLE_SPLASH = "1"
+
+    # Force HDMI output even if no monitor detected at boot.
+    HDMI_FORCE_HOTPLUG = "1"
+
+    # Boot from USB drive instead of SD card.
+    CMDLINE_ROOT_PARTITION = "/dev/sda2"
+
+# Target image to build - our custom image recipe.
+target: dirtsim-image
