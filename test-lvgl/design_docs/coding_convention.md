@@ -62,6 +62,40 @@ Implementation:
 - All logging (info, debug, error) goes to stderr
 - JSON output is in Result<okay,error> format for standardized parsing.
 
+## WebSocket Commands
+
+Use `WebSocketService::sendCommand<Okay>(cmd, timeout)` instead of manual envelope creation:
+
+```cpp
+// ❌ Manual envelope (verbose, error-prone).
+auto envelope = Network::make_command_envelope(1, cmd);
+auto result = wsService.sendBinaryAndReceive(envelope, 2000);
+auto response = Network::extract_result<Okay, ApiError>(result.value());
+
+// ✅ Use sendCommand (clean, typed).
+const auto result = wsService.sendCommand<Api::SimRun::Okay>(cmd, 2000);
+const auto& response = result.value();
+```
+
+## Logging
+
+Use typed logging macros with automatic file:line:
+
+```cpp
+// ❌ Manual prefix, no source location.
+spdlog::info("StartMenu: Connected to server");
+
+// ✅ Channel-specific macro (for subsystems).
+LOG_INFO(State, "Connected to server");
+// Output: [ui] [state] [info] [StartMenu.cpp:20] Connected to server
+
+// ✅ Simple macro (for application code, no channel redundancy).
+SLOG_INFO("Cleaning up processes");
+// Output: [cli] [info] [CleanupRunner.cpp:31] Cleaning up processes
+```
+
+**Available channels:** `State`, `Network`, `Render`, `Controls`, `Physics`, `Scenario`, `Tree`, `Swap`, `Collision`, `Cohesion`, `Pressure`, `Friction`, `Support`, `Viscosity`, `Ui`.
+
 ## Misc
 - don't use std::move unless required, just make a copy
 - switches: strategy is to handle every case and try to assert if they're missed
