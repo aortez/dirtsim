@@ -143,7 +143,7 @@ int main(int argc, char** argv)
         // Apply command line channel overrides if provided.
         if (log_channels) {
             DirtSim::LoggingChannels::configureFromString(args::get(log_channels));
-            spdlog::info("Applied channel overrides: {}", args::get(log_channels));
+            SLOG_INFO("Applied channel overrides: {}", args::get(log_channels));
         }
     }
     catch (const spdlog::spdlog_ex& ex) {
@@ -151,7 +151,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    spdlog::info("🦆 Sparkle Duck Dirt Simulator starting up! 🦆");
+    SLOG_INFO("🦆 Sparkle Duck Dirt Simulator starting up! 🦆");
 
     if (backend) {
         selected_backend = args::get(backend);
@@ -179,12 +179,12 @@ int main(int argc, char** argv)
         die("Failed to initialize display backend");
     }
 
-    spdlog::info("Starting with new UI state machine (UISM)");
+    SLOG_INFO("Starting with new UI state machine (UISM)");
 
     // Create the UI state machine with display.
     auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default());
 
-    spdlog::info("UI state machine created, state: {}", stateMachine->getCurrentStateName());
+    SLOG_INFO("UI state machine created, state: {}", stateMachine->getCurrentStateName());
 
     // Send init complete event to start state machine flow.
     stateMachine->queueEvent(DirtSim::Ui::InitCompleteEvent{});
@@ -196,27 +196,27 @@ int main(int argc, char** argv)
         if (colonPos != std::string::npos) {
             std::string host = hostPort.substr(0, colonPos);
             uint16_t port = static_cast<uint16_t>(std::stoi(hostPort.substr(colonPos + 1)));
-            spdlog::info("Auto-connecting to DSSM server at {}:{}", host, port);
+            SLOG_INFO("Auto-connecting to DSSM server at {}:{}", host, port);
             stateMachine->queueEvent(DirtSim::Ui::ConnectToServerCommand{ host, port });
         }
         else {
-            spdlog::error("Invalid server format (use host:port): {}", hostPort);
+            SLOG_ERROR("Invalid server format (use host:port): {}", hostPort);
         }
     }
     else {
         // No server specified, connect to localhost:8080 by default.
-        spdlog::info("Auto-connecting to DSSM server at localhost:8080 (default)");
+        SLOG_INFO("Auto-connecting to DSSM server at localhost:8080 (default)");
         stateMachine->queueEvent(DirtSim::Ui::ConnectToServerCommand{ "localhost", 8080 });
     }
 
-    spdlog::info("Entering backend run loop (will process events and LVGL)");
+    SLOG_INFO("Entering backend run loop (will process events and LVGL)");
 
     // Enter the run loop with the state machine.
     // This integrates state machine event processing with LVGL event loop.
     driver_backends_run_loop(*stateMachine);
 
-    spdlog::info("Backend run loop exited");
-    spdlog::info("Application shutting down cleanly");
+    SLOG_INFO("Backend run loop exited");
+    SLOG_INFO("Application shutting down cleanly");
 
     // Print timer statistics if requested.
     if (printStats) {

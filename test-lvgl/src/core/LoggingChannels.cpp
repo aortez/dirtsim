@@ -60,17 +60,26 @@ void LoggingChannels::initialize(
     createLogger("tree", sharedSinks_, spdlog::level::info);
     createLogger("ui", sharedSinks_, spdlog::level::info);
 
-    // Keep the default logger for general use (named with component).
-    std::string loggerName = componentName.empty() ? "default" : componentName;
-    auto default_logger =
-        std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
-    default_logger->set_level(spdlog::level::info);
+    // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
+    auto default_console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    default_console_sink->set_level(consoleLevel);
+    auto default_file_sink =
+        std::make_shared<spdlog::sinks::basic_file_sink_mt>("sparkle-duck.log", false);
+    default_file_sink->set_level(fileLevel);
 
-    // Set custom pattern for default logger (omits channel name to avoid redundancy).
+    // Set pattern on default logger sinks (omits channel name to avoid redundancy).
     std::string defaultPattern = componentName == "default"
         ? "[%H:%M:%S.%e] [%^%l%$] [%s:%#] %v"
         : "[%H:%M:%S.%e] [" + componentName + "] [%^%l%$] [%s:%#] %v";
-    default_logger->set_pattern(defaultPattern);
+    default_console_sink->set_pattern(defaultPattern);
+    default_file_sink->set_pattern(defaultPattern);
+
+    // Create default logger with its own sinks.
+    std::string loggerName = componentName.empty() ? "default" : componentName;
+    std::vector<spdlog::sink_ptr> defaultSinks = { default_console_sink, default_file_sink };
+    auto default_logger =
+        std::make_shared<spdlog::logger>(loggerName, defaultSinks.begin(), defaultSinks.end());
+    default_logger->set_level(spdlog::level::info);
 
     spdlog::set_default_logger(default_logger);
 
@@ -78,7 +87,7 @@ void LoggingChannels::initialize(
     spdlog::flush_every(std::chrono::seconds(1));
 
     initialized_ = true;
-    spdlog::info("LoggingChannels initialized successfully");
+    SLOG_INFO("LoggingChannels initialized successfully");
 }
 
 std::shared_ptr<spdlog::logger> LoggingChannels::get(LogChannel channel)
@@ -512,24 +521,53 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
         spdlog::warn("Error applying channel levels from config: {}", e.what());
     }
 
-    // Create default logger with component name.
-    std::string loggerName = componentName.empty() ? "default" : componentName;
-    auto default_logger =
-        std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
-    default_logger->set_level(spdlog::level::info);
+    // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
+    std::vector<spdlog::sink_ptr> defaultSinks;
+    for (const auto& sharedSink : sharedSinks_) {
+        // Clone sink configuration but create new instances for default logger.
+        if (auto* consoleSink =
+                dynamic_cast<spdlog::sinks::stdout_color_sink_mt*>(sharedSink.get())) {
+            auto default_console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+            default_console_sink->set_level(consoleSink->level());
+            defaultSinks.push_back(default_console_sink);
+        }
+        else if (
+            auto* fileSink = dynamic_cast<spdlog::sinks::basic_file_sink_mt*>(sharedSink.get())) {
+            auto default_file_sink =
+                std::make_shared<spdlog::sinks::basic_file_sink_mt>("sparkle-duck.log", false);
+            default_file_sink->set_level(fileSink->level());
+            defaultSinks.push_back(default_file_sink);
+        }
+        else if (
+            auto* rotatingSink =
+                dynamic_cast<spdlog::sinks::rotating_file_sink_mt*>(sharedSink.get())) {
+            auto default_file_sink =
+                std::make_shared<spdlog::sinks::basic_file_sink_mt>("sparkle-duck.log", false);
+            default_file_sink->set_level(rotatingSink->level());
+            defaultSinks.push_back(default_file_sink);
+        }
+    }
 
-    // Set custom pattern for default logger (omits channel name to avoid redundancy).
+    // Set pattern on default logger sinks (omits channel name to avoid redundancy).
     std::string defaultPattern = componentName == "default"
         ? "[%H:%M:%S.%e] [%^%l%$] [%s:%#] %v"
         : "[%H:%M:%S.%e] [" + componentName + "] [%^%l%$] [%s:%#] %v";
-    default_logger->set_pattern(defaultPattern);
+    for (auto& sink : defaultSinks) {
+        sink->set_pattern(defaultPattern);
+    }
+
+    // Create default logger with its own sinks.
+    std::string loggerName = componentName.empty() ? "default" : componentName;
+    auto default_logger =
+        std::make_shared<spdlog::logger>(loggerName, defaultSinks.begin(), defaultSinks.end());
+    default_logger->set_level(spdlog::level::info);
 
     spdlog::set_default_logger(default_logger);
 
     // Set flush interval.
     spdlog::flush_every(std::chrono::milliseconds(flushIntervalMs));
 
-    spdlog::info("LoggingChannels initialized from config successfully");
+    SLOG_INFO("LoggingChannels initialized from config successfully");
 }
 
 void LoggingChannels::createSpecializedSinks(const nlohmann::json& specializedConfig)

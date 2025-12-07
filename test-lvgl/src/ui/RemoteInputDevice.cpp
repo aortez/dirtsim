@@ -1,5 +1,5 @@
 #include "RemoteInputDevice.h"
-#include <spdlog/spdlog.h>
+#include "core/LoggingChannels.h"
 
 namespace DirtSim {
 namespace Ui {
@@ -9,7 +9,7 @@ RemoteInputDevice::RemoteInputDevice(_lv_display_t* display)
     // Create LVGL input device.
     indev_ = lv_indev_create();
     if (!indev_) {
-        spdlog::error("RemoteInputDevice: Failed to create lv_indev_t");
+        SLOG_ERROR("Failed to create lv_indev_t");
         return;
     }
 
@@ -25,13 +25,13 @@ RemoteInputDevice::RemoteInputDevice(_lv_display_t* display)
     // Associate with display.
     lv_indev_set_display(indev_, display);
 
-    spdlog::info("RemoteInputDevice: Initialized remote pointer input device");
+    SLOG_INFO("Initialized remote pointer input device");
 }
 
 RemoteInputDevice::~RemoteInputDevice()
 {
     // LVGL handles indev cleanup automatically when display is destroyed.
-    spdlog::info("RemoteInputDevice: Destroyed");
+    SLOG_INFO("Destroyed");
 }
 
 void RemoteInputDevice::updatePosition(int x, int y)

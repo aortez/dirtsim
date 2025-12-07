@@ -1,5 +1,5 @@
 #include "UiComponentManager.h"
-#include <spdlog/spdlog.h>
+#include "core/LoggingChannels.h"
 
 namespace DirtSim {
 namespace Ui {
@@ -7,18 +7,18 @@ namespace Ui {
 UiComponentManager::UiComponentManager(lv_disp_t* display) : display(display)
 {
     if (!display) {
-        spdlog::error("UiComponentManager initialized with null display");
+        SLOG_ERROR("UiComponentManager initialized with null display");
         return;
     }
 
     // Initialize with the default screen.
     currentScreen = lv_disp_get_scr_act(display);
-    spdlog::info("UiComponentManager initialized with display");
+    SLOG_INFO("UiComponentManager initialized with display");
 }
 
 UiComponentManager::~UiComponentManager()
 {
-    spdlog::info("UiComponentManager cleanup started");
+    SLOG_INFO("UiComponentManager cleanup started");
 
     // Clean up any screens we created (not the default one).
     if (simulationScreen && simulationScreen != lv_disp_get_scr_act(display)) {
@@ -31,7 +31,7 @@ UiComponentManager::~UiComponentManager()
         cleanupScreen(configScreen);
     }
 
-    spdlog::info("UiComponentManager cleanup completed");
+    SLOG_INFO("UiComponentManager cleanup completed");
 }
 
 lv_obj_t* UiComponentManager::getSimulationContainer()
@@ -142,7 +142,7 @@ lv_obj_t* UiComponentManager::ensureScreen(lv_obj_t*& screen, const char* name)
             spdlog::debug("Created {} screen", name);
         }
         else {
-            spdlog::error("Failed to create {} screen", name);
+            SLOG_ERROR("Failed to create {} screen", name);
         }
     }
     return screen;
@@ -160,7 +160,7 @@ void UiComponentManager::cleanupScreen(lv_obj_t*& screen)
 void UiComponentManager::createSimulationLayout()
 {
     if (!simulationScreen) {
-        spdlog::error("createSimulationLayout: simulation screen not created");
+        SLOG_ERROR("createSimulationLayout: simulation screen not created");
         return;
     }
 
@@ -250,7 +250,7 @@ void UiComponentManager::createSimulationLayout()
     // Physics controls area (the bottom panel itself, for now - could subdivide into 3 columns).
     simPhysicsControlsArea_ = simBottomPanel_;
 
-    spdlog::info("UiComponentManager: Created simulation layout structure");
+    SLOG_INFO("UiComponentManager: Created simulation layout structure");
 }
 
 } // namespace Ui

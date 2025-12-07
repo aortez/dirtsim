@@ -27,16 +27,16 @@ struct SimRunning {
 
     // UI FPS tracking.
     std::chrono::steady_clock::time_point lastFrameTime;
-    double measuredUiFps = 0.0; // Instantaneous UI frame rate.
-    double smoothedUiFps = 0.0; // Exponentially smoothed UI FPS for display.
-    uint64_t skippedFrames = 0; // Count of skipped frames.
+    double measuredUiFps = 0.0;
+    double smoothedUiFps = 0.0;
+    uint64_t skippedFrames = 0;
 
     // Round-trip timing (state_get request → UiUpdateEvent received).
     std::chrono::steady_clock::time_point lastStateGetSentTime;
     double lastRoundTripMs = 0.0;
-    double smoothedRoundTripMs = 0.0; // EMA smoothed round-trip time.
-    uint64_t updateCount = 0;         // Count of received world updates.
-    bool stateGetPending = false;     // Track if a state_get request is awaiting response.
+    double smoothedRoundTripMs = 0.0;
+    uint64_t updateCount = 0;
+    bool stateGetPending = false;
 
     void onEnter(StateMachine& sm);
 

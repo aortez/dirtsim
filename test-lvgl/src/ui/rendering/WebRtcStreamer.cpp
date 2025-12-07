@@ -1,4 +1,5 @@
 #include "WebRtcStreamer.h"
+#include "core/LoggingChannels.h"
 
 #include "core/encoding/H264Encoder.h"
 #include "ui/DisplayCapture.h"
@@ -20,26 +21,26 @@ WebRtcStreamer::WebRtcStreamer()
     }
 
     streamStartTime_ = std::chrono::steady_clock::now();
-    spdlog::info("WebRtcStreamer: Created");
+    LOG_INFO(Network, "Created");
 }
 
 WebRtcStreamer::~WebRtcStreamer()
 {
     std::lock_guard<std::mutex> lock(clientsMutex_);
     clients_.clear();
-    spdlog::info("WebRtcStreamer: Destroyed");
+    LOG_INFO(Network, "Destroyed");
 }
 
 void WebRtcStreamer::setDisplay(lv_display_t* display)
 {
     display_ = display;
-    spdlog::info("WebRtcStreamer: Display set");
+    LOG_INFO(Network, "Display set");
 }
 
 std::string WebRtcStreamer::initiateStream(
     const std::string& clientId, IceCandidateCallback onIceCandidate)
 {
-    spdlog::info("WebRtcStreamer: Initiating stream for client {}", clientId);
+    LOG_INFO(Network, "Initiating stream for client {}", clientId);
 
     std::lock_guard<std::mutex> lock(clientsMutex_);
 
@@ -56,12 +57,12 @@ std::string WebRtcStreamer::initiateStream(
 
     // Set up state change callback.
     pc->onStateChange([clientId](rtc::PeerConnection::State state) {
-        spdlog::info("WebRtcStreamer: Client {} state: {}", clientId, static_cast<int>(state));
+        LOG_INFO(Network, "Client {} state: {}", clientId, static_cast<int>(state));
 
         if (state == rtc::PeerConnection::State::Disconnected
             || state == rtc::PeerConnection::State::Failed
             || state == rtc::PeerConnection::State::Closed) {
-            spdlog::info("WebRtcStreamer: Client {} connection closed", clientId);
+            LOG_INFO(Network, "Client {} connection closed", clientId);
             // Note: Cleanup handled by track close callback or manual removeClient()
         }
     });
@@ -69,7 +70,7 @@ std::string WebRtcStreamer::initiateStream(
     // ICE candidate callback - trickle ICE candidates to browser as they're gathered.
     pc->onLocalCandidate([clientId, onIceCandidate](rtc::Candidate candidate) {
         if (!onIceCandidate) {
-            spdlog::warn("WebRtcStreamer: ICE callback null for client {}", clientId);
+            LOG_WARN(Network, "ICE callback null for client {}", clientId);
             return;
         }
 
@@ -126,13 +127,12 @@ std::string WebRtcStreamer::initiateStream(
         if (it != clients_.end()) {
             it->second.ready = true;
             it->second.startTime = std::chrono::steady_clock::now();
-            spdlog::info("WebRtcStreamer: Video track open for client {}", clientId);
+            LOG_INFO(Network, "Video track open for client {}", clientId);
         }
     });
 
-    track->onClosed([clientId]() {
-        spdlog::info("WebRtcStreamer: Video track closed for client {}", clientId);
-    });
+    track->onClosed(
+        [clientId]() { LOG_INFO(Network, "Video track closed for client {}", clientId); });
 
     // Store client connection.
     ClientConnection conn;
@@ -150,7 +150,7 @@ std::string WebRtcStreamer::initiateStream(
         pc->setLocalDescription();
     }
     catch (const std::exception& e) {
-        spdlog::error("WebRtcStreamer: Failed to create offer: {}", e.what());
+        LOG_ERROR(Network, "Failed to create offer: {}", e.what());
         clients_.erase(clientId);
         return ""; // Return empty string on error.
     }
@@ -158,7 +158,7 @@ std::string WebRtcStreamer::initiateStream(
     // Get the SDP offer immediately (trickle ICE - candidates come separately).
     auto description = pc->localDescription();
     if (!description) {
-        spdlog::error("WebRtcStreamer: No local description for {}", clientId);
+        LOG_ERROR(Network, "No local description for {}", clientId);
         clients_.erase(clientId);
         return "";
     }
@@ -172,13 +172,13 @@ std::string WebRtcStreamer::initiateStream(
 
 void WebRtcStreamer::handleAnswer(const std::string& clientId, const std::string& sdpAnswer)
 {
-    spdlog::info("WebRtcStreamer: Received answer from client {}", clientId);
+    LOG_INFO(Network, "Received answer from client {}", clientId);
 
     std::lock_guard<std::mutex> lock(clientsMutex_);
 
     auto it = clients_.find(clientId);
     if (it == clients_.end()) {
-        spdlog::warn("WebRtcStreamer: Received answer for unknown client {}", clientId);
+        LOG_WARN(Network, "Received answer for unknown client {}", clientId);
         return;
     }
 
@@ -186,10 +186,10 @@ void WebRtcStreamer::handleAnswer(const std::string& clientId, const std::string
     try {
         it->second.pc->setRemoteDescription(
             rtc::Description(sdpAnswer, rtc::Description::Type::Answer));
-        spdlog::info("WebRtcStreamer: Set remote description (answer) for client {}", clientId);
+        LOG_INFO(Network, "Set remote description (answer) for client {}", clientId);
     }
     catch (const std::exception& e) {
-        spdlog::error("WebRtcStreamer: Failed to set remote description: {}", e.what());
+        LOG_ERROR(Network, "Failed to set remote description: {}", e.what());
         clients_.erase(clientId);
         return;
     }
@@ -202,16 +202,16 @@ void WebRtcStreamer::handleCandidate(
 
     auto it = clients_.find(clientId);
     if (it == clients_.end()) {
-        spdlog::warn("WebRtcStreamer: Received candidate for unknown client {}", clientId);
+        LOG_WARN(Network, "Received candidate for unknown client {}", clientId);
         return;
     }
 
     try {
         it->second.pc->addRemoteCandidate(rtc::Candidate(candidate, mid));
-        spdlog::debug("WebRtcStreamer: Added ICE candidate for client {}", clientId);
+        LOG_DEBUG(Network, "Added ICE candidate for client {}", clientId);
     }
     catch (const std::exception& e) {
-        spdlog::warn("WebRtcStreamer: Failed to add candidate: {}", e.what());
+        LOG_WARN(Network, "Failed to add candidate: {}", e.what());
     }
 }
 
@@ -271,7 +271,7 @@ void WebRtcStreamer::sendFrame()
         // 500kbps was causing massive oversized frames that overflow send buffers.
         if (!encoder_->initialize(
                 screenshotData->width, screenshotData->height, 5000000, kTargetFps)) {
-            spdlog::error("WebRtcStreamer: Failed to initialize encoder");
+            LOG_ERROR(Network, "Failed to initialize encoder");
             return;
         }
     }
@@ -295,7 +295,7 @@ void WebRtcStreamer::sendFrame()
         }
 
         if (!client.ready) {
-            spdlog::debug("WebRtcStreamer: Attempting to send frame to non-ready client {}", id);
+            LOG_DEBUG(Network, "Attempting to send frame to non-ready client {}", id);
         }
 
         try {
@@ -329,7 +329,7 @@ void WebRtcStreamer::sendFrame()
                 encoded->isKeyframe);
         }
         catch (const std::exception& e) {
-            spdlog::warn("WebRtcStreamer: Failed to send frame to {}: {}", id, e.what());
+            LOG_WARN(Network, "Failed to send frame to {}: {}", id, e.what());
         }
     }
 
