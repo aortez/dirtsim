@@ -115,6 +115,46 @@ public:
     Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& data);
 
     /**
+     * @brief Send typed command and receive typed response (recommended).
+     *
+     * Handles envelope creation, request ID management, and response extraction automatically.
+     *
+     * @tparam Okay The success response type (e.g., Api::SimRun::Okay).
+     * @tparam Command The command type (e.g., Api::SimRun::Command).
+     * @param cmd The command to send.
+     * @param timeoutMs Timeout in milliseconds.
+     * @return Result with Result<Okay, ApiError> on success, error string on failure.
+     */
+    template <typename Okay, typename Command>
+    Result<Result<Okay, ApiError>, std::string> sendCommand(
+        const Command& cmd, int timeoutMs = 5000)
+    {
+        // Generate unique request ID.
+        static std::atomic<uint64_t> nextId{ 1 };
+        uint64_t requestId = nextId.fetch_add(1, std::memory_order_relaxed);
+
+        // Create envelope.
+        auto envelope = make_command_envelope(requestId, cmd);
+
+        // Send and receive.
+        auto envResult = sendBinaryAndReceive(envelope, timeoutMs);
+        if (envResult.isError()) {
+            return Result<Result<Okay, ApiError>, std::string>::error(envResult.errorValue());
+        }
+
+        // Extract typed response.
+        auto response = extract_result<Okay, ApiError>(envResult.value());
+        if (response.isError()) {
+            return Result<Result<Okay, ApiError>, std::string>::okay(
+                Result<Okay, ApiError>::error(response.errorValue()));
+        }
+
+        // Return success response.
+        return Result<Result<Okay, ApiError>, std::string>::okay(
+            Result<Okay, ApiError>::okay(response.value()));
+    }
+
+    /**
      * @brief Send JSON and receive response (for dynamic dispatch).
      *
      * Useful when command type isn't known at compile time (e.g., CLI parsing strings).
@@ -128,7 +168,7 @@ public:
         const std::string& message, int timeoutMs = 5000);
 
     /**
-     * @brief Send binary envelope and receive response (for manual testing).
+     * @brief Send binary envelope and receive response (for manual testing/incorrect use).
      *
      * Useful for testing binary protocol or when you need full control.
      *

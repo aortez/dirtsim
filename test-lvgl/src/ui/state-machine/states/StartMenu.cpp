@@ -295,15 +295,13 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
         .timestep = 0.016, .max_steps = -1, .scenario_id = "sandbox", .max_frame_ms = 16
     };
 
-    auto envelope = Network::make_command_envelope(1, cmd);
-    auto result = wsService.sendBinaryAndReceive(envelope, 2000);
-
+    const auto result = wsService.sendCommand<Api::SimRun::Okay>(cmd, 2000);
     if (result.isError()) {
         LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
         return StartMenu{};
     }
 
-    auto response = Network::extract_result<Api::SimRun::Okay, ApiError>(result.value());
+    const auto& response = result.value();
     if (response.isError()) {
         LOG_ERROR(State, "SimRun error: {}", response.errorValue().message);
         return StartMenu{};
@@ -358,17 +356,21 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
         .max_frame_ms = 16 // Cap at 60 FPS for UI visualization.
     };
 
-    auto envelope = DirtSim::Network::make_command_envelope(1, cmd);
-    auto result = wsService.sendBinaryAndReceive(envelope, 1000);
-
+    const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);
     if (result.isError()) {
-        LOG_ERROR(State, "Failed to send sim_run: {}", result.errorValue());
-        cwc.sendResponse(
-            UiApi::SimRun::Response::error(ApiError("Failed to send command to DSSM")));
+        LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
+        cwc.sendResponse(UiApi::SimRun::Response::error(ApiError(result.errorValue())));
         return StartMenu{};
     }
 
-    LOG_INFO(State, "Sent sim_run to DSSM, transitioning to SimRunning");
+    const auto& response = result.value();
+    if (response.isError()) {
+        LOG_ERROR(State, "SimRun error: {}", response.errorValue().message);
+        cwc.sendResponse(UiApi::SimRun::Response::error(response.errorValue()));
+        return StartMenu{};
+    }
+
+    LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
 
     // Send OK response.
     cwc.sendResponse(UiApi::SimRun::Response::okay({ true }));
