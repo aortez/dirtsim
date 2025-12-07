@@ -2,16 +2,35 @@
 <html>
 <head>
     <meta charset="utf-8">
-    <title>Dirt Sim Garden</title>
+    <title>✨🦆 Dirt Sim Garden</title>
     <!-- WebRTC uses native browser support, no external libraries needed. -->
     <style>
 {{GARDEN_CSS}}
     </style>
 </head>
 <body>
-    <h1>Dirt Sim Garden</h1>
+    <h1>✨🦆 Dirt Sim Garden</h1>
     <div id="status">Discovering...</div>
-    <div class="peers" id="peers"></div>
+    <div class="main-container">
+        <div class="overview-column">
+            <h2>Overview</h2>
+            <div class="peers" id="peers"></div>
+        </div>
+        <div class="resizer" id="resizer"></div>
+        <div class="focus-column" id="focus-column">
+            <div class="focus-empty" id="focus-empty">
+                <div class="focus-empty-icon">🌳</div>
+                <div class="focus-empty-text">Click a card to focus</div>
+            </div>
+            <div class="focus-content" id="focus-content" style="display: none;">
+                <div class="focus-header">
+                    <h2 id="focus-title">Details</h2>
+                    <button class="focus-close" onclick="clearFocus()">✕</button>
+                </div>
+                <div id="focus-body"></div>
+            </div>
+        </div>
+    </div>
     <div class="debug-container">
         <div class="debug-header">
             <h3>Debug Log</h3>

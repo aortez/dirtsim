@@ -1,7 +1,7 @@
 // Dirt Sim Garden Dashboard
 // WebSocket connections, WebRTC streaming, and peer management.
 
-/* exported clearDebugLog, copyDebugLog, sendExitCommand, togglePause, toggleWebRtcStream */
+/* exported clearDebugLog, clearFocus, copyDebugLog, focusPeer, removeMouseForwarding, sendExitCommand, setupMouseForwarding, togglePause, toggleWebRtcStream */
 
 //=============================================================================
 // Utility Functions
@@ -320,6 +320,15 @@ function displayPeers(peers) {
             div.className = 'peer';
             div.id = divId;
             container.appendChild(div);
+
+            // Add click handler to focus this peer.
+            (function(p) {
+                div.addEventListener('click', function(e) {
+                    // Don't focus if clicking on a button.
+                    if (e.target.tagName === 'BUTTON') return;
+                    focusPeer(p);
+                });
+            })(peer);
         }
 
         var conn = (peer.port === 8080) ? serverConn : uiConn;
@@ -620,48 +629,184 @@ function sendExitCommand() {
 // Mouse Event Forwarding
 //=============================================================================
 
-function setupMouseForwarding() {
-    var video = document.getElementById('video-localhost-7070');
-    if (!video) return;
+// Active mouse forwarding listeners (so we can clean them up).
+var activeMouseListeners = null;
+
+function setupMouseForwarding(videoElement) {
+    if (!videoElement) return;
+
+    // Clean up previous listeners if they exist.
+    if (activeMouseListeners) {
+        removeMouseForwarding();
+    }
 
     function sendMouseEvent(eventType, x, y) {
         if (!uiConn.isConnected()) return;
 
         // Scale coordinates from video display size to LVGL resolution.
-        var scaleX = video.videoWidth / video.clientWidth;
-        var scaleY = video.videoHeight / video.clientHeight;
+        var scaleX = videoElement.videoWidth / videoElement.clientWidth;
+        var scaleY = videoElement.videoHeight / videoElement.clientHeight;
         var lvglX = Math.floor(x * scaleX);
         var lvglY = Math.floor(y * scaleY);
 
         uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
     }
 
-    video.addEventListener('mousedown', function(e) {
-        var rect = video.getBoundingClientRect();
+    var mousedownHandler = function(e) {
+        var rect = videoElement.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
         sendMouseEvent('MouseDown', x, y);
-    });
+    };
 
-    video.addEventListener('mousemove', function(e) {
-        var rect = video.getBoundingClientRect();
+    var mousemoveHandler = function(e) {
+        var rect = videoElement.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
         sendMouseEvent('MouseMove', x, y);
-    });
+    };
 
-    video.addEventListener('mouseup', function(e) {
-        var rect = video.getBoundingClientRect();
+    var mouseupHandler = function(e) {
+        var rect = videoElement.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
         sendMouseEvent('MouseUp', x, y);
-    });
+    };
 
-    logDebug('Mouse forwarding enabled for video element');
+    videoElement.addEventListener('mousedown', mousedownHandler);
+    videoElement.addEventListener('mousemove', mousemoveHandler);
+    videoElement.addEventListener('mouseup', mouseupHandler);
+
+    // Store references so we can remove them later.
+    activeMouseListeners = {
+        video: videoElement,
+        mousedown: mousedownHandler,
+        mousemove: mousemoveHandler,
+        mouseup: mouseupHandler
+    };
+
+    logDebug('Mouse forwarding enabled for focus video');
 }
 
-// Set up mouse forwarding after a delay (video element needs to exist).
-setTimeout(setupMouseForwarding, 3000);
+function removeMouseForwarding() {
+    if (!activeMouseListeners) return;
+
+    activeMouseListeners.video.removeEventListener('mousedown', activeMouseListeners.mousedown);
+    activeMouseListeners.video.removeEventListener('mousemove', activeMouseListeners.mousemove);
+    activeMouseListeners.video.removeEventListener('mouseup', activeMouseListeners.mouseup);
+
+    activeMouseListeners = null;
+    logDebug('Mouse forwarding disabled');
+}
+
+//=============================================================================
+// Focus View and Resizer
+//=============================================================================
+
+var currentFocusedPeer = null;
+
+function focusPeer(peer) {
+    currentFocusedPeer = peer;
+
+    // Update UI - hide empty state, show content.
+    document.getElementById('focus-empty').style.display = 'none';
+    document.getElementById('focus-content').style.display = 'block';
+
+    // Update title.
+    document.getElementById('focus-title').textContent = peer.name;
+
+    // Clone the peer card content into focus view.
+    var sourceDiv = document.getElementById('peer-' + peer.host + '-' + peer.port);
+    var focusBody = document.getElementById('focus-body');
+    if (sourceDiv) {
+        // Clone the entire card.
+        focusBody.innerHTML = sourceDiv.innerHTML;
+
+        // Make the video in focus view larger and interactive.
+        var focusVideo = focusBody.querySelector('video');
+        if (focusVideo) {
+            focusVideo.style.maxWidth = '100%';
+            focusVideo.style.width = '100%';
+            focusVideo.style.cursor = 'crosshair';
+
+            // Set up mouse forwarding on the focus video (only for UI peers).
+            if (peer.role === 'ui') {
+                // Wait a moment for video to be ready.
+                setTimeout(function() {
+                    setupMouseForwarding(focusVideo);
+                }, 100);
+            }
+        }
+    }
+
+    // Highlight the focused card in overview.
+    var allPeers = document.querySelectorAll('.peer');
+    for (var i = 0; i < allPeers.length; i++) {
+        allPeers[i].classList.remove('focused');
+    }
+    if (sourceDiv) {
+        sourceDiv.classList.add('focused');
+    }
+
+    logDebug('Focused on peer: ' + peer.name);
+}
+
+function clearFocus() {
+    // Remove mouse forwarding from focus video.
+    removeMouseForwarding();
+
+    currentFocusedPeer = null;
+
+    // Update UI - show empty state, hide content.
+    document.getElementById('focus-empty').style.display = 'flex';
+    document.getElementById('focus-content').style.display = 'none';
+
+    // Clear focus body.
+    document.getElementById('focus-body').innerHTML = '';
+
+    // Remove highlight from all cards.
+    var allPeers = document.querySelectorAll('.peer');
+    for (var i = 0; i < allPeers.length; i++) {
+        allPeers[i].classList.remove('focused');
+    }
+
+    logDebug('Focus cleared');
+}
+
+// Resizer drag functionality.
+var isResizing = false;
+var lastDownX = 0;
+
+document.getElementById('resizer').addEventListener('mousedown', function(e) {
+    isResizing = true;
+    lastDownX = e.clientX;
+    document.getElementById('resizer').classList.add('dragging');
+    e.preventDefault();
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!isResizing) return;
+
+    var container = document.querySelector('.main-container');
+    var overview = document.querySelector('.overview-column');
+    var deltaX = e.clientX - lastDownX;
+    lastDownX = e.clientX;
+
+    var currentWidth = overview.offsetWidth;
+    var newWidth = currentWidth + deltaX;
+
+    // Constrain width between 200px and 800px.
+    if (newWidth >= 200 && newWidth <= 800) {
+        overview.style.flex = '0 0 ' + newWidth + 'px';
+    }
+});
+
+document.addEventListener('mouseup', function() {
+    if (isResizing) {
+        isResizing = false;
+        document.getElementById('resizer').classList.remove('dragging');
+    }
+});
 
 //=============================================================================
 // Initialization
