@@ -1,4 +1,5 @@
 #include "JuliaFractal.h"
+#include "core/LoggingChannels.h"
 #include <chrono>
 #include <cmath>
 #include <spdlog/spdlog.h>
@@ -11,7 +12,7 @@ namespace Ui {
 const int RENDER_THREADS = []() {
     unsigned int hwThreads = std::thread::hardware_concurrency();
     if (hwThreads == 0) {
-        spdlog::warn("JuliaFractal: hardware_concurrency() failed, using 1 thread");
+        LOG_WARN(Render, "hardware_concurrency() failed, using 1 thread");
         return 1;
     }
     int threads = static_cast<int>(hwThreads / 2);
@@ -313,7 +314,7 @@ JuliaFractal::JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight)
     canvasBuffer_ = static_cast<lv_color_t*>(lv_malloc(bufferSize));
 
     if (!canvasBuffer_) {
-        spdlog::error("JuliaFractal: Failed to allocate canvas buffer");
+        LOG_ERROR(Render, "Failed to allocate canvas buffer");
         return;
     }
 
@@ -339,7 +340,7 @@ JuliaFractal::JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight)
     buffers_[2] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
 
     if (!buffers_[1] || !buffers_[2]) {
-        spdlog::error("JuliaFractal: Failed to allocate triple buffers");
+        LOG_ERROR(Render, "Failed to allocate triple buffers");
         return;
     }
 
@@ -364,7 +365,7 @@ JuliaFractal::JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight)
     // Start background render thread.
     renderThread_ = std::thread(&JuliaFractal::renderThreadFunc, this);
 
-    spdlog::info("JuliaFractal: Initialized with triple buffering and background thread");
+    LOG_INFO(Render, "Initialized with triple buffering and background thread");
 }
 
 JuliaFractal::~JuliaFractal()
@@ -618,7 +619,7 @@ void JuliaFractal::resize(int newWidth, int newHeight)
     for (int i = 0; i < 3; i++) {
         buffers_[i] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
         if (!buffers_[i]) {
-            spdlog::error("JuliaFractal: Failed to allocate buffer {} during resize", i);
+            LOG_ERROR(Render, "Failed to allocate buffer {} during resize", i);
             return;
         }
     }
@@ -648,7 +649,7 @@ void JuliaFractal::resize(int newWidth, int newHeight)
     readyBufferAvailable_ = false;
     renderThread_ = std::thread(&JuliaFractal::renderThreadFunc, this);
 
-    spdlog::info("JuliaFractal: Resize complete, render thread restarted");
+    LOG_INFO(Render, "Resize complete, render thread restarted");
 }
 
 void JuliaFractal::generateRandomParameters()
@@ -742,7 +743,7 @@ void JuliaFractal::generateRandomParameters()
 
 void JuliaFractal::renderThreadFunc()
 {
-    spdlog::info("JuliaFractal: Render thread started");
+    LOG_INFO(Render, "Render thread started");
 
     while (!shouldExit_) {
         // Calculate delta time for smooth animations.
@@ -1102,12 +1103,12 @@ void JuliaFractal::renderThreadFunc()
         }
     }
 
-    spdlog::info("JuliaFractal: Render thread exiting");
+    LOG_INFO(Render, "Render thread exiting");
 }
 
 void JuliaFractal::advanceToNextFractal()
 {
-    spdlog::info("JuliaFractal: Manual advance to next fractal requested");
+    LOG_INFO(Render, "Manual advance to next fractal requested");
     generateRandomParameters();
 }
 

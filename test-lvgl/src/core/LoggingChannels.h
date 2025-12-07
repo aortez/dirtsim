@@ -192,15 +192,15 @@ private:
 #endif
 
 #define LOG_TRACE(channel, ...) \
-    SPDLOG_LOGGER_TRACE(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+    SPDLOG_LOGGER_TRACE(LoggingChannels::get(::DirtSim::LogChannel::channel), __VA_ARGS__)
 #define LOG_DEBUG(channel, ...) \
-    SPDLOG_LOGGER_DEBUG(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+    SPDLOG_LOGGER_DEBUG(LoggingChannels::get(::DirtSim::LogChannel::channel), __VA_ARGS__)
 #define LOG_INFO(channel, ...) \
-    SPDLOG_LOGGER_INFO(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+    SPDLOG_LOGGER_INFO(LoggingChannels::get(::DirtSim::LogChannel::channel), __VA_ARGS__)
 #define LOG_WARN(channel, ...) \
-    SPDLOG_LOGGER_WARN(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+    SPDLOG_LOGGER_WARN(LoggingChannels::get(::DirtSim::LogChannel::channel), __VA_ARGS__)
 #define LOG_ERROR(channel, ...) \
-    SPDLOG_LOGGER_ERROR(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+    SPDLOG_LOGGER_ERROR(LoggingChannels::get(::DirtSim::LogChannel::channel), __VA_ARGS__)
 
 // Simple logging macros using default logger (no channel parameter, omits channel in output).
 #define SLOG_TRACE(...) SPDLOG_LOGGER_TRACE(spdlog::default_logger(), __VA_ARGS__)

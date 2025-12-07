@@ -1,10 +1,10 @@
 #include "State.h"
+#include "core/LoggingChannels.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "server/StateMachine.h"
 #include "server/network/PeerDiscovery.h"
 #include "server/scenarios/ScenarioRegistry.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Server {
@@ -12,18 +12,18 @@ namespace State {
 
 void Idle::onEnter(StateMachine& /*dsm*/)
 {
-    spdlog::info("Idle: Server ready, waiting for commands (no active World)");
+    LOG_INFO(State, "Server ready, waiting for commands (no active World)");
     // Note: World is owned by SimRunning state, not StateMachine.
 }
 
 void Idle::onExit(StateMachine& /*dsm*/)
 {
-    spdlog::info("Idle: Exiting");
+    LOG_INFO(State, "Exiting");
 }
 
 State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 {
-    spdlog::info("Idle: Exit command received, shutting down");
+    LOG_INFO(State, "Exit command received, shutting down");
 
     // Send success response.
     cwc.sendResponse(Api::Exit::Response::okay(std::monostate{}));
@@ -40,7 +40,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
-        spdlog::error("Idle: Invalid max_frame_ms value: {}", cwc.command.max_frame_ms);
+        LOG_ERROR(State, "Invalid max_frame_ms value: {}", cwc.command.max_frame_ms);
         cwc.sendResponse(Api::SimRun::Response::error(
             ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
         return Idle{};
@@ -54,7 +54,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     const ScenarioMetadata* metadata = registry.getMetadata(cwc.command.scenario_id);
 
     if (!metadata) {
-        spdlog::error("Idle: Scenario '{}' not found in registry", cwc.command.scenario_id);
+        LOG_ERROR(State, "Scenario '{}' not found in registry", cwc.command.scenario_id);
         cwc.sendResponse(Api::SimRun::Response::error(
             ApiError("Scenario not found: " + cwc.command.scenario_id)));
         return Idle{};
@@ -66,14 +66,14 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         metadata->requiredHeight > 0 ? metadata->requiredHeight : dsm.defaultHeight;
 
     // Create world with appropriate dimensions.
-    spdlog::info("Idle: Creating new World {}x{}", worldWidth, worldHeight);
+    LOG_INFO(State, "Creating new World {}x{}", worldWidth, worldHeight);
     newState.world = std::make_unique<World>(worldWidth, worldHeight);
 
     // Create scenario instance from factory.
     newState.scenario = registry.createScenario(cwc.command.scenario_id);
 
     if (!newState.scenario) {
-        spdlog::error("Idle: Scenario '{}' not found in registry", cwc.command.scenario_id);
+        LOG_ERROR(State, "Scenario '{}' not found in registry", cwc.command.scenario_id);
         cwc.sendResponse(Api::SimRun::Response::error(
             ApiError("Scenario not found: " + cwc.command.scenario_id)));
         return Idle{};
@@ -86,7 +86,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);
 
-    spdlog::info("Idle: Scenario '{}' applied to new world", cwc.command.scenario_id);
+    LOG_INFO(State, "Scenario '{}' applied to new world", cwc.command.scenario_id);
 
     // Set run parameters.
     newState.stepDurationMs = cwc.command.timestep * 1000.0; // Convert seconds to milliseconds.
@@ -112,7 +112,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 State::Any Idle::onEvent(const Api::PeersGet::Cwc& cwc, StateMachine& dsm)
 {
     auto peers = dsm.getPeerDiscovery().getPeers();
-    spdlog::debug("Idle: PeersGet returning {} peers", peers.size());
+    LOG_DEBUG(State, "PeersGet returning {} peers", peers.size());
 
     Api::PeersGet::Okay response;
     response.peers = std::move(peers);

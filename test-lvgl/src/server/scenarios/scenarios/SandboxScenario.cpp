@@ -1,4 +1,5 @@
 #include "core/Cell.h"
+#include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -116,7 +117,7 @@ private:
 
 void SandboxScenario::setup(World& world)
 {
-    spdlog::info("SandboxScenario::setup - initializing world");
+    LOG_INFO(Scenario, "setup - initializing world");
 
     // Clear world first (cells and trees).
     for (uint32_t y = 0; y < world.getData().height; ++y) {
@@ -152,12 +153,12 @@ void SandboxScenario::setup(World& world)
         waterColumnStartTime_ = 0.0;
     }
 
-    spdlog::info("SandboxScenario::setup complete");
+    LOG_INFO(Scenario, "setup complete");
 }
 
 void SandboxScenario::reset(World& world)
 {
-    spdlog::info("SandboxScenario::reset - resetting world and timers");
+    LOG_INFO(Scenario, "reset - resetting world and timers");
 
     // Reset timing state.
     lastSimTime_ = 0.0;

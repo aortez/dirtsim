@@ -1,4 +1,5 @@
 #include "World.h"
+#include "core/LoggingChannels.h"
 
 #include "Cell.h"
 #include "GridOfCells.h"
@@ -111,12 +112,12 @@ World::World(uint32_t width, uint32_t height)
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
 
-    spdlog::info("World initialization complete");
+    SLOG_INFO("World initialization complete");
 }
 
 World::~World()
 {
-    spdlog::info("Destroying World: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
+    SLOG_INFO("Destroying World: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }
 
 // =================================================================

@@ -1,6 +1,6 @@
 #include "ScenarioRegistry.h"
+#include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
-#include "spdlog/spdlog.h"
 #include <algorithm>
 
 // Include scenario implementations.
