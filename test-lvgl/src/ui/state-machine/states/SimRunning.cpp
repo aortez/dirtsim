@@ -8,6 +8,7 @@
 #include "ui/controls/PhysicsControls.h"
 #include "ui/state-machine/StateMachine.h"
 #include <atomic>
+#include <cassert>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -19,17 +20,18 @@ void SimRunning::onEnter(StateMachine& sm)
 {
     spdlog::info("SimRunning: Simulation is running, displaying world updates");
 
-    // Subscribe to render messages from the server.
+    // Subscribe to render messages from the server (synchronous call).
     if (sm.getWebSocketService() && sm.getWebSocketService()->isConnected()) {
         static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
 
-        // Send binary command.
+        // Send binary command and wait for response.
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-        auto result = sm.getWebSocketService()->sendBinary(Network::serialize_envelope(envelope));
+        auto result = sm.getWebSocketService()->sendBinaryAndReceive(envelope);
         if (result.isError()) {
             spdlog::error("SimRunning: Failed to send RenderFormatSet: {}", result.errorValue());
+            assert(false && "Failed to send RenderFormatSet command");
         }
         else {
             spdlog::info(
@@ -67,21 +69,22 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     debugDrawEnabled = cwc.command.enabled;
     spdlog::info("SimRunning: Debug draw mode {}", debugDrawEnabled ? "enabled" : "disabled");
 
-    // Auto-switch render format based on debug mode.
+    // Auto-switch render format based on debug mode (synchronous call).
     if (sm.getWebSocketService() && sm.getWebSocketService()->isConnected()) {
         static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
         cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
 
-        // Send binary command.
+        // Send binary command and wait for response.
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-        auto result = sm.getWebSocketService()->sendBinary(Network::serialize_envelope(envelope));
+        auto result = sm.getWebSocketService()->sendBinaryAndReceive(envelope);
         if (result.isError()) {
             spdlog::error("SimRunning: Failed to send RenderFormatSet: {}", result.errorValue());
+            assert(false && "Failed to send RenderFormatSet command");
         }
         else {
             spdlog::info(
-                "SimRunning: Sent render_format_set to {}", debugDrawEnabled ? "DEBUG" : "BASIC");
+                "SimRunning: Sent RenderFormatSet to {}", debugDrawEnabled ? "DEBUG" : "BASIC");
         }
     }
 

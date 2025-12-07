@@ -24,10 +24,8 @@ void LoggingChannels::initialize(
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(consoleLevel);
 
-    // Create log file with component-specific name.
-    std::string logFileName =
-        componentName == "default" ? "sparkle-duck.log" : "sparkle-duck-" + componentName + ".log";
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFileName, true);
+    // All components log to the same file (component prefix distinguishes them).
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("sparkle-duck.log", true);
     file_sink->set_level(fileLevel);
 
     sharedSinks_ = { console_sink, file_sink };
@@ -416,11 +414,8 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
                 auto& fileCfg = sinksConfig["file"];
                 bool enabled = fileCfg.value("enabled", true);
                 if (enabled) {
-                    // Use component-specific log file name.
-                    std::string defaultPath = componentName == "default"
-                        ? "sparkle-duck.log"
-                        : "sparkle-duck-" + componentName + ".log";
-                    std::string path = fileCfg.value("path", defaultPath);
+                    // All components use the same log file (component prefix distinguishes them).
+                    std::string path = fileCfg.value("path", "sparkle-duck.log");
                     auto level = parseLevelString(fileCfg.value("level", "debug"));
 
                     // Use rotating sink if max_size_mb is specified, otherwise basic sink.

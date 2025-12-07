@@ -513,6 +513,7 @@ Can be found here:
 - Performance testing and optimization
 
 Awesome Ideas to do soon:
+- refactor javascript, async vs promises and let vs var.
 - Each process should have it's own logger/log level
 - WorldEventGenerator methods should be moved into the Scenarios.
 - Add label to tree's view saying which layer it is from.

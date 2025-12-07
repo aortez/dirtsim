@@ -6,6 +6,7 @@
 #include "core/network/WebSocketService.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
@@ -84,18 +85,70 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 worldData.scenario_id = renderMsg.scenario_id;
                 worldData.scenario_config = renderMsg.scenario_config;
 
-                // Unpack cells (simplified - assume BASIC format for now).
+                // Unpack cells based on format.
                 size_t numCells = renderMsg.width * renderMsg.height;
                 worldData.cells.resize(numCells);
-                const BasicCell* basicCells =
-                    reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
-                for (size_t i = 0; i < numCells; ++i) {
-                    MaterialType material;
-                    double fill_ratio;
-                    RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio);
-                    worldData.cells[i].material_type = material;
-                    worldData.cells[i].fill_ratio = fill_ratio;
+
+                if (renderMsg.format == RenderFormat::DEBUG) {
+                    // DEBUG format: includes COM, velocity, pressure data.
+                    const DebugCell* debugCells =
+                        reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
+
+                    // Diagnostic: count non-zero COMs to verify data is flowing.
+                    int nonZeroComs = 0;
+                    double maxComDeviation = 0.0;
+
+                    for (size_t i = 0; i < numCells; ++i) {
+                        auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
+                        worldData.cells[i].material_type = unpacked.material_type;
+                        worldData.cells[i].fill_ratio = unpacked.fill_ratio;
+                        worldData.cells[i].com = unpacked.com;
+                        worldData.cells[i].velocity = unpacked.velocity;
+                        worldData.cells[i].pressure = unpacked.pressure_hydro;
+                        worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
+
+                        // Track COM deviation from center.
+                        double deviation = std::abs(unpacked.com.x) + std::abs(unpacked.com.y);
+                        if (deviation > 0.001) {
+                            nonZeroComs++;
+                            maxComDeviation = std::max(maxComDeviation, deviation);
+                        }
+                    }
+
+                    spdlog::info(
+                        "RenderMessage UNPACK: DEBUG format, {} cells, {} non-zero COMs, max "
+                        "deviation={:.4f}",
+                        numCells,
+                        nonZeroComs,
+                        maxComDeviation);
                 }
+                else {
+                    // BASIC format: material + fill only.
+                    spdlog::info(
+                        "RenderMessage UNPACK: BASIC format, {} cells (no COM data)", numCells);
+                    const BasicCell* basicCells =
+                        reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
+                    for (size_t i = 0; i < numCells; ++i) {
+                        MaterialType material;
+                        double fill_ratio;
+                        RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio);
+                        worldData.cells[i].material_type = material;
+                        worldData.cells[i].fill_ratio = fill_ratio;
+                    }
+                }
+
+                // Apply sparse organism data.
+                auto organismIds =
+                    RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
+                for (size_t i = 0; i < numCells; ++i) {
+                    worldData.cells[i].organism_id = organismIds[i];
+                }
+
+                // Copy bone data for structural visualization.
+                worldData.bones = renderMsg.bones;
+
+                // Copy tree vision data if present.
+                worldData.tree_vision = renderMsg.tree_vision;
 
                 // Create UiUpdateEvent and queue to EventSink.
                 auto now = std::chrono::steady_clock::now();

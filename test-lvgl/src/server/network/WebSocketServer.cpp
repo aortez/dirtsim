@@ -6,6 +6,7 @@
 #include "core/World.h"
 #include "core/organisms/TreeManager.h"
 #include "server/StateMachine.h"
+#include <cmath>
 #include <cstring>
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
@@ -586,6 +587,25 @@ void WebSocketServer::broadcastRenderMessage(const World& world)
             boneData.cell_b = bone.cell_b;
             bones.push_back(boneData);
         }
+    }
+
+    // Diagnostic: count non-zero COMs in source data (once per broadcast).
+    static int broadcastCount = 0;
+    if (++broadcastCount % 60 == 1) { // Log every ~1 second at 60fps.
+        int nonZeroComs = 0;
+        double maxComDeviation = 0.0;
+        for (const auto& cell : data.cells) {
+            double deviation = std::abs(cell.com.x) + std::abs(cell.com.y);
+            if (deviation > 0.001) {
+                nonZeroComs++;
+                maxComDeviation = std::max(maxComDeviation, deviation);
+            }
+        }
+        spdlog::info(
+            "RenderMessage PACK: {} cells, {} non-zero COMs, max deviation={:.4f}",
+            data.cells.size(),
+            nonZeroComs,
+            maxComDeviation);
     }
 
     // Pack and send to each subscribed client with their requested format.
