@@ -11,7 +11,9 @@ bool LoggingChannels::initialized_ = false;
 std::vector<spdlog::sink_ptr> LoggingChannels::sharedSinks_;
 
 void LoggingChannels::initialize(
-    spdlog::level::level_enum consoleLevel, spdlog::level::level_enum fileLevel)
+    spdlog::level::level_enum consoleLevel,
+    spdlog::level::level_enum fileLevel,
+    const std::string& componentName)
 {
     if (initialized_) {
         spdlog::warn("LoggingChannels already initialized, skipping re-initialization");
@@ -22,13 +24,19 @@ void LoggingChannels::initialize(
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(consoleLevel);
 
-    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("sparkle-duck.log", true);
+    // Create log file with component-specific name.
+    std::string logFileName =
+        componentName == "default" ? "sparkle-duck.log" : "sparkle-duck-" + componentName + ".log";
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFileName, true);
     file_sink->set_level(fileLevel);
 
     sharedSinks_ = { console_sink, file_sink };
 
-    // Set pattern to include channel name.
-    spdlog::set_pattern("[%H:%M:%S.%e] [%n] [%^%l%$] %v");
+    // Set pattern to include component and channel name.
+    std::string pattern = componentName == "default"
+        ? "[%H:%M:%S.%e] [%n] [%^%l%$] %v"
+        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] %v";
+    spdlog::set_pattern(pattern);
 
     // Create channel-specific loggers with TRACE level (can be filtered later).
     // Physics channels.
@@ -48,9 +56,10 @@ void LoggingChannels::initialize(
     createLogger("scenario", sharedSinks_, spdlog::level::info);
     createLogger("tree", sharedSinks_, spdlog::level::info);
 
-    // Keep the default logger for general use.
+    // Keep the default logger for general use (named with component).
+    std::string loggerName = componentName.empty() ? "default" : componentName;
     auto default_logger =
-        std::make_shared<spdlog::logger>("default", sharedSinks_.begin(), sharedSinks_.end());
+        std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
     default_logger->set_level(spdlog::level::info);
     spdlog::set_default_logger(default_logger);
 
@@ -172,7 +181,8 @@ spdlog::level::level_enum LoggingChannels::parseLevelString(const std::string& l
     }
 }
 
-bool LoggingChannels::initializeFromConfig(const std::string& configPath)
+bool LoggingChannels::initializeFromConfig(
+    const std::string& configPath, const std::string& componentName)
 {
     if (initialized_) {
         spdlog::warn("LoggingChannels already initialized, skipping re-initialization");
@@ -182,8 +192,8 @@ bool LoggingChannels::initializeFromConfig(const std::string& configPath)
     // Load config with .local override support.
     auto config = loadConfigFile(configPath);
 
-    // Apply configuration.
-    applyConfig(config);
+    // Apply configuration with component name.
+    applyConfig(config, componentName);
 
     initialized_ = true;
     return true;
@@ -334,12 +344,15 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
     }
 }
 
-void LoggingChannels::applyConfig(const nlohmann::json& config)
+void LoggingChannels::applyConfig(const nlohmann::json& config, const std::string& componentName)
 {
     // Extract defaults with fallbacks.
     auto consoleLevel = spdlog::level::info;
     auto fileLevel = spdlog::level::debug;
-    std::string pattern = "[%H:%M:%S.%e] [%n] [%^%l%$] %v";
+    std::string basePattern = "[%H:%M:%S.%e] [%n] [%^%l%$] %v";
+    std::string pattern = componentName == "default"
+        ? basePattern
+        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] %v";
     int flushIntervalMs = 1000;
 
     try {
@@ -352,7 +365,23 @@ void LoggingChannels::applyConfig(const nlohmann::json& config)
                 fileLevel = parseLevelString(defaults["file_level"].get<std::string>());
             }
             if (defaults.contains("pattern")) {
-                pattern = defaults["pattern"].get<std::string>();
+                std::string configPattern = defaults["pattern"].get<std::string>();
+                // Inject component name into pattern after timestamp if not default.
+                if (componentName != "default") {
+                    // Find timestamp end: "] " and inject component name after it.
+                    size_t pos = configPattern.find("] ");
+                    if (pos != std::string::npos) {
+                        pattern = configPattern.substr(0, pos + 2) + "[" + componentName + "] "
+                            + configPattern.substr(pos + 2);
+                    }
+                    else {
+                        // Fallback: prepend component name.
+                        pattern = "[" + componentName + "] " + configPattern;
+                    }
+                }
+                else {
+                    pattern = configPattern;
+                }
             }
             if (defaults.contains("flush_interval_ms")) {
                 flushIntervalMs = defaults["flush_interval_ms"].get<int>();
@@ -387,7 +416,11 @@ void LoggingChannels::applyConfig(const nlohmann::json& config)
                 auto& fileCfg = sinksConfig["file"];
                 bool enabled = fileCfg.value("enabled", true);
                 if (enabled) {
-                    std::string path = fileCfg.value("path", "sparkle-duck.log");
+                    // Use component-specific log file name.
+                    std::string defaultPath = componentName == "default"
+                        ? "sparkle-duck.log"
+                        : "sparkle-duck-" + componentName + ".log";
+                    std::string path = fileCfg.value("path", defaultPath);
                     auto level = parseLevelString(fileCfg.value("level", "debug"));
 
                     // Use rotating sink if max_size_mb is specified, otherwise basic sink.
@@ -466,9 +499,10 @@ void LoggingChannels::applyConfig(const nlohmann::json& config)
         spdlog::warn("Error applying channel levels from config: {}", e.what());
     }
 
-    // Create default logger.
+    // Create default logger with component name.
+    std::string loggerName = componentName.empty() ? "default" : componentName;
     auto default_logger =
-        std::make_shared<spdlog::logger>("default", sharedSinks_.begin(), sharedSinks_.end());
+        std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
     default_logger->set_level(spdlog::level::info);
     spdlog::set_default_logger(default_logger);
 

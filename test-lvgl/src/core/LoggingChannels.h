@@ -24,18 +24,23 @@ public:
      * @brief Initialize the logging system with shared sinks.
      * @param consoleLevel Default log level for console output
      * @param fileLevel Default log level for file output
+     * @param componentName Component name for log file and pattern (e.g., "server", "ui")
      */
     static void initialize(
         spdlog::level::level_enum consoleLevel = spdlog::level::info,
-        spdlog::level::level_enum fileLevel = spdlog::level::debug);
+        spdlog::level::level_enum fileLevel = spdlog::level::debug,
+        const std::string& componentName = "default");
 
     /**
      * @brief Initialize the logging system from a JSON config file.
      * Looks for <configPath>.local first, falls back to <configPath> if not found.
      * @param configPath Path to the JSON config file (default: "logging-config.json")
+     * @param componentName Component name for log file and pattern (e.g., "server", "ui")
      * @return true if config was loaded successfully, false if using defaults
      */
-    static bool initializeFromConfig(const std::string& configPath = "logging-config.json");
+    static bool initializeFromConfig(
+        const std::string& configPath = "logging-config.json",
+        const std::string& componentName = "default");
 
     /**
      * @brief Get a specific channel logger.
@@ -104,8 +109,11 @@ private:
 
     /**
      * @brief Apply configuration from JSON object.
+     * @param config JSON configuration object
+     * @param componentName Component name for log file and pattern
      */
-    static void applyConfig(const nlohmann::json& config);
+    static void applyConfig(
+        const nlohmann::json& config, const std::string& componentName = "default");
 
     /**
      * @brief Create specialized sinks from config.

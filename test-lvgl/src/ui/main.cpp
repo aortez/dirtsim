@@ -138,7 +138,7 @@ int main(int argc, char** argv)
     // Initialize logging from config file (supports .local override).
     try {
         std::string configPath = log_config ? args::get(log_config) : "logging-config.json";
-        DirtSim::LoggingChannels::initializeFromConfig(configPath);
+        DirtSim::LoggingChannels::initializeFromConfig(configPath, "ui");
 
         // Apply command line channel overrides if provided.
         if (log_channels) {

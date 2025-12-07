@@ -15,7 +15,6 @@
     "file": {
       "enabled": true,
       "level": "info",
-      "path": "sparkle-duck.log",
       "truncate": true,
       "max_size_mb": 100,
       "max_files": 3

@@ -92,7 +92,7 @@ int main(int argc, char** argv)
 
     // Initialize logging from config file (supports .local override).
     std::string configPath = logConfig ? args::get(logConfig) : "logging-config.json";
-    LoggingChannels::initializeFromConfig(configPath);
+    LoggingChannels::initializeFromConfig(configPath, "server");
 
     // Apply command line channel overrides if provided.
     if (logChannels) {
