@@ -2,6 +2,7 @@
 #include "controls/CoreControls.h"
 #include "controls/PhysicsControls.h"
 #include "controls/SandboxControls.h"
+#include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
@@ -46,7 +47,7 @@ SimPlayground::SimPlayground(
                             .buildOrLog();
 
     if (scenarioDropdown_) {
-        spdlog::info("SimPlayground: Scenario dropdown created successfully");
+        LOG_INFO(Controls, "Scenario dropdown created successfully");
 
         // Style the dropdown button (light green background, dark purple text).
         lv_obj_set_style_bg_color(
@@ -68,7 +69,7 @@ SimPlayground::SimPlayground(
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
     else {
-        spdlog::error("SimPlayground: Failed to create scenario dropdown!");
+        LOG_ERROR(Controls, "Failed to create scenario dropdown!");
     }
 
     // Create cell renderer for world display.
@@ -77,12 +78,12 @@ SimPlayground::SimPlayground(
     // Create neural grid renderer for tree vision display.
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
 
-    spdlog::info("SimPlayground: Initialized");
+    LOG_INFO(Controls, "Initialized");
 }
 
 SimPlayground::~SimPlayground()
 {
-    spdlog::info("SimPlayground: Destroyed");
+    LOG_INFO(Controls, "Destroyed");
 }
 
 void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
@@ -92,7 +93,7 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
 
     // Handle scenario changes.
     if (data.scenario_id != currentScenarioId_) {
-        spdlog::info("SimPlayground: Scenario changed to '{}'", data.scenario_id);
+        LOG_INFO(Controls, "Scenario changed to '{}'", data.scenario_id);
 
         // Clear old scenario controls.
         sandboxControls_.reset();
@@ -135,7 +136,7 @@ void SimPlayground::setRenderMode(RenderMode mode)
         coreControls_->setRenderMode(mode);
     }
 
-    spdlog::info("SimPlayground: Render mode set to {}", renderModeToString(mode));
+    LOG_INFO(Controls, "Render mode set to {}", renderModeToString(mode));
 }
 
 void SimPlayground::renderNeuralGrid(const WorldData& data)
@@ -171,12 +172,12 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
 
     constexpr size_t SCENARIO_COUNT = 7;
     if (selectedIdx >= SCENARIO_COUNT) {
-        spdlog::error("SimPlayground: Invalid scenario index {}", selectedIdx);
+        LOG_ERROR(Controls, "Invalid scenario index {}", selectedIdx);
         return;
     }
 
     std::string scenario_id = scenarioIds[selectedIdx];
-    spdlog::info("SimPlayground: Scenario changed to '{}'", scenario_id);
+    LOG_INFO(Controls, "Scenario changed to '{}'", scenario_id);
 
     // Send sim_run command with new scenario_id to DSSM server.
     if (playground->wsService_ && playground->wsService_->isConnected()) {
@@ -195,18 +196,18 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = playground->wsService_->sendBinary(Network::serialize_envelope(envelope));
         if (result.isError()) {
-            spdlog::error("SimPlayground: Failed to send SimRun: {}", result.errorValue());
+            LOG_ERROR(Controls, "Failed to send SimRun: {}", result.errorValue());
         }
     }
     else {
-        spdlog::warn("SimPlayground: WebSocket not connected, cannot switch scenario");
+        LOG_WARN(Controls, "WebSocket not connected, cannot switch scenario");
     }
 }
 
 std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPixels()
 {
     if (!renderer_) {
-        spdlog::error("SimPlayground: Cannot capture screenshot, renderer not initialized");
+        LOG_ERROR(Controls, "Cannot capture screenshot, renderer not initialized");
         return std::nullopt;
     }
 
@@ -215,7 +216,7 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
     uint32_t height = renderer_->getCanvasHeight();
 
     if (!buffer || width == 0 || height == 0) {
-        spdlog::error("SimPlayground: Cannot capture screenshot, canvas not initialized");
+        LOG_ERROR(Controls, "Cannot capture screenshot, canvas not initialized");
         return std::nullopt;
     }
 
@@ -229,7 +230,7 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
     data.pixels.resize(bufferSize);
     std::memcpy(data.pixels.data(), buffer, bufferSize);
 
-    spdlog::info("SimPlayground: Captured screenshot {}x{} ({} bytes)", width, height, bufferSize);
+    LOG_INFO(Controls, "Captured screenshot {}x{} ({} bytes)", width, height, bufferSize);
     return data;
 }
 

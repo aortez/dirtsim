@@ -1,4 +1,5 @@
 #include "PhysicsControls.h"
+#include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/PhysicsSettingsGet.h"
@@ -563,7 +564,7 @@ PhysicsControls::PhysicsControls(lv_obj_t* container, Network::WebSocketService*
 
 PhysicsControls::~PhysicsControls()
 {
-    spdlog::info("PhysicsControls: Destroyed");
+    LOG_INFO(Controls, "Destroyed");
 }
 
 lv_obj_t* PhysicsControls::createColumn(const char* title)
@@ -602,7 +603,7 @@ lv_obj_t* PhysicsControls::createCollapsibleColumn(const char* title)
                           .buildOrLog();
 
     if (!panel) {
-        spdlog::error("PhysicsControls: Failed to create collapsible panel '{}'", title);
+        LOG_ERROR(Controls, "Failed to create collapsible panel '{}'", title);
         return nullptr;
     }
 
@@ -729,13 +730,13 @@ void PhysicsControls::onGenericToggle(lv_event_t* e)
             static_cast<void*>(target));
 
         // Debug: Log what we do have mapped.
-        spdlog::debug("PhysicsControls: Have {} widgets mapped", self->widgetToControl_.size());
+        LOG_DEBUG(Controls, "Have {} widgets mapped", self->widgetToControl_.size());
         return;
     }
 
     bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
     const char* label = control->config.label ? control->config.label : "Unknown";
-    spdlog::info("PhysicsControls: {} toggled to {}", label, enabled ? "ON" : "OFF");
+    LOG_INFO(Controls, "{} toggled to {}", label, enabled ? "ON" : "OFF");
 
     // Call the enable setter if it exists.
     if (control->config.enableSetter) {
@@ -763,7 +764,7 @@ void PhysicsControls::onGenericToggle(lv_event_t* e)
                 "PhysicsControls: Restored {} to {:.2f}", control->config.label, scaledValue);
         }
         else {
-            spdlog::warn("PhysicsControls: No slider widget found for {}", control->config.label);
+            LOG_WARN(Controls, "No slider widget found for {}", control->config.label);
         }
     }
 
@@ -771,7 +772,7 @@ void PhysicsControls::onGenericToggle(lv_event_t* e)
         self->syncSettings();
     }
     catch (const std::exception& ex) {
-        spdlog::error("PhysicsControls: Exception in syncSettings: {}", ex.what());
+        LOG_ERROR(Controls, "Exception in syncSettings: {}", ex.what());
     }
 }
 
@@ -800,21 +801,23 @@ void PhysicsControls::onGenericValueChange(lv_event_t* e)
     }
 
     if (!self) {
-        spdlog::warn("PhysicsControls: onGenericValueChange - self is null from both widget and "
-                     "event user_data");
+        LOG_WARN(
+            Controls,
+            "onGenericValueChange - self is null from both widget and "
+            "event user_data");
         return;
     }
 
     PhysicsControls::Control* control = self->findControl(target);
     if (!control) {
-        spdlog::warn("PhysicsControls: Could not find control for value change event");
+        LOG_WARN(Controls, "Could not find control for value change event");
         return;
     }
 
     int value = lv_slider_get_value(target);
     double scaledValue = value * control->config.valueScale;
 
-    spdlog::info("PhysicsControls: {} released at {:.2f}", control->config.label, scaledValue);
+    LOG_INFO(Controls, "{} released at {:.2f}", control->config.label, scaledValue);
 
     // Call the value setter if it exists.
     if (control->config.valueSetter) {
@@ -834,7 +837,7 @@ PhysicsControls::Control* PhysicsControls::findControl(lv_obj_t* widget)
             "PhysicsControls: findControl - map corrupted! Size={}, this={:p}",
             mapSize,
             static_cast<void*>(this));
-        spdlog::error("PhysicsControls: This object may have been moved or is invalid");
+        LOG_ERROR(Controls, "This object may have been moved or is invalid");
         return nullptr;
     }
 
@@ -872,7 +875,7 @@ PhysicsControls::Control* PhysicsControls::findControl(lv_obj_t* widget)
 
 void PhysicsControls::updateFromSettings(const PhysicsSettings& settings)
 {
-    spdlog::info("PhysicsControls: Updating UI from server settings");
+    LOG_INFO(Controls, "Updating UI from server settings");
 
     // Update local settings copy.
     settings_ = settings;
@@ -938,17 +941,17 @@ void PhysicsControls::updateFromSettings(const PhysicsSettings& settings)
         }
     }
 
-    spdlog::info("PhysicsControls: UI updated from server settings");
+    LOG_INFO(Controls, "UI updated from server settings");
 }
 
 void PhysicsControls::fetchSettings()
 {
     if (!wsService_ || !wsService_->isConnected()) {
-        spdlog::warn("PhysicsControls: Cannot fetch settings - not connected");
+        LOG_WARN(Controls, "Cannot fetch settings - not connected");
         return;
     }
 
-    spdlog::info("PhysicsControls: Fetching physics settings from server");
+    LOG_INFO(Controls, "Fetching physics settings from server");
 
     static std::atomic<uint64_t> nextId{ 1 };
     const Api::PhysicsSettingsGet::Command cmd{};
@@ -956,7 +959,7 @@ void PhysicsControls::fetchSettings()
 
     auto envelopeResult = wsService_->sendBinaryAndReceive(envelope, 1000);
     if (envelopeResult.isError()) {
-        spdlog::error("PhysicsControls: Failed to send command: {}", envelopeResult.errorValue());
+        LOG_ERROR(Controls, "Failed to send command: {}", envelopeResult.errorValue());
         return;
     }
 
@@ -970,18 +973,18 @@ void PhysicsControls::fetchSettings()
         updateFromSettings(settings);
     }
     else {
-        spdlog::error("PhysicsControls: Server error: {}", response.errorValue().message);
+        LOG_ERROR(Controls, "Server error: {}", response.errorValue().message);
     }
 }
 
 void PhysicsControls::syncSettings()
 {
     if (!wsService_ || !wsService_->isConnected()) {
-        spdlog::warn("PhysicsControls: Cannot sync settings - not connected");
+        LOG_WARN(Controls, "Cannot sync settings - not connected");
         return;
     }
 
-    spdlog::debug("PhysicsControls: Syncing physics settings to server");
+    LOG_DEBUG(Controls, "Syncing physics settings to server");
 
     // Send binary command to server.
     static std::atomic<uint64_t> nextId{ 1 };
