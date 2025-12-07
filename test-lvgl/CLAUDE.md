@@ -4,7 +4,7 @@ This file provides guidance when working with code in this repository.
 
 ## Project Overview
 
-Sparkle Duck is a playground for experimenting with Yocto, Zephyr, and LVGL technologies. The main application is a **cell-based multi-material physics simulation** located in the `test-lvgl` directory that demonstrates advanced physics simulation with interactive UI controls.
+Sparkle Duck is a Dirt-Oriented playground for experimenting with artificial life, Yocto, LVGL. The main application is a **cell-based multi-material physics simulation** located in the `test-lvgl` directory that demonstrates advanced physics simulation with interactive UI controls.
 
 The project features a **pure-material physics system** with fill ratios and 9 material types (AIR, DIRT, LEAF, METAL, SAND, SEED, WALL, WATER, WOOD).
 
@@ -56,19 +56,13 @@ make -C build-debug -j12
 # Run both client and server (debug build).
 ./build-debug/bin/cli run-all
 
-# Run with optimized release build for performance testing.
-./build-release/bin/cli run-all
-
 # CLI integration test (quick, verifies ui, server, and cli).
 ./build-debug/bin/cli integration_test
 
-# Test binary protocol (type-safe StatusGet via zpp_bits).
-./build-debug/bin/cli test_binary ws://localhost:8080
-
-# Clean up all sparkle-duck processes.
+# Easy clean of up all sparkle-duck processes.
 ./build-debug/bin/cli cleanup
 
-# Run benchmark and output results to file (use release build for accurate performance!).
+# Run benchmark and output results to file.
 ./build-release/bin/cli benchmark > benchmark.json && cat benchmark.json | jq .server_fps
 
 # Sending commands (new fluent syntax: cli [target] [command] [params]).
@@ -76,24 +70,8 @@ make -C build-debug -j12
 ./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 1}'
 ./build-debug/bin/cli server DiagramGet
 
-# Run headless DSSM server (Dirt Sim State Machine).
-./build-debug/bin/sparkle-duck-server -p 8080 -s 1000
-
-# Run UI client (auto-connects to server).
-./build-debug/bin/sparkle-duck-ui -b wayland --connect localhost:8080
-
-# Run server and UI together (two terminals).
-# Terminal 1:
-./build-debug/bin/sparkle-duck-server -p 8080
-
-# Terminal 2:
-./build-debug/bin/sparkle-duck-ui -b wayland --connect localhost:8080
-
-# UI options.
-./build-debug/bin/sparkle-duck-ui -b wayland        # Wayland backend
-./build-debug/bin/sparkle-duck-ui -b x11            # X11 backend
-./build-debug/bin/sparkle-duck-ui -W 1200 -H 1200   # Custom window size
-./build-debug/bin/sparkle-duck-ui -s 100            # Auto-exit after 100 steps
+# Run everything.
+./build-debug/bin/cli run-all
 ```
 
 ### CLI documentation

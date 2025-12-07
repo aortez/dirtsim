@@ -39,7 +39,6 @@ struct SimRunning {
     bool stateGetPending = false;     // Track if a state_get request is awaiting response.
 
     void onEnter(StateMachine& sm);
-    void onExit(StateMachine& sm);
 
     Any onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);

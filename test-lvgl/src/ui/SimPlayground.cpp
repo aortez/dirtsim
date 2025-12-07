@@ -21,16 +21,16 @@ SimPlayground::SimPlayground(
     UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink)
     : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
 {
-    // Create core controls in left panel.
+    // Create core controls.
     lv_obj_t* coreContainer = uiManager_->getCoreControlsContainer();
     coreControls_ =
         std::make_unique<CoreControls>(coreContainer, wsService_, eventSink_, renderMode_);
 
-    // Create physics controls in bottom panel.
+    // Create physics controls.
     lv_obj_t* physicsContainer = uiManager_->getPhysicsControlsContainer();
     physicsControls_ = std::make_unique<PhysicsControls>(physicsContainer, wsService_);
 
-    // Create scenario dropdown in scenario controls container (persistent across scenarios).
+    // Create scenario dropdown in scenario controls,.
     lv_obj_t* scenarioContainer = uiManager_->getScenarioControlsContainer();
 
     // Scenario label.

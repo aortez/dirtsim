@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/SimRun.h"
@@ -9,7 +10,6 @@
 #include <lvgl/lvgl.h>
 #include <lvgl/src/misc/lv_timer_private.h>
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -17,7 +17,7 @@ namespace State {
 
 void StartMenu::onEnter(StateMachine& sm)
 {
-    spdlog::info("StartMenu: Connected to server, ready to start simulation");
+    LOG_INFO(State, "Connected to server, ready to start simulation");
 
     // Get main menu container (switches to menu screen).
     auto* uiManager = sm.getUiComponentManager();
@@ -32,11 +32,11 @@ void StartMenu::onEnter(StateMachine& sm)
 
     // Create Julia fractal background (allocated on heap, deleted in onExit).
     fractal_ = new JuliaFractal(container, windowWidth, windowHeight);
-    spdlog::info("StartMenu: Created fractal background (event-driven rendering)");
+    LOG_INFO(State, "Created fractal background (event-driven rendering)");
 
     // Add resize event handler to container (catches window resize events).
     lv_obj_add_event_cb(container, onDisplayResized, LV_EVENT_SIZE_CHANGED, fractal_);
-    spdlog::info("StartMenu: Added resize event handler");
+    LOG_INFO(State, "Added resize event handler");
 
     // Create centered "Start Simulation" button.
     lv_obj_t* startButton = lv_btn_create(container);
@@ -49,7 +49,7 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_label_set_text(label, "Start Simulation");
     lv_obj_center(label);
 
-    spdlog::info("StartMenu: Created start button");
+    LOG_INFO(State, "Created start button");
 
     // Create info panel in bottom-left corner.
     infoPanel_ = lv_obj_create(container);
@@ -86,7 +86,7 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_label_set_text(btnLabel, "Next Fractal");
     lv_obj_center(btnLabel);
 
-    spdlog::info("StartMenu: Created fractal info panel");
+    LOG_INFO(State, "Created fractal info panel");
 
     // Create Quit button in top-left corner (same style as SimRunning).
     quitButton_ = lv_btn_create(container);
@@ -100,7 +100,7 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_label_set_text(quitLabel, "Quit");
     lv_obj_center(quitLabel);
 
-    spdlog::info("StartMenu: Created Quit button");
+    LOG_INFO(State, "Created Quit button");
 
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
@@ -117,12 +117,12 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_add_event_cb(container, onTouchEvent, LV_EVENT_PRESSED, touchDebugLabel_);
     lv_obj_add_flag(container, LV_OBJ_FLAG_CLICKABLE);
 
-    spdlog::info("StartMenu: Created touch debug label");
+    LOG_INFO(State, "Created touch debug label");
 }
 
 void StartMenu::onExit(StateMachine& sm)
 {
-    spdlog::info("StartMenu: Exiting");
+    LOG_INFO(State, "Exiting");
 
     // Clean up fractal.
     if (fractal_) {
@@ -133,13 +133,13 @@ void StartMenu::onExit(StateMachine& sm)
             lv_obj_t* container = uiManager->getMainMenuContainer();
             if (container) {
                 lv_obj_remove_event_cb(container, onDisplayResized);
-                spdlog::info("StartMenu: Removed resize event handler");
+                LOG_INFO(State, "Removed resize event handler");
             }
         }
 
         delete fractal_;
         fractal_ = nullptr;
-        spdlog::info("StartMenu: Cleaned up fractal");
+        LOG_INFO(State, "Cleaned up fractal");
     }
 
     // Screen switch will clean up other widgets automatically.
@@ -179,9 +179,9 @@ void StartMenu::updateAnimations()
                 // Periodic logging every 100 frames to track iteration values.
                 updateFrameCount_++;
                 if (updateFrameCount_ >= 100) {
-                    spdlog::info(
-                        "StartMenu: Fractal info - Region: {}, Iterations: [{}-{}], current: {}, "
-                        "FPS: {:.1f}",
+                    LOG_INFO(
+                        State,
+                        "Fractal info - Region: {}, Iterations: [{}-{}], current: {}, FPS: {:.1f}",
                         regionName,
                         minIter,
                         maxIter,
@@ -227,7 +227,7 @@ void StartMenu::onNextFractalClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!startMenu || !startMenu->fractal_) return;
 
-    spdlog::info("StartMenu: Next fractal button clicked");
+    LOG_INFO(State, "Next fractal button clicked");
     startMenu->fractal_->advanceToNextFractal();
 }
 
@@ -237,7 +237,7 @@ void StartMenu::onQuitButtonClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!sm) return;
 
-    spdlog::info("StartMenu: Quit button clicked");
+    LOG_INFO(State, "Quit button clicked");
 
     // Queue UI-local exit event (works in all states).
     UiApi::Exit::Cwc cwc;
@@ -262,7 +262,7 @@ void StartMenu::onTouchEvent(lv_event_t* e)
     snprintf(buf, sizeof(buf), "Touch: %d, %d", point.x, point.y);
     lv_label_set_text(label, buf);
 
-    spdlog::debug("Touch event at ({}, {})", point.x, point.y);
+    LOG_DEBUG(State, "Touch event at ({}, {})", point.x, point.y);
 }
 
 void StartMenu::onDisplayResized(lv_event_t* e)
@@ -275,7 +275,7 @@ void StartMenu::onDisplayResized(lv_event_t* e)
     int newWidth = lv_disp_get_hor_res(disp);
     int newHeight = lv_disp_get_ver_res(disp);
 
-    spdlog::info("StartMenu: Display resized to {}x{}, updating fractal", newWidth, newHeight);
+    LOG_INFO(State, "Display resized to {}x{}, updating fractal", newWidth, newHeight);
 
     // Resize the fractal to match.
     fractal->resize(newWidth, newHeight);
@@ -283,11 +283,11 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
-    spdlog::info("StartMenu: Start button clicked, sending SimRun to server");
+    LOG_INFO(State, "Start button clicked, sending SimRun to server");
 
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
-        spdlog::error("StartMenu: Cannot start simulation, not connected to server");
+        LOG_ERROR(State, "Cannot start simulation, not connected to server");
         return StartMenu{};
     }
 
@@ -299,29 +299,29 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
     auto result = wsService.sendBinaryAndReceive(envelope, 2000);
 
     if (result.isError()) {
-        spdlog::error("StartMenu: SimRun failed: {}", result.errorValue());
+        LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
         return StartMenu{};
     }
 
     auto response = Network::extract_result<Api::SimRun::Okay, ApiError>(result.value());
     if (response.isError()) {
-        spdlog::error("StartMenu: SimRun error: {}", response.errorValue().message);
+        LOG_ERROR(State, "SimRun error: {}", response.errorValue().message);
         return StartMenu{};
     }
 
     if (!response.value().running) {
-        spdlog::warn("StartMenu: Server not running after SimRun");
+        LOG_WARN(State, "Server not running after SimRun");
         return StartMenu{};
     }
 
-    spdlog::info("StartMenu: Server confirmed running, transitioning to SimRunning");
+    LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
     return SimRunning{};
 }
 
 State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
 {
-    spdlog::warn("StartMenu: Server disconnected (reason: {})", evt.reason);
-    spdlog::info("StartMenu: Transitioning back to Disconnected");
+    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+    LOG_INFO(State, "Transitioning back to Disconnected");
 
     // Lost connection - go back to Disconnected state.
     return Disconnected{};
@@ -329,7 +329,7 @@ State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& 
 
 State::Any StartMenu::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 {
-    spdlog::info("StartMenu: Exit command received, shutting down");
+    LOG_INFO(State, "Exit command received, shutting down");
 
     // Send success response.
     cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
@@ -340,12 +340,12 @@ State::Any StartMenu::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 
 State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 {
-    spdlog::info("StartMenu: SimRun command received");
+    LOG_INFO(State, "SimRun command received");
 
     // Get WebSocketService to send command to DSSM (binary protocol).
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
-        spdlog::error("StartMenu: Not connected to DSSM server");
+        LOG_ERROR(State, "Not connected to DSSM server");
         cwc.sendResponse(UiApi::SimRun::Response::error(ApiError("Not connected to DSSM server")));
         return StartMenu{};
     }
@@ -362,13 +362,13 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     auto result = wsService.sendBinaryAndReceive(envelope, 1000);
 
     if (result.isError()) {
-        spdlog::error("StartMenu: Failed to send sim_run: {}", result.errorValue());
+        LOG_ERROR(State, "Failed to send sim_run: {}", result.errorValue());
         cwc.sendResponse(
             UiApi::SimRun::Response::error(ApiError("Failed to send command to DSSM")));
         return StartMenu{};
     }
 
-    spdlog::info("StartMenu: Sent sim_run to DSSM, transitioning to SimRunning");
+    LOG_INFO(State, "Sent sim_run to DSSM, transitioning to SimRunning");
 
     // Send OK response.
     cwc.sendResponse(UiApi::SimRun::Response::okay({ true }));

@@ -1,7 +1,7 @@
 #include "State.h"
+#include "core/LoggingChannels.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/state-machine/StateMachine.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -9,7 +9,7 @@ namespace State {
 
 void Paused::onEnter(StateMachine& sm)
 {
-    spdlog::info("Paused: Simulation paused, creating overlay");
+    LOG_INFO(State, "Simulation paused, creating overlay");
 
     // Create semi-transparent overlay on top of the frozen world.
     lv_obj_t* screen = lv_scr_act();
@@ -68,12 +68,12 @@ void Paused::onEnter(StateMachine& sm)
     lv_label_set_text(quitLabel, "Quit");
     lv_obj_center(quitLabel);
 
-    spdlog::info("Paused: Created overlay with Resume/Stop/Quit buttons");
+    LOG_INFO(State, "Created overlay with Resume/Stop/Quit buttons");
 }
 
 void Paused::onExit(StateMachine& /*sm*/)
 {
-    spdlog::info("Paused: Exiting, cleaning up overlay");
+    LOG_INFO(State, "Exiting, cleaning up overlay");
 
     if (overlay_) {
         lv_obj_del(overlay_);
@@ -90,7 +90,7 @@ void Paused::onResumeClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!sm) return;
 
-    spdlog::info("Paused: Resume button clicked");
+    LOG_INFO(State, "Resume button clicked");
 
     UiApi::SimRun::Cwc cwc;
     cwc.callback = [](auto&&) {};
@@ -103,7 +103,7 @@ void Paused::onStopClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!sm) return;
 
-    spdlog::info("Paused: Stop button clicked");
+    LOG_INFO(State, "Stop button clicked");
 
     UiApi::SimStop::Cwc cwc;
     cwc.callback = [](auto&&) {};
@@ -116,7 +116,7 @@ void Paused::onQuitClicked(lv_event_t* e)
         lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
     if (!sm) return;
 
-    spdlog::info("Paused: Quit button clicked");
+    LOG_INFO(State, "Quit button clicked");
 
     UiApi::Exit::Cwc cwc;
     cwc.callback = [](auto&&) {};
@@ -125,7 +125,7 @@ void Paused::onQuitClicked(lv_event_t* e)
 
 State::Any Paused::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 {
-    spdlog::info("Paused: Exit command received, shutting down");
+    LOG_INFO(State, "Exit command received, shutting down");
 
     cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
 
@@ -134,7 +134,7 @@ State::Any Paused::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 
 State::Any Paused::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
-    spdlog::debug("Paused: Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+    LOG_DEBUG(State, "Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
     // Update remote input device state (enables LVGL widget interaction even when paused).
     if (sm.getRemoteInputDevice()) {
@@ -148,7 +148,7 @@ State::Any Paused::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 
 State::Any Paused::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
 {
-    spdlog::debug("Paused: Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+    LOG_DEBUG(State, "Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
     // Update remote input device position (enables LVGL widget interaction even when paused).
     if (sm.getRemoteInputDevice()) {
@@ -161,7 +161,7 @@ State::Any Paused::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
 
 State::Any Paused::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 {
-    spdlog::debug("Paused: Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+    LOG_DEBUG(State, "Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
     // Update remote input device state (enables LVGL widget interaction even when paused).
     if (sm.getRemoteInputDevice()) {
@@ -175,7 +175,7 @@ State::Any Paused::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 
 State::Any Paused::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& /*sm*/)
 {
-    spdlog::info("Paused: SimRun command received, resuming simulation");
+    LOG_INFO(State, "SimRun command received, resuming simulation");
 
     cwc.sendResponse(UiApi::SimRun::Response::okay({ true }));
 
@@ -186,7 +186,7 @@ State::Any Paused::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& /*sm*/)
 
 State::Any Paused::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
 {
-    spdlog::info("Paused: SimStop command received, returning to start menu");
+    LOG_INFO(State, "SimStop command received, returning to start menu");
 
     cwc.sendResponse(UiApi::SimStop::Response::okay({ true }));
 
@@ -196,8 +196,8 @@ State::Any Paused::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
 
 State::Any Paused::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
 {
-    spdlog::warn("Paused: Server disconnected (reason: {})", evt.reason);
-    spdlog::info("Paused: Transitioning to Disconnected");
+    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+    LOG_INFO(State, "Transitioning to Disconnected");
 
     return Disconnected{};
 }

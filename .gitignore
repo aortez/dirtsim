@@ -28,6 +28,9 @@ yocto/rpi-build/
 zephyrproject/modules/
 */build/*
 
-# Yocto and Zephyr projects
+# Node.js dependencies.
+node_modules/
+
+# Yocto and Zephyr projects.
 yocto/
 zephyrproject/

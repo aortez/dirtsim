@@ -38,7 +38,7 @@ TreeId TreeManager::plantSeed(World& world, uint32_t x, uint32_t y)
 
     world.getData().at(x, y).organism_id = id;
 
-    LoggingChannels::tree()->info("TreeManager: Planted seed for tree {} at ({}, {})", id, x, y);
+    LOG_INFO(Tree, "TreeManager: Planted seed for tree {} at ({}, {})", id, x, y);
 
     trees_.emplace(id, std::move(tree));
 
@@ -49,7 +49,7 @@ void TreeManager::removeTree(TreeId id)
 {
     auto it = trees_.find(id);
     if (it == trees_.end()) {
-        LoggingChannels::tree()->warn("TreeManager: Attempted to remove non-existent tree {}", id);
+        LOG_WARN(Tree, "TreeManager: Attempted to remove non-existent tree {}", id);
         return;
     }
 
@@ -61,12 +61,12 @@ void TreeManager::removeTree(TreeId id)
     // Remove tree.
     trees_.erase(it);
 
-    LoggingChannels::tree()->info("TreeManager: Removed tree {}", id);
+    LOG_INFO(Tree, "TreeManager: Removed tree {}", id);
 }
 
 void TreeManager::clear()
 {
-    LoggingChannels::tree()->info("TreeManager: Clearing all trees (count={})", trees_.size());
+    LOG_INFO(Tree, "TreeManager: Clearing all trees (count={})", trees_.size());
     trees_.clear();
     cell_to_tree_.clear();
 }
@@ -106,8 +106,7 @@ void TreeManager::notifyTransfers(const std::vector<OrganismTransfer>& transfers
     for (const auto& [tree_id, tree_transfers] : transfers_by_tree) {
         auto tree_it = trees_.find(tree_id);
         if (tree_it == trees_.end()) {
-            LoggingChannels::tree()->warn(
-                "TreeManager: Received transfers for non-existent tree {}", tree_id);
+            LOG_WARN(Tree, "TreeManager: Received transfers for non-existent tree {}", tree_id);
             continue;
         }
 
@@ -121,7 +120,8 @@ void TreeManager::notifyTransfers(const std::vector<OrganismTransfer>& transfers
             // If the seed cell is moving, update seed_position to track it.
             if (transfer->from_pos == tree.seed_position) {
                 tree.seed_position = transfer->to_pos;
-                LoggingChannels::tree()->debug(
+                LOG_DEBUG(
+                    Tree,
                     "TreeManager: Tree {} seed moved from ({}, {}) to ({}, {})",
                     tree_id,
                     transfer->from_pos.x,
@@ -166,7 +166,8 @@ void TreeManager::notifyTransfers(const std::vector<OrganismTransfer>& transfers
             // The cleanup will happen in a separate pass or when cell becomes fully empty.
         }
 
-        LoggingChannels::tree()->trace(
+        LOG_TRACE(
+            Tree,
             "TreeManager: Processed {} transfers for tree {} (now {} cells tracked)",
             tree_transfers.size(),
             tree_id,

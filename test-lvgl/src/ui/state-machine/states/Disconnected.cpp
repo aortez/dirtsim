@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageUtils.h"
 #include "core/WorldData.h"
@@ -7,7 +8,6 @@
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -16,23 +16,23 @@ namespace State {
 
 State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine& sm)
 {
-    spdlog::info("Disconnected: Connect command received (host={}, port={})", cmd.host, cmd.port);
+    LOG_INFO(State, "Connect command received (host={}, port={})", cmd.host, cmd.port);
 
     auto& wsService = sm.getWebSocketService();
 
     // Setup callbacks before connecting.
     wsService.onConnected([&sm]() {
-        spdlog::info("WebSocketService: Connected to server");
+        LOG_INFO(Network, "Connected to server");
         sm.queueEvent(ServerConnectedEvent{});
     });
 
     wsService.onDisconnected([&sm]() {
-        spdlog::warn("WebSocketService: Disconnected from server");
+        LOG_WARN(Network, "Disconnected from server");
         sm.queueEvent(ServerDisconnectedEvent{ "Connection closed" });
     });
 
     wsService.onError([&sm](const std::string& error) {
-        spdlog::error("WebSocketService: Connection error: {}", error);
+        LOG_ERROR(Network, "Connection error: {}", error);
         sm.queueEvent(ServerDisconnectedEvent{ error });
     });
 
@@ -40,7 +40,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     // Note: Command responses are routed via WebSocketService's pendingRequests_ map,
     // so this callback only receives RenderMessage payloads (already extracted from envelope).
     wsService.onBinary([&sm](const std::vector<std::byte>& bytes) {
-        spdlog::debug("Received binary message ({} bytes)", bytes.size());
+        LOG_DEBUG(Network, "Received binary message ({} bytes)", bytes.size());
 
         try {
             // Deserialize as RenderMessage.
@@ -62,7 +62,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.cells.resize(numCells);
 
             if (renderMsg.format == RenderFormat::DEBUG) {
-                spdlog::debug("RenderMessage UNPACK: DEBUG format, {} cells", numCells);
+                LOG_DEBUG(Network, "RenderMessage UNPACK: DEBUG format, {} cells", numCells);
 
                 const DebugCell* debugCells =
                     reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
@@ -79,8 +79,10 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             }
             else {
                 // BASIC format: material + fill only.
-                spdlog::debug(
-                    "RenderMessage UNPACK: BASIC format, {} cells (no COM data)", numCells);
+                LOG_DEBUG(
+                    Network,
+                    "RenderMessage UNPACK: BASIC format, {} cells (no COM data)",
+                    numCells);
                 const BasicCell* basicCells =
                     reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
                 for (size_t i = 0; i < numCells; ++i) {
@@ -116,7 +118,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             sm.queueEvent(evt);
         }
         catch (const std::exception& e) {
-            spdlog::error("WebSocketService: Failed to process RenderMessage: {}", e.what());
+            LOG_ERROR(Network, "Failed to process RenderMessage: {}", e.what());
         }
     });
 
@@ -124,28 +126,26 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     std::string url = "ws://" + cmd.host + ":" + std::to_string(cmd.port);
     auto connectResult = wsService.connect(url);
     if (connectResult.isError()) {
-        spdlog::error(
-            "Disconnected: WebSocketService connection failed: {}", connectResult.errorValue());
+        LOG_ERROR(State, "WebSocketService connection failed: {}", connectResult.errorValue());
         return Disconnected{};
     }
 
-    spdlog::info("Disconnected: WebSocketService connecting to {}", url);
+    LOG_INFO(State, "WebSocketService connecting to {}", url);
 
     return StartMenu{};
 }
 
 State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& /*sm*/)
 {
-    spdlog::info("Disconnected: Server connection established");
-    spdlog::info("Disconnected: Transitioning to StartMenu");
+    LOG_INFO(State, "Server connection established");
+    LOG_INFO(State, "Transitioning to StartMenu");
 
-    // Transition to StartMenu state (show simulation controls).
     return StartMenu{};
 }
 
 State::Any Disconnected::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 {
-    spdlog::info("Disconnected: Exit command received, shutting down");
+    LOG_INFO(State, "Exit command received, shutting down");
 
     // Send success response.
     cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));

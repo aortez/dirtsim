@@ -2,7 +2,7 @@
   "defaults": {
     "console_level": "info",
     "file_level": "debug",
-    "pattern": "[%H:%M:%S.%e] [%n] [%^%l%$] %v",
+    "pattern": "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v",
     "flush_interval_ms": 1000
   },
 

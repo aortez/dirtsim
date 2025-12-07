@@ -1,4 +1,5 @@
 #include "CleanupRunner.h"
+#include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include <chrono>
 #include <filesystem>
@@ -27,8 +28,8 @@ std::vector<CleanupResult> CleanupRunner::run()
     auto serverPids = findProcesses("sparkle-duck-server");
     auto uiPids = findProcesses("sparkle-duck-ui");
 
-    spdlog::info("Cleaning up sparkle-duck processes...");
-    spdlog::info("Found {} server(s), {} UI(s)", serverPids.size(), uiPids.size());
+    SLOG_INFO("Cleaning up sparkle-duck processes...");
+    SLOG_INFO("Found {} server(s), {} UI(s)", serverPids.size(), uiPids.size());
 
     // Clean up servers (port 8080).
     for (int pid : serverPids) {
@@ -39,39 +40,39 @@ std::vector<CleanupResult> CleanupRunner::run()
 
         auto start = std::chrono::steady_clock::now();
 
-        spdlog::info("→ sparkle-duck-server (PID {})", pid);
+        SLOG_INFO("→ sparkle-duck-server (PID {})", pid);
 
         // Try WebSocket first.
         result.websocketSuccess = tryWebSocketShutdown(pid, "ws://localhost:8080", 2000);
         if (result.websocketSuccess) {
             auto end = std::chrono::steady_clock::now();
             result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
-            spdlog::info("  ✓ Exited via WebSocket ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Exited via WebSocket ({:.1f}ms)", result.shutdownTimeMs);
             results.push_back(result);
             continue;
         }
 
         // Try SIGTERM.
-        spdlog::info("  ✗ WebSocket failed, trying SIGTERM");
+        SLOG_INFO("  ✗ WebSocket failed, trying SIGTERM");
         result.sigtermSuccess = trySigtermShutdown(pid, 2000);
         if (result.sigtermSuccess) {
             auto end = std::chrono::steady_clock::now();
             result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
-            spdlog::info("  ✓ Exited via SIGTERM ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Exited via SIGTERM ({:.1f}ms)", result.shutdownTimeMs);
             results.push_back(result);
             continue;
         }
 
         // Last resort: SIGKILL.
-        spdlog::info("  ✗ SIGTERM failed, trying SIGKILL");
+        SLOG_INFO("  ✗ SIGTERM failed, trying SIGKILL");
         result.sigkillSuccess = trySigkillShutdown(pid);
         auto end = std::chrono::steady_clock::now();
         result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
         if (result.sigkillSuccess) {
-            spdlog::info("  ✓ Killed via SIGKILL ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Killed via SIGKILL ({:.1f}ms)", result.shutdownTimeMs);
         }
         else {
-            spdlog::error("  ✗ Failed to kill process!");
+            SLOG_ERROR("  ✗ Failed to kill process!");
         }
         results.push_back(result);
     }
@@ -85,48 +86,48 @@ std::vector<CleanupResult> CleanupRunner::run()
 
         auto start = std::chrono::steady_clock::now();
 
-        spdlog::info("→ sparkle-duck-ui (PID {})", pid);
+        SLOG_INFO("→ sparkle-duck-ui (PID {})", pid);
 
         // Try WebSocket first.
         result.websocketSuccess = tryWebSocketShutdown(pid, "ws://localhost:7070", 2000);
         if (result.websocketSuccess) {
             auto end = std::chrono::steady_clock::now();
             result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
-            spdlog::info("  ✓ Exited via WebSocket ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Exited via WebSocket ({:.1f}ms)", result.shutdownTimeMs);
             results.push_back(result);
             continue;
         }
 
         // Try SIGTERM.
-        spdlog::info("  ✗ WebSocket failed, trying SIGTERM");
+        SLOG_INFO("  ✗ WebSocket failed, trying SIGTERM");
         result.sigtermSuccess = trySigtermShutdown(pid, 2000);
         if (result.sigtermSuccess) {
             auto end = std::chrono::steady_clock::now();
             result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
-            spdlog::info("  ✓ Exited via SIGTERM ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Exited via SIGTERM ({:.1f}ms)", result.shutdownTimeMs);
             results.push_back(result);
             continue;
         }
 
         // Last resort: SIGKILL.
-        spdlog::info("  ✗ SIGTERM failed, trying SIGKILL");
+        SLOG_INFO("  ✗ SIGTERM failed, trying SIGKILL");
         result.sigkillSuccess = trySigkillShutdown(pid);
         auto end = std::chrono::steady_clock::now();
         result.shutdownTimeMs = std::chrono::duration<double, std::milli>(end - start).count();
         if (result.sigkillSuccess) {
-            spdlog::info("  ✓ Killed via SIGKILL ({:.1f}ms)", result.shutdownTimeMs);
+            SLOG_INFO("  ✓ Killed via SIGKILL ({:.1f}ms)", result.shutdownTimeMs);
         }
         else {
-            spdlog::error("  ✗ Failed to kill process!");
+            SLOG_ERROR("  ✗ Failed to kill process!");
         }
         results.push_back(result);
     }
 
     if (results.empty()) {
-        spdlog::info("No rogue processes found.");
+        SLOG_INFO("No rogue processes found.");
     }
     else {
-        spdlog::info("Done. Cleaned up {} process(es).", results.size());
+        SLOG_INFO("Done. Cleaned up {} process(es).", results.size());
     }
 
     return results;
@@ -170,7 +171,7 @@ std::vector<int> CleanupRunner::findProcesses(const std::string& namePattern)
         }
     }
     catch (const std::exception& e) {
-        spdlog::error("Error scanning /proc: {}", e.what());
+        SLOG_ERROR("Error scanning /proc: {}", e.what());
     }
 
     return pids;
@@ -198,7 +199,7 @@ bool CleanupRunner::tryWebSocketShutdown(int pid, const std::string& url, int ma
         nlohmann::json exitCmd = { { "command", "Exit" } };
         auto sendResult = client.sendText(exitCmd.dump());
         if (sendResult.isError()) {
-            spdlog::debug("Failed to send exit command: {}", sendResult.errorValue());
+            SLOG_DEBUG("Failed to send exit command: {}", sendResult.errorValue());
         }
 
         // Disconnect immediately (don't wait for response).
@@ -208,7 +209,7 @@ bool CleanupRunner::tryWebSocketShutdown(int pid, const std::string& url, int ma
         return waitForProcessExit(pid, maxWaitMs);
     }
     catch (const std::exception& e) {
-        spdlog::debug("WebSocket shutdown failed: {}", e.what());
+        SLOG_DEBUG("WebSocket shutdown failed: {}", e.what());
         return false;
     }
 }

@@ -30,11 +30,15 @@ void LoggingChannels::initialize(
 
     sharedSinks_ = { console_sink, file_sink };
 
-    // Set pattern to include component and channel name.
+    // Set pattern to include component, channel name, and source location.
     std::string pattern = componentName == "default"
-        ? "[%H:%M:%S.%e] [%n] [%^%l%$] %v"
-        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] %v";
-    spdlog::set_pattern(pattern);
+        ? "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v"
+        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] [%s:%#] %v";
+
+    // Set pattern on all sinks (so all loggers sharing these sinks get the pattern).
+    for (auto& sink : sharedSinks_) {
+        sink->set_pattern(pattern);
+    }
 
     // Create channel-specific loggers with TRACE level (can be filtered later).
     // Physics channels.
@@ -48,17 +52,26 @@ void LoggingChannels::initialize(
     createLogger("viscosity", sharedSinks_, spdlog::level::trace);
 
     // System channels.
-    createLogger("ui", sharedSinks_, spdlog::level::info);
+    createLogger("controls", sharedSinks_, spdlog::level::info);
     createLogger("network", sharedSinks_, spdlog::level::info);
-    createLogger("state", sharedSinks_, spdlog::level::debug);
+    createLogger("render", sharedSinks_, spdlog::level::info);
     createLogger("scenario", sharedSinks_, spdlog::level::info);
+    createLogger("state", sharedSinks_, spdlog::level::debug);
     createLogger("tree", sharedSinks_, spdlog::level::info);
+    createLogger("ui", sharedSinks_, spdlog::level::info);
 
     // Keep the default logger for general use (named with component).
     std::string loggerName = componentName.empty() ? "default" : componentName;
     auto default_logger =
         std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
     default_logger->set_level(spdlog::level::info);
+
+    // Set custom pattern for default logger (omits channel name to avoid redundancy).
+    std::string defaultPattern = componentName == "default"
+        ? "[%H:%M:%S.%e] [%^%l%$] [%s:%#] %v"
+        : "[%H:%M:%S.%e] [" + componentName + "] [%^%l%$] [%s:%#] %v";
+    default_logger->set_pattern(defaultPattern);
+
     spdlog::set_default_logger(default_logger);
 
     // Flush periodically.
@@ -68,13 +81,10 @@ void LoggingChannels::initialize(
     spdlog::info("LoggingChannels initialized successfully");
 }
 
-std::shared_ptr<spdlog::logger> LoggingChannels::get(const std::string& channel)
+std::shared_ptr<spdlog::logger> LoggingChannels::get(LogChannel channel)
 {
-    auto logger = spdlog::get(channel);
-    if (!logger) {
-        // If not initialized or channel doesn't exist, return default logger.
-        return spdlog::default_logger();
-    }
+    auto logger = spdlog::get(toString(channel));
+    assert(logger && "LogChannel not initialized - check LoggingChannels::initialize() was called");
     return logger;
 }
 
@@ -124,17 +134,21 @@ void LoggingChannels::configureFromString(const std::string& spec)
     }
 }
 
+void LoggingChannels::setChannelLevel(LogChannel channel, spdlog::level::level_enum level)
+{
+    auto logger = spdlog::get(toString(channel));
+    assert(logger && "LogChannel not found");
+    logger->set_level(level);
+    spdlog::info(
+        "Set channel '{}' to level: {}", toString(channel), spdlog::level::to_string_view(level));
+}
+
 void LoggingChannels::setChannelLevel(const std::string& channel, spdlog::level::level_enum level)
 {
     auto logger = spdlog::get(channel);
-    if (logger) {
-        logger->set_level(level);
-        spdlog::debug(
-            "Set channel '{}' to level: {}", channel, spdlog::level::to_string_view(level));
-    }
-    else {
-        spdlog::warn("Channel '{}' not found, cannot set level", channel);
-    }
+    assert(logger && "Channel not found in config parsing");
+    logger->set_level(level);
+    spdlog::info("Set channel '{}' to level: {}", channel, spdlog::level::to_string_view(level));
 }
 
 void LoggingChannels::createLogger(
@@ -204,7 +218,7 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
         { "defaults",
           { { "console_level", "info" },
             { "file_level", "debug" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] %v" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
             { "flush_interval_ms", 1000 } } },
         { "sinks",
           { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
@@ -269,7 +283,7 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
         { "defaults",
           { { "console_level", "info" },
             { "file_level", "debug" },
-            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] %v" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
             { "flush_interval_ms", 1000 } } },
         { "sinks",
           { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
@@ -347,10 +361,10 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
     // Extract defaults with fallbacks.
     auto consoleLevel = spdlog::level::info;
     auto fileLevel = spdlog::level::debug;
-    std::string basePattern = "[%H:%M:%S.%e] [%n] [%^%l%$] %v";
+    std::string basePattern = "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v";
     std::string pattern = componentName == "default"
         ? basePattern
-        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] %v";
+        : "[%H:%M:%S.%e] [" + componentName + "] [%n] [%^%l%$] [%s:%#] %v";
     int flushIntervalMs = 1000;
 
     try {
@@ -462,16 +476,20 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
 
     sharedSinks_ = sinks;
 
-    // Set pattern.
-    spdlog::set_pattern(pattern);
+    // Set pattern on all sinks (so all loggers sharing these sinks get the pattern).
+    for (auto& sink : sharedSinks_) {
+        sink->set_pattern(pattern);
+    }
 
     // Create channel loggers.
     createLogger("collision", sharedSinks_, spdlog::level::trace);
     createLogger("cohesion", sharedSinks_, spdlog::level::trace);
+    createLogger("controls", sharedSinks_, spdlog::level::trace);
     createLogger("friction", sharedSinks_, spdlog::level::trace);
     createLogger("network", sharedSinks_, spdlog::level::trace);
     createLogger("physics", sharedSinks_, spdlog::level::trace);
     createLogger("pressure", sharedSinks_, spdlog::level::trace);
+    createLogger("render", sharedSinks_, spdlog::level::trace);
     createLogger("scenario", sharedSinks_, spdlog::level::trace);
     createLogger("state", sharedSinks_, spdlog::level::trace);
     createLogger("support", sharedSinks_, spdlog::level::trace);
@@ -499,6 +517,13 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
     auto default_logger =
         std::make_shared<spdlog::logger>(loggerName, sharedSinks_.begin(), sharedSinks_.end());
     default_logger->set_level(spdlog::level::info);
+
+    // Set custom pattern for default logger (omits channel name to avoid redundancy).
+    std::string defaultPattern = componentName == "default"
+        ? "[%H:%M:%S.%e] [%^%l%$] [%s:%#] %v"
+        : "[%H:%M:%S.%e] [" + componentName + "] [%^%l%$] [%s:%#] %v";
+    default_logger->set_pattern(defaultPattern);
+
     spdlog::set_default_logger(default_logger);
 
     // Set flush interval.

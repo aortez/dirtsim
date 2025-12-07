@@ -24,7 +24,7 @@ protected:
         LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "tests");
 
         // Enable swap logging at debug level to see all swap decisions.
-        LoggingChannels::swap()->set_level(spdlog::level::debug);
+        LoggingChannels::setChannelLevel(LogChannel::Swap, spdlog::level::debug);
 
         // Create 7x5 world for horizontal motion test (walls make usable area 5x3).
         world = std::make_unique<World>(7, 5);

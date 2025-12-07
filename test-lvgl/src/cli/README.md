@@ -226,6 +226,8 @@ Automated end-to-end testing:
 - WorldData serialized with zpp_bits for efficiency
 - Automatically unpacked to JSON for compatibility
 
+From C++, use binary serialization.  JSON is for web apps.
+
 **Notes**:
 - `sim_run` creates World and transitions Idle → SimRunning
 - Set `max_steps` to control simulation duration:
@@ -267,94 +269,15 @@ Increase timeout for slow operations:
 ./build-debug/bin/cli --timeout 10000 state_get ws://localhost:8080  # 10 second timeout
 ```
 
-### Want to see what's happening?
-
-Use verbose mode to see WebSocket traffic:
-```bash
-./build-debug/bin/cli --verbose status_get ws://localhost:8080
-```
-
 ## Use Cases
 
-### CI/CD Integration
-
+Example:
 ```bash
-# Performance regression testing (use release build!)
+# Performance regression testing.
 ./build-release/bin/cli benchmark --steps 120 > benchmark_results.json
 
 # Sanity check (debug build is fine)
 ./build-debug/bin/cli integration_test || exit 1
-```
-
-### Scripted Testing
-
-```bash
-#!/bin/bash
-# Launch server and UI using CLI
-./build-debug/bin/cli run-all &
-
-# Wait for ready
-sleep 3
-
-# Run commands
-./build-debug/bin/cli sim_run ws://localhost:8080 '{"timestep": 0.016, "max_steps": 100}'
-./build-debug/bin/cli state_get ws://localhost:8080 > world_state.json
-./build-debug/bin/cli diagram_get ws://localhost:8080
-
-# Cleanup (gracefully shuts down both server and UI)
-./build-debug/bin/cli cleanup
-```
-
-## Tips & Best Practices
-
-### Use StatusGet for Polling
-
-StatusGet is lightweight (~15ms response time) compared to StateGet (full world data):
-
-```bash
-# Fast status check for polling
-./build-debug/bin/cli status_get ws://localhost:8080 | jq '{timestep: .value.timestep}'
-
-# Full world state (slower, use for detailed inspection)
-./build-debug/bin/cli state_get ws://localhost:8080
-```
-
-### Polling Pattern
-
-Wait for simulation to complete a certain number of steps:
-
-```bash
-./build-debug/bin/cli sim_run ws://localhost:8080 '{"max_steps": 100}'
-
-while true; do
-    STEP=$(./build-debug/bin/cli status_get ws://localhost:8080 | jq '.value.timestep')
-    echo "Current step: $STEP"
-    [ "$STEP" -ge 100 ] && break
-    sleep 0.1
-done
-```
-
-### Debugging with Verbose Mode
-
-```bash
-# See WebSocket traffic and correlation IDs
-./build-debug/bin/cli --verbose status_get ws://localhost:8080
-
-# Shows:
-# - Connection establishment
-# - Correlation ID: 1
-# - JSON request/response
-# - Response routing
-```
-
-### Timing Analysis
-
-```bash
-# Time individual commands
-time ./build-debug/bin/cli status_get ws://localhost:8080
-
-# Timestamp entire workflow
-./workflow_script.sh 2>&1 | ts '[%H:%M:%.S]'
 ```
 
 ### Always Cleanup
@@ -379,9 +302,6 @@ Check the help to see what's available:
 ```bash
 # Always up-to-date with actual server/UI capabilities
 ./build-debug/bin/cli --help
-
-# Server API Commands (18 total)
-# UI API Commands (10 total)
 ```
 
 When new commands are added to the server or UI, they automatically appear in the CLI help.

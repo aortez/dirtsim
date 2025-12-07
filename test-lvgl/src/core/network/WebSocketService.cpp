@@ -14,7 +14,7 @@ namespace Network {
 
 WebSocketService::WebSocketService()
 {
-    LoggingChannels::network()->debug("WebSocketService created");
+    LOG_DEBUG(Network, "WebSocketService created");
 }
 
 WebSocketService::~WebSocketService()
@@ -26,7 +26,7 @@ WebSocketService::~WebSocketService()
 Result<std::monostate, std::string> WebSocketService::connect(const std::string& url, int timeoutMs)
 {
     try {
-        LoggingChannels::network()->info("WebSocketService: Connecting to {}", url);
+        LOG_INFO(Network, "Connecting to {}", url);
 
         // Reset connection state.
         connectionFailed_ = false;
@@ -42,21 +42,18 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
             if (std::holds_alternative<rtc::string>(data)) {
                 // JSON text message.
                 std::string message = std::get<rtc::string>(data);
-                LoggingChannels::network()->debug(
-                    "WebSocketService: Received text ({} bytes)", message.size());
+                LOG_DEBUG(Network, "Received text ({} bytes)", message.size());
 
                 // Extract correlation ID.
                 std::optional<uint64_t> correlationId;
                 try {
-                    LoggingChannels::network()->info("WebSocketService: t1");
                     nlohmann::json json = nlohmann::json::parse(message);
                     if (json.contains("id") && json["id"].is_number()) {
                         correlationId = json["id"].get<uint64_t>();
                     }
-                    LoggingChannels::network()->info("WebSocketService: t2");
                 }
                 catch (...) {
-                    LoggingChannels::network()->info("I'm lost  !!!!!!!!!!!!!");
+                    LOG_INFO(Network, "I'm lost  !!!!!!!!!!!!!");
                     // Not JSON or no ID - that's fine.
                 }
 
@@ -80,8 +77,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
             else {
                 // Binary message.
                 const auto& binaryData = std::get<rtc::binary>(data);
-                LoggingChannels::network()->debug(
-                    "WebSocketService: Received binary ({} bytes)", binaryData.size());
+                LOG_DEBUG(Network, "Received binary ({} bytes)", binaryData.size());
 
                 // Convert to std::vector<std::byte>.
                 std::vector<std::byte> bytes(binaryData.size());
@@ -94,7 +90,8 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                     // Check if this is a server push (RenderMessage) or a command response.
                     if (envelope.message_type == "RenderMessage") {
                         // Server push - extract payload and route to binaryCallback_.
-                        LoggingChannels::network()->debug(
+                        LOG_DEBUG(
+                            Network,
                             "WebSocketService CLIENT: Received RenderMessage push ({} bytes "
                             "payload)",
                             envelope.payload.size());
@@ -115,7 +112,8 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                             pending->cv.notify_one();
                         }
                         else {
-                            LoggingChannels::network()->debug(
+                            LOG_DEBUG(
+                                Network,
                                 "WebSocketService CLIENT: Response {} not found (already "
                                 "processed)",
                                 envelope.id);
@@ -123,15 +121,17 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                     }
                 }
                 catch (const std::exception& e) {
-                    LoggingChannels::network()->error(
-                        "WebSocketService CLIENT: Failed to deserialize envelope: {}", e.what());
+                    LOG_ERROR(
+                        Network,
+                        "WebSocketService CLIENT: Failed to deserialize envelope: {}",
+                        e.what());
                 }
             }
         });
 
         // Set up open handler.
         ws_->onOpen([this]() {
-            LoggingChannels::network()->debug("WebSocketService: Connection opened");
+            LOG_DEBUG(Network, "Connection opened");
             if (connectedCallback_) {
                 connectedCallback_();
             }
@@ -139,7 +139,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
 
         // Set up close handler.
         ws_->onClosed([this]() {
-            LoggingChannels::network()->debug("WebSocketService: Connection closed");
+            LOG_DEBUG(Network, "Connection closed");
             connectionFailed_ = true;
             if (disconnectedCallback_) {
                 disconnectedCallback_();
@@ -148,7 +148,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
 
         // Set up error handler.
         ws_->onError([this](std::string error) {
-            LoggingChannels::network()->error("WebSocketService error: {}", error);
+            LOG_ERROR(Network, "WebSocketService error: {}", error);
             connectionFailed_ = true;
             if (errorCallback_) {
                 errorCallback_(error);
@@ -173,7 +173,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
             return Result<std::monostate, std::string>::error("Connection failed");
         }
 
-        LoggingChannels::network()->info("WebSocketService: Connected to {}", url);
+        LOG_INFO(Network, "Connected to {}", url);
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
     catch (const std::exception& e) {
@@ -249,8 +249,9 @@ Result<MessageEnvelope, std::string> WebSocketService::sendBinaryAndReceive(
         auto bytes = serialize_envelope(envelope);
         rtc::binary binaryMsg(bytes.begin(), bytes.end());
 
-        LoggingChannels::network()->info(
-            "WebSocketService: Sending binary (id={}, type={}, {} bytes)",
+        LOG_INFO(
+            Network,
+            "Sending binary (id={}, type={}, {} bytes)",
             id,
             envelope.message_type,
             bytes.size());
@@ -288,8 +289,9 @@ Result<MessageEnvelope, std::string> WebSocketService::sendBinaryAndReceive(
         auto& bytes = std::get<std::vector<std::byte>>(pending->response);
         MessageEnvelope responseEnvelope = deserialize_envelope(bytes);
 
-        LoggingChannels::network()->debug(
-            "WebSocketService: Received binary response (id={}, type={}, {} bytes)",
+        LOG_DEBUG(
+            Network,
+            "Received binary response (id={}, type={}, {} bytes)",
             responseEnvelope.id,
             responseEnvelope.message_type,
             bytes.size());
@@ -332,8 +334,7 @@ Result<std::string, ApiError> WebSocketService::sendJsonAndReceive(
     }
 
     // Send.
-    LoggingChannels::network()->debug(
-        "WebSocketService: Sending JSON (id={}): {}", id, messageWithId);
+    LOG_DEBUG(Network, "Sending JSON (id={}): {}", id, messageWithId);
     try {
         ws_->send(messageWithId);
     }
@@ -364,22 +365,19 @@ Result<std::string, ApiError> WebSocketService::sendJsonAndReceive(
             ApiError{ "Received binary response when expecting text" });
     }
 
-    LoggingChannels::network()->debug(
-        "WebSocketService: Received JSON response (id={}, {} bytes)",
+    LOG_DEBUG(
+        Network,
+        "Received JSON response (id={}, {} bytes)",
         id,
         std::get<std::string>(pending->response).size());
 
     return Result<std::string, ApiError>::okay(std::get<std::string>(pending->response));
 }
 
-// =============================================================================
-// Server-side methods (listening for connections).
-// =============================================================================
-
 Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
 {
     try {
-        LoggingChannels::network()->info("WebSocketService: Starting server on port {}", port);
+        LOG_INFO(Network, "Starting server on port {}", port);
 
         // Create WebSocket server configuration.
         rtc::WebSocketServerConfiguration config;
@@ -393,7 +391,7 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
         // Set up client connection handler.
         server_->onClient([this](std::shared_ptr<rtc::WebSocket> ws) { onClientConnected(ws); });
 
-        LoggingChannels::network()->info("WebSocketService: Server started on port {}", port);
+        LOG_INFO(Network, "Server started on port {}", port);
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
     catch (const std::exception& e) {
@@ -407,7 +405,7 @@ void WebSocketService::stopListening()
     if (server_) {
         server_->stop();
         server_.reset();
-        LoggingChannels::network()->info("WebSocketService: Server stopped");
+        LOG_INFO(Network, "Server stopped");
     }
 }
 
@@ -425,8 +423,9 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
     // Convert to rtc::binary.
     rtc::binary binaryMsg(data.begin(), data.end());
 
-    LoggingChannels::network()->info(
-        "WebSocketService: Broadcasting binary ({} bytes) to {} clients",
+    LOG_INFO(
+        Network,
+        "Broadcasting binary ({} bytes) to {} clients",
         data.size(),
         connectedClients_.size());
 
@@ -437,8 +436,7 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
                 ws->send(binaryMsg);
             }
             catch (const std::exception& e) {
-                LoggingChannels::network()->error(
-                    "WebSocketService: Broadcast failed for client: {}", e.what());
+                LOG_ERROR(Network, "Broadcast failed for client: {}", e.what());
             }
         }
     }
@@ -447,13 +445,13 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
 void WebSocketService::broadcastRenderMessage(const WorldData& data)
 {
     if (clientRenderFormats_.empty()) {
-        LoggingChannels::network()->info(
-            "WebSocketService: broadcastRenderMessage called but clientRenderFormats_ is EMPTY");
+        LOG_INFO(Network, "broadcastRenderMessage called but clientRenderFormats_ is EMPTY");
         return;
     }
 
-    LoggingChannels::network()->info(
-        "WebSocketService: Broadcasting RenderMessage to {} subscribed clients (step {})",
+    LOG_INFO(
+        Network,
+        "Broadcasting RenderMessage to {} subscribed clients (step {})",
         clientRenderFormats_.size(),
         data.timestep);
 
@@ -469,14 +467,14 @@ void WebSocketService::broadcastRenderMessage(const WorldData& data)
                 rtc::binary binaryMsg(msgData.begin(), msgData.end());
                 ws->send(binaryMsg);
 
-                LoggingChannels::network()->trace(
-                    "WebSocketService: Sent RenderMessage ({} bytes, format={}) to client",
+                LOG_INFO(
+                    Network,
+                    "Sent RenderMessage ({} bytes, format={}) to client",
                     msgData.size(),
                     static_cast<int>(format));
             }
             catch (const std::exception& e) {
-                LoggingChannels::network()->error(
-                    "WebSocketService: RenderMessage broadcast failed: {}", e.what());
+                LOG_ERROR(Network, "RenderMessage broadcast failed: {}", e.what());
             }
         }
     }
@@ -486,8 +484,9 @@ void WebSocketService::setClientRenderFormat(
     std::shared_ptr<rtc::WebSocket> ws, RenderFormat format)
 {
     clientRenderFormats_[ws] = format;
-    LoggingChannels::network()->info(
-        "WebSocketService: Client render format set to {}",
+    LOG_INFO(
+        Network,
+        "Client render format set to {}",
         format == RenderFormat::BASIC ? "BASIC" : "DEBUG");
 }
 
@@ -526,8 +525,7 @@ std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws
     connectionIds_[ws] = connectionId;
     connectionRegistry_[connectionId] = ws;
 
-    LoggingChannels::network()->debug(
-        "WebSocketService: Assigned connection ID '{}' to client", connectionId);
+    LOG_DEBUG(Network, "Assigned connection ID '{}' to client", connectionId);
     return connectionId;
 }
 
@@ -551,8 +549,7 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
     // Send the message.
     try {
         ws->send(message);
-        LoggingChannels::network()->debug(
-            "WebSocketService: Sent message to {} ({} bytes)", connectionId, message.size());
+        LOG_DEBUG(Network, "Sent message to {} ({} bytes)", connectionId, message.size());
         return Result<std::monostate, std::string>::okay({});
     }
     catch (const std::exception& e) {
@@ -580,8 +577,7 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
     try {
         rtc::binary binaryMsg(data.begin(), data.end());
         ws->send(binaryMsg);
-        LoggingChannels::network()->debug(
-            "WebSocketService: Sent binary to {} ({} bytes)", connectionId, data.size());
+        LOG_DEBUG(Network, "Sent binary to {} ({} bytes)", connectionId, data.size());
         return Result<std::monostate, std::string>::okay({});
     }
     catch (const std::exception& e) {
@@ -591,7 +587,7 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
 
 void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
-    LoggingChannels::network()->info("WebSocketService: Client connected");
+    LOG_INFO(Network, "Client connected");
     connectedClients_.push_back(ws);
 
     // Set up message handler for this client.
@@ -610,7 +606,7 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 
     // Set up close handler.
     ws->onClosed([this, ws]() {
-        LoggingChannels::network()->info("WebSocketService: Client disconnected");
+        LOG_INFO(Network, "Client disconnected");
         connectedClients_.erase(
             std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
             connectedClients_.end());
@@ -626,15 +622,12 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
     });
 
     // Set up error handler.
-    ws->onError([](std::string error) {
-        LoggingChannels::network()->error("WebSocketService: Client error: {}", error);
-    });
+    ws->onError([](std::string error) { LOG_ERROR(Network, "Client error: {}", error); });
 }
 
 void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const rtc::binary& data)
 {
-    LoggingChannels::network()->debug(
-        "WebSocketService: Received binary message ({} bytes)", data.size());
+    LOG_DEBUG(Network, "Received binary message ({} bytes)", data.size());
 
     // Track that this client uses binary protocol.
     clientProtocols_[ws] = Protocol::BINARY;
@@ -649,13 +642,13 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
         envelope = deserialize_envelope(bytes);
     }
     catch (const std::exception& e) {
-        LoggingChannels::network()->error(
-            "WebSocketService: Failed to deserialize envelope: {}", e.what());
+        LOG_ERROR(Network, "Failed to deserialize envelope: {}", e.what());
         return;
     }
 
-    LoggingChannels::network()->debug(
-        "WebSocketService: Command '{}', id={}, payload={} bytes",
+    LOG_DEBUG(
+        Network,
+        "Command '{}', id={}, payload={} bytes",
         envelope.message_type,
         envelope.id,
         envelope.payload.size());
@@ -663,8 +656,7 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
     // Look up handler.
     auto it = commandHandlers_.find(envelope.message_type);
     if (it == commandHandlers_.end()) {
-        LoggingChannels::network()->warn(
-            "WebSocketService: No handler for command '{}'", envelope.message_type);
+        LOG_WARN(Network, "No handler for command '{}'", envelope.message_type);
         // TODO: Send error response.
         return;
     }
@@ -676,8 +668,7 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
 void WebSocketService::onClientMessageJson(
     std::shared_ptr<rtc::WebSocket> ws, const std::string& jsonText)
 {
-    LoggingChannels::network()->debug(
-        "WebSocketService: Received JSON message ({} bytes)", jsonText.size());
+    LOG_DEBUG(Network, "Received JSON message ({} bytes)", jsonText.size());
 
     // Track that this client uses JSON protocol.
     clientProtocols_[ws] = Protocol::JSON;
@@ -688,7 +679,7 @@ void WebSocketService::onClientMessageJson(
         jsonMsg = nlohmann::json::parse(jsonText);
     }
     catch (const nlohmann::json::exception& e) {
-        LoggingChannels::network()->error("WebSocketService: Failed to parse JSON: {}", e.what());
+        LOG_ERROR(Network, "Failed to parse JSON: {}", e.what());
         return;
     }
 
@@ -700,7 +691,7 @@ void WebSocketService::onClientMessageJson(
         commandName = jsonMsg["command"].get<std::string>();
     }
     else {
-        LoggingChannels::network()->error("WebSocketService: JSON message missing 'command' field");
+        LOG_ERROR(Network, "JSON message missing 'command' field");
         return;
     }
 
@@ -708,13 +699,11 @@ void WebSocketService::onClientMessageJson(
         correlationId = jsonMsg["id"].get<uint64_t>();
     }
 
-    LoggingChannels::network()->debug(
-        "WebSocketService: JSON command '{}', id={}", commandName, correlationId);
+    LOG_DEBUG(Network, "JSON command '{}', id={}", commandName, correlationId);
 
     // Check if JSON deserializer is configured.
     if (!jsonDeserializer_) {
-        LoggingChannels::network()->error(
-            "WebSocketService: No JSON deserializer configured - ignoring JSON message");
+        LOG_ERROR(Network, "No JSON deserializer configured - ignoring JSON message");
         nlohmann::json errorResponse = {
             { "id", correlationId }, { "error", "JSON protocol not configured on this service" }
         };
@@ -728,8 +717,7 @@ void WebSocketService::onClientMessageJson(
         cmdAny = jsonDeserializer_(jsonText);
     }
     catch (const std::exception& e) {
-        LoggingChannels::network()->error(
-            "WebSocketService: JSON deserialization failed: {}", e.what());
+        LOG_ERROR(Network, "JSON deserialization failed: {}", e.what());
         nlohmann::json errorResponse = { { "id", correlationId }, { "error", e.what() } };
         ws->send(errorResponse.dump());
         return;
@@ -737,8 +725,7 @@ void WebSocketService::onClientMessageJson(
 
     // Check if JSON dispatcher is configured.
     if (!jsonDispatcher_) {
-        LoggingChannels::network()->error(
-            "WebSocketService: No JSON dispatcher configured - ignoring JSON command");
+        LOG_ERROR(Network, "No JSON dispatcher configured - ignoring JSON command");
         nlohmann::json errorResponse = {
             { "id", correlationId }, { "error", "JSON dispatcher not configured on this service" }
         };
@@ -755,8 +742,7 @@ void WebSocketService::onClientMessageJson(
                 it->second(payload, ws, correlationId);
             }
             else {
-                LoggingChannels::network()->warn(
-                    "WebSocketService: No handler registered for '{}'", commandName);
+                LOG_WARN(Network, "No handler registered for '{}'", commandName);
             }
         };
 

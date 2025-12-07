@@ -1,8 +1,8 @@
 #include "EventProcessor.h"
 #include "StateMachine.h"
+#include "core/LoggingChannels.h"
 #include "core/SynchronizedQueue.h"
 #include <optional>
-#include <spdlog/spdlog.h>
 #include <vector>
 
 namespace DirtSim {
@@ -25,7 +25,7 @@ void EventProcessor::processEventsFromQueue(StateMachine& sm)
     while (!eventQueue->queue.empty()) {
         auto event = eventQueue->queue.tryPop();
         if (event.has_value()) {
-            spdlog::debug("EventProcessor: Processing event: {}", getEventName(event.value()));
+            LOG_DEBUG(State, "Processing event: {}", getEventName(event.value()));
             processEvent(sm, event.value());
         }
     }
@@ -33,7 +33,7 @@ void EventProcessor::processEventsFromQueue(StateMachine& sm)
 
 void EventProcessor::enqueueEvent(const Event& event)
 {
-    spdlog::debug("EventProcessor: Enqueuing event: {}", getEventName(event));
+    LOG_DEBUG(State, "Enqueuing event: {}", getEventName(event));
     eventQueue->queue.push(event);
 }
 

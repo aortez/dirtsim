@@ -53,8 +53,10 @@ struct StateMachine::Impl {
 
 StateMachine::StateMachine() : pImpl()
 {
-    LoggingChannels::state()->info(
-        "Server::StateMachine initialized in headless mode in state: {}", getCurrentStateName());
+    LOG_INFO(
+        State,
+        "Server::StateMachine initialized in headless mode in state: {}",
+        getCurrentStateName());
     // Note: World will be created by SimRunning state when simulation starts.
 
     // Start peer discovery for mDNS service browsing.
@@ -70,8 +72,7 @@ StateMachine::~StateMachine()
 {
     pImpl->peerAdvertisement_.stop();
     pImpl->peerDiscovery_.stop();
-    LoggingChannels::state()->info(
-        "Server::StateMachine shutting down from state: {}", getCurrentStateName());
+    LOG_INFO(State, "Server::StateMachine shutting down from state: {}", getCurrentStateName());
 }
 
 void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
@@ -448,8 +449,7 @@ void StateMachine::processEvents()
 
 void StateMachine::handleEvent(const Event& event)
 {
-    LoggingChannels::state()->debug(
-        "Server::StateMachine: Handling event: {}", getEventName(event));
+    LOG_DEBUG(State, "Server::StateMachine: Handling event: {}", getEventName(event));
 
     // Handle RenderFormatSet globally (works in any state).
     if (std::holds_alternative<Api::RenderFormatSet::Cwc>(event.getVariant())) {
@@ -548,7 +548,7 @@ void StateMachine::transitionTo(State::Any newState)
     pImpl->fsmState_ = std::move(newState);
 
     std::string newStateName = getCurrentStateName();
-    LoggingChannels::state()->info("Server::StateMachine: {} -> {}", oldStateName, newStateName);
+    LOG_INFO(State, "Server::StateMachine: {} -> {}", oldStateName, newStateName);
 
     // Call onEnter for new state.
     std::visit([this](auto& state) { callOnEnter(state); }, pImpl->fsmState_.getVariant());
@@ -558,7 +558,7 @@ void StateMachine::transitionTo(State::Any newState)
 
 State::Any StateMachine::onEvent(const QuitApplicationCommand& /*cmd.*/)
 {
-    LoggingChannels::state()->info("Global handler: QuitApplicationCommand received");
+    LOG_INFO(State, "Global handler: QuitApplicationCommand received");
     setShouldExit(true);
     return State::Shutdown{};
 }

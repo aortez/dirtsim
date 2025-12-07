@@ -4,6 +4,7 @@
 #include "CommandRegistry.h"
 #include "IntegrationTest.h"
 #include "RunAllRunner.h"
+#include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/StatusGet.h"
@@ -139,9 +140,8 @@ std::string buildCommand(const std::string& commandName, const std::string& json
 
 int main(int argc, char** argv)
 {
-    // Configure spdlog to output to stderr (stdout reserved for JSON output).
-    auto logger = spdlog::stderr_color_mt("cli");
-    spdlog::set_default_logger(logger);
+    // Initialize logging channels (creates default logger named "cli" to stderr).
+    LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "cli");
 
     // Parse command line arguments.
     args::ArgumentParser parser(

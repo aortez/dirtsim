@@ -26,7 +26,7 @@ protected:
         LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "tests");
 
         // Suppress swap logging noise.
-        LoggingChannels::swap()->set_level(spdlog::level::off);
+        LoggingChannels::setChannelLevel(LogChannel::Swap, spdlog::level::off);
     }
 
     void TearDown() override { world.reset(); }

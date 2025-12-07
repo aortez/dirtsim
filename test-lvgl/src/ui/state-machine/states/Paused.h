@@ -18,7 +18,8 @@ namespace State {
  * Shows an overlay with Resume, Stop, and Quit buttons.
  */
 struct Paused {
-    std::unique_ptr<WorldData> worldData; // Preserve world data while paused.
+    // Preserve world data while paused.
+    std::unique_ptr<WorldData> worldData;
 
     // UI elements for pause overlay.
     lv_obj_t* overlay_ = nullptr;

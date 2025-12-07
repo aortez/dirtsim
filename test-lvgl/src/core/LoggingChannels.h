@@ -1,5 +1,10 @@
 #pragma once
 
+// Enable all log levels for SPDLOG_LOGGER_* macros (must be before spdlog includes).
+#ifndef SPDLOG_ACTIVE_LEVEL
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_TRACE
+#endif
+
 #include <memory>
 #include <nlohmann/json.hpp>
 #include <spdlog/sinks/basic_file_sink.h>
@@ -11,6 +16,65 @@
 #include <vector>
 
 namespace DirtSim {
+
+/**
+ * @brief Available logging channels for categorizing log messages.
+ */
+enum class LogChannel {
+    Collision,
+    Cohesion,
+    Controls,
+    Friction,
+    Network,
+    Physics,
+    Pressure,
+    Render,
+    Scenario,
+    State,
+    Support,
+    Swap,
+    Tree,
+    Ui,
+    Viscosity
+};
+
+inline const char* toString(LogChannel channel)
+{
+    switch (channel) {
+        case LogChannel::Collision:
+            return "collision";
+        case LogChannel::Cohesion:
+            return "cohesion";
+        case LogChannel::Controls:
+            return "controls";
+        case LogChannel::Friction:
+            return "friction";
+        case LogChannel::Network:
+            return "network";
+        case LogChannel::Physics:
+            return "physics";
+        case LogChannel::Pressure:
+            return "pressure";
+        case LogChannel::Render:
+            return "render";
+        case LogChannel::Scenario:
+            return "scenario";
+        case LogChannel::State:
+            return "state";
+        case LogChannel::Support:
+            return "support";
+        case LogChannel::Swap:
+            return "swap";
+        case LogChannel::Tree:
+            return "tree";
+        case LogChannel::Ui:
+            return "ui";
+        case LogChannel::Viscosity:
+            return "viscosity";
+    }
+    assert(false && "Unhandled LogChannel in switch");
+    return "";
+}
 
 /**
  * @brief Centralized logging channel management for fine-grained log filtering.
@@ -44,10 +108,8 @@ public:
 
     /**
      * @brief Get a specific channel logger.
-     * @param channel Name of the channel
-     * @return Logger for the channel, or default logger if channel doesn't exist
      */
-    static std::shared_ptr<spdlog::logger> get(const std::string& channel);
+    static std::shared_ptr<spdlog::logger> get(LogChannel channel);
 
     /**
      * @brief Configure channels from a specification string.
@@ -61,25 +123,13 @@ public:
 
     /**
      * @brief Set the log level for a specific channel.
-     * @param channel Name of the channel
-     * @param level Log level to set
+     */
+    static void setChannelLevel(LogChannel channel, spdlog::level::level_enum level);
+
+    /**
+     * @brief Set the log level for a channel by name.
      */
     static void setChannelLevel(const std::string& channel, spdlog::level::level_enum level);
-
-    // Convenience accessors for common channels.
-    static std::shared_ptr<spdlog::logger> physics() { return get("physics"); }
-    static std::shared_ptr<spdlog::logger> swap() { return get("swap"); }
-    static std::shared_ptr<spdlog::logger> cohesion() { return get("cohesion"); }
-    static std::shared_ptr<spdlog::logger> pressure() { return get("pressure"); }
-    static std::shared_ptr<spdlog::logger> collision() { return get("collision"); }
-    static std::shared_ptr<spdlog::logger> friction() { return get("friction"); }
-    static std::shared_ptr<spdlog::logger> support() { return get("support"); }
-    static std::shared_ptr<spdlog::logger> viscosity() { return get("viscosity"); }
-    static std::shared_ptr<spdlog::logger> ui() { return get("ui"); }
-    static std::shared_ptr<spdlog::logger> network() { return get("network"); }
-    static std::shared_ptr<spdlog::logger> state() { return get("state"); }
-    static std::shared_ptr<spdlog::logger> scenario() { return get("scenario"); }
-    static std::shared_ptr<spdlog::logger> tree() { return get("tree"); }
 
 private:
     /**
@@ -123,5 +173,41 @@ private:
     static bool initialized_;
     static std::vector<spdlog::sink_ptr> sharedSinks_;
 };
+
+// Undefine any existing LOG_* macros (e.g., from libdatachannel).
+#ifdef LOG_TRACE
+#undef LOG_TRACE
+#endif
+#ifdef LOG_DEBUG
+#undef LOG_DEBUG
+#endif
+#ifdef LOG_INFO
+#undef LOG_INFO
+#endif
+#ifdef LOG_WARN
+#undef LOG_WARN
+#endif
+#ifdef LOG_ERROR
+#undef LOG_ERROR
+#endif
+
+#define LOG_TRACE(channel, ...) \
+    SPDLOG_LOGGER_TRACE(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+#define LOG_DEBUG(channel, ...) \
+    SPDLOG_LOGGER_DEBUG(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+#define LOG_INFO(channel, ...) \
+    SPDLOG_LOGGER_INFO(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+#define LOG_WARN(channel, ...) \
+    SPDLOG_LOGGER_WARN(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+#define LOG_ERROR(channel, ...) \
+    SPDLOG_LOGGER_ERROR(LoggingChannels::get(LogChannel::channel), __VA_ARGS__)
+
+// Simple logging macros using default logger (no channel parameter, omits channel in output).
+#define SLOG_TRACE(...) SPDLOG_LOGGER_TRACE(spdlog::default_logger(), __VA_ARGS__)
+#define SLOG_DEBUG(...) SPDLOG_LOGGER_DEBUG(spdlog::default_logger(), __VA_ARGS__)
+#define SLOG_INFO(...) SPDLOG_LOGGER_INFO(spdlog::default_logger(), __VA_ARGS__)
+#define SLOG_WARN(...) SPDLOG_LOGGER_WARN(spdlog::default_logger(), __VA_ARGS__)
+#define SLOG_ERROR(...) SPDLOG_LOGGER_ERROR(spdlog::default_logger(), __VA_ARGS__)
+// clang-format on
 
 } // namespace DirtSim

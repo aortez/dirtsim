@@ -217,7 +217,8 @@ double WorldCollisionCalculator::calculateCollisionEnergy(
     Vector2d direction_vector(move.toX - move.fromX, move.toY - move.fromY);
     double velocity_in_direction = std::abs(move.momentum.dot(direction_vector));
 
-    LoggingChannels::swap()->debug(
+    LOG_DEBUG(
+        Swap,
         "Energy calc: total_vel=({:.3f},{:.3f}), dir=({},{}), vel_in_dir={:.3f}",
         move.momentum.x,
         move.momentum.y,
@@ -1009,13 +1010,14 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     const MaterialMove& move) const
 {
     if (fromCell.material_type == toCell.material_type) {
-        LoggingChannels::swap()->debug("Swap denied: same material type");
+        LOG_DEBUG(Swap, "Swap denied: same material type");
         return false;
     }
 
     // Organism cells resist displacement (handled by rigid body physics).
     if (toCell.organism_id != 0) {
-        LoggingChannels::swap()->debug(
+        LOG_DEBUG(
+            Swap,
             "Swap denied: cannot displace organism cell {} (organism_id={})",
             getMaterialName(toCell.material_type),
             toCell.organism_id);
@@ -1047,7 +1049,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             // If the fluid being displaced has empty space beside it, deny swap.
             // The fluid should escape sideways via pressure, not be pushed vertically.
             if (lateral.isEmpty()) {
-                LoggingChannels::swap()->info(
+                LOG_INFO(
+                    Swap,
                     "Swap denied (path of least resistance): "
                     "{} at ({},{}) can escape to empty lateral at ({},{})",
                     getMaterialName(toCell.material_type),
@@ -1062,7 +1065,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             double lateral_pressure = lateral.pressure;
             double target_pressure = toCell.pressure;
             if (lateral_pressure < target_pressure * 0.5) {
-                LoggingChannels::swap()->info(
+                LOG_INFO(
+                    Swap,
                     "Swap denied (path of least resistance): "
                     "{} at ({},{}) can escape to lower pressure ({:.2f} vs {:.2f}) at ({},{})",
                     getMaterialName(toCell.material_type),
@@ -1111,7 +1115,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         }
         // Log horizontal swap approval details.
         if (toCell.material_type != MaterialType::AIR) {
-            // LoggingChannels::swap()->warn(
+            // LOG_WARN(Swap,
             //     "Horizontal swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
             //     "{:.3f}, "
             //     "vel: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: {:.3f}, support: "
@@ -1167,7 +1171,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         const bool swap_ok = effective_momentum > to_resistance * threshold;
 
         if (!swap_ok) {
-            LoggingChannels::swap()->info(
+            LOG_INFO(
+                Swap,
                 "Vertical swap DENIED: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
                 "{:.3f}, "
                 "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
@@ -1192,7 +1197,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         }
         // Log vertical swap approval details.
         if (toCell.material_type != MaterialType::AIR) {
-            LoggingChannels::swap()->info(
+            LOG_INFO(
+                Swap,
                 "Vertical swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
                 "{:.3f}, "
                 "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
@@ -1227,7 +1233,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     }
 
     if (cohesion_strength > 0.01) {
-        LoggingChannels::swap()->debug(
+        LOG_DEBUG(
+            Swap,
             "Cohesion check: {} at ({},{}) | strength: {:.3f}, bond_cost: {:.3f} (fluid_adjusted)",
             getMaterialName(fromCell.material_type),
             fromX,
@@ -1262,7 +1269,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 density_diff * world.getPhysicsSettings().buoyancy_energy_scale;
             available_energy += buoyancy_energy;
 
-            LoggingChannels::swap()->debug(
+            LOG_DEBUG(
+                Swap,
                 "Buoyancy boost: {} <-> {} | density_diff: {:.3f}, buoyancy_energy: {:.3f}, total: "
                 "{:.3f}",
                 getMaterialName(fromCell.material_type),
@@ -1275,7 +1283,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
     if (available_energy < total_cost) {
         if (bond_breaking_cost > 0.01) {
-            LoggingChannels::swap()->debug(
+            LOG_DEBUG(
+                Swap,
                 "Swap denied: insufficient energy to break cohesive bonds ({:.3f} < {:.3f}, "
                 "bond_cost: {:.3f})",
                 available_energy,
@@ -1283,14 +1292,18 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 bond_breaking_cost);
         }
         else {
-            LoggingChannels::swap()->debug(
-                "Swap denied: insufficient energy ({:.3f} < {:.3f})", available_energy, total_cost);
+            LOG_DEBUG(
+                Swap,
+                "Swap denied: insufficient energy ({:.3f} < {:.3f})",
+                available_energy,
+                total_cost);
         }
         return false;
     }
 
     if (toCell.material_type == MaterialType::AIR) {
-        LoggingChannels::swap()->debug(
+        LOG_DEBUG(
+            Swap,
             "Swap approved: {} -> {} at ({},{}) -> ({},{}) | Energy: {:.3f} >= {:.3f} (base: "
             "{:.3f}, bonds: {:.3f}) | Dir: ({},{}) {}",
             getMaterialName(fromCell.material_type),
@@ -1310,7 +1323,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     }
     else {
 
-        LoggingChannels::swap()->info(
+        LOG_INFO(
+            Swap,
             "Swap approved: {} -> {} at ({},{}) -> ({},{}) | Energy: {:.3f} >= {:.3f} (base: "
             "{:.3f}, bonds: {:.3f}) | Dir: ({},{}) {}",
             getMaterialName(fromCell.material_type),
@@ -1405,7 +1419,8 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
         direction.y > 0 ? "DOWN" : (direction.y < 0 ? "UP" : (direction.x > 0 ? "RIGHT" : "LEFT"));
 
     if (involves_air) {
-        LoggingChannels::swap()->debug(
+        LOG_DEBUG(
+            Swap,
             "SWAP: {} <-> {} at ({},{}) <-> ({},{}) Dir:({},{}) {} | Vel: {:.3f} -> {:.3f} "
             "(air swap, momentum preserved) | landing_com: ({:.2f},{:.2f})",
             getMaterialName(from_type),
@@ -1423,7 +1438,8 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
             landing_com.y);
     }
     else {
-        LoggingChannels::swap()->info(
+        LOG_INFO(
+            Swap,
             "SWAP: {} <-> {} at ({},{}) <-> ({},{}) Dir:({},{}) {} | Energy: {:.3f} - {:.3f} = "
             "{:.3f} | Vel: {:.3f} -> {:.3f} | landing_com: ({:.2f},{:.2f})",
             getMaterialName(from_type),
