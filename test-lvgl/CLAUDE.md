@@ -336,6 +336,42 @@ The project includes deployment scripts for developing on a workstation and depl
 
 **Setup:** See `src/scripts/deploy/README.md` for SSH key setup and configuration.
 
+### Cross-Compilation (Faster Deploys)
+
+Building on the Pi takes ~8 minutes. Cross-compilation builds on the workstation (~1 minute) and deploys just the binaries.
+
+**First-time setup:**
+```bash
+# Install cross-compiler.
+sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+
+# Sync sysroot from Pi (copies headers and libraries).
+make cross-sysroot
+```
+
+**Cross-compile and deploy:**
+```bash
+# Cross-compile release and deploy to Pi.
+./deploy-to-pi.sh -x
+
+# Cross-compile debug build.
+./deploy-to-pi.sh -x -d
+
+# First-time (sync sysroot + build + deploy).
+./deploy-to-pi.sh -x --sync-sysroot
+```
+
+**Manual cross-compilation:**
+```bash
+make cross-release    # Build for aarch64 (output: build-aarch64-release/).
+make cross-debug      # Debug build for aarch64.
+```
+
+**Files:**
+- `cmake/aarch64-toolchain.cmake` - CMake toolchain for cross-compilation.
+- `cmake/aarch64-sysroot-sync.sh` - Script to sync libraries from Pi.
+- `sysroot-aarch64/` - Local copy of Pi's headers and libraries (gitignored).
+
 ### systemd Service (Pi)
 
 The app runs as a user service on the Pi, auto-starting on boot:

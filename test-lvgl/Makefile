@@ -9,6 +9,11 @@ BUILD_RELEASE_DIR := build-release
 BUILD_DIR := build-debug  # Default to debug for backward compatibility.
 BIN_DIR := bin
 
+# Cross-compilation directories (aarch64).
+BUILD_CROSS_DEBUG_DIR := build-aarch64-debug
+BUILD_CROSS_RELEASE_DIR := build-aarch64-release
+CROSS_TOOLCHAIN := cmake/aarch64-toolchain.cmake
+
 # Number of parallel jobs (use all available cores).
 JOBS := $(shell nproc 2>/dev/null || echo 4)
 
@@ -60,7 +65,7 @@ TEST_BINARY := sparkle-duck-tests
 TEST_SLOW_BINARY := sparkle-duck-tests-slow
 MAIN_BINARY := sparkle-duck
 
-.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help
+.PHONY: all clean debug release asan build-tests build-tests-slow test test-slow test-all visual-tests run run-asan test-asan format format-check lint lint-fix check help cross-debug cross-release cross-sysroot
 
 all: release
 
@@ -176,9 +181,40 @@ check: format-check lint build-tests
 	@echo ""
 	@echo "✅ All checks passed!"
 
+# Cross-compilation targets (build for aarch64 on x86_64 host).
+cross-sysroot:
+	@echo "Syncing sysroot from Pi..."
+	@./cmake/aarch64-sysroot-sync.sh
+
+cross-debug:
+	@echo "Cross-compiling debug version for aarch64..."
+	@if [ ! -d "sysroot-aarch64" ]; then \
+		echo "Error: sysroot-aarch64 not found. Run 'make cross-sysroot' first."; \
+		exit 1; \
+	fi
+	$(call start_build)
+	@cmake -B $(BUILD_CROSS_DEBUG_DIR) -S . \
+		-DCMAKE_TOOLCHAIN_FILE=$(CROSS_TOOLCHAIN) \
+		-DCMAKE_BUILD_TYPE=Debug
+	@$(MAKE) -C $(BUILD_CROSS_DEBUG_DIR) -j$(JOBS)
+	$(call show_build_stats)
+
+cross-release:
+	@echo "Cross-compiling release version for aarch64..."
+	@if [ ! -d "sysroot-aarch64" ]; then \
+		echo "Error: sysroot-aarch64 not found. Run 'make cross-sysroot' first."; \
+		exit 1; \
+	fi
+	$(call start_build)
+	@cmake -B $(BUILD_CROSS_RELEASE_DIR) -S . \
+		-DCMAKE_TOOLCHAIN_FILE=$(CROSS_TOOLCHAIN) \
+		-DCMAKE_BUILD_TYPE=Release
+	@$(MAKE) -C $(BUILD_CROSS_RELEASE_DIR) -j$(JOBS)
+	$(call show_build_stats)
+
 clean:
 	@echo "Cleaning build artifacts..."
-	@rm -rf $(BUILD_DEBUG_DIR) $(BUILD_RELEASE_DIR) $(BIN_DIR) lib
+	@rm -rf $(BUILD_DEBUG_DIR) $(BUILD_RELEASE_DIR) $(BUILD_CROSS_DEBUG_DIR) $(BUILD_CROSS_RELEASE_DIR) $(BIN_DIR) lib
 	@echo "Note: To clean in-source CMake artifacts, run: make clean-cmake"
 
 clean-cmake:
@@ -190,25 +226,30 @@ help:
 	@echo "  all            - Build release version (default)"
 	@echo "  release        - Build optimized release version"
 	@echo "  release-verify - Build release and run tests to verify"
-	@echo "  debug        - Build debug version with symbols and LOG_DEBUG"
-	@echo "  asan         - Build debug version with AddressSanitizer enabled"
-	@echo "  build-tests  - Build test binary without running tests"
+	@echo "  debug          - Build debug version with symbols and LOG_DEBUG"
+	@echo "  asan           - Build debug version with AddressSanitizer enabled"
+	@echo "  build-tests    - Build test binary without running tests"
 	@echo "  build-tests-slow - Build slow test binary"
-	@echo "  test         - Build debug and run unit tests (fast)"
-	@echo "  test-slow    - Run slow integration/stress tests"
-	@echo "  test-asan    - Build and run tests with AddressSanitizer"
-	@echo "  test-all     - Run all tests (unit + slow + visual)"
-	@echo "  visual-tests - Run tests with visual output enabled"
-	@echo "  run          - Run the main sparkle-duck executable"
-	@echo "  run-asan     - Run with AddressSanitizer to detect memory errors"
-	@echo "  format       - Format C++ source code using clang-format"
-	@echo "  format-check - Check C++ formatting without modifying"
-	@echo "  lint         - Lint JavaScript files with ESLint"
-	@echo "  lint-fix     - Lint and auto-fix JavaScript files"
-	@echo "  check        - Run all checks (format-check, lint, tests) - used by CI"
-	@echo "  clean        - Remove build directory and binaries"
-	@echo "  clean-cmake  - Remove in-source CMake artifacts"
-	@echo "  help         - Show this help message"
+	@echo "  test           - Build debug and run unit tests (fast)"
+	@echo "  test-slow      - Run slow integration/stress tests"
+	@echo "  test-asan      - Build and run tests with AddressSanitizer"
+	@echo "  test-all       - Run all tests (unit + slow + visual)"
+	@echo "  visual-tests   - Run tests with visual output enabled"
+	@echo "  run            - Run the main sparkle-duck executable"
+	@echo "  run-asan       - Run with AddressSanitizer to detect memory errors"
+	@echo "  format         - Format C++ source code using clang-format"
+	@echo "  format-check   - Check C++ formatting without modifying"
+	@echo "  lint           - Lint JavaScript files with ESLint"
+	@echo "  lint-fix       - Lint and auto-fix JavaScript files"
+	@echo "  check          - Run all checks (format-check, lint, tests) - used by CI"
+	@echo "  clean          - Remove build directory and binaries"
+	@echo "  clean-cmake    - Remove in-source CMake artifacts"
+	@echo "  help           - Show this help message"
+	@echo ""
+	@echo "Cross-compilation (build on x86_64, deploy to aarch64 Pi):"
+	@echo "  cross-sysroot  - Sync libraries from Pi to local sysroot"
+	@echo "  cross-debug    - Cross-compile debug version for aarch64"
+	@echo "  cross-release  - Cross-compile release version for aarch64"
 	@echo ""
 	@echo "Pass arguments to test/run targets using ARGS:"
 	@echo "  make test ARGS='--gtest_filter=WorldB*'"
