@@ -15,9 +15,28 @@ JOBS := $(shell nproc 2>/dev/null || echo 4)
 # Check if ccache is available.
 CCACHE := $(shell which ccache 2>/dev/null)
 
-# Helper to show ccache stats for this build (hits/misses since last zero).
-define show_ccache_stats
-	@if [ -n "$(CCACHE)" ]; then \
+# Build timing - stores start time in a temp file.
+BUILD_START_FILE := /tmp/.sparkle-duck-build-start
+
+# Helper to start build timer and zero ccache stats.
+define start_build
+	@date +%s > $(BUILD_START_FILE)
+	@if [ -n "$(CCACHE)" ]; then ccache --zero-stats > /dev/null 2>&1; fi
+endef
+
+# Helper to show build stats (time and ccache) at end of build.
+define show_build_stats
+	@START=$$(cat $(BUILD_START_FILE) 2>/dev/null || echo 0); \
+	END=$$(date +%s); \
+	ELAPSED=$$((END - START)); \
+	MINS=$$((ELAPSED / 60)); \
+	SECS=$$((ELAPSED % 60)); \
+	if [ $$MINS -gt 0 ]; then \
+		TIME_STR="$${MINS}m $${SECS}s"; \
+	else \
+		TIME_STR="$${SECS}s"; \
+	fi; \
+	if [ -n "$(CCACHE)" ]; then \
 		STATS=$$(ccache --print-stats 2>/dev/null); \
 		DIRECT=$$(echo "$$STATS" | grep "^direct_cache_hit" | cut -f2); \
 		PREPROC=$$(echo "$$STATS" | grep "^preprocessed_cache_hit" | cut -f2); \
@@ -27,14 +46,13 @@ define show_ccache_stats
 		TOTAL=$$((HITS + MISSES)); \
 		if [ $$TOTAL -gt 0 ]; then \
 			PCT=$$((HITS * 100 / TOTAL)); \
-			echo "📦 ccache: $$HITS/$$TOTAL hits ($$PCT%)"; \
+			echo "⏱️  $$TIME_STR  📦 ccache: $$HITS/$$TOTAL hits ($$PCT%)"; \
+		else \
+			echo "⏱️  $$TIME_STR"; \
 		fi; \
+	else \
+		echo "⏱️  $$TIME_STR"; \
 	fi
-endef
-
-# Helper to zero ccache stats before build.
-define zero_ccache_stats
-	@if [ -n "$(CCACHE)" ]; then ccache --zero-stats > /dev/null 2>&1; fi
 endef
 
 # Test binary names.
@@ -48,10 +66,10 @@ all: release
 
 release:
 	@echo "Building release version..."
-	$(call zero_ccache_stats)
+	$(call start_build)
 	@cmake -B $(BUILD_RELEASE_DIR) -S . -DCMAKE_BUILD_TYPE=Release
 	@$(MAKE) -C $(BUILD_RELEASE_DIR) -j$(JOBS)
-	$(call show_ccache_stats)
+	$(call show_build_stats)
 
 release-verify: release
 	@echo "Running tests to verify build..."
@@ -59,23 +77,23 @@ release-verify: release
 
 debug:
 	@echo "Building debug version..."
-	$(call zero_ccache_stats)
+	$(call start_build)
 	@cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
 		-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG" \
 		-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG"
 	@$(MAKE) -C $(BUILD_DEBUG_DIR) -j$(JOBS)
-	$(call show_ccache_stats)
+	$(call show_build_stats)
 
 asan:
 	@echo "Building debug version with AddressSanitizer..."
-	$(call zero_ccache_stats)
+	$(call start_build)
 	@cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
 		-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG -fsanitize=address -fno-omit-frame-pointer" \
 		-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG -fsanitize=address -fno-omit-frame-pointer" \
 		-DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" \
 		-DCMAKE_SHARED_LINKER_FLAGS="-fsanitize=address"
 	@$(MAKE) -C $(BUILD_DEBUG_DIR) -j$(JOBS)
-	$(call show_ccache_stats)
+	$(call show_build_stats)
 	@echo "ASAN build complete. Use 'make run-asan' or 'make test-asan' to run with AddressSanitizer."
 
 build-tests: debug
