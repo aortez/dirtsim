@@ -28,14 +28,17 @@ EXTRA_USERS_PARAMS = " \
 # Ensure sudo is installed.
 IMAGE_INSTALL:append = " sudo"
 
-# Set up .ssh directory with correct permissions (key injected at flash time).
-setup_ssh_dir() {
+# Set up dirtsim home directory with correct ownership and permissions.
+setup_dirtsim_home() {
+    # .ssh directory (key injected at flash time).
     install -d -m 700 ${IMAGE_ROOTFS}/home/dirtsim/.ssh
     touch ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
     chmod 600 ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
-    chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim/.ssh
+
+    # Fix ownership of entire home directory (including .profile from base-files).
+    chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim
 }
-ROOTFS_POSTPROCESS_COMMAND:append = " setup_ssh_dir;"
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_dirtsim_home;"
 
 # ============================================================================
 # Network Management

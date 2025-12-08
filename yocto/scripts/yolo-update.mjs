@@ -100,6 +100,57 @@ function skull() {
 }
 
 // ============================================================================
+// Signal Handling and Cleanup
+// ============================================================================
+
+// Track resources for cleanup on Ctrl+C.
+let activeLoopDevice = null;
+let activeMountPoint = null;
+let activeTempDir = null;
+let inCriticalSection = false;
+
+function emergencyCleanup() {
+  // If we're in the critical section (dd running), refuse to exit.
+  if (inCriticalSection) {
+    log('');
+    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
+    log(`${colors.bold}${colors.red}  ⚠️  CANNOT INTERRUPT - dd IS WRITING TO DISK!${colors.reset}`);
+    log(`${colors.bold}${colors.red}  Ctrl+C disabled to prevent disk corruption.${colors.reset}`);
+    log(`${colors.bold}${colors.red}  Wait for reboot to complete...${colors.reset}`);
+    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
+    log('');
+    return; // Don't exit!
+  }
+
+  log('');
+  warn('Ctrl+C detected - cleaning up...');
+
+  try {
+    if (activeMountPoint) {
+      info(`Unmounting ${activeMountPoint}...`);
+      execSync(`sudo umount ${activeMountPoint} 2>/dev/null || true`, { stdio: 'pipe' });
+    }
+    if (activeLoopDevice) {
+      info(`Detaching ${activeLoopDevice}...`);
+      execSync(`sudo losetup -d ${activeLoopDevice} 2>/dev/null || true`, { stdio: 'pipe' });
+    }
+    if (activeTempDir) {
+      info(`Removing temp directory...`);
+      execSync(`rm -rf ${activeTempDir}`, { stdio: 'pipe' });
+    }
+    success('Cleanup complete.');
+  } catch (err) {
+    error(`Cleanup failed: ${err.message}`);
+  }
+
+  log('');
+  process.exit(130); // Standard exit code for SIGINT.
+}
+
+// Handle Ctrl+C gracefully.
+process.on('SIGINT', emergencyCleanup);
+
+// ============================================================================
 // Utilities
 // ============================================================================
 
@@ -230,6 +281,7 @@ async function prepareImage(imagePath, config) {
   banner('Preparing image with local customizations...');
 
   const workDir = mkdtempSync(join(tmpdir(), 'yolo-image-'));
+  activeTempDir = workDir;
   const wicPath = join(workDir, 'image.wic');
   const mountPoint = join(workDir, 'rootfs');
   const preparedImagePath = join(workDir, 'prepared-image.wic.gz');
@@ -245,6 +297,7 @@ async function prepareImage(imagePath, config) {
       encoding: 'utf-8',
       stdio: 'pipe',
     }).trim();
+    activeLoopDevice = loopDevice;
 
     try {
       // Mount partition 2 (rootfs).
@@ -253,6 +306,7 @@ async function prepareImage(imagePath, config) {
 
       info('Mounting rootfs...');
       execSync(`sudo mount "${rootfsPartition}" "${mountPoint}"`, { stdio: 'pipe' });
+      activeMountPoint = mountPoint;
 
       try {
         // Inject SSH key.
@@ -273,12 +327,14 @@ async function prepareImage(imagePath, config) {
         // Unmount.
         info('Unmounting...');
         execSync(`sudo umount "${mountPoint}"`, { stdio: 'pipe' });
+        activeMountPoint = null;
       }
 
     } finally {
       // Detach loop device.
       info('Detaching loop device...');
       execSync(`sudo losetup -d "${loopDevice}"`, { stdio: 'pipe' });
+      activeLoopDevice = null;
     }
 
     // Recompress.
@@ -290,6 +346,7 @@ async function prepareImage(imagePath, config) {
     rmdirSync(mountPoint);
 
     success('Image prepared!');
+    // activeTempDir will be cleared after transfer completes.
     return { preparedImagePath, workDir };
 
   } catch (err) {
@@ -511,6 +568,9 @@ async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm 
     log(`${colors.yellow}🍺 Hold my mead... here we go!${colors.reset}`);
   }
 
+  // ENTERING CRITICAL SECTION - Ctrl+C disabled from here.
+  inCriticalSection = true;
+
   log('');
   info('Stopping services...');
   ssh('sudo systemctl stop sparkle-duck 2>/dev/null || true');
@@ -710,6 +770,9 @@ async function main() {
       // Wait for reboot.
       const online = await waitForReboot(120);
 
+      // EXITING CRITICAL SECTION - Ctrl+C re-enabled.
+      inCriticalSection = false;
+
       log('');
       if (online) {
         log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
@@ -736,6 +799,7 @@ async function main() {
     // Clean up prepared image temp files.
     if (workDir) {
       cleanupPreparedImage(workDir);
+      activeTempDir = null;
     }
   }
 }

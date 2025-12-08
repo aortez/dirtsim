@@ -10,8 +10,9 @@ SRC_URI += "file://profile.append"
 do_install:append() {
     install -m 0644 ${WORKDIR}/fstab ${D}${sysconfdir}/fstab
 
-    # Create root's .profile with TERM fix for vim/nmon over SSH.
+    # Create dirtsim's .profile with TERM fix for vim/nmon over SSH.
     # Busybox sh doesn't source /etc/profile reliably, but ~/.profile works.
-    install -d ${D}/root
-    install -m 0644 ${WORKDIR}/profile.append ${D}/root/.profile
+    # Note: Ownership will be fixed by image recipe postprocess after user exists.
+    install -d ${D}/home/dirtsim
+    install -m 0644 ${WORKDIR}/profile.append ${D}/home/dirtsim/.profile
 }
