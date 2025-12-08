@@ -5,7 +5,13 @@ VOLATILE_LOG_DIR = "no"
 # Custom fstab for USB boot (uses /dev/sda1 for /boot instead of mmcblk0p1).
 FILESEXTRAPATHS:prepend := "${THISDIR}/${PN}:"
 SRC_URI += "file://fstab"
+SRC_URI += "file://profile.append"
 
 do_install:append() {
     install -m 0644 ${WORKDIR}/fstab ${D}${sysconfdir}/fstab
+
+    # Create root's .profile with TERM fix for vim/nmon over SSH.
+    # Busybox sh doesn't source /etc/profile reliably, but ~/.profile works.
+    install -d ${D}/root
+    install -m 0644 ${WORKDIR}/profile.append ${D}/root/.profile
 }
