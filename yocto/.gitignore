@@ -26,3 +26,6 @@ sda1/
 
 # Node.js dependencies.
 node_modules/
+
+# User-specific flash configuration (SSH key path).
+.flash-config.json

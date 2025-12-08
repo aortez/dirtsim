@@ -18,8 +18,8 @@ const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 
 const HOSTNAME = 'dirtsim.local';
-const PING_TIMEOUT_SEC = 20;
-const SSH_TIMEOUT_SEC = 10;
+const PING_TIMEOUT_SEC = 60;
+const SSH_TIMEOUT_SEC = 30;
 
 // Colors for terminal output.
 const colors = {
@@ -105,7 +105,7 @@ function tryPing(host) {
  */
 function trySSH(host) {
   try {
-    execSync(`ssh -o ConnectTimeout=2 -o BatchMode=yes root@${host} echo ok`, {
+    execSync(`ssh -o ConnectTimeout=2 -o BatchMode=yes dirtsim@${host} echo ok`, {
       stdio: 'pipe',
       timeout: 5000,
     });
@@ -213,7 +213,7 @@ async function main() {
         log('');
 
         // Small delay to let user swap the drive.
-        await sleep(3000);
+        await sleep(10000);
 
         const pingOk = await waitForPing(HOSTNAME, PING_TIMEOUT_SEC);
 
@@ -228,7 +228,7 @@ async function main() {
     log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
     success('All done!');
     if (!buildOnly) {
-      info(`Connect with: ssh dirtsim`);
+      info(`Connect with: ssh dirtsim@dirtsim.local`);
     }
     log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
     log('');

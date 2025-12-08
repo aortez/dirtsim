@@ -2,18 +2,25 @@
 /**
  * Flash script for Sparkle Duck Yocto images.
  *
+ * Features:
+ * - Flashes Yocto image to USB/SD card.
+ * - Injects your SSH public key for passwordless login.
+ * - Remembers your key preference in .flash-config.json.
+ *
  * Usage:
  *   npm run flash                       # Interactive device selection
  *   npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
  *   npm run flash -- --list             # Just list devices
  *   npm run flash -- --dry-run          # Show what would happen without flashing
+ *   npm run flash -- --reconfigure      # Re-select SSH key
  */
 
 import { execSync, spawn } from 'child_process';
-import { existsSync, readdirSync, statSync, readlinkSync } from 'fs';
-import { join, dirname } from 'path';
+import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdtempSync, rmdirSync } from 'fs';
+import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
+import { homedir, tmpdir } from 'os';
 
 // Colors for terminal output.
 const colors = {
@@ -36,6 +43,88 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi5');
+const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
+
+// ============================================================================
+// Configuration Management
+// ============================================================================
+
+/**
+ * Load flash configuration from .flash-config.json.
+ * Returns null if file doesn't exist or is invalid.
+ */
+function loadConfig() {
+  try {
+    if (!existsSync(CONFIG_FILE)) {
+      return null;
+    }
+    const content = readFileSync(CONFIG_FILE, 'utf-8');
+    const config = JSON.parse(content);
+    // Validate required fields.
+    if (!config.ssh_key_path || typeof config.ssh_key_path !== 'string') {
+      return null;
+    }
+    // Check that the key file still exists.
+    if (!existsSync(config.ssh_key_path)) {
+      warn(`Configured SSH key no longer exists: ${config.ssh_key_path}`);
+      return null;
+    }
+    return config;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save flash configuration to .flash-config.json.
+ */
+function saveConfig(config) {
+  try {
+    writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + '\n');
+    return true;
+  } catch (err) {
+    warn(`Failed to save config: ${err.message}`);
+    return false;
+  }
+}
+
+/**
+ * Find available SSH public keys in ~/.ssh/.
+ */
+function findSshKeys() {
+  const sshDir = join(homedir(), '.ssh');
+  if (!existsSync(sshDir)) {
+    return [];
+  }
+
+  try {
+    return readdirSync(sshDir)
+      .filter(f => f.endsWith('.pub'))
+      .map(f => ({
+        name: f,
+        path: join(sshDir, f),
+      }))
+      .filter(k => existsSync(k.path));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Read the contents of an SSH public key file.
+ */
+function readSshKey(keyPath) {
+  try {
+    return readFileSync(keyPath, 'utf-8').trim();
+  } catch (err) {
+    error(`Failed to read SSH key: ${err.message}`);
+    return null;
+  }
+}
+
+// ============================================================================
+// Image and Device Discovery
+// ============================================================================
 
 /**
  * Find the latest .wic.gz image file.
@@ -103,6 +192,10 @@ function getBlockDevices() {
   }
 }
 
+// ============================================================================
+// Utilities
+// ============================================================================
+
 /**
  * Format bytes to human readable string.
  */
@@ -144,6 +237,132 @@ function hasBmaptool() {
     return false;
   }
 }
+
+// ============================================================================
+// SSH Key Configuration
+// ============================================================================
+
+/**
+ * Interactively select an SSH key and save to config.
+ */
+async function configureSSHKey() {
+  log('');
+  log(`${colors.bold}${colors.cyan}SSH Key Configuration${colors.reset}`);
+  log('');
+  info('The image uses SSH key authentication (no passwords).');
+  info('Select which public key to install on the device.');
+  log('');
+
+  const keys = findSshKeys();
+
+  if (keys.length === 0) {
+    error('No SSH public keys found in ~/.ssh/');
+    error('Generate one with: ssh-keygen -t ed25519');
+    process.exit(1);
+  }
+
+  log(`${colors.bold}Available SSH keys:${colors.reset}`);
+  log('');
+  keys.forEach((key, i) => {
+    log(`  ${colors.cyan}${i + 1})${colors.reset} ${key.name}`);
+  });
+  log('');
+
+  const choice = await prompt(`Select key (1-${keys.length}): `);
+  const index = parseInt(choice, 10) - 1;
+
+  if (isNaN(index) || index < 0 || index >= keys.length) {
+    error('Invalid selection.');
+    process.exit(1);
+  }
+
+  const selectedKey = keys[index];
+  const config = { ssh_key_path: selectedKey.path };
+
+  if (saveConfig(config)) {
+    success(`SSH key configured: ${selectedKey.name}`);
+    info(`Config saved to: ${basename(CONFIG_FILE)}`);
+  }
+
+  return config;
+}
+
+/**
+ * Get or create SSH key configuration.
+ */
+async function ensureSSHKeyConfig(forceReconfigure = false) {
+  if (forceReconfigure) {
+    return await configureSSHKey();
+  }
+
+  const config = loadConfig();
+  if (config) {
+    info(`Using SSH key: ${basename(config.ssh_key_path)}`);
+    return config;
+  }
+
+  info('No SSH key configured yet.');
+  return await configureSSHKey();
+}
+
+// ============================================================================
+// SSH Key Injection
+// ============================================================================
+
+/**
+ * Inject SSH key into the flashed device's rootfs.
+ * Mounts partition 2 (rootfs), writes authorized_keys, unmounts.
+ */
+async function injectSSHKey(device, sshKeyPath, dryRun = false) {
+  const rootfsPartition = `${device}2`;
+  const sshKey = readSshKey(sshKeyPath);
+
+  if (!sshKey) {
+    throw new Error('Failed to read SSH key');
+  }
+
+  log('');
+  info('Injecting SSH key into image...');
+
+  if (dryRun) {
+    log(`  Would mount ${rootfsPartition}`);
+    log(`  Would write key to /home/dirtsim/.ssh/authorized_keys`);
+    log(`  Would unmount`);
+    return;
+  }
+
+  // Create temporary mount point.
+  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-rootfs-'));
+
+  try {
+    // Mount the rootfs partition.
+    info(`Mounting ${rootfsPartition}...`);
+    execSync(`sudo mount ${rootfsPartition} ${mountPoint}`, { stdio: 'pipe' });
+
+    // Write the SSH key.
+    const authorizedKeysPath = join(mountPoint, 'home/dirtsim/.ssh/authorized_keys');
+    info(`Writing SSH key to authorized_keys...`);
+    execSync(`echo '${sshKey}' | sudo tee ${authorizedKeysPath} > /dev/null`, { stdio: 'pipe' });
+    execSync(`sudo chmod 600 ${authorizedKeysPath}`, { stdio: 'pipe' });
+    execSync(`sudo chown 1000:1000 ${authorizedKeysPath}`, { stdio: 'pipe' });
+
+    success('SSH key injected!');
+
+  } finally {
+    // Always try to unmount and clean up.
+    try {
+      info('Unmounting...');
+      execSync(`sudo umount ${mountPoint}`, { stdio: 'pipe' });
+      rmdirSync(mountPoint);
+    } catch (err) {
+      warn(`Cleanup warning: ${err.message}`);
+    }
+  }
+}
+
+// ============================================================================
+// Flash Operation
+// ============================================================================
 
 /**
  * Flash the image to the device.
@@ -245,15 +464,17 @@ async function flashImage(imagePath, bmapPath, device, dryRun = false) {
   execSync('sync', { stdio: 'inherit' });
 }
 
-/**
- * Main entry point.
- */
+// ============================================================================
+// Main Entry Point
+// ============================================================================
+
 async function main() {
   const args = process.argv.slice(2);
 
   // Parse simple args.
   const listOnly = args.includes('--list');
   const dryRun = args.includes('--dry-run');
+  const reconfigure = args.includes('--reconfigure');
   const deviceIndex = args.indexOf('--device');
   const specifiedDevice = deviceIndex !== -1 ? args[deviceIndex + 1] : null;
 
@@ -264,6 +485,9 @@ async function main() {
   }
   log('');
 
+  // Ensure we have an SSH key configured.
+  const config = await ensureSSHKeyConfig(reconfigure);
+
   // Find image.
   const image = findLatestImage();
   if (!image) {
@@ -271,6 +495,7 @@ async function main() {
     process.exit(1);
   }
 
+  log('');
   info(`Image: ${image.name}`);
   info(`Size: ${formatBytes(image.stat.size)}`);
   info(`Built: ${image.stat.mtime.toLocaleString()}`);
@@ -336,15 +561,22 @@ async function main() {
   // Flash!
   try {
     await flashImage(image.path, bmapPath, targetDevice, dryRun);
+
+    // Inject SSH key after flashing.
+    await injectSSHKey(targetDevice, config.ssh_key_path, dryRun);
+
     log('');
     if (dryRun) {
       success('Dry run complete!');
       info('Run without --dry-run to actually flash.');
     } else {
+      log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       success('Flash complete!');
-      info('You can now eject the SD card and boot your Raspberry Pi.');
-      info('Default login: root (no password)');
-      info('Hostname: dirtsim');
+      log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
+      log('');
+      info('You can now eject the drive and boot your Raspberry Pi.');
+      info(`Login: ssh dirtsim@dirtsim.local`);
+      info(`SSH key: ${basename(config.ssh_key_path)}`);
     }
   } catch (err) {
     log('');

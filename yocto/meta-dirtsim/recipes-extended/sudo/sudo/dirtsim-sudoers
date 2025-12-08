@@ -1,0 +1,2 @@
+# Allow dirtsim user to run sudo without password.
+dirtsim ALL=(ALL) NOPASSWD: ALL

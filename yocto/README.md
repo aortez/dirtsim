@@ -17,21 +17,14 @@ Build a minimal, purpose-built Linux image that:
 
 - [x] Basic Yocto build environment set up (kas + scarthgap)
 - [x] Boots on Pi 5 (from USB drive)
-- [x] SSH access working (socket-activated)
-- [x] Network configured (DHCP via systemd-networkd)
+- [x] SSH access working (key-based, socket-activated)
+- [x] Network configured (DHCP via NetworkManager)
 - [x] mDNS working (avahi - accessible as dirtsim.local)
 - [x] Persistent journald logs for debugging
-- [x] Basic utils: bash, systemd, htop, nano
+- [x] Basic utils: bash, systemd, htop, nano, vim, nmon, curl, jq, etc.
+- [x] Security hardened (no passwords, SSH keys only, root disabled)
 
-**Success criteria:** SSH into `dirtsim.local`, poke around, reboot, it comes back. ✅
-
-1.5 Utils!
-- nmon, vim, anything else obvious that we'll want for remote access/automation?
-
-1.6 HDMI LCD (for troubleshooting/dev purposes)!
-
-1.7 The actual target display!
-https://github.com/pimoroni/hyperpixel4
+**Success criteria:** `ssh dirtsim` connects, poke around, reboot, it comes back. ✅
 
 ### Stage 2: Roots
 *Headless dirt sim server.*
@@ -55,97 +48,21 @@ https://github.com/pimoroni/hyperpixel4
 
 ---
 
-## Directory Structure
-
-```
-yocto/
-├── README.md                 # This file
-├── meta-dirtsim/             # Our custom Yocto layer
-│   ├── conf/
-│   │   └── layer.conf
-│   ├── recipes-core/
-│   │   └── images/
-│   │       └── dirtsim-image.bb   # Our custom image recipe
-│   ├── recipes-connectivity/      # Network customizations
-│   └── recipes-dirtsim/           # Our application binaries (future)
-├── kas-dirtsim.yml           # KAS build configuration
-└── build/                    # Build output (gitignored)
-```
-
-## Yocto Version
-
-Using **Scarthgap (5.0)** - confirmed working on Raspberry Pi 5 with full A/B boot support.
-
-### Required Layers
-
-| Layer | Purpose |
-|-------|---------|
-| poky | Core Yocto (bitbake, oe-core) |
-| meta-raspberrypi | Pi 5 BSP |
-| meta-openembedded | Additional recipes (NetworkManager, etc.) |
-| meta-dirtsim | Our custom layer and image |
-| meta-mender-community | OTA updates (optional, Stage 2+) |
-
----
-
-## Working Notes
-
-*This section captures discoveries and decisions as we go. Will be pruned later.*
-
-### 2025-12-07: Stage 1 Complete!
-
-Fixed two critical issues that were blocking SSH:
-
-1. **Volatile /var/log** - Yocto's default base-files makes `/var/log` a symlink to tmpfs, so logs vanish on reboot and journald can't persist. Fixed with `VOLATILE_LOG_DIR = "no"` in base-files bbappend plus a journald drop-in for `Storage=persistent`.
-
-2. **Wrong boot partition in fstab** - Default fstab expects `/dev/mmcblk0p1` for boot (SD card), but we boot from USB (`/dev/sda1`). Systemd waited 90 seconds for the SD card, then `local-fs.target` failed, which cascaded to prevent sshd.socket from starting. Fixed with custom fstab pointing to `/dev/sda1`.
-
-Lesson: When systemd says "connection refused", check dependency failures with `journalctl`. The logs tell the whole story.
-
-### 2025-12-06: Initial Planning
-
-Reference for Pi 5 Yocto support: https://hub.mender.io/t/raspberry-pi-5/6689
-
-Key insight from Mender docs: On Pi 5, kernel and device trees live on A/B partitions, enabling full system swaps including kernel updates.
-
-Decision: Start with Stage 1 (bare earth) before adding our application. Get the foundation solid first.
-
----
-
 ## Getting Started
 
-*TODO: Fill in as we work through Stage 1*
+### Prerequisites
 
-### Prerequisites (
-
-First, use test-lvgl/scripts/setup_dep script (TODO improve this note).
-
+Install the KAS build tool:
 ```bash
-# KAS build tool
 pip3 install kas
 ```
 
-#### Ubuntu 24.04: AppArmor User Namespace Fix
-
-Ubuntu 24.04 restricts unprivileged user namespaces by default, which breaks
-bitbake's network isolation during builds. You'll see errors like:
-
-```
-PermissionError: [Errno 1] Operation not permitted
-  File "/proc/self/uid_map", "w"
-```
-
-**Temporary fix** (resets on reboot):
+On Ubuntu 24.04, you'll also need to allow unprivileged user namespaces for bitbake:
 ```bash
-sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
+# Permanent fix - create this file:
+echo 'kernel.apparmor_restrict_unprivileged_userns = 0' | sudo tee /etc/sysctl.d/99-yocto-userns.conf
+sudo sysctl --system
 ```
-
-**Permanent fix** - create `/etc/sysctl.d/99-yocto-userns.conf`:
-```
-kernel.apparmor_restrict_unprivileged_userns = 0
-```
-
-Then apply with `sudo sysctl --system`.
 
 ### Building
 
@@ -163,33 +80,151 @@ build/tmp/deploy/images/raspberrypi5/dirtsim-image-raspberrypi5.rootfs.wic.gz
 
 ### Flashing
 
+The flash tool writes the image and injects your SSH public key for passwordless login.
+
 ```bash
 npm run flash                       # Interactive device selection
 npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
 npm run flash -- --list             # Just list available devices
 npm run flash -- --dry-run          # Show what would happen
+npm run flash -- --reconfigure      # Re-select SSH key
+```
+
+**First-time setup:** The script prompts you to select an SSH public key from `~/.ssh/`. Your choice is saved to `.flash-config.json` (gitignored) so subsequent flashes are faster.
+
+### Connecting
+
+After flashing, boot the Pi and connect:
+```bash
+ssh dirtsim@dirtsim.local
+```
+
+Or add this to your `~/.ssh/config` for a shorter command:
+```
+Host dirtsim
+    HostName dirtsim.local
+    User dirtsim
+    IdentityFile ~/.ssh/id_ed25519_sparkle_duck
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+```
+
+Then just: `ssh dirtsim`
+
+---
+
+## Security Model
+
+The image uses **SSH key authentication only** - no passwords anywhere:
+
+- **User:** `dirtsim` (with passwordless sudo)
+- **Root:** Disabled for SSH login
+- **Authentication:** SSH public key only (injected at flash time)
+- **Password auth:** Disabled in sshd
+
+This is more secure than password auth and more convenient (no password to remember).
+
+**To use a different SSH key:**
+```bash
+npm run flash -- --reconfigure
+```
+
+**If you don't have an SSH key:**
+```bash
+ssh-keygen -t ed25519
 ```
 
 ---
 
-## What We're Pruning Away
+## Directory Structure
 
-Compared to Raspberry Pi OS, our image will NOT include:
+```
+yocto/
+├── README.md                 # This file
+├── kas-dirtsim.yml           # KAS build configuration
+├── package.json              # npm scripts for flash/update
+├── scripts/
+│   ├── flash.mjs             # Flash image + inject SSH key
+│   └── update.mjs            # Build + flash + verify
+├── meta-dirtsim/             # Our custom Yocto layer
+│   ├── conf/
+│   │   └── layer.conf
+│   ├── recipes-core/
+│   │   ├── base-files/       # fstab, profile customizations
+│   │   ├── images/
+│   │   │   └── dirtsim-image.bb
+│   │   └── systemd/          # journald persistence
+│   ├── recipes-connectivity/
+│   │   ├── networkmanager/   # NM configuration
+│   │   └── openssh/          # SSH hardening
+│   ├── recipes-extended/
+│   │   └── sudo/             # Passwordless sudo for dirtsim
+│   └── recipes-dirtsim/      # Our application (future)
+└── build/                    # Build output (gitignored)
+```
 
-- Desktop environment (PIXEL, etc.)
-- Package manager (apt, dpkg, dpkg database)
-- X11 (pure Wayland)
-- Python, Perl, Ruby
-- Documentation, man pages
-- Bluetooth stack (unless we need it later)
-- Audio stack (unless we need it later)
-- Most /usr/share locale data
+## Yocto Version
 
-## What We're Keeping
+Using **Scarthgap (5.0)** - confirmed working on Raspberry Pi 5.
+
+### Layers
+
+| Layer | Purpose |
+|-------|---------|
+| poky | Core Yocto (bitbake, oe-core) |
+| meta-raspberrypi | Pi 5 BSP |
+| meta-openembedded | Additional recipes (NetworkManager, etc.) |
+| meta-dirtsim | Our custom layer and image |
+
+---
+
+## What's Included
 
 - systemd (service management, journald)
-- Wayland (stage 3)
-- OpenGL ES / DRM (stage 3)
-- SSH server
-- Network stack
-- Our dirt sim binaries
+- NetworkManager (WiFi, nmtui/nmcli)
+- OpenSSH server (key-only)
+- avahi (mDNS - .local hostname)
+- Development tools: vim, htop, nmon, curl, jq, strace, screen, rsync
+
+## What's Pruned
+
+Compared to Raspberry Pi OS, our image does NOT include:
+
+- Desktop environment
+- Package manager (apt, dpkg)
+- X11 (pure Wayland when we add graphics)
+- Python, Perl, Ruby
+- Documentation, man pages
+- Bluetooth stack
+- Most /usr/share locale data
+
+---
+
+## Working Notes
+
+### 2025-12-07: Security Hardening
+
+Removed `debug-tweaks` (passwordless root) and implemented proper SSH key authentication:
+
+- Created `dirtsim` user with passwordless sudo.
+- Disabled root SSH login entirely.
+- Disabled password authentication (SSH keys only).
+- Flash script prompts for SSH key selection and injects at flash time.
+- User's key preference saved to `.flash-config.json` (gitignored).
+- **Gotcha:** Must unlock the account with `usermod -p '*'` or SSH rejects keys.
+
+### 2025-12-07: Stage 1 Complete!
+
+Fixed two critical issues that were blocking SSH:
+
+1. **Volatile /var/log** - Yocto's default makes `/var/log` a tmpfs symlink. Fixed with `VOLATILE_LOG_DIR = "no"` plus journald `Storage=persistent`.
+
+2. **Wrong boot partition in fstab** - Default expects SD card (`/dev/mmcblk0p1`), we boot from USB (`/dev/sda1`). Systemd waited 90 seconds then failed. Fixed with custom fstab.
+
+Lesson: When systemd says "connection refused", check `journalctl` for dependency failures.
+
+### 2025-12-06: Initial Planning
+
+Reference for Pi 5 Yocto support: https://hub.mender.io/t/raspberry-pi-5/6689
+
+Decision: Start with Stage 1 (bare earth) before adding our application. Get the foundation solid first.

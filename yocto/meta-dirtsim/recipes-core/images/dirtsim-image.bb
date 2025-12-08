@@ -9,11 +9,33 @@ inherit core-image
 # Image Features
 # ============================================================================
 # ssh-server-openssh: OpenSSH server for remote access.
-# debug-tweaks: Allow root login, empty password (development only!).
+# NOTE: debug-tweaks removed for security - we use SSH keys instead.
 IMAGE_FEATURES += " \
     ssh-server-openssh \
-    debug-tweaks \
 "
+
+# ============================================================================
+# User Configuration
+# ============================================================================
+# Create 'dirtsim' user with sudo access.  SSH key is injected at flash time.
+inherit extrausers
+
+EXTRA_USERS_PARAMS = " \
+    useradd -m -s /bin/bash -G sudo dirtsim; \
+    usermod -p '*' dirtsim; \
+"
+
+# Ensure sudo is installed.
+IMAGE_INSTALL:append = " sudo"
+
+# Set up .ssh directory with correct permissions (key injected at flash time).
+setup_ssh_dir() {
+    install -d -m 700 ${IMAGE_ROOTFS}/home/dirtsim/.ssh
+    touch ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
+    chmod 600 ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
+    chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim/.ssh
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_ssh_dir;"
 
 # ============================================================================
 # Network Management
