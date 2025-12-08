@@ -92,6 +92,34 @@ npm run flash -- --reconfigure      # Re-select SSH key
 
 **First-time setup:** The script prompts you to select an SSH public key from `~/.ssh/`. Your choice is saved to `.flash-config.json` (gitignored) so subsequent flashes are faster.
 
+### Remote Update (YOLO Mode)
+
+Once you have a working Pi with SSH access, you can push updates over the network without physically swapping the disk:
+
+```bash
+npm run yolo                       # Build + prepare + flash + reboot
+npm run yolo -- --skip-build       # Flash existing image (skip kas build)
+npm run yolo -- --hold-my-mead     # Skip confirmation prompt (for scripts)
+npm run yolo -- --dry-run          # Show what would happen
+```
+
+**How it works:**
+1. Builds the image (unless `--skip-build`)
+2. Decompresses and mounts the image locally
+3. Injects your SSH key from `.flash-config.json`
+4. Recompresses the customized image
+5. SCPs to the Pi's `/tmp`
+6. Verifies checksum
+7. Runs `dd` to flash the running system's disk
+8. Reboots and waits for the Pi to come back online
+
+**Warning:** This overwrites the boot disk while the system is running. If something goes wrong, you'll need to pull the disk and reflash via `npm run flash`. Hence "YOLO mode."
+
+**Requirements:**
+- Pi must be accessible via SSH at `dirtsim.local`
+- Workstation needs `sudo` access for loop device mounting
+- SSH key must be configured (run `npm run flash -- --reconfigure` if needed)
+
 ### Connecting
 
 After flashing, boot the Pi and connect:
@@ -145,7 +173,8 @@ yocto/
 ├── package.json              # npm scripts for flash/update
 ├── scripts/
 │   ├── flash.mjs             # Flash image + inject SSH key
-│   └── update.mjs            # Build + flash + verify
+│   ├── update.mjs            # Build + flash + verify (sneakernet)
+│   └── yolo-update.mjs       # Remote update over network
 ├── meta-dirtsim/             # Our custom Yocto layer
 │   ├── conf/
 │   │   └── layer.conf
@@ -201,6 +230,21 @@ Compared to Raspberry Pi OS, our image does NOT include:
 ---
 
 ## Working Notes
+
+### 2025-12-07: YOLO Remote Update
+
+Added `npm run yolo` for over-the-network image updates without physically swapping the disk:
+
+- Prepares image locally (decompresses, mounts via loop device, injects SSH key)
+- SCPs customized image to Pi's `/tmp`
+- Verifies checksum before flashing
+- Runs `dd` on the live system and reboots
+- BusyBox compatibility: uses basic `dd` options (no `status=progress` or `conv=fsync`)
+
+**Gotchas encountered:**
+- BusyBox `dd` doesn't support GNU options - had to simplify the command.
+- BusyBox `df` doesn't support `-B1` flag - use `-k` and multiply by 1024.
+- Must inject SSH key into image or you'll be locked out after flash!
 
 ### 2025-12-07: Security Hardening
 
