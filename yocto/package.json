@@ -11,5 +11,8 @@
   },
   "bin": {
     "sd-flash": "./scripts/flash.mjs"
+  },
+  "dependencies": {
+    "consola": "^3.4.2"
   }
 }

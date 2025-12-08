@@ -20,6 +20,41 @@ import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
 import { createHash } from 'crypto';
 import { tmpdir } from 'os';
+import { createConsola } from 'consola';
+
+// Custom reporter with detailed timestamps (HH:MM:SS.mmm).
+const timestampReporter = {
+  log(logObj) {
+    const d = new Date(logObj.date);
+    const hours = String(d.getHours()).padStart(2, '0');
+    const minutes = String(d.getMinutes()).padStart(2, '0');
+    const seconds = String(d.getSeconds()).padStart(2, '0');
+    const ms = String(d.getMilliseconds()).padStart(3, '0');
+    const timestamp = `${hours}:${minutes}:${seconds}.${ms}`;
+
+    // Badge based on type.
+    const badge = logObj.type === 'success' ? '✔' :
+                  logObj.type === 'error' ? '✖' :
+                  logObj.type === 'warn' ? '⚠' :
+                  logObj.type === 'info' ? 'ℹ' :
+                  logObj.type === 'start' ? '▶' : ' ';
+
+    // Color based on type.
+    const color = logObj.type === 'success' ? '\x1b[32m' :
+                  logObj.type === 'error' ? '\x1b[31m' :
+                  logObj.type === 'warn' ? '\x1b[33m' :
+                  logObj.type === 'info' ? '\x1b[36m' : '';
+
+    const reset = '\x1b[0m';
+    const dim = '\x1b[2m';
+
+    console.log(`${dim}[${timestamp}]${reset} ${color}${badge}${reset} ${logObj.args.join(' ')}`);
+  },
+};
+
+const consola = createConsola({
+  reporters: [timestampReporter],
+});
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -34,7 +69,7 @@ const REMOTE_TARGET = `${REMOTE_USER}@${REMOTE_HOST}`;
 const REMOTE_DEVICE = '/dev/sda';
 const REMOTE_TMP = '/tmp';
 
-// Colors for terminal output.
+// Colors for terminal output (still needed for some custom formatting).
 const colors = {
   reset: '\x1b[0m',
   red: '\x1b[31m',
@@ -46,18 +81,15 @@ const colors = {
   dim: '\x1b[2m',
 };
 
-function log(msg) { console.log(msg); }
-function info(msg) { console.log(`${colors.blue}ℹ${colors.reset} ${msg}`); }
-function success(msg) { console.log(`${colors.green}✓${colors.reset} ${msg}`); }
-function warn(msg) { console.log(`${colors.yellow}⚠${colors.reset} ${msg}`); }
-function error(msg) { console.log(`${colors.red}✗${colors.reset} ${msg}`); }
+// Wrap consola for our needs.
+const log = (msg) => console.log(msg);
+const info = (msg) => consola.info(msg);
+const success = (msg) => consola.success(msg);
+const warn = (msg) => consola.warn(msg);
+const error = (msg) => consola.error(msg);
 
 function banner(title) {
-  log('');
-  log(`${colors.bold}${colors.cyan}╔═══════════════════════════════════════════════════════════════╗${colors.reset}`);
-  log(`${colors.bold}${colors.cyan}║  ${title.padEnd(61)}║${colors.reset}`);
-  log(`${colors.bold}${colors.cyan}╚═══════════════════════════════════════════════════════════════╝${colors.reset}`);
-  log('');
+  consola.box(title);
 }
 
 function skull() {
@@ -489,14 +521,33 @@ async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm 
   // Run the dd command.  Connection may drop when reboot happens.
   // Note: BusyBox dd doesn't support status=progress or conv=fsync,
   // so we use basic options and run sync separately.
+  // We use spawn with piped stdio to avoid terminal issues when SSH drops.
   try {
-    await sshRun(`gunzip -c ${remoteImagePath} | sudo dd of=${device} bs=4M && sync && sync && sudo reboot -f`);
+    const ddCmd = `gunzip -c ${remoteImagePath} | sudo dd of=${device} bs=4M && sync && sync && sudo reboot -f`;
+    const proc = spawn('ssh', [
+      '-o', 'ConnectTimeout=10',
+      '-o', 'BatchMode=yes',
+      '-o', 'ServerAliveInterval=5',
+      REMOTE_TARGET,
+      ddCmd,
+    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+    // Forward output to console.
+    proc.stdout.on('data', data => process.stdout.write(data));
+    proc.stderr.on('data', data => process.stderr.write(data));
+
+    await new Promise((resolve, reject) => {
+      proc.on('close', code => {
+        // Any exit is fine - connection will drop during reboot.
+        resolve();
+      });
+      proc.on('error', reject);
+    });
   } catch {
     // Expected - SSH connection drops when system reboots.
-    log('');
-    info('Connection lost (expected during reboot)');
   }
-
+  log('');
+  info('Connection lost (expected during reboot)');
   success('Flash command sent!');
 }
 
@@ -516,7 +567,7 @@ async function waitForReboot(timeoutSec = 120) {
 
   // Wait a bit for the system to go down.
   info('Waiting for shutdown...');
-  await new Promise(resolve => setTimeout(resolve, 10000));
+  await new Promise(resolve => setTimeout(resolve, 1000));
 
   while (Date.now() - startTime < timeoutMs) {
     process.stdout.write(`\r  Waiting${'.'.repeat(dots % 4).padEnd(4)} (${Math.floor((Date.now() - startTime) / 1000)}s)`);

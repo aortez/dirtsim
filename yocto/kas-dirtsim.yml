@@ -65,9 +65,6 @@ local_conf_header:
 
   # Raspberry Pi specific configuration.
   rpi: |
-    # Enable serial console (UART) for debugging.
-    ENABLE_UART = "1"
-
     # Disable rainbow splash for cleaner boot.
     DISABLE_SPLASH = "1"
 
