@@ -5,7 +5,8 @@
   "type": "module",
   "description": "Yocto build and flash tools for Sparkle Duck",
   "scripts": {
-    "flash": "node scripts/flash.mjs"
+    "flash": "node scripts/flash.mjs",
+    "update": "node scripts/update.mjs"
   },
   "bin": {
     "sd-flash": "./scripts/flash.mjs"

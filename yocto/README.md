@@ -28,6 +28,11 @@ Build a minimal, purpose-built Linux image that:
 1.5 Utils!
 - nmon, vim, anything else obvious that we'll want for remote access/automation?
 
+1.6 HDMI LCD (for troubleshooting/dev purposes)!
+
+1.7 The actual target display!
+https://github.com/pimoroni/hyperpixel4
+
 ### Stage 2: Roots
 *Headless dirt sim server.*
 
