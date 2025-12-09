@@ -3,7 +3,8 @@
  * Build, flash, and verify the dirtsim Yocto image.
  *
  * Usage:
- *   npm run update              # Build, flash, wait for boot
+ *   npm run update                   # Build, flash, wait for boot
+ *   npm run update -- --clean        # Force rebuild (cleans sstate first)
  *   npm run update -- --build-only   # Just build
  *   npm run update -- --flash-only   # Flash and verify (skip build)
  *   npm run update -- --no-verify    # Skip ping/ssh verification
@@ -64,10 +65,24 @@ async function run(cmd, args, options = {}) {
 }
 
 /**
+ * Clean the image sstate to force a rebuild.
+ */
+async function cleanImage() {
+  info('Cleaning dirtsim-image sstate to force rebuild...');
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
+  success('Clean complete!');
+}
+
+/**
  * Run the Yocto build.
  */
-async function build() {
+async function build(forceClean = false) {
   banner('Building dirtsim-image...');
+
+  if (forceClean) {
+    await cleanImage();
+  }
+
   await run('kas', ['build', 'kas-dirtsim.yml']);
   success('Build complete!');
 }
@@ -180,6 +195,7 @@ async function main() {
   const buildOnly = args.includes('--build-only');
   const flashOnly = args.includes('--flash-only');
   const noVerify = args.includes('--no-verify');
+  const forceClean = args.includes('--clean');
 
   if (args.includes('-h') || args.includes('--help')) {
     log('Usage: npm run update [options]');
@@ -188,6 +204,7 @@ async function main() {
     log('  --build-only   Build the image but don\'t flash');
     log('  --flash-only   Flash existing image (skip build)');
     log('  --no-verify    Skip ping/SSH verification after flash');
+    log('  --clean        Force rebuild by cleaning image sstate first');
     log('  -h, --help     Show this help');
     process.exit(0);
   }
@@ -198,7 +215,7 @@ async function main() {
   try {
     // Build phase.
     if (!flashOnly) {
-      await build();
+      await build(forceClean);
     }
 
     // Flash phase.

@@ -92,12 +92,13 @@ npm run flash -- --reconfigure      # Re-select SSH key
 
 **First-time setup:** The script prompts you to select an SSH public key from `~/.ssh/`. Your choice is saved to `.flash-config.json` (gitignored) so subsequent flashes are faster.
 
-### Remote Update (YOLO Mode)
+### Remote Update (A/B System)
 
-Once you have a working Pi with SSH access, you can push updates over the network without physically swapping the disk:
+The image uses **A/B partitions** for safe remote updates - no more corrupted filesystems! The disk has two rootfs partitions (sda2/sda3). Updates are written to the inactive partition while the system runs from the active one.
 
 ```bash
-npm run yolo                       # Build + prepare + flash + reboot
+npm run yolo                       # Build + flash to inactive slot + reboot
+npm run yolo -- --clean            # Force rebuild (cleans sstate first)
 npm run yolo -- --skip-build       # Flash existing image (skip kas build)
 npm run yolo -- --hold-my-mead     # Skip confirmation prompt (for scripts)
 npm run yolo -- --dry-run          # Show what would happen
@@ -105,15 +106,22 @@ npm run yolo -- --dry-run          # Show what would happen
 
 **How it works:**
 1. Builds the image (unless `--skip-build`)
-2. Decompresses and mounts the image locally
+2. Extracts the rootfs partition from the .wic file
 3. Injects your SSH key from `.flash-config.json`
-4. Recompresses the customized image
-5. SCPs to the Pi's `/tmp`
-6. Verifies checksum
-7. Runs `dd` to flash the running system's disk
+4. Compresses and transfers rootfs to Pi's `/tmp`
+5. Verifies checksum
+6. Flashes rootfs to the **inactive** partition (safe!)
+7. Switches boot flag to use the new partition
 8. Reboots and waits for the Pi to come back online
 
-**Warning:** This overwrites the boot disk while the system is running. If something goes wrong, you'll need to pull the disk and reflash via `npm run flash`. Hence "YOLO mode."
+**A/B Management:**
+```bash
+ssh dirtsim "ab-boot-manager status"        # Show current/inactive slots
+ssh dirtsim "sudo ab-boot-manager switch b" # Manually switch to slot b
+ssh dirtsim "ab-update /tmp/rootfs.ext4.gz" # Manual A/B update
+```
+
+**Rollback:** If an update fails to boot, just switch back to the previous slot and reboot.
 
 **Requirements:**
 - Pi must be accessible via SSH at `dirtsim.local`
@@ -138,6 +146,33 @@ Host dirtsim
 ```
 
 Then just: `ssh dirtsim`
+
+---
+
+## Partition Layout
+
+The image uses **A/B partitions** for safe remote updates:
+
+```
+/dev/sda1  - boot (150MB, FAT32, shared by both slots)
+/dev/sda2  - rootfs_a (800MB, ext4)
+/dev/sda3  - rootfs_b (800MB, ext4)
+```
+
+At any time, one partition is **active** (currently running) and the other is **inactive** (ready for updates). When you run `npm run yolo`, the system:
+1. Writes the new image to the inactive partition
+2. Switches the boot flag to use the newly written partition
+3. Reboots into the new slot
+
+**Benefits:**
+- Updates never corrupt the running system
+- Instant rollback by switching boot slots
+- No downtime risk during updates
+
+**Check status:**
+```bash
+ssh dirtsim "ab-boot-manager status"
+```
 
 ---
 
@@ -231,15 +266,38 @@ Compared to Raspberry Pi OS, our image does NOT include:
 
 ## Working Notes
 
-### 2025-12-07: YOLO Remote Update
+### 2025-12-08: A/B Partitions for Safe Remote Updates
 
-Added `npm run yolo` for over-the-network image updates without physically swapping the disk:
+Implemented A/B partition system to fix remote update reliability issues:
 
-- Prepares image locally (decompresses, mounts via loop device, injects SSH key)
-- SCPs customized image to Pi's `/tmp`
-- Verifies checksum before flashing
-- Runs `dd` on the live system and reboots
-- BusyBox compatibility: uses basic `dd` options (no `status=progress` or `conv=fsync`)
+**What was added:**
+- Custom WKS file (`sdimage-ab.wks`) with dual 800MB rootfs partitions
+- `ab-boot-manager` - shell script to manage boot slots (current/inactive/switch/status)
+- `ab-update` - wrapper that flashes inactive partition and switches boot
+- Modified yolo script to extract rootfs partition instead of full disk image
+- BusyBox compatibility: uses `/proc/cmdline` instead of `findmnt`, basic `dd` options
+
+**Result:** Remote updates now work reliably. Tested multiple A↔B update cycles successfully.
+
+### 2025-12-08: HyperPixel 4 Display + HDMI Working
+
+Fixed both displays on Raspberry Pi 5:
+
+**HDMI:** Added `hdmi_force_hotplug=1` to force HDMI output even without EDID detection at boot.
+
+**HyperPixel 4 DPI:**
+- Added `fbcon=map:01` to kernel cmdline (maps console to both fb0 and fb1, enables DRM outputs)
+- Fixed backlight service to set `bl_power=0` (unblank) in addition to `brightness=1`
+- Discovered Pi 5 assigns fb0/fb1 dynamically based on initialization order
+
+**Gotchas:**
+- DPI outputs on Pi 5 start `disabled` until something claims them (fbcon, Wayland, etc.)
+- HyperPixel backlight is GPIO-based and needs explicit unblanking via `bl_power` sysfs
+- `systemctl reboot` works on BusyBox, but `reboot -f` doesn't (symlink to systemctl)
+
+### 2025-12-07: YOLO Remote Update (Original)
+
+Added `npm run yolo` for over-the-network image updates.
 
 **Gotchas encountered:**
 - BusyBox `dd` doesn't support GNU options - had to simplify the command.

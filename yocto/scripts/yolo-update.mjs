@@ -8,6 +8,7 @@
  *
  * Usage:
  *   npm run yolo                    # Build + push + flash + reboot
+ *   npm run yolo -- --clean         # Force rebuild (cleans sstate first)
  *   npm run yolo -- --skip-build    # Push existing image (skip kas build)
  *   npm run yolo -- --dry-run       # Show what would happen
  *   npm run yolo -- --help          # Show help
@@ -274,17 +275,19 @@ function loadConfig() {
 // ============================================================================
 
 /**
- * Prepare image with local customizations (SSH key injection, etc.).
- * Returns path to the prepared (customized) image.
+ * Extract rootfs partition from .wic image and inject SSH key.
+ * For A/B updates, we only need the rootfs partition.
+ * Returns path to the prepared rootfs image (ext4.gz).
  */
-async function prepareImage(imagePath, config) {
-  banner('Preparing image with local customizations...');
+async function prepareRootfs(imagePath, config) {
+  banner('Extracting and preparing rootfs...');
 
-  const workDir = mkdtempSync(join(tmpdir(), 'yolo-image-'));
+  const workDir = mkdtempSync(join(tmpdir(), 'yolo-rootfs-'));
   activeTempDir = workDir;
   const wicPath = join(workDir, 'image.wic');
-  const mountPoint = join(workDir, 'rootfs');
-  const preparedImagePath = join(workDir, 'prepared-image.wic.gz');
+  const rootfsRaw = join(workDir, 'rootfs.ext4');
+  const mountPoint = join(workDir, 'mnt');
+  const preparedRootfsPath = join(workDir, 'rootfs.ext4.gz');
 
   try {
     // Decompress image.
@@ -300,63 +303,83 @@ async function prepareImage(imagePath, config) {
     activeLoopDevice = loopDevice;
 
     try {
-      // Mount partition 2 (rootfs).
+      // Extract partition 2 (rootfs_a) - this is what we'll flash to inactive slot.
+      info('Extracting rootfs partition...');
       const rootfsPartition = `${loopDevice}p2`;
-      execSync(`mkdir -p "${mountPoint}"`, { stdio: 'pipe' });
 
-      info('Mounting rootfs...');
-      execSync(`sudo mount "${rootfsPartition}" "${mountPoint}"`, { stdio: 'pipe' });
-      activeMountPoint = mountPoint;
+      // Use dd to extract just the rootfs partition to a file.
+      execSync(`sudo dd if="${rootfsPartition}" of="${rootfsRaw}" bs=4M`, { stdio: 'pipe' });
+
+      // Now mount the extracted rootfs to inject SSH key.
+      const rootfsLoop = execSync(`sudo losetup -f --show "${rootfsRaw}"`, {
+        encoding: 'utf-8',
+        stdio: 'pipe',
+      }).trim();
 
       try {
-        // Inject SSH key.
-        if (config && config.ssh_key_path) {
-          info(`Injecting SSH key: ${basename(config.ssh_key_path)}`);
-          const sshKey = readFileSync(config.ssh_key_path, 'utf-8').trim();
-          const authorizedKeysPath = join(mountPoint, 'home/dirtsim/.ssh/authorized_keys');
+        execSync(`mkdir -p "${mountPoint}"`, { stdio: 'pipe' });
+        info('Mounting extracted rootfs...');
+        execSync(`sudo mount "${rootfsLoop}" "${mountPoint}"`, { stdio: 'pipe' });
+        activeMountPoint = mountPoint;
 
-          execSync(`echo '${sshKey}' | sudo tee "${authorizedKeysPath}" > /dev/null`, { stdio: 'pipe' });
-          execSync(`sudo chmod 600 "${authorizedKeysPath}"`, { stdio: 'pipe' });
-          execSync(`sudo chown 1000:1000 "${authorizedKeysPath}"`, { stdio: 'pipe' });
-          success('SSH key injected!');
+        try {
+          // Inject SSH key.
+          if (config && config.ssh_key_path) {
+            info(`Injecting SSH key: ${basename(config.ssh_key_path)}`);
+            const sshKey = readFileSync(config.ssh_key_path, 'utf-8').trim();
+            const authorizedKeysPath = join(mountPoint, 'home/dirtsim/.ssh/authorized_keys');
+
+            execSync(`echo '${sshKey}' | sudo tee "${authorizedKeysPath}" > /dev/null`, { stdio: 'pipe' });
+            execSync(`sudo chmod 600 "${authorizedKeysPath}"`, { stdio: 'pipe' });
+            execSync(`sudo chown 1000:1000 "${authorizedKeysPath}"`, { stdio: 'pipe' });
+            success('SSH key injected!');
+          }
+
+        } finally {
+          // Unmount.
+          info('Unmounting...');
+          execSync(`sudo umount "${mountPoint}"`, { stdio: 'pipe' });
+          activeMountPoint = null;
         }
 
-        // Future: Add more customizations here.
+        // Sync and detach rootfs loop device.
+        execSync('sync', { stdio: 'pipe' });
+        execSync(`sudo losetup -d "${rootfsLoop}"`, { stdio: 'pipe' });
 
-      } finally {
-        // Unmount.
-        info('Unmounting...');
-        execSync(`sudo umount "${mountPoint}"`, { stdio: 'pipe' });
-        activeMountPoint = null;
+      } catch (err) {
+        // Cleanup rootfs loop on error.
+        execSync(`sudo losetup -d "${rootfsLoop}" 2>/dev/null || true`, { stdio: 'pipe' });
+        throw err;
       }
 
     } finally {
-      // Detach loop device.
+      // Detach main loop device.
       info('Detaching loop device...');
       execSync(`sudo losetup -d "${loopDevice}"`, { stdio: 'pipe' });
       activeLoopDevice = null;
     }
 
-    // Recompress.
-    info('Recompressing image...');
-    execSync(`gzip -c "${wicPath}" > "${preparedImagePath}"`, { stdio: 'pipe' });
+    // Compress the rootfs.
+    info('Compressing rootfs...');
+    execSync(`gzip -c "${rootfsRaw}" > "${preparedRootfsPath}"`, { stdio: 'pipe' });
 
-    // Clean up uncompressed image.
+    // Clean up.
     unlinkSync(wicPath);
+    unlinkSync(rootfsRaw);
     rmdirSync(mountPoint);
 
-    success('Image prepared!');
-    // activeTempDir will be cleared after transfer completes.
-    return { preparedImagePath, workDir };
+    success('Rootfs prepared!');
+    return { preparedRootfsPath, workDir };
 
   } catch (err) {
     // Clean up on error.
     try {
       execSync(`sudo umount "${mountPoint}" 2>/dev/null || true`, { stdio: 'pipe' });
       execSync(`sudo losetup -D 2>/dev/null || true`, { stdio: 'pipe' });
-      unlinkSync(wicPath);
-      rmdirSync(mountPoint);
-      rmdirSync(workDir);
+      if (existsSync(wicPath)) unlinkSync(wicPath);
+      if (existsSync(rootfsRaw)) unlinkSync(rootfsRaw);
+      if (existsSync(mountPoint)) rmdirSync(mountPoint);
+      if (existsSync(workDir)) rmdirSync(workDir);
     } catch {
       // Ignore cleanup errors.
     }
@@ -456,10 +479,24 @@ function getRemoteBootDevice() {
 // ============================================================================
 
 /**
+ * Clean the image sstate to force a rebuild.
+ */
+async function cleanImage() {
+  info('Cleaning dirtsim-image sstate to force rebuild...');
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
+  success('Clean complete!');
+}
+
+/**
  * Run the Yocto build.
  */
-async function build() {
+async function build(forceClean = false) {
   banner('Building dirtsim-image...');
+
+  if (forceClean) {
+    await cleanImage();
+  }
+
   await run('kas', ['build', 'kas-dirtsim.yml']);
   success('Build complete!');
 }
@@ -538,14 +575,11 @@ async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm 
   if (dryRun) {
     log(`${colors.yellow}DRY RUN - would execute:${colors.reset}`);
     log('');
-    log(`  # Stop services to reduce disk activity`);
-    log(`  sudo systemctl stop sparkle-duck 2>/dev/null || true`);
+    log(`  # A/B Update using ab-update helper`);
+    log(`  ab-update ${remoteImagePath}`);
     log('');
-    log(`  # Decompress and write image (BusyBox dd)`);
-    log(`  gunzip -c ${remoteImagePath} | sudo dd of=${device} bs=4M`);
-    log('');
-    log(`  # Sync and reboot`);
-    log(`  sync && sync && sudo reboot -f`);
+    log(`  # Reboot to activate new slot`);
+    log(`  sudo systemctl reboot`);
     log('');
     return;
   }
@@ -572,43 +606,29 @@ async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm 
   inCriticalSection = true;
 
   log('');
-  info('Stopping services...');
-  ssh('sudo systemctl stop sparkle-duck 2>/dev/null || true');
-
-  info('Starting flash (this may take a while)...');
+  info('Running A/B update on Pi...');
   log('');
 
-  // Run the dd command.  Connection may drop when reboot happens.
-  // Note: BusyBox dd doesn't support status=progress or conv=fsync,
-  // so we use basic options and run sync separately.
-  // We use spawn with piped stdio to avoid terminal issues when SSH drops.
+  // Run ab-update which flashes to inactive partition and switches boot slot.
+  // This is SAFE because we're writing to the inactive partition, not the running one.
   try {
-    const ddCmd = `gunzip -c ${remoteImagePath} | sudo dd of=${device} bs=4M && sync && sync && sudo reboot -f`;
-    const proc = spawn('ssh', [
-      '-o', 'ConnectTimeout=10',
-      '-o', 'BatchMode=yes',
-      '-o', 'ServerAliveInterval=5',
-      REMOTE_TARGET,
-      ddCmd,
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    const updateCmd = `ab-update ${remoteImagePath}`;
+    await sshRun(updateCmd);
 
-    // Forward output to console.
-    proc.stdout.on('data', data => process.stdout.write(data));
-    proc.stderr.on('data', data => process.stderr.write(data));
+    success('A/B update complete!');
+    log('');
+    info('Rebooting to activate new rootfs...');
 
-    await new Promise((resolve, reject) => {
-      proc.on('close', code => {
-        // Any exit is fine - connection will drop during reboot.
-        resolve();
-      });
-      proc.on('error', reject);
-    });
-  } catch {
-    // Expected - SSH connection drops when system reboots.
+    // Reboot to new slot.
+    ssh('sudo systemctl reboot');
+
+  } catch (err) {
+    error(`A/B update failed: ${err.message}`);
+    throw err;
   }
-  log('');
-  info('Connection lost (expected during reboot)');
-  success('Flash command sent!');
+
+  // Give it a moment to start rebooting.
+  await new Promise(resolve => setTimeout(resolve, 2000));
 }
 
 // ============================================================================
@@ -616,35 +636,81 @@ async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm 
 // ============================================================================
 
 /**
- * Wait for the device to come back online.
+ * Get the boot time of the remote system (seconds since epoch).
  */
-async function waitForReboot(timeoutSec = 120) {
+function getRemoteBootTime() {
+  // Use /proc/stat btime which is boot time in seconds since epoch.
+  const result = ssh("awk '/btime/ {print \\$2}' /proc/stat");
+  if (result) {
+    const btime = parseInt(result, 10);
+    if (!isNaN(btime)) {
+      return btime;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Wait for the device to come back online after a reboot.
+ * Verifies that the system actually rebooted by checking boot time.
+ */
+async function waitForReboot(originalBootTime, timeoutSec = 120) {
   banner('Waiting for Pi to reboot...');
 
   const startTime = Date.now();
   const timeoutMs = timeoutSec * 1000;
   let dots = 0;
+  let sawOffline = false;
 
   // Wait a bit for the system to go down.
   info('Waiting for shutdown...');
-  await new Promise(resolve => setTimeout(resolve, 1000));
 
   while (Date.now() - startTime < timeoutMs) {
     process.stdout.write(`\r  Waiting${'.'.repeat(dots % 4).padEnd(4)} (${Math.floor((Date.now() - startTime) / 1000)}s)`);
     dots++;
 
     const sshResult = ssh('echo ok');
-    if (sshResult === 'ok') {
-      process.stdout.write('\r' + ' '.repeat(40) + '\r');
-      success(`${REMOTE_HOST} is back online!`);
-      return true;
+
+    if (sshResult !== 'ok') {
+      // System is offline.
+      if (!sawOffline) {
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+        info('System went offline...');
+        sawOffline = true;
+      }
+    } else if (sawOffline) {
+      // System came back - verify it actually rebooted.
+      const newBootTime = getRemoteBootTime();
+      if (newBootTime > originalBootTime) {
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+        success(`${REMOTE_HOST} is back online!`);
+        info(`Boot time changed: ${originalBootTime} -> ${newBootTime}`);
+        return true;
+      } else {
+        // Same boot time - didn't actually reboot!
+        process.stdout.write('\r' + ' '.repeat(50) + '\r');
+        warn('System responded but boot time unchanged - reboot may have failed!');
+        return false;
+      }
     }
 
     await new Promise(resolve => setTimeout(resolve, 2000));
   }
 
-  process.stdout.write('\r' + ' '.repeat(40) + '\r');
+  process.stdout.write('\r' + ' '.repeat(50) + '\r');
+
+  // Final check - maybe it rebooted quickly before we noticed it went offline.
+  const finalBootTime = getRemoteBootTime();
+  if (finalBootTime > originalBootTime) {
+    success(`${REMOTE_HOST} is back online!`);
+    info(`Boot time changed: ${originalBootTime} -> ${finalBootTime}`);
+    return true;
+  }
+
   warn(`Timeout waiting for reboot after ${timeoutSec}s`);
+  if (finalBootTime === originalBootTime) {
+    error('Boot time unchanged - reboot did NOT happen!');
+  }
   return false;
 }
 
@@ -656,6 +722,7 @@ async function main() {
   const args = process.argv.slice(2);
 
   const skipBuild = args.includes('--skip-build');
+  const forceClean = args.includes('--clean');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
 
@@ -666,6 +733,7 @@ async function main() {
     log('');
     log('Options:');
     log('  --skip-build     Skip kas build, use existing image');
+    log('  --clean          Force rebuild by cleaning image sstate first');
     log('  --dry-run        Show what would happen without doing it');
     log('  --hold-my-mead   Skip confirmation prompt (for scripts)');
     log('  -h, --help       Show this help');
@@ -695,7 +763,7 @@ async function main() {
 
   // Build phase.
   if (!skipBuild) {
-    await build();
+    await build(forceClean);
   }
 
   // Find image.
@@ -724,36 +792,36 @@ async function main() {
     info(`SSH key: ${basename(config.ssh_key_path)}`);
   }
 
-  // Prepare image with local customizations (SSH key injection, etc.).
-  let imageToTransfer = image.path;
+  // Extract rootfs and inject SSH key.
+  let rootfsToTransfer = image.path;
   let workDir = null;
 
   if (!dryRun && config) {
-    const prepared = await prepareImage(image.path, config);
-    imageToTransfer = prepared.preparedImagePath;
+    const prepared = await prepareRootfs(image.path, config);
+    rootfsToTransfer = prepared.preparedRootfsPath;
     workDir = prepared.workDir;
   }
 
   try {
-    // Get the size of the prepared image.
-    const imageSize = statSync(imageToTransfer).size;
+    // Get the size of the prepared rootfs.
+    const rootfsSize = statSync(rootfsToTransfer).size;
 
     // Check remote has enough space.
     const remoteSpace = getRemoteTmpSpace();
-    if (remoteSpace < imageSize) {
+    if (remoteSpace < rootfsSize) {
       error(`Not enough space in ${REMOTE_TMP} on ${REMOTE_HOST}`);
-      error(`Need: ${formatBytes(imageSize)}, Have: ${formatBytes(remoteSpace)}`);
+      error(`Need: ${formatBytes(rootfsSize)}, Have: ${formatBytes(remoteSpace)}`);
       process.exit(1);
     }
     success(`Remote has enough space (${formatBytes(remoteSpace)} available)`);
 
-    // Calculate checksum of prepared image.
+    // Calculate checksum of prepared rootfs.
     info('Calculating checksum...');
-    const checksum = await calculateChecksum(imageToTransfer);
+    const checksum = await calculateChecksum(rootfsToTransfer);
     success(`Checksum: ${checksum.substring(0, 16)}...`);
 
     // Transfer.
-    const { remoteImagePath, remoteChecksumPath } = await transferImage(imageToTransfer, checksum, dryRun);
+    const { remoteImagePath, remoteChecksumPath } = await transferImage(rootfsToTransfer, checksum, dryRun);
 
     // Verify (skip in dry-run since we didn't actually transfer).
     if (!dryRun) {

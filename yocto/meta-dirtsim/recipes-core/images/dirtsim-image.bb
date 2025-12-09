@@ -41,10 +41,50 @@ setup_dirtsim_home() {
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_dirtsim_home;"
 
 # ============================================================================
+# A/B Boot Initialization
+# ============================================================================
+# On first boot, mark that we're running from slot A.
+setup_ab_boot() {
+    # Create initial boot_slot marker (will be on boot partition after flash).
+    # This gets copied to /boot when the boot partition is mounted.
+    install -d ${IMAGE_ROOTFS}/boot
+    echo "a" > ${IMAGE_ROOTFS}/boot/boot_slot
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_ab_boot;"
+
+# ============================================================================
+# HyperPixel Backlight Fix
+# ============================================================================
+# The HyperPixel backlight doesn't auto-enable at boot.  This service fixes it.
+setup_hyperpixel_backlight() {
+    install -d ${IMAGE_ROOTFS}/etc/systemd/system
+
+    # Create the service file.
+    cat > ${IMAGE_ROOTFS}/etc/systemd/system/hyperpixel-backlight.service << 'EOF'
+[Unit]
+Description=Enable HyperPixel backlight
+After=systemd-modules-load.service
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo 0 > /sys/class/backlight/backlight/bl_power; echo 1 > /sys/class/backlight/backlight/brightness'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target
+EOF
+
+    # Enable the service.
+    install -d ${IMAGE_ROOTFS}/etc/systemd/system/sysinit.target.wants
+    ln -sf ../hyperpixel-backlight.service ${IMAGE_ROOTFS}/etc/systemd/system/sysinit.target.wants/hyperpixel-backlight.service
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_hyperpixel_backlight;"
+
+# ============================================================================
 # Network Management
 # ============================================================================
-# NetworkManager provides nmcli/nmtui for familiar network configuration.
-# networkmanager-nmtui: The curses-based UI we know and love.
+# NetworkManager provides nmcli/nmtui for network configuration.
 IMAGE_INSTALL:append = " \
     networkmanager \
     networkmanager-nmtui \
@@ -65,6 +105,7 @@ IMAGE_INSTALL:append = " \
 # ============================================================================
 # Useful tools for poking around on the device.
 IMAGE_INSTALL:append = " \
+    ab-boot-manager \
     curl \
     file \
     htop \
