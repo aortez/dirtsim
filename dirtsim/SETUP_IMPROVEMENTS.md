@@ -105,7 +105,7 @@ $ ./build/bin/sparkle-duck-ui -b x11 -s 0
 ## New Documentation Created
 
 ### 1. README.md
-- **Location:** `/home/oldman/workspace/sparkle-duck/test-lvgl/README.md`
+- **Location:** `/home/oldman/workspace/sparkle-duck/dirtsim/README.md`
 - **Contents:**
   - Project overview and features
   - Step-by-step setup (dependencies, submodules, build)
@@ -115,7 +115,7 @@ $ ./build/bin/sparkle-duck-ui -b x11 -s 0
   - Project structure
 
 ### 2. scripts/setup_dependencies.sh
-- **Location:** `/home/oldman/workspace/sparkle-duck/test-lvgl/scripts/setup_dependencies.sh`
+- **Location:** `/home/oldman/workspace/sparkle-duck/dirtsim/scripts/setup_dependencies.sh`
 - **Features:**
   - Auto-detects OS (Ubuntu/Debian, Arch, Fedora/RHEL)
   - Checks which packages are already installed
@@ -125,7 +125,7 @@ $ ./build/bin/sparkle-duck-ui -b x11 -s 0
   - Shows next steps after completion
 
 ### 3. SETUP_IMPROVEMENTS.md (this file)
-- **Location:** `/home/oldman/workspace/sparkle-duck/test-lvgl/SETUP_IMPROVEMENTS.md`
+- **Location:** `/home/oldman/workspace/sparkle-duck/dirtsim/SETUP_IMPROVEMENTS.md`
 - **Purpose:** Documents all changes made and issues fixed
 
 ## Setup Process (After Improvements)

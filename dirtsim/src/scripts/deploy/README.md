@@ -64,10 +64,10 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-WorkingDirectory=/home/oldman/workspace/sparkle-duck/test-lvgl
+WorkingDirectory=/home/oldman/workspace/sparkle-duck/dirtsim
 Environment=WAYLAND_DISPLAY=wayland-0
-ExecStart=/home/oldman/workspace/sparkle-duck/test-lvgl/build-debug/bin/cli run-all
-ExecStop=/home/oldman/workspace/sparkle-duck/test-lvgl/build-debug/bin/cli cleanup
+ExecStart=/home/oldman/workspace/sparkle-duck/dirtsim/build-debug/bin/cli run-all
+ExecStop=/home/oldman/workspace/sparkle-duck/dirtsim/build-debug/bin/cli cleanup
 Restart=on-failure
 RestartSec=5
 
@@ -87,7 +87,7 @@ systemctl --user enable sparkle-duck.service
 Pre-made configuration files are provided in `config/pi/`. Run the install script on the Pi:
 
 ```bash
-cd /home/oldman/workspace/sparkle-duck/test-lvgl
+cd /home/oldman/workspace/sparkle-duck/dirtsim
 ./config/pi/install.sh
 ```
 
@@ -136,7 +136,7 @@ When touch is properly mapped to an output, labwc automatically applies the outp
 
 ### Remote Deploy (from dev machine)
 
-From your dev machine, in the `test-lvgl` directory:
+From your dev machine, in the `dirtsim` directory:
 
 ```bash
 # Full deploy: sync, build, restart

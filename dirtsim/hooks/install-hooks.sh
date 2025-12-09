@@ -13,7 +13,7 @@ if [ -z "$REPO_ROOT" ]; then
 fi
 
 HOOKS_DIR="$REPO_ROOT/.git/hooks"
-TEMPLATE_DIR="$REPO_ROOT/test-lvgl/hooks"
+TEMPLATE_DIR="$REPO_ROOT/dirtsim/hooks"
 
 echo "Installing git hooks..."
 
@@ -24,7 +24,7 @@ if [ -f "$HOOKS_DIR/pre-commit" ] && [ ! -L "$HOOKS_DIR/pre-commit" ]; then
     mv "$HOOKS_DIR/pre-commit" "$HOOKS_DIR/pre-commit.backup"
 fi
 
-ln -sf ../../test-lvgl/hooks/pre-commit "$HOOKS_DIR/pre-commit"
+ln -sf ../../dirtsim/hooks/pre-commit "$HOOKS_DIR/pre-commit"
 echo "✅ pre-commit hook installed"
 
 echo ""

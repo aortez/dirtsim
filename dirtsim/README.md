@@ -170,7 +170,7 @@ grep "^#define LV_USE_" lv_conf.h | grep -E "(SDL|X11|WAYLAND|FBDEV)"
 ## Project Structure
 
 ```
-test-lvgl/
+dirtsim/
 ├── src/
 │   ├── core/          # Shared physics and utilities
 │   ├── server/        # Headless DSSM server

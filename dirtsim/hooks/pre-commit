@@ -8,16 +8,16 @@
 # Get the root of the git repository.
 REPO_ROOT=$(git rev-parse --show-toplevel)
 
-# Get list of staged files in test-lvgl.
-STAGED_CPP=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^test-lvgl/.*\.(cpp|h)$')
-STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^test-lvgl/.*\.js$')
+# Get list of staged files in dirtsim.
+STAGED_CPP=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^dirtsim/.*\.(cpp|h)$')
+STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^dirtsim/.*\.js$')
 
 # If no relevant files staged, allow commit.
 if [ -z "$STAGED_CPP" ] && [ -z "$STAGED_JS" ]; then
     exit 0
 fi
 
-cd "$REPO_ROOT/test-lvgl" || exit 1
+cd "$REPO_ROOT/dirtsim" || exit 1
 
 # Format and re-stage C++ files.
 if [ -n "$STAGED_CPP" ]; then
@@ -29,7 +29,7 @@ if [ -n "$STAGED_CPP" ]; then
     for FILE in $STAGED_CPP; do
         git add "$FILE"
     done
-    cd "$REPO_ROOT/test-lvgl" || exit 1
+    cd "$REPO_ROOT/dirtsim" || exit 1
 
     echo "✅ C++ formatting complete."
 fi
@@ -50,7 +50,7 @@ fi
 # Run tests unless explicitly skipped.
 if [ "$SKIP_TESTS" != "1" ]; then
     echo "Running tests..."
-    cd "$REPO_ROOT/test-lvgl" || exit 1
+    cd "$REPO_ROOT/dirtsim" || exit 1
 
     # Run unit tests quietly, only show summary.
     TEST_OUTPUT=$(make test 2>&1)

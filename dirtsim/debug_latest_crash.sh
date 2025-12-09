@@ -6,7 +6,7 @@
 set -eu
 
 # --- Configuration ---
-EXECUTABLE_PATH="/home/oldman/workspace/sparkle-duck/test-lvgl/build/bin/sparkle-duck"
+EXECUTABLE_PATH="/home/oldman/workspace/sparkle-duck/dirtsim/build/bin/sparkle-duck"
 
 # --- Script Body ---
 

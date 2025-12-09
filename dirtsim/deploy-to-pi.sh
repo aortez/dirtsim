@@ -3,7 +3,7 @@
 
 # === CONFIGURE THESE ===
 PI_HOST="oldman@dirtsim.local"                                 # SSH host
-PI_PATH="/home/oldman/workspace/sparkle-duck/test-lvgl"        # Remote path
+PI_PATH="/home/oldman/workspace/sparkle-duck/dirtsim"        # Remote path
 SSH_KEY="$HOME/.ssh/id_ed25519_sparkle_duck"                   # SSH key (optional)
 # ========================
 

@@ -1,28 +1,16 @@
-# CLAUDE.md
+# CLAUDE.md - dirtsim Application
 
-This file provides guidance when working with code in this repository.
+This is the main simulation application. For repo-level overview, see `../CLAUDE.md`.
 
-## Project Overview
+## Quick Reference
 
-Sparkle Duck is a Dirt-Oriented playground for experimenting with artificial life, Yocto, LVGL. The main application is a **cell-based multi-material physics simulation** located in the `test-lvgl` directory that demonstrates advanced physics simulation with interactive UI controls.
+- **Build**: `make debug` or `make release`
+- **Run**: `./build-debug/bin/cli run-all`
+- **Test**: `make test`
+- **Format**: `make format`
+- **Deploy**: `./deploy-to-pi.sh -x` (cross-compile to Pi)
 
-The project features a **pure-material physics system** with fill ratios and 9 material types (AIR, DIRT, LEAF, METAL, SAND, SEED, WALL, WATER, WOOD).
-
-Read design_docs/coding_convention.md for coding guidelines.
-
-## Essential Commands
-
-### Git
-Use git as needed but never push.
-Don't use git -C, instead just make sure you're in the right directory beforehand.
-
-#### Git Hooks
-Install pre-commit hooks to automatically format code and run tests:
-```bash
-./hooks/install-hooks.sh
-```
-
-### Building
+## Building
 ```bash
 # Build debug version (outputs to build-debug/).
 make debug
@@ -444,7 +432,7 @@ Can be found here:
 
 ## Project Directory Structure
 
-  test-lvgl/
+  dirtsim/
   ├── deploy-to-pi.sh                        # Remote deployment script
   ├── deploy-local.sh                        # Local deployment script
   ├── src/                                   # Source code

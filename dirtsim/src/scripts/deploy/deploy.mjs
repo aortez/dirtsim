@@ -47,13 +47,13 @@ Options:
 
 Examples:
   # Remote deploy (builds on Pi - slow)
-  ./deploy.mjs -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/test-lvgl
+  ./deploy.mjs -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/dirtsim
 
   # Cross-compile locally and deploy (fast!)
-  ./deploy.mjs -x -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/test-lvgl
+  ./deploy.mjs -x -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/dirtsim
 
   # First-time cross-compile (sync sysroot from Pi)
-  ./deploy.mjs -x --sync-sysroot -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/test-lvgl
+  ./deploy.mjs -x --sync-sysroot -h oldman@pi5 -p /home/oldman/workspace/sparkle-duck/dirtsim
 
   # Local deploy (on Pi itself)
   ./deploy.mjs --local
