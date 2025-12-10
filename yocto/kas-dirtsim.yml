@@ -93,7 +93,8 @@ local_conf_header:
         # Force HDMI output even without monitor detection at boot. \n \
         hdmi_force_hotplug=1 \n \
         \n \
-        # HyperPixel 4.0 DPI display \n \
+        # HyperPixel 4.0 DPI display. \n \
+        # Note: Display rotation handled by LVGL (LV_DISPLAY_ROTATION env var in service). \n \
         dtoverlay=vc4-kms-dpi-hyperpixel4 \n \
         '
 

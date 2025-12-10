@@ -12,6 +12,10 @@ ExecStart=/usr/bin/sparkle-duck-ui -b fbdev --connect localhost:8080
 Restart=on-failure
 RestartSec=5
 
+# Display rotation for HyperPixel 4.0 (landscape orientation).
+# LVGL handles rotation in software - no hardware dtparam needed.
+Environment=LV_DISPLAY_ROTATION=90
+
 # Give access to framebuffer.
 SupplementaryGroups=video input
 
