@@ -30,8 +30,9 @@ repos:
     url: "https://git.openembedded.org/meta-openembedded"
     branch: scarthgap
     layers:
-      meta-oe:
+      meta-multimedia:
       meta-networking:
+      meta-oe:
       meta-python:
 
   # Our custom layer - the dirtsim greenhouse.
@@ -41,8 +42,8 @@ repos:
 local_conf_header:
   # Machine and build configuration.
   base: |
-    # Accept restricted licenses (Pi WiFi firmware).
-    LICENSE_FLAGS_ACCEPTED = "synaptics-killswitch"
+    # Accept restricted licenses (Pi WiFi firmware, H.264 codec).
+    LICENSE_FLAGS_ACCEPTED = "commercial synaptics-killswitch"
 
     # Use systemd as init system.
     INIT_MANAGER = "systemd"

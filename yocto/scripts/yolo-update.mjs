@@ -8,7 +8,8 @@
  *
  * Usage:
  *   npm run yolo                    # Build + push + flash + reboot
- *   npm run yolo -- --clean         # Force rebuild (cleans sstate first)
+ *   npm run yolo -- --clean         # Force rebuild (cleans image sstate)
+ *   npm run yolo -- --clean-all     # Force full rebuild (cleans server + image)
  *   npm run yolo -- --skip-build    # Push existing image (skip kas build)
  *   npm run yolo -- --dry-run       # Show what would happen
  *   npm run yolo -- --help          # Show help
@@ -488,12 +489,23 @@ async function cleanImage() {
 }
 
 /**
+ * Clean both server and image sstate for a full rebuild.
+ */
+async function cleanAll() {
+  info('Cleaning sparkle-duck-server and dirtsim-image sstate...');
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate sparkle-duck-server dirtsim-image']);
+  success('Clean complete!');
+}
+
+/**
  * Run the Yocto build.
  */
-async function build(forceClean = false) {
+async function build(forceClean = false, forceCleanAll = false) {
   banner('Building dirtsim-image...');
 
-  if (forceClean) {
+  if (forceCleanAll) {
+    await cleanAll();
+  } else if (forceClean) {
     await cleanImage();
   }
 
@@ -723,6 +735,7 @@ async function main() {
 
   const skipBuild = args.includes('--skip-build');
   const forceClean = args.includes('--clean');
+  const forceCleanAll = args.includes('--clean-all');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
 
@@ -734,6 +747,7 @@ async function main() {
     log('Options:');
     log('  --skip-build     Skip kas build, use existing image');
     log('  --clean          Force rebuild by cleaning image sstate first');
+    log('  --clean-all      Force full rebuild (cleans server + image sstate)');
     log('  --dry-run        Show what would happen without doing it');
     log('  --hold-my-mead   Skip confirmation prompt (for scripts)');
     log('  -h, --help       Show this help');
@@ -763,7 +777,7 @@ async function main() {
 
   // Build phase.
   if (!skipBuild) {
-    await build(forceClean);
+    await build(forceClean, forceCleanAll);
   }
 
   // Find image.

@@ -35,6 +35,11 @@ setup_dirtsim_home() {
     touch ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
     chmod 600 ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
 
+    # Sparkle Duck application directory (logs, config, etc.).
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/logs
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/config
+
     # Fix ownership of entire home directory (including .profile from base-files).
     chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim
 }
@@ -131,10 +136,15 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
+# Stage 2: Dirt Simulation Server
+# ============================================================================
+# Headless physics simulation with WebSocket API on port 8080.
+IMAGE_INSTALL:append = " \
+    sparkle-duck-server \
+"
+
+# ============================================================================
 # Future Stages (commented for now)
 # ============================================================================
-# Stage 2: Graphics
-# IMAGE_INSTALL:append = " wayland weston"
-
-# Stage 3: Dirt Simulation
-# IMAGE_INSTALL:append = " sparkle-duck"
+# Stage 3: Graphics + UI
+# IMAGE_INSTALL:append = " wayland weston sparkle-duck-ui"
