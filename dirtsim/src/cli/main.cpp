@@ -101,16 +101,23 @@ std::string getExamplesHelp()
 
     // Server API examples (show a few common ones).
     examples += "\nServer API Examples:\n";
-    examples += "  cli ws://localhost:8080 state_get\n";
-    examples += "  cli ws://localhost:8080 sim_run '{\"timestep\": 0.016, \"max_steps\": 100}'\n";
-    examples += "  cli ws://localhost:8080 cell_set '{\"x\": 50, \"y\": 50, \"material\": "
-                "\"WATER\", \"fill\": 1.0}'\n";
-    examples += "  cli ws://localhost:8080 diagram_get\n";
+    examples += "  cli server StatusGet\n";
+    examples += "  cli server SimRun '{\"scenario\": \"sandbox\"}'\n";
+    examples += "  cli server DiagramGet\n";
+    examples += "  cli server CellSet '{\"x\": 50, \"y\": 50, \"material\": \"WATER\", \"fill\": "
+                "1.0}'\n";
+
+    // Remote server.
+    examples += "\nRemote Server:\n";
+    examples += "  cli --address ws://dirtsim.local:8080 server StatusGet\n";
+    examples += "  cli --address ws://dirtsim.local:8080 server SimRun '{\"scenario\": "
+                "\"tree_germination\"}'\n";
 
     // UI API examples.
     examples += "\nUI API Examples:\n";
-    examples += "  cli ws://localhost:7070 draw_debug_toggle '{\"enabled\": true}'\n";
-    examples += "  cli ws://localhost:7070 screen_grab\n";
+    examples += "  cli ui StatusGet\n";
+    examples += "  cli ui ScreenGrab\n";
+    examples += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
 
     return examples;
 }
