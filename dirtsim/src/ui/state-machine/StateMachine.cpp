@@ -277,6 +277,9 @@ void StateMachine::handleEvent(const Event& event)
         LOG_DEBUG(State, "Processing StatusGet command");
         auto& cwc = std::get<UiApi::StatusGet::Cwc>(event);
 
+        // Get system health metrics.
+        auto metrics = systemMetrics_.get();
+
         UiApi::StatusGet::Okay status{
             .state = getCurrentStateName(),
             .connected_to_server = wsService_ && wsService_->isConnected(),
@@ -285,7 +288,9 @@ void StateMachine::handleEvent(const Event& event)
                 display ? static_cast<uint32_t>(lv_display_get_horizontal_resolution(display)) : 0U,
             .display_height =
                 display ? static_cast<uint32_t>(lv_display_get_vertical_resolution(display)) : 0U,
-            .fps = 0.0 // TODO: Track and return actual FPS.
+            .fps = 0.0, // TODO: Track and return actual FPS.
+            .cpu_percent = metrics.cpu_percent,
+            .memory_percent = metrics.memory_percent
         };
 
         LOG_DEBUG(State, "Sending StatusGet response (state={})", status.state);

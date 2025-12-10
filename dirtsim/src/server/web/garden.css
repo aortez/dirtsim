@@ -160,6 +160,70 @@ h1 {
     color: #666;
 }
 
+/* Health metrics display. */
+.peer-health {
+    margin: 8px 0;
+    font-size: 11px;
+}
+
+.health-bar {
+    display: flex;
+    align-items: center;
+    margin: 4px 0;
+    gap: 8px;
+}
+
+.health-label {
+    width: 30px;
+    color: #888;
+    font-weight: bold;
+}
+
+.health-track {
+    flex: 1;
+    height: 8px;
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.health-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+
+.health-fill.cpu-fill {
+    background: linear-gradient(to right, #00aa00, #00ff00);
+}
+
+.health-fill.mem-fill {
+    background: linear-gradient(to right, #0088aa, #00ccff);
+}
+
+.health-fill.warning {
+    background: linear-gradient(to right, #aa8800, #ffcc00) !important;
+}
+
+.health-fill.critical {
+    background: linear-gradient(to right, #aa0000, #ff0000) !important;
+}
+
+.health-value {
+    width: 35px;
+    text-align: right;
+    color: #888;
+}
+
+.peer.disconnected .health-fill {
+    background: #333 !important;
+}
+
+.peer.disconnected .health-value {
+    color: #444;
+}
+
 .peer.disconnected video {
     filter: grayscale(100%) brightness(0.5);
     border-color: #333;

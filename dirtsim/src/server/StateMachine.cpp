@@ -6,6 +6,7 @@
 #include "core/RenderMessage.h"
 #include "core/RenderMessageUtils.h"
 #include "core/ScenarioConfig.h"
+#include "core/SystemMetrics.h"
 #include "core/Timers.h"
 #include "core/World.h" // Must be first for complete type in variant.
 #include "core/WorldData.h"
@@ -38,6 +39,7 @@ struct SubscribedClient {
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     ScenarioRegistry scenarioRegistry_;
+    SystemMetrics systemMetrics_;
     Timers timers_;
     PeerAdvertisement peerAdvertisement_;
     PeerDiscovery peerDiscovery_;
@@ -246,6 +248,11 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
             status.width = cachedPtr->width;
             status.height = cachedPtr->height;
         }
+
+        // System health metrics.
+        auto metrics = pImpl->systemMetrics_.get();
+        status.cpu_percent = metrics.cpu_percent;
+        status.memory_percent = metrics.memory_percent;
 
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
     });

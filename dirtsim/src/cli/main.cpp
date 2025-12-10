@@ -490,7 +490,9 @@ int main(int argc, char** argv)
 
     // Dispatch command using type-safe dispatcher.
     Client::CommandDispatcher dispatcher;
-    auto responseResult = dispatcher.dispatch(client, commandName, bodyJson);
+    auto dispatchTarget =
+        (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
+    auto responseResult = dispatcher.dispatch(dispatchTarget, client, commandName, bodyJson);
     if (responseResult.isError()) {
         std::cerr << "Failed to execute command: " << responseResult.errorValue().message
                   << std::endl;

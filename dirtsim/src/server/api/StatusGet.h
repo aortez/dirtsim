@@ -31,11 +31,15 @@ struct Okay {
     uint32_t width = 0;
     uint32_t height = 0;
 
+    // System health metrics.
+    double cpu_percent = 0.0;
+    double memory_percent = 0.0;
+
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
 
     // zpp_bits serialization.
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<7>;
 };
 
 using OkayType = Okay;

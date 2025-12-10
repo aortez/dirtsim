@@ -370,7 +370,11 @@ function displayPeers(peers) {
         var html = '<h3>' + peer.name + ' <small style="color:#888">(' + statusText + ')</small></h3>' +
             '<div class="peer-info">Host: ' + peer.host + ':' + peer.port + '</div>' +
             '<div class="peer-info">Role: ' + peer.role + '</div>' +
-            '<div class="peer-info">State: <span id="state-' + peer.host + '-' + peer.port + '">...</span></div>';
+            '<div class="peer-info">State: <span id="state-' + peer.host + '-' + peer.port + '">...</span></div>' +
+            '<div class="peer-health">' +
+            '<div class="health-bar"><span class="health-label">CPU</span><div class="health-track"><div class="health-fill cpu-fill" id="cpu-' + peer.host + '-' + peer.port + '"></div></div><span class="health-value" id="cpu-val-' + peer.host + '-' + peer.port + '">--</span></div>' +
+            '<div class="health-bar"><span class="health-label">MEM</span><div class="health-track"><div class="health-fill mem-fill" id="mem-' + peer.host + '-' + peer.port + '"></div></div><span class="health-value" id="mem-val-' + peer.host + '-' + peer.port + '">--</span></div>' +
+            '</div>';
 
         if (peer.role === 'ui') {
             html += '<div class="peer-info">Stream: <span id="stream-status-' + peer.host + '-' + peer.port + '">waiting...</span></div>';
@@ -419,7 +423,37 @@ function queryStatus(peer) {
             }
             stateSpan.textContent = state;
         }
+
+        // Update health metrics.
+        var cpuPercent = response.cpu_percent || 0;
+        var memPercent = response.memory_percent || 0;
+
+        var cpuFill = document.getElementById('cpu-' + peer.host + '-' + peer.port);
+        var cpuVal = document.getElementById('cpu-val-' + peer.host + '-' + peer.port);
+        var memFill = document.getElementById('mem-' + peer.host + '-' + peer.port);
+        var memVal = document.getElementById('mem-val-' + peer.host + '-' + peer.port);
+
+        if (cpuFill) {
+            cpuFill.style.width = cpuPercent.toFixed(0) + '%';
+            cpuFill.className = 'health-fill cpu-fill' + getHealthClass(cpuPercent);
+        }
+        if (cpuVal) {
+            cpuVal.textContent = cpuPercent.toFixed(0) + '%';
+        }
+        if (memFill) {
+            memFill.style.width = memPercent.toFixed(0) + '%';
+            memFill.className = 'health-fill mem-fill' + getHealthClass(memPercent);
+        }
+        if (memVal) {
+            memVal.textContent = memPercent.toFixed(0) + '%';
+        }
     });
+}
+
+function getHealthClass(percent) {
+    if (percent >= 90) return ' critical';
+    if (percent >= 75) return ' warning';
+    return '';
 }
 
 function discoverPeers() {

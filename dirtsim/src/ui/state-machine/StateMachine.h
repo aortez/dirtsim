@@ -5,6 +5,7 @@
 #include "EventSink.h"
 #include "core/StateMachineBase.h"
 #include "core/StateMachineInterface.h"
+#include "core/SystemMetrics.h"
 #include "core/Timers.h"
 #include "states/State.h"
 
@@ -77,6 +78,7 @@ public:
     Timers& getTimers() { return timers_; }
 
 private:
+    SystemMetrics systemMetrics_;
     Timers timers_;
     State::Any fsmState{ State::Startup{} };
     std::unique_ptr<H264Encoder> h264Encoder_;

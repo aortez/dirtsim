@@ -14,10 +14,16 @@ namespace DirtSim {
 namespace Client {
 
 /**
+ * @brief Target type for command dispatch.
+ */
+enum class Target { Server, Ui };
+
+/**
  * @brief Generic command dispatcher for type-safe WebSocket command execution.
  *
  * Builds a runtime dispatch table from compile-time command types.
- * Automatically registers all commands from ApiCommand and UiApiCommand variants.
+ * Maintains separate handler maps for server and UI commands, supporting
+ * commands with the same name but different response types.
  */
 class CommandDispatcher {
 public:
@@ -37,43 +43,41 @@ public:
     /**
      * @brief Dispatch command by name using type-safe execution.
      *
+     * @param target Target (Server or Ui) to select handler map.
      * @param client Connected WebSocketClient.
      * @param commandName Command name (e.g., "StateGet", "StatusGet").
      * @param body JSON command body (can be empty for commands with no fields).
      * @return Result with JSON response string on success, ApiError on failure.
      */
     Result<std::string, ApiError> dispatch(
+        Target target,
         Network::WebSocketService& client,
         const std::string& commandName,
         const nlohmann::json& body);
 
     /**
-     * @brief Check if a command name is registered.
+     * @brief Check if a command name is registered for the given target.
      */
-    bool hasCommand(const std::string& commandName) const;
+    bool hasCommand(Target target, const std::string& commandName) const;
 
     /**
-     * @brief Get list of all registered command names.
+     * @brief Get list of all registered command names for a target.
      */
-    std::vector<std::string> getCommandNames() const;
+    std::vector<std::string> getCommandNames(Target target) const;
 
 private:
-    /**
-     * @brief Register a single command type with type-safe handler.
-     *
-     * Creates a handler that:
-     * 1. Deserializes JSON body to CommandT
-     * 2. Calls client.sendCommand<CommandT>(cmd)
-     * 3. Converts typed result back to JSON string
-     */
+    using HandlerMap = std::map<std::string, Handler>;
+
     /**
      * @brief Register command with both Command and Okay types for full response deserialization.
+     *
+     * @param handlers Handler map to register into (serverHandlers_ or uiHandlers_).
      */
     template <typename CommandT, typename OkayT>
-    void registerCommand()
+    void registerCommand(HandlerMap& handlers)
     {
         std::string cmdName(CommandT::name());
-        handlers_[cmdName] =
+        handlers[cmdName] =
             [cmdName](Network::WebSocketService& client, const nlohmann::json& body) {
                 // Deserialize JSON body → typed command.
                 CommandT cmd;
@@ -134,18 +138,10 @@ private:
             };
     }
 
-    /**
-     * @brief Register all command types from a variant.
-     *
-     * Uses fold expression to call registerCommand<T>() for each type.
-     */
-    template <typename... CommandTypes>
-    void registerVariant(std::variant<CommandTypes...>*)
-    {
-        (registerCommand<CommandTypes>(), ...);
-    }
+    const HandlerMap& getHandlers(Target target) const;
 
-    std::map<std::string, Handler> handlers_;
+    HandlerMap serverHandlers_;
+    HandlerMap uiHandlers_;
 };
 
 } // namespace Client

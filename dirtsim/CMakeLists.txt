@@ -215,6 +215,7 @@ add_library(sparkle-duck-core STATIC
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
     src/core/StateMachineBase.cpp
+    src/core/SystemMetrics.cpp
     src/core/Timers.cpp
     # Vector2d.cpp and Vector2i.cpp removed - now fully inline template in Vector2.h
 

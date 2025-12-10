@@ -28,6 +28,10 @@ struct Okay {
     uint32_t display_height = 0;
     double fps = 0.0;
 
+    // System health metrics.
+    double cpu_percent = 0.0;
+    double memory_percent = 0.0;
+
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
