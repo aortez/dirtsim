@@ -131,6 +131,20 @@ static lv_display_t* init_fbdev(void)
         }
     }
 
+#if LV_USE_EVDEV
+    // Initialize touchscreen input via evdev.
+    // Default device can be overridden with LV_EVDEV_DEVICE environment variable.
+    const char* evdev_device = getenv_default("LV_EVDEV_DEVICE", "/dev/input/event0");
+    lv_indev_t* indev = lv_evdev_create(LV_INDEV_TYPE_POINTER, evdev_device);
+    if (indev != NULL) {
+        lv_indev_set_display(indev, disp);
+        spdlog::info("FBDEV: Touchscreen input initialized from {}", evdev_device);
+    }
+    else {
+        spdlog::warn("FBDEV: Failed to initialize touchscreen from {}", evdev_device);
+    }
+#endif
+
     return disp;
 }
 

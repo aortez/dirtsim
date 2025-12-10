@@ -84,9 +84,8 @@ backend_init_t available_backends[] = {
     backend_init_glfw3,
 #endif
 
-#if LV_USE_EVDEV
-    backend_init_evdev,
-#endif
+    // Note: evdev is initialized directly by fbdev backend when LV_USE_EVDEV is enabled.
+    // No separate backend_init_evdev needed.
     NULL /* Sentinel. */
 };
 

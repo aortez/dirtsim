@@ -16,6 +16,10 @@ RestartSec=5
 # LVGL handles rotation in software - no hardware dtparam needed.
 Environment=LV_DISPLAY_ROTATION=90
 
+# Touchscreen input device (Goodix capacitive touch on HyperPixel 4.0).
+# Using stable by-path symlink instead of eventN which changes on reboot.
+Environment=LV_EVDEV_DEVICE=/dev/input/by-path/platform-i2c@0-event
+
 # Give access to framebuffer.
 SupplementaryGroups=video input
 
