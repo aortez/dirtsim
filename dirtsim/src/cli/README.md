@@ -266,7 +266,7 @@ If `run-all` is running in another terminal, it monitors the UI and won't let th
 
 Increase timeout for slow operations:
 ```bash
-./build-debug/bin/cli --timeout 10000 state_get ws://localhost:8080  # 10 second timeout
+./build-debug/bin/cli --timeout 10000 server StateGet  # 10 second timeout
 ```
 
 ## Use Cases

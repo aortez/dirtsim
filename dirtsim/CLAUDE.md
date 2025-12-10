@@ -8,7 +8,7 @@ This is the main simulation application. For repo-level overview, see `../CLAUDE
 - **Run**: `./build-debug/bin/cli run-all`
 - **Test**: `make test`
 - **Format**: `make format`
-- **Deploy**: `./deploy-to-pi.sh -x` (cross-compile to Pi)
+- **Deploy**: See `../yocto/` for Yocto-based Pi deployment (`npm run yolo`)
 
 ## Building
 ```bash
@@ -285,70 +285,30 @@ Supports SDL, Wayland, X11, and Linux FBDEV backends. Primary development is Lin
 
 ### Deployment to Raspberry Pi
 
-The project includes deployment scripts for developing on a workstation and deploying to a Pi.
+The project uses Yocto to build complete bootable images for the Pi.
 
-**Remote deploy (from dev machine):**
+**Deploy from workstation:**
 ```bash
-./deploy-to-pi.sh              # Sync, build, restart service
-./deploy-to-pi.sh --no-build   # Sync and restart only
-./deploy-to-pi.sh --dry-run    # Preview what would happen
+cd ../yocto
+npm run yolo -- --hold-my-mead          # Build + deploy + reboot
+npm run yolo -- --clean-all --hold-my-mead  # Full rebuild + deploy
 ```
 
-**Local deploy (on Pi itself via SSH):**
+**Check service status on Pi:**
 ```bash
-./deploy-local.sh              # Build and restart service
-./deploy-local.sh --no-build   # Restart only
+ssh dirtsim.local
+systemctl status sparkle-duck-server    # Check status
+journalctl -u sparkle-duck-server -f    # Follow logs
 ```
 
-**Setup:** See `src/scripts/deploy/README.md` for SSH key setup and configuration.
+**Server details:**
+- Runs as system service (starts at boot).
+- User: `dirtsim`
+- Port: 8080 (WebSocket), 8081 (HTTP dashboard)
+- Logs: `/home/dirtsim/sparkle-duck/sparkle-duck.log`
+- Service file: `/usr/lib/systemd/system/sparkle-duck-server.service`
 
-### Cross-Compilation (Faster Deploys)
-
-Building on the Pi takes ~8 minutes. Cross-compilation builds on the workstation (~1 minute) and deploys just the binaries.
-
-**First-time setup:**
-```bash
-# Install cross-compiler.
-sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
-
-# Sync sysroot from Pi (copies headers and libraries).
-make cross-sysroot
-```
-
-**Cross-compile and deploy:**
-```bash
-# Cross-compile release and deploy to Pi.
-./deploy-to-pi.sh -x
-
-# Cross-compile debug build.
-./deploy-to-pi.sh -x -d
-
-# First-time (sync sysroot + build + deploy).
-./deploy-to-pi.sh -x --sync-sysroot
-```
-
-**Manual cross-compilation:**
-```bash
-make cross-release    # Build for aarch64 (output: build-aarch64-release/).
-make cross-debug      # Debug build for aarch64.
-```
-
-**Files:**
-- `cmake/aarch64-toolchain.cmake` - CMake toolchain for cross-compilation.
-- `cmake/aarch64-sysroot-sync.sh` - Script to sync libraries from Pi.
-- `sysroot-aarch64/` - Local copy of Pi's headers and libraries (gitignored).
-
-### systemd Service (Pi)
-
-The app runs as a user service on the Pi, auto-starting on boot:
-```bash
-systemctl --user status sparkle-duck    # Check status
-systemctl --user restart sparkle-duck   # Restart
-systemctl --user stop sparkle-duck      # Stop
-journalctl --user -u sparkle-duck -f    # Follow logs
-```
-
-Service file: `~/.config/systemd/user/sparkle-duck.service`
+See `../yocto/` for full Yocto layer documentation and image customization.
 
 ### Remote CLI Control
 
@@ -433,10 +393,7 @@ Can be found here:
 ## Project Directory Structure
 
   dirtsim/
-  ├── deploy-to-pi.sh                        # Remote deployment script
-  ├── deploy-local.sh                        # Local deployment script
   ├── src/                                   # Source code
-  │   ├── scripts/deploy/                    # Deployment tooling (Node.js)
   │   ├── core/                              # Shared physics and utilities
   │   │   ├── World.{cpp,h}                  # Grid-based physics simulation
   │   │   ├── Cell.{cpp,h}                   # Pure-material cell implementation

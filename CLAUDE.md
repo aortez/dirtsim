@@ -47,27 +47,33 @@ make debug                           # Build
 | Physics system | `dirtsim/design_docs/GridMechanics.md` | Pressure, friction, cohesion, etc. |
 | Coding conventions | `dirtsim/design_docs/coding_convention.md` | Style guidelines |
 | Tree organisms | `dirtsim/design_docs/plant.md` | A-life tree feature |
-| CLI reference | `dirtsim/src/cli/README.md` | Command-line tool usage |
-| Deployment | `dirtsim/src/scripts/deploy/README.md` | Pi deployment setup |
+| CLI reference | `dirtsim/src/cli/README.md` | Command-line interface |
+| Yocto deployment | `yocto/` | Yocto layer for building Pi images |
 
 ## Remote Deployment
 
 The simulation runs on a Raspberry Pi 5 accessible at `dirtsim.local`:
 
 ```bash
-# Deploy from workstation
-cd dirtsim
-./deploy-to-pi.sh              # Sync, build, restart service
-
-# Cross-compile (faster)
-./deploy-to-pi.sh -x           # Build locally, deploy binaries only
+# Deploy from workstation (Yocto-based full system)
+cd yocto
+npm run yolo -- --hold-my-mead             # Build + deploy + reboot
+npm run yolo -- --clean-all --hold-my-mead # Full rebuild
 
 # SSH to Pi
 ssh dirtsim.local
+
+# Check service
+systemctl status sparkle-duck-server
+journalctl -u sparkle-duck-server -f
+
+# Verify WebSocket endpoints from workstation
+cd dirtsim
+./build-debug/bin/cli --address ws://dirtsim.local:8080 server StatusGet  # Server
+./build-debug/bin/cli --address ws://dirtsim.local:7070 ui StatusGet      # UI
 ```
 
 ## Git Workflow
 
-- Use git as needed but never push without asking.
 - Install hooks: `cd dirtsim && ./hooks/install-hooks.sh`
 - Pre-commit runs formatting, linting, and tests.
