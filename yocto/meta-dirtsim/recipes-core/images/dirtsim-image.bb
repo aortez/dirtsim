@@ -87,6 +87,18 @@ EOF
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_hyperpixel_backlight;"
 
 # ============================================================================
+# Disable Framebuffer Console
+# ============================================================================
+# The UI uses the framebuffer directly via LVGL. Disable the login console
+# on tty1 so it doesn't overwrite the UI with text.
+disable_fb_console() {
+    # Mask getty@tty1 so it doesn't start.
+    install -d ${IMAGE_ROOTFS}/etc/systemd/system
+    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/getty@tty1.service
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " disable_fb_console;"
+
+# ============================================================================
 # Network Management
 # ============================================================================
 # NetworkManager provides nmcli/nmtui for network configuration.
@@ -144,7 +156,10 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# Future Stages (commented for now)
+# Stage 3: Dirt Simulation UI
 # ============================================================================
-# Stage 3: Graphics + UI
-# IMAGE_INSTALL:append = " wayland weston sparkle-duck-ui"
+# LVGL-based display client using framebuffer backend (no compositor needed).
+# Connects to server on localhost:8080 and renders the simulation.
+IMAGE_INSTALL:append = " \
+    sparkle-duck-ui \
+"

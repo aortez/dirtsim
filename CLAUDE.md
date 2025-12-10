@@ -8,6 +8,12 @@ Sparkle Duck is a Dirt-Oriented playground for experimenting with artificial lif
 
 The simulation serves as a substrate for artificial life experiments, currently featuring tree organisms that germinate, grow, and respond to their environment.
 
+## Target Hardware
+
+* Raspberry PI 5
+* Primary display - Hyperpixel 4.0
+* Troubleshooting display - HDMI
+
 ## Repository Structure
 
 ```

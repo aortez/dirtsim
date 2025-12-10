@@ -1,0 +1,19 @@
+[Unit]
+Description=Sparkle Duck Simulation UI
+After=sparkle-duck-server.service
+Requires=sparkle-duck-server.service
+
+[Service]
+Type=simple
+User=dirtsim
+Group=video
+WorkingDirectory=/home/dirtsim/sparkle-duck
+ExecStart=/usr/bin/sparkle-duck-ui -b fbdev --connect localhost:8080
+Restart=on-failure
+RestartSec=5
+
+# Give access to framebuffer.
+SupplementaryGroups=video input
+
+[Install]
+WantedBy=multi-user.target

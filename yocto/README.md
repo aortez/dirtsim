@@ -26,25 +26,26 @@ Build a minimal, purpose-built Linux image that:
 
 **Success criteria:** `ssh dirtsim` connects, poke around, reboot, it comes back. ✅
 
-### Stage 2: Roots
+### Stage 2: Roots ✅
 *Headless dirt sim server.*
 
-- [ ] `sparkle-duck-server` recipe builds
-- [ ] systemd service auto-starts server on boot
-- [ ] WebSocket accessible from network (port 8080)
-- [ ] CLI tool can control remotely
+- [x] `sparkle-duck-server` recipe builds
+- [x] systemd service auto-starts server on boot
+- [x] WebSocket accessible from network (port 8080)
+- [x] CLI tool can control remotely
 
-**Success criteria:** `./cli server StateGet --address ws://dirtsim.local:8080` works from workstation.
+**Success criteria:** `./cli server StateGet --address ws://dirtsim.local:8080` works from workstation. ✅
 
-### Stage 3: Canopy
-*Full graphical UI with streaming.*
+### Stage 3: Canopy ✅
+*Full graphical UI on display.*
 
-- [ ] Wayland compositor (cage for kiosk mode)
-- [ ] LVGL rendering via DRM/OpenGL ES
-- [ ] `sparkle-duck-ui` auto-starts
+- [x] LVGL rendering via framebuffer (no compositor needed!)
+- [x] `sparkle-duck-ui` auto-starts and connects to server
+- [x] Disabled getty on tty1 (UI owns the framebuffer)
+- [ ] Touch input working (HyperPixel capacitive)
 - [ ] WebRTC streaming to garden dashboard
 
-**Success criteria:** Walk up to the Pi, see dirt falling. Open browser, see the stream.
+**Success criteria:** Walk up to the Pi, see dirt falling. ✅
 
 ---
 
@@ -103,6 +104,18 @@ npm run yolo -- --skip-build       # Flash existing image (skip kas build)
 npm run yolo -- --hold-my-mead     # Skip confirmation prompt (for scripts)
 npm run yolo -- --dry-run          # Show what would happen
 ```
+
+### Quick Deploy (Userspace Apps)
+
+For fast iteration on application code without rebuilding the full image:
+
+```bash
+npm run deploy          # Deploy both server and UI (~20-60s)
+npm run deploy server   # Deploy server only
+npm run deploy ui       # Deploy UI only
+```
+
+This cross-compiles via Yocto, SCPs binaries to the Pi, and restarts services. Much faster than a full YOLO update when you're just changing application code.
 
 **How it works:**
 1. Builds the image (unless `--skip-build`)
@@ -207,6 +220,7 @@ yocto/
 ├── kas-dirtsim.yml           # KAS build configuration
 ├── package.json              # npm scripts for flash/update
 ├── scripts/
+│   ├── deploy-apps.mjs       # Quick deploy userspace apps
 │   ├── flash.mjs             # Flash image + inject SSH key
 │   ├── update.mjs            # Build + flash + verify (sneakernet)
 │   └── yolo-update.mjs       # Remote update over network
@@ -223,7 +237,10 @@ yocto/
 │   │   └── openssh/          # SSH hardening
 │   ├── recipes-extended/
 │   │   └── sudo/             # Passwordless sudo for dirtsim
-│   └── recipes-dirtsim/      # Our application (future)
+│   ├── recipes-dirtsim/
+│   │   └── sparkle-duck/     # Server and UI recipes
+│   └── recipes-multimedia/
+│       └── libyuv/           # Video encoding dependency
 └── build/                    # Build output (gitignored)
 ```
 
@@ -265,6 +282,25 @@ Compared to Raspberry Pi OS, our image does NOT include:
 ---
 
 ## Working Notes
+
+### 2025-12-09: Stage 2 & 3 Complete - Server + UI Running!
+
+Both the headless server and LVGL UI are now deployed and running on the Pi:
+
+**What was added:**
+- `sparkle-duck-server_git.bb` - Yocto recipe for the headless physics server
+- `sparkle-duck-ui_git.bb` - Yocto recipe for the LVGL UI client
+- Systemd services for both (server on port 8080, UI on port 7070)
+- Disabled `getty@tty1` so UI owns the framebuffer
+- Fixed fbdev backend to call `updateAnimations()` (was missing vs wayland backend)
+- `npm run deploy` script for quick userspace iteration (~20s vs 3+ min for full YOLO)
+
+**Gotchas:**
+- GCC 13 in Yocto is stricter than desktop GCC - had to value-initialize template variables to silence `-Wmaybe-uninitialized` false positives at `-O2`.
+- Framebuffer getty overwrites LVGL output - masked `getty@tty1.service` in image recipe.
+- LVGL fbdev backend was missing `sm.updateAnimations()` call that wayland backend had - fractal rendered once but didn't animate.
+
+**Architecture:** UI uses LVGL's fbdev backend directly - no Wayland compositor needed! Much simpler than originally planned.
 
 ### 2025-12-08: A/B Partitions for Safe Remote Updates
 

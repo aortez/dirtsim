@@ -116,13 +116,27 @@ static void run_loop_fbdev(DirtSim::Ui::StateMachine& sm)
 {
     uint32_t idle_time;
 
+    // Target ~30 FPS for smooth animation (33ms per frame).
+    // LVGL may suggest longer sleep times when it thinks nothing changed,
+    // but background threads (like the fractal renderer) may have invalidated
+    // objects that need to be flushed.
+    constexpr uint32_t MAX_IDLE_MS = 33;
+
     /* Handle LVGL tasks. */
     while (!sm.shouldExit()) {
         // Process UI state machine events.
         sm.processEvents();
 
+        // Update background animations (event-driven, no timer).
+        sm.updateAnimations();
+
         /* Returns the time to the next timer execution. */
         idle_time = lv_timer_handler();
+
+        // Cap idle time to maintain responsiveness for background-invalidated objects.
+        if (idle_time > MAX_IDLE_MS) {
+            idle_time = MAX_IDLE_MS;
+        }
         usleep(idle_time * 1000);
     }
 

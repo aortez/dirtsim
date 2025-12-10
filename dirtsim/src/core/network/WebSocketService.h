@@ -297,7 +297,8 @@ public:
                                         std::shared_ptr<rtc::WebSocket> ws,
                                         uint64_t correlationId) {
             // Deserialize payload → typed command.
-            CommandT cmd;
+            // Value-initialize to silence GCC 13's -Wmaybe-uninitialized false positive.
+            CommandT cmd{};
             try {
                 cmd = Network::deserialize_payload<CommandT>(payload);
             }
