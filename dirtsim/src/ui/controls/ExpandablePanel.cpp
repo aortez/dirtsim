@@ -41,10 +41,11 @@ ExpandablePanel::ExpandablePanel(lv_obj_t* parent)
     lv_obj_set_scroll_dir(contentArea_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(contentArea_, LV_SCROLLBAR_MODE_AUTO);
 
-    // Start hidden.
-    hide();
+    // Start hidden - set flags directly since visible_ starts as false.
+    lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
 
-    LOG_INFO(Controls, "ExpandablePanel created ({}px wide)", PANEL_WIDTH);
+    LOG_INFO(Controls, "ExpandablePanel created ({}px wide, hidden)", PANEL_WIDTH);
 }
 
 ExpandablePanel::~ExpandablePanel()
@@ -57,7 +58,9 @@ void ExpandablePanel::show()
     if (visible_) return;
 
     visible_ = true;
+    // Clear both HIDDEN and IGNORE_LAYOUT so panel participates in flex layout.
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
 
     LOG_DEBUG(Controls, "ExpandablePanel shown");
 }
@@ -67,7 +70,9 @@ void ExpandablePanel::hide()
     if (!visible_) return;
 
     visible_ = false;
+    // Set both HIDDEN and IGNORE_LAYOUT so flex container doesn't reserve space.
     lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
 
     LOG_DEBUG(Controls, "ExpandablePanel hidden");
 }

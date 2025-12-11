@@ -7,14 +7,14 @@ namespace Ui {
 
 IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback_(std::move(onSelect))
 {
-    // Define our icon configuration.
+    // Define our icon configuration with per-icon colors.
     iconConfigs_ = {
-        { IconId::CORE, LV_SYMBOL_SETTINGS, "Core Controls" },
-        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario" },
-        { IconId::GENERAL, LV_SYMBOL_HOME, "General Physics" },
-        { IconId::PRESSURE, LV_SYMBOL_TINT, "Pressure" },
-        { IconId::FORCES, LV_SYMBOL_CHARGE, "Forces" },
-        { IconId::TREE, LV_SYMBOL_IMAGE, "Tree Vision" },
+        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },       // Light blue.
+        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },       // Orange.
+        { IconId::GENERAL, LV_SYMBOL_SETTINGS, "General Physics", 0xC0C0C0 }, // Silver.
+        { IconId::PRESSURE, LV_SYMBOL_TINT, "Pressure", 0x00BFFF },        // Deep sky blue.
+        { IconId::FORCES, LV_SYMBOL_CHARGE, "Forces", 0xFFD700 },          // Gold/yellow.
+        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },     // Lime green.
     };
 
     createIcons(parent);
@@ -75,11 +75,11 @@ void IconRail::createIcons(lv_obj_t* parent)
         // Pressed state.
         lv_obj_set_style_bg_color(btn, lv_color_hex(0x555555), LV_STATE_PRESSED);
 
-        // Create icon label.
+        // Create icon label with per-icon color.
         lv_obj_t* label = lv_label_create(btn);
         lv_label_set_text(label, config.symbol);
-        lv_obj_set_style_text_color(label, lv_color_hex(ICON_COLOR), 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+        lv_obj_set_style_text_color(label, lv_color_hex(config.color), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_24, 0);
         lv_obj_center(label);
 
         // Store index in user data for callback.

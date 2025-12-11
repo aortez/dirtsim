@@ -105,11 +105,13 @@ void UiComponentManager::setNeuralGridVisible(bool visible)
     if (simNeuralGridDisplayArea_) {
         if (visible) {
             lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_IGNORE_LAYOUT);
             // 50/50 split when visible.
             setDisplayAreaRatio(1, 1);
         }
         else {
             lv_obj_add_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_IGNORE_LAYOUT);
             // World gets full width when neural grid hidden.
             setDisplayAreaRatio(1, 0);
         }
@@ -299,8 +301,10 @@ void UiComponentManager::createSimulationLayout()
     lv_obj_set_style_bg_color(simNeuralGridDisplayArea_, lv_color_hex(0x303030), 0);
     lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Start with neural grid hidden.
-    setNeuralGridVisible(false);
+    // Start with neural grid hidden - set flags directly since neuralGridVisible_ starts false.
+    lv_obj_add_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    setDisplayAreaRatio(1, 0);
 
     SLOG_INFO("UiComponentManager: Created icon-based simulation layout");
 }

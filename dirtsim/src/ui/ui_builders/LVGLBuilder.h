@@ -336,6 +336,7 @@ public:
         IconId id;
         const char* symbol;  // LV_SYMBOL_* or text.
         const char* tooltip; // Description for accessibility.
+        uint32_t color = 0xFFFFFF; // Icon color (default white).
     };
 
     /**

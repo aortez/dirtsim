@@ -315,6 +315,10 @@ void CellRenderer::calculateScaling(uint32_t worldWidth, uint32_t worldHeight)
 
 void CellRenderer::initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)
 {
+    // Force LVGL to calculate actual layout dimensions before measuring.
+    // Without this, flex containers may report stale/zero dimensions.
+    lv_obj_update_layout(parent);
+
     // Use default scale factor to calculate initial pixel size.
     int32_t containerWidth = lv_obj_get_width(parent);
     int32_t containerHeight = lv_obj_get_height(parent);
@@ -348,6 +352,10 @@ void CellRenderer::initializeWithPixelSize(
     parent_ = parent;
     width_ = worldWidth;
     height_ = worldHeight;
+
+    // Force LVGL to calculate actual layout dimensions before measuring.
+    // Without this, flex containers may report stale/zero dimensions.
+    lv_obj_update_layout(parent);
 
     // Get container size for transform scaling calculations.
     int32_t containerWidth = lv_obj_get_width(parent);
@@ -477,6 +485,10 @@ void CellRenderer::renderWorldData(
         effectiveMode = (scaledCellWidth_ < 4) ? RenderMode::SMOOTH : RenderMode::SHARP;
     }
 
+    // Force LVGL to calculate actual layout dimensions before measuring.
+    // This ensures we detect container size changes from flex layout updates.
+    lv_obj_update_layout(parent);
+
     // Get container dimensions for calculations.
     int32_t currentContainerWidth = lv_obj_get_width(parent);
     int32_t currentContainerHeight = lv_obj_get_height(parent);
@@ -510,14 +522,25 @@ void CellRenderer::renderWorldData(
     bool useBilinearFilter = (effectiveMode == RenderMode::SMOOTH);
 
     // If container size changed significantly, reinitialize canvas.
-    const int32_t RESIZE_THRESHOLD = 50; // Avoid jitter from small changes.
-    bool containerResized =
-        (std::abs(currentContainerWidth - lastContainerWidth_) > RESIZE_THRESHOLD)
-        || (std::abs(currentContainerHeight - lastContainerHeight_) > RESIZE_THRESHOLD);
+    // We use different thresholds for shrinking vs growing:
+    // - Shrinking: Only reinitialize if change > 50px (avoid jitter from small changes).
+    // - Growing: Reinitialize if container grew by any significant amount (>10px).
+    //   This ensures we fill newly available space immediately.
+    const int32_t SHRINK_THRESHOLD = 50;
+    const int32_t GROW_THRESHOLD = 10;
+
+    bool containerGrew = (currentContainerWidth > lastContainerWidth_ + GROW_THRESHOLD)
+        || (currentContainerHeight > lastContainerHeight_ + GROW_THRESHOLD);
+    bool containerShrunk =
+        (lastContainerWidth_ - currentContainerWidth > SHRINK_THRESHOLD)
+        || (lastContainerHeight_ - currentContainerHeight > SHRINK_THRESHOLD);
+
+    bool containerResized = containerGrew || containerShrunk;
 
     if (containerResized && worldCanvas_) {
         spdlog::info(
-            "CellRenderer: Container resized from {}x{} to {}x{}, reinitializing canvas",
+            "CellRenderer: Container {} from {}x{} to {}x{}, reinitializing canvas",
+            containerGrew ? "grew" : "shrunk",
             lastContainerWidth_,
             lastContainerHeight_,
             currentContainerWidth,
