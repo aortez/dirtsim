@@ -366,6 +366,33 @@ void StateMachine::handleEvent(const Event& event)
                 base64Data.size(),
                 isKeyframe);
         }
+        else if (cwc.command.format == UiApi::ScreenGrab::Format::Png) {
+            // PNG encoding requested.
+            auto pngData = encodePNG(
+                screenshotData->pixels.data(), screenshotData->width, screenshotData->height);
+            if (pngData.empty()) {
+                LOG_ERROR(State, "PNG encoding failed");
+                cwc.sendResponse(
+                    UiApi::ScreenGrab::Response::error(ApiError("PNG encoding failed")));
+                return;
+            }
+
+            base64Data = base64Encode(pngData);
+
+            auto now = std::chrono::system_clock::now();
+            timestampMs = static_cast<uint64_t>(
+                std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
+                    .count());
+
+            LOG_INFO(
+                State,
+                "ScreenGrab PNG encoded {}x{} ({} bytes raw -> {} bytes png -> {} bytes base64)",
+                screenshotData->width,
+                screenshotData->height,
+                screenshotData->pixels.size(),
+                pngData.size(),
+                base64Data.size());
+        }
         else {
             // Raw ARGB8888 format.
             base64Data = base64Encode(screenshotData->pixels);

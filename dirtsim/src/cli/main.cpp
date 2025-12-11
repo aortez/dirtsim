@@ -10,6 +10,7 @@
 #include "server/api/StatusGet.h"
 #include <args.hxx>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -17,6 +18,42 @@
 #include <string>
 
 using namespace DirtSim;
+
+// Base64 decoding for screenshot data.
+std::vector<uint8_t> base64Decode(const std::string& encoded)
+{
+    static const int base64_index[256] = {
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  62,
+        63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  0,  0,  0,  0,  0,
+        1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
+        23, 24, 25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
+        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+    };
+
+    std::vector<uint8_t> decoded;
+    decoded.reserve(encoded.size() * 3 / 4);
+
+    uint32_t val = 0;
+    int valBits = -8;
+
+    for (unsigned char c : encoded) {
+        if (c == '=') {
+            break;
+        }
+        if (c >= sizeof(base64_index) / sizeof(base64_index[0])) {
+            continue;
+        }
+        val = (val << 6) + base64_index[c];
+        valBits += 6;
+        if (valBits >= 0) {
+            decoded.push_back(static_cast<uint8_t>((val >> valBits) & 0xFF));
+            valBits -= 8;
+        }
+    }
+
+    return decoded;
+}
 
 // Helper function to sort timer_stats by total_ms in descending order.
 // Returns an array of objects (to preserve sort order) instead of a JSON object.
@@ -61,6 +98,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "cleanup", "Clean up rogue sparkle-duck processes" },
     { "integration_test", "Run integration test (launches server + UI)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
+    { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
 };
 
@@ -118,6 +156,11 @@ std::string getExamplesHelp()
     examples += "  cli ui StatusGet\n";
     examples += "  cli ui ScreenGrab\n";
     examples += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
+
+    // Screenshot examples.
+    examples += "\nScreenshot:\n";
+    examples += "  cli screenshot output.png                              # Local UI\n";
+    examples += "  cli screenshot --address ws://dirtsim.local:7070 out.png  # Remote UI\n";
 
     return examples;
 }
@@ -359,6 +402,112 @@ int main(int argc, char** argv)
             std::cerr << "Error: " << result.errorValue() << std::endl;
             return 1;
         }
+        return 0;
+    }
+
+    // Handle screenshot command - capture UI screen and save as PNG.
+    if (targetName == "screenshot") {
+        // Get output filename from command argument.
+        std::string outputFile;
+        if (command) {
+            outputFile = args::get(command);
+        }
+        else {
+            // Generate default filename with timestamp.
+            auto now = std::chrono::system_clock::now();
+            auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
+                                 now.time_since_epoch())
+                                 .count();
+            outputFile = "screenshot_" + std::to_string(timestamp) + ".png";
+        }
+
+        // Determine UI address.
+        std::string uiAddress;
+        if (addressOverride) {
+            uiAddress = args::get(addressOverride);
+        }
+        else {
+            uiAddress = "ws://localhost:7070";
+        }
+
+        int timeoutMs = timeout ? args::get(timeout) : 10000;
+
+        std::cerr << "Capturing screenshot from " << uiAddress << "..." << std::endl;
+
+        // Connect to UI.
+        Network::WebSocketService client;
+        auto connectResult = client.connect(uiAddress, timeoutMs);
+        if (connectResult.isError()) {
+            std::cerr << "Failed to connect to UI at " << uiAddress << ": "
+                      << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        // Send ScreenGrab command with PNG format.
+        nlohmann::json screenGrabBody;
+        screenGrabBody["format"] = "png";
+        screenGrabBody["scale"] = 1.0;
+
+        Client::CommandDispatcher dispatcher;
+        auto responseResult =
+            dispatcher.dispatch(Client::Target::Ui, client, "ScreenGrab", screenGrabBody);
+        if (responseResult.isError()) {
+            std::cerr << "ScreenGrab command failed: " << responseResult.errorValue().message
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        // Parse response and extract PNG data.
+        try {
+            nlohmann::json responseJson = nlohmann::json::parse(responseResult.value());
+
+            if (!responseJson.contains("value") || !responseJson["value"].contains("data")) {
+                std::cerr << "Invalid ScreenGrab response format" << std::endl;
+                client.disconnect();
+                return 1;
+            }
+
+            std::string base64Data = responseJson["value"]["data"].get<std::string>();
+            uint32_t width = responseJson["value"]["width"].get<uint32_t>();
+            uint32_t height = responseJson["value"]["height"].get<uint32_t>();
+            std::string format = responseJson["value"]["format"].get<std::string>();
+
+            if (format != "png") {
+                std::cerr << "Unexpected format: " << format << " (expected png)" << std::endl;
+                client.disconnect();
+                return 1;
+            }
+
+            // Decode base64 to PNG bytes.
+            auto pngData = base64Decode(base64Data);
+            if (pngData.empty()) {
+                std::cerr << "Failed to decode base64 data" << std::endl;
+                client.disconnect();
+                return 1;
+            }
+
+            // Write PNG to file.
+            std::ofstream outFile(outputFile, std::ios::binary);
+            if (!outFile) {
+                std::cerr << "Failed to open output file: " << outputFile << std::endl;
+                client.disconnect();
+                return 1;
+            }
+
+            outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+            outFile.close();
+
+            std::cerr << "✓ Screenshot saved to " << outputFile << " (" << width << "x" << height
+                      << ", " << pngData.size() << " bytes)" << std::endl;
+        }
+        catch (const std::exception& e) {
+            std::cerr << "Error processing screenshot: " << e.what() << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        client.disconnect();
         return 0;
     }
 

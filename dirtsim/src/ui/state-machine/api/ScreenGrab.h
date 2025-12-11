@@ -18,7 +18,8 @@ DEFINE_API_NAME(ScreenGrab);
 // Output format for screen capture.
 enum class Format : uint8_t {
     Raw = 0, // ARGB8888 raw pixel data.
-    H264 = 1 // H.264 encoded video frame.
+    H264 = 1, // H.264 encoded video frame.
+    Png = 2  // PNG compressed image.
 };
 
 // JSON serialization for Format enum (string-based for readability).
@@ -30,6 +31,9 @@ inline void to_json(nlohmann::json& j, const Format& f)
             break;
         case Format::H264:
             j = "h264";
+            break;
+        case Format::Png:
+            j = "png";
             break;
         default:
             j = "raw";
@@ -43,6 +47,9 @@ inline void from_json(const nlohmann::json& j, Format& f)
         std::string s = j.get<std::string>();
         if (s == "h264") {
             f = Format::H264;
+        }
+        else if (s == "png") {
+            f = Format::Png;
         }
         else {
             f = Format::Raw;
@@ -58,8 +65,8 @@ inline void from_json(const nlohmann::json& j, Format& f)
 
 struct Command {
     double scale = 1.0;          // Resolution scale factor (0.25 = 4x smaller, 1.0 = full res).
-    Format format = Format::Raw; // Output format: Raw (ARGB8888) or H264.
-    int quality = 23;            // H.264 CRF quality (0-51, lower = better). Ignored for Raw.
+    Format format = Format::Png; // Output format: Raw (ARGB8888), H264, or Png.
+    int quality = 23;            // H.264 CRF quality (0-51, lower = better). Ignored for Raw/Png.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
