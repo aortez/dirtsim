@@ -190,13 +190,7 @@ State::Any SimRunning::onEvent(const PhysicsSettingsReceivedEvent& evt, StateMac
 
     // Update UI controls with server settings.
     if (playground_) {
-        auto* physicsControls = playground_->getPhysicsControls();
-        if (physicsControls) {
-            physicsControls->updateFromSettings(evt.settings);
-        }
-        else {
-            LOG_WARN(State, "PhysicsControls not available");
-        }
+        playground_->updatePhysicsPanels(evt.settings);
     }
     else {
         LOG_WARN(State, "Playground not available");

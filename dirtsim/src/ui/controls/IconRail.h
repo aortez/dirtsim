@@ -85,8 +85,8 @@ private:
     static constexpr uint32_t ICON_COLOR = 0xFFFFFF;
 
     // Dimensions.
-    static constexpr int RAIL_WIDTH = 60;
-    static constexpr int ICON_SIZE = 56;
+    static constexpr int RAIL_WIDTH = 76;
+    static constexpr int ICON_SIZE = 72;
     static constexpr int GAP = 4;
 
     void createIcons(lv_obj_t* parent);

@@ -13,6 +13,8 @@ typedef struct _lv_event_t lv_event_t;
 
 namespace DirtSim {
 
+struct PhysicsSettings;
+
 namespace Network {
 class WebSocketService;
 }
@@ -23,6 +25,9 @@ class UiComponentManager;
 class CoreControls;
 class SandboxControls;
 class PhysicsControls;
+class GeneralPhysicsPanel;
+class PressurePanel;
+class ForcesPanel;
 class CellRenderer;
 class NeuralGridRenderer;
 class EventSink;
@@ -69,7 +74,7 @@ public:
 
     void renderNeuralGrid(const WorldData& data);
 
-    PhysicsControls* getPhysicsControls() { return physicsControls_.get(); }
+    void updatePhysicsPanels(const PhysicsSettings& settings);
 
     struct ScreenshotData {
         std::vector<uint8_t> pixels; // ARGB8888 pixel data.
@@ -96,7 +101,9 @@ private:
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;
     std::unique_ptr<SandboxControls> sandboxControls_;
-    std::unique_ptr<PhysicsControls> physicsControls_;
+    std::unique_ptr<GeneralPhysicsPanel> generalPhysicsPanel_;
+    std::unique_ptr<PressurePanel> pressurePanel_;
+    std::unique_ptr<ForcesPanel> forcesPanel_;
     lv_obj_t* scenarioDropdown_ = nullptr;
 
     // Currently active panel.
