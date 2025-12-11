@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/WorldData.h"
+#include "ui/controls/IconRail.h"
 #include "ui/rendering/RenderMode.h"
 
 #include <memory>
@@ -25,21 +26,38 @@ class PhysicsControls;
 class CellRenderer;
 class NeuralGridRenderer;
 class EventSink;
+class ExpandablePanel;
 
 /**
  * @brief Coordinates the simulation playground view.
  *
  * SimPlayground ties together all the UI components for the simulation:
- * - Core controls (quit, stats, debug)
- * - Scenario controls (sandbox toggles)
- * - Physics controls (parameter sliders)
+ * - Icon rail for navigation
+ * - Expandable panel for controls
  * - World renderer (cell grid)
+ * - Neural grid renderer (tree vision)
+ *
+ * Panel content is created lazily when icons are selected:
+ * - Core: Quit, stats, debug, render mode
+ * - Scenario: Scenario dropdown + scenario-specific controls
+ * - General: Timescale, gravity, elasticity, air resistance
+ * - Pressure: Pressure system parameters
+ * - Forces: Cohesion, adhesion, viscosity, friction
+ * - Tree: Toggles neural grid visibility (no panel)
  */
 class SimPlayground {
 public:
+    using IconId = IconRail::IconId;
+
     SimPlayground(
         UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink);
     ~SimPlayground();
+
+    /**
+     * @brief Connect to the icon rail's selection callback.
+     * Must be called after construction to enable panel switching.
+     */
+    void connectToIconRail();
 
     void updateFromWorldData(const WorldData& data, double uiFPS = 0.0);
 
@@ -71,14 +89,18 @@ private:
     Network::WebSocketService* wsService_;
     EventSink& eventSink_;
 
-    // UI components.
-    std::unique_ptr<CoreControls> coreControls_;
-    std::unique_ptr<SandboxControls> sandboxControls_;
-    std::unique_ptr<PhysicsControls> physicsControls_;
+    // Renderers (always active).
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<NeuralGridRenderer> neuralGridRenderer_;
 
+    // Panel content (created lazily, one at a time).
+    std::unique_ptr<CoreControls> coreControls_;
+    std::unique_ptr<SandboxControls> sandboxControls_;
+    std::unique_ptr<PhysicsControls> physicsControls_;
     lv_obj_t* scenarioDropdown_ = nullptr;
+
+    // Currently active panel.
+    IconId activePanel_ = IconId::COUNT;
 
     // Current scenario ID (to detect changes).
     std::string currentScenarioId_;
@@ -89,7 +111,25 @@ private:
     // Current frame limit.
     int currentMaxFrameMs_ = 16;
 
-    // Event handlers.
+    // Track if tree exists (for icon visibility).
+    bool treeExists_ = false;
+
+    void clearPanelContent();
+
+    void createCorePanel(lv_obj_t* container);
+
+    void createScenarioPanel(lv_obj_t* container);
+
+    void createGeneralPhysicsPanel(lv_obj_t* container);
+
+    void createPressurePanel(lv_obj_t* container);
+
+    void createForcesPanel(lv_obj_t* container);
+
+    void showPanelContent(IconId panelId);
+
+    void onIconSelected(IconId selectedId, IconId previousId);
+
     static void onScenarioChanged(lv_event_t* e);
 };
 

@@ -1,5 +1,6 @@
 #include "SimPlayground.h"
 #include "controls/CoreControls.h"
+#include "controls/ExpandablePanel.h"
 #include "controls/PhysicsControls.h"
 #include "controls/SandboxControls.h"
 #include "core/LoggingChannels.h"
@@ -22,33 +23,143 @@ SimPlayground::SimPlayground(
     UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink)
     : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
 {
-    // Create core controls.
-    lv_obj_t* coreContainer = uiManager_->getCoreControlsContainer();
+    // Create renderers (always active).
+    renderer_ = std::make_unique<CellRenderer>();
+    neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
+
+    LOG_INFO(Controls, "Initialized");
+}
+
+SimPlayground::~SimPlayground()
+{
+    LOG_INFO(Controls, "Destroyed");
+}
+
+void SimPlayground::connectToIconRail()
+{
+    IconRail* iconRail = uiManager_->getIconRail();
+    if (iconRail) {
+        iconRail->setSecondaryCallback(
+            [this](IconId selectedId, IconId previousId) {
+                onIconSelected(selectedId, previousId);
+            });
+        LOG_INFO(Controls, "Connected to IconRail selection callback");
+    }
+    else {
+        LOG_ERROR(Controls, "No IconRail available to connect to");
+    }
+}
+
+void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
+{
+    LOG_INFO(
+        Controls,
+        "SimPlayground: Icon selection {} -> {}",
+        static_cast<int>(previousId),
+        static_cast<int>(selectedId));
+
+    // Tree icon is handled specially by UiComponentManager (toggles neural grid).
+    // We don't need to do anything extra here for tree.
+
+    // For other icons, show the appropriate panel content.
+    if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
+        showPanelContent(selectedId);
+    }
+    else if (selectedId == IconId::COUNT) {
+        // No icon selected - clear panel.
+        clearPanelContent();
+    }
+}
+
+void SimPlayground::showPanelContent(IconId panelId)
+{
+    if (panelId == activePanel_) return; // Already showing this panel.
+
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "No expandable panel available");
+        return;
+    }
+
+    // Clear existing content.
+    clearPanelContent();
+
+    // Get content area.
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "No panel content area available");
+        return;
+    }
+
+    // Create content for the selected panel.
+    switch (panelId) {
+    case IconId::CORE:
+        createCorePanel(container);
+        break;
+    case IconId::SCENARIO:
+        createScenarioPanel(container);
+        break;
+    case IconId::GENERAL:
+        createGeneralPhysicsPanel(container);
+        break;
+    case IconId::PRESSURE:
+        createPressurePanel(container);
+        break;
+    case IconId::FORCES:
+        createForcesPanel(container);
+        break;
+    default:
+        LOG_WARN(Controls, "Unknown panel id: {}", static_cast<int>(panelId));
+        return;
+    }
+
+    activePanel_ = panelId;
+    LOG_DEBUG(Controls, "Showing panel content for icon {}", static_cast<int>(panelId));
+}
+
+void SimPlayground::clearPanelContent()
+{
+    // Reset panel-specific controls.
+    coreControls_.reset();
+    physicsControls_.reset();
+    sandboxControls_.reset();
+    scenarioDropdown_ = nullptr;
+
+    // Clear the panel's content area.
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (panel) {
+        panel->clearContent();
+    }
+
+    activePanel_ = IconId::COUNT;
+}
+
+void SimPlayground::createCorePanel(lv_obj_t* container)
+{
+    LOG_DEBUG(Controls, "Creating Core panel");
+
     coreControls_ =
-        std::make_unique<CoreControls>(coreContainer, wsService_, eventSink_, renderMode_);
+        std::make_unique<CoreControls>(container, wsService_, eventSink_, renderMode_);
+}
 
-    // Create physics controls.
-    lv_obj_t* physicsContainer = uiManager_->getPhysicsControlsContainer();
-    physicsControls_ = std::make_unique<PhysicsControls>(physicsContainer, wsService_);
-
-    // Create scenario dropdown in scenario controls,.
-    lv_obj_t* scenarioContainer = uiManager_->getScenarioControlsContainer();
+void SimPlayground::createScenarioPanel(lv_obj_t* container)
+{
+    LOG_DEBUG(Controls, "Creating Scenario panel");
 
     // Scenario label.
-    lv_obj_t* scenarioLabel = lv_label_create(scenarioContainer);
+    lv_obj_t* scenarioLabel = lv_label_create(container);
     lv_label_set_text(scenarioLabel, "Scenario:");
+    lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xFFFFFF), 0);
 
     // Scenario dropdown.
-    scenarioDropdown_ = LVGLBuilder::dropdown(scenarioContainer)
+    scenarioDropdown_ = LVGLBuilder::dropdown(container)
                             .options("Sandbox\nDam Break\nEmpty\nFalling Dirt\nRaining\nTree "
                                      "Germination\nWater Equalization")
                             .selected(0) // "Sandbox" selected by default.
-                            .size(LV_PCT(90), 40)
+                            .size(LV_PCT(95), 40)
                             .buildOrLog();
 
     if (scenarioDropdown_) {
-        LOG_INFO(Controls, "Scenario dropdown created successfully");
-
         // Style the dropdown button (light green background, dark purple text).
         lv_obj_set_style_bg_color(
             scenarioDropdown_, lv_color_hex(0x90EE90), LV_PART_MAIN); // Light green.
@@ -68,28 +179,79 @@ SimPlayground::SimPlayground(
         lv_obj_set_user_data(scenarioDropdown_, this);
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
-    else {
-        LOG_ERROR(Controls, "Failed to create scenario dropdown!");
+
+    // Create sandbox controls if we're in sandbox scenario.
+    if (currentScenarioId_ == "sandbox") {
+        // We'll recreate this when we get world data with the config.
     }
-
-    // Create cell renderer for world display.
-    renderer_ = std::make_unique<CellRenderer>();
-
-    // Create neural grid renderer for tree vision display.
-    neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
-
-    LOG_INFO(Controls, "Initialized");
 }
 
-SimPlayground::~SimPlayground()
+void SimPlayground::createGeneralPhysicsPanel(lv_obj_t* container)
 {
-    LOG_INFO(Controls, "Destroyed");
+    LOG_DEBUG(Controls, "Creating General Physics panel");
+
+    // Create a title.
+    lv_obj_t* title = lv_label_create(container);
+    lv_label_set_text(title, "General Physics");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+
+    // For now, create the full PhysicsControls.
+    // TODO: Split into separate panels.
+    physicsControls_ = std::make_unique<PhysicsControls>(container, wsService_);
+}
+
+void SimPlayground::createPressurePanel(lv_obj_t* container)
+{
+    LOG_DEBUG(Controls, "Creating Pressure panel");
+
+    // Create a title.
+    lv_obj_t* title = lv_label_create(container);
+    lv_label_set_text(title, "Pressure Settings");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+
+    // Placeholder - will be extracted from PhysicsControls.
+    lv_obj_t* placeholder = lv_label_create(container);
+    lv_label_set_text(placeholder, "(Pressure controls\ncoming soon)");
+    lv_obj_set_style_text_color(placeholder, lv_color_hex(0xAAAAAA), 0);
+}
+
+void SimPlayground::createForcesPanel(lv_obj_t* container)
+{
+    LOG_DEBUG(Controls, "Creating Forces panel");
+
+    // Create a title.
+    lv_obj_t* title = lv_label_create(container);
+    lv_label_set_text(title, "Forces & Friction");
+    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+
+    // Placeholder - will be extracted from PhysicsControls.
+    lv_obj_t* placeholder = lv_label_create(container);
+    lv_label_set_text(placeholder, "(Forces controls\ncoming soon)");
+    lv_obj_set_style_text_color(placeholder, lv_color_hex(0xAAAAAA), 0);
 }
 
 void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
 {
-    // Update stats display.
-    coreControls_->updateStats(data.fps_server, uiFPS);
+    // Update stats display if core panel is active.
+    if (coreControls_) {
+        coreControls_->updateStats(data.fps_server, uiFPS);
+    }
+
+    // Track tree existence for icon visibility.
+    bool treeNowExists = data.tree_vision.has_value();
+    if (treeNowExists != treeExists_) {
+        treeExists_ = treeNowExists;
+
+        // Update tree icon visibility.
+        IconRail* iconRail = uiManager_->getIconRail();
+        if (iconRail) {
+            iconRail->setTreeIconVisible(treeExists_);
+            LOG_INFO(Controls, "Tree icon visibility: {}", treeExists_);
+        }
+    }
 
     // Handle scenario changes.
     if (data.scenario_id != currentScenarioId_) {
@@ -98,19 +260,23 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
         // Clear old scenario controls.
         sandboxControls_.reset();
 
-        // Create new scenario controls based on scenario type.
-        if (data.scenario_id == "sandbox") {
-            lv_obj_t* scenarioContainer = uiManager_->getScenarioControlsContainer();
-            const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
-            sandboxControls_ =
-                std::make_unique<SandboxControls>(scenarioContainer, wsService_, config);
+        // If scenario panel is active, recreate sandbox controls.
+        if (activePanel_ == IconId::SCENARIO && data.scenario_id == "sandbox") {
+            ExpandablePanel* panel = uiManager_->getExpandablePanel();
+            if (panel) {
+                lv_obj_t* container = panel->getContentArea();
+                if (container) {
+                    const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
+                    sandboxControls_ =
+                        std::make_unique<SandboxControls>(container, wsService_, config);
+                }
+            }
         }
-        // TODO: Add other scenario control creators here.
 
         currentScenarioId_ = data.scenario_id;
     }
 
-    // Always update controls with latest config (idempotent, detects changes internally).
+    // Always update sandbox controls with latest config.
     if (data.scenario_id == "sandbox" && sandboxControls_
         && std::holds_alternative<SandboxConfig>(data.scenario_config)) {
         const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
@@ -141,17 +307,17 @@ void SimPlayground::setRenderMode(RenderMode mode)
 
 void SimPlayground::renderNeuralGrid(const WorldData& data)
 {
+    // Only render if neural grid is visible.
+    if (!uiManager_->isNeuralGridVisible()) {
+        return;
+    }
+
     lv_obj_t* neuralGridContainer = uiManager_->getNeuralGridDisplayArea();
 
-    // Adjust layout based on plant presence.
     if (data.tree_vision.has_value()) {
-        // Plant exists: 50/50 split.
-        uiManager_->setDisplayAreaRatio(1, 1);
         neuralGridRenderer_->renderSensoryData(data.tree_vision.value(), neuralGridContainer);
     }
     else {
-        // No plant: 90/10 split (world gets more space).
-        uiManager_->setDisplayAreaRatio(9, 1);
         neuralGridRenderer_->renderEmpty(neuralGridContainer);
     }
 }

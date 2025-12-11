@@ -365,6 +365,8 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/rendering/WebRtcStreamer.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
+    src/ui/controls/ExpandablePanel.cpp
+    src/ui/controls/IconRail.cpp
     src/ui/controls/PhysicsControls.cpp
     src/ui/controls/SandboxControls.cpp
     src/ui/ui_builders/LVGLBuilder.cpp

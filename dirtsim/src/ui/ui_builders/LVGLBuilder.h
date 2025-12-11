@@ -4,7 +4,9 @@
 #include "lvgl/lvgl.h"
 #include <cmath>
 #include <functional>
+#include <initializer_list>
 #include <string>
+#include <vector>
 
 /**
  * LVGLBuilder provides a fluent interface for creating LVGL UI elements
@@ -323,6 +325,124 @@ public:
     };
 
     /**
+     * @brief IconId - Identifiers for icons in an IconRail.
+     */
+    enum class IconId { CORE = 0, SCENARIO, GENERAL, PRESSURE, FORCES, TREE, COUNT };
+
+    /**
+     * @brief IconConfig - Configuration for a single icon in an IconRail.
+     */
+    struct IconConfig {
+        IconId id;
+        const char* symbol;  // LV_SYMBOL_* or text.
+        const char* tooltip; // Description for accessibility.
+    };
+
+    /**
+     * @brief IconRailBuilder - Creates a vertical column of icon buttons.
+     *
+     * Layout: Vertical stack of square icon buttons.
+     * Only one icon can be selected at a time (radio-button behavior).
+     */
+    class IconRailBuilder {
+    public:
+        explicit IconRailBuilder(lv_obj_t* parent);
+
+        // Configuration.
+        IconRailBuilder& width(int w);
+        IconRailBuilder& iconSize(int size);
+        IconRailBuilder& icons(std::initializer_list<IconConfig> iconList);
+        IconRailBuilder& backgroundColor(uint32_t color);
+        IconRailBuilder& selectedColor(uint32_t color);
+        IconRailBuilder& iconColor(uint32_t color);
+        IconRailBuilder& gap(int pixels);
+        IconRailBuilder& onSelect(lv_event_cb_t cb, void* user_data = nullptr);
+
+        // Build the icon rail.
+        Result<lv_obj_t*, std::string> build();
+
+        // Build with automatic error logging (returns container or nullptr).
+        lv_obj_t* buildOrLog();
+
+        // Access to created objects.
+        lv_obj_t* getContainer() const { return container_; }
+        lv_obj_t* getIconButton(IconId id) const;
+
+        // Post-build methods for runtime control.
+        void setIconVisible(IconId id, bool visible);
+        void setSelectedIcon(IconId id);
+        IconId getSelectedIcon() const;
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_;
+        std::vector<IconConfig> icons_;
+        std::vector<lv_obj_t*> buttons_;
+
+        int width_ = 48;
+        int icon_size_ = 44;
+        int gap_ = 4;
+        uint32_t bg_color_ = 0x303030;
+        uint32_t selected_color_ = 0x0066CC;
+        uint32_t icon_color_ = 0xFFFFFF;
+        lv_event_cb_t select_callback_ = nullptr;
+        void* user_data_ = nullptr;
+        IconId selected_id_ = IconId::COUNT; // None selected initially.
+
+        Result<lv_obj_t*, std::string> createIconRail();
+    };
+
+    /**
+     * @brief IconButtonBuilder - Creates a square icon button for icon rails/toolbars.
+     *
+     * Layout: Square button with centered icon (symbol or text).
+     * Supports toggle state for showing selection.
+     */
+    class IconButtonBuilder {
+    public:
+        explicit IconButtonBuilder(lv_obj_t* parent);
+
+        // Configuration.
+        IconButtonBuilder& icon(const char* symbol);  // LV_SYMBOL_* or emoji text.
+        IconButtonBuilder& size(int dimension);       // Square button (width = height).
+        IconButtonBuilder& tooltip(const char* text); // Tooltip text (stored, not displayed yet).
+        IconButtonBuilder& toggleable(bool enabled);  // Can be selected/deselected.
+        IconButtonBuilder& selected(bool isSelected); // Initial selection state.
+        IconButtonBuilder& backgroundColor(uint32_t color);
+        IconButtonBuilder& selectedColor(uint32_t color);
+        IconButtonBuilder& iconColor(uint32_t color);
+        IconButtonBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        // Build the icon button.
+        Result<lv_obj_t*, std::string> build();
+
+        // Build with automatic error logging (returns button or nullptr).
+        lv_obj_t* buildOrLog();
+
+        // Access to created objects.
+        lv_obj_t* getButton() const { return button_; }
+        lv_obj_t* getIconLabel() const { return icon_label_; }
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* button_;
+        lv_obj_t* icon_label_;
+
+        std::string icon_text_ = LV_SYMBOL_SETTINGS;
+        std::string tooltip_text_;
+        int size_ = 48;
+        bool toggleable_ = false;
+        bool selected_ = false;
+        uint32_t bg_color_ = 0x404040;
+        uint32_t selected_color_ = 0x0066CC;
+        uint32_t icon_color_ = 0xFFFFFF;
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createIconButton();
+    };
+
+    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -391,6 +511,8 @@ public:
     static ButtonBuilder button(lv_obj_t* parent);
     static LabelBuilder label(lv_obj_t* parent);
     static DropdownBuilder dropdown(lv_obj_t* parent);
+    static IconButtonBuilder iconButton(lv_obj_t* parent);
+    static IconRailBuilder iconRail(lv_obj_t* parent);
     static LabeledSwitchBuilder labeledSwitch(lv_obj_t* parent);
     static ToggleSliderBuilder toggleSlider(lv_obj_t* parent);
     static CollapsiblePanelBuilder collapsiblePanel(lv_obj_t* parent);

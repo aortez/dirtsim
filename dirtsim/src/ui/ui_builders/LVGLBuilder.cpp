@@ -1057,6 +1057,480 @@ lv_obj_t* LVGLBuilder::ToggleSliderBuilder::buildOrLog()
 }
 
 // ============================================================================
+// IconRailBuilder Implementation.
+// ============================================================================
+
+// State structure for icon rail radio-button behavior.
+struct IconRailState {
+    std::vector<lv_obj_t*>* buttons;
+    std::vector<LVGLBuilder::IconConfig>* icons;
+    LVGLBuilder::IconId selected_id;
+    uint32_t bg_color;
+    uint32_t selected_color;
+    lv_event_cb_t user_callback;
+    void* user_data;
+};
+
+static void iconRailButtonClickCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    IconRailState* state = static_cast<IconRailState*>(lv_event_get_user_data(e));
+
+    if (!state || !state->buttons || !state->icons) return;
+
+    // Find which button was clicked.
+    LVGLBuilder::IconId clicked_id = LVGLBuilder::IconId::COUNT;
+    for (size_t i = 0; i < state->buttons->size(); i++) {
+        if ((*state->buttons)[i] == btn) {
+            clicked_id = (*state->icons)[i].id;
+            break;
+        }
+    }
+
+    if (clicked_id == LVGLBuilder::IconId::COUNT) return;
+
+    // If clicking already-selected icon, deselect it (toggle off).
+    if (clicked_id == state->selected_id) {
+        // Deselect current.
+        lv_obj_set_style_bg_color(btn, lv_color_hex(state->bg_color), 0);
+        state->selected_id = LVGLBuilder::IconId::COUNT;
+    }
+    else {
+        // Deselect previous.
+        if (state->selected_id != LVGLBuilder::IconId::COUNT) {
+            for (size_t i = 0; i < state->icons->size(); i++) {
+                if ((*state->icons)[i].id == state->selected_id) {
+                    lv_obj_set_style_bg_color(
+                        (*state->buttons)[i], lv_color_hex(state->bg_color), 0);
+                    break;
+                }
+            }
+        }
+
+        // Select new.
+        lv_obj_set_style_bg_color(btn, lv_color_hex(state->selected_color), 0);
+        state->selected_id = clicked_id;
+    }
+
+    // Call user callback if provided.
+    if (state->user_callback) {
+        state->user_callback(e);
+    }
+}
+
+static void iconRailDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+
+    IconRailState* state = static_cast<IconRailState*>(lv_event_get_user_data(e));
+    if (state) {
+        delete state->buttons;
+        delete state->icons;
+        delete state;
+    }
+}
+
+LVGLBuilder::IconRailBuilder::IconRailBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr)
+{}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::iconSize(int size)
+{
+    icon_size_ = size;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::icons(
+    std::initializer_list<IconConfig> iconList)
+{
+    icons_ = std::vector<IconConfig>(iconList);
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::backgroundColor(uint32_t color)
+{
+    bg_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::selectedColor(uint32_t color)
+{
+    selected_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::iconColor(uint32_t color)
+{
+    icon_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::gap(int pixels)
+{
+    gap_ = pixels;
+    return *this;
+}
+
+LVGLBuilder::IconRailBuilder& LVGLBuilder::IconRailBuilder::onSelect(
+    lv_event_cb_t cb, void* user_data)
+{
+    select_callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::IconRailBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "IconRailBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    if (icons_.empty()) {
+        std::string error = "IconRailBuilder: no icons configured";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createIconRail();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug(
+        "IconRailBuilder: Successfully created icon rail with {} icons", icons_.size());
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::IconRailBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("IconRailBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+lv_obj_t* LVGLBuilder::IconRailBuilder::getIconButton(IconId id) const
+{
+    for (size_t i = 0; i < icons_.size(); i++) {
+        if (icons_[i].id == id && i < buttons_.size()) {
+            return buttons_[i];
+        }
+    }
+    return nullptr;
+}
+
+void LVGLBuilder::IconRailBuilder::setIconVisible(IconId id, bool visible)
+{
+    lv_obj_t* btn = getIconButton(id);
+    if (btn) {
+        if (visible) {
+            lv_obj_clear_flag(btn, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(btn, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+void LVGLBuilder::IconRailBuilder::setSelectedIcon(IconId id)
+{
+    // Deselect current.
+    if (selected_id_ != IconId::COUNT) {
+        lv_obj_t* oldBtn = getIconButton(selected_id_);
+        if (oldBtn) {
+            lv_obj_set_style_bg_color(oldBtn, lv_color_hex(bg_color_), 0);
+        }
+    }
+
+    // Select new.
+    selected_id_ = id;
+    if (id != IconId::COUNT) {
+        lv_obj_t* newBtn = getIconButton(id);
+        if (newBtn) {
+            lv_obj_set_style_bg_color(newBtn, lv_color_hex(selected_color_), 0);
+        }
+    }
+}
+
+LVGLBuilder::IconId LVGLBuilder::IconRailBuilder::getSelectedIcon() const
+{
+    return selected_id_;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::IconRailBuilder::createIconRail()
+{
+    // Create container.
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "IconRailBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Style the container.
+    lv_obj_set_size(container_, width_, LV_PCT(100));
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(container_, (width_ - icon_size_) / 2, 0);
+    lv_obj_set_style_pad_row(container_, gap_, 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(bg_color_), 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_radius(container_, 0, 0);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create state for callbacks (heap allocated, will be cleaned up on delete).
+    auto* persistentIcons = new std::vector<IconConfig>(icons_);
+    auto* persistentButtons = new std::vector<lv_obj_t*>();
+    IconRailState* state = new IconRailState{
+        persistentButtons, persistentIcons,  selected_id_,     bg_color_,
+        selected_color_,   select_callback_, user_data_
+    };
+
+    // Create icon buttons.
+    for (const auto& iconConfig : icons_) {
+        lv_obj_t* btn = lv_btn_create(container_);
+        if (!btn) {
+            spdlog::warn("IconRailBuilder: Failed to create button for icon {}", iconConfig.tooltip);
+            continue;
+        }
+
+        // Style the button.
+        lv_obj_set_size(btn, icon_size_, icon_size_);
+        lv_obj_set_style_bg_color(btn, lv_color_hex(bg_color_), 0);
+        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
+        lv_obj_set_style_radius(btn, 8, 0);
+        lv_obj_set_style_border_width(btn, 0, 0);
+        lv_obj_set_style_pad_all(btn, 0, 0);
+
+        // Pressed state.
+        lv_obj_set_style_bg_color(btn, lv_color_hex(0x555555), LV_STATE_PRESSED);
+
+        // Create icon label.
+        lv_obj_t* label = lv_label_create(btn);
+        lv_label_set_text(label, iconConfig.symbol);
+        lv_obj_set_style_text_color(label, lv_color_hex(icon_color_), 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+        lv_obj_center(label);
+
+        // Add click callback.
+        lv_obj_add_event_cb(btn, iconRailButtonClickCallback, LV_EVENT_CLICKED, state);
+
+        buttons_.push_back(btn);
+        persistentButtons->push_back(btn);
+    }
+
+    // Add cleanup callback to container.
+    lv_obj_add_event_cb(container_, iconRailDeleteCallback, LV_EVENT_DELETE, state);
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+// ============================================================================
+// IconButtonBuilder Implementation.
+// ============================================================================
+
+// State structure for icon button toggle behavior.
+struct IconButtonState {
+    uint32_t bg_color;
+    uint32_t selected_color;
+    bool is_selected;
+};
+
+static void iconButtonClickCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    IconButtonState* state = static_cast<IconButtonState*>(lv_obj_get_user_data(btn));
+
+    if (!state) return;
+
+    // Toggle selection state.
+    state->is_selected = !state->is_selected;
+
+    // Update background color based on selection.
+    if (state->is_selected) {
+        lv_obj_set_style_bg_color(btn, lv_color_hex(state->selected_color), 0);
+    }
+    else {
+        lv_obj_set_style_bg_color(btn, lv_color_hex(state->bg_color), 0);
+    }
+}
+
+static void iconButtonDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    IconButtonState* state = static_cast<IconButtonState*>(lv_obj_get_user_data(btn));
+    delete state;
+}
+
+LVGLBuilder::IconButtonBuilder::IconButtonBuilder(lv_obj_t* parent)
+    : parent_(parent), button_(nullptr), icon_label_(nullptr)
+{}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::icon(const char* symbol)
+{
+    if (symbol) {
+        icon_text_ = symbol;
+    }
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::size(int dimension)
+{
+    size_ = dimension;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::tooltip(const char* text)
+{
+    if (text) {
+        tooltip_text_ = text;
+    }
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::toggleable(bool enabled)
+{
+    toggleable_ = enabled;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::selected(bool isSelected)
+{
+    selected_ = isSelected;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::backgroundColor(uint32_t color)
+{
+    bg_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::selectedColor(uint32_t color)
+{
+    selected_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::iconColor(uint32_t color)
+{
+    icon_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::IconButtonBuilder& LVGLBuilder::IconButtonBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::IconButtonBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "IconButtonBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createIconButton();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug(
+        "IconButtonBuilder: Successfully created icon button '{}' ({}x{})",
+        icon_text_,
+        size_,
+        size_);
+
+    return Result<lv_obj_t*, std::string>::okay(button_);
+}
+
+lv_obj_t* LVGLBuilder::IconButtonBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("IconButtonBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::IconButtonBuilder::createIconButton()
+{
+    // Create the button.
+    button_ = lv_btn_create(parent_);
+    if (!button_) {
+        std::string error = "IconButtonBuilder: Failed to create button object";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Set square size.
+    lv_obj_set_size(button_, size_, size_);
+
+    // Style the button.
+    uint32_t initial_bg = selected_ ? selected_color_ : bg_color_;
+    lv_obj_set_style_bg_color(button_, lv_color_hex(initial_bg), 0);
+    lv_obj_set_style_bg_opa(button_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(button_, 8, 0);
+    lv_obj_set_style_border_width(button_, 0, 0);
+    lv_obj_set_style_pad_all(button_, 0, 0);
+
+    // Pressed state - slightly darker.
+    lv_obj_set_style_bg_color(button_, lv_color_hex(0x333333), LV_STATE_PRESSED);
+
+    // Create icon label centered in button.
+    icon_label_ = lv_label_create(button_);
+    if (!icon_label_) {
+        std::string error = "IconButtonBuilder: Failed to create icon label";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    lv_label_set_text(icon_label_, icon_text_.c_str());
+    lv_obj_set_style_text_color(icon_label_, lv_color_hex(icon_color_), 0);
+    lv_obj_set_style_text_font(icon_label_, &lv_font_montserrat_20, 0);
+    lv_obj_center(icon_label_);
+
+    // Set up toggle behavior if enabled.
+    if (toggleable_) {
+        IconButtonState* state = new IconButtonState{ bg_color_, selected_color_, selected_ };
+        lv_obj_set_user_data(button_, state);
+        lv_obj_add_event_cb(button_, iconButtonClickCallback, LV_EVENT_CLICKED, nullptr);
+        lv_obj_add_event_cb(button_, iconButtonDeleteCallback, LV_EVENT_DELETE, nullptr);
+    }
+
+    // Add user callback if provided.
+    if (callback_) {
+        lv_obj_add_event_cb(button_, callback_, LV_EVENT_CLICKED, user_data_);
+    }
+
+    return Result<lv_obj_t*, std::string>::okay(button_);
+}
+
+// ============================================================================
 // CollapsiblePanelBuilder Implementation.
 // ============================================================================
 
@@ -1311,6 +1785,16 @@ LVGLBuilder::LabelBuilder LVGLBuilder::label(lv_obj_t* parent)
 LVGLBuilder::DropdownBuilder LVGLBuilder::dropdown(lv_obj_t* parent)
 {
     return DropdownBuilder(parent);
+}
+
+LVGLBuilder::IconButtonBuilder LVGLBuilder::iconButton(lv_obj_t* parent)
+{
+    return IconButtonBuilder(parent);
+}
+
+LVGLBuilder::IconRailBuilder LVGLBuilder::iconRail(lv_obj_t* parent)
+{
+    return IconRailBuilder(parent);
 }
 
 LVGLBuilder::LabeledSwitchBuilder LVGLBuilder::labeledSwitch(lv_obj_t* parent)

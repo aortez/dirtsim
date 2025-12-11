@@ -444,7 +444,38 @@ Can be found here:
 
 ## Development Status
 
-### Current Focus: Tree Organisms (Phase 2 Complete, Phase 3 Next)
+### Current Focus: Icon-Based UI for HyperPixel 4.0 (In Progress)
+
+**Completed:**
+- ✅ IconButtonBuilder & IconRailBuilder fluent API in LVGLBuilder
+- ✅ IconRail component (48px wide vertical icon column)
+- ✅ ExpandablePanel component (250px slide-out panel)
+- ✅ UiComponentManager refactored for icon-based layout
+- ✅ SimPlayground panel switching infrastructure
+- ✅ Core panel (⚙️) - Quit, stats, debug, render mode controls working
+- ✅ Scenario panel (🎬) - Scenario dropdown + sandbox controls working
+- ✅ Tree icon (🌳) - Shows/hides based on tree presence, toggles neural grid
+
+**In Progress:**
+- Physics panel splitting - Currently General panel shows all PhysicsControls
+- Need to extract: PressurePanel, ForcesPanel from PhysicsControls
+
+**New Layout:**
+```
+Collapsed (default):              Panel Open:
+┌───┬─────────────────────┐     ┌───┬────────┬──────────┐
+│ ⚙ │                     │     │[⚙]│ Panel  │          │
+│ 🎬 │                     │     │ 🎬 │ 250px  │  World   │
+│ 🌍 │   World Display     │     │ 🌍 │        │  ~500px  │
+│ 💧 │   (~750 x 480)      │     │ 💧 │        │          │
+│ ⚡ │                     │     │ ⚡ │        │          │
+│ 🌳 │                     │     │ 🌳 │        │          │
+└───┴─────────────────────┘     └───┴────────┴──────────┘
+```
+
+See `design_docs/icon-rail-ui.md` for full design documentation.
+
+### Tree Organisms (Phase 2 Complete, Phase 3 Next)
 
 **Phase 2 Completed:**
 - ✅ ROOT material type (grips soil, can bend)

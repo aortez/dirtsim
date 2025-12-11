@@ -20,6 +20,10 @@ UiComponentManager::~UiComponentManager()
 {
     SLOG_INFO("UiComponentManager cleanup started");
 
+    // Reset unique_ptrs first (they'll clean up LVGL objects via callbacks).
+    iconRail_.reset();
+    expandablePanel_.reset();
+
     // Clean up any screens we created (not the default one).
     if (simulationScreen && simulationScreen != lv_disp_get_scr_act(display)) {
         cleanupScreen(simulationScreen);
@@ -42,7 +46,7 @@ lv_obj_t* UiComponentManager::getSimulationContainer()
     transitionToScreen(simulationScreen);
 
     // Create layout structure if not already created.
-    if (!simTopRow_) {
+    if (!simMainRow_) {
         createSimulationLayout();
     }
 
@@ -52,19 +56,22 @@ lv_obj_t* UiComponentManager::getSimulationContainer()
 lv_obj_t* UiComponentManager::getCoreControlsContainer()
 {
     getSimulationContainer(); // Ensure layout is created.
-    return simCoreControlsArea_;
+    // Deprecated: return panel content area for backward compatibility.
+    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
 }
 
 lv_obj_t* UiComponentManager::getScenarioControlsContainer()
 {
     getSimulationContainer(); // Ensure layout is created.
-    return simScenarioControlsArea_;
+    // Deprecated: return panel content area for backward compatibility.
+    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
 }
 
 lv_obj_t* UiComponentManager::getPhysicsControlsContainer()
 {
     getSimulationContainer(); // Ensure layout is created.
-    return simPhysicsControlsArea_;
+    // Deprecated: return panel content area for backward compatibility.
+    return expandablePanel_ ? expandablePanel_->getContentArea() : nullptr;
 }
 
 lv_obj_t* UiComponentManager::getWorldDisplayArea()
@@ -87,6 +94,28 @@ void UiComponentManager::setDisplayAreaRatio(uint32_t worldGrow, uint32_t neural
     if (simNeuralGridDisplayArea_) {
         lv_obj_set_flex_grow(simNeuralGridDisplayArea_, neuralGrow);
     }
+}
+
+void UiComponentManager::setNeuralGridVisible(bool visible)
+{
+    if (neuralGridVisible_ == visible) return;
+
+    neuralGridVisible_ = visible;
+
+    if (simNeuralGridDisplayArea_) {
+        if (visible) {
+            lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_HIDDEN);
+            // 50/50 split when visible.
+            setDisplayAreaRatio(1, 1);
+        }
+        else {
+            lv_obj_add_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_HIDDEN);
+            // World gets full width when neural grid hidden.
+            setDisplayAreaRatio(1, 0);
+        }
+    }
+
+    LOG_DEBUG(Controls, "Neural grid visibility: {}", visible);
 }
 
 lv_obj_t* UiComponentManager::getMainMenuContainer()
@@ -164,93 +193,116 @@ void UiComponentManager::createSimulationLayout()
         return;
     }
 
-    // Main container with vertical flex (top row, then bottom panel).
-    lv_obj_set_flex_flow(simulationScreen, LV_FLEX_FLOW_COLUMN);
+    // =========================================================================
+    // NEW LAYOUT: Icon Rail + Expandable Panel + Display Area
+    //
+    // ┌────┬─────────┬──────────────────────────────────┐
+    // │Icon│Expandable│                                  │
+    // │Rail│ Panel   │   World Display (+ Neural Grid)  │
+    // │48px│ 250px   │                                   │
+    // │    │(hidden) │                                   │
+    // └────┴─────────┴──────────────────────────────────┘
+    // =========================================================================
+
+    // Main container - horizontal flex.
+    lv_obj_set_flex_flow(simulationScreen, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         simulationScreen, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_set_style_pad_all(simulationScreen, 0, 0);
     lv_obj_set_style_pad_gap(simulationScreen, 0, 0);
 
-    // Top row: left panel + world display (horizontal layout, grows to fill space above bottom
-    // panel).
-    simTopRow_ = lv_obj_create(simulationScreen);
-    lv_obj_set_width(simTopRow_, LV_PCT(100));
-    lv_obj_set_flex_grow(simTopRow_, 65); // Gets 65% of vertical space.
-    lv_obj_set_flex_flow(simTopRow_, LV_FLEX_FLOW_ROW);
+    // Create main row container (holds everything).
+    simMainRow_ = lv_obj_create(simulationScreen);
+    lv_obj_set_size(simMainRow_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_flow(simMainRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        simTopRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(simTopRow_, 0, 0);
-    lv_obj_set_style_pad_gap(simTopRow_, 0, 0);
-    lv_obj_set_style_border_width(simTopRow_, 0, 0);
-    lv_obj_set_style_bg_opa(simTopRow_, LV_OPA_TRANSP, 0);
+        simMainRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(simMainRow_, 0, 0);
+    lv_obj_set_style_pad_gap(simMainRow_, 0, 0);
+    lv_obj_set_style_border_width(simMainRow_, 0, 0);
+    lv_obj_set_style_bg_opa(simMainRow_, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(simMainRow_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Left panel (260px wide, fills full height of top row).
-    simLeftPanel_ = lv_obj_create(simTopRow_);
-    lv_obj_set_size(simLeftPanel_, 260, LV_PCT(100));
-    lv_obj_set_flex_flow(simLeftPanel_, LV_FLEX_FLOW_COLUMN);
+    // -------------------------------------------------------------------------
+    // Icon Rail (48px wide, full height).
+    // -------------------------------------------------------------------------
+    iconRail_ = std::make_unique<IconRail>(
+        simMainRow_,
+        [this](IconRail::IconId selectedId, IconRail::IconId previousId) {
+            // Handle icon selection changes.
+            LOG_INFO(
+                Controls,
+                "Icon selection changed: {} -> {}",
+                static_cast<int>(previousId),
+                static_cast<int>(selectedId));
+
+            // Tree icon has special behavior - toggles neural grid.
+            if (selectedId == IconRail::IconId::TREE) {
+                setNeuralGridVisible(true);
+                // Don't show expandable panel for tree.
+                if (expandablePanel_) {
+                    expandablePanel_->hide();
+                }
+            }
+            else if (previousId == IconRail::IconId::TREE && selectedId != IconRail::IconId::TREE) {
+                // Switched away from tree - hide neural grid.
+                setNeuralGridVisible(false);
+            }
+
+            // Show/hide expandable panel based on selection.
+            if (expandablePanel_) {
+                if (selectedId != IconRail::IconId::COUNT && selectedId != IconRail::IconId::TREE) {
+                    expandablePanel_->show();
+                }
+                else if (selectedId == IconRail::IconId::COUNT) {
+                    expandablePanel_->hide();
+                }
+            }
+        });
+
+    // -------------------------------------------------------------------------
+    // Expandable Panel (250px wide, hidden by default).
+    // -------------------------------------------------------------------------
+    expandablePanel_ = std::make_unique<ExpandablePanel>(simMainRow_);
+
+    // -------------------------------------------------------------------------
+    // Display Area (world + neural grid, fills remaining space).
+    // -------------------------------------------------------------------------
+    simDisplayArea_ = lv_obj_create(simMainRow_);
+    lv_obj_set_height(simDisplayArea_, LV_PCT(100));
+    lv_obj_set_flex_grow(simDisplayArea_, 1); // Take all remaining horizontal space.
+    lv_obj_set_flex_flow(simDisplayArea_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        simLeftPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(simLeftPanel_, 2, 0);
-    lv_obj_set_style_pad_all(simLeftPanel_, 5, 0);
-    lv_obj_set_style_bg_color(simLeftPanel_, lv_color_hex(0x404040), 0); // Darker gray.
-    lv_obj_set_scroll_dir(simLeftPanel_, LV_DIR_VER);
-    lv_obj_set_scrollbar_mode(simLeftPanel_, LV_SCROLLBAR_MODE_AUTO);
+        simDisplayArea_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(simDisplayArea_, 0, 0);
+    lv_obj_set_style_pad_gap(simDisplayArea_, 0, 0);
+    lv_obj_set_style_border_width(simDisplayArea_, 0, 0);
+    lv_obj_set_style_bg_opa(simDisplayArea_, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(simDisplayArea_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Core controls area (within left panel).
-    simCoreControlsArea_ = lv_obj_create(simLeftPanel_);
-    lv_obj_set_size(simCoreControlsArea_, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(simCoreControlsArea_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(simCoreControlsArea_, 0, 0);
-    lv_obj_set_style_border_width(simCoreControlsArea_, 0, 0);
-    lv_obj_set_style_bg_opa(simCoreControlsArea_, LV_OPA_TRANSP, 0);
-
-    // Scenario controls area (within left panel, below core).
-    simScenarioControlsArea_ = lv_obj_create(simLeftPanel_);
-    lv_obj_set_size(simScenarioControlsArea_, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(simScenarioControlsArea_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_all(simScenarioControlsArea_, 0, 0);
-    lv_obj_set_style_border_width(simScenarioControlsArea_, 0, 0);
-    lv_obj_set_style_bg_opa(simScenarioControlsArea_, LV_OPA_TRANSP, 0);
-
-    // World display area (flex-grow to fill 50% of horizontal space).
-    simWorldDisplayArea_ = lv_obj_create(simTopRow_);
-    lv_obj_set_size(simWorldDisplayArea_, LV_PCT(100), LV_PCT(100)); // Fill parent.
-    lv_obj_set_flex_grow(simWorldDisplayArea_, 1);                   // 50% split with neural grid.
+    // World display area (flex-grow to fill space).
+    simWorldDisplayArea_ = lv_obj_create(simDisplayArea_);
+    lv_obj_set_size(simWorldDisplayArea_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_grow(simWorldDisplayArea_, 1);
     lv_obj_set_style_pad_all(simWorldDisplayArea_, 0, 0);
     lv_obj_set_style_border_width(simWorldDisplayArea_, 0, 0);
     lv_obj_set_style_bg_opa(simWorldDisplayArea_, LV_OPA_TRANSP, 0);
-    lv_obj_clear_flag(simWorldDisplayArea_, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling.
+    lv_obj_clear_flag(simWorldDisplayArea_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Neural grid display area (flex-grow to fill remaining 50% of horizontal space).
-    simNeuralGridDisplayArea_ = lv_obj_create(simTopRow_);
-    lv_obj_set_size(simNeuralGridDisplayArea_, LV_PCT(100), LV_PCT(100)); // Fill parent.
-    lv_obj_set_flex_grow(simNeuralGridDisplayArea_, 1); // 50% split with world view.
+    // Neural grid display area (hidden by default).
+    simNeuralGridDisplayArea_ = lv_obj_create(simDisplayArea_);
+    lv_obj_set_size(simNeuralGridDisplayArea_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_grow(simNeuralGridDisplayArea_, 1);
     lv_obj_set_style_pad_all(simNeuralGridDisplayArea_, 5, 0);
     lv_obj_set_style_border_width(simNeuralGridDisplayArea_, 1, 0);
     lv_obj_set_style_border_color(simNeuralGridDisplayArea_, lv_color_hex(0x606060), 0);
-    lv_obj_set_style_bg_color(
-        simNeuralGridDisplayArea_, lv_color_hex(0x303030), 0);            // Dark background.
-    lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_SCROLLABLE); // Disable scrolling.
+    lv_obj_set_style_bg_color(simNeuralGridDisplayArea_, lv_color_hex(0x303030), 0);
+    lv_obj_clear_flag(simNeuralGridDisplayArea_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // CellRenderer uses absolute positioning and calculates centering offset.
+    // Start with neural grid hidden.
+    setNeuralGridVisible(false);
 
-    // Bottom panel: physics controls (3-column horizontal layout).
-    simBottomPanel_ = lv_obj_create(simulationScreen);
-    lv_obj_set_width(simBottomPanel_, LV_PCT(100));
-    lv_obj_set_flex_grow(simBottomPanel_, 30); // Gets 35% of vertical space.
-    lv_obj_set_flex_flow(simBottomPanel_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        simBottomPanel_, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(simBottomPanel_, 5, 0);
-    lv_obj_set_style_pad_gap(simBottomPanel_, 10, 0);
-    lv_obj_set_style_bg_color(simBottomPanel_, lv_color_hex(0x404040), 0); // Darker gray.
-    lv_obj_set_scroll_dir(simBottomPanel_, LV_DIR_ALL); // Scroll both directions if needed.
-    lv_obj_set_scrollbar_mode(simBottomPanel_, LV_SCROLLBAR_MODE_AUTO);
-
-    // Physics controls area (the bottom panel itself, for now - could subdivide into 3 columns).
-    simPhysicsControlsArea_ = simBottomPanel_;
-
-    SLOG_INFO("UiComponentManager: Created simulation layout structure");
+    SLOG_INFO("UiComponentManager: Created icon-based simulation layout");
 }
 
 } // namespace Ui

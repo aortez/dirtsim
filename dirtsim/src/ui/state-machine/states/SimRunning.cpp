@@ -44,8 +44,13 @@ void SimRunning::onEnter(StateMachine& sm)
 
     // Create playground if not already created.
     if (!playground_) {
+        // Ensure simulation layout is created first (this creates the IconRail).
+        sm.getUiComponentManager()->getSimulationContainer();
+
+        // Now create playground and connect to IconRail.
         playground_ = std::make_unique<SimPlayground>(
             sm.getUiComponentManager(), &sm.getWebSocketService(), sm);
+        playground_->connectToIconRail();
         LOG_INFO(State, "Created simulation playground");
     }
 }

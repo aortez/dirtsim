@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/controls/ExpandablePanel.h"
+#include "ui/controls/IconRail.h"
 #include <lvgl.h>
 #include <memory>
 #include <string>
@@ -13,9 +15,19 @@ namespace Ui {
  * UiComponentManager handles LVGL-specific resources like screens and containers,
  * but does NOT own business logic UI components. States own their UI
  * components and use UiComponentManager to get appropriate containers.
+ *
+ * New layout structure (icon-based):
+ * ┌────┬─────────┬──────────────────────────────────┐
+ * │Icon│Expandable│                                  │
+ * │Rail│ Panel   │       World Display Area          │
+ * │48px│ 250px   │       (+ Neural Grid when visible)│
+ * │    │(hidden) │                                   │
+ * └────┴─────────┴──────────────────────────────────┘
  */
 class UiComponentManager {
 public:
+    using IconId = LVGLBuilder::IconId;
+
     explicit UiComponentManager(lv_disp_t* display);
 
     ~UiComponentManager();
@@ -27,22 +39,14 @@ public:
     lv_obj_t* getSimulationContainer();
 
     /**
-     * @brief Get container for core controls (quit, stats, debug).
-     * Creates layout on simulation screen if needed.
+     * @brief Get the icon rail component.
      */
-    lv_obj_t* getCoreControlsContainer();
+    IconRail* getIconRail() { return iconRail_.get(); }
 
     /**
-     * @brief Get container for scenario-specific controls.
-     * Creates layout on simulation screen if needed.
+     * @brief Get the expandable panel component.
      */
-    lv_obj_t* getScenarioControlsContainer();
-
-    /**
-     * @brief Get container for physics parameter controls (3-column bottom panel).
-     * Creates layout on simulation screen if needed.
-     */
-    lv_obj_t* getPhysicsControlsContainer();
+    ExpandablePanel* getExpandablePanel() { return expandablePanel_.get(); }
 
     /**
      * @brief Get container for world display area (canvas grid).
@@ -55,6 +59,17 @@ public:
      * Creates layout on simulation screen if needed.
      */
     lv_obj_t* getNeuralGridDisplayArea();
+
+    /**
+     * @brief Show or hide the neural grid display area.
+     * @param visible True to show (50/50 split with world), false to hide.
+     */
+    void setNeuralGridVisible(bool visible);
+
+    /**
+     * @brief Check if neural grid is currently visible.
+     */
+    bool isNeuralGridVisible() const { return neuralGridVisible_; }
 
     /**
      * @brief Adjust the flex_grow ratio between world and neural grid display areas.
@@ -91,6 +106,29 @@ public:
      */
     void transitionToScreen(lv_obj_t* screen, bool animate = true);
 
+    // =========================================================================
+    // DEPRECATED - These methods exist for backward compatibility during
+    // transition. They return the expandable panel's content area.
+    // =========================================================================
+
+    /**
+     * @brief Get container for core controls.
+     * @deprecated Use getExpandablePanel()->getContentArea() instead.
+     */
+    lv_obj_t* getCoreControlsContainer();
+
+    /**
+     * @brief Get container for scenario-specific controls.
+     * @deprecated Use getExpandablePanel()->getContentArea() instead.
+     */
+    lv_obj_t* getScenarioControlsContainer();
+
+    /**
+     * @brief Get container for physics parameter controls.
+     * @deprecated Use getExpandablePanel()->getContentArea() instead.
+     */
+    lv_obj_t* getPhysicsControlsContainer();
+
 private:
     lv_disp_t* display;
 
@@ -102,15 +140,17 @@ private:
     // Current active screen.
     lv_obj_t* currentScreen = nullptr;
 
-    // Simulation screen layout containers (created lazily).
-    lv_obj_t* simTopRow_ = nullptr;
-    lv_obj_t* simLeftPanel_ = nullptr;
-    lv_obj_t* simCoreControlsArea_ = nullptr;
-    lv_obj_t* simScenarioControlsArea_ = nullptr;
+    // New icon-based layout components.
+    std::unique_ptr<IconRail> iconRail_;
+    std::unique_ptr<ExpandablePanel> expandablePanel_;
+
+    // Simulation screen layout containers.
+    lv_obj_t* simMainRow_ = nullptr;         // Main horizontal row (icon rail + rest).
+    lv_obj_t* simDisplayArea_ = nullptr;     // Contains world + neural grid.
     lv_obj_t* simWorldDisplayArea_ = nullptr;
     lv_obj_t* simNeuralGridDisplayArea_ = nullptr;
-    lv_obj_t* simBottomPanel_ = nullptr;
-    lv_obj_t* simPhysicsControlsArea_ = nullptr;
+
+    bool neuralGridVisible_ = false;
 
     /**
      * @brief Create a screen if it doesn't exist.
