@@ -14,6 +14,9 @@ inherit externalsrc cmake systemd
 EXTERNALSRC = "${THISDIR}/../../../../dirtsim"
 EXTERNALSRC_BUILD = "${WORKDIR}/build"
 
+# Service file (outside EXTERNALSRC, so must be in SRC_URI for proper tracking).
+SRC_URI = "file://sparkle-duck-ui.service"
+
 # Dependencies.
 DEPENDS = " \
     avahi \
@@ -45,9 +48,9 @@ do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${B}/bin/sparkle-duck-ui ${D}${bindir}/
 
-    # Install systemd service.
+    # Install systemd service (from WORKDIR, fetched via SRC_URI).
     install -d ${D}${systemd_system_unitdir}
-    install -m 0644 ${THISDIR}/files/sparkle-duck-ui.service ${D}${systemd_system_unitdir}/
+    install -m 0644 ${WORKDIR}/sparkle-duck-ui.service ${D}${systemd_system_unitdir}/
 }
 
 # Enable the systemd service.
