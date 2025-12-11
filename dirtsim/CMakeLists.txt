@@ -253,6 +253,9 @@ add_library(sparkle-duck-server-lib STATIC
     src/server/api/CellSet.cpp
     src/server/api/DiagramGet.cpp
     src/server/api/Exit.cpp
+    src/server/api/FingerDown.cpp
+    src/server/api/FingerMove.cpp
+    src/server/api/FingerUp.cpp
     src/server/api/GravitySet.cpp
     src/server/api/PeersGet.cpp
     src/server/api/PerfStatsGet.cpp
@@ -366,8 +369,12 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
     src/ui/controls/ExpandablePanel.cpp
+    src/ui/controls/ForcesPanel.cpp
+    src/ui/controls/GeneralPhysicsPanel.cpp
     src/ui/controls/IconRail.cpp
+    src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsControls.cpp
+    src/ui/controls/PressurePanel.cpp
     src/ui/controls/SandboxControls.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
 )

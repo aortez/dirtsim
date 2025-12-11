@@ -3,6 +3,9 @@
 #include "server/api/CellSet.h"
 #include "server/api/DiagramGet.h"
 #include "server/api/Exit.h"
+#include "server/api/FingerDown.h"
+#include "server/api/FingerMove.h"
+#include "server/api/FingerUp.h"
 #include "server/api/GravitySet.h"
 #include "server/api/PeersGet.h"
 #include "server/api/PerfStatsGet.h"
@@ -61,6 +64,15 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::Exit::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Exit::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::FingerDown::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::FingerDown::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::FingerMove::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::FingerMove::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::FingerUp::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::FingerUp::Command::fromJson(cmd));
         }
         else if (commandName == Api::GravitySet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::GravitySet::Command::fromJson(cmd));

@@ -1,14 +1,19 @@
 #include "State.h"
 #include "core/Cell.h"
+#include "core/GridOfCells.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/TreeManager.h"
 #include "server/StateMachine.h"
+#include "server/api/FingerDown.h"
+#include "server/api/FingerMove.h"
+#include "server/api/FingerUp.h"
 #include "server/scenarios/Scenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
+#include <cmath>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -1066,6 +1071,141 @@ State::Any SimRunning::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
     // Transition to Shutdown state (Shutdown.onEnter will set shouldExit flag).
     return Shutdown{};
+}
+
+State::Any SimRunning::onEvent(const Api::FingerDown::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::FingerDown::Response;
+
+    const auto& cmd = cwc.command;
+    spdlog::info(
+        "FingerDown: finger_id={}, pos=({:.2f}, {:.2f}), radius={:.2f}",
+        cmd.finger_id,
+        cmd.world_x,
+        cmd.world_y,
+        cmd.radius);
+
+    // Create or update finger session.
+    FingerSession session;
+    session.last_position = Vector2d{ cmd.world_x, cmd.world_y };
+    session.radius = cmd.radius;
+    session.active = true;
+
+    fingerSessions[cmd.finger_id] = session;
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::FingerMove::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::FingerMove::Response;
+
+    const auto& cmd = cwc.command;
+
+    // Look up finger session.
+    auto it = fingerSessions.find(cmd.finger_id);
+    if (it == fingerSessions.end() || !it->second.active) {
+        spdlog::warn("FingerMove: No active session for finger_id={}", cmd.finger_id);
+        cwc.sendResponse(Response::error(ApiError("No active finger session")));
+        return std::move(*this);
+    }
+
+    if (!world) {
+        cwc.sendResponse(Response::error(ApiError("No world available")));
+        return std::move(*this);
+    }
+
+    FingerSession& session = it->second;
+    Vector2d new_position{ cmd.world_x, cmd.world_y };
+    Vector2d delta = new_position - session.last_position;
+
+    // Only apply force if there's meaningful movement.
+    double delta_magnitude = delta.magnitude();
+    if (delta_magnitude > 0.01) {
+        // Normalize direction and scale force by movement speed.
+        Vector2d force_direction = delta.normalize();
+
+        // Force magnitude scales with drag speed. Tune this constant.
+        constexpr double FORCE_SCALE = 5.0;
+        double force_magnitude = delta_magnitude * FORCE_SCALE;
+
+        // Apply force to all cells within radius of the NEW position.
+        // Use the finger position as center, push outward in drag direction.
+        const auto& grid = world->getData();
+        double radius = session.radius;
+
+        // Calculate bounding box for cells to check.
+        int min_x = static_cast<int>(std::floor(new_position.x - radius));
+        int max_x = static_cast<int>(std::ceil(new_position.x + radius));
+        int min_y = static_cast<int>(std::floor(new_position.y - radius));
+        int max_y = static_cast<int>(std::ceil(new_position.y + radius));
+
+        // Clamp to world bounds.
+        min_x = std::max(0, min_x);
+        max_x = std::min(static_cast<int>(grid.width) - 1, max_x);
+        min_y = std::max(0, min_y);
+        max_y = std::min(static_cast<int>(grid.height) - 1, max_y);
+
+        int cells_affected = 0;
+        for (int cy = min_y; cy <= max_y; ++cy) {
+            for (int cx = min_x; cx <= max_x; ++cx) {
+                // Calculate distance from finger center to cell center.
+                Vector2d cell_center{ cx + 0.5, cy + 0.5 };
+                Vector2d to_cell = cell_center - new_position;
+                double distance = to_cell.magnitude();
+
+                // Only affect cells within radius.
+                if (distance <= radius) {
+                    Cell& cell = world->getData().at(cx, cy);
+
+                    // Skip empty cells and walls.
+                    if (cell.isEmpty() || cell.isWall()) {
+                        continue;
+                    }
+
+                    // Force falloff: stronger at center, weaker at edge.
+                    double falloff = 1.0 - (distance / radius);
+                    falloff = falloff * falloff; // Quadratic falloff for smoother feel.
+
+                    // Apply force in the drag direction.
+                    Vector2d force = force_direction * (force_magnitude * falloff);
+                    cell.addPendingForce(force);
+                    cells_affected++;
+                }
+            }
+        }
+
+        spdlog::debug(
+            "FingerMove: finger_id={}, delta=({:.3f}, {:.3f}), affected {} cells",
+            cmd.finger_id,
+            delta.x,
+            delta.y,
+            cells_affected);
+    }
+
+    // Update session with new position.
+    session.last_position = new_position;
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::FingerUp::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::FingerUp::Response;
+
+    const auto& cmd = cwc.command;
+    spdlog::info("FingerUp: finger_id={}", cmd.finger_id);
+
+    // Remove finger session.
+    auto it = fingerSessions.find(cmd.finger_id);
+    if (it != fingerSessions.end()) {
+        fingerSessions.erase(it);
+    }
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
 }
 
 } // namespace State

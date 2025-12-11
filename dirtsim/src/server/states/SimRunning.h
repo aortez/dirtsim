@@ -1,10 +1,16 @@
 #pragma once
 
 #include "StateForward.h"
+#include "core/Vector2d.h"
 #include "server/Event.h"
+#include "server/api/FingerDown.h"
+#include "server/api/FingerMove.h"
+#include "server/api/FingerUp.h"
 #include "server/scenarios/Scenario.h"
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <unordered_map>
 
 namespace DirtSim {
 
@@ -12,6 +18,15 @@ class World;
 
 namespace Server {
 namespace State {
+
+/**
+ * @brief Tracks an active finger interaction session.
+ */
+struct FingerSession {
+    Vector2d last_position;  // Last known position in world coordinates.
+    double radius;           // Radius of influence in cell units.
+    bool active = false;     // Whether this finger is currently touching.
+};
 
 /**
  * @brief Active simulation state - owns World and Scenario instance.
@@ -35,6 +50,9 @@ struct SimRunning {
     static constexpr double FIXED_TIMESTEP_SECONDS = 0.016; // 16ms = 60 FPS physics.
     std::chrono::steady_clock::time_point lastPhysicsTime;
 
+    // Finger interaction tracking (for touch/mouse pushing).
+    std::unordered_map<uint32_t, FingerSession> fingerSessions;
+
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
 
@@ -46,6 +64,9 @@ struct SimRunning {
     Any onEvent(const DirtSim::Api::CellSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::DiagramGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::Exit::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::FingerDown::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::FingerMove::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::FingerUp::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::GravitySet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::PerfStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);

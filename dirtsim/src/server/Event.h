@@ -4,6 +4,9 @@
 #include "api/CellSet.h"
 #include "api/DiagramGet.h"
 #include "api/Exit.h"
+#include "api/FingerDown.h"
+#include "api/FingerMove.h"
+#include "api/FingerUp.h"
 #include "api/GravitySet.h"
 #include "api/PeersGet.h"
 #include "api/PerfStatsGet.h"
@@ -402,6 +405,9 @@ public:
         DirtSim::Api::CellSet::Cwc,
         DirtSim::Api::DiagramGet::Cwc,
         DirtSim::Api::Exit::Cwc,
+        DirtSim::Api::FingerDown::Cwc,
+        DirtSim::Api::FingerMove::Cwc,
+        DirtSim::Api::FingerUp::Cwc,
         DirtSim::Api::GravitySet::Cwc,
         DirtSim::Api::PeersGet::Cwc,
         DirtSim::Api::PerfStatsGet::Cwc,

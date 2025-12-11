@@ -287,6 +287,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     service.registerHandler<Api::DiagramGet::Cwc>(
         [this](Api::DiagramGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::Exit::Cwc>([this](Api::Exit::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::FingerDown::Cwc>(
+        [this](Api::FingerDown::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::FingerMove::Cwc>(
+        [this](Api::FingerMove::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::FingerUp::Cwc>(
+        [this](Api::FingerUp::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
