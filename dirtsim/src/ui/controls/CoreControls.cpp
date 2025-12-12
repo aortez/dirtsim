@@ -11,7 +11,6 @@
 #include "ui/state-machine/api/RenderModeSelect.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <atomic>
-#include <lvgl/src/misc/lv_palette.h>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -28,23 +27,23 @@ CoreControls::CoreControls(
       eventSink_(eventSink),
       currentRenderMode_(initialMode)
 {
-    // Quit button.
-    quitButton_ = lv_btn_create(container_);
-    lv_obj_set_width(quitButton_, LV_PCT(90));
-    lv_obj_set_style_bg_color(quitButton_, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_t* quitLabel = lv_label_create(quitButton_);
-    lv_label_set_text(quitLabel, "Quit");
-    lv_obj_center(quitLabel);
-    lv_obj_add_event_cb(quitButton_, onQuitClicked, LV_EVENT_CLICKED, this);
+    // Quit button - red with power icon.
+    quitButton_ = LVGLBuilder::button(container_)
+                      .text("Quit")
+                      .icon(LV_SYMBOL_POWER)
+                      .backgroundColor(0xCC0000)
+                      .pressedColor(0x990000)
+                      .callback(onQuitClicked, this)
+                      .buildOrLog();
 
-    // Reset button.
-    resetButton_ = lv_btn_create(container_);
-    lv_obj_set_width(resetButton_, LV_PCT(90));
-    lv_obj_set_style_bg_color(resetButton_, lv_palette_main(LV_PALETTE_ORANGE), 0);
-    lv_obj_t* resetLabel = lv_label_create(resetButton_);
-    lv_label_set_text(resetLabel, "Reset");
-    lv_obj_center(resetLabel);
-    lv_obj_add_event_cb(resetButton_, onResetClicked, LV_EVENT_CLICKED, this);
+    // Reset button - orange with refresh icon.
+    resetButton_ = LVGLBuilder::button(container_)
+                       .text("Reset")
+                       .icon(LV_SYMBOL_REFRESH)
+                       .backgroundColor(0xFF8800)
+                       .pressedColor(0xCC6600)
+                       .callback(onResetClicked, this)
+                       .buildOrLog();
 
     // Stats display.
     statsLabel_ = lv_label_create(container_);

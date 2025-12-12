@@ -21,17 +21,21 @@ SandboxControls::SandboxControls(
     lv_obj_t* scenarioLabel = lv_label_create(container_);
     lv_label_set_text(scenarioLabel, "--- Sandbox ---");
 
-    // Add Seed button.
+    // Add Seed button - green for growth/life.
     addSeedButton_ = LVGLBuilder::button(container_)
-                         .size(LV_PCT(90), 40)
                          .text("Add Seed")
+                         .icon(LV_SYMBOL_PLUS)
+                         .backgroundColor(0x228B22) // Forest green.
+                         .pressedColor(0x186618)
                          .callback(onAddSeedClicked, this)
                          .buildOrLog();
 
-    // Drop Dirt Ball button.
+    // Drop Dirt Ball button - brown/earth tone.
     dropDirtBallButton_ = LVGLBuilder::button(container_)
-                              .size(LV_PCT(90), 40)
-                              .text("Drop Dirt Ball")
+                              .text("Drop Dirt")
+                              .icon(LV_SYMBOL_DOWNLOAD)
+                              .backgroundColor(0x8B4513) // Saddle brown.
+                              .pressedColor(0x5C2E0D)
                               .callback(onDropDirtBallClicked, this)
                               .buildOrLog();
 

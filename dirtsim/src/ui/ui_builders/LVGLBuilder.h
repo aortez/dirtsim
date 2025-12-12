@@ -41,6 +41,34 @@ public:
     };
 
     /**
+     * Shared style constants for consistent control sizing.
+     * Optimized for touch screens (HyperPixel 4.0: 800x480).
+     */
+    struct Style {
+        // Control dimensions.
+        static constexpr int CONTROL_HEIGHT = 56;        // Standard height for buttons/switches.
+        static constexpr int CONTROL_WIDTH = LV_PCT(80); // Standard width (80% of container).
+        static constexpr int RADIUS = 8;                 // Corner radius for rounded controls.
+
+        // Slider dimensions.
+        static constexpr int SLIDER_TRACK_HEIGHT = 20;
+        static constexpr int SLIDER_KNOB_SIZE = 30;
+        static constexpr int SLIDER_KNOB_RADIUS = 15;
+
+        // Switch dimensions.
+        static constexpr int SWITCH_WIDTH = 48;
+        static constexpr int SWITCH_HEIGHT = 32;
+
+        // Fonts.
+        static inline const lv_font_t* CONTROL_FONT = &lv_font_montserrat_16;
+
+        // Padding.
+        static constexpr int PAD_HORIZONTAL = 10; // Left/right padding inside controls.
+        static constexpr int PAD_VERTICAL = 8;    // Top/bottom padding inside controls.
+        static constexpr int GAP = 8;             // Gap between elements inside controls.
+    };
+
+    /**
      * SliderBuilder - Fluent interface for creating sliders with labels and callbacks.
      */
     class SliderBuilder {
@@ -138,6 +166,14 @@ public:
         ButtonBuilder& position(const Position& pos);
         ButtonBuilder& text(const char* text);
 
+        // Styling.
+        ButtonBuilder& backgroundColor(uint32_t color);
+        ButtonBuilder& pressedColor(uint32_t color);
+        ButtonBuilder& textColor(uint32_t color);
+        ButtonBuilder& radius(int px);
+        ButtonBuilder& font(const lv_font_t* font);
+        ButtonBuilder& icon(const char* symbol); // Prefix icon (LV_SYMBOL_* or emoji).
+
         // Button behavior.
         ButtonBuilder& toggle(bool enabled = true);
         ButtonBuilder& checkable(bool enabled = true);
@@ -165,11 +201,22 @@ public:
         Size size_;
         Position position_;
         std::string text_;
+        std::string icon_;
         bool is_toggle_;
         bool is_checkable_;
         lv_event_cb_t callback_;
         void* user_data_;
         lv_event_code_t event_code_;
+
+        // Styling storage.
+        uint32_t bgColor_ = 0;
+        uint32_t pressedColor_ = 0;
+        uint32_t textColor_ = 0xFFFFFF;
+        int radius_ = 0;
+        const lv_font_t* font_ = nullptr;
+        bool hasBgColor_ = false;
+        bool hasPressedColor_ = false;
+        bool hasTextColor_ = false;
 
         Result<lv_obj_t*, std::string> createButton();
         void createLabel();
@@ -238,6 +285,11 @@ public:
         LabeledSwitchBuilder& initialState(bool checked);
         LabeledSwitchBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
 
+        // Sizing (defaults: 80% width, 44px height to match buttons).
+        LabeledSwitchBuilder& size(int width, int height);
+        LabeledSwitchBuilder& height(int h);
+        LabeledSwitchBuilder& width(int w);
+
         // Build the labeled switch (returns the switch object).
         Result<lv_obj_t*, std::string> build();
 
@@ -259,6 +311,10 @@ public:
         bool initial_checked_ = false;
         lv_event_cb_t callback_ = nullptr;
         void* user_data_ = nullptr;
+
+        // Sizing (defaults from Style constants).
+        int width_ = Style::CONTROL_WIDTH;
+        int height_ = Style::CONTROL_HEIGHT;
 
         Result<lv_obj_t*, std::string> createLabeledSwitch();
     };

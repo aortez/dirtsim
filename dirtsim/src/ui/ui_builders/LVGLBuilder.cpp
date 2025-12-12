@@ -339,13 +339,21 @@ LVGLBuilder::ButtonBuilder::ButtonBuilder(lv_obj_t* parent)
     : parent_(parent),
       button_(nullptr),
       label_(nullptr),
-      size_(100, 40),
+      size_(Style::CONTROL_WIDTH, Style::CONTROL_HEIGHT),
       position_(0, 0, LV_ALIGN_TOP_LEFT),
       is_toggle_(false),
       is_checkable_(false),
       callback_(nullptr),
       user_data_(nullptr),
-      event_code_(LV_EVENT_CLICKED)
+      event_code_(LV_EVENT_CLICKED),
+      bgColor_(0),
+      pressedColor_(0),
+      textColor_(0xFFFFFF),
+      radius_(Style::RADIUS),
+      font_(Style::CONTROL_FONT),
+      hasBgColor_(false),
+      hasPressedColor_(false),
+      hasTextColor_(false)
 {}
 
 LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::size(int width, int height)
@@ -404,6 +412,47 @@ LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::callback(lv_event_cb_t c
 LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::events(lv_event_code_t event_code)
 {
     event_code_ = event_code;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::backgroundColor(uint32_t color)
+{
+    bgColor_ = color;
+    hasBgColor_ = true;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::pressedColor(uint32_t color)
+{
+    pressedColor_ = color;
+    hasPressedColor_ = true;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::textColor(uint32_t color)
+{
+    textColor_ = color;
+    hasTextColor_ = true;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::radius(int px)
+{
+    radius_ = px;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::font(const lv_font_t* font)
+{
+    font_ = font;
+    return *this;
+}
+
+LVGLBuilder::ButtonBuilder& LVGLBuilder::ButtonBuilder::icon(const char* symbol)
+{
+    if (symbol) {
+        icon_ = symbol;
+    }
     return *this;
 }
 
@@ -468,6 +517,24 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ButtonBuilder::createButton()
     // Set position.
     lv_obj_align(button_, position_.align, position_.x, position_.y);
 
+    // Clear PRESS_LOCK so users can cancel by dragging away before releasing.
+    // With this cleared, CLICKED only fires if press and release are both on the button.
+    lv_obj_clear_flag(button_, LV_OBJ_FLAG_PRESS_LOCK);
+
+    // Apply background color.
+    if (hasBgColor_) {
+        lv_obj_set_style_bg_color(button_, lv_color_hex(bgColor_), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(button_, LV_OPA_COVER, LV_PART_MAIN);
+    }
+
+    // Apply pressed color (darker state when touched).
+    if (hasPressedColor_) {
+        lv_obj_set_style_bg_color(button_, lv_color_hex(pressedColor_), LV_STATE_PRESSED);
+    }
+
+    // Apply corner radius (always applied, defaults to Style::RADIUS).
+    lv_obj_set_style_radius(button_, radius_, LV_PART_MAIN);
+
     return Result<lv_obj_t*, std::string>::okay(button_);
 }
 
@@ -479,8 +546,26 @@ void LVGLBuilder::ButtonBuilder::createLabel()
         return;
     }
 
-    lv_label_set_text(label_, text_.c_str());
+    // Build label text with optional icon prefix.
+    std::string labelText;
+    if (!icon_.empty()) {
+        labelText = icon_ + " " + text_;
+    }
+    else {
+        labelText = text_;
+    }
+    lv_label_set_text(label_, labelText.c_str());
     lv_obj_center(label_);
+
+    // Apply text color.
+    if (hasTextColor_) {
+        lv_obj_set_style_text_color(label_, lv_color_hex(textColor_), LV_PART_MAIN);
+    }
+
+    // Apply font (always applied, defaults to Style::CONTROL_FONT).
+    if (font_) {
+        lv_obj_set_style_text_font(label_, font_, LV_PART_MAIN);
+    }
 }
 
 void LVGLBuilder::ButtonBuilder::setupBehavior()
@@ -673,6 +758,25 @@ LVGLBuilder::LabeledSwitchBuilder& LVGLBuilder::LabeledSwitchBuilder::callback(
     return *this;
 }
 
+LVGLBuilder::LabeledSwitchBuilder& LVGLBuilder::LabeledSwitchBuilder::size(int width, int height)
+{
+    width_ = width;
+    height_ = height;
+    return *this;
+}
+
+LVGLBuilder::LabeledSwitchBuilder& LVGLBuilder::LabeledSwitchBuilder::height(int h)
+{
+    height_ = h;
+    return *this;
+}
+
+LVGLBuilder::LabeledSwitchBuilder& LVGLBuilder::LabeledSwitchBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
 Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::build()
 {
     return createLabeledSwitch();
@@ -718,24 +822,30 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
         return Result<lv_obj_t*, std::string>::error("Failed to create container");
     }
 
-    lv_obj_set_size(container_, LV_PCT(90), LV_SIZE_CONTENT);
+    // Apply sizing (defaults from Style constants).
+    lv_obj_set_size(container_, width_, height_);
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(container_, 5, 0);    // Padding for better click target.
-    lv_obj_set_style_pad_column(container_, 8, 0); // Gap between switch and label.
+    lv_obj_set_style_pad_left(container_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_right(container_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_column(container_, Style::GAP, 0);
 
     lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
 
-    // Rounded corners.
-    lv_obj_set_style_radius(container_, 5, 0);
+    // Rounded corners (from Style constants).
+    lv_obj_set_style_radius(container_, Style::RADIUS, 0);
 
-    // Create switch.
+    // Clear PRESS_LOCK for cancelable press behavior (like buttons).
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_PRESS_LOCK);
+
+    // Create switch with touch-friendly size.
     switch_ = lv_switch_create(container_);
     if (!switch_) {
         return Result<lv_obj_t*, std::string>::error("Failed to create switch");
     }
+    lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
 
     // Set initial state.
     if (initial_checked_) {
@@ -752,7 +862,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
         label_ = lv_label_create(container_);
         if (label_) {
             lv_label_set_text(label_, label_text_.c_str());
-            lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0); // White text.
+            lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
+            lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
         }
     }
 
@@ -961,39 +1072,50 @@ LVGLBuilder::ToggleSliderBuilder& LVGLBuilder::ToggleSliderBuilder::onSliderChan
 Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSlider()
 {
     // Create container for the whole control group.
+    // Height accommodates: top row (switch height) + gap + slider (with large knob).
+    constexpr int containerHeight = Style::SWITCH_HEIGHT + Style::GAP + Style::SLIDER_KNOB_SIZE + 8;
     container_ = lv_obj_create(parent_);
-    lv_obj_set_size(container_, LV_PCT(90), 60);
-    lv_obj_set_style_pad_all(container_, 8, 0);
-    lv_obj_set_style_border_width(container_, 1, 0);
-    lv_obj_set_style_border_color(container_, lv_color_hex(0x404040), 0);
-    lv_obj_set_style_radius(container_, 5, 0);
+    lv_obj_set_size(container_, Style::CONTROL_WIDTH, containerHeight);
+    lv_obj_set_style_pad_all(container_, Style::GAP, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_radius(container_, Style::RADIUS, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Blue background to match LabeledSwitch theme.
     lv_obj_set_style_bg_color(container_, lv_color_hex(0x0000FF), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
 
-    // Create label (top left).
+    // Create label (top left, vertically centered with switch).
     label_ = lv_label_create(container_);
     lv_label_set_text(label_, label_text_.c_str());
-    lv_obj_align(label_, LV_ALIGN_TOP_LEFT, 0, 0);
-    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_align(label_, LV_ALIGN_TOP_LEFT, 0, (Style::SWITCH_HEIGHT - 16) / 2);
+    lv_obj_set_style_text_color(label_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(label_, Style::CONTROL_FONT, 0);
 
-    // Create switch (top right).
+    // Create switch (top right) - large touch-friendly size.
     switch_ = lv_switch_create(container_);
-    lv_obj_align(switch_, LV_ALIGN_TOP_RIGHT, 0, -5);
-    lv_obj_set_size(switch_, 50, 25);
+    lv_obj_align(switch_, LV_ALIGN_TOP_RIGHT, 0, 0);
+    lv_obj_set_size(switch_, Style::SWITCH_WIDTH, Style::SWITCH_HEIGHT);
 
     if (initially_enabled_) {
         lv_obj_add_state(switch_, LV_STATE_CHECKED);
     }
 
-    // Create slider (below label/switch).
+    // Create slider (below label/switch) - large touch-friendly knob.
     slider_ = lv_slider_create(container_);
-    lv_obj_align(slider_, LV_ALIGN_TOP_LEFT, 0, 30);
-    lv_obj_set_size(slider_, LV_PCT(100), 10);
+    lv_obj_align(slider_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_size(slider_, LV_PCT(100), Style::SLIDER_TRACK_HEIGHT);
     lv_slider_set_range(slider_, range_min_, range_max_);
     lv_slider_set_value(slider_, initially_enabled_ ? initial_value_ : 0, LV_ANIM_OFF);
+
+    // Style the slider knob for easy touch grabbing.
+    lv_obj_set_style_pad_all(slider_, Style::SLIDER_KNOB_SIZE / 2 - Style::SLIDER_TRACK_HEIGHT / 2,
+                             LV_PART_KNOB);
+    lv_obj_set_style_radius(slider_, Style::SLIDER_KNOB_RADIUS, LV_PART_KNOB);
+
+    // Round the track ends.
+    lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(slider_, Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_INDICATOR);
 
     // Set initial color (slider always interactive for auto-enable).
     if (!initially_enabled_) {
@@ -1005,15 +1127,15 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
         lv_obj_set_style_bg_color(slider_, lv_palette_main(LV_PALETTE_BLUE), LV_PART_KNOB);
     }
 
-    // Create value label (above slider).
+    // Create value label (right of label, shows current value).
     valueLabel_ = lv_label_create(container_);
     double scaledValue = (initially_enabled_ ? initial_value_ : 0) * value_scale_;
     char buf[32];
     snprintf(buf, sizeof(buf), value_format_.c_str(), scaledValue);
     lv_label_set_text(valueLabel_, buf);
-    lv_obj_align_to(valueLabel_, slider_, LV_ALIGN_OUT_TOP_MID, 0, -5);
-    lv_obj_set_style_text_font(valueLabel_, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(valueLabel_, lv_color_hex(0xFFFFFF), 0); // White text.
+    lv_obj_align_to(valueLabel_, label_, LV_ALIGN_OUT_RIGHT_MID, Style::GAP, 0);
+    lv_obj_set_style_text_font(valueLabel_, Style::CONTROL_FONT, 0);
+    lv_obj_set_style_text_color(valueLabel_, lv_color_hex(0xFFFFFF), 0);
 
     // Create persistent state for callbacks.
     ToggleSliderState* state =
