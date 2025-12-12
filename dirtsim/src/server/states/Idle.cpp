@@ -121,6 +121,31 @@ State::Any Idle::onEvent(const Api::PeersGet::Cwc& cwc, StateMachine& dsm)
     return Idle{};
 }
 
+State::Any Idle::onEvent(const Api::ScenarioListGet::Cwc& cwc, StateMachine& dsm)
+{
+    auto& registry = dsm.getScenarioRegistry();
+    auto scenarioIds = registry.getScenarioIds();
+
+    Api::ScenarioListGet::Okay response;
+    response.scenarios.reserve(scenarioIds.size());
+
+    for (const auto& id : scenarioIds) {
+        const ScenarioMetadata* metadata = registry.getMetadata(id);
+        if (metadata) {
+            response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
+                .id = id,
+                .name = metadata->name,
+                .description = metadata->description,
+                .category = metadata->category });
+        }
+    }
+
+    LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
+    cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
+
+    return Idle{};
+}
+
 } // namespace State
 } // namespace Server
 } // namespace DirtSim

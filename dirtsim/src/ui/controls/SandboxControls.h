@@ -1,11 +1,11 @@
 #pragma once
 
+#include "ScenarioControlsBase.h"
 #include "core/ScenarioConfig.h"
 #include "lvgl/lvgl.h"
 
 namespace DirtSim {
 
-// Forward declaration.
 namespace Network {
 class WebSocketService;
 }
@@ -17,28 +17,29 @@ namespace Ui {
  *
  * Includes: Add Seed, Drop Dirt Ball, Quadrant, Water Column, Right Throw toggles.
  */
-class SandboxControls {
+class SandboxControls : public ScenarioControlsBase {
 public:
     SandboxControls(
         lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config);
-    ~SandboxControls();
+    ~SandboxControls() override;
 
     /**
-     * @brief Update controls from sandbox configuration.
+     * @brief Update controls from scenario configuration.
      */
-    void updateFromConfig(const SandboxConfig& config);
+    void updateFromConfig(const ScenarioConfig& config) override;
 
     /**
      * @brief Update world dimensions for accurate seed placement.
      */
     void updateWorldDimensions(uint32_t width, uint32_t height);
 
-private:
-    lv_obj_t* container_;
-    Network::WebSocketService* wsService_;
+protected:
+    /**
+     * @brief Create LVGL widgets for sandbox controls.
+     */
+    void createWidgets() override;
 
-    // Flag to prevent updates during initialization
-    bool initializing_ = true;
+private:
 
     // Widgets.
     lv_obj_t* addSeedButton_ = nullptr;
@@ -65,11 +66,6 @@ private:
      * @brief Get the current complete config from all controls.
      */
     SandboxConfig getCurrentConfig() const;
-
-    /**
-     * @brief Send scenario config update to server.
-     */
-    void sendConfigUpdate(const ScenarioConfig& config);
 };
 
 } // namespace Ui

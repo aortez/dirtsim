@@ -1,8 +1,9 @@
 #include "SimPlayground.h"
+#include "ScenarioMetadataCache.h"
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
 #include "controls/PhysicsPanel.h"
-#include "controls/SandboxControls.h"
+#include "controls/ScenarioControlsFactory.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
@@ -115,7 +116,7 @@ void SimPlayground::clearPanelContent()
     // Reset panel-specific controls.
     coreControls_.reset();
     physicsPanel_.reset();
-    sandboxControls_.reset();
+    scenarioControls_.reset();
     scenarioDropdown_ = nullptr;
 
     // Clear the panel's content area.
@@ -144,11 +145,13 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     lv_label_set_text(scenarioLabel, "Scenario:");
     lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xFFFFFF), 0);
 
-    // Scenario dropdown.
+    // Build dropdown from metadata cache.
+    std::string dropdownOptions = ScenarioMetadataCache::buildDropdownOptions();
+    uint16_t selectedIdx = ScenarioMetadataCache::indexFromScenarioId(currentScenarioId_);
+
     scenarioDropdown_ = LVGLBuilder::dropdown(container)
-                            .options("Sandbox\nDam Break\nEmpty\nFalling Dirt\nRaining\nTree "
-                                     "Germination\nWater Equalization")
-                            .selected(0) // "Sandbox" selected by default.
+                            .options(dropdownOptions.c_str())
+                            .selected(selectedIdx)
                             .size(LV_PCT(95), 40)
                             .buildOrLog();
 
@@ -173,12 +176,9 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
-    // Create sandbox controls if we're already in sandbox scenario.
-    if (currentScenarioId_ == "sandbox"
-        && std::holds_alternative<SandboxConfig>(currentScenarioConfig_)) {
-        const SandboxConfig& config = std::get<SandboxConfig>(currentScenarioConfig_);
-        sandboxControls_ = std::make_unique<SandboxControls>(container, wsService_, config);
-    }
+    // Create scenario-specific controls using factory.
+    scenarioControls_ =
+        ScenarioControlsFactory::create(container, wsService_, currentScenarioId_, currentScenarioConfig_);
 }
 
 void SimPlayground::createPhysicsPanel(lv_obj_t* container)
@@ -226,7 +226,7 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
         LOG_INFO(Controls, "Scenario changed to '{}'", data.scenario_id);
 
         // Clear old scenario controls.
-        sandboxControls_.reset();
+        scenarioControls_.reset();
 
         currentScenarioId_ = data.scenario_id;
     }
@@ -234,24 +234,21 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
     // Store the config for use when panel is opened.
     currentScenarioConfig_ = data.scenario_config;
 
-    // Create sandbox controls if scenario panel is active and we're in sandbox mode.
-    if (activePanel_ == IconId::SCENARIO && currentScenarioId_ == "sandbox" && !sandboxControls_) {
+    // Create scenario controls if scenario panel is active and controls don't exist.
+    if (activePanel_ == IconId::SCENARIO && !scenarioControls_) {
         ExpandablePanel* panel = uiManager_->getExpandablePanel();
-        if (panel && std::holds_alternative<SandboxConfig>(currentScenarioConfig_)) {
+        if (panel) {
             lv_obj_t* container = panel->getContentArea();
             if (container) {
-                const SandboxConfig& config = std::get<SandboxConfig>(currentScenarioConfig_);
-                sandboxControls_ = std::make_unique<SandboxControls>(container, wsService_, config);
+                scenarioControls_ = ScenarioControlsFactory::create(
+                    container, wsService_, currentScenarioId_, currentScenarioConfig_);
             }
         }
     }
 
-    // Always update sandbox controls with latest config.
-    if (data.scenario_id == "sandbox" && sandboxControls_
-        && std::holds_alternative<SandboxConfig>(data.scenario_config)) {
-        const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
-        sandboxControls_->updateFromConfig(config);
-        sandboxControls_->updateWorldDimensions(data.width, data.height);
+    // Always update scenario controls with latest config.
+    if (scenarioControls_) {
+        scenarioControls_->updateFromConfig(data.scenario_config);
     }
 }
 
@@ -301,18 +298,8 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
     lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
     uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
 
-    // Map dropdown index to scenario_id (must match dropdown options order).
-    const char* scenarioIds[] = { "sandbox",           "dam_break", "empty",
-                                  "falling_dirt",      "raining",   "tree_germination",
-                                  "water_equalization" };
-
-    constexpr size_t SCENARIO_COUNT = 7;
-    if (selectedIdx >= SCENARIO_COUNT) {
-        LOG_ERROR(Controls, "Invalid scenario index {}", selectedIdx);
-        return;
-    }
-
-    std::string scenario_id = scenarioIds[selectedIdx];
+    // Map dropdown index to scenario_id using metadata cache.
+    std::string scenario_id = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
     LOG_INFO(Controls, "Scenario changed to '{}'", scenario_id);
 
     // Send sim_run command with new scenario_id to DSSM server.

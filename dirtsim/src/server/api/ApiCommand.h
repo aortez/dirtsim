@@ -17,6 +17,7 @@
 #include "RenderFormatSet.h"
 #include "Reset.h"
 #include "ScenarioConfigSet.h"
+#include "ScenarioListGet.h"
 #include "SeedAdd.h"
 #include "SimRun.h"
 #include "SpawnDirtBall.h"
@@ -67,6 +68,7 @@ using ApiCommand = std::variant<
     Api::RenderFormatSet::Command,
     Api::Reset::Command,
     Api::ScenarioConfigSet::Command,
+    Api::ScenarioListGet::Command,
     Api::SeedAdd::Command,
     Api::SimRun::Command,
     Api::SpawnDirtBall::Command,

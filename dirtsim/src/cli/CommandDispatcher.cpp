@@ -26,6 +26,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::RenderFormatSet::Command, Api::RenderFormatSet::Okay>(serverHandlers_);
     registerCommand<Api::Reset::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::ScenarioConfigSet::Command, Api::ScenarioConfigSet::Okay>(serverHandlers_);
+    registerCommand<Api::ScenarioListGet::Command, Api::ScenarioListGet::Okay>(serverHandlers_);
     registerCommand<Api::SeedAdd::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::SimRun::Command, Api::SimRun::Okay>(serverHandlers_);
     registerCommand<Api::SpawnDirtBall::Command, std::monostate>(serverHandlers_);

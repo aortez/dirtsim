@@ -1,6 +1,7 @@
 #include "State.h"
 #include "core/Cell.h"
 #include "core/GridOfCells.h"
+#include "core/LoggingChannels.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
@@ -478,6 +479,31 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     spdlog::info("SimRunning: Scenario config updated for '{}'", world->getData().scenario_id);
 
     cwc.sendResponse(Response::okay({ true }));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::ScenarioListGet::Cwc& cwc, StateMachine& dsm)
+{
+    auto& registry = dsm.getScenarioRegistry();
+    auto scenarioIds = registry.getScenarioIds();
+
+    Api::ScenarioListGet::Okay response;
+    response.scenarios.reserve(scenarioIds.size());
+
+    for (const auto& id : scenarioIds) {
+        const ScenarioMetadata* metadata = registry.getMetadata(id);
+        if (metadata) {
+            response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
+                .id = id,
+                .name = metadata->name,
+                .description = metadata->description,
+                .category = metadata->category });
+        }
+    }
+
+    LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
+    cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
+
     return std::move(*this);
 }
 

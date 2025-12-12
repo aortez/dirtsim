@@ -23,7 +23,7 @@ namespace Ui {
 
 class UiComponentManager;
 class CoreControls;
-class SandboxControls;
+class ScenarioControlsBase;
 class PhysicsPanel;
 class CellRenderer;
 class NeuralGridRenderer;
@@ -93,7 +93,7 @@ private:
 
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;
-    std::unique_ptr<SandboxControls> sandboxControls_;
+    std::unique_ptr<ScenarioControlsBase> scenarioControls_;
     std::unique_ptr<PhysicsPanel> physicsPanel_;
     lv_obj_t* scenarioDropdown_ = nullptr;
 

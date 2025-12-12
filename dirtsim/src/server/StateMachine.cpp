@@ -304,6 +304,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     service.registerHandler<Api::Reset::Cwc>([this](Api::Reset::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ScenarioConfigSet::Cwc>(
         [this](Api::ScenarioConfigSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::ScenarioListGet::Cwc>(
+        [this](Api::ScenarioListGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SeedAdd::Cwc>([this](Api::SeedAdd::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SpawnDirtBall::Cwc>(

@@ -15,14 +15,28 @@ namespace Ui {
 
 SandboxControls::SandboxControls(
     lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config)
-    : container_(container), wsService_(wsService)
+    : ScenarioControlsBase(container, wsService, "sandbox")
+{
+    // Create widgets with initial config.
+    createWidgets();
+
+    // Initialize widget states from config.
+    updateFromConfig(config);
+
+    // Finish initialization - allow callbacks to send updates now.
+    finishInitialization();
+
+    spdlog::info("SandboxControls: Initialized");
+}
+
+void SandboxControls::createWidgets()
 {
     // Scenario label.
-    lv_obj_t* scenarioLabel = lv_label_create(container_);
+    lv_obj_t* scenarioLabel = lv_label_create(controlsContainer_);
     lv_label_set_text(scenarioLabel, "--- Sandbox ---");
 
     // Add Seed button - green for growth/life.
-    addSeedButton_ = LVGLBuilder::button(container_)
+    addSeedButton_ = LVGLBuilder::button(controlsContainer_)
                          .text("Add Seed")
                          .icon(LV_SYMBOL_PLUS)
                          .backgroundColor(0x228B22) // Forest green.
@@ -31,7 +45,7 @@ SandboxControls::SandboxControls(
                          .buildOrLog();
 
     // Drop Dirt Ball button - brown/earth tone.
-    dropDirtBallButton_ = LVGLBuilder::button(container_)
+    dropDirtBallButton_ = LVGLBuilder::button(controlsContainer_)
                               .text("Drop Dirt")
                               .icon(LV_SYMBOL_DOWNLOAD)
                               .backgroundColor(0x8B4513) // Saddle brown.
@@ -40,55 +54,62 @@ SandboxControls::SandboxControls(
                               .buildOrLog();
 
     // Quadrant toggle.
-    quadrantSwitch_ = LVGLBuilder::labeledSwitch(container_)
+    quadrantSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
                           .label("Quadrant")
-                          .initialState(config.quadrant_enabled)
+                          .initialState(false)
                           .callback(onQuadrantToggled, this)
                           .buildOrLog();
 
     // Water column toggle.
-    waterColumnSwitch_ = LVGLBuilder::labeledSwitch(container_)
+    waterColumnSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
                              .label("Water Column")
-                             .initialState(config.water_column_enabled)
+                             .initialState(false)
                              .callback(onWaterColumnToggled, this)
                              .buildOrLog();
 
     // Right throw toggle.
-    rightThrowSwitch_ = LVGLBuilder::labeledSwitch(container_)
+    rightThrowSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
                             .label("Right Throw")
-                            .initialState(config.right_throw_enabled)
+                            .initialState(false)
                             .callback(onRightThrowToggled, this)
                             .buildOrLog();
 
     // Rain toggle slider - fancy control with enable/disable toggle.
-    rainControl_ = LVGLBuilder::toggleSlider(container_)
+    rainControl_ = LVGLBuilder::toggleSlider(controlsContainer_)
                        .label("Rain")
                        .range(0, 100)
-                       .value(static_cast<int>(config.rain_rate * 10))
+                       .value(0)
                        .defaultValue(50)
                        .valueScale(0.1)
                        .valueFormat("%.1f")
-                       .initiallyEnabled(config.rain_rate > 0.0)
+                       .initiallyEnabled(false)
                        .sliderWidth(180)
                        .onToggle(onRainToggled, this)
                        .onSliderChange(onRainSliderChanged, this)
                        .buildOrLog();
-
-    // Initialization complete - allow callbacks to send updates now
-    initializing_ = false;
-
-    spdlog::info("SandboxControls: Initialized");
 }
 
 SandboxControls::~SandboxControls()
 {
+    // Base class handles container deletion.
     spdlog::info("SandboxControls: Destroyed");
 }
 
-void SandboxControls::updateFromConfig(const SandboxConfig& config)
+void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
 {
+    // Extract SandboxConfig from variant.
+    if (!std::holds_alternative<SandboxConfig>(configVariant)) {
+        spdlog::error("SandboxControls: Invalid config type (expected SandboxConfig)");
+        return;
+    }
+
+    const SandboxConfig& config = std::get<SandboxConfig>(configVariant);
+
     // Prevent sending updates back to server during UI sync.
-    initializing_ = true;
+    bool wasInitializing = isInitializing();
+    if (!wasInitializing) {
+        initializing_ = true;
+    }
 
     // Update quadrant switch.
     if (quadrantSwitch_) {
@@ -168,8 +189,10 @@ void SandboxControls::updateFromConfig(const SandboxConfig& config)
         }
     }
 
-    // Re-enable updates.
-    initializing_ = false;
+    // Restore initializing state.
+    if (!wasInitializing) {
+        initializing_ = false;
+    }
 }
 
 void SandboxControls::updateWorldDimensions(uint32_t width, uint32_t height)
@@ -214,45 +237,6 @@ SandboxConfig SandboxControls::getCurrentConfig() const
     }
 
     return config;
-}
-
-void SandboxControls::sendConfigUpdate(const ScenarioConfig& config)
-{
-    if (!wsService_ || !wsService_->isConnected()) return;
-
-    // Track rapid calls.
-    static int updateCount = 0;
-    static auto lastUpdateTime = std::chrono::steady_clock::now();
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - lastUpdateTime).count();
-
-    if (elapsed < 1000) { // Within 1 second
-        updateCount++;
-        if (updateCount > 5) {
-            spdlog::error(
-                "SandboxControls: LOOP DETECTED! {} config updates in {}ms", updateCount, elapsed);
-            // Don't send if we're in a loop
-            return;
-        }
-    }
-    else {
-        updateCount = 1;
-    }
-    lastUpdateTime = now;
-
-    const Api::ScenarioConfigSet::Command cmd{ .config = config };
-
-    spdlog::info(
-        "SandboxControls: Sending config update (update #{} in {}ms)", updateCount, elapsed);
-
-    // Send binary command.
-    static std::atomic<uint64_t> nextId{ 1 };
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
-    if (result.isError()) {
-        spdlog::error("SandboxControls: Failed to send ScenarioConfigSet: {}", result.errorValue());
-    }
 }
 
 void SandboxControls::onAddSeedClicked(lv_event_t* e)

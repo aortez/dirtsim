@@ -265,6 +265,7 @@ add_library(sparkle-duck-server-lib STATIC
     src/server/api/RenderFormatSet.cpp
     src/server/api/Reset.cpp
     src/server/api/ScenarioConfigSet.cpp
+    src/server/api/ScenarioListGet.cpp
     src/server/api/SeedAdd.cpp
     src/server/api/SimRun.cpp
     src/server/api/SpawnDirtBall.cpp
@@ -373,8 +374,12 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsControls.cpp
     src/ui/controls/PhysicsPanel.cpp
+    src/ui/controls/RainingControls.cpp
     src/ui/controls/SandboxControls.cpp
+    src/ui/controls/ScenarioControlsBase.cpp
+    src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/SparklingDuckButton.cpp
+    src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
 )
 target_include_directories(sparkle-duck-ui-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
