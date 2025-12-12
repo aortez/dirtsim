@@ -5,6 +5,7 @@
 #include "server/api/SimRun.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
+#include "ui/controls/SparklingDuckButton.h"
 #include "ui/rendering/JuliaFractal.h"
 #include "ui/state-machine/StateMachine.h"
 #include <lvgl/lvgl.h>
@@ -38,18 +39,13 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_add_event_cb(container, onDisplayResized, LV_EVENT_SIZE_CHANGED, fractal_);
     LOG_INFO(State, "Added resize event handler");
 
-    // Create centered "Start Simulation" button.
-    lv_obj_t* startButton = lv_btn_create(container);
-    lv_obj_set_size(startButton, 200, 60);
-    lv_obj_center(startButton);
-    lv_obj_set_user_data(startButton, &sm);
-    lv_obj_add_event_cb(startButton, onStartButtonClicked, LV_EVENT_CLICKED, nullptr);
+    // Create animated sparkle-duck start button.
+    startButton_ = std::make_unique<SparklingDuckButton>(container, [&sm]() {
+        // Queue event for state machine to process (keep LVGL callback thin).
+        sm.queueEvent(StartButtonClickedEvent{});
+    });
 
-    lv_obj_t* label = lv_label_create(startButton);
-    lv_label_set_text(label, "Start Simulation");
-    lv_obj_center(label);
-
-    LOG_INFO(State, "Created start button");
+    LOG_INFO(State, "Created sparkle-duck start button");
 
     // Create info panel in bottom-left corner.
     infoPanel_ = lv_obj_create(container);
@@ -62,29 +58,29 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_set_style_border_color(infoPanel_, lv_color_hex(0x404040), 0);
     lv_obj_set_style_radius(infoPanel_, 8, 0);
 
-    // Set flex layout for vertical stacking (label on top, button below).
+    // Set flex layout for horizontal stacking (button left, info right).
     lv_obj_set_layout(infoPanel_, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(infoPanel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_flow(infoPanel_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        infoPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+        infoPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_gap(infoPanel_, 15, 0);
 
-    // Create info label.
-    infoLabel_ = lv_label_create(infoPanel_);
-    lv_label_set_text(infoLabel_, "Loading fractal info...");
-    lv_obj_set_style_text_color(infoLabel_, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(infoLabel_, &lv_font_montserrat_14, 0);
-
-    // Create "Next Fractal" button.
+    // Create "Next Fractal" button (left side).
     nextFractalButton_ = lv_btn_create(infoPanel_);
     lv_obj_set_size(nextFractalButton_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_pad_all(nextFractalButton_, 10, 0);
-    lv_obj_set_style_margin_top(nextFractalButton_, 10, 0);
     lv_obj_set_user_data(nextFractalButton_, this);
     lv_obj_add_event_cb(nextFractalButton_, onNextFractalClicked, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t* btnLabel = lv_label_create(nextFractalButton_);
     lv_label_set_text(btnLabel, "Next Fractal");
     lv_obj_center(btnLabel);
+
+    // Create info label (right side).
+    infoLabel_ = lv_label_create(infoPanel_);
+    lv_label_set_text(infoLabel_, "Loading fractal info...");
+    lv_obj_set_style_text_color(infoLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(infoLabel_, &lv_font_montserrat_14, 0);
 
     LOG_INFO(State, "Created fractal info panel");
 
@@ -124,6 +120,9 @@ void StartMenu::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting");
 
+    // Clean up sparkle button.
+    startButton_.reset();
+
     // Clean up fractal.
     if (fractal_) {
         // IMPORTANT: Remove the resize event handler before deleting the fractal.
@@ -145,18 +144,13 @@ void StartMenu::onExit(StateMachine& sm)
     // Screen switch will clean up other widgets automatically.
 }
 
-void StartMenu::onStartButtonClicked(lv_event_t* e)
-{
-    auto* sm = static_cast<StateMachine*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
-    if (!sm) return;
-
-    // Queue event for state machine to process (keep LVGL callback thin).
-    sm->queueEvent(StartButtonClickedEvent{});
-}
-
 void StartMenu::updateAnimations()
 {
+    // Update sparkle button animation.
+    if (startButton_) {
+        startButton_->update();
+    }
+
     if (fractal_) {
         fractal_->update();
 

@@ -369,13 +369,12 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
     src/ui/controls/ExpandablePanel.cpp
-    src/ui/controls/ForcesPanel.cpp
-    src/ui/controls/GeneralPhysicsPanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsControls.cpp
-    src/ui/controls/PressurePanel.cpp
+    src/ui/controls/PhysicsPanel.cpp
     src/ui/controls/SandboxControls.cpp
+    src/ui/controls/SparklingDuckButton.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
 )
 target_include_directories(sparkle-duck-ui-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
