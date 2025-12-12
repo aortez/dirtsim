@@ -655,7 +655,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabelBuilder::build()
 // ============================================================================
 
 LVGLBuilder::DropdownBuilder::DropdownBuilder(lv_obj_t* parent)
-    : parent_(parent), position_(0, 0, LV_ALIGN_TOP_LEFT), size_(150, 40)
+    : parent_(parent), position_(0, 0, LV_ALIGN_TOP_LEFT), size_(Style::CONTROL_WIDTH, Style::CONTROL_HEIGHT)
 {}
 
 LVGLBuilder::DropdownBuilder& LVGLBuilder::DropdownBuilder::options(const char* options)
@@ -1776,13 +1776,18 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
         return Result<lv_obj_t*, std::string>::error(error);
     }
 
-    lv_obj_set_size(header_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(header_, LV_PCT(100), Style::CONTROL_HEIGHT);
     lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(header_, 8, 0);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_left(header_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_right(header_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_ver(header_, 0, 0);  // No vertical padding - let flex centering handle it.
+    lv_obj_set_style_pad_column(header_, Style::GAP, 0);
     lv_obj_set_style_bg_color(header_, lv_color_hex(header_color_), 0);
     lv_obj_set_style_bg_opa(header_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(header_, Style::RADIUS, 0);
     lv_obj_add_flag(header_, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(header_, LV_OBJ_FLAG_PRESS_LOCK);
 
     // Create expand/collapse indicator.
     indicator_ = lv_label_create(header_);
@@ -1793,6 +1798,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
     }
 
     lv_label_set_text(indicator_, is_expanded_ ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_font(indicator_, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(indicator_, lv_color_hex(0xFFFFFF), 0);
 
     // Create title label.
@@ -1804,9 +1810,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
     }
 
     lv_label_set_text(title_label_, title_text_.c_str());
-    lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(title_label_, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title_label_, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_pad_left(title_label_, 8, 0);
 
     // Create content area.
     content_ = lv_obj_create(container_);
@@ -1820,8 +1825,11 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
     lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         content_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_row(content_, 4, 0);
-    lv_obj_set_style_pad_all(content_, 8, 0);
+    lv_obj_set_style_pad_row(content_, Style::GAP, 0);
+    lv_obj_set_style_pad_left(content_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_right(content_, Style::PAD_HORIZONTAL, 0);
+    lv_obj_set_style_pad_top(content_, Style::PAD_VERTICAL, 0);
+    lv_obj_set_style_pad_bottom(content_, Style::PAD_VERTICAL, 0);
     lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(content_, 0, 0);
 
