@@ -292,13 +292,17 @@ void CoreControls::onRenderModeChanged(lv_event_t* e)
 
 void CoreControls::onWorldSizeToggled(lv_event_t* e)
 {
-    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    // Get the switch object from the event target.
+    lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Get CoreControls from the switch's user data (NOT the event's user data, which is
+    // ToggleSliderState* from the builder's internal callback wrapper).
+    CoreControls* self = static_cast<CoreControls*>(lv_obj_get_user_data(switch_obj));
     if (!self) {
         spdlog::error("CoreControls: onWorldSizeToggled called with null self");
         return;
     }
 
-    lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
     bool enabled = lv_obj_has_state(switch_obj, LV_STATE_CHECKED);
 
     spdlog::info("CoreControls: World size toggle switched to {}", enabled ? "ON" : "OFF");
