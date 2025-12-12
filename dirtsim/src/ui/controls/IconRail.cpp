@@ -11,9 +11,7 @@ IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback
     iconConfigs_ = {
         { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },       // Light blue.
         { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },       // Orange.
-        { IconId::GENERAL, LV_SYMBOL_SETTINGS, "General Physics", 0xC0C0C0 }, // Silver.
-        { IconId::PRESSURE, LV_SYMBOL_TINT, "Pressure", 0x00BFFF },        // Deep sky blue.
-        { IconId::FORCES, LV_SYMBOL_CHARGE, "Forces", 0xFFD700 },          // Gold/yellow.
+        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },      // Silver.
         { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },     // Lime green.
     };
 

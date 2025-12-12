@@ -1,11 +1,27 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
-#include "ui/ui_builders/LVGLBuilder.h"
+#include <cstdint>
 #include <functional>
+#include <vector>
 
 namespace DirtSim {
 namespace Ui {
+
+/**
+ * @brief Identifiers for icons in an IconRail.
+ */
+enum class IconId { CORE = 0, SCENARIO, PHYSICS, TREE, COUNT };
+
+/**
+ * @brief Configuration for a single icon in an IconRail.
+ */
+struct IconConfig {
+    IconId id;
+    const char* symbol;  // LV_SYMBOL_* or text.
+    const char* tooltip; // Description for accessibility.
+    uint32_t color = 0xFFFFFF; // Icon color (default white).
+};
 
 /**
  * @brief Vertical rail of icon buttons for navigation.
@@ -17,7 +33,6 @@ namespace Ui {
  */
 class IconRail {
 public:
-    using IconId = LVGLBuilder::IconId;
     using SelectCallback = std::function<void(IconId selectedId, IconId previousId)>;
 
     /**
@@ -72,7 +87,7 @@ public:
 private:
     lv_obj_t* container_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
-    std::vector<LVGLBuilder::IconConfig> iconConfigs_;
+    std::vector<IconConfig> iconConfigs_;
 
     IconId selectedId_ = IconId::COUNT;
     bool treeIconVisible_ = false;
@@ -85,7 +100,7 @@ private:
     static constexpr uint32_t ICON_COLOR = 0xFFFFFF;
 
     // Dimensions optimized for HyperPixel 4.0 (480px height).
-    // With 6 icons: 6×78 + 5×2 = 478px (2px spare).
+    // With 4 icons: 4×78 + 3×2 = 318px (plenty of spare room for future icons).
     static constexpr int RAIL_WIDTH = 82;
     static constexpr int ICON_SIZE = 78;
     static constexpr int GAP = 2;

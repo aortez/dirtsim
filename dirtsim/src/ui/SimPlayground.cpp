@@ -1,9 +1,7 @@
 #include "SimPlayground.h"
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
-#include "controls/ForcesPanel.h"
-#include "controls/GeneralPhysicsPanel.h"
-#include "controls/PressurePanel.h"
+#include "controls/PhysicsPanel.h"
 #include "controls/SandboxControls.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
@@ -100,14 +98,8 @@ void SimPlayground::showPanelContent(IconId panelId)
     case IconId::SCENARIO:
         createScenarioPanel(container);
         break;
-    case IconId::GENERAL:
-        createGeneralPhysicsPanel(container);
-        break;
-    case IconId::PRESSURE:
-        createPressurePanel(container);
-        break;
-    case IconId::FORCES:
-        createForcesPanel(container);
+    case IconId::PHYSICS:
+        createPhysicsPanel(container);
         break;
     default:
         LOG_WARN(Controls, "Unknown panel id: {}", static_cast<int>(panelId));
@@ -122,9 +114,7 @@ void SimPlayground::clearPanelContent()
 {
     // Reset panel-specific controls.
     coreControls_.reset();
-    generalPhysicsPanel_.reset();
-    pressurePanel_.reset();
-    forcesPanel_.reset();
+    physicsPanel_.reset();
     sandboxControls_.reset();
     scenarioDropdown_ = nullptr;
 
@@ -191,53 +181,23 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     }
 }
 
-void SimPlayground::createGeneralPhysicsPanel(lv_obj_t* container)
+void SimPlayground::createPhysicsPanel(lv_obj_t* container)
 {
-    LOG_DEBUG(Controls, "Creating General Physics panel");
+    LOG_DEBUG(Controls, "Creating Physics panel");
 
     // Create a title.
     lv_obj_t* title = lv_label_create(container);
-    lv_label_set_text(title, "General Physics");
+    lv_label_set_text(title, "Physics Settings");
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
 
-    generalPhysicsPanel_ = std::make_unique<GeneralPhysicsPanel>(container, wsService_);
-}
-
-void SimPlayground::createPressurePanel(lv_obj_t* container)
-{
-    LOG_DEBUG(Controls, "Creating Pressure panel");
-
-    lv_obj_t* title = lv_label_create(container);
-    lv_label_set_text(title, "Pressure Settings");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-
-    pressurePanel_ = std::make_unique<PressurePanel>(container, wsService_);
-}
-
-void SimPlayground::createForcesPanel(lv_obj_t* container)
-{
-    LOG_DEBUG(Controls, "Creating Forces panel");
-
-    lv_obj_t* title = lv_label_create(container);
-    lv_label_set_text(title, "Forces & Friction");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
-
-    forcesPanel_ = std::make_unique<ForcesPanel>(container, wsService_);
+    physicsPanel_ = std::make_unique<PhysicsPanel>(container, wsService_);
 }
 
 void SimPlayground::updatePhysicsPanels(const PhysicsSettings& settings)
 {
-    if (generalPhysicsPanel_) {
-        generalPhysicsPanel_->updateFromSettings(settings);
-    }
-    if (pressurePanel_) {
-        pressurePanel_->updateFromSettings(settings);
-    }
-    if (forcesPanel_) {
-        forcesPanel_->updateFromSettings(settings);
+    if (physicsPanel_) {
+        physicsPanel_->updateFromSettings(settings);
     }
 }
 

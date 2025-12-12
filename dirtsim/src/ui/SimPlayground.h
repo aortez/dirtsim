@@ -24,10 +24,7 @@ namespace Ui {
 class UiComponentManager;
 class CoreControls;
 class SandboxControls;
-class PhysicsControls;
-class GeneralPhysicsPanel;
-class PressurePanel;
-class ForcesPanel;
+class PhysicsPanel;
 class CellRenderer;
 class NeuralGridRenderer;
 class EventSink;
@@ -45,15 +42,11 @@ class ExpandablePanel;
  * Panel content is created lazily when icons are selected:
  * - Core: Quit, stats, debug, render mode
  * - Scenario: Scenario dropdown + scenario-specific controls
- * - General: Timescale, gravity, elasticity, air resistance
- * - Pressure: Pressure system parameters
- * - Forces: Cohesion, adhesion, viscosity, friction
+ * - Physics: All physics controls in collapsible sections (General, Pressure, Forces, etc.)
  * - Tree: Toggles neural grid visibility (no panel)
  */
 class SimPlayground {
 public:
-    using IconId = IconRail::IconId;
-
     SimPlayground(
         UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink);
     ~SimPlayground();
@@ -101,9 +94,7 @@ private:
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;
     std::unique_ptr<SandboxControls> sandboxControls_;
-    std::unique_ptr<GeneralPhysicsPanel> generalPhysicsPanel_;
-    std::unique_ptr<PressurePanel> pressurePanel_;
-    std::unique_ptr<ForcesPanel> forcesPanel_;
+    std::unique_ptr<PhysicsPanel> physicsPanel_;
     lv_obj_t* scenarioDropdown_ = nullptr;
 
     // Currently active panel.
@@ -127,11 +118,7 @@ private:
 
     void createScenarioPanel(lv_obj_t* container);
 
-    void createGeneralPhysicsPanel(lv_obj_t* container);
-
-    void createPressurePanel(lv_obj_t* container);
-
-    void createForcesPanel(lv_obj_t* container);
+    void createPhysicsPanel(lv_obj_t* container);
 
     void showPanelContent(IconId panelId);
 
