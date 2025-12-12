@@ -79,7 +79,7 @@ void IconRail::createIcons(lv_obj_t* parent)
         lv_obj_t* label = lv_label_create(btn);
         lv_label_set_text(label, config.symbol);
         lv_obj_set_style_text_color(label, lv_color_hex(config.color), 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_32, 0);
+        lv_obj_set_style_text_font(label, &lv_font_montserrat_40, 0);
         lv_obj_center(label);
 
         // Store index in user data for callback.

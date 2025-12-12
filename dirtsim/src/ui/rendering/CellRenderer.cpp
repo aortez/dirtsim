@@ -418,9 +418,6 @@ void CellRenderer::initializeWithPixelSize(
     lv_canvas_set_buffer(
         worldCanvas_, canvasBuffer_.data(), canvasWidth_, canvasHeight_, LV_COLOR_FORMAT_ARGB8888);
 
-    // Position canvas at top-left of container.
-    lv_obj_set_pos(worldCanvas_, 0, 0);
-
     // Apply LVGL transform scaling to fit canvas to container.
     // LVGL uses fixed-point scaling where 256 = 1.0×.
     // Calculate scale to fit world in container while preserving aspect ratio.
@@ -431,17 +428,31 @@ void CellRenderer::initializeWithPixelSize(
     int lvglScaleX = (int)(scale * 256);
     int lvglScaleY = (int)(scale * 256);
 
+    // Set transform pivot to top-left for predictable positioning.
+    lv_obj_set_style_transform_pivot_x(worldCanvas_, 0, 0);
+    lv_obj_set_style_transform_pivot_y(worldCanvas_, 0, 0);
+
     lv_obj_set_style_transform_scale_x(worldCanvas_, lvglScaleX, 0);
     lv_obj_set_style_transform_scale_y(worldCanvas_, lvglScaleY, 0);
 
+    // Calculate scaled canvas size and center in container.
+    double scaledWidth = canvasWidth_ * scale;
+    double scaledHeight = canvasHeight_ * scale;
+    int32_t offsetX = (int32_t)((containerWidth - scaledWidth) / 2);
+    int32_t offsetY = (int32_t)((containerHeight - scaledHeight) / 2);
+    lv_obj_set_pos(worldCanvas_, offsetX, offsetY);
+
     spdlog::info(
-        "CellRenderer: Initialized canvas {}x{} pixels ({}x{} cells at {}px/cell), scaling {:.2f}×",
+        "CellRenderer: Initialized canvas {}x{} pixels ({}x{} cells at {}px/cell), scaling {:.2f}×, "
+        "offset ({}, {})",
         canvasWidth_,
         canvasHeight_,
         worldWidth,
         worldHeight,
         pixelsPerCell,
-        scale);
+        scale,
+        offsetX,
+        offsetY);
 }
 
 void CellRenderer::resize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)

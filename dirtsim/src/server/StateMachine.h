@@ -83,8 +83,11 @@ public:
 
     void broadcastRenderMessage(const WorldData& data);
 
-    uint32_t defaultWidth = 28;
-    uint32_t defaultHeight = 28;
+    // Default world dimensions optimized for HyperPixel 4.0 (800x480) with icon rail (76px).
+    // Available space: 724x480 when panel closed, 474x480 when panel open.
+    // 45x30 cells gives ~1.5:1 aspect ratio matching the display area.
+    uint32_t defaultWidth = 45;
+    uint32_t defaultHeight = 30;
 
 private:
     struct Impl;

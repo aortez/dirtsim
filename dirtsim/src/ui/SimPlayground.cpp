@@ -25,7 +25,6 @@ SimPlayground::SimPlayground(
     UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink)
     : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
 {
-    // Create renderers (always active).
     renderer_ = std::make_unique<CellRenderer>();
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
 
@@ -184,9 +183,11 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
-    // Create sandbox controls if we're in sandbox scenario.
-    if (currentScenarioId_ == "sandbox") {
-        // We'll recreate this when we get world data with the config.
+    // Create sandbox controls if we're already in sandbox scenario.
+    if (currentScenarioId_ == "sandbox"
+        && std::holds_alternative<SandboxConfig>(currentScenarioConfig_)) {
+        const SandboxConfig& config = std::get<SandboxConfig>(currentScenarioConfig_);
+        sandboxControls_ = std::make_unique<SandboxControls>(container, wsService_, config);
     }
 }
 
@@ -267,20 +268,22 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
         // Clear old scenario controls.
         sandboxControls_.reset();
 
-        // If scenario panel is active, recreate sandbox controls.
-        if (activePanel_ == IconId::SCENARIO && data.scenario_id == "sandbox") {
-            ExpandablePanel* panel = uiManager_->getExpandablePanel();
-            if (panel) {
-                lv_obj_t* container = panel->getContentArea();
-                if (container) {
-                    const SandboxConfig& config = std::get<SandboxConfig>(data.scenario_config);
-                    sandboxControls_ =
-                        std::make_unique<SandboxControls>(container, wsService_, config);
-                }
+        currentScenarioId_ = data.scenario_id;
+    }
+
+    // Store the config for use when panel is opened.
+    currentScenarioConfig_ = data.scenario_config;
+
+    // Create sandbox controls if scenario panel is active and we're in sandbox mode.
+    if (activePanel_ == IconId::SCENARIO && currentScenarioId_ == "sandbox" && !sandboxControls_) {
+        ExpandablePanel* panel = uiManager_->getExpandablePanel();
+        if (panel && std::holds_alternative<SandboxConfig>(currentScenarioConfig_)) {
+            lv_obj_t* container = panel->getContentArea();
+            if (container) {
+                const SandboxConfig& config = std::get<SandboxConfig>(currentScenarioConfig_);
+                sandboxControls_ = std::make_unique<SandboxControls>(container, wsService_, config);
             }
         }
-
-        currentScenarioId_ = data.scenario_id;
     }
 
     // Always update sandbox controls with latest config.

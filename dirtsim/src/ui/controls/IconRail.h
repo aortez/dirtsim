@@ -84,10 +84,11 @@ private:
     static constexpr uint32_t SELECTED_COLOR = 0x0066CC;
     static constexpr uint32_t ICON_COLOR = 0xFFFFFF;
 
-    // Dimensions.
-    static constexpr int RAIL_WIDTH = 76;
-    static constexpr int ICON_SIZE = 72;
-    static constexpr int GAP = 4;
+    // Dimensions optimized for HyperPixel 4.0 (480px height).
+    // With 6 icons: 6×78 + 5×2 = 478px (2px spare).
+    static constexpr int RAIL_WIDTH = 82;
+    static constexpr int ICON_SIZE = 78;
+    static constexpr int GAP = 2;
 
     void createIcons(lv_obj_t* parent);
     void updateButtonVisuals();
