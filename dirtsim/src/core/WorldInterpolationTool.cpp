@@ -145,6 +145,40 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
     double fillRatio = bilinearInterpolateDouble(
         cell00.fill_ratio, cell10.fill_ratio, cell01.fill_ratio, cell11.fill_ratio, fx, fy);
 
+    // Fix inconsistent state: AIR cells must have zero fill_ratio.
+    // This can happen when nearest-neighbor picks AIR but bilinear fill_ratio > 0.
+    // Without this fix, particles get "stuck in the air" because:
+    // - applyGravity() applies forces (only checks isEmpty/isWall)
+    // - computeMaterialMoves() skips AIR cells (also checks isAir)
+    // Result: velocity accumulates but COM never updates.
+    if (materialType == MaterialType::AIR && fillRatio > Cell::MIN_FILL_THRESHOLD) {
+        // Find a non-AIR material from the corners to preserve the material.
+        const Cell* corners[4] = { &cell00, &cell10, &cell01, &cell11 };
+        const Cell* bestCorner = nullptr;
+        double bestFill = 0.0;
+
+        for (const Cell* corner : corners) {
+            if (corner->material_type != MaterialType::AIR
+                && corner->fill_ratio > bestFill) {
+                bestCorner = corner;
+                bestFill = corner->fill_ratio;
+            }
+        }
+
+        if (bestCorner != nullptr) {
+            // Use the non-AIR material type from the corner with highest fill.
+            materialType = bestCorner->material_type;
+            spdlog::debug(
+                "Interpolation fix: AIR with fill {:.3f} -> {} to preserve material",
+                fillRatio,
+                getMaterialName(materialType));
+        }
+        else {
+            // All corners are AIR, so fill_ratio should be 0.
+            fillRatio = 0.0;
+        }
+    }
+
     // Interpolate center of mass.
     Vector2d com =
         bilinearInterpolateVector2d(cell00.com, cell10.com, cell01.com, cell11.com, fx, fy);
