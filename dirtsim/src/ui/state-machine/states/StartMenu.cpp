@@ -160,8 +160,6 @@ void StartMenu::updateAnimations()
             if (labelUpdateCounter_ >= 60) { // Update ~1/sec at 60fps.
                 labelUpdateCounter_ = 0;
 
-                double cReal = fractal_->getCReal();
-                double cImag = fractal_->getCImag();
                 const char* regionName = fractal_->getRegionName();
 
                 // Get all iteration values atomically to prevent race conditions.
@@ -184,30 +182,9 @@ void StartMenu::updateAnimations()
                     updateFrameCount_ = 0;
                 }
 
-                // Format Julia constant with proper sign for imaginary part.
-                char cConstant[64];
-                if (cImag >= 0) {
-                    snprintf(cConstant, sizeof(cConstant), "%.4f + %.4fi", cReal, cImag);
-                }
-                else {
-                    snprintf(cConstant, sizeof(cConstant), "%.4f - %.4fi", cReal, -cImag);
-                }
-
-                // Build multi-line info text.
-                char infoText[512];
-                snprintf(
-                    infoText,
-                    sizeof(infoText),
-                    "Region: %s\n"
-                    "Julia constant: c = %s\n"
-                    "Iterations: [%d-%d], current: %d\n"
-                    "FPS: %.1f",
-                    regionName,
-                    cConstant,
-                    minIter,
-                    maxIter,
-                    currentIter,
-                    fps);
+                // Build simple info text: region name and FPS.
+                char infoText[128];
+                snprintf(infoText, sizeof(infoText), "%s\nFPS: %.1f", regionName, fps);
 
                 lv_label_set_text(infoLabel_, infoText);
             }
