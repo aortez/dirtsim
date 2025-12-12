@@ -92,8 +92,14 @@ void LoggingChannels::initialize(
 
 std::shared_ptr<spdlog::logger> LoggingChannels::get(LogChannel channel)
 {
+    // Auto-initialize with defaults if get() is called before initialize().
+    // This commonly happens in unit tests that use gtest_main.
+    if (!initialized_) {
+        initialize();
+    }
+
     auto logger = spdlog::get(toString(channel));
-    assert(logger && "LogChannel not initialized - check LoggingChannels::initialize() was called");
+    assert(logger && "LogChannel not found after initialization");
     return logger;
 }
 
