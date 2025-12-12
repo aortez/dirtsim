@@ -348,14 +348,12 @@ function displayPeers(peers) {
         if (currentFocusedPeer &&
             currentFocusedPeer.host === peer.host &&
             currentFocusedPeer.port === peer.port) {
-            var focusVideo = document.querySelector('#focus-body video');
+            var focusVideo = document.getElementById('focus-video');
             if (focusVideo) {
                 if (!isConnected) {
                     focusVideo.style.filter = 'grayscale(100%) brightness(0.5)';
-                    focusVideo.style.borderColor = '#333';
                 } else {
                     focusVideo.style.filter = '';
-                    focusVideo.style.borderColor = '';
                 }
             }
         }
@@ -553,7 +551,7 @@ function startWebRtcStream() {
 
             // If this peer is currently focused, update the focus video too.
             if (currentFocusedPeer && currentFocusedPeer.port === 7070) {
-                var focusVideo = document.querySelector('#focus-body video');
+                var focusVideo = document.getElementById('focus-video');
                 if (focusVideo) {
                     focusVideo.srcObject = event.streams[0];
                     focusVideo.play().catch(function(err) {
@@ -714,14 +712,66 @@ function setupMouseForwarding(videoElement) {
         removeMouseForwarding();
     }
 
-    function sendMouseEvent(eventType, x, y) {
+    // Calculate the actual rendered video position within the element.
+    // This handles object-fit: contain letterboxing correctly.
+    function getVideoRenderRect(video) {
+        var videoWidth = video.videoWidth;
+        var videoHeight = video.videoHeight;
+        var elementWidth = video.clientWidth;
+        var elementHeight = video.clientHeight;
+
+        if (!videoWidth || !videoHeight) {
+            // Video not loaded yet, fall back to element size.
+            return { x: 0, y: 0, width: elementWidth, height: elementHeight };
+        }
+
+        var videoAspect = videoWidth / videoHeight;
+        var elementAspect = elementWidth / elementHeight;
+
+        var renderWidth, renderHeight, offsetX, offsetY;
+
+        if (videoAspect > elementAspect) {
+            // Video is wider than element - letterbox top/bottom.
+            renderWidth = elementWidth;
+            renderHeight = elementWidth / videoAspect;
+            offsetX = 0;
+            offsetY = (elementHeight - renderHeight) / 2;
+        } else {
+            // Video is taller than element - letterbox left/right.
+            renderHeight = elementHeight;
+            renderWidth = elementHeight * videoAspect;
+            offsetX = (elementWidth - renderWidth) / 2;
+            offsetY = 0;
+        }
+
+        return { x: offsetX, y: offsetY, width: renderWidth, height: renderHeight };
+    }
+
+    function sendMouseEvent(eventType, elementX, elementY) {
         if (!uiConn.isConnected()) return;
 
-        // Scale coordinates from video display size to LVGL resolution.
-        var scaleX = videoElement.videoWidth / videoElement.clientWidth;
-        var scaleY = videoElement.videoHeight / videoElement.clientHeight;
-        var lvglX = Math.floor(x * scaleX);
-        var lvglY = Math.floor(y * scaleY);
+        var renderRect = getVideoRenderRect(videoElement);
+
+        // Convert element coords to video content coords (accounting for letterbox offset).
+        var videoX = elementX - renderRect.x;
+        var videoY = elementY - renderRect.y;
+
+        // Check if click is within the actual video content area.
+        if (videoX < 0 || videoX > renderRect.width ||
+            videoY < 0 || videoY > renderRect.height) {
+            // Click is in letterbox area, ignore.
+            return;
+        }
+
+        // Scale from rendered size to actual video resolution.
+        var scaleX = videoElement.videoWidth / renderRect.width;
+        var scaleY = videoElement.videoHeight / renderRect.height;
+        var lvglX = Math.floor(videoX * scaleX);
+        var lvglY = Math.floor(videoY * scaleY);
+
+        // Clamp to valid range.
+        lvglX = Math.max(0, Math.min(lvglX, videoElement.videoWidth - 1));
+        lvglY = Math.max(0, Math.min(lvglY, videoElement.videoHeight - 1));
 
         uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
     }
@@ -790,64 +840,36 @@ function focusPeer(peer) {
 
     // Update UI - hide empty state, show content.
     document.getElementById('focus-empty').style.display = 'none';
-    document.getElementById('focus-content').style.display = 'block';
+    document.getElementById('focus-content').style.display = 'flex';
 
-    // Update title.
-    document.getElementById('focus-title').textContent = peer.name;
-
-    // Clone the peer card content into focus view.
+    // Get the dedicated focus video element.
+    var focusVideo = document.getElementById('focus-video');
     var sourceDiv = document.getElementById('peer-' + peer.host + '-' + peer.port);
-    var focusBody = document.getElementById('focus-body');
-    if (sourceDiv) {
-        // Clone the entire card.
-        focusBody.innerHTML = sourceDiv.innerHTML;
 
-        // Hide the control buttons in focus view (overview keeps them for control).
-        var focusControls = focusBody.querySelector('.peer-controls');
-        if (focusControls) {
-            focusControls.style.display = 'none';
+    // Only UI peers have video streams.
+    if (peer.role === 'ui' && focusVideo) {
+        // Copy the MediaStream from the source video.
+        var sourceVideo = sourceDiv ? sourceDiv.querySelector('video') : null;
+        if (sourceVideo && sourceVideo.srcObject) {
+            focusVideo.srcObject = sourceVideo.srcObject;
+            focusVideo.play().catch(function(err) {
+                logDebug('Focus video play error: ' + err.message);
+            });
+            logDebug('Copied video stream to focus view');
+        } else {
+            logDebug('Source video has no srcObject - will auto-start stream');
         }
 
-        // Make the video in focus view larger and interactive.
-        var focusVideo = focusBody.querySelector('video');
-        if (focusVideo) {
-            focusVideo.style.maxWidth = '100%';
-            focusVideo.style.width = '100%';
-            focusVideo.style.cursor = 'crosshair';
-
-            // Copy the MediaStream from the original video to the cloned video.
-            var sourceVideo = sourceDiv.querySelector('video');
-            if (sourceVideo) {
-                logDebug('Source video found: srcObject=' + (sourceVideo.srcObject ? 'YES' : 'NO') +
-                         ', paused=' + sourceVideo.paused + ', readyState=' + sourceVideo.readyState);
-
-                if (sourceVideo.srcObject) {
-                    focusVideo.srcObject = sourceVideo.srcObject;
-                    focusVideo.play().catch(function(err) {
-                        logDebug('Focus video play error: ' + err.message);
-                    });
-                    logDebug('Copied video stream to focus view');
-                } else {
-                    logDebug('Source video has no srcObject - will auto-start stream');
-                }
-            } else {
-                logDebug('No source video element found in overview card');
-            }
-
-            // Set up mouse forwarding on the focus video (only for UI peers).
-            if (peer.role === 'ui') {
-                // Auto-start stream if not already active.
-                if (!streamActive) {
-                    logDebug('Auto-starting stream for focused UI peer');
-                    startWebRtcStream();
-                }
-
-                // Wait a moment for video to be ready.
-                setTimeout(function() {
-                    setupMouseForwarding(focusVideo);
-                }, 100);
-            }
+        // Auto-start stream if not already active.
+        if (!streamActive) {
+            logDebug('Auto-starting stream for focused UI peer');
+            startWebRtcStream();
         }
+
+        // Wait a moment for video to be ready, then set up mouse forwarding.
+        setTimeout(function() {
+            setupMouseForwarding(focusVideo);
+        }, 100);
     }
 
     // Highlight the focused card in overview.
@@ -875,8 +897,11 @@ function clearFocus() {
     document.getElementById('focus-empty').style.display = 'flex';
     document.getElementById('focus-content').style.display = 'none';
 
-    // Clear focus body.
-    document.getElementById('focus-body').innerHTML = '';
+    // Clear the focus video source.
+    var focusVideo = document.getElementById('focus-video');
+    if (focusVideo) {
+        focusVideo.srcObject = null;
+    }
 
     // Remove highlight from all cards.
     var allPeers = document.querySelectorAll('.peer');

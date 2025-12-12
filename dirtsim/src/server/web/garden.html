@@ -9,25 +9,26 @@
     </style>
 </head>
 <body>
-    <h1>✨🦆 Dirt Sim Garden</h1>
-    <div id="status">Discovering...</div>
     <div class="main-container">
         <div class="overview-column">
-            <h2>Overview</h2>
+            <div class="overview-header">
+                <h1>✨🦆 Garden</h1>
+                <div id="status">Discovering...</div>
+            </div>
+            <h2>Peers</h2>
             <div class="peers" id="peers"></div>
         </div>
         <div class="resizer" id="resizer"></div>
         <div class="focus-column" id="focus-column">
             <div class="focus-empty" id="focus-empty">
                 <div class="focus-empty-icon">🌳</div>
-                <div class="focus-empty-text">Click a card to focus</div>
+                <div class="focus-empty-text">Click a peer to focus</div>
             </div>
             <div class="focus-content" id="focus-content" style="display: none;">
-                <div class="focus-header">
-                    <h2 id="focus-title">Details</h2>
-                    <button class="focus-close" onclick="clearFocus()">✕</button>
+                <div class="focus-video-wrapper">
+                    <video id="focus-video" autoplay muted playsinline></video>
+                    <button class="focus-close-overlay" onclick="clearFocus()">✕</button>
                 </div>
-                <div id="focus-body"></div>
             </div>
         </div>
     </div>
