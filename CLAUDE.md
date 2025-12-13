@@ -10,9 +10,10 @@ The simulation serves as a substrate for artificial life experiments, currently 
 
 ## Target Hardware
 
-* Raspberry PI 5
-* Primary display - Hyperpixel 4.0
-* Troubleshooting display - HDMI
+* Raspberry Pi 4 or 5
+* Pi4 display - MPI4008 4" HDMI touchscreen (480x800)
+* Pi5 display - HyperPixel 4.0 DPI (480x800)
+* Single unified image auto-detects hardware
 
 ## Repository Structure
 
@@ -58,7 +59,7 @@ make debug                           # Build
 
 ## Remote Deployment
 
-The simulation runs on a Raspberry Pi 5 accessible at `dirtsim.local`:
+The simulation runs on a Raspberry Pi 4 or 5, accessible at `dirtsim.local` (or custom hostname set during flash):
 
 ```bash
 # Deploy from workstation (Yocto-based full system)
