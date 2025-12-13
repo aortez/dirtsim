@@ -277,4 +277,49 @@ void TreeManager::applyBoneForces(World& world, double /*deltaTime*/)
     }
 }
 
+void TreeManager::removeCellsFromTree(TreeId tree_id, const std::vector<Vector2i>& positions)
+{
+    auto tree_it = trees_.find(tree_id);
+    if (tree_it == trees_.end()) {
+        LOG_WARN(Tree, "TreeManager: Attempted to remove cells from non-existent tree {}", tree_id);
+        return;
+    }
+
+    Tree& tree = tree_it->second;
+
+    for (const auto& pos : positions) {
+        tree.cells.erase(pos);
+        cell_to_tree_.erase(pos);
+    }
+
+    LOG_DEBUG(
+        Tree,
+        "TreeManager: Removed {} cells from tree {} (now {} cells tracked)",
+        positions.size(),
+        tree_id,
+        tree.cells.size());
+}
+
+void TreeManager::addCellToTree(World& world, TreeId tree_id, Vector2i pos)
+{
+    auto tree_it = trees_.find(tree_id);
+    if (tree_it == trees_.end()) {
+        LOG_WARN(Tree, "TreeManager: Attempted to add cell to non-existent tree {}", tree_id);
+        return;
+    }
+
+    Tree& tree = tree_it->second;
+    tree.cells.insert(pos);
+    cell_to_tree_[pos] = tree_id;
+    world.getData().at(pos.x, pos.y).organism_id = tree_id;
+
+    LOG_DEBUG(
+        Tree,
+        "TreeManager: Added cell ({},{}) to tree {} (now {} cells tracked)",
+        pos.x,
+        pos.y,
+        tree_id,
+        tree.cells.size());
+}
+
 } // namespace DirtSim

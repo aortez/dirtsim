@@ -1,5 +1,6 @@
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/TreeManager.h"
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
@@ -24,16 +25,18 @@ protected:
 TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
 {
     auto world = createWorld(10, 10);
+    TreeManager& tree_manager = world->getTreeManager();
 
-    // Create 2x2 wood structure (organism) floating in air.
-    world->getData().at(4, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(4, 3).organism_id = 1;
+    // Plant seed at (4, 3) - this creates the tree.
+    TreeId tree_id = tree_manager.plantSeed(*world, 4, 3);
+
+    // Build 2x2 structure by adding adjacent WOOD cells.
     world->getData().at(5, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(5, 3).organism_id = 1;
+    tree_manager.addCellToTree(*world, tree_id, { 5, 3 });
     world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(4, 4).organism_id = 1;
+    tree_manager.addCellToTree(*world, tree_id, { 4, 4 });
     world->getData().at(5, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(5, 4).organism_id = 1;
+    tree_manager.addCellToTree(*world, tree_id, { 5, 4 });
 
     // Run physics for several frames.
     for (int frame = 0; frame < 20; ++frame) {
@@ -62,58 +65,52 @@ TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
     }
 }
 
-TEST_F(RigidBodyIntegrationTest, WoodStructureInWaterMovesAsUnit)
+TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
 {
-    auto world = createWorld(4, 3);
+    auto world = createWorld(6, 4);
+    TreeManager& tree_manager = world->getTreeManager();
 
-    // Setup:
-    // Row 0: AIR    AIR   AIR   AIR
-    // Row 1: WATER  WOOD  WOOD  WATER
-    // Row 2: WATER  WATER WATER WATER
-
-    // Fill with water.
-    for (uint32_t x = 0; x < 4; ++x) {
-        world->getData().at(x, 1).replaceMaterial(MaterialType::WATER, 1.0);
-        world->getData().at(x, 2).replaceMaterial(MaterialType::WATER, 1.0);
-    }
-
-    // Add wood structure (same organism).
-    world->getData().at(1, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 1).organism_id = 1;
+    // Simple tree floating in air: SEED-WOOD horizontal.
+    TreeId tree_id = tree_manager.plantSeed(*world, 1, 1);
     world->getData().at(2, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 1).organism_id = 1;
+    tree_manager.addCellToTree(*world, tree_id, { 2, 1 });
+
+    // Verify setup.
+    EXPECT_EQ(world->getData().at(1, 1).material_type, MaterialType::SEED);
+    EXPECT_EQ(world->getData().at(1, 1).organism_id, tree_id);
+    EXPECT_EQ(world->getData().at(2, 1).material_type, MaterialType::WOOD);
+    EXPECT_EQ(world->getData().at(2, 1).organism_id, tree_id);
 
     // Run several physics frames.
     for (int frame = 0; frame < 10; ++frame) {
         world->advanceTime(0.016);
     }
 
-    // Verify wood cells have same velocity.
-    const Cell& wood1 = world->getData().at(1, 1);
-    const Cell& wood2 = world->getData().at(2, 1);
+    // Verify tree cells have same velocity.
+    const Cell& seed = world->getData().at(1, 1);
+    const Cell& wood = world->getData().at(2, 1);
 
-    EXPECT_NEAR(wood1.velocity.x, wood2.velocity.x, 0.001)
-        << "Wood cells have different X velocities";
-    EXPECT_NEAR(wood1.velocity.y, wood2.velocity.y, 0.001)
-        << "Wood cells have different Y velocities";
+    EXPECT_NEAR(seed.velocity.x, wood.velocity.x, 0.001)
+        << "Tree cells have different X velocities";
+    EXPECT_NEAR(seed.velocity.y, wood.velocity.y, 0.001)
+        << "Tree cells have different Y velocities";
 }
 
 TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
 {
     auto world = createWorld(10, 10);
+    TreeManager& tree_manager = world->getTreeManager();
 
-    // Create two separate structures with different forces.
-    // Structure 1: 2 cells at y=3.
-    world->getData().at(2, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 3).organism_id = 1;
+    // Create two separate tree structures.
+    // Structure 1: seed + WOOD at y=3.
+    TreeId tree1 = tree_manager.plantSeed(*world, 2, 3);
     world->getData().at(3, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 3).organism_id = 1;
+    tree_manager.addCellToTree(*world, tree1, { 3, 3 });
 
-    // Structure 2: 2 cells at y=6.
-    world->getData().at(6, 6).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getData().at(6, 6).organism_id = 2;
-    world->getData().at(7, 6).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getData().at(7, 6).organism_id = 2;
+    // Structure 2: seed + WOOD at y=6.
+    TreeId tree2 = tree_manager.plantSeed(*world, 6, 6);
+    world->getData().at(7, 6).replaceMaterial(MaterialType::WOOD, 1.0);
+    tree_manager.addCellToTree(*world, tree2, { 7, 6 });
 
     // Run physics.
     for (int frame = 0; frame < 10; ++frame) {
@@ -121,19 +118,68 @@ TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
     }
 
     // Each structure should have unified velocity within itself.
-    const Cell& wood1 = world->getData().at(2, 3);
-    const Cell& wood2 = world->getData().at(3, 3);
-    EXPECT_NEAR(wood1.velocity.x, wood2.velocity.x, 0.0001);
-    EXPECT_NEAR(wood1.velocity.y, wood2.velocity.y, 0.0001);
+    const Cell& seed1 = world->getData().at(2, 3);
+    const Cell& wood1 = world->getData().at(3, 3);
+    EXPECT_NEAR(seed1.velocity.x, wood1.velocity.x, 0.0001);
+    EXPECT_NEAR(seed1.velocity.y, wood1.velocity.y, 0.0001);
 
-    const Cell& metal1 = world->getData().at(6, 6);
-    const Cell& metal2 = world->getData().at(7, 6);
-    EXPECT_NEAR(metal1.velocity.x, metal2.velocity.x, 0.0001);
-    EXPECT_NEAR(metal1.velocity.y, metal2.velocity.y, 0.0001);
+    const Cell& seed2 = world->getData().at(6, 6);
+    const Cell& wood2 = world->getData().at(7, 6);
+    EXPECT_NEAR(seed2.velocity.x, wood2.velocity.x, 0.0001);
+    EXPECT_NEAR(seed2.velocity.y, wood2.velocity.y, 0.0001);
 
-    // But structures should have DIFFERENT velocities (different mass, falling from different
-    // heights). They won't necessarily be different in all cases, but they should at least both be
-    // falling.
-    EXPECT_GT(wood1.velocity.y, 0.1);
-    EXPECT_GT(metal1.velocity.y, 0.1);
+    // Both structures should be falling.
+    EXPECT_GT(seed1.velocity.y, 0.1);
+    EXPECT_GT(seed2.velocity.y, 0.1);
+}
+
+TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
+{
+    auto world = createWorld(10, 5);
+    TreeManager& tree_manager = world->getTreeManager();
+
+    // Plant seed at (2, 2).
+    TreeId tree_id = tree_manager.plantSeed(*world, 2, 2);
+
+    // Build a tree structure: SEED-WOOD-WOOD connected, then a gap, then disconnected WOOD.
+    // Layout:  [SEED]-[WOOD]-[WOOD]   [WOOD]  (gap at x=5, disconnected WOOD at x=6)
+    //          (2,2)  (3,2)  (4,2)    (6,2)
+
+    // Add connected WOOD cells.
+    world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    tree_manager.addCellToTree(*world, tree_id, { 3, 2 });
+
+    world->getData().at(4, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    tree_manager.addCellToTree(*world, tree_id, { 4, 2 });
+
+    // Add disconnected WOOD cell (gap at x=5).
+    world->getData().at(6, 2).replaceMaterial(MaterialType::WOOD, 1.0);
+    tree_manager.addCellToTree(*world, tree_id, { 6, 2 });
+
+    // Verify initial state.
+    EXPECT_EQ(world->getData().at(2, 2).organism_id, tree_id); // SEED.
+    EXPECT_EQ(world->getData().at(3, 2).organism_id, tree_id); // Connected WOOD.
+    EXPECT_EQ(world->getData().at(4, 2).organism_id, tree_id); // Connected WOOD.
+    EXPECT_EQ(world->getData().at(6, 2).organism_id, tree_id); // Disconnected WOOD.
+
+    // Run one physics frame.
+    world->advanceTime(0.016);
+
+    // Verify connected cells still belong to organism.
+    EXPECT_EQ(world->getData().at(2, 2).organism_id, tree_id) << "SEED should remain connected";
+    EXPECT_EQ(world->getData().at(3, 2).organism_id, tree_id) << "Adjacent WOOD should remain connected";
+    EXPECT_EQ(world->getData().at(4, 2).organism_id, tree_id) << "Adjacent WOOD should remain connected";
+
+    // Verify disconnected cell was pruned.
+    EXPECT_EQ(world->getData().at(6, 2).organism_id, 0u)
+        << "Disconnected WOOD should have organism_id=0 after pruning";
+
+    // Verify tree's cell tracking was updated.
+    const Tree* tree = tree_manager.getTree(tree_id);
+    ASSERT_NE(tree, nullptr);
+    EXPECT_EQ(tree->cells.size(), 3u) << "Tree should track 3 cells (SEED + 2 WOOD)";
+    EXPECT_TRUE(tree->cells.count({ 2, 2 })) << "SEED should be in tree.cells";
+    EXPECT_TRUE(tree->cells.count({ 3, 2 })) << "Connected WOOD should be in tree.cells";
+    EXPECT_TRUE(tree->cells.count({ 4, 2 })) << "Connected WOOD should be in tree.cells";
+    EXPECT_FALSE(tree->cells.count({ 6, 2 })) << "Disconnected WOOD should NOT be in tree.cells";
 }

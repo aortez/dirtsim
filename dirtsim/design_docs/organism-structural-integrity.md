@@ -7,162 +7,172 @@
 - Seed cell (the "root" of the tree)
 - TreeManager tracking all trees
 
-## Core Algorithm: Flood-Fill + Velocity Sync
+**Integrate with existing rigid body system!** `World::resolveRigidBodies()` already:
+- Finds connected organism structures via flood fill
+- Applies unified velocity to structures
 
-### Each Physics Timestep:
+We modify it to start from seed positions and prune disconnected fragments.
 
-1. **IDENTIFY CONNECTED STRUCTURE**
+## Core Algorithm: Flood-Fill + Prune + Velocity Sync
+
+This happens inside `World::resolveRigidBodies()`, which receives TreeManager.
+
+### For Each Tree:
+
+1. **FLOOD FILL FROM SEED**
    ```
-   For each tree in TreeManager:
-       Start flood-fill from tree.seed_position
-       Find all cells with matching organism_id that are reachable
-       Mark as "connected"
+   Start flood-fill from tree.seed_position
+   Only follow ROOT and WOOD cells (LEAF excluded - handled by bones)
+   Only cells with matching organism_id
+   4-connected (cardinal directions only)
+   Build set of "connected" positions
    ```
 
 2. **PRUNE DISCONNECTED FRAGMENTS**
    ```
-   For all cells with this organism_id:
-       If NOT marked as connected:
+   For all cells in tree.cells:
+       If cell is ROOT or WOOD and NOT in connected set:
            cell.organism_id = 0  // Remove from organism
+           Remove from tree.cells
+           Remove from cell_to_tree_ map
            // Cell becomes independent particle
    ```
 
-3. **APPLY FORCES NORMALLY**
-   - All physics runs as usual (gravity, cohesion, friction, etc.)
-   - Forces accumulate, F=ma creates velocities
-   - Disconnected cells behave as normal particles
-
-4. **SYNCHRONIZE VELOCITIES**
+3. **APPLY UNIFIED VELOCITY**
    ```
-   For each tree:
-       avg_velocity = mass_weighted_average(all connected cell velocities)
-
-       For each connected cell:
-           cell.velocity = avg_velocity
+   Gather pending_force from all connected cells
+   acceleration = total_force / total_mass
+   unified_velocity += acceleration * deltaTime
+   Set all connected cells to unified_velocity
    ```
-   Result: Tree moves as rigid unit
+   Result: Tree moves as rigid unit, fragments fall independently
 
 ## Implementation
 
-### TreeManager::syncOrganismStructures()
+### Modified World::resolveRigidBodies()
 
 ```cpp
-void TreeManager::syncOrganismStructures(World& world) {
-    WorldData& data = world.getData();
+void World::resolveRigidBodies(double deltaTime)
+{
+    if (!tree_manager_) {
+        return;
+    }
 
-    for (auto& [tree_id, tree] : trees_) {
-        // 1. Find connected cells via flood fill from seed
-        std::vector<Vector2i> connected =
-            findConnectedCells(world, tree_id, tree.seed_position);
+    WorldData& data = getData();
 
-        // 2. Prune disconnected cells
-        for (auto& pos : tree.cells) {
-            if (!contains(connected, pos)) {
-                Cell& cell = data.at(pos.x, pos.y);
-                if (cell.organism_id == tree_id) {
-                    cell.organism_id = 0;  // Fragment breaks off
-                    spdlog::info("Tree {} fragment at ({},{}) disconnected",
-                                 tree_id, pos.x, pos.y);
-                }
+    for (auto& [tree_id, tree] : tree_manager_->getTrees()) {
+        // 1. Flood fill from seed to find connected structural cells.
+        std::unordered_set<Vector2i> connected;
+        std::queue<Vector2i> frontier;
+
+        frontier.push(tree.seed_position);
+
+        while (!frontier.empty()) {
+            Vector2i pos = frontier.front();
+            frontier.pop();
+
+            // Bounds check.
+            if (pos.x < 0 || pos.y < 0 ||
+                pos.x >= (int)data.width || pos.y >= (int)data.height) {
+                continue;
+            }
+
+            // Already visited.
+            if (connected.count(pos)) {
+                continue;
+            }
+
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Must belong to this organism.
+            if (cell.organism_id != tree_id) {
+                continue;
+            }
+
+            // Only ROOT and WOOD form structural connections (LEAF excluded).
+            if (cell.material_type != MaterialType::ROOT &&
+                cell.material_type != MaterialType::WOOD &&
+                cell.material_type != MaterialType::SEED) {
+                continue;
+            }
+
+            connected.insert(pos);
+
+            // Add 4 cardinal neighbors to frontier.
+            frontier.push({pos.x - 1, pos.y});
+            frontier.push({pos.x + 1, pos.y});
+            frontier.push({pos.x, pos.y - 1});
+            frontier.push({pos.x, pos.y + 1});
+        }
+
+        // 2. Prune disconnected ROOT/WOOD cells.
+        std::vector<Vector2i> to_remove;
+        for (const auto& pos : tree.cells) {
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Only prune structural materials.
+            if (cell.material_type != MaterialType::ROOT &&
+                cell.material_type != MaterialType::WOOD) {
+                continue;
+            }
+
+            if (!connected.count(pos)) {
+                cell.organism_id = 0;  // Fragment breaks off.
+                to_remove.push_back(pos);
+                spdlog::info("Tree {} fragment at ({},{}) disconnected",
+                             tree_id, pos.x, pos.y);
             }
         }
 
-        // 3. Update tree's cell list
-        tree.cells = connected;
+        // Update tree's cell tracking.
+        for (const auto& pos : to_remove) {
+            tree.cells.erase(pos);
+            // Note: cell_to_tree_ update handled by TreeManager.
+        }
 
-        // 4. Calculate mass-weighted average velocity
-        Vector2d velocity_sum(0, 0);
+        // 3. Apply unified velocity to connected structure.
+        if (connected.empty()) {
+            continue;
+        }
+
+        // Gather forces and mass.
+        Vector2d total_force;
         double total_mass = 0;
 
-        for (auto& pos : connected) {
+        for (const auto& pos : connected) {
             Cell& cell = data.at(pos.x, pos.y);
-            double mass = cell.getMass();
-            velocity_sum += cell.velocity * mass;
-            total_mass += mass;
+            total_force += cell.pending_force;
+            total_mass += cell.getMass();
         }
 
-        Vector2d avg_velocity = (total_mass > 0) ? velocity_sum / total_mass : Vector2d(0,0);
-
-        // 5. Apply averaged velocity to all connected cells
-        for (auto& pos : connected) {
-            data.at(pos.x, pos.y).velocity = avg_velocity;
-        }
-    }
-}
-```
-
-### Flood Fill Helper
-
-```cpp
-std::vector<Vector2i> TreeManager::findConnectedCells(
-    World& world,
-    uint32_t organism_id,
-    Vector2i seed_pos) {
-
-    std::vector<Vector2i> connected;
-    std::queue<Vector2i> to_visit;
-    std::set<std::pair<int,int>> visited;
-
-    to_visit.push(seed_pos);
-    visited.insert({seed_pos.x, seed_pos.y});
-
-    WorldData& data = world.getData();
-
-    while (!to_visit.empty()) {
-        Vector2i pos = to_visit.front();
-        to_visit.pop();
-
-        // Check bounds
-        if (pos.x < 0 || pos.y < 0 ||
-            pos.x >= (int)data.width || pos.y >= (int)data.height) {
+        if (total_mass < 0.0001) {
             continue;
         }
 
-        Cell& cell = data.at(pos.x, pos.y);
+        // F = ma -> a = F/m.
+        Vector2d acceleration = total_force * (1.0 / total_mass);
 
-        // Must belong to this organism
-        if (cell.organism_id != organism_id) {
-            continue;
-        }
+        // Get current velocity from first cell (should be unified already).
+        Vector2d velocity = data.at(tree.seed_position.x,
+                                     tree.seed_position.y).velocity;
+        velocity += acceleration * deltaTime;
 
-        connected.push_back(pos);
-
-        // Check 4 cardinal neighbors (or 8 for diagonal connections)
-        static const std::array<Vector2i, 4> neighbors = {{
-            {-1, 0}, {1, 0}, {0, -1}, {0, 1}
-        }};
-
-        for (auto& offset : neighbors) {
-            Vector2i neighbor_pos = { pos.x + offset.x, pos.y + offset.y };
-            auto key = std::make_pair(neighbor_pos.x, neighbor_pos.y);
-
-            if (!visited.count(key)) {
-                visited.insert(key);
-                to_visit.push(neighbor_pos);
-            }
+        // Apply unified velocity to all connected cells.
+        for (const auto& pos : connected) {
+            data.at(pos.x, pos.y).velocity = velocity;
         }
     }
-
-    return connected;
 }
 ```
 
 ### Integration Point
 
-In `World::updatePhysics()`, after force resolution:
+Already in place - `resolveRigidBodies()` is called from `World::advanceTime()`:
 
 ```cpp
-// After resolveForces():
-resolveForces(deltaTime);
-
-// NEW: Synchronize organism structures
-if (tree_manager_ && settings.organism_structural_integrity) {
-    tree_manager_->syncOrganismStructures(*this);
-}
-
-// Continue with movement:
-processVelocityLimiting(deltaTime);
-computeMaterialMoves(deltaTime);
+resolveForces(scaledDeltaTime);
+resolveRigidBodies(scaledDeltaTime);  // Now handles pruning + unified velocity
+processVelocityLimiting(scaledDeltaTime);
 ```
 
 ## Benefits
@@ -178,7 +188,7 @@ computeMaterialMoves(deltaTime);
 
 ❌ **No rotation** - whole tree can't tip over as unit (yet)
 ❌ **No local flex** - tree is rigid (might feel stiff)
-❌ **Only organisms** - doesn't help generic rigid materials (metal piles)
+❌ **Only organisms** - doesn't help generic rigid materials
 ❌ **Performance** - flood fill every frame (but should be fast for small trees)
 
 ## Examples
@@ -203,42 +213,35 @@ Before:                  After removing middle WOOD:
     [WOOD]                   [WOOD]
       |
     [WOOD]-[WOOD]                   [WOOD] ← disconnected!
-      |
-    [LEAF]
 
 Flood fill from SEED:
-- Finds: SEED, 1 WOOD (connected via vertical path)
+- Finds: SEED, 2 WOOD (connected via vertical path)
 - Doesn't find: rightmost WOOD (no path to seed)
 - Disconnected WOOD loses organism_id → falls as particle
 ```
 
-### Example 3: Leaf Snaps Off
-```
-Tree with leaves:              Leaf breaks connection:
-    [SEED]                         [SEED]
-      |                              |
-    [WOOD]                         [WOOD]
-    /    \                         /
- [LEAF]  [LEAF]                [LEAF]    [LEAF] ← falls!
+## Implementation Status
 
-Right LEAF disconnected → organism_id=0 → becomes particle
-```
+### Completed
+- ✅ Modified `World::resolveRigidBodies()` to use TreeManager
+- ✅ Flood fill from seed_position (ROOT + WOOD + SEED only)
+- ✅ Prune disconnected fragments (set organism_id = 0)
+- ✅ Unified velocity for connected structure
+- ✅ `TreeManager::removeCellsFromTree()` for pruning
+- ✅ `TreeManager::addCellToTree()` for growth and testing
+- ✅ Tests updated to use TreeManager properly
+- ✅ New test: `DisconnectedFragmentGetsPruned`
 
-## Next Steps
+### Next
+- Convert `CantileverSupport_test` to use TreeManager (tests tree cantilever/horizontal branch stability)
 
-1. **Implement basic version** - flood fill + velocity sync
-2. **Test with existing trees** - does it prevent sagging?
-3. **Tune performance** - cache flood fill? Only rebuild on change?
-4. **Add rotation** (later) - track angular velocity for whole structure
-5. **Add fracture threshold** (later) - break connections under stress
+### Future
+- Add rotation (track angular velocity for whole structure)
+- Add fracture threshold (break connections under stress)
 
-## Open Questions
+## Design Decisions
 
-1. Should flood fill check 4 neighbors (cardinal) or 8 (with diagonals)?
-2. How often to run flood fill? Every frame? Only on damage/growth?
-3. Should bones still exist, or does this replace them?
-4. What about multi-material organisms (ROOT + WOOD + LEAF)?
-
----
-
-*Ready to implement when you are!*
+1. **4-connected flood fill** (cardinal neighbors only, no diagonals)
+2. **Every frame** - structural integrity checked each physics timestep
+3. **Bones still exist** - this doesn't replace bone forces, they work together
+4. **ROOT + WOOD + SEED form rigid structure** - LEAF excluded (handled by bones)

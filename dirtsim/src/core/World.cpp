@@ -31,6 +31,18 @@
 #include <random>
 #include <set>
 #include <sstream>
+#include <unordered_set>
+
+namespace {
+
+struct Vector2iHash {
+    size_t operator()(const DirtSim::Vector2i& v) const
+    {
+        return std::hash<int>()(v.x) ^ (std::hash<int>()(v.y) << 16);
+    }
+};
+
+} // namespace
 
 namespace DirtSim {
 
@@ -901,23 +913,124 @@ void World::resolveRigidBodies(double deltaTime)
 {
     ScopeTimer timer(pImpl->timers_, "resolve_rigid_bodies");
 
-    WorldRigidBodyCalculator rigid_calc;
+    if (!tree_manager_) {
+        return;
+    }
 
-    // Find all organism structures.
-    std::vector<RigidStructure> structures = rigid_calc.findAllStructures(*this);
+    WorldData& data = pImpl->data_;
 
-    spdlog::debug("Found {} rigid structures", structures.size());
+    for (const auto& [tree_id, tree] : tree_manager_->getTrees()) {
+        // 1. Flood fill from seed to find connected structural cells.
+        std::unordered_set<Vector2i, Vector2iHash> connected;
+        std::queue<Vector2i> frontier;
 
-    // Apply unified velocity to each structure.
-    for (auto& structure : structures) {
-        rigid_calc.applyUnifiedVelocity(*this, structure, deltaTime);
+        frontier.push(tree.seed_position);
+
+        while (!frontier.empty()) {
+            Vector2i pos = frontier.front();
+            frontier.pop();
+
+            // Bounds check.
+            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
+                || pos.y >= static_cast<int>(data.height)) {
+                continue;
+            }
+
+            // Already visited.
+            if (connected.count(pos)) {
+                continue;
+            }
+
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Must belong to this organism.
+            if (cell.organism_id != tree_id) {
+                continue;
+            }
+
+            // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
+            if (cell.material_type != MaterialType::SEED
+                && cell.material_type != MaterialType::ROOT
+                && cell.material_type != MaterialType::WOOD) {
+                continue;
+            }
+
+            connected.insert(pos);
+
+            // Add 4 cardinal neighbors to frontier.
+            frontier.push({ pos.x - 1, pos.y });
+            frontier.push({ pos.x + 1, pos.y });
+            frontier.push({ pos.x, pos.y - 1 });
+            frontier.push({ pos.x, pos.y + 1 });
+        }
+
+        // 2. Prune disconnected ROOT/WOOD cells.
+        std::vector<Vector2i> to_remove;
+        for (const auto& pos : tree.cells) {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
+                || pos.y >= static_cast<int>(data.height)) {
+                continue;
+            }
+
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Only prune structural materials.
+            if (cell.material_type != MaterialType::ROOT
+                && cell.material_type != MaterialType::WOOD) {
+                continue;
+            }
+
+            if (!connected.count(pos)) {
+                cell.organism_id = 0; // Fragment breaks off.
+                to_remove.push_back(pos);
+                spdlog::info(
+                    "Tree {} fragment at ({},{}) disconnected", tree_id, pos.x, pos.y);
+            }
+        }
+
+        // Update tree's cell tracking.
+        if (!to_remove.empty()) {
+            tree_manager_->removeCellsFromTree(tree_id, to_remove);
+        }
+
+        // 3. Apply unified velocity to connected structure.
+        if (connected.empty()) {
+            continue;
+        }
+
+        // Gather forces and mass.
+        Vector2d total_force;
+        double total_mass = 0;
+
+        for (const auto& pos : connected) {
+            Cell& cell = data.at(pos.x, pos.y);
+            total_force += cell.pending_force;
+            total_mass += cell.getMass();
+        }
+
+        if (total_mass < 0.0001) {
+            continue;
+        }
+
+        // F = ma -> a = F/m.
+        Vector2d acceleration = total_force * (1.0 / total_mass);
+
+        // Get current velocity from seed cell.
+        Vector2d velocity =
+            data.at(tree.seed_position.x, tree.seed_position.y).velocity;
+        velocity += acceleration * deltaTime;
+
+        // Apply unified velocity to all connected cells.
+        for (const auto& pos : connected) {
+            data.at(pos.x, pos.y).velocity = velocity;
+        }
 
         spdlog::debug(
-            "Structure (organism_id={}, {} cells): unified velocity=({:.3f}, {:.3f})",
-            structure.organism_id,
-            structure.size(),
-            structure.velocity.x,
-            structure.velocity.y);
+            "Tree {} ({} connected cells): unified velocity=({:.3f}, {:.3f})",
+            tree_id,
+            connected.size(),
+            velocity.x,
+            velocity.y);
     }
 }
 
