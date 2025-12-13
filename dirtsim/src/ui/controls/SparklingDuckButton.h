@@ -11,21 +11,15 @@ namespace Ui {
  * @brief Animated "Start Simulation" button featuring a duck and sparkles.
  *
  * Creates an eye-catching button with:
- * - Cute duck character (text-based)
+ * - Cute duck character
  * - Animated sparkle particles orbiting the button
- * - Gradient-like background with glow effect
- * - Hover/press animations
+ * - Press animation
  * - Starburst effect when pressed (sparkles spin up and fly outward in waves)
  */
 class SparklingDuckButton {
 public:
     using ClickCallback = std::function<void()>;
 
-    /**
-     * @brief Create the sparkle-duck button.
-     * @param parent Parent LVGL object.
-     * @param onClick Callback when button is clicked.
-     */
     SparklingDuckButton(lv_obj_t* parent, ClickCallback onClick);
 
     ~SparklingDuckButton();
@@ -41,9 +35,7 @@ public:
     lv_obj_t* getButton() { return button_; }
 
 private:
-    // More sparkles for impressive starburst effect.
     static constexpr int NUM_SPARKLES = 32;
-    // Bigger button to showcase the duck.
     static constexpr int BUTTON_WIDTH = 160;
     static constexpr int BUTTON_HEIGHT = 160;
 
