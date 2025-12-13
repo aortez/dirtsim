@@ -168,8 +168,6 @@ inline RenderMessage packRenderMessage(const WorldData& data, RenderFormat forma
     msg.height = data.height;
     msg.timestep = data.timestep;
     msg.fps_server = data.fps_server;
-    msg.scenario_id = data.scenario_id;
-    msg.scenario_config = data.scenario_config;
     msg.tree_vision = data.tree_vision;
 
     // Pack cells based on format.

@@ -1,119 +1,85 @@
+#include "SandboxScenario.h"
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
+#include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/TreeManager.h"
-#include "server/scenarios/Scenario.h"
-#include "server/scenarios/ScenarioRegistry.h"
 #include "spdlog/spdlog.h"
-#include <random>
+#include <cmath>
 
-using namespace DirtSim;
+namespace DirtSim {
 
-/**
- * Sandbox scenario - The default world setup without walls.
- */
-class SandboxScenario : public Scenario {
-public:
-    SandboxScenario()
-    {
-        metadata_.name = "Sandbox";
-        metadata_.description =
-            "Default sandbox with dirt quadrant and particle streams (no walls)";
-        metadata_.category = "sandbox";
+SandboxScenario::SandboxScenario()
+{
+    metadata_.name = "Sandbox";
+    metadata_.description =
+        "Default sandbox with dirt quadrant and particle streams (no walls)";
+    metadata_.category = "sandbox";
 
-        // Initialize with default config.
-        config_.quadrant_enabled = true;
-        config_.water_column_enabled = true;
-        config_.right_throw_enabled = true;
-        config_.rain_rate = 0.0;
-    }
+    // Initialize with default config.
+    config_.quadrant_enabled = true;
+    config_.water_column_enabled = true;
+    config_.right_throw_enabled = true;
+    config_.rain_rate = 0.0;
+}
 
-    const ScenarioMetadata& getMetadata() const override { return metadata_; }
+const ScenarioMetadata& SandboxScenario::getMetadata() const
+{
+    return metadata_;
+}
 
-    ScenarioConfig getConfig() const override { return config_; }
+ScenarioConfig SandboxScenario::getConfig() const
+{
+    return config_;
+}
 
-    void setConfig(const ScenarioConfig& newConfig, World& world) override
-    {
-        // Validate type and update.
-        if (std::holds_alternative<SandboxConfig>(newConfig)) {
-            const SandboxConfig& newSandboxConfig = std::get<SandboxConfig>(newConfig);
+void SandboxScenario::setConfig(const ScenarioConfig& newConfig, World& world)
+{
+    // Validate type and update.
+    if (std::holds_alternative<SandboxConfig>(newConfig)) {
+        const SandboxConfig& newSandboxConfig = std::get<SandboxConfig>(newConfig);
 
-            // Check if water column state changed.
-            bool wasWaterEnabled = config_.water_column_enabled;
-            bool nowWaterEnabled = newSandboxConfig.water_column_enabled;
+        // Check if water column state changed.
+        bool wasWaterEnabled = config_.water_column_enabled;
+        bool nowWaterEnabled = newSandboxConfig.water_column_enabled;
 
-            // Check if quadrant state changed.
-            bool wasQuadrantEnabled = config_.quadrant_enabled;
-            bool nowQuadrantEnabled = newSandboxConfig.quadrant_enabled;
+        // Check if quadrant state changed.
+        bool wasQuadrantEnabled = config_.quadrant_enabled;
+        bool nowQuadrantEnabled = newSandboxConfig.quadrant_enabled;
 
-            // Update config.
-            config_ = newSandboxConfig;
+        // Update config.
+        config_ = newSandboxConfig;
 
-            // Apply water column changes immediately.
-            if (!wasWaterEnabled && nowWaterEnabled) {
-                waterColumnStartTime_ = 0.0;
-                addWaterColumn(world);
-                spdlog::info("SandboxScenario: Water column enabled and added");
-            }
-            else if (wasWaterEnabled && !nowWaterEnabled) {
-                waterColumnStartTime_ = -1.0;
-                clearWaterColumn(world);
-                spdlog::info("SandboxScenario: Water column disabled and cleared");
-            }
-
-            // Apply quadrant changes immediately.
-            if (!wasQuadrantEnabled && nowQuadrantEnabled) {
-                addDirtQuadrant(world);
-                spdlog::info("SandboxScenario: Dirt quadrant enabled and added");
-            }
-            else if (wasQuadrantEnabled && !nowQuadrantEnabled) {
-                clearDirtQuadrant(world);
-                spdlog::info("SandboxScenario: Dirt quadrant disabled and cleared");
-            }
-
-            spdlog::info("SandboxScenario: Config updated");
+        // Apply water column changes immediately.
+        if (!wasWaterEnabled && nowWaterEnabled) {
+            waterColumnStartTime_ = 0.0;
+            addWaterColumn(world);
+            spdlog::info("SandboxScenario: Water column enabled and added");
         }
-        else {
-            spdlog::error("SandboxScenario: Invalid config type provided");
+        else if (wasWaterEnabled && !nowWaterEnabled) {
+            waterColumnStartTime_ = -1.0;
+            clearWaterColumn(world);
+            spdlog::info("SandboxScenario: Water column disabled and cleared");
         }
+
+        // Apply quadrant changes immediately.
+        if (!wasQuadrantEnabled && nowQuadrantEnabled) {
+            addDirtQuadrant(world);
+            spdlog::info("SandboxScenario: Dirt quadrant enabled and added");
+        }
+        else if (wasQuadrantEnabled && !nowQuadrantEnabled) {
+            clearDirtQuadrant(world);
+            spdlog::info("SandboxScenario: Dirt quadrant disabled and cleared");
+        }
+
+        spdlog::info("SandboxScenario: Config updated");
     }
-
-    void setup(World& world) override;
-    void reset(World& world) override;
-    void tick(World& world, double deltaTime) override;
-
-private:
-    ScenarioMetadata metadata_;
-    SandboxConfig config_;
-
-    // Timing state for particle generation.
-    double lastSimTime_ = 0.0;
-    double nextRightThrow_ = 1.0;
-
-    // Water column auto-disable state.
-    double waterColumnStartTime_ = -1.0;
-    static constexpr double WATER_COLUMN_DURATION = 2.0;
-
-    // Random number generator for rain drops.
-    std::mt19937 rng_{ std::random_device{}() };
-
-    // Helper methods (scenario-specific, naturally belong here!).
-    void addWaterColumn(World& world);
-    void clearWaterColumn(World& world);
-    void addDirtQuadrant(World& world);
-    void clearDirtQuadrant(World& world);
-    void refillWaterColumn(World& world);
-    void addRainDrops(World& world, double deltaTime);
-    void spawnWaterDrop(
-        World& world, uint32_t centerX, uint32_t centerY, double radius, double fillAmount);
-    void throwDirtBalls(World& world);
-};
-
-// ============================================================================
-// SandboxScenario Implementation
-// ============================================================================
+    else {
+        spdlog::error("SandboxScenario: Invalid config type provided");
+    }
+}
 
 void SandboxScenario::setup(World& world)
 {
@@ -342,7 +308,7 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
     }
 
     // Calculate fill amount to achieve target water rate.
-    // fill = targetWater / (drops × area)
+    // fill = targetWater / (drops × area).
     double meanDropArea = M_PI * meanRadius * meanRadius;
     double fillAmount = (targetWaterRate * deltaTime) / (numDrops * meanDropArea);
     fillAmount = std::clamp(fillAmount, 0.01, 1.0);
@@ -416,3 +382,5 @@ void SandboxScenario::throwDirtBalls(World& world)
         cell.addDirtWithVelocity(1.0, Vector2d{ -10, -10 });
     }
 }
+
+} // namespace DirtSim

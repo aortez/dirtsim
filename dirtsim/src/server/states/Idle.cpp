@@ -79,9 +79,8 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         return Idle{};
     }
 
-    // Populate WorldData with scenario metadata and config.
-    newState.world->getData().scenario_id = cwc.command.scenario_id;
-    newState.world->getData().scenario_config = newState.scenario->getConfig();
+    // Set scenario ID in state.
+    newState.scenario_id = cwc.command.scenario_id;
 
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);

@@ -1,12 +1,35 @@
 #pragma once
 
-#include "core/ScenarioConfig.h"
+#include <cstdint>
 #include <memory>
 #include <string>
+#include <variant>
 
 // Forward declarations.
 namespace DirtSim {
 class World;
+
+// Forward-declare all config types (incomplete types are fine for variant declaration).
+struct EmptyConfig;
+struct SandboxConfig;
+struct DamBreakConfig;
+struct RainingConfig;
+struct WaterEqualizationConfig;
+struct FallingDirtConfig;
+struct BenchmarkConfig;
+struct ClockConfig;
+
+// Forward-declare the config variant.
+// Full definition is in ScenarioConfig.h (only needed by .cpp files that use the variant).
+using ScenarioConfig = std::variant<
+    EmptyConfig,
+    SandboxConfig,
+    DamBreakConfig,
+    RainingConfig,
+    WaterEqualizationConfig,
+    FallingDirtConfig,
+    BenchmarkConfig,
+    ClockConfig>;
 } // namespace DirtSim
 
 using namespace DirtSim;
@@ -16,16 +39,16 @@ using namespace DirtSim;
  */
 
 /**
- * Metadata for a scenario.
+ * Metadata for a scenario (instance data owned by each Scenario).
  */
 struct ScenarioMetadata {
-    std::string name;        // Display name
-    std::string description; // Tooltip/help text
-    std::string category;    // Organization category (test, demo, sandbox)
+    std::string name;        // Display name.
+    std::string description; // Tooltip/help text.
+    std::string category;    // Organization category (test, demo, sandbox).
 
-    // Required world dimensions (0 = any size is acceptable)
-    uint32_t requiredWidth = 0;  // Required world width, 0 for flexible
-    uint32_t requiredHeight = 0; // Required world height, 0 for flexible
+    // Required world dimensions (0 = any size is acceptable).
+    uint32_t requiredWidth = 0;  // Required world width, 0 for flexible.
+    uint32_t requiredHeight = 0; // Required world height, 0 for flexible.
 };
 
 /**

@@ -22,8 +22,9 @@ struct ScenarioMetadata {
  *
  * Order matters for UI dropdown index mapping.
  */
-constexpr std::array<ScenarioMetadata, 7> SCENARIO_METADATA = {{
+constexpr std::array<ScenarioMetadata, 8> SCENARIO_METADATA = {{
     { "sandbox", "Sandbox", "Default sandbox with dirt quadrant and particle streams", "sandbox" },
+    { "clock", "Clock", "Digital clock displaying system time (HH:MM:SS)", "demo" },
     { "dam_break", "Dam Break", "Water column held by wall dam that breaks", "demo" },
     { "empty", "Empty", "A completely empty world with no particles", "sandbox" },
     { "falling_dirt", "Falling Dirt", "Dirt particles falling from the sky", "demo" },

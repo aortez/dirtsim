@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
 #include "ui/controls/IconRail.h"
 #include "ui/rendering/RenderMode.h"
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <vector>
 
 typedef struct _lv_obj_t lv_obj_t;
@@ -57,7 +59,11 @@ public:
      */
     void connectToIconRail();
 
-    void updateFromWorldData(const WorldData& data, double uiFPS = 0.0);
+    void updateFromWorldData(
+        const WorldData& data,
+        const std::string& scenario_id,
+        const ScenarioConfig& scenario_config,
+        double uiFPS = 0.0);
 
     void render(const WorldData& data, bool debugDraw);
 

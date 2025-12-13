@@ -100,10 +100,10 @@ private:
     static constexpr uint32_t ICON_COLOR = 0xFFFFFF;
 
     // Dimensions optimized for HyperPixel 4.0 (480px height).
-    // With 4 icons: 4×78 + 3×2 = 318px (plenty of spare room for future icons).
-    static constexpr int RAIL_WIDTH = 82;
-    static constexpr int ICON_SIZE = 78;
-    static constexpr int GAP = 2;
+    // With 4 icons: 4×96 + 3×12 = 420px (fits nicely with room to spare).
+    static constexpr int RAIL_WIDTH = 108;
+    static constexpr int ICON_SIZE = 96;
+    static constexpr int GAP = 12;
 
     void createIcons(lv_obj_t* parent);
     void updateButtonVisuals();

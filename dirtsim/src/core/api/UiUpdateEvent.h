@@ -1,8 +1,10 @@
 #pragma once
 
+#include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
 #include <chrono>
 #include <cstdint>
+#include <string>
 
 namespace DirtSim {
 
@@ -13,6 +15,10 @@ struct UiUpdateEvent {
     uint64_t stepCount = 0;
     bool isPaused = false;
     std::chrono::steady_clock::time_point timestamp;
+
+    // Scenario metadata (sent alongside world data).
+    std::string scenario_id = "empty";
+    ScenarioConfig scenario_config = EmptyConfig{};
 
     static constexpr const char* name() { return "UiUpdateEvent"; }
 };

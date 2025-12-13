@@ -5,6 +5,7 @@
 #include "controls/PhysicsPanel.h"
 #include "controls/ScenarioControlsFactory.h"
 #include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
@@ -174,6 +175,9 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         lv_obj_set_style_text_line_space(list, LVGLBuilder::Style::CONTROL_HEIGHT - 16, LV_PART_MAIN);
         lv_obj_set_style_pad_ver(list, 8, LV_PART_MAIN);
 
+        // Set max height to fit all scenarios (7 items × ~48px each + padding).
+        lv_obj_set_style_max_height(list, 400, LV_PART_MAIN);
+
         lv_obj_set_user_data(scenarioDropdown_, this);
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
@@ -205,7 +209,11 @@ void SimPlayground::updatePhysicsPanels(const PhysicsSettings& settings)
     }
 }
 
-void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
+void SimPlayground::updateFromWorldData(
+    const WorldData& data,
+    const std::string& scenario_id,
+    const ScenarioConfig& scenario_config,
+    double uiFPS)
 {
     // Update stats display if core panel is active.
     if (coreControls_) {
@@ -226,17 +234,17 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
     }
 
     // Handle scenario changes.
-    if (data.scenario_id != currentScenarioId_) {
-        LOG_INFO(Controls, "Scenario changed to '{}'", data.scenario_id);
+    if (scenario_id != currentScenarioId_) {
+        LOG_INFO(Controls, "Scenario changed to '{}'", scenario_id);
 
         // Clear old scenario controls.
         scenarioControls_.reset();
 
-        currentScenarioId_ = data.scenario_id;
+        currentScenarioId_ = scenario_id;
     }
 
     // Store the config for use when panel is opened.
-    currentScenarioConfig_ = data.scenario_config;
+    currentScenarioConfig_ = scenario_config;
 
     // Create scenario controls if scenario panel is active and controls don't exist.
     if (activePanel_ == IconId::SCENARIO && !scenarioControls_) {
@@ -252,7 +260,7 @@ void SimPlayground::updateFromWorldData(const WorldData& data, double uiFPS)
 
     // Always update scenario controls with latest config.
     if (scenarioControls_) {
-        scenarioControls_->updateFromConfig(data.scenario_config);
+        scenarioControls_->updateFromConfig(scenario_config);
     }
 }
 

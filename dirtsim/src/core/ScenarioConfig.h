@@ -1,96 +1,24 @@
 #pragma once
 
 #include "ReflectSerializer.h"
+#include "server/scenarios/scenarios/BenchmarkConfig.h"
+#include "server/scenarios/scenarios/ClockConfig.h"
+#include "server/scenarios/scenarios/DamBreakConfig.h"
+#include "server/scenarios/scenarios/EmptyConfig.h"
+#include "server/scenarios/scenarios/FallingDirtConfig.h"
+#include "server/scenarios/scenarios/RainingConfig.h"
+#include "server/scenarios/scenarios/SandboxConfig.h"
+#include "server/scenarios/scenarios/WaterEqualizationConfig.h"
 #include <nlohmann/json.hpp>
 #include <string>
 #include <variant>
-#include <zpp_bits.h>
 
 namespace DirtSim {
 
 /**
- * @brief Configuration structs for each scenario type.
- *
- * These structs define the runtime-configurable parameters for each scenario.
- * They are automatically serialized via ReflectSerializer and transmitted
- * to the UI in WorldData for display/editing.
- */
-
-/**
- * @brief Empty scenario - no configuration needed.
- */
-struct EmptyConfig {
-    using serialize = zpp::bits::members<0>;
-};
-
-/**
- * @brief Sandbox scenario - interactive playground with configurable features.
- */
-struct SandboxConfig {
-    using serialize = zpp::bits::members<4>;
-
-    // Initial setup features.
-    bool quadrant_enabled = true; // Lower-right quadrant filled with dirt.
-
-    // Continuous particle generation features.
-    bool water_column_enabled = true; // Water column on left side (5 wide × 20 tall).
-    bool right_throw_enabled = true;  // Periodic dirt throw from right side.
-    double rain_rate = 0.0;           // Rain rate in drops per second (0 = disabled).
-};
-
-/**
- * @brief Dam break scenario - water behind barrier.
- */
-struct DamBreakConfig {
-    using serialize = zpp::bits::members<3>;
-
-    double dam_height = 10.0;  // Height of dam wall.
-    bool auto_release = false; // Automatically break dam after delay.
-    double release_time = 2.0; // Time in seconds before auto-release.
-};
-
-/**
- * @brief Raining scenario - continuous rain.
- */
-struct RainingConfig {
-    using serialize = zpp::bits::members<3>;
-
-    double rain_rate = 5.0;       // Rain rate in drops per second.
-    double drain_rate = 0.0;      // Drainage rate at bottom (0 = puddle, 100 = fast drain).
-    double max_fill_percent = 0.0; // Auto-clear world above this fill % (0 = disabled).
-};
-
-/**
- * @brief Water equalization scenario - pressure equilibration test.
- */
-struct WaterEqualizationConfig {
-    using serialize = zpp::bits::members<3>;
-
-    double left_height = 15.0;     // Water column height on left.
-    double right_height = 5.0;     // Water column height on right.
-    bool separator_enabled = true; // Start with separator wall.
-};
-
-/**
- * @brief Falling dirt scenario - gravity and pile formation.
- */
-struct FallingDirtConfig {
-    using serialize = zpp::bits::members<2>;
-
-    double drop_height = 20.0; // Height from which dirt drops.
-    double drop_rate = 2.0;    // Drop rate in particles per second.
-};
-
-/**
- * @brief Benchmark scenario - performance testing with complex physics.
- */
-struct BenchmarkConfig {
-    using serialize = zpp::bits::members<0>;
-};
-
-/**
  * @brief Variant type containing all scenario configurations.
  *
+ * Each config struct is defined in its own header file alongside its scenario.
  * Use std::visit() or std::get<>() to access the active config.
  */
 using ScenarioConfig = std::variant<
@@ -100,7 +28,8 @@ using ScenarioConfig = std::variant<
     RainingConfig,
     WaterEqualizationConfig,
     FallingDirtConfig,
-    BenchmarkConfig>;
+    BenchmarkConfig,
+    ClockConfig>;
 
 /**
  * @brief Get scenario ID string from config variant.
@@ -126,6 +55,8 @@ inline std::string getScenarioId(const ScenarioConfig& config)
                 return "falling_dirt";
             else if constexpr (std::is_same_v<T, BenchmarkConfig>)
                 return "benchmark";
+            else if constexpr (std::is_same_v<T, ClockConfig>)
+                return "clock";
             else
                 return "unknown";
         },
@@ -171,6 +102,9 @@ inline void to_json(nlohmann::json& j, const ScenarioConfig& config)
             else if constexpr (std::is_same_v<T, BenchmarkConfig>) {
                 j["type"] = "benchmark";
             }
+            else if constexpr (std::is_same_v<T, ClockConfig>) {
+                j["type"] = "clock";
+            }
         },
         config);
 }
@@ -200,6 +134,9 @@ inline void from_json(const nlohmann::json& j, ScenarioConfig& config)
     }
     else if (type == "benchmark") {
         config = ReflectSerializer::from_json<BenchmarkConfig>(j);
+    }
+    else if (type == "clock") {
+        config = ReflectSerializer::from_json<ClockConfig>(j);
     }
     else {
         config = EmptyConfig{};

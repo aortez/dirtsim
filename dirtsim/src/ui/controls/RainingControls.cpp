@@ -43,18 +43,18 @@ void RainingControls::createWidgets()
                        .onValueChange([this](int value) { onRainSliderChanged(value); })
                        .build();
 
-    // Drain rate toggle slider.
-    drainRateControl_ = ToggleSlider::create(controlsContainer_)
-                            .label("Drain Rate")
+    // Drain size toggle slider.
+    drainSizeControl_ = ToggleSlider::create(controlsContainer_)
+                            .label("Drain Size")
                             .range(0, 100)
                             .value(0)
-                            .defaultValue(50)
+                            .defaultValue(20)
                             .valueScale(1.0)
                             .valueFormat("%.0f")
                             .initiallyEnabled(false)
                             .sliderWidth(180)
-                            .onToggle([this](bool enabled) { onDrainRateToggled(enabled); })
-                            .onValueChange([this](int value) { onDrainRateSliderChanged(value); })
+                            .onToggle([this](bool enabled) { onDrainSizeToggled(enabled); })
+                            .onValueChange([this](int value) { onDrainSizeSliderChanged(value); })
                             .build();
 
     // Max fill toggle slider.
@@ -82,9 +82,9 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     const RainingConfig& config = std::get<RainingConfig>(configVariant);
     spdlog::info(
-        "RainingControls: updateFromConfig called - rain_rate={}, drain_rate={}, max_fill={}",
+        "RainingControls: updateFromConfig called - rain_rate={}, drain_size={}, max_fill={}",
         config.rain_rate,
-        config.drain_rate,
+        config.drain_size,
         config.max_fill_percent);
 
     // Prevent sending updates back to server during UI sync.
@@ -105,13 +105,13 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
             "RainingControls: Updated rain control (enabled={}, value={})", shouldBeEnabled, sliderValue);
     }
 
-    // Update drain rate control.
-    if (drainRateControl_) {
-        bool shouldBeEnabled = config.drain_rate > 0.0;
-        int sliderValue = static_cast<int>(config.drain_rate);
-        drainRateControl_->setEnabled(shouldBeEnabled);
+    // Update drain size control.
+    if (drainSizeControl_) {
+        bool shouldBeEnabled = config.drain_size > 0.0;
+        int sliderValue = static_cast<int>(config.drain_size);
+        drainSizeControl_->setEnabled(shouldBeEnabled);
         if (shouldBeEnabled) {
-            drainRateControl_->setValue(sliderValue);
+            drainSizeControl_->setValue(sliderValue);
         }
         spdlog::debug(
             "RainingControls: Updated drain control (enabled={}, value={})",
@@ -153,13 +153,13 @@ RainingConfig RainingControls::getCurrentConfig() const
         }
     }
 
-    // Get drain rate from control.
-    if (drainRateControl_) {
-        if (drainRateControl_->isEnabled()) {
-            config.drain_rate = drainRateControl_->getScaledValue();
+    // Get drain size from control.
+    if (drainSizeControl_) {
+        if (drainSizeControl_->isEnabled()) {
+            config.drain_size = drainSizeControl_->getScaledValue();
         }
         else {
-            config.drain_rate = 0.0;
+            config.drain_size = 0.0;
         }
     }
 
@@ -206,30 +206,30 @@ void RainingControls::onRainSliderChanged(int value)
     sendConfigUpdate(config);
 }
 
-void RainingControls::onDrainRateToggled(bool enabled)
+void RainingControls::onDrainSizeToggled(bool enabled)
 {
     // Don't send updates during initialization.
     if (isInitializing()) {
-        spdlog::debug("RainingControls: Ignoring drain rate toggle during initialization");
+        spdlog::debug("RainingControls: Ignoring drain size toggle during initialization");
         return;
     }
 
-    spdlog::info("RainingControls: Drain rate toggled to {}", enabled ? "ON" : "OFF");
+    spdlog::info("RainingControls: Drain size toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and send update.
     RainingConfig config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
-void RainingControls::onDrainRateSliderChanged(int value)
+void RainingControls::onDrainSizeSliderChanged(int value)
 {
     // Don't send updates during initialization.
     if (isInitializing()) {
-        spdlog::debug("RainingControls: Ignoring drain rate slider during initialization");
+        spdlog::debug("RainingControls: Ignoring drain size slider during initialization");
         return;
     }
 
-    spdlog::info("RainingControls: Drain rate changed to {}", value);
+    spdlog::info("RainingControls: Drain size changed to {}", value);
 
     // Get complete current config and send update.
     RainingConfig config = getCurrentConfig();

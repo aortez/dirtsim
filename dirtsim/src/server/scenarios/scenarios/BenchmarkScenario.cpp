@@ -1,67 +1,52 @@
+#include "BenchmarkScenario.h"
 #include "core/Cell.h"
-#include "core/MaterialType.h"
-#include "core/PhysicsSettings.h"
+#include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "server/scenarios/Scenario.h"
-#include "server/scenarios/ScenarioRegistry.h"
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <cstdlib>
 
-using namespace DirtSim;
+namespace DirtSim {
 
-/**
- * Benchmark scenario - Performance testing with complex physics.
- * 200x200 world with water pool and falling metal/wood balls.
- */
-class BenchmarkScenario : public Scenario {
-public:
-    BenchmarkScenario()
-    {
-        metadata_.name = "Benchmark";
-        metadata_.description = "Performance test: 200x200 world with water pool and falling balls";
-        metadata_.category = "benchmark";
-        metadata_.requiredWidth = 200;
-        metadata_.requiredHeight = 200;
+BenchmarkScenario::BenchmarkScenario()
+{
+    metadata_.name = "Benchmark";
+    metadata_.description = "Performance test: 200x200 world with water pool and falling balls";
+    metadata_.category = "benchmark";
+    metadata_.requiredWidth = 200;
+    metadata_.requiredHeight = 200;
 
-        // Initialize with empty config.
-        config_ = BenchmarkConfig{};
+    // Initialize with empty config.
+    config_ = BenchmarkConfig{};
+}
+
+const ScenarioMetadata& BenchmarkScenario::getMetadata() const
+{
+    return metadata_;
+}
+
+ScenarioConfig BenchmarkScenario::getConfig() const
+{
+    return config_;
+}
+
+void BenchmarkScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+{
+    // Validate type and update.
+    if (std::holds_alternative<BenchmarkConfig>(newConfig)) {
+        config_ = std::get<BenchmarkConfig>(newConfig);
+        spdlog::info("BenchmarkScenario: Config updated");
     }
-
-    const ScenarioMetadata& getMetadata() const override { return metadata_; }
-
-    ScenarioConfig getConfig() const override { return config_; }
-
-    void setConfig(const ScenarioConfig& newConfig, World& /*world*/) override
-    {
-        // Validate type and update.
-        if (std::holds_alternative<BenchmarkConfig>(newConfig)) {
-            config_ = std::get<BenchmarkConfig>(newConfig);
-            spdlog::info("BenchmarkScenario: Config updated");
-        }
-        else {
-            spdlog::error("BenchmarkScenario: Invalid config type provided");
-        }
+    else {
+        spdlog::error("BenchmarkScenario: Invalid config type provided");
     }
+}
 
-    void setup(World& world) override;
-    void reset(World& world) override;
-
+void BenchmarkScenario::tick(World& /*world*/, double /*deltaTime*/)
+{
     // No ongoing behavior needed - just initial setup.
-    void tick(World& /*world*/, double /*deltaTime*/) override {}
-
-private:
-    ScenarioMetadata metadata_;
-    BenchmarkConfig config_;
-
-    void addBall(
-        World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material);
-};
-
-// ============================================================================
-// BenchmarkScenario Implementation
-// ============================================================================
+}
 
 void BenchmarkScenario::setup(World& world)
 {
@@ -164,3 +149,5 @@ void BenchmarkScenario::addBall(
         }
     }
 }
+
+} // namespace DirtSim

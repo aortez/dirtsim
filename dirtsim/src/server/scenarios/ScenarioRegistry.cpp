@@ -1,17 +1,18 @@
 #include "ScenarioRegistry.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
+#include "scenarios/BenchmarkScenario.h"
+#include "scenarios/ClockScenario.h"
+#include "scenarios/DamBreakScenario.h"
+#include "scenarios/EmptyScenario.h"
+#include "scenarios/FallingDirtScenario.h"
+#include "scenarios/RainingScenario.h"
+#include "scenarios/SandboxScenario.h"
+#include "scenarios/TreeGerminationScenario.h"
+#include "scenarios/WaterEqualizationScenario.h"
 #include <algorithm>
 
-// Include scenario implementations.
-#include "scenarios/BenchmarkScenario.cpp"
-#include "scenarios/DamBreakScenario.cpp"
-#include "scenarios/EmptyScenario.cpp"
-#include "scenarios/FallingDirtScenario.cpp"
-#include "scenarios/RainingScenario.cpp"
-#include "scenarios/SandboxScenario.cpp"
-#include "scenarios/TreeGerminationScenario.cpp"
-#include "scenarios/WaterEqualizationScenario.cpp"
+using namespace DirtSim;
 
 ScenarioRegistry ScenarioRegistry::createDefault()
 {
@@ -25,6 +26,12 @@ ScenarioRegistry ScenarioRegistry::createDefault()
         registry.registerScenario("benchmark", temp->getMetadata(), []() {
             return std::make_unique<BenchmarkScenario>();
         });
+    }
+
+    {
+        auto temp = std::make_unique<ClockScenario>();
+        registry.registerScenario(
+            "clock", temp->getMetadata(), []() { return std::make_unique<ClockScenario>(); });
     }
 
     {

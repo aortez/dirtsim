@@ -34,6 +34,7 @@ struct FingerSession {
 struct SimRunning {
     std::unique_ptr<World> world;
     std::unique_ptr<Scenario> scenario; // Owns scenario instance (not singleton).
+    std::string scenario_id = "empty";  // Current scenario ID.
     uint32_t stepCount = 0;
     uint32_t targetSteps = 0;     // Steps to execute before pausing.
     double stepDurationMs = 16.0; // Physics timestep in milliseconds.

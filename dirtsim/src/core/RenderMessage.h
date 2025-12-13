@@ -1,7 +1,6 @@
 #pragma once
 
 #include "ReflectSerializer.h"
-#include "ScenarioConfig.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
 #include <cstdint>
@@ -116,10 +115,6 @@ struct RenderMessage {
     uint32_t timestep = 0;
     double fps_server = 0.0;
 
-    // Scenario metadata.
-    std::string scenario_id = "empty";
-    ScenarioConfig scenario_config = EmptyConfig{};
-
     // Format-specific cell data (either BasicCell[] or DebugCell[]).
     std::vector<std::byte> payload;
 
@@ -132,7 +127,7 @@ struct RenderMessage {
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
-    using serialize = zpp::bits::members<11>;
+    using serialize = zpp::bits::members<9>;
 };
 
 /**

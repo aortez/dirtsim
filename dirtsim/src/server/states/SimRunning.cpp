@@ -39,16 +39,15 @@ void SimRunning::onEnter(StateMachine& dsm)
     }
 
     // Apply default "sandbox" scenario if no scenario is set.
-    if (world && world->getData().scenario_id == "empty") {
+    if (world && scenario_id == "empty") {
         spdlog::info("SimRunning: Applying default 'sandbox' scenario");
 
         auto& registry = dsm.getScenarioRegistry();
         scenario = registry.createScenario("sandbox");
 
         if (scenario) {
-            // Populate WorldData with scenario metadata and config.
-            world->getData().scenario_id = "sandbox";
-            world->getData().scenario_config = scenario->getConfig();
+            // Set scenario ID.
+            scenario_id = "sandbox";
 
             // Clear world before applying scenario.
             for (uint32_t y = 0; y < world->getData().height; ++y) {
@@ -91,10 +90,6 @@ void SimRunning::tick(StateMachine& dsm)
         dsm.getTimers().startTimer("scenario_tick");
         scenario->tick(*world, FIXED_TIMESTEP_SECONDS);
         dsm.getTimers().stopTimer("scenario_tick");
-
-        // Sync scenario's config to WorldData (scenario is source of truth).
-        // This ensures auto-changes (like water column auto-disable) propagate to UI.
-        world->getData().scenario_config = scenario->getConfig();
     }
 
     // Advance physics by fixed timestep.
@@ -192,7 +187,7 @@ void SimRunning::tick(StateMachine& dsm)
         auto broadcastStart = std::chrono::steady_clock::now();
         timers.startTimer("broadcast_render_message");
 
-        dsm.broadcastRenderMessage(world->getData());
+        dsm.broadcastRenderMessage(world->getData(), scenario_id, scenario->getConfig());
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -242,11 +237,10 @@ State::Any SimRunning::onEvent(const ApplyScenarioCommand& cmd, StateMachine& ds
     }
 
     if (world) {
-        // Populate WorldData with scenario metadata and config.
-        world->getData().scenario_id = cmd.scenarioName;
-        world->getData().scenario_config = scenario->getConfig();
+        // Update scenario ID.
+        scenario_id = cmd.scenarioName;
 
-        spdlog::info("SimRunning: Scenario '{}' applied to WorldData", cmd.scenarioName);
+        spdlog::info("SimRunning: Scenario '{}' applied", cmd.scenarioName);
     }
 
     return std::move(*this);
@@ -417,7 +411,7 @@ State::Any SimRunning::onEvent(const Api::StatusGet::Cwc& cwc, StateMachine& /*d
     // Return lightweight status (no cell data).
     Api::StatusGet::Okay status;
     status.timestep = stepCount;
-    status.scenario_id = world->getData().scenario_id;
+    status.scenario_id = scenario_id;
     status.width = world->getData().width;
     status.height = world->getData().height;
 
@@ -473,10 +467,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     // Pass world so scenario can immediately apply changes.
     scenario->setConfig(cwc.command.config, *world);
 
-    // Sync to WorldData (will be sent to UI on next frame).
-    world->getData().scenario_config = scenario->getConfig();
-
-    spdlog::info("SimRunning: Scenario config updated for '{}'", world->getData().scenario_id);
+    spdlog::info("SimRunning: Scenario config updated for '{}'", scenario_id);
 
     cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
@@ -654,10 +645,10 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     }
 
     // Check if scenario has changed - if so, reload the world.
-    if (cwc.command.scenario_id != world->getData().scenario_id) {
+    if (cwc.command.scenario_id != scenario_id) {
         spdlog::info(
             "SimRunning: Switching scenario from '{}' to '{}'",
-            world->getData().scenario_id,
+            scenario_id,
             cwc.command.scenario_id);
 
         // Create new scenario instance from factory.
@@ -699,9 +690,8 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
             world->resizeGrid(targetWidth, targetHeight);
         }
 
-        // Update world data.
-        world->getData().scenario_id = cwc.command.scenario_id;
-        world->getData().scenario_config = scenario->getConfig();
+        // Update scenario ID.
+        scenario_id = cwc.command.scenario_id;
 
         // Clear world before applying new scenario.
         for (uint32_t y = 0; y < world->getData().height; ++y) {

@@ -1,7 +1,9 @@
 #include "State.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
+#include "core/RenderMessageFull.h"
 #include "core/RenderMessageUtils.h"
+#include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
 #include "core/api/UiUpdateEvent.h"
 #include "core/network/WebSocketService.h"
@@ -43,10 +45,12 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         LOG_DEBUG(Network, "Received binary message ({} bytes)", bytes.size());
 
         try {
-            // Deserialize as RenderMessage.
-            RenderMessage renderMsg;
+            // Deserialize as RenderMessageFull (includes scenario metadata).
+            RenderMessageFull fullMsg;
             zpp::bits::in in(bytes);
-            in(renderMsg).or_throw();
+            in(fullMsg).or_throw();
+
+            const RenderMessage& renderMsg = fullMsg.render_data;
 
             // Reconstruct WorldData from RenderMessage.
             WorldData worldData;
@@ -54,8 +58,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.height = renderMsg.height;
             worldData.timestep = renderMsg.timestep;
             worldData.fps_server = renderMsg.fps_server;
-            worldData.scenario_id = renderMsg.scenario_id;
-            worldData.scenario_config = renderMsg.scenario_config;
 
             // Unpack cells based on format.
             size_t numCells = renderMsg.width * renderMsg.height;
@@ -113,7 +115,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                                .fps = 0,
                                .stepCount = static_cast<uint64_t>(renderMsg.timestep),
                                .isPaused = false,
-                               .timestamp = now };
+                               .timestamp = now,
+                               .scenario_id = fullMsg.scenario_id,
+                               .scenario_config = fullMsg.scenario_config };
 
             sm.queueEvent(evt);
         }

@@ -84,13 +84,13 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 
     // Verify: World exists and scenario already applied by Idle.
     ASSERT_NE(simRunning.world, nullptr);
-    EXPECT_EQ(simRunning.world->getData().scenario_id, "sandbox") << "Scenario applied by Idle";
+    EXPECT_EQ(simRunning.scenario_id, "sandbox") << "Scenario applied by Idle";
 
     // Execute: Call onEnter (should not change scenario since it's already set).
     simRunning.onEnter(*stateMachine);
 
     // Verify: Sandbox scenario is still applied.
-    EXPECT_EQ(simRunning.world->getData().scenario_id, "sandbox")
+    EXPECT_EQ(simRunning.scenario_id, "sandbox")
         << "Scenario should remain sandbox";
 
     // Verify: Walls exist (basic scenario setup check).
@@ -215,6 +215,9 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
     // Verify: Stays in SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
 
+    // Move to new state (simRunning is now moved-from).
+    SimRunning& updatedState = std::get<SimRunning>(newState.getVariant());
+
     // Verify: Callback was invoked with success.
     ASSERT_TRUE(callbackInvoked) << "StateGet callback should be invoked";
     ASSERT_TRUE(capturedResponse.isValue()) << "StateGet should return success";
@@ -223,8 +226,9 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
     const WorldData& worldData = capturedResponse.value().worldData;
     EXPECT_EQ(worldData.width, stateMachine->defaultWidth);
     EXPECT_EQ(worldData.height, stateMachine->defaultHeight);
-    EXPECT_EQ(worldData.scenario_id, "sandbox");
-    EXPECT_EQ(worldData.timestep, simRunning.stepCount);
+    // Scenario ID is now in SimRunning state, not WorldData.
+    EXPECT_EQ(updatedState.scenario_id, "sandbox");
+    EXPECT_EQ(worldData.timestep, updatedState.stepCount);
 }
 
 /**

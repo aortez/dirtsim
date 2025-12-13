@@ -4,6 +4,7 @@
 #include "api/PeersGet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
+#include "core/RenderMessageFull.h"
 #include "core/RenderMessageUtils.h"
 #include "core/ScenarioConfig.h"
 #include "core/SystemMetrics.h"
@@ -244,10 +245,19 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         auto cachedPtr = getCachedWorldData();
         if (cachedPtr) {
             status.timestep = cachedPtr->timestep;
-            status.scenario_id = cachedPtr->scenario_id;
             status.width = cachedPtr->width;
             status.height = cachedPtr->height;
         }
+
+        // Get scenario_id from SimRunning state if active.
+        std::visit(
+            [&status](auto&& state) {
+                using T = std::decay_t<decltype(state)>;
+                if constexpr (std::is_same_v<T, State::SimRunning>) {
+                    status.scenario_id = state.scenario_id;
+                }
+            },
+            pImpl->fsmState_.getVariant());
 
         // System health metrics.
         auto metrics = pImpl->systemMetrics_.get();
@@ -604,10 +614,11 @@ State::Any StateMachine::onEvent(const GetSimStatsCommand& /*cmd.*/)
         pImpl->fsmState_.getVariant());
 }
 
-void StateMachine::broadcastRenderMessage(const WorldData& data)
+void StateMachine::broadcastRenderMessage(
+    const WorldData& data, const std::string& scenario_id, const ScenarioConfig& scenario_config)
 {
     if (pImpl->subscribedClients_.empty()) {
-        spdlog::info("StateMachine: broadcastRenderMessage called but no subscribed clients");
+        spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
         return;
     }
 
@@ -617,12 +628,19 @@ void StateMachine::broadcastRenderMessage(const WorldData& data)
         data.timestep);
 
     for (const auto& client : pImpl->subscribedClients_) {
+        // Pack render message.
         RenderMessage msg = RenderMessageUtils::packRenderMessage(data, client.renderFormat);
 
-        // Serialize RenderMessage to payload.
+        // Bundle with scenario metadata for transport.
+        RenderMessageFull fullMsg;
+        fullMsg.render_data = std::move(msg);
+        fullMsg.scenario_id = scenario_id;
+        fullMsg.scenario_config = scenario_config;
+
+        // Serialize RenderMessageFull to payload.
         std::vector<std::byte> payload;
         zpp::bits::out payloadOut(payload);
-        payloadOut(msg).or_throw();
+        payloadOut(fullMsg).or_throw();
 
         // Wrap in MessageEnvelope for consistent protocol.
         Network::MessageEnvelope envelope{ .id = 0, // No correlation for server pushes.

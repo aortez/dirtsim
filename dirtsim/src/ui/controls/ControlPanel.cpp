@@ -51,7 +51,8 @@ ControlPanel::~ControlPanel()
     spdlog::info("ControlPanel: Destroyed");
 }
 
-void ControlPanel::updateFromWorldData(const WorldData& data)
+void ControlPanel::updateFromWorldData(
+    const WorldData& data, const std::string& scenario_id, const ScenarioConfig& scenario_config)
 {
     // Update world dimensions.
     worldWidth_ = data.width;
@@ -65,11 +66,11 @@ void ControlPanel::updateFromWorldData(const WorldData& data)
     }
 
     // Rebuild scenario controls if scenario changed.
-    if (data.scenario_id != currentScenarioId_) {
-        spdlog::info("ControlPanel: Scenario changed to '{}'", data.scenario_id);
+    if (scenario_id != currentScenarioId_) {
+        spdlog::info("ControlPanel: Scenario changed to '{}'", scenario_id);
         clearScenarioControls();
-        createScenarioControls(data.scenario_id, data.scenario_config);
-        currentScenarioId_ = data.scenario_id;
+        createScenarioControls(scenario_id, scenario_config);
+        currentScenarioId_ = scenario_id;
     }
 }
 

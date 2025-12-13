@@ -4,7 +4,6 @@
 #include "CellDebug.h"
 #include "ReflectSerializer.h"
 #include "RenderMessage.h"
-#include "ScenarioConfig.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
 
@@ -32,10 +31,6 @@ struct WorldData {
     // Feature flags.
     bool add_particles_enabled = true;
 
-    // Scenario metadata and configuration.
-    std::string scenario_id = "empty";
-    ScenarioConfig scenario_config = EmptyConfig{};
-
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
@@ -58,7 +53,7 @@ struct WorldData {
         return cells[y * width + x];
     }
 
-    // Custom zpp_bits serialization (excludes debug_info - field 11).
+    // Custom zpp_bits serialization (excludes debug_info).
     constexpr static auto serialize(auto& archive, auto& self)
     {
         return archive(
@@ -69,10 +64,8 @@ struct WorldData {
             self.removed_mass,
             self.fps_server,
             self.add_particles_enabled,
-            self.scenario_id,
-            self.scenario_config,
             self.tree_vision);
-        // debug_info intentionally excluded from binary serialization.
+        // debug_info and bones intentionally excluded from binary serialization.
     }
 };
 

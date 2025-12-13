@@ -283,6 +283,7 @@ add_library(sparkle-duck-server-lib STATIC
     # Scenarios.
     src/server/scenarios/ScenarioRegistry.cpp
     src/server/scenarios/scenarios/BenchmarkScenario.cpp
+    src/server/scenarios/scenarios/ClockScenario.cpp
     src/server/scenarios/scenarios/DamBreakScenario.cpp
     src/server/scenarios/scenarios/EmptyScenario.cpp
     src/server/scenarios/scenarios/FallingDirtScenario.cpp

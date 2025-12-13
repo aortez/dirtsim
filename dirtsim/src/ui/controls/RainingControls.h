@@ -39,14 +39,14 @@ protected:
 private:
     // Widgets.
     std::unique_ptr<ToggleSlider> rainControl_;
-    std::unique_ptr<ToggleSlider> drainRateControl_;
+    std::unique_ptr<ToggleSlider> drainSizeControl_;
     std::unique_ptr<ToggleSlider> maxFillControl_;
 
     // ToggleSlider callbacks (member functions, not static LVGL callbacks).
     void onRainToggled(bool enabled);
     void onRainSliderChanged(int value);
-    void onDrainRateToggled(bool enabled);
-    void onDrainRateSliderChanged(int value);
+    void onDrainSizeToggled(bool enabled);
+    void onDrainSizeSliderChanged(int value);
     void onMaxFillToggled(bool enabled);
     void onMaxFillSliderChanged(int value);
 

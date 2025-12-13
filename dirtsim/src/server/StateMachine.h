@@ -1,11 +1,13 @@
 #pragma once
 
 #include "core/Pimpl.h"
+#include "core/ScenarioConfig.h"
 #include "core/StateMachineBase.h"
 #include "core/StateMachineInterface.h"
 
 #include <functional>
 #include <memory>
+#include <string>
 
 // Forward declarations (global namespace).
 class Timers;
@@ -81,7 +83,8 @@ public:
      */
     void startPeerAdvertisement(uint16_t port, const std::string& serviceName = "sparkle-duck");
 
-    void broadcastRenderMessage(const WorldData& data);
+    void broadcastRenderMessage(
+        const WorldData& data, const std::string& scenario_id, const ScenarioConfig& scenario_config);
 
     // Default world dimensions optimized for HyperPixel 4.0 (800x480) with icon rail (76px).
     // Available space: 724x480 when panel closed, 474x480 when panel open.

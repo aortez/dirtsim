@@ -308,7 +308,7 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
     if (playground_ && worldData) {
         // Update controls with new world state.
         sm.getTimers().startTimer("update_controls");
-        playground_->updateFromWorldData(*worldData, smoothedUiFps);
+        playground_->updateFromWorldData(*worldData, evt.scenario_id, evt.scenario_config, smoothedUiFps);
         sm.getTimers().stopTimer("update_controls");
 
         // Render world.
