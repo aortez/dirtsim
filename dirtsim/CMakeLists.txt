@@ -375,6 +375,7 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsControls.cpp
     src/ui/controls/PhysicsPanel.cpp
+    src/ui/controls/ClockControls.cpp
     src/ui/controls/RainingControls.cpp
     src/ui/controls/SandboxControls.cpp
     src/ui/controls/ScenarioControlsBase.cpp

@@ -97,12 +97,18 @@ void ClockScenario::tick(World& world, double /*deltaTime*/)
 
 int ClockScenario::calculateTotalWidth() const
 {
-    // 6 digits + 5 gaps between digits + 2 colons with padding.
-    // HH : MM : SS
-    // D D c D D c D D  (D = digit, c = colon with padding).
-    // Layout: D gap D pad colon pad D gap D pad colon pad D gap D.
-    // = 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING).
-    return 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING);
+    if (config_.show_seconds) {
+        // HH : MM : SS (6 digits, 2 colons).
+        // Layout: D gap D pad colon pad D gap D pad colon pad D gap D.
+        // = 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING).
+        return 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING);
+    }
+    else {
+        // HH : MM (4 digits, 1 colon).
+        // Layout: D gap D pad colon pad D gap D.
+        // = 4 * DIGIT_WIDTH + 2 * DIGIT_GAP + 1 * (COLON_WIDTH + 2 * COLON_PADDING).
+        return 4 * DIGIT_WIDTH + 2 * DIGIT_GAP + (COLON_WIDTH + 2 * COLON_PADDING);
+    }
 }
 
 void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
@@ -154,11 +160,32 @@ void ClockScenario::drawTime(World& world)
     // Get current time.
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-    std::tm* local_time = std::localtime(&now_time);
 
-    int hours = local_time->tm_hour;
-    int minutes = local_time->tm_min;
-    int seconds = local_time->tm_sec;
+    std::tm* time_info;
+    if (config_.timezone_index == 0) {
+        // Local system time.
+        time_info = std::localtime(&now_time);
+    }
+    else {
+        // UTC time with offset.
+        time_info = std::gmtime(&now_time);
+        const auto& tz = TIMEZONES[config_.timezone_index];
+
+        // Apply timezone offset (hours).
+        time_info->tm_hour += tz.offset_hours;
+
+        // Normalize hours (handle wraparound).
+        if (time_info->tm_hour < 0) {
+            time_info->tm_hour += 24;
+        }
+        else if (time_info->tm_hour >= 24) {
+            time_info->tm_hour -= 24;
+        }
+    }
+
+    int hours = time_info->tm_hour;
+    int minutes = time_info->tm_min;
+    int seconds = time_info->tm_sec;
 
     // Clear world first.
     for (uint32_t y = 0; y < world.getData().height; ++y) {
@@ -191,15 +218,18 @@ void ClockScenario::drawTime(World& world)
     drawDigit(world, minutes % 10, cursor_x, start_y);
     cursor_x += DIGIT_WIDTH;
 
-    // Draw second colon.
-    cursor_x += COLON_PADDING;
-    drawColon(world, cursor_x, start_y);
-    cursor_x += COLON_WIDTH + COLON_PADDING;
+    // Draw seconds if enabled.
+    if (config_.show_seconds) {
+        // Draw second colon.
+        cursor_x += COLON_PADDING;
+        drawColon(world, cursor_x, start_y);
+        cursor_x += COLON_WIDTH + COLON_PADDING;
 
-    // Draw seconds (tens, ones).
-    drawDigit(world, seconds / 10, cursor_x, start_y);
-    cursor_x += DIGIT_WIDTH + DIGIT_GAP;
-    drawDigit(world, seconds % 10, cursor_x, start_y);
+        // Draw seconds (tens, ones).
+        drawDigit(world, seconds / 10, cursor_x, start_y);
+        cursor_x += DIGIT_WIDTH + DIGIT_GAP;
+        drawDigit(world, seconds % 10, cursor_x, start_y);
+    }
 }
 
 } // namespace DirtSim

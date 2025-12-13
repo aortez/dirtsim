@@ -1,4 +1,5 @@
 #include "ScenarioControlsFactory.h"
+#include "ClockControls.h"
 #include "RainingControls.h"
 #include "SandboxControls.h"
 #include <spdlog/spdlog.h>
@@ -21,6 +22,10 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
             if constexpr (std::is_same_v<T, SandboxConfig>) {
                 spdlog::debug("ScenarioControlsFactory: Creating SandboxControls");
                 return std::make_unique<SandboxControls>(parent, wsService, cfg);
+            }
+            else if constexpr (std::is_same_v<T, ClockConfig>) {
+                spdlog::debug("ScenarioControlsFactory: Creating ClockControls");
+                return std::make_unique<ClockControls>(parent, wsService, cfg);
             }
             else if constexpr (std::is_same_v<T, RainingConfig>) {
                 spdlog::debug("ScenarioControlsFactory: Creating RainingControls");
