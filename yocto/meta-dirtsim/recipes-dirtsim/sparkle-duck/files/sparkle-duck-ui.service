@@ -19,7 +19,7 @@ RestartSec=5
 
 # Display rotation for HyperPixel 4.0 (landscape orientation).
 # LVGL handles rotation in software - no hardware dtparam needed.
-Environment=LV_DISPLAY_ROTATION=90
+Environment=LV_DISPLAY_ROTATION=270
 
 # Touchscreen input device (Goodix capacitive touch on HyperPixel 4.0).
 # Using stable by-path symlink instead of eventN which changes on reboot.
