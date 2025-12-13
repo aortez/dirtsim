@@ -31,10 +31,6 @@ SandboxControls::SandboxControls(
 
 void SandboxControls::createWidgets()
 {
-    // Scenario label.
-    lv_obj_t* scenarioLabel = lv_label_create(controlsContainer_);
-    lv_label_set_text(scenarioLabel, "--- Sandbox ---");
-
     // Add Seed button - green for growth/life.
     addSeedButton_ = LVGLBuilder::button(controlsContainer_)
                          .text("Add Seed")

@@ -29,10 +29,6 @@ RainingControls::~RainingControls()
 
 void RainingControls::createWidgets()
 {
-    // Scenario label.
-    lv_obj_t* scenarioLabel = lv_label_create(controlsContainer_);
-    lv_label_set_text(scenarioLabel, "--- Raining ---");
-
     // Rain rate toggle slider.
     rainControl_ = ToggleSlider::create(controlsContainer_)
                        .label("Rain Rate")

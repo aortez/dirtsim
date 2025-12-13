@@ -60,6 +60,11 @@ public:
         static constexpr int SWITCH_WIDTH = 48;
         static constexpr int SWITCH_HEIGHT = 32;
 
+        // Button colors.
+        static constexpr uint32_t BUTTON_BG_COLOR = 0x505050;      // Default button background.
+        static constexpr uint32_t BUTTON_PRESSED_COLOR = 0x606060; // Button pressed state.
+        static constexpr uint32_t BUTTON_TEXT_COLOR = 0xFFFFFF;    // Button text color.
+
         // Fonts.
         static inline const lv_font_t* CONTROL_FONT = &lv_font_montserrat_16;
 

@@ -140,10 +140,13 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
-    // Scenario label.
+    // Scenario title with emphasis.
     lv_obj_t* scenarioLabel = lv_label_create(container);
-    lv_label_set_text(scenarioLabel, "Scenario:");
+    lv_label_set_text(scenarioLabel, "Scenario");
     lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(scenarioLabel, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_decor(scenarioLabel, LV_TEXT_DECOR_UNDERLINE, 0);
+    lv_obj_set_style_pad_bottom(scenarioLabel, 8, 0);
 
     // Build dropdown from metadata cache.
     std::string dropdownOptions = ScenarioMetadataCache::buildDropdownOptions();
@@ -152,7 +155,7 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     scenarioDropdown_ = LVGLBuilder::dropdown(container)
                             .options(dropdownOptions.c_str())
                             .selected(selectedIdx)
-                            .size(LV_PCT(95), 40)
+                            .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
                             .buildOrLog();
 
     if (scenarioDropdown_) {
@@ -163,14 +166,13 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
             scenarioDropdown_, lv_color_hex(0x4B0082), LV_PART_MAIN); // Dark purple (indigo).
 
         // Style the dropdown list (when opened).
-        lv_obj_set_style_bg_color(
-            lv_dropdown_get_list(scenarioDropdown_),
-            lv_color_hex(0x90EE90),
-            LV_PART_MAIN); // Light green.
-        lv_obj_set_style_text_color(
-            lv_dropdown_get_list(scenarioDropdown_),
-            lv_color_hex(0x4B0082),
-            LV_PART_MAIN); // Dark purple.
+        lv_obj_t* list = lv_dropdown_get_list(scenarioDropdown_);
+        lv_obj_set_style_bg_color(list, lv_color_hex(0x90EE90), LV_PART_MAIN); // Light green.
+        lv_obj_set_style_text_color(list, lv_color_hex(0x4B0082), LV_PART_MAIN); // Dark purple.
+
+        // Make list items touch-friendly height.
+        lv_obj_set_style_text_line_space(list, LVGLBuilder::Style::CONTROL_HEIGHT - 16, LV_PART_MAIN);
+        lv_obj_set_style_pad_ver(list, 8, LV_PART_MAIN);
 
         lv_obj_set_user_data(scenarioDropdown_, this);
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
@@ -185,11 +187,13 @@ void SimPlayground::createPhysicsPanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Physics panel");
 
-    // Create a title.
+    // Physics title with emphasis.
     lv_obj_t* title = lv_label_create(container);
     lv_label_set_text(title, "Physics Settings");
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_decor(title, LV_TEXT_DECOR_UNDERLINE, 0);
+    lv_obj_set_style_pad_bottom(title, 8, 0);
 
     physicsPanel_ = std::make_unique<PhysicsPanel>(container, wsService_);
 }
