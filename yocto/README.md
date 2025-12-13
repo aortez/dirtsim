@@ -1,6 +1,11 @@
 # Sparkle Duck Yocto Build
 
-A custom Yocto Linux image for running the Sparkle Duck dirt simulation on Raspberry Pi 5.
+A custom Yocto Linux image for running the Sparkle Duck dirt simulation on Raspberry Pi 4 and Pi 5.
+
+**Hardware Support:**
+- **Pi4:** MPI4008 4" HDMI touchscreen (480x800, resistive touch via ADS7846)
+- **Pi5:** HyperPixel 4.0 DPI display (480x800, capacitive touch via Goodix)
+- Single unified image auto-detects hardware and configures display/touch appropriately
 
 ## Goals
 
@@ -42,10 +47,11 @@ Build a minimal, purpose-built Linux image that:
 - [x] LVGL rendering via framebuffer (no compositor needed!)
 - [x] `sparkle-duck-ui` auto-starts and connects to server
 - [x] Disabled getty on tty1 (UI owns the framebuffer)
-- [ ] Touch input working (HyperPixel capacitive)
+- [x] Touch input working (both Pi4 ADS7846 and Pi5 Goodix)
+- [x] Auto-detect Pi model and configure display rotation/touch device
 - [ ] WebRTC streaming to garden dashboard
 
-**Success criteria:** Walk up to the Pi, see dirt falling. ✅
+**Success criteria:** Walk up to the Pi, see dirt falling, touch works. ✅
 
 ---
 
@@ -74,12 +80,12 @@ kas build kas-dirtsim.yml
 
 The output image will be at:
 ```
-build/tmp/deploy/images/raspberrypi5/dirtsim-image-raspberrypi5.rootfs.wic.gz
+build/tmp/deploy/images/raspberrypi-dirtsim/dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz
 ```
 
 ### Flashing
 
-The flash tool writes the image and injects your SSH public key for passwordless login.
+The flash tool writes the image, injects your SSH public key, and sets the device hostname.
 
 ```bash
 npm run flash                       # Interactive device selection
@@ -89,7 +95,11 @@ npm run flash -- --dry-run          # Show what would happen
 npm run flash -- --reconfigure      # Re-select SSH key
 ```
 
-**First-time setup:** The script prompts you to select an SSH public key from `~/.ssh/`. Your choice is saved to `.flash-config.json` (gitignored) so subsequent flashes are faster.
+**First-time setup:** The script prompts you to:
+1. Select an SSH public key from `~/.ssh/` (saved to `.flash-config.json`)
+2. Enter a hostname for this device (e.g., `dirtsim1`, `dirtsim2`)
+
+The hostname is written to `/boot/hostname.txt` and applied on first boot. You can also manually edit this file on the SD card before booting.
 
 ### Remote Update (A/B System)
 
@@ -279,88 +289,97 @@ Compared to Raspberry Pi OS, our image does NOT include:
 
 ---
 
-## Working Notes
+## Architecture & Design Decisions
 
-### 2025-12-09: Stage 2 & 3 Complete - Server + UI Running!
+### Unified Pi4/Pi5 Image
 
-Both the headless server and LVGL UI are now deployed and running on the Pi:
+A single image works on both Pi4 and Pi5 by using hardware auto-detection:
 
-**What was added:**
-- `sparkle-duck-server_git.bb` - Yocto recipe for the headless physics server
-- `sparkle-duck-ui_git.bb` - Yocto recipe for the LVGL UI client
-- Systemd services for both (server on port 8080, UI on port 7070)
-- Disabled `getty@tty1` so UI owns the framebuffer
-- Fixed fbdev backend to call `updateAnimations()` (was missing vs wayland backend)
-- `npm run deploy` script for quick userspace iteration (~20s vs 3+ min for full YOLO)
+**Boot-time detection:**
+- `/proc/device-tree/model` contains Pi model string
+- `sparkle-duck-detect-display.service` reads model and writes `/etc/sparkle-duck/display.conf`
+- UI service loads config via `EnvironmentFile=-/etc/sparkle-duck/display.conf`
 
-**Gotchas:**
-- GCC 13 in Yocto is stricter than desktop GCC - had to value-initialize template variables to silence `-Wmaybe-uninitialized` false positives at `-O2`.
-- Framebuffer getty overwrites LVGL output - masked `getty@tty1.service` in image recipe.
-- LVGL fbdev backend was missing `sm.updateAnimations()` call that wayland backend had - fractal rendered once but didn't animate.
+**Per-hardware configuration:**
+- **Pi4:** 90° rotation, `/dev/input/touchscreen0` (ADS7846)
+- **Pi5:** 270° rotation, `/dev/input/by-path/platform-i2c@0-event` (Goodix)
 
-**Architecture:** UI uses LVGL's fbdev backend directly - no Wayland compositor needed! Much simpler than originally planned.
+**config.txt conditional sections:**
+```
+[pi4]
+dtoverlay=vc4-kms-v3d-pi4
+hdmi_cvt 480 800 60 6 0 0 0
+dtoverlay=ads7846,...
 
-### 2025-12-08: A/B Partitions for Safe Remote Updates
+[pi5]
+dtoverlay=vc4-kms-v3d-pi5
+dtoverlay=vc4-kms-dpi-hyperpixel4
+```
 
-Implemented A/B partition system to fix remote update reliability issues:
+The bootloader auto-selects the appropriate section based on detected hardware.
 
-**What was added:**
-- Custom WKS file (`sdimage-ab.wks`) with dual 800MB rootfs partitions
-- `ab-boot-manager` - shell script to manage boot slots (current/inactive/switch/status)
-- `ab-update` - wrapper that flashes inactive partition and switches boot
-- Modified yolo script to extract rootfs partition instead of full disk image
-- BusyBox compatibility: uses `/proc/cmdline` instead of `findmnt`, basic `dd` options
+### LVGL Direct Framebuffer
 
-**Result:** Remote updates now work reliably. Tested multiple A↔B update cycles successfully.
+UI uses LVGL's fbdev backend - no Wayland compositor needed!
 
-### 2025-12-08: HyperPixel 4 Display + HDMI Working
+**Why this works:**
+- LVGL renders directly to `/dev/fb0`
+- KMS drivers (`vc4-kms-v3d`) provide framebuffer device
+- Much simpler than Wayland, eliminates whole middleware layer
 
-Fixed both displays on Raspberry Pi 5:
+**Gotcha:** Framebuffer getty overwrites LVGL - must mask `getty@tty1.service`.
 
-**HDMI:** Added `hdmi_force_hotplug=1` to force HDMI output even without EDID detection at boot.
+### A/B Partition System
 
-**HyperPixel 4 DPI:**
-- Added `fbcon=map:01` to kernel cmdline (maps console to both fb0 and fb1, enables DRM outputs)
-- Fixed backlight service to set `bl_power=0` (unblank) in addition to `brightness=1`
-- Discovered Pi 5 assigns fb0/fb1 dynamically based on initialization order
+Safe remote updates via dual rootfs partitions:
 
-**Gotchas:**
-- DPI outputs on Pi 5 start `disabled` until something claims them (fbcon, Wayland, etc.)
-- HyperPixel backlight is GPIO-based and needs explicit unblanking via `bl_power` sysfs
-- `systemctl reboot` works on BusyBox, but `reboot -f` doesn't (symlink to systemctl)
+**Layout:**
+```
+/dev/sda1 - boot (150MB, shared)
+/dev/sda2 - rootfs_a (800MB)
+/dev/sda3 - rootfs_b (800MB)
+```
 
-### 2025-12-07: YOLO Remote Update (Original)
+**Update flow:**
+1. Write new image to inactive partition (system keeps running)
+2. Switch boot flag
+3. Reboot into updated partition
 
-Added `npm run yolo` for over-the-network image updates.
+**Tools:**
+- `ab-boot-manager` - manages active/inactive slots
+- `ab-update` - wrapper for safe partition flashing
 
-**Gotchas encountered:**
-- BusyBox `dd` doesn't support GNU options - had to simplify the command.
-- BusyBox `df` doesn't support `-B1` flag - use `-k` and multiply by 1024.
-- Must inject SSH key into image or you'll be locked out after flash!
+**BusyBox compatibility:** Uses `/proc/cmdline` parsing instead of `findmnt`.
 
-### 2025-12-07: Security Hardening
+### Security Model
 
-Removed `debug-tweaks` (passwordless root) and implemented proper SSH key authentication:
+SSH key authentication only - no passwords:
 
-- Created `dirtsim` user with passwordless sudo.
-- Disabled root SSH login entirely.
-- Disabled password authentication (SSH keys only).
-- Flash script prompts for SSH key selection and injects at flash time.
-- User's key preference saved to `.flash-config.json` (gitignored).
-- **Gotcha:** Must unlock the account with `usermod -p '*'` or SSH rejects keys.
+- User: `dirtsim` (passwordless sudo)
+- Root: Disabled for SSH
+- SSH keys injected at flash time
+- **Gotcha:** Must unlock account with `usermod -p '*'` or SSH rejects keys
 
-### 2025-12-07: Stage 1 Complete!
+### Hostname Customization
 
-Fixed two critical issues that were blocking SSH:
+Each device gets unique hostname via `/boot/hostname.txt`:
 
-1. **Volatile /var/log** - Yocto's default makes `/var/log` a tmpfs symlink. Fixed with `VOLATILE_LOG_DIR = "no"` plus journald `Storage=persistent`.
+1. Flash script prompts for hostname (default: `dirtsim`)
+2. Writes hostname to `/boot/hostname.txt`
+3. `sparkle-duck-set-hostname.service` reads file on boot
+4. Validates and applies hostname
 
-2. **Wrong boot partition in fstab** - Default expects SD card (`/dev/mmcblk0p1`), we boot from USB (`/dev/sda1`). Systemd waited 90 seconds then failed. Fixed with custom fstab.
+Alternative: Manually edit `/boot/hostname.txt` before first boot.
 
-Lesson: When systemd says "connection refused", check `journalctl` for dependency failures.
+### Key Gotchas
 
-### 2025-12-06: Initial Planning
+**GCC 13 strictness:** Yocto's GCC 13 is stricter than desktop - value-initialize template variables to silence `-Wmaybe-uninitialized`.
 
-Reference for Pi 5 Yocto support: https://hub.mender.io/t/raspberry-pi-5/6689
+**Volatile log fix:** Yocto defaults to tmpfs `/var/log`. Fix: `VOLATILE_LOG_DIR = "no"` + journald `Storage=persistent`.
 
-Decision: Start with Stage 1 (bare earth) before adding our application. Get the foundation solid first.
+**USB boot fstab:** Default expects SD card (`/dev/mmcblk0p1`). For USB boot, use custom fstab with `/dev/sda1`.
+
+**BusyBox limitations:**
+- `dd` doesn't support GNU long options
+- `df` doesn't support `-B1` (use `-k`)
+- `reboot -f` doesn't exist (symlink to systemctl)
