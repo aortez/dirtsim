@@ -73,15 +73,22 @@ void SparklingDuckButton::createButton(lv_obj_t* parent)
     lv_obj_set_style_transform_width(button_, -4, LV_STATE_PRESSED);
     lv_obj_set_style_transform_height(button_, -4, LV_STATE_PRESSED);
 
-    // Center the duck image in the button.
-    lv_obj_set_layout(button_, LV_LAYOUT_FLEX);
-    lv_obj_set_flex_flow(button_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(button_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    // Dark circle background for contrast against fractal.
+    static constexpr int BG_CIRCLE_SIZE = 145;
+    duckBackground_ = lv_obj_create(button_);
+    lv_obj_set_size(duckBackground_, BG_CIRCLE_SIZE, BG_CIRCLE_SIZE);
+    lv_obj_center(duckBackground_);
+    lv_obj_set_style_radius(duckBackground_, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(duckBackground_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(duckBackground_, LV_OPA_70, 0);  // 70% opacity.
+    lv_obj_set_style_border_width(duckBackground_, 0, 0);
+    lv_obj_remove_flag(duckBackground_, LV_OBJ_FLAG_CLICKABLE);
 
-    // Duck image (no text, just the duck).
+    // Duck image (centered, overlaps background circle).
     duckImage_ = lv_image_create(button_);
     lv_image_set_src(duckImage_, &duck_img);
-    lv_image_set_scale(duckImage_, 256); // Original size (256 = 100%).
+    lv_image_set_scale(duckImage_, 307); // 120% of original size (256 = 100%).
+    lv_obj_center(duckImage_);
 
     // Event handlers.
     lv_obj_set_user_data(button_, this);

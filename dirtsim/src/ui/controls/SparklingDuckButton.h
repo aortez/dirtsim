@@ -42,7 +42,7 @@ public:
 
 private:
     // More sparkles for impressive starburst effect.
-    static constexpr int NUM_SPARKLES = 16;
+    static constexpr int NUM_SPARKLES = 32;
     // Bigger button to showcase the duck.
     static constexpr int BUTTON_WIDTH = 160;
     static constexpr int BUTTON_HEIGHT = 160;
@@ -78,6 +78,7 @@ private:
     };
 
     lv_obj_t* button_ = nullptr;
+    lv_obj_t* duckBackground_ = nullptr;  // Dark circle behind duck for contrast.
     lv_obj_t* duckImage_ = nullptr;
     std::array<lv_obj_t*, NUM_SPARKLES> sparkles_{};
     std::array<SparkleState, NUM_SPARKLES> sparkleStates_{};
