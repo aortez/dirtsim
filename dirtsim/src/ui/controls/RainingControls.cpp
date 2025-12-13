@@ -34,7 +34,7 @@ void RainingControls::createWidgets()
     lv_label_set_text(scenarioLabel, "--- Raining ---");
 
     // Rain rate toggle slider.
-    rainControl_ = LVGLBuilder::toggleSlider(controlsContainer_)
+    rainControl_ = ToggleSlider::create(controlsContainer_)
                        .label("Rain Rate")
                        .range(0, 100)
                        .value(0)
@@ -43,16 +43,37 @@ void RainingControls::createWidgets()
                        .valueFormat("%.0f")
                        .initiallyEnabled(false)
                        .sliderWidth(180)
-                       .onToggle(onRainToggled, this)
-                       .onSliderChange(onRainSliderChanged, this)
-                       .buildOrLog();
+                       .onToggle([this](bool enabled) { onRainToggled(enabled); })
+                       .onValueChange([this](int value) { onRainSliderChanged(value); })
+                       .build();
 
-    // Puddle floor toggle.
-    puddleFloorSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
-                             .label("Puddle Floor")
-                             .initialState(false)
-                             .callback(onPuddleFloorToggled, this)
-                             .buildOrLog();
+    // Drain rate toggle slider.
+    drainRateControl_ = ToggleSlider::create(controlsContainer_)
+                            .label("Drain Rate")
+                            .range(0, 100)
+                            .value(0)
+                            .defaultValue(50)
+                            .valueScale(1.0)
+                            .valueFormat("%.0f")
+                            .initiallyEnabled(false)
+                            .sliderWidth(180)
+                            .onToggle([this](bool enabled) { onDrainRateToggled(enabled); })
+                            .onValueChange([this](int value) { onDrainRateSliderChanged(value); })
+                            .build();
+
+    // Max fill toggle slider.
+    maxFillControl_ = ToggleSlider::create(controlsContainer_)
+                          .label("Max Fill %")
+                          .range(10, 100)
+                          .value(50)
+                          .defaultValue(50)
+                          .valueScale(1.0)
+                          .valueFormat("%.0f%%")
+                          .initiallyEnabled(false)
+                          .sliderWidth(180)
+                          .onToggle([this](bool enabled) { onMaxFillToggled(enabled); })
+                          .onValueChange([this](int value) { onMaxFillSliderChanged(value); })
+                          .build();
 }
 
 void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
@@ -64,6 +85,11 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
     }
 
     const RainingConfig& config = std::get<RainingConfig>(configVariant);
+    spdlog::info(
+        "RainingControls: updateFromConfig called - rain_rate={}, drain_rate={}, max_fill={}",
+        config.rain_rate,
+        config.drain_rate,
+        config.max_fill_percent);
 
     // Prevent sending updates back to server during UI sync.
     bool wasInitializing = isInitializing();
@@ -73,48 +99,42 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update rain control.
     if (rainControl_) {
-        lv_obj_t* rainSwitch = lv_obj_get_child(rainControl_, 1);
-        lv_obj_t* rainSlider = lv_obj_get_child(rainControl_, 2);
-
-        if (rainSwitch && rainSlider) {
-            // Update toggle state.
-            bool shouldBeEnabled = config.rain_rate > 0.0;
-            bool currentlyEnabled = lv_obj_has_state(rainSwitch, LV_STATE_CHECKED);
-
-            if (shouldBeEnabled != currentlyEnabled) {
-                if (shouldBeEnabled) {
-                    lv_obj_add_state(rainSwitch, LV_STATE_CHECKED);
-                }
-                else {
-                    lv_obj_remove_state(rainSwitch, LV_STATE_CHECKED);
-                }
-                spdlog::debug("RainingControls: Updated rain toggle to {}", shouldBeEnabled);
-            }
-
-            // Update slider value if enabled.
-            if (shouldBeEnabled) {
-                int currentValue = lv_slider_get_value(rainSlider);
-                int newValue = static_cast<int>(config.rain_rate);
-                if (currentValue != newValue) {
-                    lv_slider_set_value(rainSlider, newValue, LV_ANIM_OFF);
-                    spdlog::debug("RainingControls: Updated rain slider to {}", config.rain_rate);
-                }
-            }
+        bool shouldBeEnabled = config.rain_rate > 0.0;
+        int sliderValue = static_cast<int>(config.rain_rate);
+        rainControl_->setEnabled(shouldBeEnabled);
+        if (shouldBeEnabled) {
+            rainControl_->setValue(sliderValue);
         }
+        spdlog::debug(
+            "RainingControls: Updated rain control (enabled={}, value={})", shouldBeEnabled, sliderValue);
     }
 
-    // Update puddle floor switch.
-    if (puddleFloorSwitch_) {
-        bool currentState = lv_obj_has_state(puddleFloorSwitch_, LV_STATE_CHECKED);
-        if (currentState != config.puddle_floor) {
-            if (config.puddle_floor) {
-                lv_obj_add_state(puddleFloorSwitch_, LV_STATE_CHECKED);
-            }
-            else {
-                lv_obj_remove_state(puddleFloorSwitch_, LV_STATE_CHECKED);
-            }
-            spdlog::debug("RainingControls: Updated puddle floor to {}", config.puddle_floor);
+    // Update drain rate control.
+    if (drainRateControl_) {
+        bool shouldBeEnabled = config.drain_rate > 0.0;
+        int sliderValue = static_cast<int>(config.drain_rate);
+        drainRateControl_->setEnabled(shouldBeEnabled);
+        if (shouldBeEnabled) {
+            drainRateControl_->setValue(sliderValue);
         }
+        spdlog::debug(
+            "RainingControls: Updated drain control (enabled={}, value={})",
+            shouldBeEnabled,
+            sliderValue);
+    }
+
+    // Update max fill control.
+    if (maxFillControl_) {
+        bool shouldBeEnabled = config.max_fill_percent > 0.0;
+        int sliderValue = static_cast<int>(config.max_fill_percent);
+        maxFillControl_->setEnabled(shouldBeEnabled);
+        if (shouldBeEnabled) {
+            maxFillControl_->setValue(sliderValue);
+        }
+        spdlog::debug(
+            "RainingControls: Updated max fill control (enabled={}, value={})",
+            shouldBeEnabled,
+            sliderValue);
     }
 
     // Restore initializing state.
@@ -129,92 +149,125 @@ RainingConfig RainingControls::getCurrentConfig() const
 
     // Get rain rate from control.
     if (rainControl_) {
-        lv_obj_t* rainSwitch = lv_obj_get_child(rainControl_, 1);
-        lv_obj_t* rainSlider = lv_obj_get_child(rainControl_, 2);
-
-        if (rainSwitch && rainSlider) {
-            bool enabled = lv_obj_has_state(rainSwitch, LV_STATE_CHECKED);
-            if (enabled) {
-                int value = lv_slider_get_value(rainSlider);
-                config.rain_rate = static_cast<double>(value);
-            }
-            else {
-                config.rain_rate = 0.0;
-            }
+        if (rainControl_->isEnabled()) {
+            config.rain_rate = rainControl_->getScaledValue();
+        }
+        else {
+            config.rain_rate = 0.0;
         }
     }
 
-    // Get puddle floor state.
-    if (puddleFloorSwitch_) {
-        config.puddle_floor = lv_obj_has_state(puddleFloorSwitch_, LV_STATE_CHECKED);
+    // Get drain rate from control.
+    if (drainRateControl_) {
+        if (drainRateControl_->isEnabled()) {
+            config.drain_rate = drainRateControl_->getScaledValue();
+        }
+        else {
+            config.drain_rate = 0.0;
+        }
+    }
+
+    // Get max fill percent from control.
+    if (maxFillControl_) {
+        if (maxFillControl_->isEnabled()) {
+            config.max_fill_percent = maxFillControl_->getScaledValue();
+        }
+        else {
+            config.max_fill_percent = 0.0;
+        }
     }
 
     return config;
 }
 
-void RainingControls::onRainToggled(lv_event_t* e)
+void RainingControls::onRainToggled(bool enabled)
 {
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    RainingControls* self = static_cast<RainingControls*>(lv_obj_get_user_data(target));
-    if (!self) return;
-
     // Don't send updates during initialization.
-    if (self->isInitializing()) {
+    if (isInitializing()) {
         spdlog::debug("RainingControls: Ignoring rain toggle during initialization");
         return;
     }
 
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
     spdlog::info("RainingControls: Rain toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and send update.
-    RainingConfig config = self->getCurrentConfig();
-    self->sendConfigUpdate(config);
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
 }
 
-void RainingControls::onRainSliderChanged(lv_event_t* e)
+void RainingControls::onRainSliderChanged(int value)
 {
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    RainingControls* self = static_cast<RainingControls*>(lv_obj_get_user_data(target));
-    if (!self) return;
-
     // Don't send updates during initialization.
-    if (self->isInitializing()) {
+    if (isInitializing()) {
         spdlog::debug("RainingControls: Ignoring rain slider during initialization");
         return;
     }
 
-    int value = lv_slider_get_value(target);
-    double rainRate = static_cast<double>(value);
-
-    spdlog::info("RainingControls: Rain rate changed to {:.0f}", rainRate);
+    spdlog::info("RainingControls: Rain rate changed to {}", value);
 
     // Get complete current config and send update.
-    RainingConfig config = self->getCurrentConfig();
-    self->sendConfigUpdate(config);
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
 }
 
-void RainingControls::onPuddleFloorToggled(lv_event_t* e)
+void RainingControls::onDrainRateToggled(bool enabled)
 {
-    RainingControls* self = static_cast<RainingControls*>(lv_event_get_user_data(e));
-    if (!self) {
-        spdlog::error("RainingControls: onPuddleFloorToggled called with null self");
-        return;
-    }
-
     // Don't send updates during initialization.
-    if (self->isInitializing()) {
-        spdlog::debug("RainingControls: Ignoring puddle floor toggle during initialization");
+    if (isInitializing()) {
+        spdlog::debug("RainingControls: Ignoring drain rate toggle during initialization");
         return;
     }
 
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
-    spdlog::info("RainingControls: Puddle Floor toggled to {}", enabled ? "ON" : "OFF");
+    spdlog::info("RainingControls: Drain rate toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get current config and send update.
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
+}
+
+void RainingControls::onDrainRateSliderChanged(int value)
+{
+    // Don't send updates during initialization.
+    if (isInitializing()) {
+        spdlog::debug("RainingControls: Ignoring drain rate slider during initialization");
+        return;
+    }
+
+    spdlog::info("RainingControls: Drain rate changed to {}", value);
 
     // Get complete current config and send update.
-    RainingConfig config = self->getCurrentConfig();
-    self->sendConfigUpdate(config);
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
+}
+
+void RainingControls::onMaxFillToggled(bool enabled)
+{
+    // Don't send updates during initialization.
+    if (isInitializing()) {
+        spdlog::debug("RainingControls: Ignoring max fill toggle during initialization");
+        return;
+    }
+
+    spdlog::info("RainingControls: Max fill toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get current config and send update.
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
+}
+
+void RainingControls::onMaxFillSliderChanged(int value)
+{
+    // Don't send updates during initialization.
+    if (isInitializing()) {
+        spdlog::debug("RainingControls: Ignoring max fill slider during initialization");
+        return;
+    }
+
+    spdlog::info("RainingControls: Max fill percent changed to {}%%", value);
+
+    // Get complete current config and send update.
+    RainingConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
 }
 
 } // namespace Ui

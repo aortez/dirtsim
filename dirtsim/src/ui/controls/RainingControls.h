@@ -1,8 +1,10 @@
 #pragma once
 
 #include "ScenarioControlsBase.h"
+#include "ToggleSlider.h"
 #include "core/ScenarioConfig.h"
 #include "lvgl/lvgl.h"
+#include <memory>
 
 namespace DirtSim {
 
@@ -15,7 +17,7 @@ namespace Ui {
 /**
  * @brief Raining scenario-specific controls.
  *
- * Includes: Rain Rate slider, Puddle Floor toggle.
+ * Includes: Rain Rate slider, Drain Rate slider, Max Fill slider.
  */
 class RainingControls : public ScenarioControlsBase {
 public:
@@ -36,13 +38,17 @@ protected:
 
 private:
     // Widgets.
-    lv_obj_t* rainControl_ = nullptr;      // ToggleSlider for rain rate.
-    lv_obj_t* puddleFloorSwitch_ = nullptr; // Toggle for puddle floor.
+    std::unique_ptr<ToggleSlider> rainControl_;
+    std::unique_ptr<ToggleSlider> drainRateControl_;
+    std::unique_ptr<ToggleSlider> maxFillControl_;
 
-    // Event handlers.
-    static void onRainToggled(lv_event_t* e);
-    static void onRainSliderChanged(lv_event_t* e);
-    static void onPuddleFloorToggled(lv_event_t* e);
+    // ToggleSlider callbacks (member functions, not static LVGL callbacks).
+    void onRainToggled(bool enabled);
+    void onRainSliderChanged(int value);
+    void onDrainRateToggled(bool enabled);
+    void onDrainRateSliderChanged(int value);
+    void onMaxFillToggled(bool enabled);
+    void onMaxFillSliderChanged(int value);
 
     /**
      * @brief Get the current complete config from all controls.

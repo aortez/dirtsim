@@ -53,10 +53,11 @@ struct DamBreakConfig {
  * @brief Raining scenario - continuous rain.
  */
 struct RainingConfig {
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<3>;
 
-    double rain_rate = 5.0;   // Rain rate in drops per second.
-    bool puddle_floor = true; // Add floor for puddles to form.
+    double rain_rate = 5.0;       // Rain rate in drops per second.
+    double drain_rate = 0.0;      // Drainage rate at bottom (0 = puddle, 100 = fast drain).
+    double max_fill_percent = 0.0; // Auto-clear world above this fill % (0 = disabled).
 };
 
 /**

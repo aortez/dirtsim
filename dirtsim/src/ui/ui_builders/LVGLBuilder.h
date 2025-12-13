@@ -2,6 +2,7 @@
 
 #include "core/Result.h"
 #include "lvgl/lvgl.h"
+#include "ui/controls/IconRail.h"
 #include <cmath>
 #include <functional>
 #include <initializer_list>
@@ -51,7 +52,7 @@ public:
         static constexpr int RADIUS = 8;                 // Corner radius for rounded controls.
 
         // Slider dimensions.
-        static constexpr int SLIDER_TRACK_HEIGHT = 20;
+        static constexpr int SLIDER_TRACK_HEIGHT = 15;
         static constexpr int SLIDER_KNOB_SIZE = 30;
         static constexpr int SLIDER_KNOB_RADIUS = 15;
 

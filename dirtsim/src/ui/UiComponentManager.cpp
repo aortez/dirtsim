@@ -230,7 +230,7 @@ void UiComponentManager::createSimulationLayout()
     // -------------------------------------------------------------------------
     iconRail_ = std::make_unique<IconRail>(
         simMainRow_,
-        [this](IconRail::IconId selectedId, IconRail::IconId previousId) {
+        [this](IconId selectedId, IconId previousId) {
             // Handle icon selection changes.
             LOG_INFO(
                 Controls,
@@ -239,24 +239,24 @@ void UiComponentManager::createSimulationLayout()
                 static_cast<int>(selectedId));
 
             // Tree icon has special behavior - toggles neural grid.
-            if (selectedId == IconRail::IconId::TREE) {
+            if (selectedId == IconId::TREE) {
                 setNeuralGridVisible(true);
                 // Don't show expandable panel for tree.
                 if (expandablePanel_) {
                     expandablePanel_->hide();
                 }
             }
-            else if (previousId == IconRail::IconId::TREE && selectedId != IconRail::IconId::TREE) {
+            else if (previousId == IconId::TREE && selectedId != IconId::TREE) {
                 // Switched away from tree - hide neural grid.
                 setNeuralGridVisible(false);
             }
 
             // Show/hide expandable panel based on selection.
             if (expandablePanel_) {
-                if (selectedId != IconRail::IconId::COUNT && selectedId != IconRail::IconId::TREE) {
+                if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
                     expandablePanel_->show();
                 }
-                else if (selectedId == IconRail::IconId::COUNT) {
+                else if (selectedId == IconId::COUNT) {
                     expandablePanel_->hide();
                 }
             }

@@ -26,8 +26,6 @@ namespace Ui {
  */
 class UiComponentManager {
 public:
-    using IconId = LVGLBuilder::IconId;
-
     explicit UiComponentManager(lv_disp_t* display);
 
     ~UiComponentManager();

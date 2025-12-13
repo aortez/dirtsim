@@ -14,7 +14,7 @@ WorkingDirectory=/home/dirtsim/sparkle-duck
 ExecStartPre=+/bin/sh -c 'echo 0 > /sys/class/vtconsole/vtcon1/bind'
 
 ExecStart=/usr/bin/sparkle-duck-ui -b fbdev --connect localhost:8080
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 # Display rotation for HyperPixel 4.0 (landscape orientation).

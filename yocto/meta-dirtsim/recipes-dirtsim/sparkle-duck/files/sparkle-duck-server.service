@@ -8,7 +8,7 @@ Type=simple
 User=dirtsim
 WorkingDirectory=/home/dirtsim/sparkle-duck
 ExecStart=/usr/bin/sparkle-duck-server -p 8080
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]

@@ -379,6 +379,7 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/controls/ScenarioControlsBase.cpp
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/SparklingDuckButton.cpp
+    src/ui/controls/ToggleSlider.cpp
     src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
 )

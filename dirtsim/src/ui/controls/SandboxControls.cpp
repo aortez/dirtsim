@@ -75,7 +75,7 @@ void SandboxControls::createWidgets()
                             .buildOrLog();
 
     // Rain toggle slider - fancy control with enable/disable toggle.
-    rainControl_ = LVGLBuilder::toggleSlider(controlsContainer_)
+    rainControl_ = ToggleSlider::create(controlsContainer_)
                        .label("Rain")
                        .range(0, 100)
                        .value(0)
@@ -84,9 +84,9 @@ void SandboxControls::createWidgets()
                        .valueFormat("%.1f")
                        .initiallyEnabled(false)
                        .sliderWidth(180)
-                       .onToggle(onRainToggled, this)
-                       .onSliderChange(onRainSliderChanged, this)
-                       .buildOrLog();
+                       .onToggle([this](bool enabled) { onRainToggled(enabled); })
+                       .onValueChange([this](int value) { onRainSliderChanged(value); })
+                       .build();
 }
 
 SandboxControls::~SandboxControls()
@@ -156,37 +156,16 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
         }
     }
 
-    // Update rain toggle slider.
+    // Update rain control.
     if (rainControl_) {
-        // ToggleSlider container has children: [label, switch, slider, value_label]
-        lv_obj_t* rainSwitch = lv_obj_get_child(rainControl_, 1);
-        lv_obj_t* rainSlider = lv_obj_get_child(rainControl_, 2);
-
-        if (rainSwitch && rainSlider) {
-            // Update toggle state.
-            bool shouldBeEnabled = config.rain_rate > 0.0;
-            bool currentlyEnabled = lv_obj_has_state(rainSwitch, LV_STATE_CHECKED);
-
-            if (shouldBeEnabled != currentlyEnabled) {
-                if (shouldBeEnabled) {
-                    lv_obj_add_state(rainSwitch, LV_STATE_CHECKED);
-                }
-                else {
-                    lv_obj_remove_state(rainSwitch, LV_STATE_CHECKED);
-                }
-                spdlog::debug("SandboxControls: Updated rain toggle to {}", shouldBeEnabled);
-            }
-
-            // Update slider value if enabled.
-            if (shouldBeEnabled) {
-                int currentValue = lv_slider_get_value(rainSlider);
-                int newValue = static_cast<int>(config.rain_rate * 10);
-                if (currentValue != newValue) {
-                    lv_slider_set_value(rainSlider, newValue, LV_ANIM_OFF);
-                    spdlog::debug("SandboxControls: Updated rain slider to {}", config.rain_rate);
-                }
-            }
+        bool shouldBeEnabled = config.rain_rate > 0.0;
+        int sliderValue = static_cast<int>(config.rain_rate * 10); // Scale to [0, 100].
+        rainControl_->setEnabled(shouldBeEnabled);
+        if (shouldBeEnabled) {
+            rainControl_->setValue(sliderValue);
         }
+        spdlog::debug(
+            "SandboxControls: Updated rain control (enabled={}, value={})", shouldBeEnabled, sliderValue);
     }
 
     // Restore initializing state.
@@ -220,19 +199,11 @@ SandboxConfig SandboxControls::getCurrentConfig() const
     }
 
     if (rainControl_) {
-        // ToggleSlider container has children: [label, switch, slider, value_label]
-        lv_obj_t* rainSwitch = lv_obj_get_child(rainControl_, 1);
-        lv_obj_t* rainSlider = lv_obj_get_child(rainControl_, 2);
-
-        if (rainSwitch && rainSlider) {
-            bool enabled = lv_obj_has_state(rainSwitch, LV_STATE_CHECKED);
-            if (enabled) {
-                int value = lv_slider_get_value(rainSlider);
-                config.rain_rate = value * 0.1; // valueScale from builder.
-            }
-            else {
-                config.rain_rate = 0.0; // Disabled.
-            }
+        if (rainControl_->isEnabled()) {
+            config.rain_rate = rainControl_->getScaledValue();
+        }
+        else {
+            config.rain_rate = 0.0;
         }
     }
 
@@ -358,54 +329,44 @@ void SandboxControls::onRightThrowToggled(lv_event_t* e)
     self->sendConfigUpdate(config);
 }
 
-void SandboxControls::onRainToggled(lv_event_t* e)
+void SandboxControls::onRainToggled(bool enabled)
 {
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    SandboxControls* self = static_cast<SandboxControls*>(lv_obj_get_user_data(target));
-    if (!self) return;
-
     // Don't send updates during initialization.
-    if (self->initializing_) {
+    if (initializing_) {
         spdlog::debug("SandboxControls: Ignoring rain toggle during initialization");
         return;
     }
 
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
     spdlog::info("SandboxControls: Rain toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and update.
-    SandboxConfig config = self->getCurrentConfig();
-    self->sendConfigUpdate(config);
+    SandboxConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
 }
 
-void SandboxControls::onRainSliderChanged(lv_event_t* e)
+void SandboxControls::onRainSliderChanged(int value)
 {
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    SandboxControls* self = static_cast<SandboxControls*>(lv_obj_get_user_data(target));
-    if (!self) return;
-
     // Don't send updates during initialization.
-    if (self->initializing_) {
+    if (initializing_) {
         spdlog::debug("SandboxControls: Ignoring rain slider during initialization");
         return;
     }
-    int value = lv_slider_get_value(target);
-    double rainRate = value / 10.0;
 
-    // Track last value to prevent redundant updates
+    double rainRate = value * 0.1;
+
+    // Track last value to prevent redundant updates.
     static double lastRainRate = -1.0;
     if (std::abs(rainRate - lastRainRate) < 0.01) {
-        // Value hasn't changed - don't send update
-        // This prevents infinite loops from spurious VALUE_CHANGED events
+        // Value hasn't changed - don't send update.
         return;
     }
     lastRainRate = rainRate;
 
     spdlog::info("SandboxControls: Rain rate changed to {:.1f}", rainRate);
 
-    // Get complete current config from all controls
-    SandboxConfig config = self->getCurrentConfig();
-    self->sendConfigUpdate(config);
+    // Get complete current config from all controls.
+    SandboxConfig config = getCurrentConfig();
+    sendConfigUpdate(config);
 }
 
 } // namespace Ui
