@@ -14,8 +14,14 @@ inherit externalsrc cmake systemd
 EXTERNALSRC = "${THISDIR}/../../../../dirtsim"
 EXTERNALSRC_BUILD = "${WORKDIR}/build"
 
-# Service file (outside EXTERNALSRC, so must be in SRC_URI for proper tracking).
-SRC_URI = "file://sparkle-duck-ui.service"
+# Service files (outside EXTERNALSRC, so must be in SRC_URI for proper tracking).
+SRC_URI = " \
+    file://sparkle-duck-ui.service \
+    file://sparkle-duck-detect-display.service \
+    file://sparkle-duck-detect-display.sh \
+    file://sparkle-duck-set-hostname.service \
+    file://sparkle-duck-set-hostname.sh \
+"
 
 # Dependencies.
 DEPENDS = " \
@@ -48,19 +54,29 @@ do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${B}/bin/sparkle-duck-ui ${D}${bindir}/
 
-    # Install systemd service (from WORKDIR, fetched via SRC_URI).
+    # Install system configuration scripts.
+    install -m 0755 ${WORKDIR}/sparkle-duck-detect-display.sh ${D}${bindir}/
+    install -m 0755 ${WORKDIR}/sparkle-duck-set-hostname.sh ${D}${bindir}/
+
+    # Install systemd services (from WORKDIR, fetched via SRC_URI).
     install -d ${D}${systemd_system_unitdir}
     install -m 0644 ${WORKDIR}/sparkle-duck-ui.service ${D}${systemd_system_unitdir}/
+    install -m 0644 ${WORKDIR}/sparkle-duck-detect-display.service ${D}${systemd_system_unitdir}/
+    install -m 0644 ${WORKDIR}/sparkle-duck-set-hostname.service ${D}${systemd_system_unitdir}/
 }
 
-# Enable the systemd service.
-SYSTEMD_SERVICE:${PN} = "sparkle-duck-ui.service"
+# Enable the systemd services.
+SYSTEMD_SERVICE:${PN} = "sparkle-duck-ui.service sparkle-duck-detect-display.service sparkle-duck-set-hostname.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
 # Package the binary.
 FILES:${PN} = " \
     ${bindir}/sparkle-duck-ui \
+    ${bindir}/sparkle-duck-detect-display.sh \
+    ${bindir}/sparkle-duck-set-hostname.sh \
     ${systemd_system_unitdir}/sparkle-duck-ui.service \
+    ${systemd_system_unitdir}/sparkle-duck-detect-display.service \
+    ${systemd_system_unitdir}/sparkle-duck-set-hostname.service \
 "
 
 # Runtime dependencies.

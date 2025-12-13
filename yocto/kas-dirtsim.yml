@@ -9,7 +9,8 @@ header:
 
 distro: poky
 
-machine: raspberrypi5
+# Unified machine supporting both Pi4 (Miuzei HDMI) and Pi5 (HyperPixel DPI).
+machine: raspberrypi-dirtsim
 
 repos:
   # Core Yocto - the foundation.
@@ -48,7 +49,7 @@ local_conf_header:
     # Use systemd as init system.
     INIT_MANAGER = "systemd"
 
-    # Set hostname.
+    # Set hostname (can be overridden by /boot/hostname.txt at boot).
     hostname:pn-base-files = "dirtsim"
 
     # Use wic for SD card image with A/B partitions.
@@ -83,20 +84,34 @@ local_conf_header:
     # NOTE: Do not enable hardware I2C here - it conflicts with HyperPixel DPI pins.
     # The HyperPixel overlay sets up its own GPIO-based I2C for touch on different pins.
 
-  # HyperPixel 4.0 DPI display configuration.
-  hyperpixel: |
-    # Add HyperPixel DPI overlay to the kernel build.
-    RPI_KERNEL_DEVICETREE_OVERLAYS:append = " overlays/vc4-kms-dpi-hyperpixel4.dtbo"
+  # Display configuration for both Pi4 and Pi5.
+  # Uses conditional [pi4] and [pi5] sections in config.txt.
+  display: |
+    # Enable SPI for Pi4 touchscreen (MPI4008 uses ADS7846 over SPI).
+    ENABLE_SPI_BUS = "1"
 
-    # Configure config.txt for HyperPixel 4.0 DPI display.
-    RPI_EXTRA_CONFIG = '\n \
-        # Force HDMI output even without monitor detection at boot. \n \
-        hdmi_force_hotplug=1 \n \
-        \n \
-        # HyperPixel 4.0 DPI display. \n \
-        # Note: Display rotation handled by LVGL (LV_DISPLAY_ROTATION env var in service). \n \
-        dtoverlay=vc4-kms-dpi-hyperpixel4 \n \
-        '
+    # Configure config.txt with hardware-specific display settings.
+    # The bootloader applies only the section matching the detected hardware.
+    RPI_EXTRA_CONFIG = '\n\
+    # Pi4 - MPI4008 4-inch HDMI touchscreen (480x800 portrait)\n\
+    [pi4]\n\
+    dtoverlay=vc4-kms-v3d-pi4\n\
+    hdmi_group=2\n\
+    hdmi_mode=87\n\
+    hdmi_cvt 480 800 60 6 0 0 0\n\
+    hdmi_drive=2\n\
+    config_hdmi_boost=7\n\
+    dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900\n\
+    \n\
+    # Pi5 - HyperPixel 4.0 DPI display\n\
+    [pi5]\n\
+    dtoverlay=vc4-kms-v3d-pi5\n\
+    dtoverlay=vc4-kms-dpi-hyperpixel4\n\
+    \n\
+    # Common settings\n\
+    [all]\n\
+    hdmi_force_hotplug=1\n\
+    '
 
 # Target image to build - our custom image recipe.
 target: dirtsim-image

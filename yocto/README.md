@@ -72,8 +72,6 @@ cd yocto
 kas build kas-dirtsim.yml
 ```
 
-First build takes 2-4 hours. Subsequent builds are much faster thanks to sstate cache.
-
 The output image will be at:
 ```
 build/tmp/deploy/images/raspberrypi5/dirtsim-image-raspberrypi5.rootfs.wic.gz

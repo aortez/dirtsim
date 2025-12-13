@@ -17,13 +17,12 @@ ExecStart=/usr/bin/sparkle-duck-ui -b fbdev --connect localhost:8080
 Restart=always
 RestartSec=5
 
-# Display rotation for HyperPixel 4.0 (landscape orientation).
-# LVGL handles rotation in software - no hardware dtparam needed.
+# Display rotation and touchscreen device are set per-device via EnvironmentFile.
+# The file is generated at first boot by sparkle-duck-detect-display.service.
+# Defaults (Pi5 HyperPixel) are used if file doesn't exist.
 Environment=LV_DISPLAY_ROTATION=270
-
-# Touchscreen input device (Goodix capacitive touch on HyperPixel 4.0).
-# Using stable by-path symlink instead of eventN which changes on reboot.
 Environment=LV_EVDEV_DEVICE=/dev/input/by-path/platform-i2c@0-event
+EnvironmentFile=-/etc/sparkle-duck/display.conf
 
 # Give access to framebuffer.
 SupplementaryGroups=video input

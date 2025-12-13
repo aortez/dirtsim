@@ -42,7 +42,7 @@ function error(msg) { console.log(`${colors.red}✗${colors.reset} ${msg}`); }
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
-const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi5');
+const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 
 // ============================================================================
@@ -145,11 +145,11 @@ function findLatestImage() {
     .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
 
   // Prefer our custom image, fall back to core-image-base.
-  const dirtsimImage = files.find(f => f.name === 'dirtsim-image-raspberrypi5.rootfs.wic.gz');
+  const dirtsimImage = files.find(f => f.name === 'dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz');
   if (dirtsimImage) {
     return dirtsimImage;
   }
-  const coreImage = files.find(f => f.name === 'core-image-base-raspberrypi5.rootfs.wic.gz');
+  const coreImage = files.find(f => f.name === 'core-image-base-raspberrypi-dirtsim.rootfs.wic.gz');
   if (coreImage) {
     return coreImage;
   }
@@ -347,6 +347,51 @@ async function injectSSHKey(device, sshKeyPath, dryRun = false) {
     execSync(`sudo chown 1000:1000 ${authorizedKeysPath}`, { stdio: 'pipe' });
 
     success('SSH key injected!');
+
+  } finally {
+    // Always try to unmount and clean up.
+    try {
+      info('Unmounting...');
+      execSync(`sudo umount ${mountPoint}`, { stdio: 'pipe' });
+      rmdirSync(mountPoint);
+    } catch (err) {
+      warn(`Cleanup warning: ${err.message}`);
+    }
+  }
+}
+
+/**
+ * Set hostname for the device by writing to boot partition.
+ * Mounts partition 1 (boot), writes hostname.txt, unmounts.
+ */
+async function setHostname(device, hostname, dryRun = false) {
+  const bootPartition = `${device}1`;
+
+  log('');
+  info('Setting device hostname...');
+
+  if (dryRun) {
+    log(`  Would mount ${bootPartition}`);
+    log(`  Would write hostname "${hostname}" to /boot/hostname.txt`);
+    log(`  Would unmount`);
+    return;
+  }
+
+  // Create temporary mount point.
+  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-boot-'));
+
+  try {
+    // Mount the boot partition.
+    info(`Mounting ${bootPartition}...`);
+    execSync(`sudo mount ${bootPartition} ${mountPoint}`, { stdio: 'pipe' });
+
+    // Write the hostname.
+    const hostnameFilePath = join(mountPoint, 'hostname.txt');
+    info(`Writing hostname "${hostname}" to hostname.txt...`);
+    execSync(`echo '${hostname}' | sudo tee ${hostnameFilePath} > /dev/null`, { stdio: 'pipe' });
+    execSync(`sudo chmod 644 ${hostnameFilePath}`, { stdio: 'pipe' });
+
+    success(`Hostname set to: ${hostname}`);
 
   } finally {
     // Always try to unmount and clean up.
@@ -558,12 +603,31 @@ async function main() {
     targetDevice = devices[index].device;
   }
 
+  // Prompt for hostname (interactive mode only).
+  let hostname = 'dirtsim';
+  if (!specifiedDevice && !dryRun) {
+    log('');
+    const hostnameInput = await prompt(`Device hostname (default: ${hostname}): `);
+    if (hostnameInput && hostnameInput.trim()) {
+      // Validate hostname.
+      const cleaned = hostnameInput.trim();
+      if (/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(cleaned)) {
+        hostname = cleaned;
+      } else {
+        warn(`Invalid hostname "${cleaned}", using default: ${hostname}`);
+      }
+    }
+  }
+
   // Flash!
   try {
     await flashImage(image.path, bmapPath, targetDevice, dryRun);
 
     // Inject SSH key after flashing.
     await injectSSHKey(targetDevice, config.ssh_key_path, dryRun);
+
+    // Set hostname.
+    await setHostname(targetDevice, hostname, dryRun);
 
     log('');
     if (dryRun) {
@@ -575,7 +639,7 @@ async function main() {
       log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       log('');
       info('You can now eject the drive and boot your Raspberry Pi.');
-      info(`Login: ssh dirtsim@dirtsim.local`);
+      info(`Login: ssh dirtsim@${hostname}.local`);
       info(`SSH key: ${basename(config.ssh_key_path)}`);
     }
   } catch (err) {
