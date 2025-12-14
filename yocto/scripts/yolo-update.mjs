@@ -61,7 +61,7 @@ const consola = createConsola({
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
-const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi5');
+const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 
 // Remote target configuration.

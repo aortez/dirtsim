@@ -1,6 +1,8 @@
 #!/bin/sh
 # A/B Update Helper
-# Flashes rootfs to inactive partition and switches boot
+# Flashes rootfs to inactive partition and switches boot.
+# NOTE: The /data partition (partition 4) is preserved across updates.
+# WiFi credentials and other persistent config stored there will survive.
 
 set -e
 

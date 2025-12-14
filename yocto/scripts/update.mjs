@@ -19,7 +19,7 @@ const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 
 const HOSTNAME = 'dirtsim.local';
-const PING_TIMEOUT_SEC = 60;
+const PING_TIMEOUT_SEC = 600;
 const SSH_TIMEOUT_SEC = 30;
 
 // Colors for terminal output.

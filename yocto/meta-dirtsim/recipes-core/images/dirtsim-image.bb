@@ -109,6 +109,15 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
+# Persistent Data
+# ============================================================================
+# Mounts /data partition which survives A/B updates.
+# WiFi credentials, logs, and config are stored here.
+IMAGE_INSTALL:append = " \
+    persistent-data \
+"
+
+# ============================================================================
 # Service Discovery
 # ============================================================================
 # Avahi for mDNS - find the Pi as "dirtsim.local" on the network.

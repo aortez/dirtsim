@@ -65,19 +65,35 @@ switch_boot_slot() {
     fi
 }
 
-# Show status
+# Get data partition device.
+get_data_device() {
+    root_device=$(cat /proc/cmdline | grep -o 'root=[^ ]*' | cut -d= -f2)
+    base_device=$(echo "$root_device" | sed 's/[0-9]*$//')
+    echo "${base_device}4"
+}
+
+# Show status.
 show_status() {
     current=$(get_current_slot)
     inactive=$(get_inactive_slot)
     current_dev=$(get_slot_device "$current")
     inactive_dev=$(get_slot_device "$inactive")
+    data_dev=$(get_data_device)
 
     echo "Current slot:  $current ($current_dev)"
     echo "Inactive slot: $inactive ($inactive_dev)"
+    echo "Data partition: $data_dev (persistent)"
 
     if [ -f "$BOOT_FLAG" ]; then
         flag=$(cat "$BOOT_FLAG")
         echo "Boot flag:     $flag"
+    fi
+
+    # Show data mount status.
+    if mountpoint -q /data 2>/dev/null; then
+        echo "Data mount:    mounted"
+    else
+        echo "Data mount:    not mounted"
     fi
 }
 
