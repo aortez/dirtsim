@@ -373,8 +373,8 @@ http://dirtsim.local:8080/garden
 
 **Key design choice:** Server sends WebRTC offer (not browser) because the sender of media should be the offerer per WebRTC spec.
 
-**Future enhancement - Full remote UI control:**
-Currently mouse events (MouseDown/Move/Up) are forwarded from browser to server but only handled in SimRunning state for custom world interaction. To enable full remote control of LVGL widgets (buttons, sliders, toggles in all states), mouse events need to be injected into LVGL's input device (indev) system instead of state machine handlers. This would allow remote interaction with the entire UI including StartMenu, control panels, etc. Implementation would involve creating a custom LVGL indev that reads from remote mouse state.
+**Remote UI control:**
+Mouse events (MouseDown/Move/Up) from the browser are injected into LVGL's input device system via `RemoteInputDevice`, enabling full remote control of all LVGL widgets (buttons, sliders, toggles) in all UI states. The dashboard captures mouse events on the WebRTC video stream, maps coordinates accounting for letterboxing, and forwards them via WebSocket. `RemoteInputDevice` applies inverse rotation transforms to convert logical (video) coordinates to physical display coordinates before LVGL processes them.
 
 ## References
 ### Lvgl reference:

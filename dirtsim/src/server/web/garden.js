@@ -171,7 +171,10 @@ function createPersistentConnection(name, url, onStatusChange) {
                         var req = conn.pendingRequests[response.id];
                         delete conn.pendingRequests[response.id];
                         clearTimeout(req.timeoutId);
-                        logResponse(req.cmdName, response.id, response);
+                        // Skip logging high-frequency events to reduce noise.
+                        if (req.cmdName !== 'MouseMove') {
+                            logResponse(req.cmdName, response.id, response);
+                        }
                         if (req.onSuccess && response.success !== false) {
                             req.onSuccess(response);
                         }
@@ -250,7 +253,10 @@ function createPersistentConnection(name, url, onStatusChange) {
             sentAt: new Date()
         };
 
-        logDebug(name + ': Sending ' + cmdName + ' [id=' + id + ']');
+        // Skip logging high-frequency events to reduce noise.
+        if (cmdName !== 'MouseMove') {
+            logDebug(name + ': Sending ' + cmdName + ' [id=' + id + ']');
+        }
         conn.socket.send(JSON.stringify(cmdObj));
         return true;
     };
@@ -772,6 +778,15 @@ function setupMouseForwarding(videoElement) {
         // Clamp to valid range.
         lvglX = Math.max(0, Math.min(lvglX, videoElement.videoWidth - 1));
         lvglY = Math.max(0, Math.min(lvglY, videoElement.videoHeight - 1));
+
+        // Debug logging for coordinate mapping.
+        if (eventType === 'MouseDown') {
+            logDebug('Mouse: element(' + Math.round(elementX) + ',' + Math.round(elementY) + ') ' +
+                     'video(' + videoElement.videoWidth + 'x' + videoElement.videoHeight + ') ' +
+                     'client(' + videoElement.clientWidth + 'x' + videoElement.clientHeight + ') ' +
+                     'render(' + Math.round(renderRect.width) + 'x' + Math.round(renderRect.height) + ' @' + Math.round(renderRect.x) + ',' + Math.round(renderRect.y) + ') ' +
+                     '-> lvgl(' + lvglX + ',' + lvglY + ')');
+        }
 
         uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
     }

@@ -65,6 +65,9 @@ private:
 
     // LVGL input device handle.
     lv_indev_t* indev_ = nullptr;
+
+    // Display reference for coordinate transformation.
+    _lv_display_t* display_ = nullptr;
 };
 
 } // namespace Ui
