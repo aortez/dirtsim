@@ -1,5 +1,6 @@
 #include "SimPlayground.h"
 #include "ScenarioMetadataCache.h"
+#include "controls/ClockControls.h"
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
 #include "controls/PhysicsPanel.h"
@@ -10,6 +11,7 @@
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
+#include "server/api/ScenarioConfigSet.h"
 #include "server/api/SimRun.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
@@ -69,6 +71,10 @@ void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
     else if (selectedId == IconId::COUNT) {
         // No icon selected - clear panel.
         clearPanelContent();
+
+        // For auto-scaling scenarios like Clock, trigger a resize now that
+        // the panel is closed and more display space is available.
+        sendDisplayResizeUpdate();
     }
 }
 
@@ -110,6 +116,10 @@ void SimPlayground::showPanelContent(IconId panelId)
 
     activePanel_ = panelId;
     LOG_DEBUG(Controls, "Showing panel content for icon {}", static_cast<int>(panelId));
+
+    // For auto-scaling scenarios like Clock, trigger a resize now that the
+    // panel is open and less display space is available.
+    sendDisplayResizeUpdate();
 }
 
 void SimPlayground::clearPanelContent()
@@ -182,9 +192,21 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
 
+    // Create display dimensions getter for auto-scaling scenarios.
+    DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
+        lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
+        if (worldArea) {
+            lv_obj_update_layout(worldArea);
+            return DisplayDimensions{
+                static_cast<uint32_t>(lv_obj_get_width(worldArea)),
+                static_cast<uint32_t>(lv_obj_get_height(worldArea))};
+        }
+        return DisplayDimensions{692, 480}; // Fallback to reasonable defaults.
+    };
+
     // Create scenario-specific controls using factory.
-    scenarioControls_ =
-        ScenarioControlsFactory::create(container, wsService_, currentScenarioId_, currentScenarioConfig_);
+    scenarioControls_ = ScenarioControlsFactory::create(
+        container, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter);
 }
 
 void SimPlayground::createPhysicsPanel(lv_obj_t* container)
@@ -252,8 +274,20 @@ void SimPlayground::updateFromWorldData(
         if (panel) {
             lv_obj_t* container = panel->getContentArea();
             if (container) {
+                // Create display dimensions getter for auto-scaling scenarios.
+                DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
+                    lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
+                    if (worldArea) {
+                        lv_obj_update_layout(worldArea);
+                        return DisplayDimensions{
+                            static_cast<uint32_t>(lv_obj_get_width(worldArea)),
+                            static_cast<uint32_t>(lv_obj_get_height(worldArea))};
+                    }
+                    return DisplayDimensions{692, 480}; // Fallback to reasonable defaults.
+                };
+
                 scenarioControls_ = ScenarioControlsFactory::create(
-                    container, wsService_, currentScenarioId_, currentScenarioConfig_);
+                    container, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter);
             }
         }
     }
@@ -367,6 +401,56 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
 
     LOG_INFO(Controls, "Captured screenshot {}x{} ({} bytes)", width, height, bufferSize);
     return data;
+}
+
+void SimPlayground::sendDisplayResizeUpdate()
+{
+    // Only send resize for auto-scaling scenarios like Clock.
+    if (!std::holds_alternative<ClockConfig>(currentScenarioConfig_)) {
+        return;
+    }
+
+    if (!wsService_ || !wsService_->isConnected()) {
+        return;
+    }
+
+    // Force layout update to get accurate dimensions after panel closed.
+    lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
+    if (!worldArea) {
+        return;
+    }
+    lv_obj_update_layout(worldArea);
+
+    // Get new display dimensions.
+    uint32_t newWidth = static_cast<uint32_t>(lv_obj_get_width(worldArea));
+    uint32_t newHeight = static_cast<uint32_t>(lv_obj_get_height(worldArea));
+
+    // Update the config with new dimensions.
+    ClockConfig config = std::get<ClockConfig>(currentScenarioConfig_);
+    if (config.target_display_width == newWidth && config.target_display_height == newHeight) {
+        // No change in dimensions.
+        return;
+    }
+
+    LOG_INFO(
+        Controls,
+        "Display resized: {}x{} -> {}x{}, sending config update",
+        config.target_display_width,
+        config.target_display_height,
+        newWidth,
+        newHeight);
+
+    config.target_display_width = newWidth;
+    config.target_display_height = newHeight;
+
+    // Send the updated config to the server.
+    const Api::ScenarioConfigSet::Command cmd{ .config = config };
+    static std::atomic<uint64_t> nextId{ 1 };
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        LOG_ERROR(Controls, "Failed to send display resize update: {}", result.errorValue());
+    }
 }
 
 } // namespace Ui

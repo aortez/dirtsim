@@ -28,15 +28,22 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
  *
  * World size is computed from clock dimensions × scale factors.
  * Clock dimensions depend on selected font.
+ *
+ * Auto-scaling mode calculates scale factors to maximize clock size
+ * while fitting within target display dimensions with margins.
  */
 struct ClockConfig {
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<9>;
 
-    double horizontal_scale = 1.1;       // World width = clock_width × scale.
-    double vertical_scale = 2.0;         // World height = clock_height × scale.
-    uint8_t timezone_index = 2;          // Index into TIMEZONES array (2 = PST).
-    ClockFont font = ClockFont::Segment7; // Font style.
-    bool show_seconds = true;            // Show seconds (HH:MM:SS vs HH:MM).
+    double horizontal_scale = 1.1;         // World width = clock_width × scale.
+    double vertical_scale = 2.0;           // World height = clock_height × scale.
+    uint8_t timezone_index = 2;            // Index into TIMEZONES array (2 = PST).
+    ClockFont font = ClockFont::Segment7;  // Font style.
+    bool show_seconds = true;              // Show seconds (HH:MM:SS vs HH:MM).
+    bool auto_scale = true;                // Enable auto-scaling to fit display.
+    uint32_t target_display_width = 752;   // Target display width in pixels.
+    uint32_t target_display_height = 480;  // Target display height in pixels.
+    uint32_t margin_pixels = 20;           // Margin in pixels (all sides).
 };
 
 } // namespace DirtSim

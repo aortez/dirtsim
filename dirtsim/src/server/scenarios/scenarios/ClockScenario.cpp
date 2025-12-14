@@ -89,20 +89,67 @@ void ClockScenario::recalculateDimensions()
     int clock_width = calculateTotalWidth();
     int clock_height = getDigitHeight();
 
-    metadata_.requiredWidth =
-        static_cast<uint32_t>(std::ceil(clock_width * config_.horizontal_scale));
-    metadata_.requiredHeight =
-        static_cast<uint32_t>(std::ceil(clock_height * config_.vertical_scale));
+    // Buffer cells around clock edges.
+    constexpr int BUFFER = 4;
 
-    spdlog::info(
-        "ClockScenario: font={}, clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
-        static_cast<int>(config_.font),
-        clock_width,
-        clock_height,
-        config_.horizontal_scale,
-        config_.vertical_scale,
-        metadata_.requiredWidth,
-        metadata_.requiredHeight);
+    // Auto-scale mode: size world to match display aspect ratio.
+    if (config_.auto_scale && config_.target_display_width > 0 && config_.target_display_height > 0) {
+        // Use FULL display aspect (what CellRenderer uses to fill the screen).
+        // Margins just provide minimum buffer around clock, not affect aspect.
+        double display_aspect = static_cast<double>(config_.target_display_width)
+            / config_.target_display_height;
+
+        // Base world size: clock + buffer.
+        int base_width = clock_width + 2 * BUFFER;
+        int base_height = clock_height + 2 * BUFFER;
+        double clock_aspect = static_cast<double>(base_width) / base_height;
+
+        // Adjust world to match display aspect ratio.
+        // This ensures CellRenderer fills the display without gray bands.
+        int world_width, world_height;
+        if (display_aspect > clock_aspect) {
+            // Display is wider than clock - expand width.
+            world_height = base_height;
+            world_width = static_cast<int>(std::ceil(world_height * display_aspect));
+        }
+        else {
+            // Display is taller than clock - expand height.
+            world_width = base_width;
+            world_height = static_cast<int>(std::ceil(world_width / display_aspect));
+        }
+
+        // Use scale=1 (each font pixel = 1 cell).
+        config_.horizontal_scale = 1.0;
+        config_.vertical_scale = 1.0;
+
+        metadata_.requiredWidth = static_cast<uint32_t>(world_width);
+        metadata_.requiredHeight = static_cast<uint32_t>(world_height);
+
+        spdlog::info(
+            "ClockScenario: Auto-scale - display={}x{}, clock={}x{}, world={}x{} (aspect matched)",
+            config_.target_display_width,
+            config_.target_display_height,
+            clock_width,
+            clock_height,
+            world_width,
+            world_height);
+    }
+    else {
+        // Manual scale mode (original behavior).
+        metadata_.requiredWidth =
+            static_cast<uint32_t>(std::ceil(clock_width * config_.horizontal_scale));
+        metadata_.requiredHeight =
+            static_cast<uint32_t>(std::ceil(clock_height * config_.vertical_scale));
+
+        spdlog::info(
+            "ClockScenario: Manual scale - clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
+            clock_width,
+            clock_height,
+            config_.horizontal_scale,
+            config_.vertical_scale,
+            metadata_.requiredWidth,
+            metadata_.requiredHeight);
+    }
 }
 
 const ScenarioMetadata& ClockScenario::getMetadata() const
@@ -119,8 +166,14 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 {
     if (std::holds_alternative<ClockConfig>(newConfig)) {
         const ClockConfig& incoming = std::get<ClockConfig>(newConfig);
+
+        // Check if any dimension-affecting settings changed.
         bool needs_resize = (incoming.show_seconds != config_.show_seconds) ||
-                            (incoming.font != config_.font);
+                            (incoming.font != config_.font) ||
+                            (incoming.auto_scale != config_.auto_scale) ||
+                            (incoming.target_display_width != config_.target_display_width) ||
+                            (incoming.target_display_height != config_.target_display_height) ||
+                            (incoming.margin_pixels != config_.margin_pixels);
 
         config_ = incoming;
 
@@ -129,11 +182,13 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Resizing world to {}x{} (font={}, show_seconds={})",
+                "ClockScenario: Resizing world to {}x{} (font={}, show_seconds={}, display={}x{})",
                 metadata_.requiredWidth,
                 metadata_.requiredHeight,
                 static_cast<int>(config_.font),
-                config_.show_seconds);
+                config_.show_seconds,
+                config_.target_display_width,
+                config_.target_display_height);
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
         }

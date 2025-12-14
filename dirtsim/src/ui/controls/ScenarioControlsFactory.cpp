@@ -13,7 +13,8 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
     lv_obj_t* parent,
     Network::WebSocketService* wsService,
     const std::string& scenarioId,
-    const ScenarioConfig& config)
+    const ScenarioConfig& config,
+    DisplayDimensionsGetter dimensionsGetter)
 {
     return std::visit(
         [&](auto&& cfg) -> std::unique_ptr<ScenarioControlsBase> {
@@ -25,7 +26,7 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
             }
             else if constexpr (std::is_same_v<T, ClockConfig>) {
                 spdlog::debug("ScenarioControlsFactory: Creating ClockControls");
-                return std::make_unique<ClockControls>(parent, wsService, cfg);
+                return std::make_unique<ClockControls>(parent, wsService, cfg, dimensionsGetter);
             }
             else if constexpr (std::is_same_v<T, RainingConfig>) {
                 spdlog::debug("ScenarioControlsFactory: Creating RainingControls");

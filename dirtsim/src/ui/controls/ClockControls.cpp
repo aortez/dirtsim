@@ -7,8 +7,11 @@ namespace DirtSim {
 namespace Ui {
 
 ClockControls::ClockControls(
-    lv_obj_t* container, Network::WebSocketService* wsService, const ClockConfig& config)
-    : ScenarioControlsBase(container, wsService, "clock")
+    lv_obj_t* container,
+    Network::WebSocketService* wsService,
+    const ClockConfig& config,
+    DisplayDimensionsGetter dimensionsGetter)
+    : ScenarioControlsBase(container, wsService, "clock"), dimensionsGetter_(std::move(dimensionsGetter))
 {
     // Create widgets.
     createWidgets();
@@ -122,7 +125,8 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 
 ClockConfig ClockControls::getCurrentConfig() const
 {
-    ClockConfig config;
+    // Start with current config (preserves auto-scale settings).
+    ClockConfig config = currentConfig_;
 
     // Get font from dropdown.
     if (fontDropdown_) {
@@ -139,8 +143,17 @@ ClockConfig ClockControls::getCurrentConfig() const
         config.show_seconds = lv_obj_has_state(secondsSwitch_, LV_STATE_CHECKED);
     }
 
-    // Keep default scale factors (not exposed in UI yet).
-    // config.horizontal_scale and vertical_scale use defaults from struct.
+    // Populate display dimensions from getter for auto-scaling.
+    if (dimensionsGetter_) {
+        DisplayDimensions dims = dimensionsGetter_();
+        config.target_display_width = dims.width;
+        config.target_display_height = dims.height;
+        config.auto_scale = true;
+        spdlog::debug(
+            "ClockControls: Setting display dimensions {}x{} for auto-scale",
+            dims.width,
+            dims.height);
+    }
 
     return config;
 }

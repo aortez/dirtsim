@@ -120,6 +120,14 @@ private:
 
     void clearPanelContent();
 
+    /**
+     * @brief Send display resize update for auto-scaling scenarios.
+     *
+     * Called when the panel closes to notify scenarios like Clock that
+     * more display space is now available.
+     */
+    void sendDisplayResizeUpdate();
+
     void createCorePanel(lv_obj_t* container);
 
     void createScenarioPanel(lv_obj_t* container);

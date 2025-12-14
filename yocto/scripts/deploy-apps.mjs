@@ -23,18 +23,42 @@ const consola = require('consola');
 const PI_HOST = 'dirtsim.local';
 const PI_USER = 'dirtsim';
 const YOCTO_DIR = new URL('..', import.meta.url).pathname;
-const BUILD_DIR = `${YOCTO_DIR}build/tmp/work/cortexa76-poky-linux`;
+const WORK_DIR = `${YOCTO_DIR}build/tmp/work`;
+
+// Supported architectures (Pi5=cortexa76, Pi4=cortexa72).
+const ARCH_PATTERNS = ['cortexa76-poky-linux', 'cortexa72-poky-linux'];
+
+/**
+ * Find the most recently built binary for a recipe across all architectures.
+ */
+function findBinary(recipe, binaryName) {
+    const { statSync } = require('fs');
+    let newest = null;
+    let newestTime = 0;
+
+    for (const arch of ARCH_PATTERNS) {
+        const path = `${WORK_DIR}/${arch}/${recipe}/git/build/bin/${binaryName}`;
+        if (existsSync(path)) {
+            const mtime = statSync(path).mtimeMs;
+            if (mtime > newestTime) {
+                newestTime = mtime;
+                newest = path;
+            }
+        }
+    }
+    return newest;
+}
 
 const APPS = {
     server: {
         recipe: 'sparkle-duck-server',
-        binary: `${BUILD_DIR}/sparkle-duck-server/git/build/bin/sparkle-duck-server`,
+        binaryName: 'sparkle-duck-server',
         remotePath: '/usr/bin/sparkle-duck-server',
         service: 'sparkle-duck-server',
     },
     ui: {
         recipe: 'sparkle-duck-ui',
-        binary: `${BUILD_DIR}/sparkle-duck-ui/git/build/bin/sparkle-duck-ui`,
+        binaryName: 'sparkle-duck-ui',
         remotePath: '/usr/bin/sparkle-duck-ui',
         service: 'sparkle-duck-ui',
     },
@@ -81,21 +105,22 @@ async function buildApps(apps) {
 async function deployApp(appName) {
     const app = APPS[appName];
 
-    if (!existsSync(app.binary)) {
-        consola.error(`Binary not found: ${app.binary}`);
+    const binary = findBinary(app.recipe, app.binaryName);
+    if (!binary) {
+        consola.error(`Binary not found for ${appName} in any architecture: ${ARCH_PATTERNS.join(', ')}`);
         return false;
     }
 
-    consola.start(`Deploying ${appName}...`);
+    consola.start(`Deploying ${appName} from ${binary}...`);
 
     try {
         // SCP binary to /tmp/.
-        run(`scp ${app.binary} ${PI_USER}@${PI_HOST}:/tmp/`);
+        run(`scp ${binary} ${PI_USER}@${PI_HOST}:/tmp/`);
 
         // Stop service, copy binary, start service.
         const remoteCmd = [
             `sudo systemctl stop ${app.service}`,
-            `sudo cp /tmp/$(basename ${app.binary}) ${app.remotePath}`,
+            `sudo cp /tmp/${app.binaryName} ${app.remotePath}`,
             `sudo systemctl start ${app.service}`,
         ].join(' && ');
 

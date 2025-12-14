@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ClockControls.h"
 #include "ScenarioControlsBase.h"
 #include "core/ScenarioConfig.h"
 #include <memory>
@@ -27,13 +28,15 @@ public:
      * @param wsService WebSocket service for server communication.
      * @param scenarioId The scenario ID string.
      * @param config The scenario configuration variant.
+     * @param dimensionsGetter Optional callback for display dimensions (used by Clock).
      * @return Unique pointer to controls, or nullptr if scenario has no UI.
      */
     static std::unique_ptr<ScenarioControlsBase> create(
         lv_obj_t* parent,
         Network::WebSocketService* wsService,
         const std::string& scenarioId,
-        const ScenarioConfig& config);
+        const ScenarioConfig& config,
+        DisplayDimensionsGetter dimensionsGetter = nullptr);
 };
 
 } // namespace Ui
