@@ -749,6 +749,10 @@ async function main() {
         warn(`Invalid hostname "${cleaned}", using default: ${hostname}`);
       }
     }
+
+    // Save hostname to config for use by update.mjs verification.
+    config.hostname = hostname;
+    saveConfig(config);
   }
 
   // Check if we can backup /data from the disk before flashing.

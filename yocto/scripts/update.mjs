@@ -11,14 +11,14 @@
  */
 
 import { execSync, spawn } from 'child_process';
-import { dirname } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { readFileSync } from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 
-const HOSTNAME = 'dirtsim.local';
 const PING_TIMEOUT_SEC = 600;
 const SSH_TIMEOUT_SEC = 30;
 
@@ -187,6 +187,20 @@ async function waitForSSH(host, timeoutSec) {
 }
 
 /**
+ * Get the hostname from the flash config.
+ * Returns the hostname that was configured during flash, or default.
+ */
+function getConfiguredHostname() {
+  const configPath = join(YOCTO_DIR, '.flash-config.json');
+  try {
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    return config.hostname || 'dirtsim';
+  } catch {
+    return 'dirtsim';
+  }
+}
+
+/**
  * Main entry point.
  */
 async function main() {
@@ -224,6 +238,10 @@ async function main() {
 
       // Verification phase.
       if (!noVerify) {
+        // Get the hostname that was just configured.
+        const hostname = getConfiguredHostname();
+        const fullHostname = `${hostname}.local`;
+
         log('');
         info('Insert the drive into the Pi and power on...');
         info('(Press Ctrl+C to skip verification)');
@@ -232,10 +250,10 @@ async function main() {
         // Small delay to let user swap the drive.
         await sleep(10000);
 
-        const pingOk = await waitForPing(HOSTNAME, PING_TIMEOUT_SEC);
+        const pingOk = await waitForPing(fullHostname, PING_TIMEOUT_SEC);
 
         if (pingOk) {
-          await waitForSSH(HOSTNAME, SSH_TIMEOUT_SEC);
+          await waitForSSH(fullHostname, SSH_TIMEOUT_SEC);
         }
       }
     }
@@ -245,7 +263,8 @@ async function main() {
     log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
     success('All done!');
     if (!buildOnly) {
-      info(`Connect with: ssh dirtsim@dirtsim.local`);
+      const hostname = getConfiguredHostname();
+      info(`Connect with: ssh dirtsim@${hostname}.local`);
     }
     log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
     log('');
