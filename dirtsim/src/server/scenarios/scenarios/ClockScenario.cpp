@@ -16,9 +16,78 @@ ClockScenario::ClockScenario()
     metadata_.description = "Digital clock displaying system time (HH:MM:SS)";
     metadata_.category = "demo";
 
-    // Compute required world dimensions from clock size and scale factors.
+    recalculateDimensions();
+}
+
+int ClockScenario::getDigitWidth() const
+{
+    switch (config_.font) {
+    case ClockFont::Segment7:
+        return ClockFonts::SEGMENT7_WIDTH;
+    case ClockFont::Segment7Large:
+        return ClockFonts::SEGMENT7_LARGE_WIDTH;
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_WIDTH;
+    }
+    return ClockFonts::SEGMENT7_WIDTH;
+}
+
+int ClockScenario::getDigitHeight() const
+{
+    switch (config_.font) {
+    case ClockFont::Segment7:
+        return ClockFonts::SEGMENT7_HEIGHT;
+    case ClockFont::Segment7Large:
+        return ClockFonts::SEGMENT7_LARGE_HEIGHT;
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_HEIGHT;
+    }
+    return ClockFonts::SEGMENT7_HEIGHT;
+}
+
+int ClockScenario::getDigitGap() const
+{
+    switch (config_.font) {
+    case ClockFont::Segment7:
+        return ClockFonts::SEGMENT7_GAP;
+    case ClockFont::Segment7Large:
+        return ClockFonts::SEGMENT7_LARGE_GAP;
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_GAP;
+    }
+    return ClockFonts::SEGMENT7_GAP;
+}
+
+int ClockScenario::getColonWidth() const
+{
+    switch (config_.font) {
+    case ClockFont::Segment7:
+        return ClockFonts::SEGMENT7_COLON_WIDTH;
+    case ClockFont::Segment7Large:
+        return ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_COLON_WIDTH;
+    }
+    return ClockFonts::SEGMENT7_COLON_WIDTH;
+}
+
+int ClockScenario::getColonPadding() const
+{
+    switch (config_.font) {
+    case ClockFont::Segment7:
+        return ClockFonts::SEGMENT7_COLON_PADDING;
+    case ClockFont::Segment7Large:
+        return ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_COLON_PADDING;
+    }
+    return ClockFonts::SEGMENT7_COLON_PADDING;
+}
+
+void ClockScenario::recalculateDimensions()
+{
     int clock_width = calculateTotalWidth();
-    int clock_height = DIGIT_HEIGHT;
+    int clock_height = getDigitHeight();
 
     metadata_.requiredWidth =
         static_cast<uint32_t>(std::ceil(clock_width * config_.horizontal_scale));
@@ -26,7 +95,8 @@ ClockScenario::ClockScenario()
         static_cast<uint32_t>(std::ceil(clock_height * config_.vertical_scale));
 
     spdlog::info(
-        "ClockScenario: clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
+        "ClockScenario: font={}, clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
+        static_cast<int>(config_.font),
         clock_width,
         clock_height,
         config_.horizontal_scale,
@@ -45,10 +115,29 @@ ScenarioConfig ClockScenario::getConfig() const
     return config_;
 }
 
-void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 {
     if (std::holds_alternative<ClockConfig>(newConfig)) {
-        config_ = std::get<ClockConfig>(newConfig);
+        const ClockConfig& incoming = std::get<ClockConfig>(newConfig);
+        bool needs_resize = (incoming.show_seconds != config_.show_seconds) ||
+                            (incoming.font != config_.font);
+
+        config_ = incoming;
+
+        // Recalculate and resize if dimensions changed.
+        if (needs_resize) {
+            recalculateDimensions();
+
+            spdlog::info(
+                "ClockScenario: Resizing world to {}x{} (font={}, show_seconds={})",
+                metadata_.requiredWidth,
+                metadata_.requiredHeight,
+                static_cast<int>(config_.font),
+                config_.show_seconds);
+
+            world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
+        }
+
         spdlog::info("ClockScenario: Config updated");
     }
     else {
@@ -97,17 +186,20 @@ void ClockScenario::tick(World& world, double /*deltaTime*/)
 
 int ClockScenario::calculateTotalWidth() const
 {
+    int dw = getDigitWidth();
+    int dg = getDigitGap();
+    int cw = getColonWidth();
+    int cp = getColonPadding();
+
     if (config_.show_seconds) {
         // HH : MM : SS (6 digits, 2 colons).
         // Layout: D gap D pad colon pad D gap D pad colon pad D gap D.
-        // = 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING).
-        return 6 * DIGIT_WIDTH + 4 * DIGIT_GAP + 2 * (COLON_WIDTH + 2 * COLON_PADDING);
+        return 6 * dw + 4 * dg + 2 * (cw + 2 * cp);
     }
     else {
         // HH : MM (4 digits, 1 colon).
         // Layout: D gap D pad colon pad D gap D.
-        // = 4 * DIGIT_WIDTH + 2 * DIGIT_GAP + 1 * (COLON_WIDTH + 2 * COLON_PADDING).
-        return 4 * DIGIT_WIDTH + 2 * DIGIT_GAP + (COLON_WIDTH + 2 * COLON_PADDING);
+        return 4 * dw + 2 * dg + (cw + 2 * cp);
     }
 }
 
@@ -117,9 +209,11 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
         return;
     }
 
-    const auto& pattern = DIGIT_PATTERNS[digit];
-    for (int row = 0; row < DIGIT_HEIGHT; ++row) {
-        for (int col = 0; col < DIGIT_WIDTH; ++col) {
+    int dw = getDigitWidth();
+    int dh = getDigitHeight();
+
+    for (int row = 0; row < dh; ++row) {
+        for (int col = 0; col < dw; ++col) {
             int x = start_x + col;
             int y = start_y + row;
 
@@ -129,29 +223,57 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                 continue;
             }
 
-            if (pattern[row][col]) {
+            // Get the pixel value from the appropriate pattern.
+            bool pixel = false;
+            switch (config_.font) {
+            case ClockFont::Segment7:
+                pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
+                break;
+            case ClockFont::Segment7Large:
+                pixel = ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];
+                break;
+            case ClockFont::DotMatrix:
+                pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
+                break;
+            }
+
+            if (pixel) {
                 world.getData().at(x, y).replaceMaterial(MaterialType::WALL, 1.0);
             }
         }
     }
 }
 
-void ClockScenario::drawColon(World& world, int x, int start_y)
+void ClockScenario::drawColon(World& world, int start_x, int start_y)
 {
-    // Bounds check.
-    if (x < 0 || x >= static_cast<int>(world.getData().width)) {
-        return;
-    }
+    int dh = getDigitHeight();
+    int cw = getColonWidth();
 
-    // Draw two dots at 1/3 and 2/3 of the digit height.
-    int dot1_y = start_y + 2;
-    int dot2_y = start_y + 4;
+    // Calculate dot positions at roughly 1/3 and 2/3 of digit height.
+    int dot1_y = start_y + dh / 3;
+    int dot2_y = start_y + (2 * dh) / 3;
 
-    if (dot1_y >= 0 && dot1_y < static_cast<int>(world.getData().height)) {
-        world.getData().at(x, dot1_y).replaceMaterial(MaterialType::WALL, 1.0);
-    }
-    if (dot2_y >= 0 && dot2_y < static_cast<int>(world.getData().height)) {
-        world.getData().at(x, dot2_y).replaceMaterial(MaterialType::WALL, 1.0);
+    // Draw colon dots (size depends on font).
+    for (int dx = 0; dx < cw; ++dx) {
+        int x = start_x + dx;
+        if (x < 0 || x >= static_cast<int>(world.getData().width)) {
+            continue;
+        }
+
+        // For large font, draw 2x2 dots; otherwise single pixels.
+        int dot_height = (config_.font == ClockFont::Segment7Large) ? 2 : 1;
+
+        for (int dy = 0; dy < dot_height; ++dy) {
+            int y1 = dot1_y + dy;
+            int y2 = dot2_y + dy;
+
+            if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
+                world.getData().at(x, y1).replaceMaterial(MaterialType::WALL, 1.0);
+            }
+            if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
+                world.getData().at(x, y2).replaceMaterial(MaterialType::WALL, 1.0);
+            }
+        }
     }
 }
 
@@ -194,40 +316,47 @@ void ClockScenario::drawTime(World& world)
         }
     }
 
+    // Get font dimensions.
+    int dw = getDigitWidth();
+    int dh = getDigitHeight();
+    int dg = getDigitGap();
+    int cw = getColonWidth();
+    int cp = getColonPadding();
+
     // Calculate centered position.
     int total_width = calculateTotalWidth();
     int start_x = (static_cast<int>(world.getData().width) - total_width) / 2;
-    int start_y = (static_cast<int>(world.getData().height) - DIGIT_HEIGHT) / 2;
+    int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
 
     int cursor_x = start_x;
 
     // Draw hours (tens, ones).
     drawDigit(world, hours / 10, cursor_x, start_y);
-    cursor_x += DIGIT_WIDTH + DIGIT_GAP;
+    cursor_x += dw + dg;
     drawDigit(world, hours % 10, cursor_x, start_y);
-    cursor_x += DIGIT_WIDTH;
+    cursor_x += dw;
 
     // Draw first colon.
-    cursor_x += COLON_PADDING;
+    cursor_x += cp;
     drawColon(world, cursor_x, start_y);
-    cursor_x += COLON_WIDTH + COLON_PADDING;
+    cursor_x += cw + cp;
 
     // Draw minutes (tens, ones).
     drawDigit(world, minutes / 10, cursor_x, start_y);
-    cursor_x += DIGIT_WIDTH + DIGIT_GAP;
+    cursor_x += dw + dg;
     drawDigit(world, minutes % 10, cursor_x, start_y);
-    cursor_x += DIGIT_WIDTH;
+    cursor_x += dw;
 
     // Draw seconds if enabled.
     if (config_.show_seconds) {
         // Draw second colon.
-        cursor_x += COLON_PADDING;
+        cursor_x += cp;
         drawColon(world, cursor_x, start_y);
-        cursor_x += COLON_WIDTH + COLON_PADDING;
+        cursor_x += cw + cp;
 
         // Draw seconds (tens, ones).
         drawDigit(world, seconds / 10, cursor_x, start_y);
-        cursor_x += DIGIT_WIDTH + DIGIT_GAP;
+        cursor_x += dw + dg;
         drawDigit(world, seconds % 10, cursor_x, start_y);
     }
 }

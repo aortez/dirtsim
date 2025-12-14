@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ClockConfig.h"
+#include "ClockFontPatterns.h"
 #include "server/scenarios/Scenario.h"
 #include <array>
 #include <memory>
@@ -8,130 +9,13 @@
 namespace DirtSim {
 
 /**
- * Clock scenario - displays system time as a digital clock using 7-segment digits.
+ * Clock scenario - displays system time as a digital clock.
  *
- * Format: HH:MM:SS
- * Each digit is 5 cells wide x 7 cells tall.
- * Digits are separated by 1 cell gap.
- * Colons are 1 cell wide with 1 cell padding on each side.
+ * Supports multiple font styles: 7-segment, large 7-segment, and dot matrix.
+ * Format: HH:MM:SS (or HH:MM if seconds disabled).
  */
 class ClockScenario : public Scenario {
 public:
-    // Digit dimensions.
-    static constexpr int DIGIT_WIDTH = 5;
-    static constexpr int DIGIT_HEIGHT = 7;
-    static constexpr int DIGIT_GAP = 1;
-    static constexpr int COLON_WIDTH = 1;
-    static constexpr int COLON_PADDING = 1;
-
-    // 7-segment patterns for digits 0-9.
-    // Each digit is a 5x7 grid where true = wall cell.
-    // clang-format off
-    static constexpr std::array<std::array<std::array<bool, DIGIT_WIDTH>, DIGIT_HEIGHT>, 10>
-        DIGIT_PATTERNS = {{
-            // 0: segments a, b, c, d, e, f (all except g).
-            {{
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, false, false, false, false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-            // 1: segments b, c (right side only).
-            {{
-                {false, false, false, false, false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, false, false, false, false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, false, false, false, false},
-            }},
-            // 2: segments a, b, g, e, d.
-            {{
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, false},
-                {true,  false, false, false, false},
-                {false, true,  true,  true,  false},
-            }},
-            // 3: segments a, b, g, c, d.
-            {{
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-            // 4: segments f, g, b, c.
-            {{
-                {false, false, false, false, false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, false, false, false, false},
-            }},
-            // 5: segments a, f, g, c, d.
-            {{
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, false},
-                {true,  false, false, false, false},
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-            // 6: segments a, f, g, e, c, d (all except b).
-            {{
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, false},
-                {true,  false, false, false, false},
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-            // 7: segments a, b, c.
-            {{
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, false, false, false, false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, false, false, false, false},
-            }},
-            // 8: all segments.
-            {{
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-            // 9: segments a, b, c, d, f, g (all except e).
-            {{
-                {false, true,  true,  true,  false},
-                {true,  false, false, false, true },
-                {true,  false, false, false, true },
-                {false, true,  true,  true,  false},
-                {false, false, false, false, true },
-                {false, false, false, false, true },
-                {false, true,  true,  true,  false},
-            }},
-        }};
-    // clang-format on
-
     // Timezone information.
     struct TimezoneInfo {
         const char* name;  // Short name (e.g., "UTC", "PST").
@@ -166,7 +50,15 @@ private:
     ClockConfig config_;
     int last_second_ = -1;
 
+    // Font dimension helpers.
+    int getDigitWidth() const;
+    int getDigitHeight() const;
+    int getDigitGap() const;
+    int getColonWidth() const;
+    int getColonPadding() const;
+
     int calculateTotalWidth() const;
+    void recalculateDimensions();
     void drawDigit(World& world, int digit, int start_x, int start_y);
     void drawColon(World& world, int x, int start_y);
     void drawTime(World& world);

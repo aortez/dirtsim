@@ -1,22 +1,42 @@
 #pragma once
 
+#include <nlohmann/json.hpp>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 
 /**
+ * @brief Available clock font styles.
+ */
+enum class ClockFont : uint8_t {
+    Segment7 = 0,      // Standard 7-segment (5×7 cells).
+    Segment7Large = 1, // Large 7-segment (8×11 cells).
+    DotMatrix = 2,     // Dot matrix bitmap (5×7 cells).
+};
+
+// JSON serialization for ClockFont enum.
+NLOHMANN_JSON_SERIALIZE_ENUM(
+    ClockFont,
+    {
+        {ClockFont::Segment7, "segment7"},
+        {ClockFont::Segment7Large, "segment7_large"},
+        {ClockFont::DotMatrix, "dot_matrix"},
+    })
+
+/**
  * @brief Clock scenario config - displays system time using 7-segment digits.
  *
  * World size is computed from clock dimensions × scale factors.
- * Clock dimensions: 40 cells wide × 7 cells tall (HH:MM:SS with 5×7 digits).
+ * Clock dimensions depend on selected font.
  */
 struct ClockConfig {
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 
-    double horizontal_scale = 1.1; // World width = clock_width × scale.
-    double vertical_scale = 2.0;   // World height = clock_height × scale.
-    uint8_t timezone_index = 0;    // Index into TIMEZONES array (0 = Local).
-    bool show_seconds = true;      // Show seconds (HH:MM:SS vs HH:MM).
+    double horizontal_scale = 1.1;       // World width = clock_width × scale.
+    double vertical_scale = 2.0;         // World height = clock_height × scale.
+    uint8_t timezone_index = 2;          // Index into TIMEZONES array (2 = PST).
+    ClockFont font = ClockFont::Segment7; // Font style.
+    bool show_seconds = true;            // Show seconds (HH:MM:SS vs HH:MM).
 };
 
 } // namespace DirtSim

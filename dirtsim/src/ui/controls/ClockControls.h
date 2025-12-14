@@ -36,10 +36,12 @@ protected:
 
 private:
     // Widgets.
+    lv_obj_t* fontDropdown_ = nullptr;
     lv_obj_t* timezoneDropdown_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
 
     // Static LVGL callbacks.
+    static void onFontChanged(lv_event_t* e);
     static void onTimezoneChanged(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
 
