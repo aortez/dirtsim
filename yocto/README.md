@@ -172,12 +172,13 @@ Then just: `ssh dirtsim`
 
 ## Partition Layout
 
-The image uses **A/B partitions** for safe remote updates:
+The image uses **A/B partitions** for safe remote updates, plus a **persistent data partition** for WiFi credentials and config:
 
 ```
 /dev/sda1  - boot (150MB, FAT32, shared by both slots)
 /dev/sda2  - rootfs_a (800MB, ext4)
 /dev/sda3  - rootfs_b (800MB, ext4)
+/dev/sda4  - data (100MB, ext4, persistent across updates)
 ```
 
 At any time, one partition is **active** (currently running) and the other is **inactive** (ready for updates). When you run `npm run yolo`, the system:
@@ -185,15 +186,20 @@ At any time, one partition is **active** (currently running) and the other is **
 2. Switches the boot flag to use the newly written partition
 3. Reboots into the new slot
 
+**The data partition survives all updates** - both A/B updates and full reflashes. WiFi credentials configured via `nmcli`/`nmtui` are stored in `/data/NetworkManager/system-connections/` and bind-mounted into place on boot.
+
 **Benefits:**
 - Updates never corrupt the running system
 - Instant rollback by switching boot slots
 - No downtime risk during updates
+- WiFi credentials persist across updates (no reconfiguration needed!)
 
 **Check status:**
 ```bash
 ssh dirtsim "ab-boot-manager status"
 ```
+
+Output shows current slot, inactive slot, and data partition mount status.
 
 ---
 
@@ -245,10 +251,15 @@ yocto/
 │   │   └── openssh/          # SSH hardening
 │   ├── recipes-extended/
 │   │   └── sudo/             # Passwordless sudo for dirtsim
+│   ├── recipes-support/
+│   │   ├── ab-boot/          # A/B partition management
+│   │   └── persistent-data/  # /data partition mount + WiFi persistence
 │   ├── recipes-dirtsim/
 │   │   └── sparkle-duck/     # Server and UI recipes
-│   └── recipes-multimedia/
-│       └── libyuv/           # Video encoding dependency
+│   ├── recipes-multimedia/
+│   │   └── libyuv/           # Video encoding dependency
+│   └── wic/
+│       └── sdimage-ab.wks    # Partition layout (boot, rootfs_a, rootfs_b, data)
 └── build/                    # Build output (gitignored)
 ```
 
@@ -331,23 +342,33 @@ UI uses LVGL's fbdev backend - no Wayland compositor needed!
 
 ### A/B Partition System
 
-Safe remote updates via dual rootfs partitions:
+Safe remote updates via dual rootfs partitions plus persistent data:
 
 **Layout:**
 ```
 /dev/sda1 - boot (150MB, shared)
 /dev/sda2 - rootfs_a (800MB)
 /dev/sda3 - rootfs_b (800MB)
+/dev/sda4 - data (100MB, persistent)
 ```
 
 **Update flow:**
 1. Write new image to inactive partition (system keeps running)
 2. Switch boot flag
 3. Reboot into updated partition
+4. Data partition remains untouched - WiFi credentials survive
+
+**Full reflash flow:**
+When running `npm run flash`, the script:
+1. Detects existing data partition on the disk
+2. Offers to backup `/data` before flashing
+3. Flashes the new image (overwrites everything)
+4. Restores `/data` contents to the new partition 4
 
 **Tools:**
-- `ab-boot-manager` - manages active/inactive slots
+- `ab-boot-manager` - manages active/inactive slots, shows data partition status
 - `ab-update` - wrapper for safe partition flashing
+- `persistent-data` recipe - systemd units for mounting `/data` and bind-mounting NetworkManager connections
 
 **BusyBox compatibility:** Uses `/proc/cmdline` parsing instead of `findmnt`.
 
