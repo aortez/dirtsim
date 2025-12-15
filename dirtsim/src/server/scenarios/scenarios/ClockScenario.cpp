@@ -186,12 +186,12 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
         config_ = incoming;
 
-        // Recalculate and resize if dimensions changed.
+        // Recalculate and reset if dimensions changed (including font).
         if (needs_resize) {
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Resizing world to {}x{} (font={}, show_seconds={}, display={}x{})",
+                "ClockScenario: Resetting world to {}x{} (font={}, show_seconds={}, display={}x{})",
                 metadata_.requiredWidth,
                 metadata_.requiredHeight,
                 static_cast<int>(config_.font),
@@ -200,6 +200,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                 config_.target_display_height);
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
+            reset(world);  // Clear and redraw everything.
         }
 
         spdlog::info("ClockScenario: Config updated");
@@ -472,7 +473,7 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
             // First event triggers immediately.
             first_event_triggered_ = true;
             // Random event: 50% DUCK, 50% RAIN.
-            EventType event = (uniform_dist_(rng_) < 0.5) ? EventType::DUCK : EventType::RAIN;
+            EventType event = (uniform_dist_(rng_) < 0.8) ? EventType::DUCK : EventType::RAIN;
             startEvent(world, event);
         }
         else {
@@ -595,6 +596,13 @@ void ClockScenario::updateDuckEvent(World& world)
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
     }
 
+    // If duck is on ground, clamp COM.y to prevent sinking into floor.
+    // COM.y in range [-1, 1], where +1 = bottom of cell.
+    // Set to 0.0 (center) when grounded and COM is positive (bottom half).
+    if (duck_organism->isOnGround() && duck_com.y > 0.0) {
+        duck_com.y = 0.0;
+    }
+
     // Find and update the duck entity to match organism position.
     for (auto& entity : world.getData().entities) {
         if (entity.type == EntityType::DUCK) {
@@ -665,15 +673,16 @@ void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
 {
     WorldData& data = world.getData();
 
-    // Bottom row (exclude wall border at height-1 if present).
-    uint32_t bottom_y = data.height - 1;
+    // Bottom playable row (height-1 is wall, height-2 is where water sits).
+    if (data.height < 2) return;
+    uint32_t bottom_y = data.height - 2;
 
-    // Evaporation rate: 10% of fill per second.
-    constexpr double EVAPORATION_RATE = 0.1;
+    // Evaporation rate: 50% of fill per second.
+    constexpr double EVAPORATION_RATE = 0.5;
     double evaporation_amount = EVAPORATION_RATE * deltaTime;
 
-    // Evaporate water from entire bottom row.
-    for (uint32_t x = 0; x < data.width; ++x) {
+    // Evaporate water from entire bottom row (excluding wall borders).
+    for (uint32_t x = 1; x < data.width - 1; ++x) {
         Cell& cell = data.at(x, bottom_y);
         if (cell.material_type == MaterialType::WATER) {
             cell.fill_ratio -= evaporation_amount;
