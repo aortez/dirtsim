@@ -2,9 +2,13 @@
 
 #include "ClockConfig.h"
 #include "ClockFontPatterns.h"
+#include "core/Vector2.h"
+#include "core/organisms/OrganismType.h"
 #include "server/scenarios/Scenario.h"
 #include <array>
 #include <memory>
+#include <random>
+#include <vector>
 
 namespace DirtSim {
 
@@ -50,6 +54,41 @@ private:
     ClockConfig config_;
     int last_second_ = -1;
 
+    // Event system.
+    enum class EventType {
+        NONE,
+        RAIN,
+        DUCK
+    };
+
+    enum class DuckAction {
+        WAIT,
+        RUN_LEFT,
+        RUN_RIGHT,
+        JUMP
+    };
+
+    struct DuckState {
+        DuckAction current_action = DuckAction::WAIT;
+        float action_timer = 0.0f;        // Time remaining for current action.
+        int run_distance = 0;             // Target cells to run (1-5).
+        float run_start_x = 0.0f;         // X position when run started.
+    };
+
+    EventType current_event_ = EventType::NONE;
+    double event_timer_ = 0.0;          // Time remaining for current event / until next event.
+    double time_since_init_ = 0.0;      // Total time since scenario started.
+    bool first_event_triggered_ = false; // Track if first event occurred.
+    uint32_t next_entity_id_ = 1;       // Entity ID counter.
+    DuckState duck_state_;              // Duck AI state.
+    OrganismId duck_organism_id_ = INVALID_ORGANISM_ID; // Current duck organism.
+
+    std::mt19937 rng_{ std::random_device{}() };
+    std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
+
+    // Track which cells were painted for the clock display.
+    std::vector<Vector2i> painted_cells_;
+
     // Font dimension helpers.
     int getDigitWidth() const;
     int getDigitHeight() const;
@@ -62,6 +101,14 @@ private:
     void drawDigit(World& world, int digit, int start_x, int start_y);
     void drawColon(World& world, int x, int start_y);
     void drawTime(World& world);
+
+    // Event system helpers.
+    void updateEvents(World& world, double deltaTime);
+    void startEvent(World& world, EventType type);
+    void updateRainEvent(World& world, double deltaTime);
+    void updateDuckEvent(World& world);
+    void endEvent(World& world);
+    void evaporateBottomRow(World& world, double deltaTime);
 };
 
 } // namespace DirtSim

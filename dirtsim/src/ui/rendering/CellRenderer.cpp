@@ -623,16 +623,14 @@ void CellRenderer::renderWorldData(
                     continue;
                 }
 
-                // Skip rendering organism cells (let entity sprite show instead).
-                if (cell.organism_id != INVALID_ORGANISM_ID) {
-                    continue;
-                }
-
                 // Prepare border color and interior color.
                 uint32_t borderColor = 0xFF000000;   // ARGB black with full alpha.
                 uint32_t interiorColor = 0xFF000000; // ARGB black with full alpha.
 
-                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR) {
+                // Render organism cells as AIR (entity sprite will show on top).
+                bool is_organism_cell = (cell.organism_id != INVALID_ORGANISM_ID);
+
+                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_organism_cell) {
                     lv_color_t matColor = getMaterialColor(cell.material_type);
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).

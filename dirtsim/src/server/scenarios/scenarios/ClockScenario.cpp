@@ -263,6 +263,9 @@ void ClockScenario::tick(World& world, double deltaTime)
         drawTime(world);
     }
 
+    // Evaporate water from bottom row (10% per second).
+    evaporateBottomRow(world, deltaTime);
+
     // Update event system.
     updateEvents(world, deltaTime);
 }
@@ -583,13 +586,25 @@ void ClockScenario::updateDuckEvent(World& world)
 
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
+    // Get duck's cell COM for sub-cell positioning.
+    const WorldData& data = world.getData();
+    Vector2d duck_com{ 0.0, 0.0 };
+    if (duck_cell.x >= 0 && duck_cell.y >= 0 &&
+        static_cast<uint32_t>(duck_cell.x) < data.width &&
+        static_cast<uint32_t>(duck_cell.y) < data.height) {
+        duck_com = data.at(duck_cell.x, duck_cell.y).com;
+    }
+
     // Find and update the duck entity to match organism position.
     for (auto& entity : world.getData().entities) {
         if (entity.type == EntityType::DUCK) {
-            // Sync entity position with organism.
+            // Sync entity position and COM with organism's cell.
             entity.position = Vector2<float>(
                 static_cast<float>(duck_cell.x),
                 static_cast<float>(duck_cell.y));
+            entity.com = Vector2<float>(
+                static_cast<float>(duck_com.x),
+                static_cast<float>(duck_com.y));
             entity.facing = duck_organism->getFacing();
 
             // Copy sparkles from organism to entity for rendering.
@@ -644,6 +659,29 @@ void ClockScenario::endEvent(World& world)
     current_event_ = EventType::NONE;
 
     spdlog::info("ClockScenario: Next event in {:.1f}s", event_timer_);
+}
+
+void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
+{
+    WorldData& data = world.getData();
+
+    // Bottom row (exclude wall border at height-1 if present).
+    uint32_t bottom_y = data.height - 1;
+
+    // Evaporation rate: 10% of fill per second.
+    constexpr double EVAPORATION_RATE = 0.1;
+    double evaporation_amount = EVAPORATION_RATE * deltaTime;
+
+    // Evaporate water from entire bottom row.
+    for (uint32_t x = 0; x < data.width; ++x) {
+        Cell& cell = data.at(x, bottom_y);
+        if (cell.material_type == MaterialType::WATER) {
+            cell.fill_ratio -= evaporation_amount;
+            if (cell.fill_ratio < 0.01) {
+                cell.replaceMaterial(MaterialType::AIR, 0.0);
+            }
+        }
+    }
 }
 
 } // namespace DirtSim
