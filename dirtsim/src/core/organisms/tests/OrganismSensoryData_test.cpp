@@ -71,9 +71,9 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
 }
 
 /**
- * Test that gatherMaterialHistograms clamps to world bounds.
+ * Test that gatherMaterialHistograms marks out-of-bounds as WALL.
  */
-TEST(SensoryUtilsTest, GatherHistogramsClampsToBounds)
+TEST(SensoryUtilsTest, GatherHistogramsMarksBoundariesAsWall)
 {
     // Create small 10x10 world.
     auto world = std::make_unique<World>(10, 10);
@@ -85,20 +85,17 @@ TEST(SensoryUtilsTest, GatherHistogramsClampsToBounds)
         }
     }
 
-    // Place marker at corner.
-    world->addMaterialAtCell(0, 0, MaterialType::DIRT, 1.0);
-
-    // Request 9x9 grid centered at (1,1) - would extend to (-3,-3) without clamping.
+    // Request 9x9 grid centered at (1,1) - extends to (-3,-3) which is OOB.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
     Vector2i world_offset;
-    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 1, 1 }, histograms, world_offset, true);
+    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 1, 1 }, histograms, world_offset);
 
-    // With clamping, offset should be (0,0) since world is 10x10 and grid is 9x9.
-    EXPECT_EQ(world_offset.x, 0);
-    EXPECT_EQ(world_offset.y, 0);
+    // Offset is centered on organism: (1-4, 1-4) = (-3, -3).
+    EXPECT_EQ(world_offset.x, -3);
+    EXPECT_EQ(world_offset.y, -3);
 
-    // The DIRT at (0,0) should be at neural (0,0).
-    EXPECT_GT(histograms[0][0][static_cast<int>(MaterialType::DIRT)], 0.9);
+    // Top-left corner (neural [0][0]) maps to world (-3,-3) which is OOB, should be WALL.
+    EXPECT_GT(histograms[0][0][static_cast<int>(MaterialType::WALL)], 0.9);
 }
 
 /**
@@ -121,17 +118,20 @@ TEST(SensoryUtilsTest, GatherHistogramsAtWorldEdge)
         }
     }
 
-    // Request 9x9 grid centered at (8,5) - near right edge.
+    // Request 9x9 grid centered at (8,5) - near right edge, extends to (12,5) which is OOB.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
     Vector2i world_offset;
-    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 8, 5 }, histograms, world_offset, true);
+    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 8, 5 }, histograms, world_offset);
 
-    // With clamping, offset should clamp so grid fits: (10-9, 5-4) = (1, 1).
-    EXPECT_EQ(world_offset.x, 1);
+    // Offset is centered on organism: (8-4, 5-4) = (4, 1).
+    EXPECT_EQ(world_offset.x, 4);
     EXPECT_EQ(world_offset.y, 1);
 
-    // Right edge of grid (neural x=8) should see WALL at world x=9.
+    // Right edge of grid (neural [4][8]) maps to world (12,5) which is OOB, should be WALL.
     EXPECT_GT(histograms[4][8][static_cast<int>(MaterialType::WALL)], 0.9);
+
+    // Also the actual wall at world x=9 (neural x=5) should still be visible.
+    EXPECT_GT(histograms[4][5][static_cast<int>(MaterialType::WALL)], 0.9);
 }
 
 // =============================================================================

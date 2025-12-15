@@ -11,8 +11,7 @@ void gatherMaterialHistograms(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
-    Vector2i& world_offset,
-    bool clamp_to_bounds)
+    Vector2i& world_offset)
 {
     const WorldData& data = world.getData();
 
@@ -20,18 +19,8 @@ void gatherMaterialHistograms(
     int offset_x = center.x - half_window;
     int offset_y = center.y - half_window;
 
-    // Optionally clamp to world bounds.
-    if (clamp_to_bounds) {
-        if (static_cast<int>(data.width) >= GridSize) {
-            offset_x
-                = std::max(0, std::min(static_cast<int>(data.width) - GridSize, offset_x));
-        }
-        if (static_cast<int>(data.height) >= GridSize) {
-            offset_y
-                = std::max(0, std::min(static_cast<int>(data.height) - GridSize, offset_y));
-        }
-    }
-
+    // Always center on organism - no clamping.
+    // Out-of-bounds cells will be marked as WALL below.
     world_offset = Vector2i{ offset_x, offset_y };
 
     // Clear histograms.
@@ -50,7 +39,11 @@ void gatherMaterialHistograms(
             // Check bounds.
             if (wx < 0 || wy < 0 || static_cast<uint32_t>(wx) >= data.width
                 || static_cast<uint32_t>(wy) >= data.height) {
-                // Out of bounds - leave as zeros (AIR).
+                // Out of bounds - treat as WALL so organisms can detect world edges.
+                int wall_idx = static_cast<int>(MaterialType::WALL);
+                if (wall_idx >= 0 && wall_idx < NumMaterials) {
+                    histograms[ny][nx][wall_idx] = 1.0;
+                }
                 continue;
             }
 
@@ -116,15 +109,13 @@ template void gatherMaterialHistograms<15, 10>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
-    Vector2i& world_offset,
-    bool clamp_to_bounds);
+    Vector2i& world_offset);
 
 template void gatherMaterialHistograms<9, 10>(
     const World& world,
     Vector2i center,
     std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
-    Vector2i& world_offset,
-    bool clamp_to_bounds);
+    Vector2i& world_offset);
 
 template MaterialType getDominantMaterial<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,

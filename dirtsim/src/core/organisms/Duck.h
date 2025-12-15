@@ -4,8 +4,23 @@
 #include "DuckSensoryData.h"
 #include "Organism.h"
 #include <memory>
+#include <random>
+#include <vector>
 
 namespace DirtSim {
+
+/**
+ * Sparkle particle owned by a duck.
+ *
+ * Sparkles spawn at the duck, receive random force impulses,
+ * and fade out over their lifetime.
+ */
+struct DuckSparkle {
+    Vector2<float> position{ 0.0f, 0.0f };  // Absolute world position.
+    Vector2<float> velocity{ 0.0f, 0.0f };  // Cells per second.
+    float lifetime = 1.0f;                   // Remaining life (1.0 = full, 0.0 = dead).
+    float max_lifetime = 1.0f;               // For calculating opacity.
+};
 
 /**
  * Duck organism - a mobile creature that walks, jumps, and runs.
@@ -51,8 +66,20 @@ public:
     static constexpr float WALK_FORCE = 50.0f;   // Force applied each frame when walking.
     static constexpr float JUMP_FORCE = 600.0f;  // Impulse force applied once when jumping.
 
+    // Sparkle constants.
+    static constexpr int MAX_SPARKLES = 8;           // Maximum active sparkles.
+    static constexpr float SPARKLE_LIFETIME = 2.0f;  // Seconds before sparkle fades completely.
+    static constexpr float SPARKLE_DRAG = 0.98f;     // Velocity multiplier per frame (damping).
+    static constexpr float SPARKLE_IMPULSE = 3.0f;   // Max random impulse magnitude.
+    static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f;  // Chance per frame of impulse.
+    static constexpr float SPARKLE_GRAVITY = 20.0f;   // Gravity acceleration (cells/sec^2).
+    static constexpr float SPARKLE_BOUNCE = 0.7f;    // Velocity retained after bounce (0-1).
+
     // Replace the brain (for testing).
     void setBrain(std::unique_ptr<DuckBrain> brain) { brain_ = std::move(brain); }
+
+    // Sparkle access for rendering.
+    const std::vector<DuckSparkle>& getSparkles() const { return sparkles_; }
 
     // Sensory data gathering for brain decisions.
     DuckSensoryData gatherSensoryData(const World& world) const;
@@ -66,9 +93,16 @@ private:
 
     std::unique_ptr<DuckBrain> brain_;
 
+    // Sparkle particle system.
+    std::vector<DuckSparkle> sparkles_;
+    std::mt19937 sparkle_rng_{ std::random_device{}() };
+
     void updateGroundDetection(const World& world);
     void applyMovementToCell(World& world, double deltaTime);
     void logPhysicsState(const World& world);
+    void updateSparkles(const World& world, double deltaTime);
+    void spawnSparkle();
+    bool isSolidCell(const World& world, int x, int y) const;
 };
 
 } // namespace DirtSim

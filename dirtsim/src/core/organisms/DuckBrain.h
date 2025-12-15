@@ -67,4 +67,30 @@ private:
     void pickNextAction(Duck& duck, const DuckSensoryData& sensory);
 };
 
+/**
+ * Wall-bouncing duck brain - runs back and forth between walls.
+ *
+ * Behavior:
+ * - Picks the furthest wall from current position.
+ * - Runs toward that wall.
+ * - When touching the wall, switches to run toward opposite wall.
+ * - Repeats indefinitely (ping-pong pattern).
+ */
+class WallBouncingBrain : public DuckBrain {
+public:
+    void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
+
+private:
+    enum class TargetWall {
+        LEFT,
+        RIGHT
+    };
+
+    TargetWall target_wall_ = TargetWall::RIGHT;
+    bool initialized_ = false;
+
+    void pickFurthestWall(const DuckSensoryData& sensory);
+    bool isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const;
+};
+
 } // namespace DirtSim

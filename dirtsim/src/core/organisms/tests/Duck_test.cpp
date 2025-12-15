@@ -1,3 +1,4 @@
+#include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -368,4 +369,188 @@ TEST_F(DuckTest, DuckOnGroundDetection)
 
     // Duck should detect it's on ground after falling and coming to rest.
     EXPECT_TRUE(duck->isOnGround()) << "Duck should detect ground after falling to rest";
+}
+
+TEST_F(DuckTest, DuckRemovalClearsCell)
+{
+    auto world = createTestWorld();
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck at center.
+    OrganismId duck_id = manager.createDuck(*world, 2, 2);
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Verify WOOD cell exists.
+    EXPECT_EQ(world->getData().at(2, 2).material_type, MaterialType::WOOD);
+
+    // Get position before removing (simulating ClockScenario's cleanup pattern).
+    Vector2i duck_pos = duck->getAnchorCell();
+
+    // Remove organism.
+    manager.removeOrganism(duck_id);
+
+    // Manually clear the cell (as ClockScenario does).
+    world->getData().at(duck_pos.x, duck_pos.y) = Cell();
+
+    printWorld(*world, "After duck removal and cell cleanup");
+
+    // Verify cell is now empty.
+    const Cell& cell = world->getData().at(2, 2);
+    EXPECT_EQ(cell.material_type, MaterialType::AIR);
+    EXPECT_LT(cell.fill_ratio, 0.01) << "Cell should be empty after duck removal";
+}
+
+TEST_F(DuckTest, WallBouncingBrainPingPongs)
+{
+    // Create world for wall bouncing.
+    auto world = std::make_unique<World>(10, 5);
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with WallBouncingBrain in the middle.
+    auto brain = std::make_unique<WallBouncingBrain>();
+    OrganismId duck_id = manager.createDuck(*world, 5, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    int start_x = duck->getAnchorCell().x;
+    spdlog::info("Duck settled at x={}", start_x);
+
+    // Validate ping-pong behavior by tracking direction changes.
+    enum class Direction { RIGHT, LEFT, UNKNOWN };
+    Direction current_direction = Direction::RIGHT;
+    int last_x = start_x;
+    int bounce_count = 0;
+    int min_x = start_x;
+    int max_x = start_x;
+
+    for (int i = 0; i < 600; ++i) {
+        world->advanceTime(0.016);
+        int current_x = duck->getAnchorCell().x;
+
+        // Track range of movement.
+        if (current_x < min_x) min_x = current_x;
+        if (current_x > max_x) max_x = current_x;
+
+        // Detect direction changes (bounces).
+        if (current_x != last_x) {
+            Direction actual_direction = (current_x > last_x) ? Direction::RIGHT : Direction::LEFT;
+
+            if (current_direction != Direction::UNKNOWN && actual_direction != current_direction) {
+                // Direction changed - this is a bounce.
+                bounce_count++;
+                spdlog::info("Frame {}: Bounce #{} detected at x={} (now moving {})",
+                    i, bounce_count, current_x,
+                    (actual_direction == Direction::RIGHT) ? "RIGHT" : "LEFT");
+            }
+
+            current_direction = actual_direction;
+        }
+
+        last_x = current_x;
+    }
+
+    spdlog::info("Duck traveled from x={} to x={}, {} total bounces",
+        min_x, max_x, bounce_count);
+
+    // Duck should bounce multiple times in 600 frames (3x original duration).
+    EXPECT_GE(bounce_count, 3) << "Duck should bounce at least 3 times in 600 frames";
+    EXPECT_GE(max_x - min_x, 7) << "Duck should traverse most of the world";
+}
+
+TEST_F(DuckTest, WallBouncingBrainBouncesOffWall)
+{
+    // Initialize logging and enable brain debug logging.
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::debug);
+
+    // Create world (no automatic WALL borders - sensory system will mark edges as WALL).
+    auto world = std::make_unique<World>(10, 5);
+    printWorld(*world, "Initial world");
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck near middle with WallBouncingBrain.
+    auto brain = std::make_unique<WallBouncingBrain>();
+    OrganismId duck_id = manager.createDuck(*world, 5, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    int start_x = duck->getAnchorCell().x;
+    spdlog::info("Duck settled at x={}", start_x);
+    printWorld(*world, "After duck settled");
+
+    // Print duck's sensory view.
+    DuckSensoryData sensory = duck->gatherSensoryData(*world);
+    spdlog::info("Duck sensory grid (9x9, center at [4][4], WALL=W, WOOD=D):");
+    for (int y = 0; y < 9; ++y) {
+        std::string row;
+        for (int x = 0; x < 9; ++x) {
+            // Check for WALL (material index 7).
+            double wall_fill = sensory.material_histograms[y][x][7];
+            if (wall_fill > 0.5) {
+                row += "W";
+            } else {
+                // Check for WOOD (duck itself, material index 9).
+                double wood_fill = sensory.material_histograms[y][x][9];
+                if (wood_fill > 0.5) {
+                    row += "D";
+                } else {
+                    row += ".";
+                }
+            }
+        }
+        spdlog::info("  {}", row);
+    }
+
+    // Run until duck hits right wall (x=9 is the right wall).
+    bool hit_wall = false;
+    for (int i = 0; i < 100; ++i) {
+        world->advanceTime(0.016);
+        int current_x = duck->getAnchorCell().x;
+
+        // Duck is near wall if at x >= 8 (wall is at x=9).
+        if (current_x >= 8) {
+            spdlog::info("Frame {}: Duck reached right wall at x={}", i, current_x);
+            printWorld(*world, "Duck at right wall");
+            hit_wall = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(hit_wall) << "Duck should reach the right wall within 100 frames";
+
+    // Now verify duck bounces back.
+    if (hit_wall) {
+        int wall_x = duck->getAnchorCell().x;
+        spdlog::info("Duck at wall x={}, waiting for bounce...", wall_x);
+
+        // Run another 100 frames to see bounce.
+        bool bounced = false;
+        for (int i = 0; i < 100; ++i) {
+            world->advanceTime(0.016);
+            int current_x = duck->getAnchorCell().x;
+
+            // Check if duck moved left (bounced).
+            if (current_x < wall_x - 1) {
+                spdlog::info("Frame {}: Duck bounced! Now at x={}", i, current_x);
+                printWorld(*world, "After bounce");
+                bounced = true;
+                break;
+            }
+        }
+
+        EXPECT_TRUE(bounced) << "Duck should bounce back from wall";
+    }
 }

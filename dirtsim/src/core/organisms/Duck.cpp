@@ -6,6 +6,7 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include <algorithm>
 
 namespace DirtSim {
 
@@ -31,6 +32,9 @@ void Duck::update(World& world, double deltaTime)
 
     // Apply movement intent to the cell.
     applyMovementToCell(world, deltaTime);
+
+    // Update sparkle particle system.
+    updateSparkles(world, deltaTime);
 
     // Log physics state every 60 frames.
     if (frame_counter_ % 60 == 0) {
@@ -130,10 +134,12 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
     if (std::abs(walk_direction_) > 0.01f) {
         facing_.x = (walk_direction_ > 0) ? 1.0f : -1.0f;
         facing_.y = 0.0f;
+        LOG_DEBUG(Brain, "Duck {}: walk_dir={:.2f} -> facing={:.2f}", id_, walk_direction_, facing_.x);
     }
     else if (std::abs(cell.velocity.x) > 0.1) {
         facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
         facing_.y = 0.0f;
+        LOG_DEBUG(Brain, "Duck {}: velocity={:.2f} -> facing={:.2f}", id_, cell.velocity.x, facing_.x);
     }
 }
 
@@ -167,8 +173,9 @@ DuckSensoryData Duck::gatherSensoryData(const World& world) const
     DuckSensoryData data;
 
     // Use the utility to gather material histograms centered on duck.
+    // Out-of-bounds cells are marked as WALL for edge detection.
     SensoryUtils::gatherMaterialHistograms<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-        world, anchor_cell_, data.material_histograms, data.world_offset, true);
+        world, anchor_cell_, data.material_histograms, data.world_offset);
 
     // Set actual dimensions (always grid size for duck, no scaling).
     data.actual_width = DuckSensoryData::GRID_SIZE;
@@ -194,6 +201,195 @@ DuckSensoryData Duck::gatherSensoryData(const World& world) const
     }
 
     return data;
+}
+
+void Duck::updateSparkles(const World& world, double deltaTime)
+{
+    float dt = static_cast<float>(deltaTime);
+    const WorldData& data = world.getData();
+
+    // Update existing sparkles.
+    for (auto& sparkle : sparkles_) {
+        // Apply random impulse occasionally.
+        std::uniform_real_distribution<float> chance_dist(0.0f, 1.0f);
+        if (chance_dist(sparkle_rng_) < SPARKLE_IMPULSE_CHANCE) {
+            std::uniform_real_distribution<float> impulse_dist(-SPARKLE_IMPULSE, SPARKLE_IMPULSE);
+            sparkle.velocity.x += impulse_dist(sparkle_rng_);
+            sparkle.velocity.y += impulse_dist(sparkle_rng_);
+        }
+
+        // Apply gravity.
+        sparkle.velocity.y += SPARKLE_GRAVITY * dt;
+
+        // Apply drag.
+        sparkle.velocity.x *= SPARKLE_DRAG;
+        sparkle.velocity.y *= SPARKLE_DRAG;
+
+        // Calculate new position.
+        float new_x = sparkle.position.x + sparkle.velocity.x * dt;
+        float new_y = sparkle.position.y + sparkle.velocity.y * dt;
+
+        // Check for collisions with solid cells.
+        int cell_x = static_cast<int>(new_x);
+        int cell_y = static_cast<int>(new_y);
+        int old_cell_x = static_cast<int>(sparkle.position.x);
+        int old_cell_y = static_cast<int>(sparkle.position.y);
+
+        // Horizontal collision.
+        if (cell_x != old_cell_x && isSolidCell(world, cell_x, old_cell_y)) {
+            sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
+            new_x = sparkle.position.x;  // Don't move into solid.
+        }
+
+        // Vertical collision.
+        if (cell_y != old_cell_y && isSolidCell(world, static_cast<int>(new_x), cell_y)) {
+            sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
+            new_y = sparkle.position.y;  // Don't move into solid.
+        }
+
+        // World bounds check.
+        if (new_x < 0.0f) {
+            new_x = 0.0f;
+            sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
+        } else if (new_x >= static_cast<float>(data.width)) {
+            new_x = static_cast<float>(data.width) - 0.01f;
+            sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
+        }
+
+        if (new_y < 0.0f) {
+            new_y = 0.0f;
+            sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
+        } else if (new_y >= static_cast<float>(data.height)) {
+            new_y = static_cast<float>(data.height) - 0.01f;
+            sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
+        }
+
+        // Update position.
+        sparkle.position.x = new_x;
+        sparkle.position.y = new_y;
+
+        // Check for collision with duck or other solids.
+        int sparkle_cell_x = static_cast<int>(sparkle.position.x);
+        int sparkle_cell_y = static_cast<int>(sparkle.position.y);
+
+        // Save old position for tunneling recovery.
+        float old_x = sparkle.position.x - sparkle.velocity.x * dt;
+        float old_y = sparkle.position.y - sparkle.velocity.y * dt;
+
+        if (sparkle_cell_x == anchor_cell_.x && sparkle_cell_y == anchor_cell_.y) {
+            // Sparkle is inside duck cell - find first non-solid adjacent cell.
+            float dx = sparkle.position.x - static_cast<float>(anchor_cell_.x);
+            float dy = sparkle.position.y - static_cast<float>(anchor_cell_.y);
+
+            // Try pushing in order: closest edge first, then alternates.
+            bool pushed = false;
+
+            // Build priority list based on closest edge.
+            struct PushOption { int dx_off; int dy_off; bool horizontal; };
+            std::vector<PushOption> options;
+
+            if (std::abs(dx) > std::abs(dy)) {
+                // Horizontal closer - try that first.
+                options.push_back({(dx > 0) ? 1 : -1, 0, true});
+                options.push_back({0, (dy > 0) ? 1 : -1, false});
+                options.push_back({(dx > 0) ? -1 : 1, 0, true});  // Opposite horizontal.
+                options.push_back({0, (dy > 0) ? -1 : 1, false}); // Opposite vertical.
+            } else {
+                // Vertical closer - try that first.
+                options.push_back({0, (dy > 0) ? 1 : -1, false});
+                options.push_back({(dx > 0) ? 1 : -1, 0, true});
+                options.push_back({0, (dy > 0) ? -1 : 1, false}); // Opposite vertical.
+                options.push_back({(dx > 0) ? -1 : 1, 0, true});  // Opposite horizontal.
+            }
+
+            // Try each direction until we find a non-solid cell.
+            for (const auto& opt : options) {
+                int target_x = anchor_cell_.x + opt.dx_off;
+                int target_y = anchor_cell_.y + opt.dy_off;
+
+                if (!isSolidCell(world, target_x, target_y)) {
+                    if (opt.horizontal) {
+                        sparkle.position.x = static_cast<float>(target_x) + (opt.dx_off > 0 ? 0.0f : 0.99f);
+                        sparkle.velocity.x = (opt.dx_off > 0 ? 1.0f : -1.0f) * std::abs(sparkle.velocity.x) * SPARKLE_BOUNCE;
+                    } else {
+                        sparkle.position.y = static_cast<float>(target_y) + (opt.dy_off > 0 ? 0.0f : 0.99f);
+                        sparkle.velocity.y = (opt.dy_off > 0 ? 1.0f : -1.0f) * std::abs(sparkle.velocity.y) * SPARKLE_BOUNCE;
+                    }
+                    pushed = true;
+                    break;
+                }
+            }
+
+            // If completely surrounded by solids, kill the sparkle by setting lifetime to 0.
+            if (!pushed) {
+                sparkle.lifetime = 0.0f;
+            }
+        }
+        // Check if sparkle tunneled into a non-duck solid cell.
+        else if (isSolidCell(world, sparkle_cell_x, sparkle_cell_y)) {
+            // Sparkle is inside a solid (tunneled through) - revert to previous position and bounce.
+            sparkle.position.x = old_x;
+            sparkle.position.y = old_y;
+            sparkle.velocity.x *= -SPARKLE_BOUNCE;
+            sparkle.velocity.y *= -SPARKLE_BOUNCE;
+        }
+
+        // Decrease lifetime.
+        sparkle.lifetime -= dt / SPARKLE_LIFETIME;
+    }
+
+    // Remove dead sparkles.
+    sparkles_.erase(
+        std::remove_if(sparkles_.begin(), sparkles_.end(),
+            [](const DuckSparkle& s) { return s.lifetime <= 0.0f; }),
+        sparkles_.end());
+
+    // Spawn new sparkles to maintain count.
+    while (static_cast<int>(sparkles_.size()) < MAX_SPARKLES) {
+        spawnSparkle();
+    }
+}
+
+bool Duck::isSolidCell(const World& world, int x, int y) const
+{
+    const WorldData& data = world.getData();
+
+    // Out of bounds is solid (prevents escape).
+    if (x < 0 || y < 0 || x >= static_cast<int>(data.width) || y >= static_cast<int>(data.height)) {
+        return true;
+    }
+
+    const Cell& cell = data.at(x, y);
+
+    // Consider a cell solid if it has significant fill with a non-air material.
+    if (cell.material_type == MaterialType::AIR || cell.fill_ratio < 0.5f) {
+        return false;
+    }
+
+    // Solid materials: WALL, WOOD, METAL, DIRT, SAND, etc.
+    return true;
+}
+
+void Duck::spawnSparkle()
+{
+    DuckSparkle sparkle;
+
+    // Spawn at duck position with slight random offset.
+    std::uniform_real_distribution<float> offset_dist(-0.3f, 0.3f);
+    sparkle.position.x = static_cast<float>(anchor_cell_.x) + offset_dist(sparkle_rng_);
+    sparkle.position.y = static_cast<float>(anchor_cell_.y) + offset_dist(sparkle_rng_);
+
+    // Initial velocity - small random burst.
+    std::uniform_real_distribution<float> vel_dist(-1.5f, 1.5f);
+    sparkle.velocity.x = vel_dist(sparkle_rng_);
+    sparkle.velocity.y = vel_dist(sparkle_rng_) - 0.5f;  // Slight upward bias.
+
+    // Randomize lifetime a bit.
+    std::uniform_real_distribution<float> life_dist(0.7f, 1.0f);
+    sparkle.lifetime = life_dist(sparkle_rng_);
+    sparkle.max_lifetime = sparkle.lifetime;
+
+    sparkles_.push_back(sparkle);
 }
 
 } // namespace DirtSim

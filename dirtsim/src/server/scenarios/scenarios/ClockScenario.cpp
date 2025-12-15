@@ -1,12 +1,21 @@
 #include "ClockScenario.h"
 #include "core/Cell.h"
+#include "core/Entity.h"
+#include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/Duck.h"
+#include "core/organisms/DuckBrain.h"
+#include "core/organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
 #include <chrono>
 #include <cmath>
 #include <ctime>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 namespace DirtSim {
 
@@ -211,6 +220,22 @@ void ClockScenario::setup(World& world)
         }
     }
 
+    // Add wall border around the world (for duck to run on).
+    uint32_t width = world.getData().width;
+    uint32_t height = world.getData().height;
+
+    // Top and bottom borders.
+    for (uint32_t x = 0; x < width; ++x) {
+        world.getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+        world.getData().at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // Left and right borders.
+    for (uint32_t y = 0; y < height; ++y) {
+        world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
+        world.getData().at(width - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
     // Draw current time.
     drawTime(world);
 
@@ -223,7 +248,7 @@ void ClockScenario::reset(World& world)
     setup(world);
 }
 
-void ClockScenario::tick(World& world, double /*deltaTime*/)
+void ClockScenario::tick(World& world, double deltaTime)
 {
     // Get current time.
     auto now = std::chrono::system_clock::now();
@@ -237,6 +262,9 @@ void ClockScenario::tick(World& world, double /*deltaTime*/)
         last_second_ = current_second;
         drawTime(world);
     }
+
+    // Update event system.
+    updateEvents(world, deltaTime);
 }
 
 int ClockScenario::calculateTotalWidth() const
@@ -294,6 +322,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
 
             if (pixel) {
                 world.getData().at(x, y).replaceMaterial(MaterialType::WALL, 1.0);
+                painted_cells_.push_back(Vector2i{ x, y });
             }
         }
     }
@@ -324,9 +353,11 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
                 world.getData().at(x, y1).replaceMaterial(MaterialType::WALL, 1.0);
+                painted_cells_.push_back(Vector2i{ x, y1 });
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
                 world.getData().at(x, y2).replaceMaterial(MaterialType::WALL, 1.0);
+                painted_cells_.push_back(Vector2i{ x, y2 });
             }
         }
     }
@@ -364,12 +395,14 @@ void ClockScenario::drawTime(World& world)
     int minutes = time_info->tm_min;
     int seconds = time_info->tm_sec;
 
-    // Clear world first.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
-            world.getData().at(x, y) = Cell();
+    // Clear only the previously painted clock cells (preserves duck and other entities).
+    for (const auto& pos : painted_cells_) {
+        if (pos.x >= 0 && pos.x < static_cast<int>(world.getData().width) &&
+            pos.y >= 0 && pos.y < static_cast<int>(world.getData().height)) {
+            world.getData().at(pos.x, pos.y) = Cell();
         }
     }
+    painted_cells_.clear();
 
     // Get font dimensions.
     int dw = getDigitWidth();
@@ -414,6 +447,201 @@ void ClockScenario::drawTime(World& world)
         cursor_x += dw + dg;
         drawDigit(world, seconds % 10, cursor_x, start_y);
     }
+}
+
+// Event system constants.
+static constexpr double BASE_EVENT_DELAY = 30.0; // Base delay between events (seconds).
+static constexpr double RAIN_DURATION = 10.0;    // Rain event duration (seconds).
+static constexpr double DUCK_SPEED = 8.0;        // Duck speed (cells per second).
+
+void ClockScenario::updateEvents(World& world, double deltaTime)
+{
+    // Events disabled if frequency is 0.
+    if (config_.event_frequency <= 0.0) {
+        return;
+    }
+
+    time_since_init_ += deltaTime;
+
+    if (current_event_ == EventType::NONE) {
+        // No event active - check if we should start one.
+        if (!first_event_triggered_) {
+            // First event triggers immediately.
+            first_event_triggered_ = true;
+            // Only duck events for now.
+            startEvent(world, EventType::DUCK);
+        }
+        else {
+            // Wait for timer to expire.
+            event_timer_ -= deltaTime;
+            if (event_timer_ <= 0.0) {
+                // Time to start next event.
+                // Only duck events for now.
+                startEvent(world, EventType::DUCK);
+            }
+        }
+    }
+    else {
+        // Event is active - update it.
+        if (current_event_ == EventType::RAIN) {
+            updateRainEvent(world, deltaTime);
+        }
+        else if (current_event_ == EventType::DUCK) {
+            updateDuckEvent(world);
+        }
+
+        // Check if event should end.
+        event_timer_ -= deltaTime;
+        if (event_timer_ <= 0.0) {
+            endEvent(world);
+        }
+    }
+}
+
+void ClockScenario::startEvent(World& world, EventType type)
+{
+    current_event_ = type;
+
+    if (type == EventType::RAIN) {
+        event_timer_ = RAIN_DURATION;
+        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", RAIN_DURATION);
+    }
+    else if (type == EventType::DUCK) {
+        // Duck event duration (30 seconds).
+        event_timer_ = 30.0;
+
+        // Use WallBouncingBrain (temporarily always, will be 50/50 later).
+        std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>();
+        spdlog::info("ClockScenario: Creating duck with WallBouncingBrain");
+
+        // Spawn duck organism near bottom right.
+        uint32_t duck_x = world.getData().width - 5;
+        uint32_t duck_y = world.getData().height - 3; // Above the wall border.
+        duck_organism_id_ = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
+
+        spdlog::info("ClockScenario: Duck organism {} spawned at ({}, {}), world size {}x{}",
+            duck_organism_id_, duck_x, duck_y, world.getData().width, world.getData().height);
+
+        // Create Entity view for rendering.
+        Entity duck_entity;
+        duck_entity.id = next_entity_id_++;
+        duck_entity.type = EntityType::DUCK;
+        duck_entity.visible = true;
+        duck_entity.position = Vector2<float>(static_cast<float>(duck_x), static_cast<float>(duck_y));
+        duck_entity.com = Vector2<float>(0.0f, 0.0f);
+        duck_entity.velocity = Vector2<float>(0.0f, 0.0f);
+        duck_entity.facing = Vector2<float>(1.0f, 0.0f);
+        duck_entity.mass = 1.0f;
+        world.getData().entities.push_back(duck_entity);
+
+        spdlog::info("ClockScenario: Starting DUCK event (duration: 30s)");
+    }
+}
+
+void ClockScenario::updateRainEvent(World& world, double deltaTime)
+{
+    // Spawn water drops at random X positions near the top.
+    constexpr double DROPS_PER_SECOND = 10.0;
+    double drop_probability = DROPS_PER_SECOND * deltaTime;
+
+    if (uniform_dist_(rng_) < drop_probability) {
+        std::uniform_int_distribution<uint32_t> x_dist(2, world.getData().width - 3);
+        uint32_t x = x_dist(rng_);
+        uint32_t y = 2; // Near top (below wall border).
+
+        world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
+    }
+
+    // Evaporate water in drain at bottom center.
+    uint32_t bottomY = world.getData().height - 2; // Above wall border.
+    uint32_t centerX = world.getData().width / 2;
+    constexpr uint32_t DRAIN_SIZE = 5;
+    uint32_t halfDrain = DRAIN_SIZE / 2;
+
+    uint32_t drainStart = (centerX > halfDrain) ? centerX - halfDrain : 1;
+    uint32_t drainEnd = std::min(centerX + halfDrain, world.getData().width - 2);
+
+    for (uint32_t x = drainStart; x <= drainEnd; ++x) {
+        Cell& cell = world.getData().at(x, bottomY);
+        if (cell.material_type == MaterialType::WATER) {
+            // Evaporate water quickly (50% per tick).
+            cell.fill_ratio -= 0.5;
+            if (cell.fill_ratio < 0.01) {
+                cell.replaceMaterial(MaterialType::AIR, 0.0);
+            }
+        }
+    }
+}
+
+void ClockScenario::updateDuckEvent(World& world)
+{
+    // Get duck organism.
+    Duck* duck_organism = world.getOrganismManager().getDuck(duck_organism_id_);
+    if (!duck_organism) return;
+
+    Vector2i duck_cell = duck_organism->getAnchorCell();
+
+    // Find and update the duck entity to match organism position.
+    for (auto& entity : world.getData().entities) {
+        if (entity.type == EntityType::DUCK) {
+            // Sync entity position with organism.
+            entity.position = Vector2<float>(
+                static_cast<float>(duck_cell.x),
+                static_cast<float>(duck_cell.y));
+            entity.facing = duck_organism->getFacing();
+
+            // Copy sparkles from organism to entity for rendering.
+            const auto& duck_sparkles = duck_organism->getSparkles();
+            entity.sparkles.clear();
+            entity.sparkles.reserve(duck_sparkles.size());
+            for (const auto& ds : duck_sparkles) {
+                SparkleParticle sp;
+                sp.position = ds.position;
+                sp.opacity = ds.lifetime / ds.max_lifetime;  // Fade based on remaining lifetime.
+                entity.sparkles.push_back(sp);
+            }
+            break;
+        }
+    }
+}
+
+void ClockScenario::endEvent(World& world)
+{
+    spdlog::info("ClockScenario: Ending {} event", current_event_ == EventType::RAIN ? "RAIN" : "DUCK");
+
+    // Clean up event-specific state.
+    if (current_event_ == EventType::DUCK) {
+        // Get duck position before removing.
+        Vector2i duck_pos{ -1, -1 };
+        if (duck_organism_id_ != INVALID_ORGANISM_ID) {
+            Duck* duck = world.getOrganismManager().getDuck(duck_organism_id_);
+            if (duck) {
+                duck_pos = duck->getAnchorCell();
+            }
+            world.getOrganismManager().removeOrganism(duck_organism_id_);
+            duck_organism_id_ = INVALID_ORGANISM_ID;
+        }
+
+        // Clear the duck's cell from the world.
+        if (duck_pos.x >= 0 && duck_pos.y >= 0 &&
+            static_cast<uint32_t>(duck_pos.x) < world.getData().width &&
+            static_cast<uint32_t>(duck_pos.y) < world.getData().height) {
+            world.getData().at(duck_pos.x, duck_pos.y) = Cell();
+        }
+
+        // Remove duck and sparkle entities.
+        world.getData().entities.clear();
+    }
+
+    // Schedule next event.
+    double delay = BASE_EVENT_DELAY * (1.0 - config_.event_frequency);
+    // Add random jitter (±20%).
+    double jitter = (uniform_dist_(rng_) * 0.4 - 0.2) * delay;
+    event_timer_ = delay + jitter;
+
+    current_event_ = EventType::NONE;
+
+    spdlog::info("ClockScenario: Next event in {:.1f}s", event_timer_);
 }
 
 } // namespace DirtSim
