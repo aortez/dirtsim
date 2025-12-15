@@ -2,8 +2,8 @@
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
-#include "core/organisms/TreeManager.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
 #include <gtest/gtest.h>
 
@@ -35,8 +35,8 @@ TEST(TreeSensoryTest, OOBCellsHaveEmptyHistograms)
     }
 
     // Plant seed at center (4,4).
-    TreeId tree_id = world->getTreeManager().plantSeed(*world, 4, 4);
-    Tree* tree = world->getTreeManager().getTree(tree_id);
+    OrganismId tree_id = world->getOrganismManager().createTree(*world, 4, 4);
+    Tree* tree = world->getOrganismManager().getTree(tree_id);
     ASSERT_NE(tree, nullptr);
 
     // Gather sensory data.
@@ -119,8 +119,8 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     }
 
     // Plant seed at center - it will fall to (4,5).
-    TreeId tree_id = world->getTreeManager().plantSeed(*world, 4, 4);
-    Tree* tree = world->getTreeManager().getTree(tree_id);
+    OrganismId tree_id = world->getOrganismManager().createTree(*world, 4, 4);
+    Tree* tree = world->getOrganismManager().getTree(tree_id);
     ASSERT_NE(tree, nullptr);
 
     // Advance physics so seed falls to (4,5).
@@ -139,18 +139,18 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     ASSERT_EQ(world->getData().at(4, 5).material_type, MaterialType::SEED)
         << "SEED should have fallen to (4,5)";
     ASSERT_EQ(world->getData().at(4, 5).organism_id, tree_id) << "SEED should have organism_id set";
-    tree->cells.insert(Vector2i{ 4, 5 });
-    tree->seed_position = Vector2i{ 4, 5 };
+    tree->getCells().insert(Vector2i{ 4, 5 });
+    tree->setAnchorCell(Vector2i{ 4, 5 });
 
     // Force grow ROOT at (4,6).
     world->getData().at(4, 6).replaceMaterial(MaterialType::ROOT, 1.0);
     world->getData().at(4, 6).organism_id = tree_id;
-    tree->cells.insert(Vector2i{ 4, 6 });
+    tree->getCells().insert(Vector2i{ 4, 6 });
 
     // Force grow WOOD at (4,4).
     world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
     world->getData().at(4, 4).organism_id = tree_id;
-    tree->cells.insert(Vector2i{ 4, 4 });
+    tree->getCells().insert(Vector2i{ 4, 4 });
 
     // Gather sensory data.
     TreeSensoryData sensory = tree->gatherSensoryData(*world);

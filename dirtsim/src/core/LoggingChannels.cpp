@@ -41,6 +41,10 @@ void LoggingChannels::initialize(
     }
 
     // Create channel-specific loggers with TRACE level (can be filtered later).
+    // Organism channels.
+    createLogger("brain", sharedSinks_, spdlog::level::info);
+    createLogger("tree", sharedSinks_, spdlog::level::info);
+
     // Physics channels.
     createLogger("physics", sharedSinks_, spdlog::level::trace);
     createLogger("swap", sharedSinks_, spdlog::level::trace);
@@ -57,7 +61,6 @@ void LoggingChannels::initialize(
     createLogger("render", sharedSinks_, spdlog::level::info);
     createLogger("scenario", sharedSinks_, spdlog::level::info);
     createLogger("state", sharedSinks_, spdlog::level::debug);
-    createLogger("tree", sharedSinks_, spdlog::level::info);
     createLogger("ui", sharedSinks_, spdlog::level::info);
 
     // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
@@ -257,7 +260,8 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
                     { "path", "physics-deep.log" },
                     { "level", "trace" } } } } } } },
         { "channels",
-          { { "collision", "info" },
+          { { "brain", "info" },
+            { "collision", "info" },
             { "cohesion", "info" },
             { "friction", "info" },
             { "network", "info" },
@@ -308,7 +312,8 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
                 { "path", "sparkle-duck.log" },
                 { "truncate", true } } } } },
         { "channels",
-          { { "collision", "info" },
+          { { "brain", "info" },
+            { "collision", "info" },
             { "cohesion", "info" },
             { "friction", "info" },
             { "network", "info" },
@@ -497,6 +502,7 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
     }
 
     // Create channel loggers.
+    createLogger("brain", sharedSinks_, spdlog::level::trace);
     createLogger("collision", sharedSinks_, spdlog::level::trace);
     createLogger("cohesion", sharedSinks_, spdlog::level::trace);
     createLogger("controls", sharedSinks_, spdlog::level::trace);

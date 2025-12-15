@@ -6,7 +6,8 @@
 #include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/network/WebSocketService.h"
-#include "core/organisms/TreeManager.h"
+#include "core/organisms/OrganismManager.h"
+#include "core/organisms/Tree.h"
 #include "server/StateMachine.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
@@ -154,18 +155,23 @@ void SimRunning::tick(StateMachine& dsm)
     }
 
     // Populate tree vision data (if any trees exist).
-    const auto& trees = world->getTreeManager().getTrees();
-    if (!trees.empty()) {
+    Tree* firstTree = nullptr;
+    world->getOrganismManager().forEachOrganism([&](Organism& org) {
+        if (!firstTree && org.getType() == OrganismType::TREE) {
+            firstTree = static_cast<Tree*>(&org);
+        }
+    });
+
+    if (firstTree) {
         // For now, show the first tree's vision (simple selection).
-        const auto& firstTree = trees.begin()->second;
-        world->getData().tree_vision = firstTree.gatherSensoryData(*world);
+        world->getData().tree_vision = firstTree->gatherSensoryData(*world);
 
         if (stepCount % 100 == 0) {
             spdlog::info(
                 "SimRunning: Tree vision active (tree_id={}, age_seconds={}, stage={})",
-                firstTree.id,
-                firstTree.age_seconds,
-                static_cast<int>(firstTree.stage));
+                firstTree->getId(),
+                firstTree->getAge(),
+                static_cast<int>(firstTree->getStage()));
         }
     }
     else {
@@ -534,7 +540,7 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& /*dsm
 
     // Plant seed as tree organism.
     spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    TreeId tree_id = world->getTreeManager().plantSeed(*world, cwc.command.x, cwc.command.y);
+    OrganismId tree_id = world->getOrganismManager().createTree(*world, cwc.command.x, cwc.command.y);
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));

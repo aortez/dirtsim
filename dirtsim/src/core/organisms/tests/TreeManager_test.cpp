@@ -1,27 +1,27 @@
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/organisms/TreeManager.h"
+#include "core/organisms/OrganismManager.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
 
-class TreeManagerTest : public ::testing::Test {
+class OrganismManagerTest : public ::testing::Test {
 protected:
     void SetUp() override
     {
         world = std::make_unique<World>(10, 10);
-        manager = std::make_unique<TreeManager>();
+        manager = std::make_unique<OrganismManager>();
     }
 
     std::unique_ptr<World> world;
-    std::unique_ptr<TreeManager> manager;
+    std::unique_ptr<OrganismManager> manager;
 };
 
-TEST_F(TreeManagerTest, PlantSeedCreatesTree)
+TEST_F(OrganismManagerTest, CreateTreeCreatesOrganism)
 {
-    TreeId id = manager->plantSeed(*world, 5, 5);
+    OrganismId id = manager->createTree(*world, 5, 5);
 
-    EXPECT_NE(id, INVALID_TREE_ID);
+    EXPECT_NE(id, INVALID_ORGANISM_ID);
     EXPECT_NE(manager->getTree(id), nullptr);
 }

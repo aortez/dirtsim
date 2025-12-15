@@ -23,7 +23,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
             using T = std::decay_t<decltype(command)>;
 
             if constexpr (std::is_same_v<T, GrowWoodCommand>) {
-                if (tree.total_energy < ENERGY_COST_WOOD) {
+                if (tree.getEnergy() < ENERGY_COST_WOOD) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for WOOD growth" };
                 }
@@ -43,7 +43,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.id
+                        if (neighbor.organism_id == tree.getId()
                             && (neighbor.material_type == MaterialType::WOOD
                                 || neighbor.material_type == MaterialType::SEED)) {
                             has_structural_neighbor = true;
@@ -59,27 +59,27 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 Cell& new_cell = world.getData().at(command.target_pos.x, command.target_pos.y);
                 new_cell.replaceMaterial(MaterialType::WOOD, 1.0);
-                new_cell.organism_id = tree.id;
+                new_cell.organism_id = tree.getId();
 
-                tree.cells.insert(command.target_pos);
+                tree.getCells().insert(command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::WOOD, world);
-                tree.total_energy -= ENERGY_COST_WOOD;
+                tree.setEnergy(tree.getEnergy() - ENERGY_COST_WOOD);
 
                 spdlog::info(
                     "Tree {}: Grew WOOD at ({}, {})",
-                    tree.id,
+                    tree.getId(),
                     command.target_pos.x,
                     command.target_pos.y);
 
-                if (tree.stage == GrowthStage::GERMINATION) {
-                    tree.stage = GrowthStage::SAPLING;
-                    spdlog::info("Tree {}: Transitioned to SAPLING stage", tree.id);
+                if (tree.getStage() == GrowthStage::GERMINATION) {
+                    tree.setStage(GrowthStage::SAPLING);
+                    spdlog::info("Tree {}: Transitioned to SAPLING stage", tree.getId());
                 }
 
                 return { CommandResult::SUCCESS, "WOOD growth successful" };
             }
             else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
-                if (tree.total_energy < ENERGY_COST_LEAF) {
+                if (tree.getEnergy() < ENERGY_COST_LEAF) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for LEAF growth" };
                 }
@@ -99,7 +99,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.id
+                        if (neighbor.organism_id == tree.getId()
                             && neighbor.material_type == MaterialType::WOOD) {
                             has_wood_neighbor = true;
                             break;
@@ -116,22 +116,22 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     .at(command.target_pos.x, command.target_pos.y)
                     .replaceMaterial(MaterialType::LEAF, 1.0);
                 world.getData().at(command.target_pos.x, command.target_pos.y).organism_id =
-                    tree.id;
+                    tree.getId();
 
-                tree.cells.insert(command.target_pos);
+                tree.getCells().insert(command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::LEAF, world);
-                tree.total_energy -= ENERGY_COST_LEAF;
+                tree.setEnergy(tree.getEnergy() - ENERGY_COST_LEAF);
 
                 spdlog::info(
                     "Tree {}: Grew LEAF at ({}, {})",
-                    tree.id,
+                    tree.getId(),
                     command.target_pos.x,
                     command.target_pos.y);
 
                 return { CommandResult::SUCCESS, "LEAF growth successful" };
             }
             else if constexpr (std::is_same_v<T, GrowRootCommand>) {
-                if (tree.total_energy < ENERGY_COST_ROOT) {
+                if (tree.getEnergy() < ENERGY_COST_ROOT) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for ROOT growth" };
                 }
@@ -151,7 +151,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.id
+                        if (neighbor.organism_id == tree.getId()
                             && (neighbor.material_type == MaterialType::ROOT
                                 || neighbor.material_type == MaterialType::SEED)) {
                             has_root_neighbor = true;
@@ -169,43 +169,43 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     .at(command.target_pos.x, command.target_pos.y)
                     .replaceMaterial(MaterialType::ROOT, 1.0);
                 world.getData().at(command.target_pos.x, command.target_pos.y).organism_id =
-                    tree.id;
+                    tree.getId();
 
-                tree.cells.insert(command.target_pos);
+                tree.getCells().insert(command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::ROOT, world);
-                tree.total_energy -= ENERGY_COST_ROOT;
+                tree.setEnergy(tree.getEnergy() - ENERGY_COST_ROOT);
 
                 spdlog::info(
                     "Tree {}: Grew ROOT at ({}, {})",
-                    tree.id,
+                    tree.getId(),
                     command.target_pos.x,
                     command.target_pos.y);
 
-                if (tree.stage == GrowthStage::SEED) {
-                    tree.stage = GrowthStage::GERMINATION;
-                    spdlog::info("Tree {}: Transitioned to GERMINATION stage", tree.id);
+                if (tree.getStage() == GrowthStage::SEED) {
+                    tree.setStage(GrowthStage::GERMINATION);
+                    spdlog::info("Tree {}: Transitioned to GERMINATION stage", tree.getId());
                 }
 
                 return { CommandResult::SUCCESS, "ROOT growth successful" };
             }
             else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                if (tree.total_energy < ENERGY_COST_REINFORCE) {
+                if (tree.getEnergy() < ENERGY_COST_REINFORCE) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for cell reinforcement" };
                 }
 
-                tree.total_energy -= ENERGY_COST_REINFORCE;
+                tree.setEnergy(tree.getEnergy() - ENERGY_COST_REINFORCE);
 
                 spdlog::info(
                     "Tree {}: Reinforced cell at ({}, {}) [not yet implemented]",
-                    tree.id,
+                    tree.getId(),
                     command.position.x,
                     command.position.y);
 
                 return { CommandResult::SUCCESS, "Cell reinforcement successful" };
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
-                if (tree.total_energy < ENERGY_COST_PRODUCE_SEED) {
+                if (tree.getEnergy() < ENERGY_COST_PRODUCE_SEED) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for seed production" };
                 }
@@ -220,18 +220,18 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     .at(command.position.x, command.position.y)
                     .replaceMaterial(MaterialType::SEED, 1.0);
 
-                tree.total_energy -= ENERGY_COST_PRODUCE_SEED;
+                tree.setEnergy(tree.getEnergy() - ENERGY_COST_PRODUCE_SEED);
 
                 spdlog::info(
                     "Tree {}: Produced SEED at ({}, {})",
-                    tree.id,
+                    tree.getId(),
                     command.position.x,
                     command.position.y);
 
                 return { CommandResult::SUCCESS, "Seed production successful" };
             }
             else if constexpr (std::is_same_v<T, WaitCommand>) {
-                spdlog::debug("Tree {}: Waited for {} seconds", tree.id, command.duration_seconds);
+                spdlog::debug("Tree {}: Waited for {} seconds", tree.getId(), command.duration_seconds);
                 return { CommandResult::SUCCESS, "Wait completed" };
             }
 

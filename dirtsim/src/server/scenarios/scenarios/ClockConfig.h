@@ -33,7 +33,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
  * while fitting within target display dimensions with margins.
  */
 struct ClockConfig {
-    using serialize = zpp::bits::members<9>;
+    using serialize = zpp::bits::members<10>;
 
     double horizontal_scale = 1.1;         // World width = clock_width × scale.
     double vertical_scale = 2.0;           // World height = clock_height × scale.
@@ -44,6 +44,9 @@ struct ClockConfig {
     uint32_t target_display_width = 752;   // Target display width in pixels.
     uint32_t target_display_height = 480;  // Target display height in pixels.
     uint32_t margin_pixels = 20;           // Margin in pixels (all sides).
+
+    // Random event system (disabled when event_frequency = 0).
+    double event_frequency = 0.5;          // Event frequency [0, 1] (0 = disabled, 1 = very frequent).
 };
 
 } // namespace DirtSim

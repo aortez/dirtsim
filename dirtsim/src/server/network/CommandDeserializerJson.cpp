@@ -48,7 +48,7 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
             ApiError("Command must have 'command' field with string value"));
     }
 
-    std::string commandName = cmd["command"].get<std::string>();
+    const std::string commandName = cmd["command"].get<std::string>();
     spdlog::debug("Deserializing command: {}", commandName);
 
     // Dispatch to appropriate handler.

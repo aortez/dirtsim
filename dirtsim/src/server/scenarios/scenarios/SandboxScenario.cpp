@@ -5,7 +5,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/organisms/TreeManager.h"
+#include "core/organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
 #include <cmath>
 
@@ -91,7 +91,7 @@ void SandboxScenario::setup(World& world)
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
-    world.getTreeManager().clear();
+    world.getOrganismManager().clear();
 
     // Create boundary walls.
     for (uint32_t x = 0; x < world.getData().width; ++x) {

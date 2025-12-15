@@ -20,7 +20,7 @@
 #include "WorldRigidBodyCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
 #include "WorldViscosityCalculator.h"
-#include "organisms/TreeManager.h"
+#include "organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -69,7 +69,7 @@ struct World::Impl {
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
 
-    // Organism transfer tracking (for efficient TreeManager updates).
+    // Organism transfer tracking (for efficient OrganismManager updates).
     std::vector<OrganismTransfer> organism_transfers_;
 
     // Performance timing.
@@ -96,7 +96,7 @@ World::World(uint32_t width, uint32_t height)
       air_resistance_strength_(0.1),
       selected_material_(MaterialType::DIRT),
       pImpl(),
-      tree_manager_(std::make_unique<TreeManager>()),
+      organism_manager_(std::make_unique<OrganismManager>()),
       rng_(std::make_unique<std::mt19937>(std::random_device{}()))
 {
     // Set dimensions (other WorldData members use defaults from struct declaration).
@@ -464,6 +464,12 @@ void World::advanceTime(double deltaTimeSeconds)
     // Apply forces using the diffused pressure field.
     resolveForces(scaledDeltaTime, grid);
 
+    // Update organisms after forces are accumulated but before organism force integration.
+    if (organism_manager_) {
+        ScopeTimer organismTimer(pImpl->timers_, "organisms");
+        organism_manager_->update(*this, scaledDeltaTime);
+    }
+
     // Resolve rigid body physics for organism structures.
     resolveRigidBodies(scaledDeltaTime);
 
@@ -479,12 +485,6 @@ void World::advanceTime(double deltaTimeSeconds)
 
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
-
-    // Update tree organisms after physics is complete.
-    if (tree_manager_) {
-        ScopeTimer treeTimer(pImpl->timers_, "tree_organisms");
-        tree_manager_->update(*this, scaledDeltaTime);
-    }
 
     pImpl->data_.timestep++;
 }
@@ -815,9 +815,9 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     }
 
     // Apply organism bone forces.
-    if (tree_manager_) {
+    if (organism_manager_) {
         ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-        tree_manager_->applyBoneForces(*this, deltaTime);
+        organism_manager_->applyBoneForces(*this, deltaTime);
     }
 
     // Apply viscous forces (momentum diffusion between same-material neighbors).
@@ -913,18 +913,37 @@ void World::resolveRigidBodies(double deltaTime)
 {
     ScopeTimer timer(pImpl->timers_, "resolve_rigid_bodies");
 
-    if (!tree_manager_) {
+    if (!organism_manager_) {
         return;
     }
 
     WorldData& data = pImpl->data_;
 
-    for (const auto& [tree_id, tree] : tree_manager_->getTrees()) {
-        // 1. Flood fill from seed to find connected structural cells.
+    // Process each organism that has structural cells (currently just trees).
+    organism_manager_->forEachOrganism([&](Organism& organism) {
+        // For single-cell organisms (like ducks), apply simple F=ma physics.
+        if (organism.getType() != OrganismType::TREE) {
+            Vector2i anchor = organism.getAnchorCell();
+            if (anchor.x >= 0 && anchor.y >= 0
+                && anchor.x < static_cast<int>(data.width)
+                && anchor.y < static_cast<int>(data.height)) {
+                Cell& cell = data.at(anchor.x, anchor.y);
+                double mass = cell.getMass();
+                if (mass > 0.0001) {
+                    Vector2d acceleration = cell.pending_force * (1.0 / mass);
+                    cell.velocity += acceleration * deltaTime;
+                }
+            }
+            return;
+        }
+
+        OrganismId organism_id = organism.getId();
+
+        // 1. Flood fill from anchor to find connected structural cells.
         std::unordered_set<Vector2i, Vector2iHash> connected;
         std::queue<Vector2i> frontier;
 
-        frontier.push(tree.seed_position);
+        frontier.push(organism.getAnchorCell());
 
         while (!frontier.empty()) {
             Vector2i pos = frontier.front();
@@ -944,7 +963,7 @@ void World::resolveRigidBodies(double deltaTime)
             Cell& cell = data.at(pos.x, pos.y);
 
             // Must belong to this organism.
-            if (cell.organism_id != tree_id) {
+            if (cell.organism_id != organism_id) {
                 continue;
             }
 
@@ -966,7 +985,7 @@ void World::resolveRigidBodies(double deltaTime)
 
         // 2. Prune disconnected ROOT/WOOD cells.
         std::vector<Vector2i> to_remove;
-        for (const auto& pos : tree.cells) {
+        for (const auto& pos : organism.getCells()) {
             if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
                 || pos.y >= static_cast<int>(data.height)) {
                 continue;
@@ -984,18 +1003,18 @@ void World::resolveRigidBodies(double deltaTime)
                 cell.organism_id = 0; // Fragment breaks off.
                 to_remove.push_back(pos);
                 spdlog::info(
-                    "Tree {} fragment at ({},{}) disconnected", tree_id, pos.x, pos.y);
+                    "Organism {} fragment at ({},{}) disconnected", organism_id, pos.x, pos.y);
             }
         }
 
-        // Update tree's cell tracking.
+        // Update organism's cell tracking.
         if (!to_remove.empty()) {
-            tree_manager_->removeCellsFromTree(tree_id, to_remove);
+            organism_manager_->removeCellsFromOrganism(organism_id, to_remove);
         }
 
         // 3. Apply unified velocity to connected structure.
         if (connected.empty()) {
-            continue;
+            return; // Lambda return, not function return.
         }
 
         // Gather forces and mass.
@@ -1009,15 +1028,15 @@ void World::resolveRigidBodies(double deltaTime)
         }
 
         if (total_mass < 0.0001) {
-            continue;
+            return; // Lambda return.
         }
 
         // F = ma -> a = F/m.
         Vector2d acceleration = total_force * (1.0 / total_mass);
 
-        // Get current velocity from seed cell.
-        Vector2d velocity =
-            data.at(tree.seed_position.x, tree.seed_position.y).velocity;
+        // Get current velocity from anchor cell.
+        Vector2i anchor = organism.getAnchorCell();
+        Vector2d velocity = data.at(anchor.x, anchor.y).velocity;
         velocity += acceleration * deltaTime;
 
         // Apply unified velocity to all connected cells.
@@ -1026,12 +1045,12 @@ void World::resolveRigidBodies(double deltaTime)
         }
 
         spdlog::debug(
-            "Tree {} ({} connected cells): unified velocity=({:.3f}, {:.3f})",
-            tree_id,
+            "Organism {} ({} connected cells): unified velocity=({:.3f}, {:.3f})",
+            organism_id,
             connected.size(),
             velocity.x,
             velocity.y);
-    }
+    }); // End forEachOrganism lambda.
 }
 
 void World::processVelocityLimiting(double deltaTime)
@@ -1292,16 +1311,16 @@ void World::processMaterialMoves()
 
                 // Capture organism ownership BEFORE the swap - after swap the cells exchange
                 // contents, so we need to record who was where before they dance.
-                TreeId from_org_id = fromCell.organism_id;
-                TreeId to_org_id = toCell.organism_id;
+                OrganismId from_org_id = fromCell.organism_id;
+                OrganismId to_org_id = toCell.organism_id;
                 double from_fill = fromCell.fill_ratio;
                 double to_fill = toCell.fill_ratio;
 
                 collision_calc.swapCounterMovingMaterials(fromCell, toCell, direction, move);
 
-                // Notify TreeManager of any organism cell movements.
+                // Notify OrganismManager of any organism cell movements.
                 // fromCell's organism moved from (fromX,fromY) to (toX,toY).
-                if (from_org_id != INVALID_TREE_ID) {
+                if (from_org_id != INVALID_ORGANISM_ID) {
                     organism_transfers.push_back(
                         { Vector2i{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) },
                           Vector2i{ static_cast<int>(move.toX), static_cast<int>(move.toY) },
@@ -1310,7 +1329,7 @@ void World::processMaterialMoves()
                 }
 
                 // toCell's organism moved from (toX,toY) to (fromX,fromY).
-                if (to_org_id != INVALID_TREE_ID) {
+                if (to_org_id != INVALID_ORGANISM_ID) {
                     organism_transfers.push_back(
                         { Vector2i{ static_cast<int>(move.toX), static_cast<int>(move.toY) },
                           Vector2i{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) },
@@ -1336,7 +1355,7 @@ void World::processMaterialMoves()
         }
 
         // Track organism_id before transfer (in case source cell becomes empty).
-        TreeId organism_id = fromCell.organism_id;
+        OrganismId organism_id = fromCell.organism_id;
 
         switch (move.collision_type) {
             case CollisionType::TRANSFER_ONLY:
@@ -1366,7 +1385,7 @@ void World::processMaterialMoves()
 
         // Record organism transfer if material had organism ownership.
         if (organism_id != 0 && move.collision_type == CollisionType::TRANSFER_ONLY) {
-            // Transfer occurred - record it for TreeManager update.
+            // Transfer occurred - record it for OrganismManager update.
             recordOrganismTransfer(
                 move.fromX, move.fromY, move.toX, move.toY, organism_id, move.amount);
         }
@@ -1387,15 +1406,15 @@ void World::processMaterialMoves()
 
     pImpl->pending_moves_.clear();
 
-    // Notify TreeManager of all organism transfers for efficient tracking updates.
-    if (!organism_transfers.empty() && tree_manager_) {
-        tree_manager_->notifyTransfers(organism_transfers);
+    // Notify OrganismManager of all organism transfers for efficient tracking updates.
+    if (!organism_transfers.empty() && organism_manager_) {
+        organism_manager_->notifyTransfers(organism_transfers);
         organism_transfers.clear();
     }
 }
 
 void World::recordOrganismTransfer(
-    int fromX, int fromY, int toX, int toY, TreeId organism_id, double amount)
+    int fromX, int fromY, int toX, int toY, uint32_t organism_id, double amount)
 {
     pImpl->organism_transfers_.push_back(
         OrganismTransfer{ Vector2i{ fromX, fromY }, Vector2i{ toX, toY }, organism_id, amount });

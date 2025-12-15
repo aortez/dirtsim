@@ -9,19 +9,28 @@ namespace DirtSim {
 
 enum class GrowthStage : uint8_t { SEED, GERMINATION, SAPLING, MATURE, DECLINE };
 
+/**
+ * Tree-specific sensory data.
+ *
+ * Contains a 15x15 grid of material histograms representing the tree's
+ * view of the world around it, plus tree-specific state.
+ */
 struct TreeSensoryData {
     static constexpr int GRID_SIZE = 15;
     static constexpr int NUM_MATERIALS = 10;
 
+    // Material histogram grid: [y][x][material] = fill contribution.
     std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
-        material_histograms = {}; // Initialize to zeros.
+        material_histograms = {};
 
+    // Mapping from neural grid to world coordinates.
     int actual_width = 0;
     int actual_height = 0;
     double scale_factor = 1.0;
     Vector2i world_offset;
     Vector2i seed_position;
 
+    // Tree-specific state.
     double age_seconds = 0.0;
     GrowthStage stage = GrowthStage::SEED;
     double total_energy = 0.0;

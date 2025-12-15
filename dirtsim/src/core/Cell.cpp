@@ -1,5 +1,6 @@
 #include "Cell.h"
 #include "World.h"
+#include "organisms/OrganismType.h"
 
 #include <algorithm>
 #include <cctype>
@@ -177,7 +178,7 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
     const double available = std::min(amount, fill_ratio);
 
     // Save organism_id before transfer (in case source becomes empty).
-    TreeId source_organism_id = organism_id;
+    OrganismId source_organism_id = organism_id;
 
     // Use physics-aware method with current COM and velocity.
     const double accepted =

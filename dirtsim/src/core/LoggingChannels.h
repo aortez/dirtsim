@@ -21,6 +21,7 @@ namespace DirtSim {
  * @brief Available logging channels for categorizing log messages.
  */
 enum class LogChannel {
+    Brain,
     Collision,
     Cohesion,
     Controls,
@@ -41,6 +42,8 @@ enum class LogChannel {
 inline const char* toString(LogChannel channel)
 {
     switch (channel) {
+        case LogChannel::Brain:
+            return "brain";
         case LogChannel::Collision:
             return "collision";
         case LogChannel::Cohesion:

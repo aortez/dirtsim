@@ -28,9 +28,7 @@ class GridOfCells;
 
 namespace DirtSim {
 
-using TreeId = uint32_t;
-
-class TreeManager;
+class OrganismManager;
 struct OrganismTransfer;
 
 class World {
@@ -171,11 +169,11 @@ public:
     void addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double amount = 1.0);
 
     /**
-     * Record an organism material transfer for efficient TreeManager tracking.
+     * Record an organism material transfer for efficient OrganismManager tracking.
      * Called during physics transfers to maintain organism ownership consistency.
      */
     void recordOrganismTransfer(
-        int fromX, int fromY, int toX, int toY, TreeId organism_id, double amount);
+        int fromX, int fromY, int toX, int toY, uint32_t organism_id, double amount);
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // minimum matter to process.
 
@@ -257,11 +255,11 @@ public:
     struct Impl;
     Pimpl<Impl> pImpl;
 
-    std::unique_ptr<class TreeManager> tree_manager_;
+    std::unique_ptr<class OrganismManager> organism_manager_;
 
-    // Accessor for tree manager.
-    class TreeManager& getTreeManager() { return *tree_manager_; }
-    const class TreeManager& getTreeManager() const { return *tree_manager_; }
+    // Accessor for organism manager.
+    class OrganismManager& getOrganismManager() { return *organism_manager_; }
+    const class OrganismManager& getOrganismManager() const { return *organism_manager_; }
 
     std::unique_ptr<std::mt19937> rng_;
 

@@ -2,6 +2,7 @@
 
 #include "Cell.h"
 #include "CellDebug.h"
+#include "Entity.h"
 #include "ReflectSerializer.h"
 #include "RenderMessage.h"
 #include "Vector2.h"
@@ -17,7 +18,7 @@
 namespace DirtSim {
 
 struct WorldData {
-    // ===== Fields 1-10: Binary serialized (zpp_bits) =====
+    // ===== Fields 1-9: Binary serialized (zpp_bits) =====
     // Grid dimensions and cells (1D storage for performance).
     uint32_t width = 0;
     uint32_t height = 0;
@@ -34,7 +35,10 @@ struct WorldData {
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
-    // ===== Field 11+: NOT binary serialized (runtime/debug only) =====
+    // Entities (duck, butterfly, etc.) - sprite-based world overlays.
+    std::vector<Entity> entities;
+
+    // ===== Field 10+: NOT binary serialized (runtime/debug only) =====
     std::vector<CellDebug> debug_info; // Debug/viz info: debug_info[y * width + x]
 
     // Bone connections for organism structural visualization.
@@ -53,7 +57,7 @@ struct WorldData {
         return cells[y * width + x];
     }
 
-    // Custom zpp_bits serialization (excludes debug_info).
+    // Custom zpp_bits serialization (excludes debug_info and bones).
     constexpr static auto serialize(auto& archive, auto& self)
     {
         return archive(
@@ -64,7 +68,8 @@ struct WorldData {
             self.removed_mass,
             self.fps_server,
             self.add_particles_enabled,
-            self.tree_vision);
+            self.tree_vision,
+            self.entities);
         // debug_info and bones intentionally excluded from binary serialization.
     }
 };

@@ -108,6 +108,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             // Copy tree vision data if present.
             worldData.tree_vision = renderMsg.tree_vision;
 
+            // Copy entities (duck, sparkle, etc.).
+            worldData.entities = renderMsg.entities;
+
             // Create UiUpdateEvent and queue to EventSink.
             auto now = std::chrono::steady_clock::now();
             UiUpdateEvent evt{ .sequenceNum = 0,

@@ -1,41 +1,13 @@
 #pragma once
 
+#include "Organism.h"
 #include "TreeBrain.h"
 #include "TreeCommands.h"
 #include "TreeSensoryData.h"
-#include "core/MaterialType.h"
-#include <cstdint>
 #include <memory>
 #include <optional>
-#include <unordered_set>
-#include <vector>
 
 namespace DirtSim {
-
-using TreeId = uint32_t;
-
-constexpr TreeId INVALID_TREE_ID = 0;
-
-enum class HingeEnd {
-    NONE,   // Symmetric spring - both ends free to rotate.
-    CELL_A, // cell_a is the pivot point.
-    CELL_B  // cell_b is the pivot point.
-};
-
-struct Bone {
-    Vector2i cell_a;
-    Vector2i cell_b;
-    double rest_distance;
-    double stiffness;
-
-    // Hinge/motor properties for rotational control.
-    HingeEnd hinge_end = HingeEnd::NONE; // Which end is the pivot.
-    double rotational_damping = 0.0; // Rotation damping (0=none, +ve=passive, -ve=active motor).
-};
-
-double getBoneStiffness(MaterialType a, MaterialType b);
-
-class World;
 
 /**
  * Tree organism class.
@@ -46,43 +18,48 @@ class World;
  * Trees execute commands over time, consume resources, and make growth decisions
  * through pluggable brain implementations.
  */
-class Tree {
+class Tree : public Organism {
 public:
     /**
      * Construct a new tree with a given brain implementation.
      *
-     * @param id Unique tree identifier.
+     * @param id Unique organism identifier.
      * @param brain Brain implementation for decision making.
      */
-    Tree(TreeId id, std::unique_ptr<TreeBrain> brain);
+    Tree(OrganismId id, std::unique_ptr<TreeBrain> brain);
 
-    // Move-only type (unique_ptr members).
-    Tree(Tree&&) = default;
-    Tree& operator=(Tree&&) = default;
-    Tree(const Tree&) = delete;
-    Tree& operator=(const Tree&) = delete;
+    // Organism interface.
+    Vector2i getAnchorCell() const override { return seed_position_; }
+    void setAnchorCell(Vector2i pos) override { seed_position_ = pos; }
+    void update(World& world, double deltaTime) override;
 
-    void update(World& world, double deltaTime);
+    // Tree-specific accessors.
+    GrowthStage getStage() const { return stage_; }
+    void setStage(GrowthStage stage) { stage_ = stage; }
+    double getEnergy() const { return total_energy_; }
+    void setEnergy(double energy) { total_energy_ = energy; }
+    double getWater() const { return total_water_; }
+    void setWater(double water) { total_water_ = water; }
 
-    TreeId id;
-    Vector2i seed_position;
-    double age_seconds = 0.0;
-    GrowthStage stage = GrowthStage::SEED;
-    std::unordered_set<Vector2i> cells;
-    std::vector<Bone> bones;
-    double total_energy = 0.0;
-    double total_water = 0.0;
-    std::optional<TreeCommand> current_command;
-    double time_remaining_seconds = 0.0;
+    // Command state.
+    const std::optional<TreeCommand>& getCurrentCommand() const { return current_command_; }
+    void setCurrentCommand(const std::optional<TreeCommand>& cmd) { current_command_ = cmd; }
+    double getTimeRemaining() const { return time_remaining_seconds_; }
+    void setTimeRemaining(double time) { time_remaining_seconds_ = time; }
 
+    // Sensory data gathering for brain decisions.
     TreeSensoryData gatherSensoryData(const World& world) const;
-
-    void createBonesForCell(Vector2i new_cell, MaterialType material, const World& world);
 
     // Replace the brain (for testing with custom brain implementations).
     void setBrain(std::unique_ptr<TreeBrain> brain) { brain_ = std::move(brain); }
 
 private:
+    Vector2i seed_position_;
+    GrowthStage stage_ = GrowthStage::SEED;
+    double total_energy_ = 0.0;
+    double total_water_ = 0.0;
+    std::optional<TreeCommand> current_command_;
+    double time_remaining_seconds_ = 0.0;
     std::unique_ptr<TreeBrain> brain_;
 
     void executeCommand(World& world);

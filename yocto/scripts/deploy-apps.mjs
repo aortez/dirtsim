@@ -8,9 +8,10 @@
  * Much faster than a full YOLO update (~60-90s vs 3+ minutes).
  *
  * Usage:
- *   npm run deploy          # Deploy both server and UI
- *   npm run deploy server   # Deploy server only
- *   npm run deploy ui       # Deploy UI only
+ *   npm run deploy                              # Deploy both server and UI
+ *   npm run deploy server                       # Deploy server only
+ *   npm run deploy ui                           # Deploy UI only
+ *   npm run deploy -- --host dirtsim-clock.local  # Deploy to specific host
  */
 
 import { execSync, spawn } from 'child_process';
@@ -20,8 +21,11 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const consola = require('consola');
 
-const PI_HOST = 'dirtsim.local';
+const DEFAULT_HOST = 'dirtsim.local';
 const PI_USER = 'dirtsim';
+
+// Parsed from command line.
+let piHost = DEFAULT_HOST;
 const YOCTO_DIR = new URL('..', import.meta.url).pathname;
 const WORK_DIR = `${YOCTO_DIR}build/tmp/work`;
 
@@ -73,13 +77,37 @@ function runQuiet(cmd) {
     return execSync(cmd, { encoding: 'utf-8' }).trim();
 }
 
+function showHelp() {
+    console.log(`
+Quick Deploy - Deploy sparkle-duck apps to a Raspberry Pi
+
+Usage:
+  npm run deploy [options] [apps]
+
+Apps:
+  server         Deploy server only
+  ui             Deploy UI only
+  (default)      Deploy both server and UI
+
+Options:
+  --host <host>  Target hostname (default: ${DEFAULT_HOST})
+  -h, --help     Show this help
+
+Examples:
+  npm run deploy                                # Deploy both to dirtsim.local
+  npm run deploy server                         # Deploy server only
+  npm run deploy -- --host dirtsim-clock.local  # Deploy to different host
+  npm run deploy -- --host dirtsim-clock.local ui  # Deploy UI to different host
+`);
+}
+
 async function checkPiReachable() {
     try {
-        execSync(`ping -c 1 -W 2 ${PI_HOST}`, { stdio: 'pipe' });
-        consola.success(`${PI_HOST} is reachable`);
+        execSync(`ping -c 1 -W 2 ${piHost}`, { stdio: 'pipe' });
+        consola.success(`${piHost} is reachable`);
         return true;
     } catch {
-        consola.error(`Cannot reach ${PI_HOST}`);
+        consola.error(`Cannot reach ${piHost}`);
         return false;
     }
 }
@@ -115,7 +143,7 @@ async function deployApp(appName) {
 
     try {
         // SCP binary to /tmp/.
-        run(`scp ${binary} ${PI_USER}@${PI_HOST}:/tmp/`);
+        run(`scp ${binary} ${PI_USER}@${piHost}:/tmp/`);
 
         // Stop service, copy binary, start service.
         const remoteCmd = [
@@ -124,7 +152,7 @@ async function deployApp(appName) {
             `sudo systemctl start ${app.service}`,
         ].join(' && ');
 
-        run(`ssh ${PI_USER}@${PI_HOST} "${remoteCmd}"`);
+        run(`ssh ${PI_USER}@${piHost} "${remoteCmd}"`);
 
         consola.success(`${appName} deployed and restarted!`);
         return true;
@@ -137,6 +165,22 @@ async function deployApp(appName) {
 async function main() {
     const args = process.argv.slice(2);
 
+    // Handle help.
+    if (args.includes('-h') || args.includes('--help')) {
+        showHelp();
+        process.exit(0);
+    }
+
+    // Parse --host option.
+    const hostIndex = args.indexOf('--host');
+    if (hostIndex !== -1) {
+        if (hostIndex + 1 >= args.length) {
+            consola.error('--host requires a hostname argument');
+            process.exit(1);
+        }
+        piHost = args[hostIndex + 1];
+    }
+
     // Determine which apps to deploy.
     let apps = ['server', 'ui'];  // Default: both.
     if (args.includes('server') && !args.includes('ui')) {
@@ -145,7 +189,7 @@ async function main() {
         apps = ['ui'];
     }
 
-    consola.box(`Quick Deploy: ${apps.join(', ')}`);
+    consola.box(`Quick Deploy: ${apps.join(', ')} → ${piHost}`);
 
     // Check Pi is reachable.
     if (!await checkPiReachable()) {

@@ -4,7 +4,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/organisms/TreeManager.h"
+#include "core/organisms/OrganismManager.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -59,7 +59,7 @@ void TreeGerminationScenario::setup(World& world)
     }
 
     // Plant seed in center for balanced growth demonstration.
-    TreeId tree_id = world.getTreeManager().plantSeed(world, 4, 4);
+    OrganismId tree_id = world.getOrganismManager().createTree(world, 4, 4);
     spdlog::info("TreeGerminationScenario: Planted seed {} at (4, 4)", tree_id);
 }
 

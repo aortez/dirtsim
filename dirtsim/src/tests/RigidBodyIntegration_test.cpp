@@ -1,6 +1,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/organisms/TreeManager.h"
+#include "core/organisms/OrganismManager.h"
+#include "core/organisms/Tree.h"
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
@@ -25,18 +26,18 @@ protected:
 TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
 {
     auto world = createWorld(10, 10);
-    TreeManager& tree_manager = world->getTreeManager();
+    OrganismManager& organism_manager = world->getOrganismManager();
 
     // Plant seed at (4, 3) - this creates the tree.
-    TreeId tree_id = tree_manager.plantSeed(*world, 4, 3);
+    OrganismId tree_id = organism_manager.createTree(*world, 4, 3);
 
     // Build 2x2 structure by adding adjacent WOOD cells.
     world->getData().at(5, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 5, 3 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 5, 3 });
     world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 4, 4 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 4, 4 });
     world->getData().at(5, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 5, 4 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 5, 4 });
 
     // Run physics for several frames.
     for (int frame = 0; frame < 20; ++frame) {
@@ -68,12 +69,12 @@ TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
 TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
 {
     auto world = createWorld(6, 4);
-    TreeManager& tree_manager = world->getTreeManager();
+    OrganismManager& organism_manager = world->getOrganismManager();
 
     // Simple tree floating in air: SEED-WOOD horizontal.
-    TreeId tree_id = tree_manager.plantSeed(*world, 1, 1);
+    OrganismId tree_id = organism_manager.createTree(*world, 1, 1);
     world->getData().at(2, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 2, 1 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 2, 1 });
 
     // Verify setup.
     EXPECT_EQ(world->getData().at(1, 1).material_type, MaterialType::SEED);
@@ -99,18 +100,18 @@ TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
 TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
 {
     auto world = createWorld(10, 10);
-    TreeManager& tree_manager = world->getTreeManager();
+    OrganismManager& organism_manager = world->getOrganismManager();
 
     // Create two separate tree structures.
     // Structure 1: seed + WOOD at y=3.
-    TreeId tree1 = tree_manager.plantSeed(*world, 2, 3);
+    OrganismId tree1 = organism_manager.createTree(*world, 2, 3);
     world->getData().at(3, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree1, { 3, 3 });
+    organism_manager.addCellToOrganism(*world, tree1, { 3, 3 });
 
     // Structure 2: seed + WOOD at y=6.
-    TreeId tree2 = tree_manager.plantSeed(*world, 6, 6);
+    OrganismId tree2 = organism_manager.createTree(*world, 6, 6);
     world->getData().at(7, 6).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree2, { 7, 6 });
+    organism_manager.addCellToOrganism(*world, tree2, { 7, 6 });
 
     // Run physics.
     for (int frame = 0; frame < 10; ++frame) {
@@ -136,10 +137,10 @@ TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
 TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
 {
     auto world = createWorld(10, 5);
-    TreeManager& tree_manager = world->getTreeManager();
+    OrganismManager& organism_manager = world->getOrganismManager();
 
     // Plant seed at (2, 2).
-    TreeId tree_id = tree_manager.plantSeed(*world, 2, 2);
+    OrganismId tree_id = organism_manager.createTree(*world, 2, 2);
 
     // Build a tree structure: SEED-WOOD-WOOD connected, then a gap, then disconnected WOOD.
     // Layout:  [SEED]-[WOOD]-[WOOD]   [WOOD]  (gap at x=5, disconnected WOOD at x=6)
@@ -147,14 +148,14 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
 
     // Add connected WOOD cells.
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 3, 2 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 3, 2 });
 
     world->getData().at(4, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 4, 2 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 4, 2 });
 
     // Add disconnected WOOD cell (gap at x=5).
     world->getData().at(6, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    tree_manager.addCellToTree(*world, tree_id, { 6, 2 });
+    organism_manager.addCellToOrganism(*world, tree_id, { 6, 2 });
 
     // Verify initial state.
     EXPECT_EQ(world->getData().at(2, 2).organism_id, tree_id); // SEED.
@@ -175,11 +176,11 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
         << "Disconnected WOOD should have organism_id=0 after pruning";
 
     // Verify tree's cell tracking was updated.
-    const Tree* tree = tree_manager.getTree(tree_id);
+    const Tree* tree = organism_manager.getTree(tree_id);
     ASSERT_NE(tree, nullptr);
-    EXPECT_EQ(tree->cells.size(), 3u) << "Tree should track 3 cells (SEED + 2 WOOD)";
-    EXPECT_TRUE(tree->cells.count({ 2, 2 })) << "SEED should be in tree.cells";
-    EXPECT_TRUE(tree->cells.count({ 3, 2 })) << "Connected WOOD should be in tree.cells";
-    EXPECT_TRUE(tree->cells.count({ 4, 2 })) << "Connected WOOD should be in tree.cells";
-    EXPECT_FALSE(tree->cells.count({ 6, 2 })) << "Disconnected WOOD should NOT be in tree.cells";
+    EXPECT_EQ(tree->getCells().size(), 3u) << "Tree should track 3 cells (SEED + 2 WOOD)";
+    EXPECT_TRUE(tree->getCells().count({ 2, 2 })) << "SEED should be in tree.cells";
+    EXPECT_TRUE(tree->getCells().count({ 3, 2 })) << "Connected WOOD should be in tree.cells";
+    EXPECT_TRUE(tree->getCells().count({ 4, 2 })) << "Connected WOOD should be in tree.cells";
+    EXPECT_FALSE(tree->getCells().count({ 6, 2 })) << "Disconnected WOOD should NOT be in tree.cells";
 }

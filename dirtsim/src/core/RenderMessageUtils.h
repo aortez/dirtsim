@@ -185,6 +185,9 @@ inline RenderMessage packRenderMessage(const WorldData& data, RenderFormat forma
     // (Empty here - populated by server when World is available).
     msg.bones = {};
 
+    // Copy entities.
+    msg.entities = data.entities;
+
     return msg;
 }
 

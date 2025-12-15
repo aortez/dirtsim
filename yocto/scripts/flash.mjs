@@ -645,8 +645,43 @@ async function flashImage(imagePath, bmapPath, device, dryRun = false) {
 // Main Entry Point
 // ============================================================================
 
+function showHelp() {
+  console.log(`
+Sparkle Duck Yocto Flash Tool
+
+Flash Yocto images to USB/SD cards with SSH key injection.
+
+Usage:
+  npm run flash [options]
+
+Options:
+  --device <dev>   Flash directly to device (still confirms)
+  --list           List available devices and exit
+  --dry-run        Show what would happen without flashing
+  --reconfigure    Re-select SSH key
+  -h, --help       Show this help
+
+Examples:
+  npm run flash                       # Interactive device selection
+  npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
+  npm run flash -- --list             # Just list devices
+  npm run flash -- --dry-run          # Preview without flashing
+
+Features:
+  - Injects your SSH public key for passwordless login
+  - Backs up and restores /data partition (WiFi credentials, logs)
+  - Remembers your key preference in .flash-config.json
+`);
+}
+
 async function main() {
   const args = process.argv.slice(2);
+
+  // Handle help.
+  if (args.includes('-h') || args.includes('--help')) {
+    showHelp();
+    process.exit(0);
+  }
 
   // Parse simple args.
   const listOnly = args.includes('--list');

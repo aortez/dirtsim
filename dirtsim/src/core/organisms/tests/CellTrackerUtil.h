@@ -6,7 +6,7 @@
 #include "core/Vector2i.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "core/organisms/Tree.h"
+#include "core/organisms/OrganismType.h"
 #include <iostream>
 #include <unordered_map>
 #include <vector>
@@ -43,7 +43,7 @@ public:
         uint32_t org_id;
     };
 
-    CellTracker(World& world, TreeId organism_id, size_t history_size = 20)
+    CellTracker(World& world, OrganismId organism_id, size_t history_size = 20)
         : world_(world), organism_id_(organism_id), history_size_(history_size)
     {}
 
@@ -79,7 +79,7 @@ public:
 
 private:
     World& world_;
-    TreeId organism_id_;
+    OrganismId organism_id_;
     size_t history_size_;
 
     // Tracked cells and their history.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Entity.h"
 #include "ReflectSerializer.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
@@ -127,7 +128,10 @@ struct RenderMessage {
     // Tree organism data (optional - only present when showing a tree's vision).
     std::optional<TreeSensoryData> tree_vision;
 
-    using serialize = zpp::bits::members<9>;
+    // Entities (duck, butterfly, etc.) - sprite-based world overlays.
+    std::vector<Entity> entities;
+
+    using serialize = zpp::bits::members<10>;
 };
 
 /**
