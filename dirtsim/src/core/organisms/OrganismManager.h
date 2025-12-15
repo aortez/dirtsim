@@ -59,8 +59,8 @@ public:
         uint32_t y,
         std::unique_ptr<DuckBrain> brain = nullptr);
 
-    // Remove an organism by ID.
-    void removeOrganism(OrganismId id);
+    // Remove an organism and clean up its cells from the world.
+    void removeOrganismFromWorld(World& world, OrganismId id);
 
     // Generic organism access.
     Organism* getOrganism(OrganismId id);
@@ -104,6 +104,9 @@ public:
     size_t getOrganismCount() const { return organisms_.size(); }
 
 private:
+    // Internal removal - only clears tracking, not world cells.
+    void removeOrganism(OrganismId id);
+
     std::unordered_map<OrganismId, std::unique_ptr<Organism>> organisms_;
     std::unordered_map<Vector2i, OrganismId> cell_to_organism_;
     OrganismId next_id_ = 1;

@@ -520,13 +520,31 @@ void ClockScenario::startEvent(World& world, EventType type)
         std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>(true);
         spdlog::info("ClockScenario: Creating duck with WallBouncingBrain (jumping enabled)");
 
-        // Spawn duck organism near bottom right.
-        uint32_t duck_x = world.getData().width - 5;
-        uint32_t duck_y = world.getData().height - 3; // Above the wall border.
+        // Choose random entrance side and calculate door position.
+        entrance_side_ = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
+        uint32_t door_y = world.getData().height - 2; // Floor level (above bottom wall).
+        uint32_t door_x = (entrance_side_ == DoorSide::LEFT) ? 0 : world.getData().width - 1;
+
+        entrance_door_pos_ = Vector2i{ static_cast<int>(door_x), static_cast<int>(door_y) };
+        entrance_door_open_ = true;
+        exit_door_open_ = false;
+
+        // Calculate exit door position (opposite side).
+        uint32_t exit_x = (entrance_side_ == DoorSide::LEFT) ? world.getData().width - 1 : 0;
+        exit_door_pos_ = Vector2i{ static_cast<int>(exit_x), static_cast<int>(door_y) };
+
+        // Open entrance door (remove wall cell).
+        world.getData().at(door_x, door_y) = Cell();
+
+        // Spawn duck at the entrance door.
+        uint32_t duck_x = door_x;
+        uint32_t duck_y = door_y;
         duck_organism_id_ = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
 
-        spdlog::info("ClockScenario: Duck organism {} spawned at ({}, {}), world size {}x{}",
-            duck_organism_id_, duck_x, duck_y, world.getData().width, world.getData().height);
+        spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",
+            duck_organism_id_,
+            entrance_side_ == DoorSide::LEFT ? "LEFT" : "RIGHT",
+            duck_x, duck_y);
 
         // Create Entity view for rendering.
         Entity duck_entity;
@@ -596,6 +614,46 @@ void ClockScenario::updateDuckEvent(World& world)
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
     }
 
+    // Close entrance door once duck moves away from it.
+    if (entrance_door_open_ && duck_cell != entrance_door_pos_) {
+        world.getData().at(entrance_door_pos_.x, entrance_door_pos_.y)
+            .replaceMaterial(MaterialType::WALL, 1.0);
+        entrance_door_open_ = false;
+        spdlog::info("ClockScenario: Entrance door closed at ({}, {})",
+            entrance_door_pos_.x, entrance_door_pos_.y);
+    }
+
+    // Open exit door in the last 7 seconds.
+    if (!exit_door_open_ && event_timer_ <= 7.0) {
+        world.getData().at(exit_door_pos_.x, exit_door_pos_.y) = Cell();
+        exit_door_open_ = true;
+        spdlog::info("ClockScenario: Exit door opened at ({}, {})",
+            exit_door_pos_.x, exit_door_pos_.y);
+    }
+
+    // Check if duck entered the exit door and passed the middle of the cell.
+    // Exit is on opposite side of entrance, so check COM direction:
+    // - Entrance LEFT means exit RIGHT: duck moving right, trigger when COM.x > 0.
+    // - Entrance RIGHT means exit LEFT: duck moving left, trigger when COM.x < 0.
+    if (exit_door_open_ && duck_cell == exit_door_pos_) {
+        bool past_middle = (entrance_side_ == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
+        if (past_middle) {
+            spdlog::info("ClockScenario: Duck exited through door at ({}, {}), COM.x={:.2f}",
+                exit_door_pos_.x, exit_door_pos_.y, duck_com.x);
+
+            // Remove the duck immediately so it disappears into the door.
+            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
+            duck_organism_id_ = INVALID_ORGANISM_ID;
+            world.getData().entities.clear();
+
+            // Set timer to 1 second so the door stays open briefly, then closes.
+            if (event_timer_ > 1.0) {
+                event_timer_ = 1.0;
+            }
+            return; // Duck is gone, nothing more to update.
+        }
+    }
+
     // If duck is on ground, clamp COM.y to prevent sinking into floor.
     // COM.y in range [-1, 1], where +1 = bottom of cell.
     // Set to 0.0 (center) when grounded and COM is positive (bottom half).
@@ -636,22 +694,23 @@ void ClockScenario::endEvent(World& world)
 
     // Clean up event-specific state.
     if (current_event_ == EventType::DUCK) {
-        // Get duck position before removing.
-        Vector2i duck_pos{ -1, -1 };
         if (duck_organism_id_ != INVALID_ORGANISM_ID) {
-            Duck* duck = world.getOrganismManager().getDuck(duck_organism_id_);
-            if (duck) {
-                duck_pos = duck->getAnchorCell();
-            }
-            world.getOrganismManager().removeOrganism(duck_organism_id_);
+            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
             duck_organism_id_ = INVALID_ORGANISM_ID;
         }
 
-        // Clear the duck's cell from the world.
-        if (duck_pos.x >= 0 && duck_pos.y >= 0 &&
-            static_cast<uint32_t>(duck_pos.x) < world.getData().width &&
-            static_cast<uint32_t>(duck_pos.y) < world.getData().height) {
-            world.getData().at(duck_pos.x, duck_pos.y) = Cell();
+        // Close any open doors.
+        if (entrance_door_open_) {
+            world.getData().at(entrance_door_pos_.x, entrance_door_pos_.y)
+                .replaceMaterial(MaterialType::WALL, 1.0);
+            entrance_door_open_ = false;
+            spdlog::info("ClockScenario: Entrance door closed at end of event");
+        }
+        if (exit_door_open_) {
+            world.getData().at(exit_door_pos_.x, exit_door_pos_.y)
+                .replaceMaterial(MaterialType::WALL, 1.0);
+            exit_door_open_ = false;
+            spdlog::info("ClockScenario: Exit door closed at end of event");
         }
 
         // Remove duck and sparkle entities.

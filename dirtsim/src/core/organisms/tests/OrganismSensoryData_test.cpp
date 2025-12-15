@@ -388,17 +388,16 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     // Gather sensory data immediately (before physics moves duck).
     DuckSensoryData sensory = duck->gatherSensoryData(*world);
 
-    // Duck at (7,12), 9x9 grid centered at (4,4).
-    // Unclamped offset would be (7-4, 12-4) = (3, 8).
-    // But with clamping to world bounds (15x15), y offset gets clamped to 6 (so grid fits: 6+9=15).
+    // Duck at (7,12), 9x9 grid centered on duck.
+    // Offset = (7-4, 12-4) = (3, 8). No clamping - out-of-bounds treated as WALL.
     EXPECT_EQ(sensory.world_offset.x, 3);
-    EXPECT_EQ(sensory.world_offset.y, 6);
+    EXPECT_EQ(sensory.world_offset.y, 8);
 
-    // Floor at y=13 should be at neural y = 13 - 6 = 7.
-    // Check that row 7 has DIRT.
+    // Floor at y=13 should be at neural y = 13 - 8 = 5.
+    // Check that row 5 has DIRT.
     bool found_dirt = false;
     for (int x = 0; x < DuckSensoryData::GRID_SIZE; x++) {
-        if (sensory.material_histograms[7][x][static_cast<int>(MaterialType::DIRT)] > 0.5) {
+        if (sensory.material_histograms[5][x][static_cast<int>(MaterialType::DIRT)] > 0.5) {
             found_dirt = true;
             break;
         }
@@ -415,8 +414,8 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     }
     EXPECT_TRUE(found_wall) << "Should see WALL to the right in sensory grid";
 
-    // Water at (4,12) should be at neural (4-3, 12-6) = (1, 6).
-    EXPECT_GT(sensory.material_histograms[6][1][static_cast<int>(MaterialType::WATER)], 0.5)
+    // Water at (4,12) should be at neural (4-3, 12-8) = (1, 4).
+    EXPECT_GT(sensory.material_histograms[4][1][static_cast<int>(MaterialType::WATER)], 0.5)
         << "Should see WATER to the left in sensory grid";
 }
 

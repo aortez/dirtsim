@@ -83,6 +83,14 @@ private:
     DuckState duck_state_;              // Duck AI state.
     OrganismId duck_organism_id_ = INVALID_ORGANISM_ID; // Current duck organism.
 
+    // Duck door mechanic state.
+    enum class DoorSide { LEFT, RIGHT };
+    DoorSide entrance_side_ = DoorSide::LEFT;   // Which side duck enters from.
+    Vector2i entrance_door_pos_{ -1, -1 };      // Position of entrance door.
+    Vector2i exit_door_pos_{ -1, -1 };          // Position of exit door.
+    bool entrance_door_open_ = false;           // True until duck moves away.
+    bool exit_door_open_ = false;               // True in last 5 seconds.
+
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
 

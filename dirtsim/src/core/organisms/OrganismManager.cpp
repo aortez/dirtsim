@@ -9,6 +9,7 @@
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include <cassert>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -89,13 +90,36 @@ OrganismId OrganismManager::createDuck(
     return id;
 }
 
-void OrganismManager::removeOrganism(OrganismId id)
+void OrganismManager::removeOrganismFromWorld(World& world, OrganismId id)
 {
-    auto it = organisms_.find(id);
-    if (it == organisms_.end()) {
+    auto* organism = getOrganism(id);
+    if (!organism) {
         spdlog::warn("OrganismManager: Attempted to remove non-existent organism {}", id);
         return;
     }
+
+    WorldData& data = world.getData();
+
+    // Clear all cells owned by this organism from the world.
+    for (const auto& pos : organism->getCells()) {
+        if (pos.x >= 0 && pos.y >= 0 &&
+            static_cast<uint32_t>(pos.x) < data.width &&
+            static_cast<uint32_t>(pos.y) < data.height) {
+            data.at(pos.x, pos.y) = Cell();
+        }
+    }
+
+    spdlog::info("OrganismManager: Removed organism {} from world ({} cells cleared)",
+        id, organism->getCells().size());
+
+    // Now do the internal cleanup.
+    removeOrganism(id);
+}
+
+void OrganismManager::removeOrganism(OrganismId id)
+{
+    auto it = organisms_.find(id);
+    assert(it != organisms_.end() && "removeOrganism called with non-existent organism ID");
 
     // Remove cell ownership tracking.
     for (const auto& pos : it->second->getCells()) {
@@ -103,7 +127,6 @@ void OrganismManager::removeOrganism(OrganismId id)
     }
 
     organisms_.erase(it);
-    spdlog::info("OrganismManager: Removed organism {}", id);
 }
 
 void OrganismManager::clear()

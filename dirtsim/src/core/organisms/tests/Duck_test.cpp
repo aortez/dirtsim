@@ -378,22 +378,15 @@ TEST_F(DuckTest, DuckRemovalClearsCell)
 
     // Create duck at center.
     OrganismId duck_id = manager.createDuck(*world, 2, 2);
-    Duck* duck = manager.getDuck(duck_id);
-    ASSERT_NE(duck, nullptr);
+    ASSERT_NE(manager.getDuck(duck_id), nullptr);
 
     // Verify WOOD cell exists.
     EXPECT_EQ(world->getData().at(2, 2).material_type, MaterialType::WOOD);
 
-    // Get position before removing (simulating ClockScenario's cleanup pattern).
-    Vector2i duck_pos = duck->getAnchorCell();
+    // Remove organism and its cells from the world.
+    manager.removeOrganismFromWorld(*world, duck_id);
 
-    // Remove organism.
-    manager.removeOrganism(duck_id);
-
-    // Manually clear the cell (as ClockScenario does).
-    world->getData().at(duck_pos.x, duck_pos.y) = Cell();
-
-    printWorld(*world, "After duck removal and cell cleanup");
+    printWorld(*world, "After duck removal");
 
     // Verify cell is now empty.
     const Cell& cell = world->getData().at(2, 2);
