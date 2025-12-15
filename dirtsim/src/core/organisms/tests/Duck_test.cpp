@@ -554,3 +554,60 @@ TEST_F(DuckTest, WallBouncingBrainBouncesOffWall)
         EXPECT_TRUE(bounced) << "Duck should bounce back from wall";
     }
 }
+
+TEST_F(DuckTest, WallBouncingBrainJumpsAtMidpoint)
+{
+    // Enable brain debug logging.
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
+
+    // Create world.
+    auto world = std::make_unique<World>(10, 5);
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with WallBouncingBrain with jumping enabled.
+    auto brain = std::make_unique<WallBouncingBrain>(true);
+    OrganismId duck_id = manager.createDuck(*world, 5, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    spdlog::info("Duck settled at x={}, running with jumping enabled...", duck->getAnchorCell().x);
+
+    // Run long enough to establish consistent pattern and see jumps.
+    int jump_count = 0;
+    int last_y = duck->getAnchorCell().y;
+    int local_max_y = last_y;  // Track local peak (lowest point before jump).
+    bool was_on_ground = duck->isOnGround();
+
+    for (int i = 0; i < 800; ++i) {
+        world->advanceTime(0.016);
+
+        int current_y = duck->getAnchorCell().y;
+        bool on_ground = duck->isOnGround();
+
+        // Detect jump: transition from on_ground to airborne with upward movement.
+        if (was_on_ground && !on_ground && current_y <= last_y) {
+            jump_count++;
+            spdlog::info("Frame {}: Jump #{} detected - left ground at y={}", i, jump_count, current_y);
+        }
+
+        // Track local peaks (before jumps).
+        if (current_y > local_max_y) {
+            local_max_y = current_y;
+        }
+
+        last_y = current_y;
+        was_on_ground = on_ground;
+    }
+
+    spdlog::info("Duck jumped {} times in 800 frames", jump_count);
+
+    // With jumping enabled and consistent pattern, should see multiple jumps.
+    EXPECT_GE(jump_count, 2) << "Duck should jump at least twice with jumping enabled";
+}

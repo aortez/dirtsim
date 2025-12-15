@@ -2,6 +2,7 @@
 #include "Duck.h"
 #include "DuckSensoryData.h"
 #include "core/LoggingChannels.h"
+#include <cmath>
 
 namespace DirtSim {
 
@@ -106,13 +107,16 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
 
 void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double deltaTime)
 {
-    (void)deltaTime;
+    float dt = static_cast<float>(deltaTime);
 
     // Initialize on first run - pick furthest wall.
     if (!initialized_) {
         pickFurthestWall(sensory);
         initialized_ = true;
     }
+
+    // Track time for current run.
+    current_run_time_ += dt;
 
     // Check if we're touching the target wall.
     bool touching = isTouchingWall(sensory, target_wall_);
@@ -131,11 +135,20 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
     }
 
     if (touching) {
-        // Switch to opposite wall.
+        // Wall touched - record timing and switch direction.
+        onWallTouch(current_run_time_);
+        current_run_time_ = 0.0f;
+
         target_wall_ = (target_wall_ == TargetWall::LEFT) ? TargetWall::RIGHT : TargetWall::LEFT;
-        LOG_INFO(Brain, "Duck {}: Wall touched at ({},{}), switching to {} wall",
+        LOG_INFO(Brain, "Duck {}: Wall touched at ({},{}), switching to {} wall (run_time={:.2f}s, avg={:.2f}s)",
             duck.getId(), sensory.position.x, sensory.position.y,
-            (target_wall_ == TargetWall::LEFT) ? "LEFT" : "RIGHT");
+            (target_wall_ == TargetWall::LEFT) ? "LEFT" : "RIGHT",
+            current_run_time_, average_run_time_);
+    }
+
+    // Update jump timer and execute jump if ready.
+    if (enable_jumping_) {
+        updateJumpTimer(duck, dt);
     }
 
     // Run toward target wall.
@@ -175,6 +188,47 @@ bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWal
         // Check right neighbor (grid position [4][5]).
         double wall_fill = sensory.material_histograms[CENTER][CENTER + 1][WALL_MATERIAL_INDEX];
         return wall_fill >= WALL_THRESHOLD;
+    }
+}
+
+void WallBouncingBrain::onWallTouch(float run_time)
+{
+    run_count_++;
+
+    // Update running average.
+    if (run_count_ == 1) {
+        average_run_time_ = run_time;
+    } else {
+        average_run_time_ = (average_run_time_ * (run_count_ - 1) + run_time) / run_count_;
+    }
+
+    // Check if this run was consistent (within 20% of average).
+    if (enable_jumping_ && run_count_ > 1) {
+        float deviation = std::abs(run_time - average_run_time_) / average_run_time_;
+        if (deviation <= 0.20f) {
+            // Consistent timing - schedule jump at midpoint.
+            jump_timer_ = average_run_time_ / 2.0f;
+            LOG_INFO(Brain, "Duck: Consistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), scheduling jump at {:.2f}s",
+                run_time, average_run_time_, deviation * 100.0f, jump_timer_);
+        } else {
+            LOG_INFO(Brain, "Duck: Inconsistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), no jump scheduled",
+                run_time, average_run_time_, deviation * 100.0f);
+        }
+    }
+}
+
+void WallBouncingBrain::updateJumpTimer(Duck& duck, float deltaTime)
+{
+    if (jump_timer_ > 0.0f) {
+        jump_timer_ -= deltaTime;
+
+        // Execute jump when timer expires.
+        if (jump_timer_ <= 0.0f) {
+            duck.jump();
+            current_action_ = DuckAction::JUMP;
+            LOG_INFO(Brain, "Duck {}: Midpoint jump executed!", duck.getId());
+            jump_timer_ = -1.0f; // Reset timer.
+        }
     }
 }
 

@@ -75,9 +75,13 @@ private:
  * - Runs toward that wall.
  * - When touching the wall, switches to run toward opposite wall.
  * - Repeats indefinitely (ping-pong pattern).
+ * - Optional: Learns consistent crossing time and jumps at midpoint.
  */
 class WallBouncingBrain : public DuckBrain {
 public:
+    explicit WallBouncingBrain(bool enable_jumping = false)
+        : enable_jumping_(enable_jumping) {}
+
     void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
 
 private:
@@ -88,9 +92,18 @@ private:
 
     TargetWall target_wall_ = TargetWall::RIGHT;
     bool initialized_ = false;
+    bool enable_jumping_ = false;
+
+    // Timing for jump prediction.
+    float current_run_time_ = 0.0f;      // Time elapsed in current run.
+    float average_run_time_ = 0.0f;      // Average time between wall touches.
+    int run_count_ = 0;                  // Number of completed runs.
+    float jump_timer_ = -1.0f;           // Time until jump (-1 = no jump scheduled).
 
     void pickFurthestWall(const DuckSensoryData& sensory);
     bool isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const;
+    void onWallTouch(float run_time);
+    void updateJumpTimer(Duck& duck, float deltaTime);
 };
 
 } // namespace DirtSim

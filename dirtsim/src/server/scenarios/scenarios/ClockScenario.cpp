@@ -510,9 +510,9 @@ void ClockScenario::startEvent(World& world, EventType type)
         // Duck event duration (30 seconds).
         event_timer_ = 30.0;
 
-        // Use WallBouncingBrain (temporarily always, will be 50/50 later).
-        std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>();
-        spdlog::info("ClockScenario: Creating duck with WallBouncingBrain");
+        // Use WallBouncingBrain with jumping enabled (temporarily always, will be 50/50 later).
+        std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>(true);
+        spdlog::info("ClockScenario: Creating duck with WallBouncingBrain (jumping enabled)");
 
         // Spawn duck organism near bottom right.
         uint32_t duck_x = world.getData().width - 5;
