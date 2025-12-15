@@ -67,7 +67,9 @@ public:
     static constexpr float JUMP_FORCE = 600.0f;  // Impulse force applied once when jumping.
 
     // Sparkle constants.
-    static constexpr int MAX_SPARKLES = 8;           // Maximum active sparkles.
+    static constexpr int MIN_SPARKLES = 2;           // Sparkles when at rest.
+    static constexpr int MAX_SPARKLES = 16;          // Sparkles at full speed.
+    static constexpr float SPARKLE_VELOCITY_MAX = 30.0f;  // Velocity for max sparkles (cells/sec).
     static constexpr float SPARKLE_LIFETIME = 2.0f;  // Seconds before sparkle fades completely.
     static constexpr float SPARKLE_DRAG = 0.98f;     // Velocity multiplier per frame (damping).
     static constexpr float SPARKLE_IMPULSE = 3.0f;   // Max random impulse magnitude.
@@ -103,6 +105,7 @@ private:
     void updateSparkles(const World& world, double deltaTime);
     void spawnSparkle();
     bool isSolidCell(const World& world, int x, int y) const;
+    int getDesiredSparkleCount(float speed) const;
 };
 
 } // namespace DirtSim

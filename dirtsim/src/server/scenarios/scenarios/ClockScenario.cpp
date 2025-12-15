@@ -468,16 +468,18 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
         if (!first_event_triggered_) {
             // First event triggers immediately.
             first_event_triggered_ = true;
-            // Only duck events for now.
-            startEvent(world, EventType::DUCK);
+            // Random event: 50% DUCK, 50% RAIN.
+            EventType event = (uniform_dist_(rng_) < 0.5) ? EventType::DUCK : EventType::RAIN;
+            startEvent(world, event);
         }
         else {
             // Wait for timer to expire.
             event_timer_ -= deltaTime;
             if (event_timer_ <= 0.0) {
                 // Time to start next event.
-                // Only duck events for now.
-                startEvent(world, EventType::DUCK);
+                // Random event: 50% DUCK, 50% RAIN.
+                EventType event = (uniform_dist_(rng_) < 0.5) ? EventType::DUCK : EventType::RAIN;
+                startEvent(world, event);
             }
         }
     }

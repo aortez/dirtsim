@@ -344,9 +344,27 @@ void Duck::updateSparkles(const World& world, double deltaTime)
             [](const DuckSparkle& s) { return s.lifetime <= 0.0f; }),
         sparkles_.end());
 
-    // Spawn new sparkles to maintain count.
-    while (static_cast<int>(sparkles_.size()) < MAX_SPARKLES) {
+    // Spawn or remove sparkles to match desired count based on velocity.
+    // Get duck's current velocity from cell.
+    const WorldData& world_data = world.getData();
+    float speed = 0.0f;
+    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0 &&
+        static_cast<uint32_t>(anchor_cell_.x) < world_data.width &&
+        static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
+        const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
+        speed = static_cast<float>(cell.velocity.magnitude());
+    }
+
+    int desired_count = getDesiredSparkleCount(speed);
+
+    // Spawn new sparkles if below desired count.
+    while (static_cast<int>(sparkles_.size()) < desired_count) {
         spawnSparkle();
+    }
+
+    // Remove oldest sparkles if above desired count.
+    while (static_cast<int>(sparkles_.size()) > desired_count) {
+        sparkles_.pop_back();
     }
 }
 
@@ -368,6 +386,15 @@ bool Duck::isSolidCell(const World& world, int x, int y) const
 
     // Solid materials: WALL, WOOD, METAL, DIRT, SAND, etc.
     return true;
+}
+
+int Duck::getDesiredSparkleCount(float speed) const
+{
+    // Linear interpolation: MIN_SPARKLES at rest, MAX_SPARKLES at SPARKLE_VELOCITY_MAX.
+    float t = std::min(speed / SPARKLE_VELOCITY_MAX, 1.0f);
+    int desired = MIN_SPARKLES + static_cast<int>(t * (MAX_SPARKLES - MIN_SPARKLES));
+
+    return std::clamp(desired, MIN_SPARKLES, MAX_SPARKLES);
 }
 
 void Duck::spawnSparkle()

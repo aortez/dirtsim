@@ -193,17 +193,21 @@ bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWal
 
 void WallBouncingBrain::onWallTouch(float run_time)
 {
+    static constexpr float EMA_ALPHA = 0.3f;
+    
     run_count_++;
 
-    // Update running average.
-    if (run_count_ == 1) {
+    // Update exponential moving average.
+    if (average_run_time_ == 0.0f) {
+        // Seed with first run value.
         average_run_time_ = run_time;
     } else {
-        average_run_time_ = (average_run_time_ * (run_count_ - 1) + run_time) / run_count_;
+        // Exponential moving average: 20% weight to new sample.
+        average_run_time_ = EMA_ALPHA * run_time + (1.0f - EMA_ALPHA) * average_run_time_;
     }
 
     // Check if this run was consistent (within 20% of average).
-    if (enable_jumping_ && run_count_ > 1) {
+    if (enable_jumping_ && average_run_time_ > 0.0f) {
         float deviation = std::abs(run_time - average_run_time_) / average_run_time_;
         if (deviation <= 0.20f) {
             // Consistent timing - schedule jump at midpoint.

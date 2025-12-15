@@ -96,7 +96,7 @@ private:
 
     // Timing for jump prediction.
     float current_run_time_ = 0.0f;      // Time elapsed in current run.
-    float average_run_time_ = 0.0f;      // Average time between wall touches.
+    float average_run_time_ = 0.0f;      // Exponential moving average of crossing time.
     int run_count_ = 0;                  // Number of completed runs.
     float jump_timer_ = -1.0f;           // Time until jump (-1 = no jump scheduled).
 
