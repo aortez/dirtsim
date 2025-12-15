@@ -211,6 +211,7 @@ target_link_libraries(lvgl_linux PUBLIC msgpack-cxx nlohmann_json::nlohmann_json
 # Core library - minimal shared types for serialization.
 add_library(sparkle-duck-core STATIC
     src/core/Cell.cpp
+    src/core/Entity.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
@@ -308,9 +309,14 @@ add_library(sparkle-duck-server-lib STATIC
     src/core/WorldViscosityCalculator.cpp
 
     # Organism system.
+    src/core/organisms/Duck.cpp
+    src/core/organisms/DuckBrain.cpp
+    src/core/organisms/DuckSensoryData.cpp
+    src/core/organisms/Organism.cpp
+    src/core/organisms/OrganismManager.cpp
+    src/core/organisms/OrganismSensoryData.cpp
     src/core/organisms/Tree.cpp
     src/core/organisms/TreeCommandProcessor.cpp
-    src/core/organisms/TreeManager.cpp
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
 )
@@ -363,6 +369,7 @@ add_library(sparkle-duck-ui-lib STATIC
     src/ui/UiComponentManager.cpp
     src/ui/SimPlayground.cpp
     src/ui/rendering/CellRenderer.cpp
+    src/ui/rendering/EntityRenderer.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
@@ -481,6 +488,8 @@ add_executable(sparkle-duck-tests
     # Organism tests.
     src/core/organisms/tests/CantileverSupport_test.cpp
     src/core/organisms/tests/CellTrackerUtil.cpp
+    src/core/organisms/tests/Duck_test.cpp
+    src/core/organisms/tests/OrganismSensoryData_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
