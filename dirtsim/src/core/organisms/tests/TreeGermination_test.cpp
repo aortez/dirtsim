@@ -1,5 +1,6 @@
 #include "CellTrackerUtil.h"
 #include "core/GridOfCells.h"
+#include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -761,4 +762,239 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 
     std::cout << "\n=== Final State ===\n";
     std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
+}
+
+// A brain that grows cells one at a time with configurable delay between growths.
+// After each growth completes, it waits for stability_frames before growing next cell.
+class StepByStepGrowthBrain : public TreeBrain {
+public:
+    StepByStepGrowthBrain(std::vector<Vector2i> targets, double growth_time = 0.1)
+        : targets_(std::move(targets)), growth_time_(growth_time)
+    {}
+
+    TreeCommand decide(const TreeSensoryData& /*sensory*/) override
+    {
+        if (command_index_ < targets_.size()) {
+            GrowWoodCommand cmd;
+            cmd.target_pos = targets_[command_index_];
+            cmd.execution_time_seconds = growth_time_;
+            command_index_++;
+            return cmd;
+        }
+        // After all growth commands, wait forever.
+        WaitCommand wait;
+        wait.duration_seconds = 1000.0;
+        return wait;
+    }
+
+    size_t getCommandIndex() const { return command_index_; }
+    size_t getTotalCommands() const { return targets_.size(); }
+
+private:
+    std::vector<Vector2i> targets_;
+    double growth_time_;
+    size_t command_index_ = 0;
+};
+
+// Extended stability test: grows a tree step-by-step and verifies stability after each cell.
+TEST_F(TreeGerminationTest, ExtendedGrowthStability)
+{
+    // Enable debug logging for tree and brain channels.
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Tree, spdlog::level::debug);
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::debug);
+
+    // Use the germination scenario for setup.
+    scenario->setup(*world);
+
+    std::cout << "\n=== Extended Growth Stability Test ===\n";
+    std::cout << "Initial state (from TreeGermination scenario):\n"
+              << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
+
+    // Get the tree created by the scenario.
+    OrganismId tree_id = 1;
+    Tree* tree = world->getOrganismManager().getTree(tree_id);
+    ASSERT_NE(tree, nullptr);
+
+    Vector2i seed_pos = tree->getAnchorCell();
+    std::cout << "Seed initially at: (" << seed_pos.x << ", " << seed_pos.y << ")\n";
+    std::cout << "Note: Dirt is at y=6,7,8 so seed is floating in air!\n\n";
+
+    // First, let the seed fall and land on the dirt.
+    std::cout << "=== Phase 1: Let seed fall to ground ===\n";
+    int frame = 0;
+    Vector2i last_seed_pos = seed_pos;
+    bool seed_landed = false;
+
+    while (!seed_landed && frame < 500) {
+        world->advanceTime(0.016);
+        frame++;
+
+        Vector2i current_pos = tree->getAnchorCell();
+        if (current_pos.x != last_seed_pos.x || current_pos.y != last_seed_pos.y) {
+            std::cout << "Frame " << frame << ": Seed moved from (" << last_seed_pos.x << ", "
+                      << last_seed_pos.y << ") to (" << current_pos.x << ", " << current_pos.y << ")\n";
+            last_seed_pos = current_pos;
+        }
+
+        // Check if seed has landed (y=5 is just above dirt at y=6).
+        if (current_pos.y >= 5) {
+            // Check if seed has stopped moving (velocity near zero).
+            const Cell& seed_cell = world->getData().at(current_pos.x, current_pos.y);
+            if (std::abs(seed_cell.velocity.y) < 0.1 && frame > 50) {
+                seed_landed = true;
+                std::cout << "Frame " << frame << ": Seed landed at (" << current_pos.x << ", "
+                          << current_pos.y << ") with velocity (" << seed_cell.velocity.x << ", "
+                          << seed_cell.velocity.y << ")\n";
+            }
+        }
+    }
+
+    std::cout << "\nAfter landing:\n"
+              << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
+
+    // Update seed position after landing.
+    seed_pos = tree->getAnchorCell();
+    std::cout << "Seed final position: (" << seed_pos.x << ", " << seed_pos.y << ")\n\n";
+
+    // Define growth pattern relative to NEW seed position (after landing).
+    std::cout << "=== Phase 2: Grow tree from landed position ===\n";
+    std::vector<Vector2i> growth_targets = {
+        { seed_pos.x, seed_pos.y - 1 }, // First wood above seed.
+        { seed_pos.x, seed_pos.y - 2 }, // Second wood (trunk continues).
+        { seed_pos.x, seed_pos.y - 3 }, // Third wood (top of trunk).
+    };
+
+    // Only add branches if there's room.
+    if (seed_pos.y >= 4) {
+        growth_targets.push_back({ seed_pos.x - 1, seed_pos.y - 3 }); // Left branch.
+        growth_targets.push_back({ seed_pos.x + 1, seed_pos.y - 3 }); // Right branch.
+    }
+
+    std::cout << "Growth targets:\n";
+    for (size_t i = 0; i < growth_targets.size(); ++i) {
+        std::cout << "  " << i << ": (" << growth_targets[i].x << ", " << growth_targets[i].y << ")\n";
+    }
+    std::cout << "\n";
+
+    tree->setBrain(std::make_unique<StepByStepGrowthBrain>(growth_targets, 0.1));
+    tree->setEnergy(500.0); // Plenty of energy.
+
+    // Track all cells as they're added (frame count continues from Phase 1).
+    CellTracker tracker(*world, tree_id, 50);
+    tracker.trackCell(seed_pos, MaterialType::SEED, frame);
+
+    const int STABILITY_FRAMES = 60;   // Frames to run after each growth.
+    const double COM_THRESHOLD = 0.4;  // Max acceptable COM drift from center.
+    const double VEL_THRESHOLD = 0.05; // Max acceptable velocity after stabilization.
+
+    size_t last_cell_count = 1; // Start with seed.
+    int cells_grown = 0;
+    bool any_stability_failure = false;
+
+    // Run until all cells are grown and stable.
+    while (cells_grown < static_cast<int>(growth_targets.size()) && frame < 5000) {
+        std::unordered_set<Vector2i> cells_before = tree->getCells();
+
+        world->advanceTime(0.016);
+        frame++;
+
+        tracker.recordFrame(frame);
+
+        // Detect new cells.
+        std::unordered_set<Vector2i> cells_after = tree->getCells();
+        if (cells_after.size() > last_cell_count) {
+            // New cell was grown!
+            cells_grown++;
+            std::cout << "\n━━━ GROWTH EVENT " << cells_grown << "/" << growth_targets.size()
+                      << " at frame " << frame << " ━━━\n";
+
+            // Find the new cell.
+            for (const auto& pos : cells_after) {
+                if (cells_before.find(pos) == cells_before.end()) {
+                    const Cell& cell = world->getData().at(pos.x, pos.y);
+                    tracker.trackCell(pos, cell.material_type, frame);
+                    std::cout << "New cell: " << getMaterialName(cell.material_type) << " at (" << pos.x
+                              << ", " << pos.y << ")\n";
+                }
+            }
+            std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
+
+            // Run stability check frames.
+            std::cout << "Running " << STABILITY_FRAMES << " stability frames...\n";
+            bool stable = true;
+
+            for (int s = 0; s < STABILITY_FRAMES; ++s) {
+                world->advanceTime(0.016);
+                frame++;
+                tracker.recordFrame(frame);
+
+                // Check for displaced cells.
+                if (tracker.checkForDisplacements(frame)) {
+                    std::cout << "❌ DISPLACEMENT DETECTED during stability check!\n";
+                    stable = false;
+                    any_stability_failure = true;
+                    break;
+                }
+
+                // Check COM and velocity stability for all organism cells.
+                for (const auto& pos : tree->getCells()) {
+                    const Cell& cell = world->getData().at(pos.x, pos.y);
+
+                    // Check COM drift.
+                    double com_magnitude = std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
+                    if (com_magnitude > COM_THRESHOLD && s == STABILITY_FRAMES - 1) {
+                        std::cout << "⚠️  COM drift at (" << pos.x << ", " << pos.y
+                                  << "): magnitude=" << com_magnitude << " (threshold=" << COM_THRESHOLD
+                                  << ")\n";
+                    }
+
+                    // Check velocity after stability period.
+                    if (s == STABILITY_FRAMES - 1) {
+                        double vel_magnitude =
+                            std::sqrt(cell.velocity.x * cell.velocity.x + cell.velocity.y * cell.velocity.y);
+                        if (vel_magnitude > VEL_THRESHOLD) {
+                            std::cout << "⚠️  Velocity at (" << pos.x << ", " << pos.y
+                                      << "): magnitude=" << vel_magnitude
+                                      << " (threshold=" << VEL_THRESHOLD << ")\n";
+                        }
+                    }
+                }
+            }
+
+            if (stable) {
+                std::cout << "✅ Structure stable after growth " << cells_grown << "\n";
+
+                // Print final state of all cells.
+                std::cout << "Cell states after stabilization:\n";
+                for (const auto& pos : tree->getCells()) {
+                    const Cell& cell = world->getData().at(pos.x, pos.y);
+                    std::cout << "  " << getMaterialName(cell.material_type) << " at (" << pos.x << ", "
+                              << pos.y << "): COM=(" << std::fixed << std::setprecision(3) << cell.com.x
+                              << ", " << cell.com.y << "), vel=(" << cell.velocity.x << ", "
+                              << cell.velocity.y << ")\n";
+                }
+            }
+
+            last_cell_count = cells_after.size();
+        }
+    }
+
+    std::cout << "\n=== Final State ===\n";
+    std::cout << "Total frames: " << frame << "\n";
+    std::cout << "Cells grown: " << cells_grown << "/" << growth_targets.size() << "\n";
+    std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
+
+    // Final assertions.
+    EXPECT_FALSE(any_stability_failure) << "Structure should remain stable after each growth";
+    EXPECT_EQ(cells_grown, static_cast<int>(growth_targets.size()))
+        << "All growth targets should be reached";
+
+    // Final stability check: all COMs should be reasonably centered.
+    for (const auto& pos : tree->getCells()) {
+        const Cell& cell = world->getData().at(pos.x, pos.y);
+        double com_magnitude = std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
+        EXPECT_LT(com_magnitude, COM_THRESHOLD)
+            << "Cell at (" << pos.x << ", " << pos.y << ") has excessive COM drift: " << com_magnitude;
+    }
 }
