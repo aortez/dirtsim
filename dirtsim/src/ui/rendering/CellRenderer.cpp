@@ -8,6 +8,7 @@
 #include <cstring> // for std::memcpy
 #include <new>     // for std::bad_alloc
 #include <spdlog/spdlog.h>
+#include <unordered_set>
 
 namespace DirtSim {
 namespace Ui {
@@ -608,6 +609,13 @@ void CellRenderer::renderWorldData(
         // FAST PATH: Direct pixel rendering with alpha blending
         uint32_t* pixels = reinterpret_cast<uint32_t*>(canvasBuffer_.data());
 
+        // Build set of organism IDs that have entities (sprite-based organisms).
+        // Only these organisms should have their cells hidden.
+        std::unordered_set<uint32_t> sprite_organism_ids;
+        for (const auto& entity : worldData.entities) {
+            sprite_organism_ids.insert(entity.id);
+        }
+
         for (uint32_t y = 0; y < worldData.height; ++y) {
             for (uint32_t x = 0; x < worldData.width; ++x) {
                 uint32_t idx = y * worldData.width + x;
@@ -627,10 +635,13 @@ void CellRenderer::renderWorldData(
                 uint32_t borderColor = 0xFF000000;   // ARGB black with full alpha.
                 uint32_t interiorColor = 0xFF000000; // ARGB black with full alpha.
 
-                // Render organism cells as AIR (entity sprite will show on top).
-                bool is_organism_cell = (cell.organism_id != INVALID_ORGANISM_ID);
+                // Only hide cells for sprite-based organisms (those with entities).
+                // Material-based organisms (trees) should show their cells.
+                bool is_sprite_organism =
+                    (cell.organism_id != INVALID_ORGANISM_ID)
+                    && (sprite_organism_ids.count(cell.organism_id) > 0);
 
-                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_organism_cell) {
+                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_sprite_organism) {
                     lv_color_t matColor = getMaterialColor(cell.material_type);
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).
