@@ -1,5 +1,7 @@
 #include "CellRenderer.h"
+#include "EntityRenderer.h"
 #include "core/MaterialType.h"
+#include "core/organisms/OrganismType.h"
 #include <algorithm>
 #include <cassert>
 #include <cmath>   // for std::round
@@ -621,6 +623,11 @@ void CellRenderer::renderWorldData(
                     continue;
                 }
 
+                // Skip rendering organism cells (let entity sprite show instead).
+                if (cell.organism_id != INVALID_ORGANISM_ID) {
+                    continue;
+                }
+
                 // Prepare border color and interior color.
                 uint32_t borderColor = 0xFF000000;   // ARGB black with full alpha.
                 uint32_t interiorColor = 0xFF000000; // ARGB black with full alpha.
@@ -883,6 +890,17 @@ void CellRenderer::renderWorldData(
                     cell_b_y,
                     0xFFFFFFFF); // White.
             }
+        }
+
+        // Render entities (duck, etc.) on top of cells.
+        if (!worldData.entities.empty()) {
+            renderEntities(
+                worldData.entities,
+                pixels,
+                canvasWidth_,
+                canvasHeight_,
+                scaledCellWidth_,
+                scaledCellHeight_);
         }
 
         // Apply bilinear smoothing filter if mode requires it.
