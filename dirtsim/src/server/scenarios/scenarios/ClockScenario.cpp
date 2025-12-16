@@ -31,12 +31,14 @@ ClockScenario::ClockScenario()
 int ClockScenario::getDigitWidth() const
 {
     switch (config_.font) {
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_WIDTH;
     case ClockFont::Segment7:
         return ClockFonts::SEGMENT7_WIDTH;
     case ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_WIDTH;
-    case ClockFont::DotMatrix:
-        return ClockFonts::DOT_MATRIX_WIDTH;
+    case ClockFont::Segment7Tall:
+        return ClockFonts::SEGMENT7_TALL_WIDTH;
     }
     return ClockFonts::SEGMENT7_WIDTH;
 }
@@ -44,12 +46,14 @@ int ClockScenario::getDigitWidth() const
 int ClockScenario::getDigitHeight() const
 {
     switch (config_.font) {
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_HEIGHT;
     case ClockFont::Segment7:
         return ClockFonts::SEGMENT7_HEIGHT;
     case ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_HEIGHT;
-    case ClockFont::DotMatrix:
-        return ClockFonts::DOT_MATRIX_HEIGHT;
+    case ClockFont::Segment7Tall:
+        return ClockFonts::SEGMENT7_TALL_HEIGHT;
     }
     return ClockFonts::SEGMENT7_HEIGHT;
 }
@@ -57,12 +61,14 @@ int ClockScenario::getDigitHeight() const
 int ClockScenario::getDigitGap() const
 {
     switch (config_.font) {
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_GAP;
     case ClockFont::Segment7:
         return ClockFonts::SEGMENT7_GAP;
     case ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_GAP;
-    case ClockFont::DotMatrix:
-        return ClockFonts::DOT_MATRIX_GAP;
+    case ClockFont::Segment7Tall:
+        return ClockFonts::SEGMENT7_TALL_GAP;
     }
     return ClockFonts::SEGMENT7_GAP;
 }
@@ -70,12 +76,14 @@ int ClockScenario::getDigitGap() const
 int ClockScenario::getColonWidth() const
 {
     switch (config_.font) {
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_COLON_WIDTH;
     case ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_WIDTH;
     case ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
-    case ClockFont::DotMatrix:
-        return ClockFonts::DOT_MATRIX_COLON_WIDTH;
+    case ClockFont::Segment7Tall:
+        return ClockFonts::SEGMENT7_TALL_COLON_WIDTH;
     }
     return ClockFonts::SEGMENT7_COLON_WIDTH;
 }
@@ -83,12 +91,14 @@ int ClockScenario::getColonWidth() const
 int ClockScenario::getColonPadding() const
 {
     switch (config_.font) {
+    case ClockFont::DotMatrix:
+        return ClockFonts::DOT_MATRIX_COLON_PADDING;
     case ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_PADDING;
     case ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
-    case ClockFont::DotMatrix:
-        return ClockFonts::DOT_MATRIX_COLON_PADDING;
+    case ClockFont::Segment7Tall:
+        return ClockFonts::SEGMENT7_TALL_COLON_PADDING;
     }
     return ClockFonts::SEGMENT7_COLON_PADDING;
 }
@@ -313,14 +323,17 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             // Get the pixel value from the appropriate pattern.
             bool pixel = false;
             switch (config_.font) {
+            case ClockFont::DotMatrix:
+                pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
+                break;
             case ClockFont::Segment7:
                 pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
                 break;
             case ClockFont::Segment7Large:
                 pixel = ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];
                 break;
-            case ClockFont::DotMatrix:
-                pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
+            case ClockFont::Segment7Tall:
+                pixel = ClockFonts::SEGMENT7_TALL_PATTERNS[digit][row][col];
                 break;
             }
 

@@ -9,18 +9,20 @@ namespace DirtSim {
  * @brief Available clock font styles.
  */
 enum class ClockFont : uint8_t {
-    Segment7 = 0,      // Standard 7-segment (5×7 cells).
-    Segment7Large = 1, // Large 7-segment (8×11 cells).
-    DotMatrix = 2,     // Dot matrix bitmap (5×7 cells).
+    DotMatrix = 0,     // Dot matrix bitmap (5×7 cells).
+    Segment7 = 1,      // Standard 7-segment (5×7 cells).
+    Segment7Large = 2, // Large 7-segment (8×11 cells).
+    Segment7Tall = 3,  // Tall 7-segment (5×11 cells) - 50% taller, same width.
 };
 
 // JSON serialization for ClockFont enum.
 NLOHMANN_JSON_SERIALIZE_ENUM(
     ClockFont,
     {
+        {ClockFont::DotMatrix, "dot_matrix"},
         {ClockFont::Segment7, "segment7"},
         {ClockFont::Segment7Large, "segment7_large"},
-        {ClockFont::DotMatrix, "dot_matrix"},
+        {ClockFont::Segment7Tall, "segment7_tall"},
     })
 
 /**
@@ -38,7 +40,7 @@ struct ClockConfig {
     double horizontal_scale = 1.1;         // World width = clock_width × scale.
     double vertical_scale = 2.0;           // World height = clock_height × scale.
     uint8_t timezone_index = 2;            // Index into TIMEZONES array (2 = PST).
-    ClockFont font = ClockFont::Segment7;  // Font style.
+    ClockFont font = ClockFont::Segment7Tall;  // Font style.
     bool show_seconds = true;              // Show seconds (HH:MM:SS vs HH:MM).
     bool auto_scale = true;                // Enable auto-scaling to fit display.
     uint32_t target_display_width = 752;   // Target display width in pixels.
