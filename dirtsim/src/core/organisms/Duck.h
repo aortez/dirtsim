@@ -62,21 +62,6 @@ public:
     void setWalkDirection(float dir);  // -1 = left, 0 = stop, +1 = right.
     void jump();
 
-    // Physics constants.
-    static constexpr float WALK_FORCE = 50.0f;   // Force applied each frame when walking.
-    static constexpr float JUMP_FORCE = 600.0f;  // Impulse force applied once when jumping.
-
-    // Sparkle constants.
-    static constexpr int MIN_SPARKLES = 2;           // Sparkles when at rest.
-    static constexpr int MAX_SPARKLES = 16;          // Sparkles at full speed.
-    static constexpr float SPARKLE_VELOCITY_MAX = 30.0f;  // Velocity for max sparkles (cells/sec).
-    static constexpr float SPARKLE_LIFETIME = 2.0f;  // Seconds before sparkle fades completely.
-    static constexpr float SPARKLE_DRAG = 0.98f;     // Velocity multiplier per frame (damping).
-    static constexpr float SPARKLE_IMPULSE = 3.0f;   // Max random impulse magnitude.
-    static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f;  // Chance per frame of impulse.
-    static constexpr float SPARKLE_GRAVITY = 20.0f;   // Gravity acceleration (cells/sec^2).
-    static constexpr float SPARKLE_BOUNCE = 0.7f;    // Velocity retained after bounce (0-1).
-
     // Replace the brain (for testing).
     void setBrain(std::unique_ptr<DuckBrain> brain) { brain_ = std::move(brain); }
 
@@ -98,14 +83,16 @@ private:
     // Sparkle particle system.
     std::vector<DuckSparkle> sparkles_;
     std::mt19937 sparkle_rng_{ std::random_device{}() };
+    Vector2d previous_velocity_{ 0.0, 0.0 };  // For acceleration calculation.
+    Vector2d smoothed_acceleration_{ 0.0, 0.0 };  // Smoothed X/Y acceleration for sparkle emission.
 
     void updateGroundDetection(const World& world);
     void applyMovementToCell(World& world, double deltaTime);
     void logPhysicsState(const World& world);
     void updateSparkles(const World& world, double deltaTime);
-    void spawnSparkle();
+    void spawnSparkle(const Vector2d& duck_velocity);
     bool isSolidCell(const World& world, int x, int y) const;
-    int getDesiredSparkleCount(float speed) const;
+    int getDesiredSparkleCount(float acceleration) const;
 };
 
 } // namespace DirtSim

@@ -8,6 +8,25 @@
 #include "core/WorldData.h"
 #include <algorithm>
 
+namespace {
+  // Physics constants.
+  static constexpr float WALK_FORCE = 50.0f;   // Force applied each frame when walking.
+  static constexpr float JUMP_FORCE = 600.0f;  // Impulse force applied once when jumping.
+
+  // Sparkle constants.
+  static constexpr int MIN_SPARKLES = 0;           // Sparkles when at rest.
+  static constexpr int MAX_SPARKLES = 32;          // Sparkles at full speed.
+  static constexpr float SPARKLE_ACCELERATION_FLOOR = 30.0f;  // Below this, no sparkles (filters noise).
+  static constexpr float SPARKLE_ACCELERATION_MAX = 200.0f;   // Acceleration for max sparkles (cells/sec^2).
+  static constexpr float SPARKLE_ACCEL_SMOOTHING = 0.85f;    // Smoothing factor (0=instant, 1=never updates).
+  static constexpr float SPARKLE_LIFETIME = 2.0f;  // Seconds before sparkle fades completely.
+  static constexpr float SPARKLE_DRAG = 0.98f;     // Velocity multiplier per frame (damping).
+  static constexpr float SPARKLE_IMPULSE = 3.0f;   // Max random impulse magnitude.
+  static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f;  // Chance per frame of impulse.
+  static constexpr float SPARKLE_GRAVITY = 20.0f;   // Gravity acceleration (cells/sec^2).
+  static constexpr float SPARKLE_BOUNCE = 0.7f;    // Velocity retained after bounce (0-1).
+}
+
 namespace DirtSim {
 
 Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
@@ -268,66 +287,17 @@ void Duck::updateSparkles(const World& world, double deltaTime)
         sparkle.position.x = new_x;
         sparkle.position.y = new_y;
 
-        // Check for collision with duck or other solids.
+        // Check for collision with solid cells (but not the duck itself).
         int sparkle_cell_x = static_cast<int>(sparkle.position.x);
         int sparkle_cell_y = static_cast<int>(sparkle.position.y);
 
-        // Save old position for tunneling recovery.
-        float old_x = sparkle.position.x - sparkle.velocity.x * dt;
-        float old_y = sparkle.position.y - sparkle.velocity.y * dt;
+        // Skip collision if sparkle is in the duck's cell (sparkles can pass through duck).
+        bool in_duck_cell = (sparkle_cell_x == anchor_cell_.x && sparkle_cell_y == anchor_cell_.y);
 
-        if (sparkle_cell_x == anchor_cell_.x && sparkle_cell_y == anchor_cell_.y) {
-            // Sparkle is inside duck cell - find first non-solid adjacent cell.
-            float dx = sparkle.position.x - static_cast<float>(anchor_cell_.x);
-            float dy = sparkle.position.y - static_cast<float>(anchor_cell_.y);
-
-            // Try pushing in order: closest edge first, then alternates.
-            bool pushed = false;
-
-            // Build priority list based on closest edge.
-            struct PushOption { int dx_off; int dy_off; bool horizontal; };
-            std::vector<PushOption> options;
-
-            if (std::abs(dx) > std::abs(dy)) {
-                // Horizontal closer - try that first.
-                options.push_back({(dx > 0) ? 1 : -1, 0, true});
-                options.push_back({0, (dy > 0) ? 1 : -1, false});
-                options.push_back({(dx > 0) ? -1 : 1, 0, true});  // Opposite horizontal.
-                options.push_back({0, (dy > 0) ? -1 : 1, false}); // Opposite vertical.
-            } else {
-                // Vertical closer - try that first.
-                options.push_back({0, (dy > 0) ? 1 : -1, false});
-                options.push_back({(dx > 0) ? 1 : -1, 0, true});
-                options.push_back({0, (dy > 0) ? -1 : 1, false}); // Opposite vertical.
-                options.push_back({(dx > 0) ? -1 : 1, 0, true});  // Opposite horizontal.
-            }
-
-            // Try each direction until we find a non-solid cell.
-            for (const auto& opt : options) {
-                int target_x = anchor_cell_.x + opt.dx_off;
-                int target_y = anchor_cell_.y + opt.dy_off;
-
-                if (!isSolidCell(world, target_x, target_y)) {
-                    if (opt.horizontal) {
-                        sparkle.position.x = static_cast<float>(target_x) + (opt.dx_off > 0 ? 0.0f : 0.99f);
-                        sparkle.velocity.x = (opt.dx_off > 0 ? 1.0f : -1.0f) * std::abs(sparkle.velocity.x) * SPARKLE_BOUNCE;
-                    } else {
-                        sparkle.position.y = static_cast<float>(target_y) + (opt.dy_off > 0 ? 0.0f : 0.99f);
-                        sparkle.velocity.y = (opt.dy_off > 0 ? 1.0f : -1.0f) * std::abs(sparkle.velocity.y) * SPARKLE_BOUNCE;
-                    }
-                    pushed = true;
-                    break;
-                }
-            }
-
-            // If completely surrounded by solids, kill the sparkle by setting lifetime to 0.
-            if (!pushed) {
-                sparkle.lifetime = 0.0f;
-            }
-        }
-        // Check if sparkle tunneled into a non-duck solid cell.
-        else if (isSolidCell(world, sparkle_cell_x, sparkle_cell_y)) {
-            // Sparkle is inside a solid (tunneled through) - revert to previous position and bounce.
+        if (!in_duck_cell && isSolidCell(world, sparkle_cell_x, sparkle_cell_y)) {
+            // Sparkle is inside a solid - revert to previous position and bounce.
+            float old_x = sparkle.position.x - sparkle.velocity.x * dt;
+            float old_y = sparkle.position.y - sparkle.velocity.y * dt;
             sparkle.position.x = old_x;
             sparkle.position.y = old_y;
             sparkle.velocity.x *= -SPARKLE_BOUNCE;
@@ -344,22 +314,58 @@ void Duck::updateSparkles(const World& world, double deltaTime)
             [](const DuckSparkle& s) { return s.lifetime <= 0.0f; }),
         sparkles_.end());
 
-    // Spawn or remove sparkles to match desired count based on velocity.
-    // Get duck's current velocity from cell.
+    // Spawn or remove sparkles to match desired count based on acceleration.
+    // Get duck's current velocity from cell and calculate acceleration.
     const WorldData& world_data = world.getData();
-    float speed = 0.0f;
     if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0 &&
         static_cast<uint32_t>(anchor_cell_.x) < world_data.width &&
         static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
         const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
-        speed = static_cast<float>(cell.velocity.magnitude());
+
+        // Calculate instantaneous acceleration components (change in velocity over time).
+        Vector2d velocity_change = cell.velocity - previous_velocity_;
+        Vector2d instant_accel{ 0.0, 0.0 };
+        if (dt > 0.0f) {
+            instant_accel.x = std::abs(velocity_change.x) / dt;
+            instant_accel.y = std::abs(velocity_change.y) / dt;
+        }
+
+        // Smooth X and Y acceleration independently.
+        // Use asymmetric smoothing: fast rise, slow decay for responsive sparkles.
+        auto smooth_component = [](double current, double instant) {
+            if (instant > current) {
+                // Fast rise (respond quickly to acceleration events).
+                return current * SPARKLE_ACCEL_SMOOTHING + instant * (1.0 - SPARKLE_ACCEL_SMOOTHING);
+            } else {
+                // Slower decay (sparkles linger briefly after acceleration).
+                return current * 0.92 + instant * 0.08;
+            }
+        };
+        smoothed_acceleration_.x = smooth_component(smoothed_acceleration_.x, instant_accel.x);
+        smoothed_acceleration_.y = smooth_component(smoothed_acceleration_.y, instant_accel.y);
+
+        // Log acceleration stats every 10 frames.
+        if (frame_counter_ % 10 == 0) {
+            double smoothed_mag = smoothed_acceleration_.magnitude();
+            LOG_INFO(Brain, "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), dv=({:.2f},{:.2f}), smooth=({:.1f},{:.1f}), mag={:.1f}",
+                id_, anchor_cell_.x, anchor_cell_.y,
+                cell.velocity.x, cell.velocity.y,
+                velocity_change.x, velocity_change.y,
+                smoothed_acceleration_.x, smoothed_acceleration_.y, smoothed_mag);
+        }
+
+        // Update previous velocity for next frame.
+        previous_velocity_ = cell.velocity;
     }
 
-    int desired_count = getDesiredSparkleCount(speed);
+    // Compute magnitude from smoothed components.
+    float smoothed_mag = static_cast<float>(smoothed_acceleration_.magnitude());
+    int desired_count = getDesiredSparkleCount(smoothed_mag);
 
     // Spawn new sparkles if below desired count.
+    // Use previous_velocity_ which now holds the current duck velocity.
     while (static_cast<int>(sparkles_.size()) < desired_count) {
-        spawnSparkle();
+        spawnSparkle(previous_velocity_);
     }
 
     // Remove oldest sparkles if above desired count.
@@ -388,16 +394,22 @@ bool Duck::isSolidCell(const World& world, int x, int y) const
     return true;
 }
 
-int Duck::getDesiredSparkleCount(float speed) const
+int Duck::getDesiredSparkleCount(float acceleration) const
 {
-    // Linear interpolation: MIN_SPARKLES at rest, MAX_SPARKLES at SPARKLE_VELOCITY_MAX.
-    float t = std::min(speed / SPARKLE_VELOCITY_MAX, 1.0f);
+    // Below floor, no sparkles (filters out noise during constant-velocity running).
+    if (acceleration < SPARKLE_ACCELERATION_FLOOR) {
+        return MIN_SPARKLES;
+    }
+
+    // Linear interpolation: floor -> MAX maps to MIN_SPARKLES -> MAX_SPARKLES.
+    float range = SPARKLE_ACCELERATION_MAX - SPARKLE_ACCELERATION_FLOOR;
+    float t = std::min((acceleration - SPARKLE_ACCELERATION_FLOOR) / range, 1.0f);
     int desired = MIN_SPARKLES + static_cast<int>(t * (MAX_SPARKLES - MIN_SPARKLES));
 
     return std::clamp(desired, MIN_SPARKLES, MAX_SPARKLES);
 }
 
-void Duck::spawnSparkle()
+void Duck::spawnSparkle(const Vector2d& duck_velocity)
 {
     DuckSparkle sparkle;
 
@@ -406,10 +418,19 @@ void Duck::spawnSparkle()
     sparkle.position.x = static_cast<float>(anchor_cell_.x) + offset_dist(sparkle_rng_);
     sparkle.position.y = static_cast<float>(anchor_cell_.y) + offset_dist(sparkle_rng_);
 
-    // Initial velocity - small random burst.
-    std::uniform_real_distribution<float> vel_dist(-1.5f, 1.5f);
-    sparkle.velocity.x = vel_dist(sparkle_rng_);
-    sparkle.velocity.y = vel_dist(sparkle_rng_) - 0.5f;  // Slight upward bias.
+    // Initial velocity: duck velocity + random burst in random direction.
+    constexpr float BURST_STRENGTH = 3.0f;
+    std::uniform_real_distribution<float> angle_dist(0.0f, 2.0f * 3.14159265f);
+    std::uniform_real_distribution<float> magnitude_dist(0.0f, 1.0f);
+    float angle = angle_dist(sparkle_rng_);
+    float magnitude = magnitude_dist(sparkle_rng_) * BURST_STRENGTH;
+    float burst_x = magnitude * std::cos(angle);
+    float burst_y = magnitude * std::sin(angle);
+    sparkle.velocity.x = static_cast<float>(duck_velocity.x * 0.5) + burst_x;
+    sparkle.velocity.y = static_cast<float>(duck_velocity.y * 0.5) + burst_y;
+
+    LOG_INFO(Brain, "Sparkle spawn: duck_vel=({:.1f},{:.1f}), burst=({:.1f},{:.1f}), final=({:.1f},{:.1f})",
+        duck_velocity.x, duck_velocity.y, burst_x, burst_y, sparkle.velocity.x, sparkle.velocity.y);
 
     // Randomize lifetime a bit.
     std::uniform_real_distribution<float> life_dist(0.7f, 1.0f);
