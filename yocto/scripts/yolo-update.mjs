@@ -492,8 +492,8 @@ async function cleanImage() {
  * Clean both server and image sstate for a full rebuild.
  */
 async function cleanAll() {
-  info('Cleaning sparkle-duck-server and dirtsim-image sstate...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate sparkle-duck-server dirtsim-image']);
+  info('Cleaning dirtsim-server and dirtsim-image sstate...');
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image']);
   success('Clean complete!');
 }
 

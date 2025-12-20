@@ -1,6 +1,6 @@
 SUMMARY = "Dirt Simulation base image for Raspberry Pi"
 DESCRIPTION = "A minimal console image with NetworkManager, SSH, and \
-development tools for the Sparkle Duck dirt simulation project."
+development tools for the DirtSim physics simulation."
 LICENSE = "MIT"
 
 inherit core-image
@@ -35,10 +35,10 @@ setup_dirtsim_home() {
     touch ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
     chmod 600 ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
 
-    # Sparkle Duck application directory (logs, config, etc.).
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/logs
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/config
+    # DirtSim application directory (logs, config, etc.).
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim/logs
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim/config
 
     # Fix ownership of entire home directory (including .profile from base-files).
     chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim
@@ -161,7 +161,7 @@ IMAGE_INSTALL:append = " \
 # ============================================================================
 # Headless physics simulation with WebSocket API on port 8080.
 IMAGE_INSTALL:append = " \
-    sparkle-duck-server \
+    dirtsim-server \
 "
 
 # ============================================================================
@@ -170,5 +170,5 @@ IMAGE_INSTALL:append = " \
 # LVGL-based display client using framebuffer backend (no compositor needed).
 # Connects to server on localhost:8080 and renders the simulation.
 IMAGE_INSTALL:append = " \
-    sparkle-duck-ui \
+    dirtsim-ui \
 "

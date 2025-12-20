@@ -34,7 +34,7 @@ Build a minimal, purpose-built Linux image that:
 ### Stage 2: Roots ✅
 *Headless dirt sim server.*
 
-- [x] `sparkle-duck-server` recipe builds
+- [x] `dirtsim-server` recipe builds
 - [x] systemd service auto-starts server on boot
 - [x] WebSocket accessible from network (port 8080)
 - [x] CLI tool can control remotely
@@ -45,7 +45,7 @@ Build a minimal, purpose-built Linux image that:
 *Full graphical UI on display.*
 
 - [x] LVGL rendering via framebuffer (no compositor needed!)
-- [x] `sparkle-duck-ui` auto-starts and connects to server
+- [x] `dirtsim-ui` auto-starts and connects to server
 - [x] Disabled getty on tty1 (UI owns the framebuffer)
 - [x] Touch input working (both Pi4 ADS7846 and Pi5 Goodix)
 - [x] Auto-detect Pi model and configure display rotation/touch device
@@ -255,7 +255,7 @@ yocto/
 │   │   ├── ab-boot/          # A/B partition management
 │   │   └── persistent-data/  # /data partition mount + WiFi persistence
 │   ├── recipes-dirtsim/
-│   │   └── sparkle-duck/     # Server and UI recipes
+│   │   └── dirtsim/     # Server and UI recipes
 │   ├── recipes-multimedia/
 │   │   └── libyuv/           # Video encoding dependency
 │   └── wic/
@@ -308,8 +308,8 @@ A single image works on both Pi4 and Pi5 by using hardware auto-detection:
 
 **Boot-time detection:**
 - `/proc/device-tree/model` contains Pi model string
-- `sparkle-duck-detect-display.service` reads model and writes `/etc/sparkle-duck/display.conf`
-- UI service loads config via `EnvironmentFile=-/etc/sparkle-duck/display.conf`
+- `dirtsim-detect-display.service` reads model and writes `/etc/dirtsim/display.conf`
+- UI service loads config via `EnvironmentFile=-/etc/dirtsim/display.conf`
 
 **Per-hardware configuration:**
 - **Pi4:** 90° rotation, `/dev/input/touchscreen0` (ADS7846)
@@ -387,7 +387,7 @@ Each device gets unique hostname via `/boot/hostname.txt`:
 
 1. Flash script prompts for hostname (default: `dirtsim`)
 2. Writes hostname to `/boot/hostname.txt`
-3. `sparkle-duck-set-hostname.service` reads file on boot
+3. `dirtsim-set-hostname.service` reads file on boot
 4. Validates and applies hostname
 
 Alternative: Manually edit `/boot/hostname.txt` before first boot.

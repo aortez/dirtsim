@@ -2,7 +2,7 @@
 /**
  * Quick deploy script for userspace applications.
  *
- * Rebuilds sparkle-duck-server and sparkle-duck-ui via Yocto cross-compilation,
+ * Rebuilds dirtsim-server and dirtsim-ui via Yocto cross-compilation,
  * then SCPs the binaries to the Pi and restarts the services.
  *
  * Much faster than a full YOLO update (~60-90s vs 3+ minutes).
@@ -55,16 +55,16 @@ function findBinary(recipe, binaryName) {
 
 const APPS = {
     server: {
-        recipe: 'sparkle-duck-server',
-        binaryName: 'sparkle-duck-server',
-        remotePath: '/usr/bin/sparkle-duck-server',
-        service: 'sparkle-duck-server',
+        recipe: 'dirtsim-server',
+        binaryName: 'dirtsim-server',
+        remotePath: '/usr/bin/dirtsim-server',
+        service: 'dirtsim-server',
     },
     ui: {
-        recipe: 'sparkle-duck-ui',
-        binaryName: 'sparkle-duck-ui',
-        remotePath: '/usr/bin/sparkle-duck-ui',
-        service: 'sparkle-duck-ui',
+        recipe: 'dirtsim-ui',
+        binaryName: 'dirtsim-ui',
+        remotePath: '/usr/bin/dirtsim-ui',
+        service: 'dirtsim-ui',
     },
 };
 
@@ -79,7 +79,7 @@ function runQuiet(cmd) {
 
 function showHelp() {
     console.log(`
-Quick Deploy - Deploy sparkle-duck apps to a Raspberry Pi
+Quick Deploy - Deploy dirtsim apps to a Raspberry Pi
 
 Usage:
   npm run deploy [options] [apps]

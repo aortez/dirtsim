@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Self-hosted GitHub Actions runner setup script.
-# This script installs and configures a GitHub Actions runner for the sparkle-duck repository.
+# This script installs and configures a GitHub Actions runner for the dirtsim repository.
 #
 # Usage:
 #   1. Copy .env.example to .env and fill in your values:
@@ -84,7 +84,7 @@ fi
 
 # Configuration.
 RUNNER_VERSION="2.321.0"
-RUNNER_NAME="${RUNNER_NAME:-sparkle-duck-runner-$(hostname)}"
+RUNNER_NAME="${RUNNER_NAME:-dirtsim-runner-$(hostname)}"
 RUNNER_WORK_DIR="${RUNNER_WORK_DIR:-_work}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,x64}"
 
