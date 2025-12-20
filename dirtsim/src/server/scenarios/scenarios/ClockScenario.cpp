@@ -209,6 +209,9 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                 config_.target_display_width,
                 config_.target_display_height);
 
+            // Cancel any active event before resizing.
+            cancelEvent(world);
+
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
             reset(world);  // Clear and redraw everything.
         }
@@ -549,8 +552,10 @@ void ClockScenario::startEvent(World& world, EventType type)
         // Open entrance door (remove wall cell).
         world.getData().at(door_x, door_y) = Cell();
 
-        // Spawn duck at the entrance door.
-        uint32_t duck_x = door_x;
+        // Spawn duck just inside the door (not at the wall column itself).
+        // Left door: spawn at x=1, Right door: spawn at x=width-2.
+        // TODO: Ideally spawn at door_x and fix physics at world boundary.
+        uint32_t duck_x = (entrance_side_ == DoorSide::LEFT) ? 1 : world.getData().width - 2;
         uint32_t duck_y = door_y;
         duck_organism_id_ = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
 
@@ -739,6 +744,34 @@ void ClockScenario::endEvent(World& world)
     current_event_ = EventType::NONE;
 
     spdlog::info("ClockScenario: Next event in {:.1f}s", event_timer_);
+}
+
+void ClockScenario::cancelEvent(World& world)
+{
+    if (current_event_ == EventType::NONE) {
+        return;
+    }
+
+    spdlog::info("ClockScenario: Canceling {} event due to resize",
+        current_event_ == EventType::RAIN ? "RAIN" : "DUCK");
+
+    // Clean up event-specific state.
+    if (current_event_ == EventType::DUCK) {
+        if (duck_organism_id_ != INVALID_ORGANISM_ID) {
+            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
+            duck_organism_id_ = INVALID_ORGANISM_ID;
+        }
+        world.getData().entities.clear();
+    }
+
+    // Reset all event state.
+    current_event_ = EventType::NONE;
+    event_timer_ = 0.0;
+    first_event_triggered_ = false;
+    entrance_door_open_ = false;
+    exit_door_open_ = false;
+    entrance_door_pos_ = Vector2i{ -1, -1 };
+    exit_door_pos_ = Vector2i{ -1, -1 };
 }
 
 void ClockScenario::evaporateBottomRow(World& world, double deltaTime)

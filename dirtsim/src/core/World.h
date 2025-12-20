@@ -86,8 +86,6 @@ public:
     WorldCollisionCalculator& getCollisionCalculator();
     const WorldCollisionCalculator& getCollisionCalculator() const;
 
-    // WorldSupportCalculator removed - now constructed locally with GridOfCells reference.
-
     WorldAdhesionCalculator& getAdhesionCalculator();
     const WorldAdhesionCalculator& getAdhesionCalculator() const;
 
@@ -177,26 +175,11 @@ public:
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // minimum matter to process.
 
-    // Distance-based cohesion decay constants
-    static constexpr double SUPPORT_DECAY_RATE = 0.3; // Decay rate per distance unit
-    static constexpr double MIN_SUPPORT_FACTOR =
-        0.05; // Minimum cohesion factor (never goes to zero)
-    static constexpr double MAX_SUPPORT_DISTANCE =
-        10; // Maximum search distance for support (legacy)
-
-    // Directional support constants for realistic physics
-    static constexpr double MAX_VERTICAL_SUPPORT_DISTANCE =
-        5; // Check 5 cells down for vertical support
-    static constexpr double RIGID_DENSITY_THRESHOLD =
-        5.0; // Materials above this density provide rigid support
-
     // Mass-based COM cohesion constants
     static constexpr double COM_COHESION_INNER_THRESHOLD =
         0.5; // COM must be > 0.5 from center to activate
     static constexpr double COM_COHESION_MIN_DISTANCE = 0.1; // Prevent division by near-zero
-    static constexpr double COM_COHESION_MAX_FORCE = 5.0;    // Cap maximum force magnitude
-    static constexpr double STRONG_ADHESION_THRESHOLD =
-        0.7; // Minimum adhesion needed for horizontal support
+    static constexpr double COM_COHESION_MAX_FORCE = 5.0; // Cap maximum force magnitude.
 
     // =================================================================
     // FORCE CALCULATION METHODS
@@ -272,6 +255,9 @@ private:
     void applyPressureForces();
     void resolveForces(double deltaTime, const GridOfCells& grid);
     void resolveRigidBodies(double deltaTime);
+    void pruneDisconnectedFragments();
+    Vector2d computeOrganismSupportForce(
+        const std::vector<Vector2i>& organism_cells, uint32_t organism_id) const;
     void updateTransfers(double deltaTime);
     void processVelocityLimiting(double deltaTime);
     void processMaterialMoves();

@@ -325,6 +325,12 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             int nx = static_cast<int>(x) + dx;
             int ny = static_cast<int>(y) + dy;
 
+            // Explicit bounds check - skip out-of-bounds neighbors.
+            if (nx < 0 || ny < 0 || static_cast<uint32_t>(nx) >= world.getData().width
+                || static_cast<uint32_t>(ny) >= world.getData().height) {
+                continue;
+            }
+
             // Multi-stage cache filtering (bounds check handled by cache).
             // Stage 1: Material match check (pure cache - no cell access).
             bool is_same_material = (mat_n.getMaterial(dx, dy) == my_material);

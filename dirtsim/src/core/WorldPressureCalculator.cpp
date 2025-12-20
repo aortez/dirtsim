@@ -466,23 +466,6 @@ double WorldPressureCalculator::calculateReflectionCoefficient(
     return reflection_coefficient;
 }
 
-bool WorldPressureCalculator::isRigidSupport(MaterialType type) const
-{
-    // Materials that can support weight above them.
-    switch (type) {
-        case MaterialType::WALL:
-        case MaterialType::METAL:
-        case MaterialType::WOOD:
-            return true;
-        case MaterialType::DIRT:
-        case MaterialType::SAND:
-            // Could add density check here for packed dirt/sand.
-            return false; // For now, treat as non-rigid.
-        default:
-            return false;
-    }
-}
-
 double WorldPressureCalculator::getSurroundingFluidDensity(
     const World& world, uint32_t x, uint32_t y) const
 {

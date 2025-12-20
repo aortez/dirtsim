@@ -143,13 +143,6 @@ private:
     static constexpr double BACKGROUND_DECAY_RATE = 0.02; // 2% decay per timestep.
 
     /**
-     * @brief Check if a material type provides rigid structural support.
-     * @param type Material type to check.
-     * @return True if material can support weight above it.
-     */
-    bool isRigidSupport(MaterialType type) const;
-
-    /**
      * @brief Get surrounding fluid density for buoyancy calculation.
      * @param world World providing access to grid and cells.
      * @param x X coordinate of cell.

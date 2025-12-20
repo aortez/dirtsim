@@ -116,6 +116,7 @@ private:
     void updateRainEvent(World& world, double deltaTime);
     void updateDuckEvent(World& world);
     void endEvent(World& world);
+    void cancelEvent(World& world);
     void evaporateBottomRow(World& world, double deltaTime);
 };
 

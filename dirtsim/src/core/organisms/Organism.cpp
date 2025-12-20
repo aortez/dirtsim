@@ -77,6 +77,13 @@ void Organism::onCellTransfer(Vector2i from, Vector2i to)
 
 void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, const World& world)
 {
+    // Bones disabled during rigid body implementation. The rigid body system provides
+    // structural integrity for organisms without per-cell spring forces.
+    (void)new_cell;
+    (void)material;
+    (void)world;
+    return;
+
     const WorldData& data = world.getData();
     int bones_created = 0;
 

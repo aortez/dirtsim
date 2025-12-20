@@ -45,7 +45,6 @@ private:
     std::vector<CellDebug>& debug_info_; // Reference to WorldData's debug info.
     CellBitmap empty_cells_;
     CellBitmap wall_cells_;
-    CellBitmap support_bitmap_;
     std::vector<uint64_t> empty_neighborhoods_;
     std::vector<uint64_t> material_neighborhoods_;
     uint32_t width_;
@@ -66,8 +65,6 @@ public:
 
     inline const CellBitmap& emptyCells() const { return empty_cells_; }
     inline const CellBitmap& wallCells() const { return wall_cells_; }
-    inline const CellBitmap& supportBitmap() const { return support_bitmap_; }
-    inline CellBitmap& supportBitmap() { return support_bitmap_; }
 
     inline EmptyNeighborhood getEmptyNeighborhood(uint32_t x, uint32_t y) const
     {

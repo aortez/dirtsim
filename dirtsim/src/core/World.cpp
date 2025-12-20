@@ -461,14 +461,14 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->pressure_calculator_.applyPressureDecay(*this, scaledDeltaTime);
     }
 
-    // Apply forces using the diffused pressure field.
-    resolveForces(scaledDeltaTime, grid);
-
-    // Update organisms after forces are accumulated but before organism force integration.
+    // Update organisms before force accumulation so new cells participate in physics.
     if (organism_manager_) {
         ScopeTimer organismTimer(pImpl->timers_, "organisms");
         organism_manager_->update(*this, scaledDeltaTime);
     }
+
+    // Apply forces using the diffused pressure field.
+    resolveForces(scaledDeltaTime, grid);
 
     // Resolve rigid body physics for organism structures.
     resolveRigidBodies(scaledDeltaTime);
@@ -485,6 +485,10 @@ void World::advanceTime(double deltaTimeSeconds)
 
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
+
+    // Prune disconnected organism fragments AFTER transfers complete.
+    // This ensures connectivity checks use current positions, not stale pre-transfer positions.
+    pruneDisconnectedFragments();
 
     pImpl->data_.timestep++;
 }
@@ -773,10 +777,13 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     ScopeTimer timer(timers, "resolve_forces");
 
     // Clear pending forces at the start of each physics frame.
+    // Skip organism cells - they preserve forces added during organism update.
     {
         ScopeTimer clearTimer(timers, "resolve_forces_clear_pending");
         for (auto& cell : cells) {
-            cell.clearPendingForce();
+            if (cell.organism_id == 0) {
+                cell.clearPendingForce();
+            }
         }
     }
 
@@ -938,12 +945,13 @@ void World::resolveRigidBodies(double deltaTime)
         }
 
         OrganismId organism_id = organism.getId();
+        Vector2i anchor = organism.getAnchorCell();
 
         // 1. Flood fill from anchor to find connected structural cells.
         std::unordered_set<Vector2i, Vector2iHash> connected;
         std::queue<Vector2i> frontier;
 
-        frontier.push(organism.getAnchorCell());
+        frontier.push(anchor);
 
         while (!frontier.empty()) {
             Vector2i pos = frontier.front();
@@ -983,36 +991,10 @@ void World::resolveRigidBodies(double deltaTime)
             frontier.push({ pos.x, pos.y + 1 });
         }
 
-        // 2. Prune disconnected ROOT/WOOD cells.
-        std::vector<Vector2i> to_remove;
-        for (const auto& pos : organism.getCells()) {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
-                || pos.y >= static_cast<int>(data.height)) {
-                continue;
-            }
-
-            Cell& cell = data.at(pos.x, pos.y);
-
-            // Only prune structural materials.
-            if (cell.material_type != MaterialType::ROOT
-                && cell.material_type != MaterialType::WOOD) {
-                continue;
-            }
-
-            if (!connected.count(pos)) {
-                cell.organism_id = 0; // Fragment breaks off.
-                to_remove.push_back(pos);
-                spdlog::info(
-                    "Organism {} fragment at ({},{}) disconnected", organism_id, pos.x, pos.y);
-            }
-        }
-
-        // Update organism's cell tracking.
-        if (!to_remove.empty()) {
-            organism_manager_->removeCellsFromOrganism(organism_id, to_remove);
-        }
-
-        // 3. Apply unified velocity to connected structure.
+        // 2. Apply unified velocity to connected structure.
+        // NOTE: Connectivity pruning is deferred until AFTER material transfers complete.
+        // Running it here causes issues because cells may swap positions later in the frame,
+        // making connectivity checks based on stale positions.
         if (connected.empty()) {
             return; // Lambda return, not function return.
         }
@@ -1031,11 +1013,17 @@ void World::resolveRigidBodies(double deltaTime)
             return; // Lambda return.
         }
 
+        // Convert connected set to vector for support force calculation.
+        std::vector<Vector2i> connected_vec(connected.begin(), connected.end());
+
+        // Add ground support force from pressure field (Newton's Third Law).
+        Vector2d support_force = computeOrganismSupportForce(connected_vec, organism_id);
+        total_force += support_force;
+
         // F = ma -> a = F/m.
         Vector2d acceleration = total_force * (1.0 / total_mass);
 
         // Get current velocity from anchor cell.
-        Vector2i anchor = organism.getAnchorCell();
         Vector2d velocity = data.at(anchor.x, anchor.y).velocity;
         velocity += acceleration * deltaTime;
 
@@ -1051,6 +1039,233 @@ void World::resolveRigidBodies(double deltaTime)
             velocity.x,
             velocity.y);
     }); // End forEachOrganism lambda.
+
+    // Clear pending forces for all organism cells now that they've been applied.
+    for (auto& cell : data.cells) {
+        if (cell.organism_id != 0) {
+            cell.clearPendingForce();
+        }
+    }
+}
+
+void World::pruneDisconnectedFragments()
+{
+    if (!organism_manager_) {
+        return;
+    }
+
+    WorldData& data = pImpl->data_;
+
+    organism_manager_->forEachOrganism([&](Organism& organism) {
+        if (organism.getType() != OrganismType::TREE) {
+            return; // Only trees have structural connectivity requirements.
+        }
+
+        OrganismId organism_id = organism.getId();
+        Vector2i anchor = organism.getAnchorCell();
+
+        // Flood fill from anchor to find connected structural cells.
+        std::unordered_set<Vector2i, Vector2iHash> connected;
+        std::queue<Vector2i> frontier;
+
+        frontier.push(anchor);
+
+        while (!frontier.empty()) {
+            Vector2i pos = frontier.front();
+            frontier.pop();
+
+            // Bounds check.
+            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
+                || pos.y >= static_cast<int>(data.height)) {
+                continue;
+            }
+
+            // Already visited.
+            if (connected.count(pos)) {
+                continue;
+            }
+
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Must belong to this organism.
+            if (cell.organism_id != organism_id) {
+                continue;
+            }
+
+            // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
+            if (cell.material_type != MaterialType::SEED
+                && cell.material_type != MaterialType::ROOT
+                && cell.material_type != MaterialType::WOOD) {
+                continue;
+            }
+
+            connected.insert(pos);
+
+            // Add 4 cardinal neighbors to frontier.
+            frontier.push({ pos.x - 1, pos.y });
+            frontier.push({ pos.x + 1, pos.y });
+            frontier.push({ pos.x, pos.y - 1 });
+            frontier.push({ pos.x, pos.y + 1 });
+        }
+
+        // Prune disconnected and empty cells.
+        std::vector<Vector2i> to_remove;
+        for (const auto& pos : organism.getCells()) {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
+                || pos.y >= static_cast<int>(data.height)) {
+                to_remove.push_back(pos); // Out of bounds.
+                continue;
+            }
+
+            Cell& cell = data.at(pos.x, pos.y);
+
+            // Remove empty cells (cleanup after transfers).
+            if (cell.isEmpty()) {
+                to_remove.push_back(pos);
+                spdlog::debug(
+                    "Pruned empty cell: organism {} cell ({},{}) now AIR",
+                    organism_id,
+                    pos.x,
+                    pos.y);
+                continue;
+            }
+
+            // Remove cells that lost organism ownership (transferred to another organism).
+            if (cell.organism_id != organism_id) {
+                to_remove.push_back(pos);
+                spdlog::debug(
+                    "Pruned transferred cell: organism {} cell ({},{}) now belongs to organism {}",
+                    organism_id,
+                    pos.x,
+                    pos.y,
+                    cell.organism_id);
+                continue;
+            }
+
+            // TODO: Prune structurally disconnected ROOT/WOOD cells.
+            // Disabled until Phase 4 (Structure Movement) is implemented.
+            // Without position constraints, organism cells can create temporary gaps
+            // during transfers, causing false disconnection detections.
+            // For now, we only clean up empty cells and transferred cells above.
+            (void)connected; // Suppress unused variable warning.
+        }
+
+        // Update organism's cell tracking.
+        if (!to_remove.empty()) {
+            organism_manager_->removeCellsFromOrganism(organism_id, to_remove);
+        }
+    });
+}
+
+Vector2d World::computeOrganismSupportForce(
+    const std::vector<Vector2i>& organism_cells, uint32_t organism_id) const
+{
+    const WorldData& data = pImpl->data_;
+    const PhysicsSettings& settings = pImpl->physicsSettings_;
+
+    // Gravity direction (normalized). Y+ is down in our coordinate system.
+    const double gravity = settings.gravity;
+    const Vector2d gravity_dir{ 0.0, 1.0 };
+
+    // Calculate total organism weight.
+    double total_weight = 0.0;
+    for (const auto& pos : organism_cells) {
+        if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < data.width
+            && static_cast<uint32_t>(pos.y) < data.height) {
+            const Cell& cell = data.at(pos.x, pos.y);
+            total_weight += cell.getMass() * gravity;
+        }
+    }
+
+    if (total_weight < 0.0001) {
+        return { 0.0, 0.0 };
+    }
+
+    // Find contact surface - organism cells adjacent to ground.
+    // For rigid structures, solid ground contact provides full support.
+    double support_fraction = 0.0;
+    int contact_count = 0;
+
+    for (const auto& pos : organism_cells) {
+        // Check cell below (in gravity direction).
+        int ground_x = pos.x + static_cast<int>(gravity_dir.x);
+        int ground_y = pos.y + static_cast<int>(gravity_dir.y);
+
+        // World boundary = automatic full support.
+        if (ground_x < 0 || ground_y < 0 || static_cast<uint32_t>(ground_x) >= data.width
+            || static_cast<uint32_t>(ground_y) >= data.height) {
+            // At world boundary - provide full support.
+            return { 0.0, -total_weight }; // Cancel all gravity.
+        }
+
+        const Cell& ground_cell = data.at(ground_x, ground_y);
+
+        // Skip if ground cell is empty.
+        if (ground_cell.isEmpty()) {
+            continue;
+        }
+
+        // Skip if ground cell is part of the same organism (internal).
+        if (ground_cell.organism_id == organism_id) {
+            continue;
+        }
+
+        ++contact_count;
+
+        // Determine support quality based on ground material.
+        MaterialType mat = ground_cell.material_type;
+
+        // Solid materials provide full support (normal force).
+        if (mat == MaterialType::WALL || mat == MaterialType::METAL || mat == MaterialType::WOOD
+            || mat == MaterialType::DIRT || mat == MaterialType::SAND || mat == MaterialType::SEED
+            || mat == MaterialType::ROOT) {
+            // Full support from this contact point.
+            support_fraction += 1.0;
+        }
+        else if (mat == MaterialType::WATER) {
+            // Partial buoyancy-based support from water.
+            // Support = (water_density / organism_density) based on fill ratio.
+            double water_density = getMaterialProperties(MaterialType::WATER).density;
+            support_fraction += water_density * ground_cell.fill_ratio;
+        }
+        else if (mat == MaterialType::LEAF) {
+            // Leaves provide weak support.
+            support_fraction += 0.3 * ground_cell.fill_ratio;
+        }
+        // AIR provides no support (handled by isEmpty check above).
+    }
+
+    // No contact = free fall.
+    if (contact_count == 0) {
+        return { 0.0, 0.0 };
+    }
+
+    // Normalize by number of organism cells to get average support per contact.
+    // If all bottom cells have solid contact, support_fraction >= 1.0.
+    // Cap at 1.0 (can't exceed full support).
+    double normalized_support = std::min(support_fraction / static_cast<double>(contact_count), 1.0);
+
+    // If we have any solid contact, provide full support for the whole structure.
+    // This is physically correct: a tree on ground is fully supported.
+    if (normalized_support > 0.5) {
+        normalized_support = 1.0; // Snap to full support for solid contact.
+    }
+
+    double support_magnitude = total_weight * normalized_support;
+
+    // Support force opposes gravity (points upward, -Y).
+    Vector2d support_force = { 0.0, -support_magnitude };
+
+    spdlog::debug(
+        "Organism {} support: {} contact points, support_fraction={:.2f}, "
+        "support_magnitude={:.2f}, weight={:.2f}",
+        organism_id,
+        contact_count,
+        support_fraction,
+        support_magnitude,
+        total_weight);
+
+    return support_force;
 }
 
 void World::processVelocityLimiting(double deltaTime)

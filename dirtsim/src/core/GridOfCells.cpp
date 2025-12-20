@@ -17,7 +17,6 @@ GridOfCells::GridOfCells(
       debug_info_(debug_info),
       empty_cells_(width, height),
       wall_cells_(width, height),
-      support_bitmap_(width, height),
       empty_neighborhoods_(width * height, 0),
       material_neighborhoods_(width * height, 0),
       width_(width),
