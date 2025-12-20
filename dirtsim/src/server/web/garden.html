@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>✨🦆 Dirt Sim Garden</title>
+    <!-- WebRTC uses native browser support, no external libraries needed. -->
+    <style>
+{{GARDEN_CSS}}
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="overview-column">
+            <div class="overview-header">
+                <h1>✨🦆 Garden</h1>
+                <div id="status">Discovering...</div>
+            </div>
+            <h2>Peers</h2>
+            <div class="peers" id="peers"></div>
+        </div>
+        <div class="resizer" id="resizer"></div>
+        <div class="focus-column" id="focus-column">
+            <div class="focus-empty" id="focus-empty">
+                <div class="focus-empty-icon">🌳</div>
+                <div class="focus-empty-text">Click a peer to focus</div>
+            </div>
+            <div class="focus-content" id="focus-content" style="display: none;">
+                <div class="focus-video-wrapper">
+                    <video id="focus-video" autoplay muted playsinline></video>
+                    <button class="focus-close-overlay" onclick="clearFocus()">✕</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="debug-container">
+        <div class="debug-header">
+            <h3>Debug Log</h3>
+            <div class="debug-controls">
+                <button id="pauseBtn" onclick="togglePause()">Pause</button>
+                <button onclick="copyDebugLog(event)">Copy</button>
+                <button onclick="clearDebugLog()">Clear</button>
+            </div>
+        </div>
+        <div id="debug"></div>
+    </div>
+    <script>
+{{GARDEN_JS}}
+    </script>
+</body>
+</html>

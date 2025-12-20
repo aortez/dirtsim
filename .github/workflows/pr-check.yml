@@ -28,7 +28,7 @@ jobs:
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
 
     - name: Check code formatting
-      working-directory: test-lvgl
+      working-directory: dirtsim
       run: |
         # Check if any files would change after formatting.
         make format
@@ -39,9 +39,9 @@ jobs:
         fi
 
     - name: Build debug version
-      working-directory: test-lvgl
+      working-directory: dirtsim
       run: make -j$(nproc) debug
 
     - name: Run unit tests
-      working-directory: test-lvgl
+      working-directory: dirtsim
       run: ./build/bin/sparkle-duck-tests

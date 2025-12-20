@@ -46,7 +46,7 @@ From your build server:
 ```bash
 # Clone the repository.
 git clone https://github.com/YOUR_USERNAME/sparkle-duck.git
-cd sparkle-duck/test-lvgl
+cd sparkle-duck/dirtsim
 
 # Copy the example environment file.
 cp .github/.env.example .github/.env

@@ -1,0 +1,51 @@
+#pragma once
+
+#include <cassert>
+#include <functional>
+#include <memory>
+
+// Forward declaration for source connection tracking.
+namespace rtc {
+class WebSocket;
+}
+
+/**
+ * @brief Bundles a command with its response callback for async command handling.
+ *
+ * This template enforces type safety between Command and Response types and
+ * prevents accidentally sending multiple responses to the same command.
+ *
+ * @tparam Command The command type containing command parameters.
+ * @tparam Response The response type (typically Result<OkayType, ErrorType>).
+ */
+template <typename CommandT, typename ResponseT>
+struct CommandWithCallback {
+    using Command = CommandT;
+    using Response = ResponseT;
+
+    CommandT command;
+    std::function<void(ResponseT)> callback;
+
+    /**
+     * @brief Send a response by invoking the callback.
+     * @param response The response to send (moved into callback).
+     *
+     * Asserts if called more than once to prevent double-send bugs.
+     */
+    void sendResponse(ResponseT&& response) const
+    {
+        assert(!responseSent && "Response already sent!");
+        if (callback) {
+            callback(std::move(response));
+            responseSent = true;
+        }
+    }
+
+    /**
+     * @brief Get event name for logging.
+     * @return Actual command type name.
+     */
+    static constexpr auto name() { return CommandT::name(); }
+
+    mutable bool responseSent = false;
+};

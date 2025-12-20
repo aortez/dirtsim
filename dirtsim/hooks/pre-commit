@@ -1,0 +1,83 @@
+#!/bin/bash
+#
+# Pre-commit hook: Format, lint, and test staged files.
+#
+# Installation: ./hooks/install-hooks.sh
+#
+
+# Get the root of the git repository.
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
+# Get list of staged files in dirtsim.
+STAGED_CPP=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^dirtsim/.*\.(cpp|h)$')
+STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^dirtsim/.*\.js$')
+
+# If no relevant files staged, allow commit.
+if [ -z "$STAGED_CPP" ] && [ -z "$STAGED_JS" ]; then
+    exit 0
+fi
+
+cd "$REPO_ROOT/dirtsim" || exit 1
+
+# Format and re-stage C++ files.
+if [ -n "$STAGED_CPP" ]; then
+    echo "Running clang-format on staged C++ files..."
+    make format
+
+    # Re-add all formatted files that were originally staged.
+    cd "$REPO_ROOT" || exit 1
+    for FILE in $STAGED_CPP; do
+        git add "$FILE"
+    done
+    cd "$REPO_ROOT/dirtsim" || exit 1
+
+    echo "✅ C++ formatting complete."
+fi
+
+# Lint JavaScript files (check only, don't auto-fix to avoid surprises).
+if [ -n "$STAGED_JS" ] && [ "$SKIP_LINT" != "1" ]; then
+    echo "Linting JavaScript files..."
+    if ! make lint; then
+        echo ""
+        echo "❌ JavaScript lint failed! Commit blocked."
+        echo "To auto-fix: make lint-fix"
+        echo "To skip lint: SKIP_LINT=1 git commit"
+        exit 1
+    fi
+    echo "✅ JavaScript lint passed."
+fi
+
+# Run tests unless explicitly skipped.
+if [ "$SKIP_TESTS" != "1" ]; then
+    echo "Running tests..."
+    cd "$REPO_ROOT/dirtsim" || exit 1
+
+    # Run unit tests quietly, only show summary.
+    TEST_OUTPUT=$(make test 2>&1)
+    if echo "$TEST_OUTPUT" | tail -10 | grep -q "\[  FAILED  \]"; then
+        echo ""
+        echo "❌ Unit tests failed! Commit blocked."
+        echo "To see details: make test"
+        echo "To skip tests: SKIP_TESTS=1 git commit"
+        exit 1
+    fi
+
+    echo "✅ Unit tests passed."
+
+    # Run CLI integration test (quick smoke test of server + UI).
+    echo "Running integration test..."
+    if ! ./build-debug/bin/cli integration_test >/dev/null 2>&1; then
+        echo ""
+        echo "❌ Integration test failed! Commit blocked."
+        echo "To see details: ./build-debug/bin/cli integration_test"
+        echo "To skip tests: SKIP_TESTS=1 git commit"
+        exit 1
+    fi
+
+    echo "✅ Integration test passed."
+
+    # Note: Cache correctness is verified by CacheCorrectnessTest in unit tests above.
+    # No need for separate CLI benchmark test in pre-commit hook.
+fi
+
+exit 0
