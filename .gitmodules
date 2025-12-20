@@ -1,9 +1,9 @@
 [submodule "test-lvgl/lvgl"]
-	path = test-lvgl/lvgl
+	path = dirtsim/lvgl
 	url = https://github.com/lvgl/lvgl.git
 [submodule "test-lvgl/spdlog"]
-	path = test-lvgl/spdlog
+	path = dirtsim/spdlog
 	url = https://github.com/gabime/spdlog.git
 [submodule "test-lvgl/external/args"]
-	path = test-lvgl/external/args
+	path = dirtsim/external/args
 	url = https://github.com/Taywee/args.git

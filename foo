@@ -1,0 +1,32 @@
+Is the pressure gradient based on cell centers or COMs
+
+This is scary... what if we add a new field... we'll have to remember to come back here and edit this code?
+That's basically a bug waiting to happen!
+
+
+91 +                  if (renderMsg.format == RenderFormat::DEBUG) {
+92 +                      // DEBUG format: includes COM, velocity, pressure data.
+93 +                      const DebugCell* debugCells =
+94 +                          reinterpret_cast<const DebugCell*>(renderMsg.payload.data());
+95 +                      for (size_t i = 0; i < numCells; ++i) {
+96 +                          auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
+97 +                          worldData.cells[i].material_type = unpacked.material_type;
+98 +                          worldData.cells[i].fill_ratio = unpacked.fill_ratio;
+99 +                          worldData.cells[i].com = unpacked.com;
+100 +                          worldData.cells[i].velocity = unpacked.velocity;
+101 +                          worldData.cells[i].pressure = unpacked.pressure_hydro;
+102 +                          worldData.cells[i].pressure_gradient = unpacked.pressure_gradient;
+103 +                      }
+104 +                  }
+105 +                  else {
+106 +                      // BASIC format: material + fill only.
+107 +                      const BasicCell* basicCells =
+108 +                          reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
+109 +                      for (size_t i = 0; i < numCells; ++i) {
+110 +                          MaterialType material;
+111 +                          double fill_ratio;
+112 +                          RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio);
+113 +                          worldData.cells[i].material_type = material;
+114 +                          worldData.cells[i].fill_ratio = fill_ratio;
+116 +                  }
+115 +                      }

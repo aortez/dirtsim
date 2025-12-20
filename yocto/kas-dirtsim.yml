@@ -1,0 +1,115 @@
+# KAS configuration for Sparkle Duck Yocto build
+# Stage 1: Bare Earth - minimal bootable image with SSH and NetworkManager
+#
+# Usage:
+#   kas build kas-dirtsim.yml
+
+header:
+  version: 14
+
+distro: poky
+
+# Unified machine supporting both Pi4 (Miuzei HDMI) and Pi5 (HyperPixel DPI).
+machine: raspberrypi-dirtsim
+
+repos:
+  # Core Yocto - the foundation.
+  poky:
+    url: "https://git.yoctoproject.org/poky"
+    branch: scarthgap
+    layers:
+      meta:
+      meta-poky:
+
+  # Raspberry Pi BSP.
+  meta-raspberrypi:
+    url: "https://git.yoctoproject.org/meta-raspberrypi"
+    branch: scarthgap
+
+  # OpenEmbedded layers for NetworkManager and other goodies.
+  meta-openembedded:
+    url: "https://git.openembedded.org/meta-openembedded"
+    branch: scarthgap
+    layers:
+      meta-multimedia:
+      meta-networking:
+      meta-oe:
+      meta-python:
+
+  # Our custom layer - the dirtsim greenhouse.
+  meta-dirtsim:
+    path: meta-dirtsim
+
+local_conf_header:
+  # Machine and build configuration.
+  base: |
+    # Accept restricted licenses (Pi WiFi firmware, H.264 codec).
+    LICENSE_FLAGS_ACCEPTED = "commercial synaptics-killswitch"
+
+    # Use systemd as init system.
+    INIT_MANAGER = "systemd"
+
+    # Set hostname (can be overridden by /boot/hostname.txt at boot).
+    hostname:pn-base-files = "dirtsim"
+
+    # Use wic for SD card image with A/B partitions.
+    IMAGE_FSTYPES = "wic.gz wic.bmap"
+    WKS_FILE = "sdimage-ab.wks"
+
+    # Faster builds - adjust to your CPU cores.
+    BB_NUMBER_THREADS = "8"
+    PARALLEL_MAKE = "-j 8"
+
+    # Download directory (shared across builds).
+    DL_DIR = "${TOPDIR}/../downloads"
+
+    # Shared state cache (speeds up rebuilds).
+    SSTATE_DIR = "${TOPDIR}/../sstate-cache"
+
+    # Disable SPDX generation (requires user namespaces which may not be available).
+    INHERIT:remove = "create-spdx"
+
+  # Raspberry Pi specific configuration.
+  rpi: |
+    # Disable rainbow splash for cleaner boot.
+    DISABLE_SPLASH = "1"
+
+    # Boot from USB drive instead of SD card.
+    CMDLINE_ROOT_PARTITION = "/dev/sda2"
+
+    # Map fbcon to both fb0 and fb1 so both HDMI and HyperPixel DPI get enabled.
+    # This ensures both outputs work regardless of initialization order.
+    CMDLINE:append = " fbcon=map:01"
+
+    # NOTE: Do not enable hardware I2C here - it conflicts with HyperPixel DPI pins.
+    # The HyperPixel overlay sets up its own GPIO-based I2C for touch on different pins.
+
+  # Display configuration for both Pi4 and Pi5.
+  # Uses conditional [pi4] and [pi5] sections in config.txt.
+  display: |
+    # Configure config.txt with hardware-specific display settings.
+    # The bootloader applies only the section matching the detected hardware.
+    RPI_EXTRA_CONFIG = '\n\
+    # Pi4 - MPI4008 4-inch HDMI touchscreen (480x800 portrait)\n\
+    [pi4]\n\
+    dtoverlay=vc4-kms-v3d-pi4\n\
+    dtparam=spi=on\n\
+    hdmi_group=2\n\
+    hdmi_mode=87\n\
+    hdmi_cvt 480 800 60 6 0 0 0\n\
+    hdmi_drive=2\n\
+    config_hdmi_boost=7\n\
+    dtoverlay=ads7846,cs=1,penirq=25,penirq_pull=2,speed=50000,keep_vref_on=0,swapxy=0,pmax=255,xohms=150,xmin=200,xmax=3900,ymin=200,ymax=3900\n\
+    \n\
+    # Pi5 - HyperPixel 4.0 DPI display\n\
+    [pi5]\n\
+    dtoverlay=vc4-kms-v3d-pi5\n\
+    dtoverlay=vc4-kms-dpi-hyperpixel4\n\
+    \n\
+    # Common settings\n\
+    [all]\n\
+    hdmi_force_hotplug=1\n\
+    '
+
+# Target image to build - our custom image recipe.
+target: dirtsim-image

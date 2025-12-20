@@ -4,6 +4,7 @@
 *.txt
 !.env.example
 !.github/
+!yocto/.gitignore
 
 .cmake/
 .idea/
@@ -15,6 +16,7 @@
 .github/.env
 
 *.json
+!yocto/package.json
 *.log
 
 # lvgl/ - removed to allow submodule
@@ -28,6 +30,8 @@ yocto/rpi-build/
 zephyrproject/modules/
 */build/*
 
-# Yocto and Zephyr projects
-yocto/
+# Node.js dependencies.
+node_modules/
+
+# Zephyr project (not currently used).
 zephyrproject/
