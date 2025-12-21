@@ -1,2 +1,136 @@
-Unknown option: 2
-Use -h or --help for usage information
+Building debug version...
+-- Found ccache: /usr/bin/ccache
+-- Compiler flags (CMAKE_C_FLAGS): -g -O0 -DLOG_DEBUG -std=c99 -pedantic -Wall -Wextra -Wfloat-equal -Wshadow -Wpointer-arith -Wunreachable-code -Winit-self -Wno-unused-function -Wno-unused-parameter -Wno-unreachable-code -Wstrict-prototypes
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found suitable version "3.0.13", minimum required is "1.1.0")  
+-- Warnings Active for: srtp2
+-- Warnings as Errors: ON
+-- Could NOT find PCAP (missing: PCAP_LIBRARY) 
+-- Warnings Active for: datatypes_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: cipher_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: kernel_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: rdbx_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: replay_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: roc_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: srtp_driver
+-- Warnings as Errors: ON
+-- Warnings Active for: test_srtp
+-- Warnings as Errors: ON
+-- Warnings Active for: rtpw
+-- Warnings as Errors: ON
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.13")  
+-- Using the multi-header code from /home/oldman/workspace/dirtsim/apps/build-debug/_deps/nlohmann_json-src/include/
+-- Dynamically linking with Boost
+-- Could NOT find Doxygen (missing: DOXYGEN_EXECUTABLE) 
+-- OpenMP found: 4.5
+Including Wayland support
+Including X11 support
+Including FBDEV support
+-- 
+-- Using lv_conf.h from the top-level project directory
+-- Enabling the building of ThorVG internal
+-- Build spdlog: 1.16.0
+-- Build type: Debug
+-- Configuring done (0.6s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/oldman/workspace/dirtsim/apps/build-debug
+make[1]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[2]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[  1%] Built target web_resources_generate
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[  2%] Built target gtest
+[  6%] Built target lvgl_thorvg
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[  7%] Built target srtp2
+[  8%] Built target spdlog
+[ 10%] Built target juice
+[ 12%] Built target juice-static
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 14%] Built target usrsctp
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 14%] Built target gmock
+[ 14%] Built target gtest_main
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 14%] Built target gmock_main
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 15%] Built target lvgl_linux
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/draw/lv_draw_vector.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/nv3007/lv_nv3007.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/nxp_elcdif/lv_nxp_elcdif.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/st7735/lv_st7735.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/renesas_glcdc/lv_renesas_glcdc.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/st7789/lv_st7789.c.o
+[ 15%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/st7796/lv_st7796.c.o
+[ 21%] Built target datachannel-static
+[ 21%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/evdev/lv_evdev.c.o
+[ 21%] Building CXX object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/tft_espi/lv_tft_espi.cpp.o
+[ 22%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/display/st_ltdc/lv_st_ltdc.c.o
+[ 22%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/draw/eve/lv_draw_eve_display.c.o
+[ 28%] Built target datachannel
+[ 28%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/libinput/lv_libinput.c.o
+[ 28%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/libinput/lv_xkb.c.o
+[ 28%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_cache.c.o
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 28%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_entry.c.o
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 30%] Built target dirtsim-core
+/home/oldman/workspace/dirtsim/apps/lvgl/src/draw/lv_draw_vector.c:16:6: error: #error "LV_USE_VECTOR_GRAPHIC requires (LV_USE_DRAW_SW and LV_USE_THORVG) or LV_USE_DRAW_VG_LITE or (LV_USE_NEMA_GFX and LV_USE_NEMA_VG)"
+   16 |     #error "LV_USE_VECTOR_GRAPHIC requires (LV_USE_DRAW_SW and LV_USE_THORVG) or LV_USE_DRAW_VG_LITE or (LV_USE_NEMA_GFX and LV_USE_NEMA_VG)"
+      |      ^~~~~
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 30%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_fbdev.c.o
+[ 30%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_image_cache.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_lcd.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_profiler.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_libuv.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_mouse.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/nuttx/lv_nuttx_touchscreen.c.o
+[ 31%] Building C object lvgl/CMakeFiles/lvgl.dir/src/drivers/opengles/assets/lv_opengles_shader.c.o
+make[3]: *** [lvgl/CMakeFiles/lvgl.dir/build.make:678: lvgl/CMakeFiles/lvgl.dir/src/draw/lv_draw_vector.c.o] Error 1
+make[3]: *** Waiting for unfinished jobs....
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 39%] Built target dirtsim-server-lib
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[3]: Entering directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 39%] Building CXX object CMakeFiles/dirtsim-server.dir/src/server/main.cpp.o
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[2]: *** [CMakeFiles/Makefile2:1243: lvgl/CMakeFiles/lvgl.dir/all] Error 2
+make[2]: *** Waiting for unfinished jobs....
+[ 39%] Linking CXX executable bin/dirtsim-server
+make[3]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+[ 39%] Built target dirtsim-server
+make[2]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make[1]: *** [Makefile:166: all] Error 2
+make[1]: Leaving directory '/home/data/workspace/dirtsim/apps/build-debug'
+make: *** [Makefile:87: debug] Error 2

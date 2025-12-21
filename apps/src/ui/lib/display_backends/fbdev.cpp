@@ -109,20 +109,24 @@ static lv_display_t* init_fbdev(void)
     // Check for display rotation via environment variable.
     // Useful when hardware rotates display (e.g., HyperPixel dtparam=rotate=90).
     // LVGL needs to match the rotation so content appears correctly.
+    lv_display_rotation_t display_rotation = LV_DISPLAY_ROTATION_0;
     const char* rotation_env = getenv("LV_DISPLAY_ROTATION");
     if (rotation_env != NULL) {
         int rotation = atoi(rotation_env);
         switch (rotation) {
             case 90:
-                lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_90);
+                display_rotation = LV_DISPLAY_ROTATION_90;
+                lv_display_set_rotation(disp, display_rotation);
                 spdlog::info("FBDEV: Display rotation set to 90 degrees");
                 break;
             case 180:
-                lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
+                display_rotation = LV_DISPLAY_ROTATION_180;
+                lv_display_set_rotation(disp, display_rotation);
                 spdlog::info("FBDEV: Display rotation set to 180 degrees");
                 break;
             case 270:
-                lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_270);
+                display_rotation = LV_DISPLAY_ROTATION_270;
+                lv_display_set_rotation(disp, display_rotation);
                 spdlog::info("FBDEV: Display rotation set to 270 degrees");
                 break;
             default:

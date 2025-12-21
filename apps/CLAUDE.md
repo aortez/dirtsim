@@ -494,7 +494,6 @@ See `design_docs/icon-rail-ui.md` for full design documentation.
 **Known Limitations:**
 - No energy regeneration (trees deplete and stop)
 - No MATURE stage transition
-- **TEMPORARY FIX: LVGL Wayland driver patched** - Modified `lvgl/src/drivers/wayland/lv_wayland.c` to add 100ms timeout to poll() in flush wait callback. This prevents infinite blocking when window is on inactive virtual desktop, but it's a patch to the external LVGL library. Need to find a solution that doesn't require modifying the submodule, or submit patch upstream to LVGL project
 
 **Next Steps:**
 - Fix growth topology (extend from tree edges for realistic branching)

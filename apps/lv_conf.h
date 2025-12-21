@@ -740,7 +740,7 @@
 
 #define LV_USE_LIST       1
 
-#define LV_USE_LOTTIE     0
+#define LV_USE_LOTTIE     1
 
 #define LV_USE_MENU       1
 
@@ -955,7 +955,7 @@
 #define LV_USE_VECTOR_GRAPHIC  1
 
 /** Enable ThorVG (vector graphics library) from the src/libs folder */
-#define LV_USE_THORVG_INTERNAL 0 
+#define LV_USE_THORVG_INTERNAL 1 
 
 /** Enable ThorVG by assuming that its installed and linked to the project */
 #define LV_USE_THORVG_EXTERNAL 0
@@ -1176,7 +1176,7 @@
 #if LV_USE_WAYLAND
     #define LV_WAYLAND_WINDOW_DECORATIONS   0    /**< Draw client side window decorations only necessary on Mutter/GNOME */
     #define LV_WAYLAND_WL_SHELL             0    /**< Use the legacy wl_shell protocol instead of the default XDG shell */
-    #define LV_WAYLAND_BUF_COUNT            2    /**< Number of Wayland buffers (2 or 3) */
+    #define LV_WAYLAND_BUF_COUNT            1    /**< Number of Wayland buffers (1 without DMABUF) */
     #define LV_WAYLAND_RENDER_MODE          LV_DISPLAY_RENDER_MODE_PARTIAL /**< Render mode */
 #endif
 
