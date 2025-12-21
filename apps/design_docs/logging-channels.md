@@ -67,13 +67,13 @@ LoggingChannels::physics()->debug("Velocity: {}", velocity);
 
 ```bash
 # Enable specific channels
-./build/bin/dirtsim-ui -C "physics:trace,cohesion:debug,ui:info"
+./build-debug/bin/dirtsim-ui -C "physics:trace,cohesion:debug,ui:info"
 
 # Disable noisy channels
-./build/bin/dirtsim-ui -C "pressure:off,friction:off"
+./build-debug/bin/dirtsim-ui -C "pressure:off,friction:off"
 
 # Focus on single subsystem
-./build/bin/dirtsim-ui -C "collision:trace,*:off"
+./build-debug/bin/dirtsim-ui -C "collision:trace,*:off"
 ```
 
 ### Configuration Format
@@ -116,16 +116,16 @@ if (log_channels) {
 
 ```bash
 # Debug pressure system issues
-./build/bin/dirtsim-ui -C "pressure:trace,*:warn"
+./build-debug/bin/dirtsim-ui -C "pressure:trace,*:warn"
 
 # Investigate collision problems
-./build/bin/dirtsim-ui -C "collision:trace,support:debug,*:error"
+./build-debug/bin/dirtsim-ui -C "collision:trace,support:debug,*:error"
 
 # Performance profiling (minimal logging)
-./build/bin/dirtsim-ui -C "*:error"
+./build-debug/bin/dirtsim-ui -C "*:error"
 
 # Full trace of physics but quiet UI
-./build/bin/dirtsim-ui -C "physics:trace,cohesion:trace,ui:error"
+./build-debug/bin/dirtsim-ui -C "physics:trace,cohesion:trace,ui:error"
 ```
 
 ## Future Enhancements

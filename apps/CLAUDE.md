@@ -100,10 +100,10 @@ make test ARGS='--gtest_filter=State*'
 **Setting log levels** via `--log-level` flag:
 ```bash
 # Server with debug logging
-./build/bin/dirtsim-server --log-level debug -p 8080
+./build-debug/bin/dirtsim-server --log-level debug -p 8080
 
 # UI with trace logging
-./build/bin/dirtsim-ui --log-level trace -b wayland
+./build-debug/bin/dirtsim-ui --log-level trace -b wayland
 
 # Use with run_debug.sh
 ./run_debug.sh -l debug      # Debug level

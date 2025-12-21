@@ -91,10 +91,10 @@ sm.updateAnimations(); // Update background fractal animation
 
 ### Test Results
 ```bash
-$ ./build/bin/dirtsim-ui --list-backends
+$ ./build-debug/bin/dirtsim-ui --list-backends
 Supported backends: FBDEV WAYLAND X11
 
-$ ./build/bin/dirtsim-ui -b x11 -s 0
+$ ./build-debug/bin/dirtsim-ui -b x11 -s 0
 [DEBUG] Selected backend: X11
 [info] UiComponentManager initialized with display
 [info] UI state machine created, state: Startup
@@ -145,7 +145,7 @@ make debug
 make test
 
 # 5. Run application
-./build/bin/dirtsim-ui -b x11
+./build-debug/bin/dirtsim-ui -b x11
 ```
 
 **Total time:** ~5 minutes (mostly package downloads)

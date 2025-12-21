@@ -29,7 +29,7 @@ DirtSim is a **client-server physics simulation** with interactive UI and web-ba
 **JSON protocol:** CLI commands and external tools
 - StateGet, SimRun, CellSet, etc.
 - Human-readable, debuggable
-- Used by `./build/bin/cli server <command>`
+- Used by `./build-debug/bin/cli server <command>`
 
 ### UI Client - Port 7070
 
@@ -66,15 +66,15 @@ DirtSim is a **client-server physics simulation** with interactive UI and web-ba
 
 ```bash
 # Server commands
-./build/bin/cli server StateGet
-./build/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 1000}'
+./build-debug/bin/cli server StateGet
+./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 1000}'
 
 # UI commands
-./build/bin/cli ui StatusGet --address ws://localhost:7070
-./build/bin/cli ui Exit
+./build-debug/bin/cli ui StatusGet --address ws://localhost:7070
+./build-debug/bin/cli ui Exit
 
 # Quick smoke test
-./build/bin/cli integration_test
+./build-debug/bin/cli integration_test
 ```
 
 ## Core Components
@@ -156,7 +156,7 @@ src/
 
 **Start everything:**
 ```bash
-./build/bin/cli run-all              # Server + UI together
+./build-debug/bin/cli run-all              # Server + UI together
 ```
 
 **Access points:**
@@ -172,7 +172,7 @@ src/
 **Testing:**
 ```bash
 make test                            # Unit tests
-./build/bin/cli integration_test    # End-to-end smoke test
+./build-debug/bin/cli integration_test    # End-to-end smoke test
 ./build-release/bin/cli benchmark   # Performance metrics
 ```
 

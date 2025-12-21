@@ -69,22 +69,22 @@ make release
 #### Server + UI Together
 ```bash
 # Terminal 1: Start headless server
-./build/bin/dirtsim-server -p 8080
+./build-debug/bin/dirtsim-server -p 8080
 
 # Terminal 2: Start UI client
-./build/bin/dirtsim-ui -b wayland --connect localhost:8080
+./build-debug/bin/dirtsim-ui -b wayland --connect localhost:8080
 ```
 
 #### Standalone UI (built-in physics)
 ```bash
 # Wayland backend (default)
-./build/bin/dirtsim-ui -b wayland
+./build-debug/bin/dirtsim-ui -b wayland
 
 # X11 backend
-./build/bin/dirtsim-ui -b x11
+./build-debug/bin/dirtsim-ui -b x11
 
 # Custom window size
-./build/bin/dirtsim-ui -b x11 -W 1200 -H 1200
+./build-debug/bin/dirtsim-ui -b x11 -W 1200 -H 1200
 ```
 
 ## Display Backend Support
@@ -161,10 +161,10 @@ grep "^#define LV_USE_" lv_conf.h | grep -E "(SDL|X11|WAYLAND|FBDEV)"
 
 ```bash
 # Basic benchmark (headless server, 120 steps)
-./build/bin/cli benchmark --steps 120
+./build-debug/bin/cli benchmark --steps 120
 
 # Simulate UI client load
-./build/bin/cli benchmark --steps 120 --simulate-ui
+./build-debug/bin/cli benchmark --steps 120 --simulate-ui
 ```
 
 ## Project Structure
