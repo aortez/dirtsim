@@ -98,8 +98,27 @@ npm run flash -- --reconfigure      # Re-select SSH key
 **First-time setup:** The script prompts you to:
 1. Select an SSH public key from `~/.ssh/` (saved to `.flash-config.json`)
 2. Enter a hostname for this device (e.g., `dirtsim1`, `dirtsim2`)
+3. Enter WiFi credentials (or skip if reflashing with existing data partition)
 
 The hostname is written to `/boot/hostname.txt` and applied on first boot. You can also manually edit this file on the SD card before booting.
+
+**WiFi Credentials:**
+
+For automated flashing, create a `wifi-creds.local` file:
+```bash
+cp pi-base/wifi-creds.local.example wifi-creds.local
+# Edit wifi-creds.local with your SSID and password
+```
+
+The file format is JSON:
+```json
+{
+  "ssid": "MyNetworkName",
+  "password": "MySecretPassword"
+}
+```
+
+If the file doesn't exist, the script prompts interactively. WiFi credentials are stored in the `/data` partition and persist across A/B updates.
 
 ### Remote Update (A/B System)
 
@@ -233,11 +252,18 @@ yocto/
 ├── README.md                 # This file
 ├── kas-dirtsim.yml           # KAS build configuration
 ├── package.json              # npm scripts for flash/update
+├── wifi-creds.local          # WiFi credentials (gitignored, create from example)
 ├── scripts/
 │   ├── deploy-apps.mjs       # Quick deploy userspace apps
-│   ├── flash.mjs             # Flash image + inject SSH key
+│   ├── flash.mjs             # Flash image + inject SSH key + WiFi
 │   ├── update.mjs            # Build + flash + verify (sneakernet)
 │   └── yolo-update.mjs       # Remote update over network
+├── pi-base/                  # Shared infrastructure (git submodule)
+│   ├── yocto/meta-pi-base/   # Shared Yocto layer
+│   │   ├── wic/sdimage-ab.wks.in  # A/B partition layout
+│   │   └── recipes-support/  # ab-boot, persistent-data, hostname-setup
+│   ├── scripts/lib/          # Shared flash utilities (JS)
+│   └── wifi-creds.local.example
 ├── meta-dirtsim/             # Our custom Yocto layer
 │   ├── conf/
 │   │   └── layer.conf
@@ -251,15 +277,10 @@ yocto/
 │   │   └── openssh/          # SSH hardening
 │   ├── recipes-extended/
 │   │   └── sudo/             # Passwordless sudo for dirtsim
-│   ├── recipes-support/
-│   │   ├── ab-boot/          # A/B partition management
-│   │   └── persistent-data/  # /data partition mount + WiFi persistence
 │   ├── recipes-dirtsim/
-│   │   └── dirtsim/     # Server and UI recipes
-│   ├── recipes-multimedia/
-│   │   └── libyuv/           # Video encoding dependency
-│   └── wic/
-│       └── sdimage-ab.wks    # Partition layout (boot, rootfs_a, rootfs_b, data)
+│   │   └── dirtsim/          # Server and UI recipes
+│   └── recipes-multimedia/
+│       └── libyuv/           # Video encoding dependency
 └── build/                    # Build output (gitignored)
 ```
 
@@ -274,6 +295,7 @@ Using **Scarthgap (5.0)** - confirmed working on Raspberry Pi 5.
 | poky | Core Yocto (bitbake, oe-core) |
 | meta-raspberrypi | Pi 5 BSP |
 | meta-openembedded | Additional recipes (NetworkManager, etc.) |
+| meta-pi-base | Shared infrastructure (A/B boot, persistent data, hostname) |
 | meta-dirtsim | Our custom layer and image |
 
 ---
@@ -365,10 +387,11 @@ When running `npm run flash`, the script:
 3. Flashes the new image (overwrites everything)
 4. Restores `/data` contents to the new partition 4
 
-**Tools:**
+**Tools (from pi-base layer):**
 - `ab-boot-manager` - manages active/inactive slots, shows data partition status
 - `ab-update` - wrapper for safe partition flashing
-- `persistent-data` recipe - systemd units for mounting `/data` and bind-mounting NetworkManager connections
+- `persistent-data` - systemd units for mounting `/data` and bind-mounting NetworkManager connections
+- `hostname-setup` - sets hostname from `/boot/hostname.txt` at boot
 
 **BusyBox compatibility:** Uses `/proc/cmdline` parsing instead of `findmnt`.
 
@@ -387,7 +410,7 @@ Each device gets unique hostname via `/boot/hostname.txt`:
 
 1. Flash script prompts for hostname (default: `dirtsim`)
 2. Writes hostname to `/boot/hostname.txt`
-3. `dirtsim-set-hostname.service` reads file on boot
+3. `hostname-setup` service (from pi-base) reads file on boot
 4. Validates and applies hostname
 
 Alternative: Manually edit `/boot/hostname.txt` before first boot.

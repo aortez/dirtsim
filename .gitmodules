@@ -7,3 +7,6 @@
 [submodule "apps/external/args"]
 	path = apps/external/args
 	url = https://github.com/Taywee/args.git
+[submodule "yocto/pi-base"]
+	path = yocto/pi-base
+	url = ../sparkle-duck-shared

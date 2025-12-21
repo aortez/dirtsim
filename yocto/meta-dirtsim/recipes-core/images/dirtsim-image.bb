@@ -109,12 +109,14 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# Persistent Data
+# Persistent Data & Boot Configuration
 # ============================================================================
-# Mounts /data partition which survives A/B updates.
-# WiFi credentials, logs, and config are stored here.
+# Shared infrastructure from pi-base layer:
+# - persistent-data: Mounts /data partition, bind-mounts WiFi credentials.
+# - hostname-setup: Sets hostname from /boot/hostname.txt at boot.
 IMAGE_INSTALL:append = " \
     persistent-data \
+    hostname-setup \
 "
 
 # ============================================================================

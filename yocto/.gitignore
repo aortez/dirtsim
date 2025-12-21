@@ -29,3 +29,6 @@ node_modules/
 
 # User-specific flash configuration (SSH key path).
 .flash-config.json
+
+# WiFi credentials (sensitive - use wifi-creds.local.example from pi-base as template).
+wifi-creds.local
