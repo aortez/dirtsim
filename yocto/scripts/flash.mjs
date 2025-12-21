@@ -96,22 +96,27 @@ Usage:
 
 Options:
   --device <dev>   Flash directly to device (still confirms)
+  --interactive    Force interactive prompts (ignore config file)
   --list           List available devices and exit
   --dry-run        Show what would happen without flashing
   --reconfigure    Re-select SSH key
   -h, --help       Show this help
 
 Examples:
-  npm run flash                       # Interactive device selection
+  npm run flash                       # Use config file or interactive
+  npm run flash -- --interactive      # Force interactive mode
   npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
   npm run flash -- --list             # Just list devices
   npm run flash -- --dry-run          # Preview without flashing
 
-Features:
-  - Injects your SSH public key for passwordless login
-  - Prompts for WiFi credentials for first-boot connectivity
-  - Backs up and restores /data partition (WiFi credentials, logs)
-  - Remembers your key preference in .flash-config.json
+Configuration:
+  Defaults can be set in .flash-config.json:
+    - device: Auto-select device
+    - hostname: Pre-set hostname
+    - backup_data: Auto-backup data partition (true/false)
+    - skip_confirmation: Skip final confirmation (true/false)
+
+  Copy .flash-config.json.example to .flash-config.json to get started.
 `);
 }
 
@@ -128,6 +133,7 @@ async function main() {
   const listOnly = args.includes('--list');
   const dryRun = args.includes('--dry-run');
   const reconfigure = args.includes('--reconfigure');
+  const interactive = args.includes('--interactive');
   const deviceIndex = args.indexOf('--device');
   const specifiedDevice = deviceIndex !== -1 ? args[deviceIndex + 1] : null;
 
@@ -193,8 +199,8 @@ async function main() {
       process.exit(1);
     }
     targetDevice = specifiedDevice;
-  } else if (config.device) {
-    // Use device from config file.
+  } else if (!interactive && config.device) {
+    // Use device from config file (unless --interactive is set).
     const found = devices.find(d => d.device === config.device);
     if (!found) {
       warn(`Configured device ${config.device} not found, falling back to interactive selection.`);
@@ -223,10 +229,10 @@ async function main() {
   }
 
   // Get hostname (priority: config file > prompt > default).
-  let hostname = config.hostname || DEFAULT_HOSTNAME;
+  let hostname = (!interactive && config.hostname) ? config.hostname : DEFAULT_HOSTNAME;
 
-  // Prompt for hostname only if not specified in config and not using CLI --device flag.
-  if (!config.hostname && !specifiedDevice && !dryRun) {
+  // Prompt for hostname if interactive mode or not specified in config.
+  if ((interactive || !config.hostname) && !specifiedDevice && !dryRun) {
     log('');
     const hostnameInput = await prompt(`Device hostname (default: ${hostname}): `);
     if (hostnameInput && hostnameInput.trim()) {
@@ -241,7 +247,7 @@ async function main() {
     // Save hostname to config.
     config.hostname = hostname;
     saveConfig(CONFIG_FILE, config);
-  } else if (config.hostname) {
+  } else if (!interactive && config.hostname) {
     info(`Using hostname from config: ${hostname}`);
   }
 
@@ -257,8 +263,8 @@ async function main() {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
 
-    // Use config value if specified, otherwise prompt.
-    let shouldBackup = config.backup_data !== undefined ? config.backup_data : null;
+    // Use config value if specified (and not in interactive mode), otherwise prompt.
+    let shouldBackup = (!interactive && config.backup_data !== undefined) ? config.backup_data : null;
 
     if (shouldBackup === null) {
       const doBackup = await prompt('Backup /data before flashing? (Y/n): ');
@@ -284,7 +290,7 @@ async function main() {
     await flashImage(image.path, targetDevice, {
       dryRun,
       bmapPath: existsSync(bmapPath) ? bmapPath : null,
-      skipConfirm: config.skip_confirmation || false,
+      skipConfirm: (!interactive && config.skip_confirmation) || false,
     });
 
     // Inject SSH key after flashing.

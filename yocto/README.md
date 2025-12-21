@@ -88,12 +88,31 @@ build/tmp/deploy/images/raspberrypi-dirtsim/dirtsim-image-raspberrypi-dirtsim.ro
 The flash tool writes the image, injects your SSH public key, and sets the device hostname.
 
 ```bash
-npm run flash                       # Interactive device selection
+npm run flash                       # Use config file or interactive
+npm run flash -- --interactive      # Force interactive mode (ignore config)
 npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
 npm run flash -- --list             # Just list available devices
 npm run flash -- --dry-run          # Show what would happen
 npm run flash -- --reconfigure      # Re-select SSH key
 ```
+
+**Configuration File:**
+
+The flash script uses `.flash-config.json` to store preferences. To set up automated flashing:
+
+```bash
+cp .flash-config.json.example .flash-config.json
+# Edit .flash-config.json with your preferences
+```
+
+Supported config fields:
+- `ssh_key_path` (required): Path to SSH public key
+- `device` (optional): Auto-select device (e.g., `/dev/sda`)
+- `hostname` (optional): Pre-set hostname
+- `backup_data` (optional): Auto-backup data partition (`true`/`false`)
+- `skip_confirmation` (optional): Skip final confirmation (`true`/`false`)
+
+Use `--interactive` to override the config file and force interactive prompts.
 
 **First-time setup:** The script prompts you to:
 1. Select an SSH public key from `~/.ssh/` (saved to `.flash-config.json`)

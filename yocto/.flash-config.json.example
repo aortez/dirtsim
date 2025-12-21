@@ -1,0 +1,7 @@
+{
+  "ssh_key_path": "/home/youruser/.ssh/id_ed25519_sparkle_duck.pub",
+  "hostname": "dirtsim",
+  "device": "/dev/sda",
+  "backup_data": false,
+  "skip_confirmation": false
+}
