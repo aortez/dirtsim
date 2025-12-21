@@ -12,7 +12,7 @@ A custom Yocto Linux image for running the DirtSim dirt simulation on Raspberry 
 Build a minimal, purpose-built Linux image that:
 - Boots fast and runs lean
 - Contains only what we need for the dirt sim
-- Can be updated atomically (A/B partitions via Mender)
+- Can be updated atomically (A/B partitions)
 - Eliminates the cruft of a general-purpose distro
 
 ## Development Stages
@@ -125,11 +125,12 @@ If the file doesn't exist, the script prompts interactively. WiFi credentials ar
 The image uses **A/B partitions** for safe remote updates - no more corrupted filesystems! The disk has two rootfs partitions (sda2/sda3). Updates are written to the inactive partition while the system runs from the active one.
 
 ```bash
-npm run yolo                       # Build + flash to inactive slot + reboot
-npm run yolo -- --clean            # Force rebuild (cleans sstate first)
-npm run yolo -- --skip-build       # Flash existing image (skip kas build)
-npm run yolo -- --hold-my-mead     # Skip confirmation prompt (for scripts)
-npm run yolo -- --dry-run          # Show what would happen
+npm run yolo                            # Build + flash to inactive slot + reboot
+npm run yolo -- --target 192.168.1.50   # Target a specific host (default: dirtsim.local)
+npm run yolo -- --clean                 # Force rebuild (cleans sstate first)
+npm run yolo -- --skip-build            # Flash existing image (skip kas build)
+npm run yolo -- --hold-my-mead          # Skip confirmation prompt (for scripts)
+npm run yolo -- --dry-run               # Show what would happen
 ```
 
 ### Quick Deploy (Userspace Apps)
@@ -195,8 +196,8 @@ The image uses **A/B partitions** for safe remote updates, plus a **persistent d
 
 ```
 /dev/sda1  - boot (150MB, FAT32, shared by both slots)
-/dev/sda2  - rootfs_a (800MB, ext4)
-/dev/sda3  - rootfs_b (800MB, ext4)
+/dev/sda2  - rootfs_a (2GB, ext4)
+/dev/sda3  - rootfs_b (2GB, ext4)
 /dev/sda4  - data (100MB, ext4, persistent across updates)
 ```
 
@@ -369,8 +370,8 @@ Safe remote updates via dual rootfs partitions plus persistent data:
 **Layout:**
 ```
 /dev/sda1 - boot (150MB, shared)
-/dev/sda2 - rootfs_a (800MB)
-/dev/sda3 - rootfs_b (800MB)
+/dev/sda2 - rootfs_a (2GB)
+/dev/sda3 - rootfs_b (2GB)
 /dev/sda4 - data (100MB, persistent)
 ```
 
