@@ -15,7 +15,7 @@ class RtpPacketizationConfig;
 class RtcpSrReporter;
 } // namespace rtc
 
-typedef struct _lv_display_t lv_display_t;
+#include <lvgl.h>
 
 namespace DirtSim {
 

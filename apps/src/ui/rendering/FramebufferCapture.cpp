@@ -6,14 +6,18 @@
 // TODO: Download stb_image_write.h to external/stb/
 // For now, we'll use a placeholder implementation
 #define STB_IMAGE_WRITE_IMPLEMENTATION
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
 #include "external/stb/stb_image_write.h"
+#pragma GCC diagnostic pop
 
 namespace DirtSim {
 namespace Ui {
 
 namespace {
 
-void lvglPixelsToRGBA(const lv_color_t* lv_pixels, uint8_t* rgba_pixels, int width, int height)
+__attribute__((unused)) void lvglPixelsToRGBA(
+    const lv_color_t* lv_pixels, uint8_t* rgba_pixels, int width, int height)
 {
     for (int i = 0; i < width * height; i++) {
         rgba_pixels[i * 4 + 0] = lv_pixels[i].red;

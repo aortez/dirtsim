@@ -3,8 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <vector>
-
-typedef struct _lv_display_t lv_display_t;
+#include <lvgl.h>
 
 namespace DirtSim {
 namespace Ui {

@@ -5,8 +5,7 @@
 #include <string>
 #include <vector>
 
-// Forward declaration for LVGL display structure.
-struct _lv_display_t;
+#include <lvgl.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -26,7 +25,7 @@ struct ScreenshotData {
  * @param scale Resolution scale factor (0.25 = 4x smaller, 1.0 = full res).
  * @return Pixel data in ARGB8888 format, or std::nullopt if capture failed.
  */
-std::optional<ScreenshotData> captureDisplayPixels(_lv_display_t* display, double scale = 1.0);
+std::optional<ScreenshotData> captureDisplayPixels(lv_display_t* display, double scale = 1.0);
 
 /**
  * @brief Encode ARGB8888 pixel data to PNG bytes.

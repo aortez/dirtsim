@@ -523,6 +523,8 @@ to see if they work.
 - Go to http://dirtsim.local and see a monitor page that shows all the dirt sims on the network.  The beginning of a web-based control panel!
 - on start menu, q to quit, enter to start?
 - **TODO: Unit tests for Finger API** - Brainstorm and implement tests for FingerDown/Move/Up commands. Should verify: (1) session tracking, (2) force application to cells within radius, (3) force magnitude/direction from drag delta, (4) falloff behavior, (5) multi-finger support.
+- reinstall lottie - it would be sweet to mess with these animations.
+- LVGL should not be included in application header files!  Let's find them and fix them.
 
 See design_docs/plant.md and design_docs/ai-integration-ideas.md for details.
 

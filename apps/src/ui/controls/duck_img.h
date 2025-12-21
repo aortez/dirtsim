@@ -5,6 +5,10 @@
 
 #include <lvgl/lvgl.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmissing-field-initializers"
+#pragma GCC diagnostic ignored "-Wunused-variable"
+
 #define DUCK_IMG_WIDTH 101
 #define DUCK_IMG_HEIGHT 112
 
@@ -2841,18 +2845,11 @@ static const uint8_t duck_img_data[45248] = {
 };
 
 // LV_IMAGE_HEADER_MAGIC is 0x19 in LVGL 9.
-static const lv_image_dsc_t duck_img = {
-    .header = {
-        .magic = LV_IMAGE_HEADER_MAGIC,
-        .cf = LV_COLOR_FORMAT_ARGB8888,
-        .flags = 0,
-        .w = 101,
-        .h = 112,
-        .stride = 404,
-        .reserved_2 = 0,
-    },
-    .data_size = 45248,
-    .data = duck_img_data,
-    .reserved = NULL,
-    .reserved_2 = NULL,
+__attribute__((unused)) const lv_image_dsc_t duck_img = {
+    {LV_IMAGE_HEADER_MAGIC, LV_COLOR_FORMAT_ARGB8888, 0, 101, 112, 404, 0},  // header
+    45248,         // data_size
+    duck_img_data, // data
+    NULL           // reserved
 };
+
+#pragma GCC diagnostic pop
