@@ -162,12 +162,12 @@ src/
 **Access points:**
 - DSSM server: `ws://localhost:8080`
 - UI control: `ws://localhost:7070`
-- Web dashboard: `http://localhost:8080/garden`
+- Web dashboard: `http://localhost:8081/garden`
 
 **Remote Pi:**
 - SSH: `ssh dirtsim.local`
 - WebSockets: `ws://dirtsim.local:8080`, `ws://dirtsim.local:7070`
-- Dashboard: `http://dirtsim.local:8080/garden`
+- Dashboard: `http://dirtsim.local:8081/garden`
 
 **Testing:**
 ```bash

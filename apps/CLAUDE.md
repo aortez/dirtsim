@@ -359,10 +359,10 @@ The HTTP server (port 8080) serves a web dashboard at `/garden` that displays re
 **Access the dashboard:**
 ```bash
 # Local
-http://localhost:8080/garden
+http://localhost:8081/garden
 
 # Remote (Pi)
-http://dirtsim.local:8080/garden
+http://dirtsim.local:8081/garden
 ```
 
 **Implementation:**
