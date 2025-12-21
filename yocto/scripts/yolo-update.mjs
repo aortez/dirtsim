@@ -191,9 +191,6 @@ async function main() {
   }
   success(`${remoteHost} is reachable`);
 
-  // Heat up sudo access for the deploy later.
-  execSync(`sudo echo "I'm sudo"`, { stdio: 'pipe' });
-
   // Detect boot device.
   const bootDevice = getRemoteBootDevice(remoteTarget, REMOTE_DEVICE);
   info(`Boot device: ${bootDevice}`);
