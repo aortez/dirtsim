@@ -182,7 +182,7 @@ async function main() {
     process.exit(0);
   }
 
-  // Select device.
+  // Select device (priority: CLI flag > config file > interactive prompt).
   let targetDevice;
 
   if (specifiedDevice) {
@@ -193,7 +193,18 @@ async function main() {
       process.exit(1);
     }
     targetDevice = specifiedDevice;
-  } else {
+  } else if (config.device) {
+    // Use device from config file.
+    const found = devices.find(d => d.device === config.device);
+    if (!found) {
+      warn(`Configured device ${config.device} not found, falling back to interactive selection.`);
+    } else {
+      targetDevice = config.device;
+      info(`Using device from config: ${targetDevice}`);
+    }
+  }
+
+  if (!targetDevice) {
     // Interactive selection.
     const choice = await prompt(`Select device (1-${devices.length}) or 'q' to quit: `);
 
@@ -211,9 +222,11 @@ async function main() {
     targetDevice = devices[index].device;
   }
 
-  // Prompt for hostname.
-  let hostname = DEFAULT_HOSTNAME;
-  if (!specifiedDevice && !dryRun) {
+  // Get hostname (priority: config file > prompt > default).
+  let hostname = config.hostname || DEFAULT_HOSTNAME;
+
+  // Prompt for hostname only if not specified in config and not using CLI --device flag.
+  if (!config.hostname && !specifiedDevice && !dryRun) {
     log('');
     const hostnameInput = await prompt(`Device hostname (default: ${hostname}): `);
     if (hostnameInput && hostnameInput.trim()) {
@@ -228,6 +241,8 @@ async function main() {
     // Save hostname to config.
     config.hostname = hostname;
     saveConfig(CONFIG_FILE, config);
+  } else if (config.hostname) {
+    info(`Using hostname from config: ${hostname}`);
   }
 
   // Get WiFi credentials (from file or prompt, skip if restoring backup).
@@ -241,8 +256,18 @@ async function main() {
   if (!dryRun && hasDataPartition(targetDevice)) {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
-    const doBackup = await prompt('Backup /data before flashing? (Y/n): ');
-    if (doBackup.toLowerCase() !== 'n') {
+
+    // Use config value if specified, otherwise prompt.
+    let shouldBackup = config.backup_data !== undefined ? config.backup_data : null;
+
+    if (shouldBackup === null) {
+      const doBackup = await prompt('Backup /data before flashing? (Y/n): ');
+      shouldBackup = doBackup.toLowerCase() !== 'n';
+    } else {
+      info(`Using backup setting from config: ${shouldBackup ? 'yes' : 'no'}`);
+    }
+
+    if (shouldBackup) {
       backupDir = backupDataPartition(targetDevice);
       if (!backupDir) {
         const continueAnyway = await prompt('Continue without backup? (y/N): ');
@@ -259,6 +284,7 @@ async function main() {
     await flashImage(image.path, targetDevice, {
       dryRun,
       bmapPath: existsSync(bmapPath) ? bmapPath : null,
+      skipConfirm: config.skip_confirmation || false,
     });
 
     // Inject SSH key after flashing.
