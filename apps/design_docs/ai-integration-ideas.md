@@ -1,6 +1,6 @@
 # AI Integration Ideas
 
-Quick notes on potential uses of local Ollama setup (NVIDIA 4090) for Sparkle Duck.
+Quick notes on potential uses of local Ollama setup (NVIDIA 4090) for DirtSim.
 
 ## 1. Natural Language CLI with Physics DSL
 

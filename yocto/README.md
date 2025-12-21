@@ -1,6 +1,6 @@
-# Sparkle Duck Yocto Build
+# DirtSim Yocto Build
 
-A custom Yocto Linux image for running the Sparkle Duck dirt simulation on Raspberry Pi 4 and Pi 5.
+A custom Yocto Linux image for running the DirtSim dirt simulation on Raspberry Pi 4 and Pi 5.
 
 **Hardware Support:**
 - **Pi4:** MPI4008 4" HDMI touchscreen (480x800, resistive touch via ADS7846)
@@ -161,7 +161,7 @@ Or add this to your `~/.ssh/config` for a shorter command:
 Host dirtsim
     HostName dirtsim.local
     User dirtsim
-    IdentityFile ~/.ssh/id_ed25519_sparkle_duck
+    IdentityFile ~/.ssh/id_ed25519_dirtsim
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 ```

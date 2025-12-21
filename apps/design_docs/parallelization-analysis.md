@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-The Sparkle Duck physics simulation has significant parallelization potential. The current sequential pipeline processes ~10,000 cells (100×100 grid) with 8-12 physics calculators each frame. Key opportunities include:
+The DirtSim physics simulation has significant parallelization potential. The current sequential pipeline processes ~10,000 cells (100×100 grid) with 8-12 physics calculators each frame. Key opportunities include:
 
 - **Per-cell force calculations** (80-90% of CPU time) - embarrassingly parallel
 - **Grid-level operations** (support map, pressure diffusion) - data parallel
@@ -705,7 +705,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime) {
 
 ## Conclusion
 
-Parallelizing the Sparkle Duck simulation is **feasible and worthwhile**. The per-cell force calculations are embarrassingly parallel and represent 60-70% of frame time, making them ideal for parallelization.
+Parallelizing the DirtSim simulation is **feasible and worthwhile**. The per-cell force calculations are embarrassingly parallel and represent 60-70% of frame time, making them ideal for parallelization.
 
 **Key takeaways**:
 - Start with Phase 1 (force parallelization) for immediate 2-3× speedup

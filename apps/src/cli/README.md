@@ -1,6 +1,6 @@
-# Sparkle Duck CLI Client
+# DirtSim CLI Client
 
-Command-line client for interacting with Sparkle Duck server and UI via WebSocket.
+Command-line client for interacting with DirtSim server and UI via WebSocket.
 
 ## Quick Start
 

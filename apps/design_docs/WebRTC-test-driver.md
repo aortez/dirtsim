@@ -1,8 +1,8 @@
-# Sparkle Duck Architecture
+# DirtSim Architecture
 
 ## System Overview
 
-Sparkle Duck is a **client-server physics simulation** with interactive UI and web-based monitoring. The architecture separates physics computation (headless server) from visualization (UI client) for performance and flexibility.
+DirtSim is a **client-server physics simulation** with interactive UI and web-based monitoring. The architecture separates physics computation (headless server) from visualization (UI client) for performance and flexibility.
 
 ```
 ┌─────────────────┐         ┌──────────────────┐         ┌─────────────┐
