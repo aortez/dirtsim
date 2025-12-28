@@ -108,6 +108,17 @@ IMAGE_INSTALL:append = " \
     networkmanager-nmcli \
 "
 
+# Disable systemd-networkd since we use NetworkManager exclusively.
+# Having both enabled causes systemd-networkd-wait-online to timeout (120s)
+# waiting for interfaces that NetworkManager manages, delaying boot.
+disable_systemd_networkd() {
+    # Mask the services so they don't start.
+    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd.service
+    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd.socket
+    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd-wait-online.service
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " disable_systemd_networkd;"
+
 # ============================================================================
 # Persistent Data & Boot Configuration
 # ============================================================================
