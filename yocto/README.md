@@ -108,11 +108,19 @@ cp .flash-config.json.example .flash-config.json
 Supported config fields:
 - `ssh_key_path` (required): Path to SSH public key
 - `device` (optional): Auto-select device (e.g., `/dev/sda`)
+- `device_serial` (auto): Stored serial number for device identity verification
 - `hostname` (optional): Pre-set hostname
 - `backup_data` (optional): Auto-backup data partition (`true`/`false`)
 - `skip_confirmation` (optional): Skip final confirmation (`true`/`false`)
 
 Use `--interactive` to override the config file and force interactive prompts.
+
+**Safety Features:**
+
+The flash script includes safety checks to prevent accidentally flashing the wrong drive:
+
+- **Device identity verification:** After your first flash, the script saves the device's serial number. If a different physical device later appears at the same path (e.g., you unplugged your SD card and plugged in an external drive), you must type "YES" to confirm.
+- **Large device warning:** Devices larger than 200GB require typing "YES" to flash, since these are unlikely to be SD cards or small USB drives.
 
 **First-time setup:** The script prompts you to:
 1. Select an SSH public key from `~/.ssh/` (saved to `.flash-config.json`)

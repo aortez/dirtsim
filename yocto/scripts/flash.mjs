@@ -47,6 +47,8 @@ import {
   flashImage,
   getWifiCredentials,
   injectWifiCredentials,
+  validateDeviceIdentity,
+  isLargeDevice,
 } from '../pi-base/scripts/lib/index.mjs';
 
 // Project-specific configuration.
@@ -111,12 +113,18 @@ Examples:
 
 Configuration:
   Defaults can be set in .flash-config.json:
-    - device: Auto-select device
+    - device: Auto-select device (e.g., "/dev/sda")
+    - device_serial: Stored serial number for device identity verification
     - hostname: Pre-set hostname
     - backup_data: Auto-backup data partition (true/false)
     - skip_confirmation: Skip final confirmation (true/false)
 
   Copy .flash-config.json.example to .flash-config.json to get started.
+
+Safety Features:
+  - Device identity: The serial number is saved after first flash. If a different
+    device appears at the same path, you must type "YES" to confirm.
+  - Large device warning: Devices larger than 200GB require typing "YES" to flash.
 `);
 }
 
@@ -190,6 +198,7 @@ async function main() {
 
   // Select device (priority: CLI flag > config file > interactive prompt).
   let targetDevice;
+  let selectedDeviceInfo;
 
   if (specifiedDevice) {
     // Verify specified device is in our list.
@@ -199,14 +208,63 @@ async function main() {
       process.exit(1);
     }
     targetDevice = specifiedDevice;
+    selectedDeviceInfo = found;
   } else if (!interactive && config.device) {
     // Use device from config file (unless --interactive is set).
     const found = devices.find(d => d.device === config.device);
     if (!found) {
       warn(`Configured device ${config.device} not found, falling back to interactive selection.`);
     } else {
+      // Validate device identity using serial number.
+      const validation = validateDeviceIdentity(found, config);
+      if (!validation.valid) {
+        log('');
+        warn(`⚠️  Device identity check failed!`);
+        log('');
+
+        // Show what matches vs what doesn't.
+        const modelMatches = config.device_model && config.device_model === found.model;
+        const sizeMatches = config.device_size && config.device_size === found.size;
+
+        if (modelMatches) {
+          success(`   Model: ${found.model} ✓`);
+        } else if (config.device_model) {
+          warn(`   Model: ${found.model} (was: ${config.device_model})`);
+        } else {
+          info(`   Model: ${found.model}`);
+        }
+
+        if (sizeMatches) {
+          success(`   Size:  ${found.size} ✓`);
+        } else if (config.device_size) {
+          warn(`   Size:  ${found.size} (was: ${config.device_size})`);
+        } else {
+          info(`   Size:  ${found.size}`);
+        }
+
+        warn(`   Serial: ${found.serial || 'none'} (was: ${config.device_serial})`);
+        log('');
+
+        const confirmSerial = await prompt(`Type "YES" to confirm this is the correct device: `);
+        if (confirmSerial !== 'YES') {
+          error('Aborted. Device identity not confirmed.');
+          process.exit(1);
+        }
+
+        // Update the stored identity since user confirmed.
+        config.device_serial = found.serial;
+        config.device_model = found.model;
+        config.device_size = found.size;
+        saveConfig(CONFIG_FILE, config);
+        info(`Updated stored identity for ${config.device}`);
+      }
+
       targetDevice = config.device;
+      selectedDeviceInfo = found;
       info(`Using device from config: ${targetDevice}`);
+      if (found.serial) {
+        info(`Serial: ${found.serial}`);
+      }
     }
   }
 
@@ -226,6 +284,22 @@ async function main() {
     }
 
     targetDevice = devices[index].device;
+    selectedDeviceInfo = devices[index];
+  }
+
+  // Safety check for large devices (> 200GB).
+  if (isLargeDevice(selectedDeviceInfo)) {
+    log('');
+    warn(`⚠️  WARNING: Large device detected!`);
+    warn(`   ${selectedDeviceInfo.device}: ${selectedDeviceInfo.size} (${selectedDeviceInfo.model})`);
+    warn(`   This is larger than 200GB - are you sure this isn't your main drive?`);
+    log('');
+
+    const confirmLarge = await prompt(`Type "YES" (in caps) to confirm flashing this large device: `);
+    if (confirmLarge !== 'YES') {
+      error('Aborted. Large device not confirmed.');
+      process.exit(1);
+    }
   }
 
   // Get hostname (priority: config file > prompt > default).
@@ -320,6 +394,19 @@ async function main() {
       success('Dry run complete!');
       info('Run without --dry-run to actually flash.');
     } else {
+      // Save device identity for future verification.
+      const identityChanged =
+        selectedDeviceInfo.serial !== config.device_serial ||
+        selectedDeviceInfo.model !== config.device_model ||
+        selectedDeviceInfo.size !== config.device_size;
+
+      if (identityChanged) {
+        config.device_serial = selectedDeviceInfo.serial;
+        config.device_model = selectedDeviceInfo.model;
+        config.device_size = selectedDeviceInfo.size;
+        saveConfig(CONFIG_FILE, config);
+      }
+
       log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       success('Flash complete!');
       if (backupDir) {
