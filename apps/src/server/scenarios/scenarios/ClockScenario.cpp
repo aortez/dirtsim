@@ -1,9 +1,11 @@
 #include "ClockScenario.h"
 #include "core/Cell.h"
 #include "core/Entity.h"
+#include "core/MaterialMove.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
+#include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
 #include "core/organisms/Duck.h"
 #include "core/organisms/DuckBrain.h"
@@ -240,14 +242,14 @@ void ClockScenario::setup(World& world)
 
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
-        world.getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
-        world.getData().at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
+        materializeWall(world, x, 0);
+        materializeWall(world, x, height - 1);
     }
 
     // Left and right borders.
     for (uint32_t y = 0; y < height; ++y) {
-        world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
-        world.getData().at(width - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
+        materializeWall(world, 0, y);
+        materializeWall(world, width - 1, y);
     }
 
     // Draw current time.
@@ -274,6 +276,7 @@ void ClockScenario::tick(World& world, double deltaTime)
     // Only redraw if the second has changed.
     if (current_second != last_second_) {
         last_second_ = current_second;
+        redrawWalls(world);
         drawTime(world);
     }
 
@@ -341,7 +344,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                world.getData().at(x, y).replaceMaterial(MaterialType::WALL, 1.0);
+                materializeWall(world, x, y);
                 painted_cells_.push_back(Vector2i{ x, y });
             }
         }
@@ -372,11 +375,11 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
-                world.getData().at(x, y1).replaceMaterial(MaterialType::WALL, 1.0);
+                materializeWall(world, x, y1);
                 painted_cells_.push_back(Vector2i{ x, y1 });
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
-                world.getData().at(x, y2).replaceMaterial(MaterialType::WALL, 1.0);
+                materializeWall(world, x, y2);
                 painted_cells_.push_back(Vector2i{ x, y2 });
             }
         }
@@ -795,6 +798,98 @@ void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
                 cell.replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
+    }
+}
+
+void ClockScenario::materializeWall(World& world, int x, int y)
+{
+    const WorldData& data = world.getData();
+
+    if (x < 0 || x >= static_cast<int>(data.width) ||
+        y < 0 || y >= static_cast<int>(data.height)) {
+        return;
+    }
+
+    Cell& cell = world.getData().at(x, y);
+
+    if (cell.isEmpty() || cell.material_type == MaterialType::WALL) {
+        cell.replaceMaterial(MaterialType::WALL, 1.0);
+        return;
+    }
+
+    // Find open adjacent cell closest to COM direction.
+    Vector2i best_dir{ 0, 0 };
+    double best_score = -999.0;
+
+    static constexpr std::array<std::pair<int, int>, 4> directions = {
+        { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
+    };
+
+    for (auto [dx, dy] : directions) {
+        int nx = x + dx;
+        int ny = y + dy;
+
+        if (nx < 0 || nx >= static_cast<int>(data.width) ||
+            ny < 0 || ny >= static_cast<int>(data.height)) {
+            continue;
+        }
+
+        const Cell& neighbor = data.at(nx, ny);
+        if (!neighbor.isEmpty()) {
+            continue;
+        }
+
+        // Score by alignment with COM.
+        double score = cell.com.x * dx + cell.com.y * dy;
+        if (score > best_score) {
+            best_score = score;
+            best_dir = { dx, dy };
+        }
+    }
+
+    if (best_dir.x == 0 && best_dir.y == 0) {
+        // No open cell available - just overwrite.
+        cell.replaceMaterial(MaterialType::WALL, 1.0);
+        return;
+    }
+
+    // WALL "arrives" from the open cell direction.
+    Cell& source = world.getData().at(x + best_dir.x, y + best_dir.y);
+    source.replaceMaterial(MaterialType::WALL, 1.0);
+
+    // Create MaterialMove for WALL moving into the cell.
+    MaterialMove move;
+    move.fromX = x + best_dir.x;
+    move.fromY = y + best_dir.y;
+    move.toX = x;
+    move.toY = y;
+    move.material = MaterialType::WALL;
+    move.momentum = Vector2d(-best_dir.x, -best_dir.y) * 2.0;
+    move.collision_energy = 100.0;
+    move.boundary_normal = Vector2d(-best_dir.x, -best_dir.y);
+    move.material_mass = 1000.0;
+    move.target_mass = cell.fill_ratio * getMaterialDensity(cell.material_type);
+
+    // Execute swap: WALL moves in, displaced material moves out.
+    Vector2i swap_dir = { -best_dir.x, -best_dir.y };
+    world.getCollisionCalculator().swapCounterMovingMaterials(source, cell, swap_dir, move);
+}
+
+void ClockScenario::redrawWalls(World& world)
+{
+    uint32_t width = world.getData().width;
+    uint32_t height = world.getData().height;
+
+    // Top and bottom borders.
+    for (uint32_t x = 0; x < width; ++x) {
+        materializeWall(world, x, 0);
+        materializeWall(world, x, height - 1);
+    }
+
+    // Left and right borders.
+    for (uint32_t y = 0; y < height; ++y) {
+        materializeWall(world, 0, y);
+        materializeWall(world, width - 1, y);
     }
 }
 

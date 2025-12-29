@@ -35,7 +35,7 @@ protected:
         // Create Idle and transition to SimRunning.
         Idle idleState;
         Api::SimRun::Command cmd{
-            0.016, 150, "Sandbox", 0
+            0.016, 150, 0
         }; // max_frame_ms=0 for unlimited speed testing.
         Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
         State::Any state = idleState.onEvent(cwc, *stateMachine);

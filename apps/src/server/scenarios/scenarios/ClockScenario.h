@@ -118,6 +118,9 @@ private:
     void endEvent(World& world);
     void cancelEvent(World& world);
     void evaporateBottomRow(World& world, double deltaTime);
+
+    void materializeWall(World& world, int x, int y);
+    void redrawWalls(World& world);
 };
 
 } // namespace DirtSim
