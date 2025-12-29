@@ -16,11 +16,10 @@ namespace SimRun {
 DEFINE_API_NAME(SimRun);
 
 struct Command {
-    double timestep = 0.016;             // Default ~60 FPS.
-    int max_steps = -1;                  // -1 = unlimited.
-    std::string scenario_id = "sandbox"; // Scenario to run (default: sandbox).
-    int max_frame_ms =
-        0; // Max milliseconds per frame. 0 = unlimited (as fast as possible), >0 = frame rate cap.
+    double timestep = 0.016;
+    int max_steps = -1;
+    std::string scenario_id = "Sandbox";
+    int max_frame_ms = 0;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

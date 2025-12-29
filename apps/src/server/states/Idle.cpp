@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/network/PeerDiscovery.h"
 #include "server/scenarios/ScenarioRegistry.h"
@@ -81,6 +82,15 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     // Set scenario ID in state.
     newState.scenario_id = cwc.command.scenario_id;
+
+    // Apply saved config if this scenario matches the startup scenario.
+    if (dsm.serverConfig) {
+        std::string startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
+        if (cwc.command.scenario_id == startupScenarioId) {
+            newState.scenario->setConfig(dsm.serverConfig->startupConfig, *newState.world);
+            LOG_INFO(State, "Applied saved config for startup scenario '{}'", startupScenarioId);
+        }
+    }
 
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);

@@ -4,7 +4,7 @@
 
 namespace DirtSim::Config {
 
-struct Benchmark {
+struct TreeGermination {
     using serialize = zpp::bits::members<0>;
 };
 

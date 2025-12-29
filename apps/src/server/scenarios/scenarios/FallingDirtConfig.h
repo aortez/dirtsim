@@ -2,16 +2,13 @@
 
 #include <zpp_bits.h>
 
-namespace DirtSim {
+namespace DirtSim::Config {
 
-/**
- * @brief Falling dirt scenario config - gravity and pile formation.
- */
-struct FallingDirtConfig {
+struct FallingDirt {
     using serialize = zpp::bits::members<2>;
 
-    double drop_height = 20.0; // Height from which dirt drops.
-    double drop_rate = 2.0;    // Drop rate in particles per second.
+    double dropHeight = 20.0;
+    double dropRate = 2.0;
 };
 
-} // namespace DirtSim
+} // namespace DirtSim::Config

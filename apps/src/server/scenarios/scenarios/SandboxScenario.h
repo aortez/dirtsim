@@ -23,7 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    SandboxConfig config_;
+    Config::Sandbox config_;
 
     // Timing state for particle generation.
     double lastSimTime_ = 0.0;

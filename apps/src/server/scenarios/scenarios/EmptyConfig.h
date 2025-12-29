@@ -2,13 +2,10 @@
 
 #include <zpp_bits.h>
 
-namespace DirtSim {
+namespace DirtSim::Config {
 
-/**
- * @brief Empty scenario config - no configuration needed.
- */
-struct EmptyConfig {
+struct Empty {
     using serialize = zpp::bits::members<0>;
 };
 
-} // namespace DirtSim
+} // namespace DirtSim::Config

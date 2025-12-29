@@ -134,14 +134,18 @@ User overrides (if needed) go in `~/.config/dirtsim/` and take precedence.
 For local tweaks not committed to git, use `.local` suffix:
 
 ```
-apps/config/server.json.local    # Overrides server.json
+apps/config/server.json.local    # Full replacement for server.json
 apps/config/ui-logging.json.local
 ```
+
+The `.local` file is a **complete replacement**, not a merge. If you want to customize, copy the whole file and modify it. This keeps the logic simple and makes it clear exactly what config is being used.
+
+All `.local` files should be gitignored.
 
 ## Implementation Notes
 
 - Use `ReflectSerializer` for automatic JSON conversion (already works for scenario configs).
-- Config loader should merge `.local` overrides on top of base config.
+- Config search: check `.local` first, then base file, at each search path.
 - Keep backward compatibility: if no config found, use hardcoded defaults.
 
 ## Open Questions

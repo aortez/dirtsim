@@ -31,13 +31,13 @@ ClockScenario::ClockScenario()
 int ClockScenario::getDigitWidth() const
 {
     switch (config_.font) {
-    case ClockFont::DotMatrix:
+    case Config::ClockFont::DotMatrix:
         return ClockFonts::DOT_MATRIX_WIDTH;
-    case ClockFont::Segment7:
+    case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_WIDTH;
-    case ClockFont::Segment7Large:
+    case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_WIDTH;
-    case ClockFont::Segment7Tall:
+    case Config::ClockFont::Segment7Tall:
         return ClockFonts::SEGMENT7_TALL_WIDTH;
     }
     return ClockFonts::SEGMENT7_WIDTH;
@@ -46,13 +46,13 @@ int ClockScenario::getDigitWidth() const
 int ClockScenario::getDigitHeight() const
 {
     switch (config_.font) {
-    case ClockFont::DotMatrix:
+    case Config::ClockFont::DotMatrix:
         return ClockFonts::DOT_MATRIX_HEIGHT;
-    case ClockFont::Segment7:
+    case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_HEIGHT;
-    case ClockFont::Segment7Large:
+    case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_HEIGHT;
-    case ClockFont::Segment7Tall:
+    case Config::ClockFont::Segment7Tall:
         return ClockFonts::SEGMENT7_TALL_HEIGHT;
     }
     return ClockFonts::SEGMENT7_HEIGHT;
@@ -61,13 +61,13 @@ int ClockScenario::getDigitHeight() const
 int ClockScenario::getDigitGap() const
 {
     switch (config_.font) {
-    case ClockFont::DotMatrix:
+    case Config::ClockFont::DotMatrix:
         return ClockFonts::DOT_MATRIX_GAP;
-    case ClockFont::Segment7:
+    case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_GAP;
-    case ClockFont::Segment7Large:
+    case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_GAP;
-    case ClockFont::Segment7Tall:
+    case Config::ClockFont::Segment7Tall:
         return ClockFonts::SEGMENT7_TALL_GAP;
     }
     return ClockFonts::SEGMENT7_GAP;
@@ -76,13 +76,13 @@ int ClockScenario::getDigitGap() const
 int ClockScenario::getColonWidth() const
 {
     switch (config_.font) {
-    case ClockFont::DotMatrix:
+    case Config::ClockFont::DotMatrix:
         return ClockFonts::DOT_MATRIX_COLON_WIDTH;
-    case ClockFont::Segment7:
+    case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_WIDTH;
-    case ClockFont::Segment7Large:
+    case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
-    case ClockFont::Segment7Tall:
+    case Config::ClockFont::Segment7Tall:
         return ClockFonts::SEGMENT7_TALL_COLON_WIDTH;
     }
     return ClockFonts::SEGMENT7_COLON_WIDTH;
@@ -91,13 +91,13 @@ int ClockScenario::getColonWidth() const
 int ClockScenario::getColonPadding() const
 {
     switch (config_.font) {
-    case ClockFont::DotMatrix:
+    case Config::ClockFont::DotMatrix:
         return ClockFonts::DOT_MATRIX_COLON_PADDING;
-    case ClockFont::Segment7:
+    case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_PADDING;
-    case ClockFont::Segment7Large:
+    case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
-    case ClockFont::Segment7Tall:
+    case Config::ClockFont::Segment7Tall:
         return ClockFonts::SEGMENT7_TALL_COLON_PADDING;
     }
     return ClockFonts::SEGMENT7_COLON_PADDING;
@@ -112,11 +112,11 @@ void ClockScenario::recalculateDimensions()
     constexpr int BUFFER = 4;
 
     // Auto-scale mode: size world to match display aspect ratio.
-    if (config_.auto_scale && config_.target_display_width > 0 && config_.target_display_height > 0) {
+    if (config_.autoScale && config_.targetDisplayWidth > 0 && config_.targetDisplayHeight > 0) {
         // Use FULL display aspect (what CellRenderer uses to fill the screen).
         // Margins just provide minimum buffer around clock, not affect aspect.
-        double display_aspect = static_cast<double>(config_.target_display_width)
-            / config_.target_display_height;
+        double display_aspect = static_cast<double>(config_.targetDisplayWidth)
+            / config_.targetDisplayHeight;
 
         // Base world size: clock + buffer.
         int base_width = clock_width + 2 * BUFFER;
@@ -138,16 +138,16 @@ void ClockScenario::recalculateDimensions()
         }
 
         // Use scale=1 (each font pixel = 1 cell).
-        config_.horizontal_scale = 1.0;
-        config_.vertical_scale = 1.0;
+        config_.horizontalScale = 1.0;
+        config_.verticalScale = 1.0;
 
         metadata_.requiredWidth = static_cast<uint32_t>(world_width);
         metadata_.requiredHeight = static_cast<uint32_t>(world_height);
 
         spdlog::info(
             "ClockScenario: Auto-scale - display={}x{}, clock={}x{}, world={}x{} (aspect matched)",
-            config_.target_display_width,
-            config_.target_display_height,
+            config_.targetDisplayWidth,
+            config_.targetDisplayHeight,
             clock_width,
             clock_height,
             world_width,
@@ -156,16 +156,16 @@ void ClockScenario::recalculateDimensions()
     else {
         // Manual scale mode (original behavior).
         metadata_.requiredWidth =
-            static_cast<uint32_t>(std::ceil(clock_width * config_.horizontal_scale));
+            static_cast<uint32_t>(std::ceil(clock_width * config_.horizontalScale));
         metadata_.requiredHeight =
-            static_cast<uint32_t>(std::ceil(clock_height * config_.vertical_scale));
+            static_cast<uint32_t>(std::ceil(clock_height * config_.verticalScale));
 
         spdlog::info(
             "ClockScenario: Manual scale - clock={}x{}, scale=({:.2f}, {:.2f}), world={}x{}",
             clock_width,
             clock_height,
-            config_.horizontal_scale,
-            config_.vertical_scale,
+            config_.horizontalScale,
+            config_.verticalScale,
             metadata_.requiredWidth,
             metadata_.requiredHeight);
     }
@@ -183,16 +183,16 @@ ScenarioConfig ClockScenario::getConfig() const
 
 void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 {
-    if (std::holds_alternative<ClockConfig>(newConfig)) {
-        const ClockConfig& incoming = std::get<ClockConfig>(newConfig);
+    if (std::holds_alternative<Config::Clock>(newConfig)) {
+        const Config::Clock& incoming = std::get<Config::Clock>(newConfig);
 
         // Check if any dimension-affecting settings changed.
-        bool needs_resize = (incoming.show_seconds != config_.show_seconds) ||
+        bool needs_resize = (incoming.showSeconds != config_.showSeconds) ||
                             (incoming.font != config_.font) ||
-                            (incoming.auto_scale != config_.auto_scale) ||
-                            (incoming.target_display_width != config_.target_display_width) ||
-                            (incoming.target_display_height != config_.target_display_height) ||
-                            (incoming.margin_pixels != config_.margin_pixels);
+                            (incoming.autoScale != config_.autoScale) ||
+                            (incoming.targetDisplayWidth != config_.targetDisplayWidth) ||
+                            (incoming.targetDisplayHeight != config_.targetDisplayHeight) ||
+                            (incoming.marginPixels != config_.marginPixels);
 
         config_ = incoming;
 
@@ -201,13 +201,13 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Resetting world to {}x{} (font={}, show_seconds={}, display={}x{})",
+                "ClockScenario: Resetting world to {}x{} (font={}, showSeconds={}, display={}x{})",
                 metadata_.requiredWidth,
                 metadata_.requiredHeight,
                 static_cast<int>(config_.font),
-                config_.show_seconds,
-                config_.target_display_width,
-                config_.target_display_height);
+                config_.showSeconds,
+                config_.targetDisplayWidth,
+                config_.targetDisplayHeight);
 
             // Cancel any active event before resizing.
             cancelEvent(world);
@@ -291,7 +291,7 @@ int ClockScenario::calculateTotalWidth() const
     int cw = getColonWidth();
     int cp = getColonPadding();
 
-    if (config_.show_seconds) {
+    if (config_.showSeconds) {
         // HH : MM : SS (6 digits, 2 colons).
         // Layout: D gap D pad colon pad D gap D pad colon pad D gap D.
         return 6 * dw + 4 * dg + 2 * (cw + 2 * cp);
@@ -326,16 +326,16 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             // Get the pixel value from the appropriate pattern.
             bool pixel = false;
             switch (config_.font) {
-            case ClockFont::DotMatrix:
+            case Config::ClockFont::DotMatrix:
                 pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
                 break;
-            case ClockFont::Segment7:
+            case Config::ClockFont::Segment7:
                 pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
                 break;
-            case ClockFont::Segment7Large:
+            case Config::ClockFont::Segment7Large:
                 pixel = ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];
                 break;
-            case ClockFont::Segment7Tall:
+            case Config::ClockFont::Segment7Tall:
                 pixel = ClockFonts::SEGMENT7_TALL_PATTERNS[digit][row][col];
                 break;
             }
@@ -365,7 +365,7 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
         }
 
         // For large font, draw 2x2 dots; otherwise single pixels.
-        int dot_height = (config_.font == ClockFont::Segment7Large) ? 2 : 1;
+        int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
 
         for (int dy = 0; dy < dot_height; ++dy) {
             int y1 = dot1_y + dy;
@@ -390,14 +390,14 @@ void ClockScenario::drawTime(World& world)
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
 
     std::tm* time_info;
-    if (config_.timezone_index == 0) {
+    if (config_.timezoneIndex == 0) {
         // Local system time.
         time_info = std::localtime(&now_time);
     }
     else {
         // UTC time with offset.
         time_info = std::gmtime(&now_time);
-        const auto& tz = TIMEZONES[config_.timezone_index];
+        const auto& tz = TIMEZONES[config_.timezoneIndex];
 
         // Apply timezone offset (hours).
         time_info->tm_hour += tz.offset_hours;
@@ -456,7 +456,7 @@ void ClockScenario::drawTime(World& world)
     cursor_x += dw;
 
     // Draw seconds if enabled.
-    if (config_.show_seconds) {
+    if (config_.showSeconds) {
         // Draw second colon.
         cursor_x += cp;
         drawColon(world, cursor_x, start_y);
@@ -477,7 +477,7 @@ static constexpr double DUCK_SPEED = 8.0;        // Duck speed (cells per second
 void ClockScenario::updateEvents(World& world, double deltaTime)
 {
     // Events disabled if frequency is 0.
-    if (config_.event_frequency <= 0.0) {
+    if (config_.eventFrequency <= 0.0) {
         return;
     }
 
@@ -736,7 +736,7 @@ void ClockScenario::endEvent(World& world)
     }
 
     // Schedule next event.
-    double delay = BASE_EVENT_DELAY * (1.0 - config_.event_frequency);
+    double delay = BASE_EVENT_DELAY * (1.0 - config_.eventFrequency);
     // Add random jitter (±20%).
     double jitter = (uniform_dist_(rng_) * 0.4 - 0.2) * delay;
     event_timer_ = delay + jitter;

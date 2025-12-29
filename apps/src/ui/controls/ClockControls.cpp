@@ -9,7 +9,7 @@ namespace Ui {
 ClockControls::ClockControls(
     lv_obj_t* container,
     Network::WebSocketService* wsService,
-    const ClockConfig& config,
+    const Config::Clock& config,
     DisplayDimensionsGetter dimensionsGetter)
     : ScenarioControlsBase(container, wsService, "clock"), dimensionsGetter_(std::move(dimensionsGetter))
 {
@@ -77,17 +77,17 @@ void ClockControls::createWidgets()
 
 void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 {
-    // Extract ClockConfig from variant.
-    if (!std::holds_alternative<ClockConfig>(configVariant)) {
-        spdlog::error("ClockControls: Invalid config type (expected ClockConfig)");
+    // Extract Config::Clock from variant.
+    if (!std::holds_alternative<Config::Clock>(configVariant)) {
+        spdlog::error("ClockControls: Invalid config type (expected Config::Clock)");
         return;
     }
 
-    const ClockConfig& config = std::get<ClockConfig>(configVariant);
+    const Config::Clock& config = std::get<Config::Clock>(configVariant);
     spdlog::debug(
-        "ClockControls: updateFromConfig called - font={}, timezone_index={}",
+        "ClockControls: updateFromConfig called - font={}, timezoneIndex={}",
         static_cast<int>(config.font),
-        config.timezone_index);
+        config.timezoneIndex);
 
     // Prevent sending updates back to server during UI sync.
     bool wasInitializing = isInitializing();
@@ -103,19 +103,19 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update timezone dropdown.
     if (timezoneDropdown_) {
-        lv_dropdown_set_selected(timezoneDropdown_, config.timezone_index);
-        spdlog::debug("ClockControls: Updated timezone dropdown to index {}", config.timezone_index);
+        lv_dropdown_set_selected(timezoneDropdown_, config.timezoneIndex);
+        spdlog::debug("ClockControls: Updated timezone dropdown to index {}", config.timezoneIndex);
     }
 
     // Update seconds switch.
     if (secondsSwitch_) {
-        if (config.show_seconds) {
+        if (config.showSeconds) {
             lv_obj_add_state(secondsSwitch_, LV_STATE_CHECKED);
         }
         else {
             lv_obj_remove_state(secondsSwitch_, LV_STATE_CHECKED);
         }
-        spdlog::debug("ClockControls: Updated seconds switch to {}", config.show_seconds);
+        spdlog::debug("ClockControls: Updated seconds switch to {}", config.showSeconds);
     }
 
     // Restore initializing state.
@@ -124,32 +124,32 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     }
 }
 
-ClockConfig ClockControls::getCurrentConfig() const
+Config::Clock ClockControls::getCurrentConfig() const
 {
     // Start with current config (preserves auto-scale settings).
-    ClockConfig config = currentConfig_;
+    Config::Clock config = currentConfig_;
 
     // Get font from dropdown.
     if (fontDropdown_) {
-        config.font = static_cast<ClockFont>(lv_dropdown_get_selected(fontDropdown_));
+        config.font = static_cast<Config::ClockFont>(lv_dropdown_get_selected(fontDropdown_));
     }
 
     // Get timezone index from dropdown.
     if (timezoneDropdown_) {
-        config.timezone_index = static_cast<uint8_t>(lv_dropdown_get_selected(timezoneDropdown_));
+        config.timezoneIndex = static_cast<uint8_t>(lv_dropdown_get_selected(timezoneDropdown_));
     }
 
-    // Get show_seconds from switch.
+    // Get showSeconds from switch.
     if (secondsSwitch_) {
-        config.show_seconds = lv_obj_has_state(secondsSwitch_, LV_STATE_CHECKED);
+        config.showSeconds = lv_obj_has_state(secondsSwitch_, LV_STATE_CHECKED);
     }
 
     // Populate display dimensions from getter for auto-scaling.
     if (dimensionsGetter_) {
         DisplayDimensions dims = dimensionsGetter_();
-        config.target_display_width = dims.width;
-        config.target_display_height = dims.height;
-        config.auto_scale = true;
+        config.targetDisplayWidth = dims.width;
+        config.targetDisplayHeight = dims.height;
+        config.autoScale = true;
         spdlog::debug(
             "ClockControls: Setting display dimensions {}x{} for auto-scale",
             dims.width,
@@ -180,7 +180,7 @@ void ClockControls::onFontChanged(lv_event_t* e)
     spdlog::info("ClockControls: Font changed to index {} ({})", selectedIdx, fontNames[selectedIdx]);
 
     // Get complete current config and send update.
-    ClockConfig config = controls->getCurrentConfig();
+    Config::Clock config = controls->getCurrentConfig();
     controls->sendConfigUpdate(config);
 }
 
@@ -206,7 +206,7 @@ void ClockControls::onTimezoneChanged(lv_event_t* e)
         ClockScenario::TIMEZONES[selectedIdx].label);
 
     // Get complete current config and send update.
-    ClockConfig config = controls->getCurrentConfig();
+    Config::Clock config = controls->getCurrentConfig();
     controls->sendConfigUpdate(config);
 }
 
@@ -230,7 +230,7 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
     spdlog::info("ClockControls: Show seconds toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config and send update.
-    ClockConfig config = self->getCurrentConfig();
+    Config::Clock config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
 

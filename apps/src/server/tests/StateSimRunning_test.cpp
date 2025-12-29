@@ -35,7 +35,7 @@ protected:
         // Create Idle and transition to SimRunning.
         Idle idleState;
         Api::SimRun::Command cmd{
-            0.016, 150, "sandbox", 0
+            0.016, 150, "Sandbox", 0
         }; // max_frame_ms=0 for unlimited speed testing.
         Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
         State::Any state = idleState.onEvent(cwc, *stateMachine);
@@ -53,11 +53,11 @@ protected:
      */
     void applyCleanScenario(SimRunning& simRunning)
     {
-        SandboxConfig cleanConfig;
-        cleanConfig.quadrant_enabled = false;
-        cleanConfig.water_column_enabled = false;
-        cleanConfig.right_throw_enabled = false;
-        cleanConfig.rain_rate = 0.0;
+        Config::Sandbox cleanConfig;
+        cleanConfig.quadrantEnabled = false;
+        cleanConfig.waterColumnEnabled = false;
+        cleanConfig.rightThrowEnabled = false;
+        cleanConfig.rainRate = 0.0;
 
         Api::ScenarioConfigSet::Command cmd;
         cmd.config = cleanConfig;
@@ -71,27 +71,27 @@ protected:
 };
 
 /**
- * @brief Test that onEnter applies default sandbox scenario.
+ * @brief Test that onEnter applies default Sandbox scenario.
  */
 TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 {
-    // Setup: Create SimRunning state with sandbox scenario (applied by Idle).
+    // Setup: Create SimRunning state with Sandbox scenario (applied by Idle).
     Idle idleState;
-    Api::SimRun::Command cmd{ 0.016, 100 }; // Defaults to scenario_id = "sandbox".
+    Api::SimRun::Command cmd{ 0.016, 100 }; // Defaults to scenario_id = "Sandbox".
     Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
     State::Any state = idleState.onEvent(cwc, *stateMachine);
     SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
 
     // Verify: World exists and scenario already applied by Idle.
     ASSERT_NE(simRunning.world, nullptr);
-    EXPECT_EQ(simRunning.scenario_id, "sandbox") << "Scenario applied by Idle";
+    EXPECT_EQ(simRunning.scenario_id, "Sandbox") << "Scenario applied by Idle";
 
     // Execute: Call onEnter (should not change scenario since it's already set).
     simRunning.onEnter(*stateMachine);
 
     // Verify: Sandbox scenario is still applied.
-    EXPECT_EQ(simRunning.scenario_id, "sandbox")
-        << "Scenario should remain sandbox";
+    EXPECT_EQ(simRunning.scenario_id, "Sandbox")
+        << "Scenario should remain Sandbox";
 
     // Verify: Walls exist (basic scenario setup check).
     const Cell& topLeft = simRunning.world->getData().at(0, 0);
@@ -227,7 +227,7 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
     EXPECT_EQ(worldData.width, stateMachine->defaultWidth);
     EXPECT_EQ(worldData.height, stateMachine->defaultHeight);
     // Scenario ID is now in SimRunning state, not WorldData.
-    EXPECT_EQ(updatedState.scenario_id, "sandbox");
+    EXPECT_EQ(updatedState.scenario_id, "Sandbox");
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
 }
 
@@ -247,11 +247,11 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     EXPECT_GT(waterCell.fill_ratio, 0.5) << "Water column cells should be filled";
 
     // Execute: Toggle water column OFF.
-    SandboxConfig configOff;
-    configOff.quadrant_enabled = true;      // Keep quadrant.
-    configOff.water_column_enabled = false; // Turn off water column.
-    configOff.right_throw_enabled = false;
-    configOff.rain_rate = 0.0;
+    Config::Sandbox configOff;
+    configOff.quadrantEnabled = true;      // Keep quadrant.
+    configOff.waterColumnEnabled = false; // Turn off water column.
+    configOff.rightThrowEnabled = false;
+    configOff.rainRate = 0.0;
 
     bool callbackInvoked = false;
     Api::ScenarioConfigSet::Command cmdOff;
@@ -276,8 +276,8 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
 
     // Execute: Toggle water column back ON.
     callbackInvoked = false;
-    SandboxConfig configOn = configOff;
-    configOn.water_column_enabled = true;
+    Config::Sandbox configOn = configOff;
+    configOn.waterColumnEnabled = true;
 
     Api::ScenarioConfigSet::Command cmdOn;
     cmdOn.config = configOn;
@@ -313,11 +313,11 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     EXPECT_GT(quadCell.fill_ratio, 0.5) << "Quadrant cells should be filled";
 
     // Execute: Toggle quadrant OFF.
-    SandboxConfig configOff;
-    configOff.quadrant_enabled = false; // Turn off quadrant.
-    configOff.water_column_enabled = false;
-    configOff.right_throw_enabled = false;
-    configOff.rain_rate = 0.0;
+    Config::Sandbox configOff;
+    configOff.quadrantEnabled = false; // Turn off quadrant.
+    configOff.waterColumnEnabled = false;
+    configOff.rightThrowEnabled = false;
+    configOff.rainRate = 0.0;
 
     bool callbackInvoked = false;
     Api::ScenarioConfigSet::Command cmdOff;
@@ -338,8 +338,8 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
 
     // Execute: Toggle quadrant back ON.
     callbackInvoked = false;
-    SandboxConfig configOn = configOff;
-    configOn.quadrant_enabled = true;
+    Config::Sandbox configOn = configOff;
+    configOn.quadrantEnabled = true;
 
     Api::ScenarioConfigSet::Command cmdOn;
     cmdOn.config = configOn;

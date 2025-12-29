@@ -22,7 +22,7 @@ namespace Ui {
 class SandboxControls : public ScenarioControlsBase {
 public:
     SandboxControls(
-        lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config);
+        lv_obj_t* container, Network::WebSocketService* wsService, const Config::Sandbox& config);
     ~SandboxControls() override;
 
     /**
@@ -69,7 +69,7 @@ private:
     /**
      * @brief Get the current complete config from all controls.
      */
-    SandboxConfig getCurrentConfig() const;
+    Config::Sandbox getCurrentConfig() const;
 };
 
 } // namespace Ui

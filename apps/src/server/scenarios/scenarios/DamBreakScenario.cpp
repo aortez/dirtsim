@@ -18,9 +18,9 @@ DamBreakScenario::DamBreakScenario()
     metadata_.requiredHeight = 6; // Match test specifications.
 
     // Initialize with default config.
-    config_.dam_height = 10.0;
-    config_.auto_release = true;
-    config_.release_time = 2.0; // 2 seconds ~= timestep 30 at 60fps.
+    config_.damHeight = 10.0;
+    config_.autoRelease = true;
+    config_.releaseTime = 2.0; // 2 seconds ~= timestep 30 at 60fps.
 }
 
 const ScenarioMetadata& DamBreakScenario::getMetadata() const
@@ -36,8 +36,8 @@ ScenarioConfig DamBreakScenario::getConfig() const
 void DamBreakScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<DamBreakConfig>(newConfig)) {
-        config_ = std::get<DamBreakConfig>(newConfig);
+    if (std::holds_alternative<Config::DamBreak>(newConfig)) {
+        config_ = std::get<Config::DamBreak>(newConfig);
         spdlog::info("DamBreakScenario: Config updated");
     }
     else {
@@ -93,10 +93,10 @@ void DamBreakScenario::reset(World& world)
 void DamBreakScenario::tick(World& world, double deltaTime)
 {
     // Break dam automatically based on time if configured.
-    if (!damBroken_ && config_.auto_release) {
+    if (!damBroken_ && config_.autoRelease) {
         elapsedTime_ += deltaTime;
 
-        if (elapsedTime_ >= config_.release_time) {
+        if (elapsedTime_ >= config_.releaseTime) {
             spdlog::info("DamBreakScenario: Breaking dam at t={:.2f}s", elapsedTime_);
 
             // Dam is at x=2, break only the bottom cell for realistic flow.

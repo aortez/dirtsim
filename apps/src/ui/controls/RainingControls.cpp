@@ -6,7 +6,7 @@ namespace DirtSim {
 namespace Ui {
 
 RainingControls::RainingControls(
-    lv_obj_t* container, Network::WebSocketService* wsService, const RainingConfig& config)
+    lv_obj_t* container, Network::WebSocketService* wsService, const Config::Raining& config)
     : ScenarioControlsBase(container, wsService, "raining")
 {
     // Create widgets.
@@ -74,18 +74,18 @@ void RainingControls::createWidgets()
 
 void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 {
-    // Extract RainingConfig from variant.
-    if (!std::holds_alternative<RainingConfig>(configVariant)) {
-        spdlog::error("RainingControls: Invalid config type (expected RainingConfig)");
+    // Extract Config::Raining from variant.
+    if (!std::holds_alternative<Config::Raining>(configVariant)) {
+        spdlog::error("RainingControls: Invalid config type (expected Config::Raining)");
         return;
     }
 
-    const RainingConfig& config = std::get<RainingConfig>(configVariant);
+    const Config::Raining& config = std::get<Config::Raining>(configVariant);
     spdlog::info(
-        "RainingControls: updateFromConfig called - rain_rate={}, drain_size={}, max_fill={}",
-        config.rain_rate,
-        config.drain_size,
-        config.max_fill_percent);
+        "RainingControls: updateFromConfig called - rainRate={}, drainSize={}, maxFill={}",
+        config.rainRate,
+        config.drainSize,
+        config.maxFillPercent);
 
     // Prevent sending updates back to server during UI sync.
     bool wasInitializing = isInitializing();
@@ -95,8 +95,8 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update rain control.
     if (rainControl_) {
-        bool shouldBeEnabled = config.rain_rate > 0.0;
-        int sliderValue = static_cast<int>(config.rain_rate);
+        bool shouldBeEnabled = config.rainRate > 0.0;
+        int sliderValue = static_cast<int>(config.rainRate);
         rainControl_->setEnabled(shouldBeEnabled);
         if (shouldBeEnabled) {
             rainControl_->setValue(sliderValue);
@@ -107,8 +107,8 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update drain size control.
     if (drainSizeControl_) {
-        bool shouldBeEnabled = config.drain_size > 0.0;
-        int sliderValue = static_cast<int>(config.drain_size);
+        bool shouldBeEnabled = config.drainSize > 0.0;
+        int sliderValue = static_cast<int>(config.drainSize);
         drainSizeControl_->setEnabled(shouldBeEnabled);
         if (shouldBeEnabled) {
             drainSizeControl_->setValue(sliderValue);
@@ -121,8 +121,8 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update max fill control.
     if (maxFillControl_) {
-        bool shouldBeEnabled = config.max_fill_percent > 0.0;
-        int sliderValue = static_cast<int>(config.max_fill_percent);
+        bool shouldBeEnabled = config.maxFillPercent > 0.0;
+        int sliderValue = static_cast<int>(config.maxFillPercent);
         maxFillControl_->setEnabled(shouldBeEnabled);
         if (shouldBeEnabled) {
             maxFillControl_->setValue(sliderValue);
@@ -139,37 +139,37 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
     }
 }
 
-RainingConfig RainingControls::getCurrentConfig() const
+Config::Raining RainingControls::getCurrentConfig() const
 {
-    RainingConfig config;
+    Config::Raining config;
 
     // Get rain rate from control.
     if (rainControl_) {
         if (rainControl_->isEnabled()) {
-            config.rain_rate = rainControl_->getScaledValue();
+            config.rainRate = rainControl_->getScaledValue();
         }
         else {
-            config.rain_rate = 0.0;
+            config.rainRate = 0.0;
         }
     }
 
     // Get drain size from control.
     if (drainSizeControl_) {
         if (drainSizeControl_->isEnabled()) {
-            config.drain_size = drainSizeControl_->getScaledValue();
+            config.drainSize = drainSizeControl_->getScaledValue();
         }
         else {
-            config.drain_size = 0.0;
+            config.drainSize = 0.0;
         }
     }
 
     // Get max fill percent from control.
     if (maxFillControl_) {
         if (maxFillControl_->isEnabled()) {
-            config.max_fill_percent = maxFillControl_->getScaledValue();
+            config.maxFillPercent = maxFillControl_->getScaledValue();
         }
         else {
-            config.max_fill_percent = 0.0;
+            config.maxFillPercent = 0.0;
         }
     }
 
@@ -187,7 +187,7 @@ void RainingControls::onRainToggled(bool enabled)
     spdlog::info("RainingControls: Rain toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -202,7 +202,7 @@ void RainingControls::onRainSliderChanged(int value)
     spdlog::info("RainingControls: Rain rate changed to {}", value);
 
     // Get complete current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -217,7 +217,7 @@ void RainingControls::onDrainSizeToggled(bool enabled)
     spdlog::info("RainingControls: Drain size toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -232,7 +232,7 @@ void RainingControls::onDrainSizeSliderChanged(int value)
     spdlog::info("RainingControls: Drain size changed to {}", value);
 
     // Get complete current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -247,7 +247,7 @@ void RainingControls::onMaxFillToggled(bool enabled)
     spdlog::info("RainingControls: Max fill toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -262,7 +262,7 @@ void RainingControls::onMaxFillSliderChanged(int value)
     spdlog::info("RainingControls: Max fill percent changed to {}%%", value);
 
     // Get complete current config and send update.
-    RainingConfig config = getCurrentConfig();
+    Config::Raining config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 

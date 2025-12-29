@@ -36,10 +36,17 @@ virtual std::string getCurrentStateName() const = 0;
 If the comment almost entirely matches the function name and it doesn't provide any additional information, then it's a bad comment and it just makes it harder to read the code.  We don't want comments to tell us the obvious - they are there to tell us things we don't know from the context.
 
 ## Naming
-Name for Methods, struct, objects, etc should go in order of domain to action,
-from order of bigger to smaller context. E.g. `DirtSimStateMachine` and it's
-`CellGet` method.  Then, within a file, things should put in alphabetical order,
-thus placing things in similar domains adjacent.
+
+**Case conventions:**
+- Types (classes, structs, enums): UpperCamelCase (`ServerConfig`, `ClockFont`)
+- Functions and methods: lowerCamelCase (`getScenarioId`, `loadConfig`)
+- Variables and members: lowerCamelCase (`startupConfig`, `defaultWidth`)
+
+**Organization:**
+Names go from domain to action, bigger to smaller context. E.g. `DirtSimStateMachine` and its `CellGet` method. Within a file, use alphabetical order to place similar domains adjacent.
+
+**JSON usage:**
+JSON is ONLY allowed at the transport layer (network serialization, file I/O). Never store JSON in application state or pass it between functions. Deserialize immediately to typed structs.
 
 ## CLI Output Convention
 

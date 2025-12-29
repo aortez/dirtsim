@@ -19,10 +19,10 @@ SandboxScenario::SandboxScenario()
     metadata_.category = "sandbox";
 
     // Initialize with default config.
-    config_.quadrant_enabled = true;
-    config_.water_column_enabled = true;
-    config_.right_throw_enabled = true;
-    config_.rain_rate = 0.0;
+    config_.quadrantEnabled = true;
+    config_.waterColumnEnabled = true;
+    config_.rightThrowEnabled = true;
+    config_.rainRate = 0.0;
 }
 
 const ScenarioMetadata& SandboxScenario::getMetadata() const
@@ -38,16 +38,16 @@ ScenarioConfig SandboxScenario::getConfig() const
 void SandboxScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 {
     // Validate type and update.
-    if (std::holds_alternative<SandboxConfig>(newConfig)) {
-        const SandboxConfig& newSandboxConfig = std::get<SandboxConfig>(newConfig);
+    if (std::holds_alternative<Config::Sandbox>(newConfig)) {
+        const Config::Sandbox& newSandboxConfig = std::get<Config::Sandbox>(newConfig);
 
         // Check if water column state changed.
-        bool wasWaterEnabled = config_.water_column_enabled;
-        bool nowWaterEnabled = newSandboxConfig.water_column_enabled;
+        bool wasWaterEnabled = config_.waterColumnEnabled;
+        bool nowWaterEnabled = newSandboxConfig.waterColumnEnabled;
 
         // Check if quadrant state changed.
-        bool wasQuadrantEnabled = config_.quadrant_enabled;
-        bool nowQuadrantEnabled = newSandboxConfig.quadrant_enabled;
+        bool wasQuadrantEnabled = config_.quadrantEnabled;
+        bool nowQuadrantEnabled = newSandboxConfig.quadrantEnabled;
 
         // Update config.
         config_ = newSandboxConfig;
@@ -108,12 +108,12 @@ void SandboxScenario::setup(World& world)
     }
 
     // Fill lower-right quadrant if enabled.
-    if (config_.quadrant_enabled) {
+    if (config_.quadrantEnabled) {
         addDirtQuadrant(world);
     }
 
     // Add water column if enabled.
-    if (config_.water_column_enabled) {
+    if (config_.waterColumnEnabled) {
         addWaterColumn(world);
         // Initialize water column start time.
         waterColumnStartTime_ = 0.0;
@@ -141,18 +141,18 @@ void SandboxScenario::tick(World& world, double deltaTime)
 
     // Recurring throws from right side every ~0.83 seconds (if enabled).
     const double throwPeriod = 0.83;
-    if (config_.right_throw_enabled && simTime >= nextRightThrow_) {
+    if (config_.rightThrowEnabled && simTime >= nextRightThrow_) {
         throwDirtBalls(world);
         nextRightThrow_ += throwPeriod;
     }
 
     // Rain drops - time-scale independent, probability-based.
-    if (config_.rain_rate > 0.0) {
+    if (config_.rainRate > 0.0) {
         addRainDrops(world, deltaTime);
     }
 
     // Water column refill (if enabled).
-    if (config_.water_column_enabled) {
+    if (config_.waterColumnEnabled) {
         // Initialize start time on first call.
         if (waterColumnStartTime_ == 0.0) {
             waterColumnStartTime_ = simTime;
@@ -170,13 +170,13 @@ void SandboxScenario::tick(World& world, double deltaTime)
                     "Water column auto-disabling after {:.1f} seconds (elapsed: {:.1f}s)",
                     WATER_COLUMN_DURATION,
                     elapsed);
-                config_.water_column_enabled = false;
+                config_.waterColumnEnabled = false;
                 waterColumnStartTime_ = -1.0;
             }
         }
 
         // Refill if still enabled.
-        if (config_.water_column_enabled) {
+        if (config_.waterColumnEnabled) {
             refillWaterColumn(world);
         }
     }
@@ -269,8 +269,8 @@ void SandboxScenario::refillWaterColumn(World& world)
 
 void SandboxScenario::addRainDrops(World& world, double deltaTime)
 {
-    // Normalize rain_rate from [0, 10] to [0, 1].
-    double normalized_rate = config_.rain_rate / 10.0;
+    // Normalize rainRate from [0, 10] to [0, 1].
+    double normalized_rate = config_.rainRate / 10.0;
     if (normalized_rate <= 0.0) {
         return;
     }
@@ -278,11 +278,11 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
     // Scale with world width so larger worlds get proportionally more rain.
     double widthScale = world.getData().width / 20.0;
 
-    // Drop count scales linearly with rain_rate (more rain = more drops).
+    // Drop count scales linearly with rainRate (more rain = more drops).
     const double baseDropsPerSecond = 3.0; // Tunable drop frequency.
-    double expectedDrops = config_.rain_rate * baseDropsPerSecond * deltaTime * widthScale;
+    double expectedDrops = config_.rainRate * baseDropsPerSecond * deltaTime * widthScale;
 
-    // Drop radius scales quadratically with rain_rate AND proportionally with world width.
+    // Drop radius scales quadratically with rainRate AND proportionally with world width.
     // Low rate → tiny misting drops, high rate → large concentrated drops.
     // Larger worlds → proportionally larger drops (keeps visual consistency).
     const double scalar_factor = 5.0;
@@ -290,7 +290,7 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
     double meanRadius = baseRadius * widthScale;
 
     // Total water rate scales quadratically (matches drop size scaling).
-    // rain_rate=1 → 0.01× water, rain_rate=5 → 0.25× water, rain_rate=10 → 1.0× water.
+    // rainRate=1 → 0.01× water, rainRate=5 → 0.25× water, rainRate=10 → 1.0× water.
     const double baseWaterConstant = 50.0; // Tunable wetness factor.
     double targetWaterRate = normalized_rate * normalized_rate * baseWaterConstant * widthScale;
 
@@ -316,7 +316,7 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
     spdlog::debug(
         "Adding {} rain drops (rate: {:.1f}, meanRadius: {:.2f}, fill: {:.2f}, deltaTime: {:.3f}s)",
         numDrops,
-        config_.rain_rate,
+        config_.rainRate,
         meanRadius,
         fillAmount,
         deltaTime);

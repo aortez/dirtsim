@@ -22,7 +22,7 @@ namespace Ui {
 class RainingControls : public ScenarioControlsBase {
 public:
     RainingControls(
-        lv_obj_t* container, Network::WebSocketService* wsService, const RainingConfig& config);
+        lv_obj_t* container, Network::WebSocketService* wsService, const Config::Raining& config);
     ~RainingControls() override;
 
     /**
@@ -53,7 +53,7 @@ private:
     /**
      * @brief Get the current complete config from all controls.
      */
-    RainingConfig getCurrentConfig() const;
+    Config::Raining getCurrentConfig() const;
 };
 
 } // namespace Ui

@@ -18,7 +18,7 @@ namespace Ui {
  * @brief Factory for creating scenario-specific controls.
  *
  * Uses std::visit on ScenarioConfig variant to create appropriate controls.
- * Returns nullptr for configs with no UI (EmptyConfig, BenchmarkConfig, etc.).
+ * Returns nullptr for configs with no UI (Config::Empty, Config::Benchmark, etc.).
  */
 class ScenarioControlsFactory {
 public:

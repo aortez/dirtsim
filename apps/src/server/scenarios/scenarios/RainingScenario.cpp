@@ -16,9 +16,9 @@ RainingScenario::RainingScenario()
     metadata_.category = "demo";
 
     // Initialize with default config.
-    config_.rain_rate = 10.0;       // 10 drops per second.
-    config_.drain_size = 0.0;       // No drain (solid floor).
-    config_.max_fill_percent = 0.0; // No evaporation limit.
+    config_.rainRate = 10.0;       // 10 drops per second.
+    config_.drainSize = 0.0;       // No drain (solid floor).
+    config_.maxFillPercent = 0.0; // No evaporation limit.
 }
 
 const ScenarioMetadata& RainingScenario::getMetadata() const
@@ -34,8 +34,8 @@ ScenarioConfig RainingScenario::getConfig() const
 void RainingScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<RainingConfig>(newConfig)) {
-        config_ = std::get<RainingConfig>(newConfig);
+    if (std::holds_alternative<Config::Raining>(newConfig)) {
+        config_ = std::get<Config::Raining>(newConfig);
         spdlog::info("RainingScenario: Config updated");
     }
     else {
@@ -76,7 +76,7 @@ void RainingScenario::reset(World& world)
 void RainingScenario::tick(World& world, double deltaTime)
 {
     // Uniform evaporation when over max fill threshold.
-    if (config_.max_fill_percent > 0.0) {
+    if (config_.maxFillPercent > 0.0) {
         // Calculate total fill percentage.
         double totalFill = 0.0;
         uint32_t totalCells = world.getData().width * world.getData().height;
@@ -93,9 +93,9 @@ void RainingScenario::tick(World& world, double deltaTime)
         double fillPercent = (totalFill / totalCells) * 100.0;
 
         // Gradually evaporate when over threshold.
-        if (fillPercent > config_.max_fill_percent) {
+        if (fillPercent > config_.maxFillPercent) {
             // Evaporation rate scales with how far over the limit we are.
-            double overage = fillPercent - config_.max_fill_percent;
+            double overage = fillPercent - config_.maxFillPercent;
             double evaporationRate = 0.01 + (overage * 0.005); // Base rate + proportional.
 
             for (uint32_t y = 0; y < world.getData().height; ++y) {
@@ -113,7 +113,7 @@ void RainingScenario::tick(World& world, double deltaTime)
     }
 
     // Add rain drops based on configured rain rate.
-    const double drop_probability = config_.rain_rate * deltaTime;
+    const double drop_probability = config_.rainRate * deltaTime;
 
     if (drop_dist_(rng_) < drop_probability) {
         std::uniform_int_distribution<uint32_t> x_dist(1, world.getData().width - 2);
@@ -127,7 +127,7 @@ void RainingScenario::tick(World& world, double deltaTime)
     // Manage drain opening in the floor and evaporate water in the drain.
     uint32_t bottomY = world.getData().height - 1;
     uint32_t centerX = world.getData().width / 2;
-    uint32_t drainSize = static_cast<uint32_t>(config_.drain_size);
+    uint32_t drainSize = static_cast<uint32_t>(config_.drainSize);
     uint32_t halfDrain = drainSize / 2;
 
     // Calculate drain boundaries (centered).

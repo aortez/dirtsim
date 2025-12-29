@@ -1,6 +1,6 @@
 #pragma once
 
-#include "EmptyConfig.h"
+#include "TreeGerminationConfig.h"
 #include "server/scenarios/Scenario.h"
 #include <memory>
 
@@ -22,7 +22,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    EmptyConfig config_; // No configuration needed.
+    Config::TreeGermination config_;
 };
 
 } // namespace DirtSim

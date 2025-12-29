@@ -23,7 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    DamBreakConfig config_;
+    Config::DamBreak config_;
 
     // Scenario state.
     bool damBroken_ = false;

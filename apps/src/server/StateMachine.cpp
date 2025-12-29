@@ -1,6 +1,7 @@
 #include "StateMachine.h"
 #include "Event.h"
 #include "EventProcessor.h"
+#include "ServerConfig.h"
 #include "api/PeersGet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"

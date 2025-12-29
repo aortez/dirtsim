@@ -30,8 +30,8 @@ ScenarioConfig TreeGerminationScenario::getConfig() const
 
 void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
-    if (std::holds_alternative<EmptyConfig>(newConfig)) {
-        config_ = std::get<EmptyConfig>(newConfig);
+    if (std::holds_alternative<Config::TreeGermination>(newConfig)) {
+        config_ = std::get<Config::TreeGermination>(newConfig);
         spdlog::info("TreeGerminationScenario: Config updated");
     }
     else {

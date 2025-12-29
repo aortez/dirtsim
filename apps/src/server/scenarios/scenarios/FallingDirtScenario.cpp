@@ -16,8 +16,8 @@ FallingDirtScenario::FallingDirtScenario()
     metadata_.category = "demo";
 
     // Initialize with default config.
-    config_.drop_height = 20.0;
-    config_.drop_rate = 5.0; // 5 particles per second.
+    config_.dropHeight = 20.0;
+    config_.dropRate = 5.0; // 5 particles per second.
 }
 
 const ScenarioMetadata& FallingDirtScenario::getMetadata() const
@@ -33,8 +33,8 @@ ScenarioConfig FallingDirtScenario::getConfig() const
 void FallingDirtScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<FallingDirtConfig>(newConfig)) {
-        config_ = std::get<FallingDirtConfig>(newConfig);
+    if (std::holds_alternative<Config::FallingDirt>(newConfig)) {
+        config_ = std::get<Config::FallingDirt>(newConfig);
         spdlog::info("FallingDirtScenario: Config updated");
     }
     else {
@@ -92,7 +92,7 @@ void FallingDirtScenario::reset(World& world)
 void FallingDirtScenario::tick(World& world, double deltaTime)
 {
     // Drop dirt particles based on configured rate.
-    const double drop_probability = config_.drop_rate * deltaTime;
+    const double drop_probability = config_.dropRate * deltaTime;
 
     if (drop_dist_(rng_) < drop_probability) {
         std::uniform_int_distribution<uint32_t> x_dist(1, world.getData().width - 2);

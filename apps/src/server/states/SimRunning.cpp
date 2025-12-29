@@ -8,6 +8,7 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
+#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
@@ -39,28 +40,31 @@ void SimRunning::onEnter(StateMachine& dsm)
             world->getData().height);
     }
 
-    // Apply default "sandbox" scenario if no scenario is set.
-    if (world && scenario_id == "empty") {
-        spdlog::info("SimRunning: Applying default 'sandbox' scenario");
+    // Apply startup scenario if no scenario is set.
+    if (world && scenario_id == "empty" && dsm.serverConfig) {
+        std::string startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
+        spdlog::info("SimRunning: Applying startup scenario '{}'", startupScenarioId);
 
         auto& registry = dsm.getScenarioRegistry();
-        scenario = registry.createScenario("sandbox");
+        scenario = registry.createScenario(startupScenarioId);
 
         if (scenario) {
-            // Set scenario ID.
-            scenario_id = "sandbox";
+            scenario_id = startupScenarioId;
 
             // Clear world before applying scenario.
             for (uint32_t y = 0; y < world->getData().height; ++y) {
                 for (uint32_t x = 0; x < world->getData().width; ++x) {
-                    world->getData().at(x, y) = Cell(); // Reset to empty cell.
+                    world->getData().at(x, y) = Cell();
                 }
             }
+
+            // Apply config from server.json.
+            scenario->setConfig(dsm.serverConfig->startupConfig, *world);
 
             // Run scenario setup to initialize world.
             scenario->setup(*world);
 
-            spdlog::info("SimRunning: Default scenario 'sandbox' applied");
+            spdlog::info("SimRunning: Startup scenario '{}' applied with config", startupScenarioId);
         }
     }
 
@@ -906,19 +910,19 @@ State::Any SimRunning::onEvent(const SetRainRateCommand& cmd, StateMachine& /*ds
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
-        // Update rain_rate in whichever config variant supports it.
-        if (auto* sandboxCfg = std::get_if<SandboxConfig>(&config)) {
-            sandboxCfg->rain_rate = cmd.rate;
+        // Update rainRate in whichever config variant supports it.
+        if (auto* sandboxCfg = std::get_if<Config::Sandbox>(&config)) {
+            sandboxCfg->rainRate = cmd.rate;
             scenario->setConfig(config, *world);
-            spdlog::info("SimRunning: Set rain rate to {} (SandboxConfig)", cmd.rate);
+            spdlog::info("SimRunning: Set rain rate to {} (Config::Sandbox)", cmd.rate);
         }
-        else if (auto* rainingCfg = std::get_if<RainingConfig>(&config)) {
-            rainingCfg->rain_rate = cmd.rate;
+        else if (auto* rainingCfg = std::get_if<Config::Raining>(&config)) {
+            rainingCfg->rainRate = cmd.rate;
             scenario->setConfig(config, *world);
-            spdlog::info("SimRunning: Set rain rate to {} (RainingConfig)", cmd.rate);
+            spdlog::info("SimRunning: Set rain rate to {} (Config::Raining)", cmd.rate);
         }
         else {
-            spdlog::warn("SimRunning: Current scenario does not support rain_rate");
+            spdlog::warn("SimRunning: Current scenario does not support rainRate");
         }
     }
     return std::move(*this);
@@ -1007,12 +1011,12 @@ State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMac
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
-        // Toggle water_column_enabled in SandboxConfig.
-        if (auto* sandboxCfg = std::get_if<SandboxConfig>(&config)) {
-            sandboxCfg->water_column_enabled = !sandboxCfg->water_column_enabled;
+        // Toggle waterColumnEnabled in Config::Sandbox.
+        if (auto* sandboxCfg = std::get_if<Config::Sandbox>(&config)) {
+            sandboxCfg->waterColumnEnabled = !sandboxCfg->waterColumnEnabled;
             scenario->setConfig(config, *world);
             spdlog::info(
-                "SimRunning: Water column toggled - now: {}", sandboxCfg->water_column_enabled);
+                "SimRunning: Water column toggled - now: {}", sandboxCfg->waterColumnEnabled);
         }
         else {
             spdlog::warn("SimRunning: Current scenario does not support water column toggle");
@@ -1023,7 +1027,7 @@ State::Any SimRunning::onEvent(const ToggleWaterColumnCommand& /*cmd*/, StateMac
 
 State::Any SimRunning::onEvent(const ToggleLeftThrowCommand& /*cmd*/, StateMachine& /*dsm*/)
 {
-    // Note: Left throw is not currently in SandboxConfig - this command is deprecated.
+    // Note: Left throw is not currently in Config::Sandbox - this command is deprecated.
     // Use ScenarioConfigSet API to modify scenario configs directly.
     spdlog::warn("SimRunning: ToggleLeftThrowCommand is deprecated - left throw not in config");
     return std::move(*this);
@@ -1034,12 +1038,12 @@ State::Any SimRunning::onEvent(const ToggleRightThrowCommand& /*cmd*/, StateMach
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
-        // Toggle right_throw_enabled in SandboxConfig.
-        if (auto* sandboxCfg = std::get_if<SandboxConfig>(&config)) {
-            sandboxCfg->right_throw_enabled = !sandboxCfg->right_throw_enabled;
+        // Toggle rightThrowEnabled in Config::Sandbox.
+        if (auto* sandboxCfg = std::get_if<Config::Sandbox>(&config)) {
+            sandboxCfg->rightThrowEnabled = !sandboxCfg->rightThrowEnabled;
             scenario->setConfig(config, *world);
             spdlog::info(
-                "SimRunning: Right throw toggled - now: {}", sandboxCfg->right_throw_enabled);
+                "SimRunning: Right throw toggled - now: {}", sandboxCfg->rightThrowEnabled);
         }
         else {
             spdlog::warn("SimRunning: Current scenario does not support right throw toggle");
@@ -1053,11 +1057,11 @@ State::Any SimRunning::onEvent(const ToggleQuadrantCommand& /*cmd*/, StateMachin
     if (world && scenario) {
         ScenarioConfig config = scenario->getConfig();
 
-        // Toggle quadrant_enabled in SandboxConfig.
-        if (auto* sandboxCfg = std::get_if<SandboxConfig>(&config)) {
-            sandboxCfg->quadrant_enabled = !sandboxCfg->quadrant_enabled;
+        // Toggle quadrantEnabled in Config::Sandbox.
+        if (auto* sandboxCfg = std::get_if<Config::Sandbox>(&config)) {
+            sandboxCfg->quadrantEnabled = !sandboxCfg->quadrantEnabled;
             scenario->setConfig(config, *world);
-            spdlog::info("SimRunning: Quadrant toggled - now: {}", sandboxCfg->quadrant_enabled);
+            spdlog::info("SimRunning: Quadrant toggled - now: {}", sandboxCfg->quadrantEnabled);
         }
         else {
             spdlog::warn("SimRunning: Current scenario does not support quadrant toggle");

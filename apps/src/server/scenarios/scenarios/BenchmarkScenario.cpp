@@ -18,7 +18,7 @@ BenchmarkScenario::BenchmarkScenario()
     metadata_.requiredHeight = 200;
 
     // Initialize with empty config.
-    config_ = BenchmarkConfig{};
+    config_ = Config::Benchmark{};
 }
 
 const ScenarioMetadata& BenchmarkScenario::getMetadata() const
@@ -34,8 +34,8 @@ ScenarioConfig BenchmarkScenario::getConfig() const
 void BenchmarkScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<BenchmarkConfig>(newConfig)) {
-        config_ = std::get<BenchmarkConfig>(newConfig);
+    if (std::holds_alternative<Config::Benchmark>(newConfig)) {
+        config_ = std::get<Config::Benchmark>(newConfig);
         spdlog::info("BenchmarkScenario: Config updated");
     }
     else {

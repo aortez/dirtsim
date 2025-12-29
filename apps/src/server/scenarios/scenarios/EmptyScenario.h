@@ -22,7 +22,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    EmptyConfig config_;
+    Config::Empty config_;
 };
 
 } // namespace DirtSim

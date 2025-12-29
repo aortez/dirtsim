@@ -23,7 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    FallingDirtConfig config_;
+    Config::FallingDirt config_;
 
     // Random number generation for dirt drops.
     std::mt19937 rng_{ 123 }; // Different seed than rain.

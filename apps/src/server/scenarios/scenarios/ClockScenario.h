@@ -51,7 +51,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    ClockConfig config_;
+    Config::Clock config_;
     int last_second_ = -1;
 
     // Event system.

@@ -23,7 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    WaterEqualizationConfig config_;
+    Config::WaterEqualization config_;
 };
 
 } // namespace DirtSim

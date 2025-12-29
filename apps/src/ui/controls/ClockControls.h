@@ -36,7 +36,7 @@ public:
     ClockControls(
         lv_obj_t* container,
         Network::WebSocketService* wsService,
-        const ClockConfig& config,
+        const Config::Clock& config,
         DisplayDimensionsGetter dimensionsGetter = nullptr);
     ~ClockControls() override;
 
@@ -58,7 +58,7 @@ private:
     lv_obj_t* secondsSwitch_ = nullptr;
 
     // Current config (cached from last updateFromConfig call).
-    ClockConfig currentConfig_;
+    Config::Clock currentConfig_;
 
     // Callback to get current display dimensions for auto-scaling.
     DisplayDimensionsGetter dimensionsGetter_;
@@ -71,7 +71,7 @@ private:
     /**
      * @brief Get the current complete config from all controls.
      */
-    ClockConfig getCurrentConfig() const;
+    Config::Clock getCurrentConfig() const;
 };
 
 } // namespace Ui

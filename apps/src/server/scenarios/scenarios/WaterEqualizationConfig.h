@@ -2,17 +2,14 @@
 
 #include <zpp_bits.h>
 
-namespace DirtSim {
+namespace DirtSim::Config {
 
-/**
- * @brief Water equalization scenario config - pressure equilibration test.
- */
-struct WaterEqualizationConfig {
+struct WaterEqualization {
     using serialize = zpp::bits::members<3>;
 
-    double left_height = 15.0;     // Water column height on left.
-    double right_height = 5.0;     // Water column height on right.
-    bool separator_enabled = true; // Start with separator wall.
+    double leftHeight = 15.0;
+    double rightHeight = 5.0;
+    bool separatorEnabled = true;
 };
 
-} // namespace DirtSim
+} // namespace DirtSim::Config

@@ -99,7 +99,7 @@ private:
      * @brief Create sandbox scenario controls.
      * @param config Sandbox configuration.
      */
-    void createSandboxControls(const SandboxConfig& config);
+    void createSandboxControls(const Config::Sandbox& config);
 
     // Event handlers (static for LVGL callbacks).
     static void onScenarioChanged(lv_event_t* e);

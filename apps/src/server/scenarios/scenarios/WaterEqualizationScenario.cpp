@@ -17,9 +17,9 @@ WaterEqualizationScenario::WaterEqualizationScenario()
     metadata_.requiredHeight = 6; // Match test specifications.
 
     // Initialize with default config.
-    config_.left_height = 15.0;
-    config_.right_height = 5.0;
-    config_.separator_enabled = true;
+    config_.leftHeight = 15.0;
+    config_.rightHeight = 5.0;
+    config_.separatorEnabled = true;
 }
 
 const ScenarioMetadata& WaterEqualizationScenario::getMetadata() const
@@ -35,8 +35,8 @@ ScenarioConfig WaterEqualizationScenario::getConfig() const
 void WaterEqualizationScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<WaterEqualizationConfig>(newConfig)) {
-        config_ = std::get<WaterEqualizationConfig>(newConfig);
+    if (std::holds_alternative<Config::WaterEqualization>(newConfig)) {
+        config_ = std::get<Config::WaterEqualization>(newConfig);
         spdlog::info("WaterEqualizationScenario: Config updated");
     }
     else {

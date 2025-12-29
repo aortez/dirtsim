@@ -23,7 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    RainingConfig config_;
+    Config::Raining config_;
 
     // Random number generation for rain drops.
     std::mt19937 rng_{ 42 }; // Deterministic seed for consistency.

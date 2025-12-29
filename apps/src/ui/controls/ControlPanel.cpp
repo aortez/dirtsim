@@ -152,8 +152,8 @@ void ControlPanel::createScenarioControls(
     // Create controls based on scenario type.
     // DISABLED: SimPlayground already creates SandboxControls, having duplicate controls
     // causes infinite update loops between the two sets of controls
-    // if (scenarioId == "sandbox" && std::holds_alternative<SandboxConfig>(config)) {
-    //     createSandboxControls(std::get<SandboxConfig>(config));
+    // if (scenarioId == "sandbox" && std::holds_alternative<Config::Sandbox>(config)) {
+    //     createSandboxControls(std::get<Config::Sandbox>(config));
     // }
     // TODO: Add other scenario control creators here.
 
@@ -175,7 +175,7 @@ void ControlPanel::clearScenarioControls()
     }
 }
 
-void ControlPanel::createSandboxControls(const SandboxConfig& config)
+void ControlPanel::createSandboxControls(const Config::Sandbox& config)
 {
     // Sandbox-specific controls label.
     lv_obj_t* sandboxLabel = lv_label_create(scenarioPanel_);
@@ -191,21 +191,21 @@ void ControlPanel::createSandboxControls(const SandboxConfig& config)
     // Quadrant toggle.
     sandboxQuadrantSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
                                  .label("Quadrant")
-                                 .initialState(config.quadrant_enabled)
+                                 .initialState(config.quadrantEnabled)
                                  .callback(onSandboxQuadrantToggled, this)
                                  .buildOrLog();
 
     // Water column toggle.
     sandboxWaterColumnSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
                                     .label("Water Column")
-                                    .initialState(config.water_column_enabled)
+                                    .initialState(config.waterColumnEnabled)
                                     .callback(onSandboxWaterColumnToggled, this)
                                     .buildOrLog();
 
     // Right throw toggle.
     sandboxRightThrowSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
                                    .label("Right Throw")
-                                   .initialState(config.right_throw_enabled)
+                                   .initialState(config.rightThrowEnabled)
                                    .callback(onSandboxRightThrowToggled, this)
                                    .buildOrLog();
 
@@ -220,7 +220,7 @@ void ControlPanel::createSandboxControls(const SandboxConfig& config)
     sandboxRainSlider_ = LVGLBuilder::slider(scenarioPanel_)
                              .size(LV_PCT(80), 10)
                              .range(0, 100)
-                             .value(static_cast<int>(config.rain_rate * 10))
+                             .value(static_cast<int>(config.rainRate * 10))
                              .label("Rain Rate")
                              .callback(onSandboxRainSliderChanged, this)
                              .buildOrLog();
@@ -324,17 +324,17 @@ void ControlPanel::onSandboxQuadrantToggled(lv_event_t* e)
     spdlog::info("ControlPanel: Sandbox quadrant toggled: {}", enabled);
 
     // Create updated config.
-    SandboxConfig config;
-    config.quadrant_enabled = enabled;
-    config.water_column_enabled = panel->sandboxWaterColumnSwitch_
+    Config::Sandbox config;
+    config.quadrantEnabled = enabled;
+    config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
         : true;
-    config.right_throw_enabled = panel->sandboxRightThrowSwitch_
+    config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
         : true;
-    config.rain_rate = panel->sandboxRainSlider_
+    config.rainRate = panel->sandboxRainSlider_
         ? lv_slider_get_value(static_cast<lv_obj_t*>(panel->sandboxRainSlider_)) / 10.0
         : 0.0;
 
@@ -352,16 +352,16 @@ void ControlPanel::onSandboxWaterColumnToggled(lv_event_t* e)
     spdlog::info("ControlPanel: Sandbox water column toggled: {}", enabled);
 
     // Create updated config with all current values.
-    SandboxConfig config;
-    config.quadrant_enabled = panel->sandboxQuadrantSwitch_
+    Config::Sandbox config;
+    config.quadrantEnabled = panel->sandboxQuadrantSwitch_
         ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
         : true;
-    config.water_column_enabled = enabled;
-    config.right_throw_enabled = panel->sandboxRightThrowSwitch_
+    config.waterColumnEnabled = enabled;
+    config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
         : true;
-    config.rain_rate = panel->sandboxRainSlider_
+    config.rainRate = panel->sandboxRainSlider_
         ? lv_slider_get_value(static_cast<lv_obj_t*>(panel->sandboxRainSlider_)) / 10.0
         : 0.0;
 
@@ -378,16 +378,16 @@ void ControlPanel::onSandboxRightThrowToggled(lv_event_t* e)
         lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED);
     spdlog::info("ControlPanel: Sandbox right throw toggled: {}", enabled);
 
-    SandboxConfig config;
-    config.quadrant_enabled = panel->sandboxQuadrantSwitch_
+    Config::Sandbox config;
+    config.quadrantEnabled = panel->sandboxQuadrantSwitch_
         ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
         : true;
-    config.water_column_enabled = panel->sandboxWaterColumnSwitch_
+    config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
         : true;
-    config.right_throw_enabled = enabled;
-    config.rain_rate = panel->sandboxRainSlider_
+    config.rightThrowEnabled = enabled;
+    config.rainRate = panel->sandboxRainSlider_
         ? lv_slider_get_value(static_cast<lv_obj_t*>(panel->sandboxRainSlider_)) / 10.0
         : 0.0;
 
@@ -405,19 +405,19 @@ void ControlPanel::onSandboxRainSliderChanged(lv_event_t* e)
     double rainRate = sliderValue / 10.0;
     spdlog::info("ControlPanel: Sandbox rain rate changed: {}", rainRate);
 
-    SandboxConfig config;
-    config.quadrant_enabled = panel->sandboxQuadrantSwitch_
+    Config::Sandbox config;
+    config.quadrantEnabled = panel->sandboxQuadrantSwitch_
         ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
         : true;
-    config.water_column_enabled = panel->sandboxWaterColumnSwitch_
+    config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
         : true;
-    config.right_throw_enabled = panel->sandboxRightThrowSwitch_
+    config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
         ? lv_obj_has_state(
               static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
         : true;
-    config.rain_rate = rainRate;
+    config.rainRate = rainRate;
 
     panel->sendConfigUpdate(config);
 }

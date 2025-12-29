@@ -27,8 +27,8 @@ ScenarioConfig EmptyScenario::getConfig() const
 void EmptyScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 {
     // Validate type and update.
-    if (std::holds_alternative<EmptyConfig>(newConfig)) {
-        config_ = std::get<EmptyConfig>(newConfig);
+    if (std::holds_alternative<Config::Empty>(newConfig)) {
+        config_ = std::get<Config::Empty>(newConfig);
         spdlog::info("EmptyScenario: Config updated");
     }
     else {

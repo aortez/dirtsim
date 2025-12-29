@@ -14,7 +14,7 @@ namespace DirtSim {
 namespace Ui {
 
 SandboxControls::SandboxControls(
-    lv_obj_t* container, Network::WebSocketService* wsService, const SandboxConfig& config)
+    lv_obj_t* container, Network::WebSocketService* wsService, const Config::Sandbox& config)
     : ScenarioControlsBase(container, wsService, "sandbox")
 {
     // Create widgets with initial config.
@@ -93,13 +93,13 @@ SandboxControls::~SandboxControls()
 
 void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
 {
-    // Extract SandboxConfig from variant.
-    if (!std::holds_alternative<SandboxConfig>(configVariant)) {
-        spdlog::error("SandboxControls: Invalid config type (expected SandboxConfig)");
+    // Extract Config::Sandbox from variant.
+    if (!std::holds_alternative<Config::Sandbox>(configVariant)) {
+        spdlog::error("SandboxControls: Invalid config type (expected Config::Sandbox)");
         return;
     }
 
-    const SandboxConfig& config = std::get<SandboxConfig>(configVariant);
+    const Config::Sandbox& config = std::get<Config::Sandbox>(configVariant);
 
     // Prevent sending updates back to server during UI sync.
     bool wasInitializing = isInitializing();
@@ -110,52 +110,52 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update quadrant switch.
     if (quadrantSwitch_) {
         bool currentState = lv_obj_has_state(quadrantSwitch_, LV_STATE_CHECKED);
-        if (currentState != config.quadrant_enabled) {
-            if (config.quadrant_enabled) {
+        if (currentState != config.quadrantEnabled) {
+            if (config.quadrantEnabled) {
                 lv_obj_add_state(quadrantSwitch_, LV_STATE_CHECKED);
             }
             else {
                 lv_obj_remove_state(quadrantSwitch_, LV_STATE_CHECKED);
             }
             spdlog::debug(
-                "SandboxControls: Updated quadrant switch to {}", config.quadrant_enabled);
+                "SandboxControls: Updated quadrant switch to {}", config.quadrantEnabled);
         }
     }
 
     // Update water column switch.
     if (waterColumnSwitch_) {
         bool currentState = lv_obj_has_state(waterColumnSwitch_, LV_STATE_CHECKED);
-        if (currentState != config.water_column_enabled) {
-            if (config.water_column_enabled) {
+        if (currentState != config.waterColumnEnabled) {
+            if (config.waterColumnEnabled) {
                 lv_obj_add_state(waterColumnSwitch_, LV_STATE_CHECKED);
             }
             else {
                 lv_obj_remove_state(waterColumnSwitch_, LV_STATE_CHECKED);
             }
             spdlog::info(
-                "SandboxControls: Updated water column switch to {}", config.water_column_enabled);
+                "SandboxControls: Updated water column switch to {}", config.waterColumnEnabled);
         }
     }
 
     // Update right throw switch.
     if (rightThrowSwitch_) {
         bool currentState = lv_obj_has_state(rightThrowSwitch_, LV_STATE_CHECKED);
-        if (currentState != config.right_throw_enabled) {
-            if (config.right_throw_enabled) {
+        if (currentState != config.rightThrowEnabled) {
+            if (config.rightThrowEnabled) {
                 lv_obj_add_state(rightThrowSwitch_, LV_STATE_CHECKED);
             }
             else {
                 lv_obj_remove_state(rightThrowSwitch_, LV_STATE_CHECKED);
             }
             spdlog::debug(
-                "SandboxControls: Updated right throw switch to {}", config.right_throw_enabled);
+                "SandboxControls: Updated right throw switch to {}", config.rightThrowEnabled);
         }
     }
 
     // Update rain control.
     if (rainControl_) {
-        bool shouldBeEnabled = config.rain_rate > 0.0;
-        int sliderValue = static_cast<int>(config.rain_rate * 10); // Scale to [0, 100].
+        bool shouldBeEnabled = config.rainRate > 0.0;
+        int sliderValue = static_cast<int>(config.rainRate * 10); // Scale to [0, 100].
         rainControl_->setEnabled(shouldBeEnabled);
         if (shouldBeEnabled) {
             rainControl_->setValue(sliderValue);
@@ -177,29 +177,29 @@ void SandboxControls::updateWorldDimensions(uint32_t width, uint32_t height)
     spdlog::debug("SandboxControls: Updated world dimensions to {}×{}", width, height);
 }
 
-SandboxConfig SandboxControls::getCurrentConfig() const
+Config::Sandbox SandboxControls::getCurrentConfig() const
 {
-    SandboxConfig config;
+    Config::Sandbox config;
 
     // Get current state of all controls
     if (quadrantSwitch_) {
-        config.quadrant_enabled = lv_obj_has_state(quadrantSwitch_, LV_STATE_CHECKED);
+        config.quadrantEnabled = lv_obj_has_state(quadrantSwitch_, LV_STATE_CHECKED);
     }
 
     if (waterColumnSwitch_) {
-        config.water_column_enabled = lv_obj_has_state(waterColumnSwitch_, LV_STATE_CHECKED);
+        config.waterColumnEnabled = lv_obj_has_state(waterColumnSwitch_, LV_STATE_CHECKED);
     }
 
     if (rightThrowSwitch_) {
-        config.right_throw_enabled = lv_obj_has_state(rightThrowSwitch_, LV_STATE_CHECKED);
+        config.rightThrowEnabled = lv_obj_has_state(rightThrowSwitch_, LV_STATE_CHECKED);
     }
 
     if (rainControl_) {
         if (rainControl_->isEnabled()) {
-            config.rain_rate = rainControl_->getScaledValue();
+            config.rainRate = rainControl_->getScaledValue();
         }
         else {
-            config.rain_rate = 0.0;
+            config.rainRate = 0.0;
         }
     }
 
@@ -275,7 +275,7 @@ void SandboxControls::onQuadrantToggled(lv_event_t* e)
     spdlog::info("SandboxControls: Quadrant toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config from all controls
-    SandboxConfig config = self->getCurrentConfig();
+    Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
 
@@ -298,7 +298,7 @@ void SandboxControls::onWaterColumnToggled(lv_event_t* e)
     spdlog::info("SandboxControls: Water Column toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config from all controls
-    SandboxConfig config = self->getCurrentConfig();
+    Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
 
@@ -321,7 +321,7 @@ void SandboxControls::onRightThrowToggled(lv_event_t* e)
     spdlog::info("SandboxControls: Right Throw toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config from all controls
-    SandboxConfig config = self->getCurrentConfig();
+    Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
 
@@ -336,7 +336,7 @@ void SandboxControls::onRainToggled(bool enabled)
     spdlog::info("SandboxControls: Rain toggled to {}", enabled ? "ON" : "OFF");
 
     // Get current config and update.
-    SandboxConfig config = getCurrentConfig();
+    Config::Sandbox config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 
@@ -361,7 +361,7 @@ void SandboxControls::onRainSliderChanged(int value)
     spdlog::info("SandboxControls: Rain rate changed to {:.1f}", rainRate);
 
     // Get complete current config from all controls.
-    SandboxConfig config = getCurrentConfig();
+    Config::Sandbox config = getCurrentConfig();
     sendConfigUpdate(config);
 }
 

@@ -406,7 +406,7 @@ std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPix
 void SimPlayground::sendDisplayResizeUpdate()
 {
     // Only send resize for auto-scaling scenarios like Clock.
-    if (!std::holds_alternative<ClockConfig>(currentScenarioConfig_)) {
+    if (!std::holds_alternative<Config::Clock>(currentScenarioConfig_)) {
         return;
     }
 
@@ -426,8 +426,8 @@ void SimPlayground::sendDisplayResizeUpdate()
     uint32_t newHeight = static_cast<uint32_t>(lv_obj_get_height(worldArea));
 
     // Update the config with new dimensions.
-    ClockConfig config = std::get<ClockConfig>(currentScenarioConfig_);
-    if (config.target_display_width == newWidth && config.target_display_height == newHeight) {
+    Config::Clock config = std::get<Config::Clock>(currentScenarioConfig_);
+    if (config.targetDisplayWidth == newWidth && config.targetDisplayHeight == newHeight) {
         // No change in dimensions.
         return;
     }
@@ -435,13 +435,13 @@ void SimPlayground::sendDisplayResizeUpdate()
     LOG_INFO(
         Controls,
         "Display resized: {}x{} -> {}x{}, sending config update",
-        config.target_display_width,
-        config.target_display_height,
+        config.targetDisplayWidth,
+        config.targetDisplayHeight,
         newWidth,
         newHeight);
 
-    config.target_display_width = newWidth;
-    config.target_display_height = newHeight;
+    config.targetDisplayWidth = newWidth;
+    config.targetDisplayHeight = newHeight;
 
     // Send the updated config to the server.
     const Api::ScenarioConfigSet::Command cmd{ .config = config };

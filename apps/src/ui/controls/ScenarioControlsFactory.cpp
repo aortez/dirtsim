@@ -20,21 +20,21 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
         [&](auto&& cfg) -> std::unique_ptr<ScenarioControlsBase> {
             using T = std::decay_t<decltype(cfg)>;
 
-            if constexpr (std::is_same_v<T, SandboxConfig>) {
+            if constexpr (std::is_same_v<T, Config::Sandbox>) {
                 spdlog::debug("ScenarioControlsFactory: Creating SandboxControls");
                 return std::make_unique<SandboxControls>(parent, wsService, cfg);
             }
-            else if constexpr (std::is_same_v<T, ClockConfig>) {
+            else if constexpr (std::is_same_v<T, Config::Clock>) {
                 spdlog::debug("ScenarioControlsFactory: Creating ClockControls");
                 return std::make_unique<ClockControls>(parent, wsService, cfg, dimensionsGetter);
             }
-            else if constexpr (std::is_same_v<T, RainingConfig>) {
+            else if constexpr (std::is_same_v<T, Config::Raining>) {
                 spdlog::debug("ScenarioControlsFactory: Creating RainingControls");
                 return std::make_unique<RainingControls>(parent, wsService, cfg);
             }
             else {
-                // EmptyConfig, BenchmarkConfig, DamBreakConfig, FallingDirtConfig,
-                // WaterEqualizationConfig, etc. - no UI needed yet.
+                // Config::Empty, Config::Benchmark, Config::DamBreak, Config::FallingDirt,
+                // Config::WaterEqualization, etc. - no UI needed yet.
                 spdlog::debug(
                     "ScenarioControlsFactory: No controls for scenario '{}'", scenarioId);
                 return nullptr;

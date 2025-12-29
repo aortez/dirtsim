@@ -24,7 +24,7 @@ protected:
     {
         world = std::make_unique<World>(9, 9);
         ScenarioRegistry registry = ScenarioRegistry::createDefault();
-        scenario = registry.createScenario("tree_germination");
+        scenario = registry.createScenario("TreeGermination");
     }
 
     std::unique_ptr<World> world;

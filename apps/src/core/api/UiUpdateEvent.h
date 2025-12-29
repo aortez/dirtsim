@@ -17,8 +17,8 @@ struct UiUpdateEvent {
     std::chrono::steady_clock::time_point timestamp;
 
     // Scenario metadata (sent alongside world data).
-    std::string scenario_id = "empty";
-    ScenarioConfig scenario_config = EmptyConfig{};
+    std::string scenario_id = "Empty";
+    ScenarioConfig scenario_config = Config::Empty{};
 
     static constexpr const char* name() { return "UiUpdateEvent"; }
 };
