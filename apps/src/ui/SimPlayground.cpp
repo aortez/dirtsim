@@ -11,8 +11,7 @@
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
-#include "server/api/ScenarioConfigSet.h"
-#include "server/api/SimRun.h"
+#include "server/api/ScenarioSwitch.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -344,28 +343,18 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
     lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
     uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
 
-    // Map dropdown index to scenario_id using metadata cache.
-    std::string scenario_id = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
-    LOG_INFO(Controls, "Scenario changed to '{}'", scenario_id);
+    std::string scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
+    LOG_INFO(Controls, "Scenario dropdown changed to '{}'", scenarioId);
 
-    // Send sim_run command with new scenario_id to DSSM server.
+    // Send ScenarioSwitch to server (server will use its default config).
     if (playground->wsService_ && playground->wsService_->isConnected()) {
         static std::atomic<uint64_t> nextId{ 1 };
-        const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
-                                                 .max_steps = -1,
-                                                 .scenario_id = scenario_id,
-                                                 .max_frame_ms = playground->currentMaxFrameMs_ };
+        const DirtSim::Api::ScenarioSwitch::Command cmd{ .scenario_id = scenarioId };
 
-        spdlog::info(
-            "SimPlayground: Sending sim_run with scenario '{}', max_frame_ms={}",
-            scenario_id,
-            cmd.max_frame_ms);
-
-        // Send binary command.
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = playground->wsService_->sendBinary(Network::serialize_envelope(envelope));
         if (result.isError()) {
-            LOG_ERROR(Controls, "Failed to send SimRun: {}", result.errorValue());
+            LOG_ERROR(Controls, "Failed to send ScenarioSwitch: {}", result.errorValue());
         }
     }
     else {

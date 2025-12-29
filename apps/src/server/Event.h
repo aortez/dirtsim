@@ -15,8 +15,9 @@
 #include "api/RenderFormatGet.h"
 #include "api/RenderFormatSet.h"
 #include "api/Reset.h"
-#include "api/ScenarioListGet.h"
 #include "api/ScenarioConfigSet.h"
+#include "api/ScenarioListGet.h"
+#include "api/ScenarioSwitch.h"
 #include "api/SeedAdd.h"
 #include "api/SimRun.h"
 #include "api/SpawnDirtBall.h"
@@ -419,6 +420,7 @@ public:
         DirtSim::Api::Reset::Cwc,
         DirtSim::Api::ScenarioConfigSet::Cwc,
         DirtSim::Api::ScenarioListGet::Cwc,
+        DirtSim::Api::ScenarioSwitch::Cwc,
         DirtSim::Api::SeedAdd::Cwc,
         DirtSim::Api::SimRun::Cwc,
         DirtSim::Api::SpawnDirtBall::Cwc,

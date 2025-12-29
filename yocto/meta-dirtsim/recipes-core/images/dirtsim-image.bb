@@ -3,30 +3,25 @@ DESCRIPTION = "A minimal console image with NetworkManager, SSH, and \
 development tools for the DirtSim physics simulation."
 LICENSE = "MIT"
 
-inherit core-image
+# Inherit pi-base-image for A/B boot, NetworkManager, SSH, Bluetooth, and WiFi provisioning.
+inherit pi-base-image
 
-# ============================================================================
-# Image Features
-# ============================================================================
-# ssh-server-openssh: OpenSSH server for remote access.
-# NOTE: debug-tweaks removed for security - we use SSH keys instead.
-IMAGE_FEATURES += " \
-    ssh-server-openssh \
-"
+# USB boot (not SD card).
+BOOT_DEVICE = "sda"
+
+# Set default hostname (can be overridden by /boot/hostname.txt at boot).
+HOSTNAME_DEFAULT = "dirtsim"
 
 # ============================================================================
 # User Configuration
 # ============================================================================
-# Create 'dirtsim' user with sudo access.  SSH key is injected at flash time.
+# Create 'dirtsim' user with sudo access. SSH key is injected at flash time.
 inherit extrausers
 
 EXTRA_USERS_PARAMS = " \
     useradd -m -s /bin/bash -G sudo dirtsim; \
     usermod -p '*' dirtsim; \
 "
-
-# Ensure sudo is installed.
-IMAGE_INSTALL:append = " sudo"
 
 # Set up dirtsim home directory with correct ownership and permissions.
 setup_dirtsim_home() {
@@ -46,21 +41,9 @@ setup_dirtsim_home() {
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_dirtsim_home;"
 
 # ============================================================================
-# A/B Boot Initialization
-# ============================================================================
-# On first boot, mark that we're running from slot A.
-setup_ab_boot() {
-    # Create initial boot_slot marker (will be on boot partition after flash).
-    # This gets copied to /boot when the boot partition is mounted.
-    install -d ${IMAGE_ROOTFS}/boot
-    echo "a" > ${IMAGE_ROOTFS}/boot/boot_slot
-}
-ROOTFS_POSTPROCESS_COMMAND:append = " setup_ab_boot;"
-
-# ============================================================================
 # HyperPixel Backlight Fix
 # ============================================================================
-# The HyperPixel backlight doesn't auto-enable at boot.  This service fixes it.
+# The HyperPixel backlight doesn't auto-enable at boot. This service fixes it.
 setup_hyperpixel_backlight() {
     install -d ${IMAGE_ROOTFS}/etc/systemd/system
 
@@ -99,58 +82,12 @@ disable_fb_console() {
 ROOTFS_POSTPROCESS_COMMAND:append = " disable_fb_console;"
 
 # ============================================================================
-# Network Management
+# Additional Development & Debug Tools
 # ============================================================================
-# NetworkManager provides nmcli/nmtui for network configuration.
+# Tools beyond what pi-base-image provides.
 IMAGE_INSTALL:append = " \
-    networkmanager \
-    networkmanager-nmtui \
-    networkmanager-nmcli \
-"
-
-# Disable systemd-networkd since we use NetworkManager exclusively.
-# Having both enabled causes systemd-networkd-wait-online to timeout (120s)
-# waiting for interfaces that NetworkManager manages, delaying boot.
-disable_systemd_networkd() {
-    # Mask the services so they don't start.
-    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd.service
-    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd.socket
-    ln -sf /dev/null ${IMAGE_ROOTFS}/etc/systemd/system/systemd-networkd-wait-online.service
-}
-ROOTFS_POSTPROCESS_COMMAND:append = " disable_systemd_networkd;"
-
-# ============================================================================
-# Persistent Data & Boot Configuration
-# ============================================================================
-# Shared infrastructure from pi-base layer:
-# - persistent-data: Mounts /data partition, bind-mounts WiFi credentials.
-# - hostname-setup: Sets hostname from /boot/hostname.txt at boot.
-IMAGE_INSTALL:append = " \
-    persistent-data \
-    hostname-setup \
-"
-
-# ============================================================================
-# Service Discovery
-# ============================================================================
-# Avahi for mDNS - find the Pi as "dirtsim.local" on the network.
-IMAGE_INSTALL:append = " \
-    avahi-daemon \
-    avahi-utils \
-"
-
-# ============================================================================
-# Development & Debug Tools
-# ============================================================================
-# Useful tools for poking around on the device.
-IMAGE_INSTALL:append = " \
-    ab-boot-manager \
-    curl \
     file \
-    htop \
     jq \
-    less \
-    nano \
     nmon \
     rsync \
     screen \
@@ -161,7 +98,7 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# WiFi Support
+# WiFi Firmware
 # ============================================================================
 # Firmware for the Pi's onboard WiFi.
 IMAGE_INSTALL:append = " \
@@ -170,18 +107,10 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# Stage 2: Dirt Simulation Server
+# DirtSim Application
 # ============================================================================
-# Headless physics simulation with WebSocket API on port 8080.
+# Headless physics simulation with WebSocket API and LVGL display client.
 IMAGE_INSTALL:append = " \
     dirtsim-server \
-"
-
-# ============================================================================
-# Stage 3: Dirt Simulation UI
-# ============================================================================
-# LVGL-based display client using framebuffer backend (no compositor needed).
-# Connects to server on localhost:8080 and renders the simulation.
-IMAGE_INSTALL:append = " \
     dirtsim-ui \
 "

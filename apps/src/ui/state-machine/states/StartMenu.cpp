@@ -2,8 +2,10 @@
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/ScenarioListGet.h"
 #include "server/api/SimRun.h"
 #include "ui/RemoteInputDevice.h"
+#include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/rendering/JuliaFractal.h"
@@ -19,6 +21,26 @@ namespace State {
 void StartMenu::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Connected to server, ready to start simulation");
+
+    // Request scenario list from server and cache it.
+    auto& wsService = sm.getWebSocketService();
+    if (wsService.isConnected()) {
+        const Api::ScenarioListGet::Command cmd{};
+        const auto result = wsService.sendCommand<Api::ScenarioListGet::Okay>(cmd, 2000);
+        if (result.isValue()) {
+            const auto& response = result.value();
+            if (response.isValue()) {
+                ScenarioMetadataCache::load(response.value().scenarios);
+                LOG_INFO(State, "Loaded {} scenarios from server", response.value().scenarios.size());
+            }
+            else {
+                LOG_ERROR(State, "ScenarioListGet failed: {}", response.errorValue().message);
+            }
+        }
+        else {
+            LOG_ERROR(State, "Failed to request scenario list: {}", result.errorValue());
+        }
+    }
 
     // Get main menu container (switches to menu screen).
     auto* uiManager = sm.getUiComponentManager();
@@ -263,7 +285,7 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
     }
 
     const Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .scenario_id = "sandbox", .max_frame_ms = 16
+        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16
     };
 
     const auto result = wsService.sendCommand<Api::SimRun::Okay>(cmd, 2000);
@@ -323,8 +345,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     const DirtSim::Api::SimRun::Command cmd{
         .timestep = 0.016,
         .max_steps = -1,
-        .scenario_id = "sandbox",
-        .max_frame_ms = 16 // Cap at 60 FPS for UI visualization.
+        .max_frame_ms = 16
     };
 
     const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);

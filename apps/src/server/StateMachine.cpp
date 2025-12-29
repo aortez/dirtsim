@@ -317,6 +317,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::ScenarioConfigSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::ScenarioListGet::Cwc>(
         [this](Api::ScenarioListGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::ScenarioSwitch::Cwc>(
+        [this](Api::ScenarioSwitch::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SeedAdd::Cwc>([this](Api::SeedAdd::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SpawnDirtBall::Cwc>(
@@ -438,7 +440,7 @@ void StateMachine::mainLoopRun()
             totalIterationMs += iterationMs;
 
             frameCount++;
-            if (frameCount % 500 == 0) {
+            if (frameCount % 5000 == 0) {
                 spdlog::info("Main loop timing (avg over {} frames):", frameCount);
                 spdlog::info("  Event processing: {:.2f}ms", totalEventProcessMs / frameCount);
                 spdlog::info("  Simulation tick: {:.2f}ms", totalTickMs / frameCount);
@@ -476,6 +478,31 @@ void StateMachine::processEvents()
 void StateMachine::handleEvent(const Event& event)
 {
     LOG_DEBUG(State, "Server::StateMachine: Handling event: {}", getEventName(event));
+
+    // Handle ScenarioListGet globally (read-only, works in any state).
+    if (std::holds_alternative<Api::ScenarioListGet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::ScenarioListGet::Cwc>(event.getVariant());
+        auto& registry = getScenarioRegistry();
+        auto scenarioIds = registry.getScenarioIds();
+
+        Api::ScenarioListGet::Okay response;
+        response.scenarios.reserve(scenarioIds.size());
+
+        for (const auto& id : scenarioIds) {
+            const ScenarioMetadata* metadata = registry.getMetadata(id);
+            if (metadata) {
+                response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
+                    .id = id,
+                    .name = metadata->name,
+                    .description = metadata->description,
+                    .category = metadata->category });
+            }
+        }
+
+        LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
+        cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
+        return;
+    }
 
     // Handle RenderFormatSet globally (works in any state).
     if (std::holds_alternative<Api::RenderFormatSet::Cwc>(event.getVariant())) {

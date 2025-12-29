@@ -35,9 +35,10 @@ State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 
 State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 {
-    spdlog::info(
-        "Idle: SimRun command received, creating world with scenario '{}'",
-        cwc.command.scenario_id);
+    assert(dsm.serverConfig && "serverConfig must be loaded");
+
+    std::string scenarioId = getScenarioId(dsm.serverConfig->startupConfig);
+    LOG_INFO(State, "SimRun command received, using configured scenario '{}'", scenarioId);
 
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
@@ -52,12 +53,12 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     // Get scenario metadata first to check for required dimensions.
     auto& registry = dsm.getScenarioRegistry();
-    const ScenarioMetadata* metadata = registry.getMetadata(cwc.command.scenario_id);
+    const ScenarioMetadata* metadata = registry.getMetadata(scenarioId);
 
     if (!metadata) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", cwc.command.scenario_id);
+        LOG_ERROR(State, "Scenario '{}' not found in registry", scenarioId);
         cwc.sendResponse(Api::SimRun::Response::error(
-            ApiError("Scenario not found: " + cwc.command.scenario_id)));
+            ApiError("Scenario not found: " + scenarioId)));
         return Idle{};
     }
 
@@ -71,31 +72,19 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     newState.world = std::make_unique<World>(worldWidth, worldHeight);
 
     // Create scenario instance from factory.
-    newState.scenario = registry.createScenario(cwc.command.scenario_id);
-
-    if (!newState.scenario) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", cwc.command.scenario_id);
-        cwc.sendResponse(Api::SimRun::Response::error(
-            ApiError("Scenario not found: " + cwc.command.scenario_id)));
-        return Idle{};
-    }
+    newState.scenario = registry.createScenario(scenarioId);
+    assert(newState.scenario && "Scenario factory failed after metadata check");
 
     // Set scenario ID in state.
-    newState.scenario_id = cwc.command.scenario_id;
+    newState.scenario_id = scenarioId;
 
-    // Apply saved config if this scenario matches the startup scenario.
-    if (dsm.serverConfig) {
-        std::string startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
-        if (cwc.command.scenario_id == startupScenarioId) {
-            newState.scenario->setConfig(dsm.serverConfig->startupConfig, *newState.world);
-            LOG_INFO(State, "Applied saved config for startup scenario '{}'", startupScenarioId);
-        }
-    }
+    // Apply config from server.json.
+    newState.scenario->setConfig(dsm.serverConfig->startupConfig, *newState.world);
 
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);
 
-    LOG_INFO(State, "Scenario '{}' applied to new world", cwc.command.scenario_id);
+    LOG_INFO(State, "Scenario '{}' applied to new world", scenarioId);
 
     // Set run parameters.
     newState.stepDurationMs = cwc.command.timestep * 1000.0; // Convert seconds to milliseconds.
@@ -126,31 +115,6 @@ State::Any Idle::onEvent(const Api::PeersGet::Cwc& cwc, StateMachine& dsm)
     Api::PeersGet::Okay response;
     response.peers = std::move(peers);
     cwc.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
-
-    return Idle{};
-}
-
-State::Any Idle::onEvent(const Api::ScenarioListGet::Cwc& cwc, StateMachine& dsm)
-{
-    auto& registry = dsm.getScenarioRegistry();
-    auto scenarioIds = registry.getScenarioIds();
-
-    Api::ScenarioListGet::Okay response;
-    response.scenarios.reserve(scenarioIds.size());
-
-    for (const auto& id : scenarioIds) {
-        const ScenarioMetadata* metadata = registry.getMetadata(id);
-        if (metadata) {
-            response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
-                .id = id,
-                .name = metadata->name,
-                .description = metadata->description,
-                .category = metadata->category });
-        }
-    }
-
-    LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
-    cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
 
     return Idle{};
 }

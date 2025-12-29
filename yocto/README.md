@@ -53,6 +53,30 @@ Build a minimal, purpose-built Linux image that:
 
 **Success criteria:** Walk up to the Pi, see dirt falling, touch works. ✅
 
+### Recent Improvements (Dec 2025)
+
+**WiFi Provisioning via BLE:**
+- [x] Integrated `wifi-provisioner` daemon (Improv WiFi protocol over BLE)
+- [x] Auto-advertises on boot when WiFi disconnected
+- [x] Web Bluetooth from phone → provision credentials → Pi connects
+- [x] Tested end-to-end on Pi 5
+
+**Image Refactoring:**
+- [x] dirtsim-image now inherits pi-base-image (-71 lines, removed duplication)
+- [x] Bluetooth support (bluez5) added to base image
+- [x] systemd-networkd disabled (fixes 120s boot delay)
+- [x] Automatic inclusion of shared infrastructure (A/B boot, persistent data, etc.)
+
+**API Improvements:**
+- [x] Removed scenario_id from SimRun command (server uses configured scenario)
+- [x] Added ScenarioSwitch command (switch scenarios at runtime)
+- [x] Added ScenariosListGet command (UI requests from server dynamically)
+- [x] Removed static SCENARIO_METADATA duplication (single source of truth)
+- [x] Fixed server.json config installation and permissions
+
+**Tooling:**
+- [x] Added `tail_remote_logs.sh` for remote debugging
+
 ---
 
 ## Getting Started

@@ -13,6 +13,7 @@
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
+#include "server/api/ScenarioSwitch.h"
 #include "server/scenarios/Scenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
@@ -460,51 +461,78 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
 {
     using Response = Api::ScenarioConfigSet::Response;
 
-    spdlog::info("SimRunning: API update scenario config");
-
-    if (!world) {
-        cwc.sendResponse(Response::error(ApiError("No world available")));
-        return std::move(*this);
-    }
-
-    if (!scenario) {
-        spdlog::error("SimRunning: No scenario instance available");
-        cwc.sendResponse(Response::error(ApiError("No scenario available")));
-        return std::move(*this);
-    }
+    assert(world && "World must exist in SimRunning");
+    assert(scenario && "Scenario must exist in SimRunning");
 
     // Update scenario's config (scenario is source of truth).
-    // Pass world so scenario can immediately apply changes.
     scenario->setConfig(cwc.command.config, *world);
 
-    spdlog::info("SimRunning: Scenario config updated for '{}'", scenario_id);
+    LOG_INFO(State, "Scenario config updated for '{}'", scenario_id);
 
     cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::ScenarioListGet::Cwc& cwc, StateMachine& dsm)
+State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine& dsm)
 {
+    using Response = Api::ScenarioSwitch::Response;
+
+    assert(world && "World must exist in SimRunning");
+
+    const std::string& newScenarioId = cwc.command.scenario_id;
+    LOG_INFO(State, "Switching scenario from '{}' to '{}'", scenario_id, newScenarioId);
+
+    // Create new scenario instance from registry.
     auto& registry = dsm.getScenarioRegistry();
-    auto scenarioIds = registry.getScenarioIds();
+    auto newScenario = registry.createScenario(newScenarioId);
 
-    Api::ScenarioListGet::Okay response;
-    response.scenarios.reserve(scenarioIds.size());
+    if (!newScenario) {
+        LOG_ERROR(State, "Scenario '{}' not found in registry", newScenarioId);
+        cwc.sendResponse(Response::error(ApiError("Scenario not found: " + newScenarioId)));
+        return std::move(*this);
+    }
 
-    for (const auto& id : scenarioIds) {
-        const ScenarioMetadata* metadata = registry.getMetadata(id);
-        if (metadata) {
-            response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
-                .id = id,
-                .name = metadata->name,
-                .description = metadata->description,
-                .category = metadata->category });
+    // Check if world resize is needed.
+    const auto& metadata = newScenario->getMetadata();
+    if (metadata.requiredWidth > 0 && metadata.requiredHeight > 0) {
+        if (world->getData().width != metadata.requiredWidth ||
+            world->getData().height != metadata.requiredHeight) {
+            LOG_INFO(
+                State,
+                "Resizing world from {}x{} to {}x{} for scenario '{}'",
+                world->getData().width,
+                world->getData().height,
+                metadata.requiredWidth,
+                metadata.requiredHeight,
+                newScenarioId);
+            world->resizeGrid(metadata.requiredWidth, metadata.requiredHeight);
         }
     }
 
-    LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
-    cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
+    // Clear world for new scenario.
+    for (uint32_t y = 0; y < world->getData().height; ++y) {
+        for (uint32_t x = 0; x < world->getData().width; ++x) {
+            world->getData().at(x, y) = Cell();
+        }
+    }
 
+    // Get scenario's default config and apply it.
+    ScenarioConfig defaultConfig = newScenario->getConfig();
+    newScenario->setConfig(defaultConfig, *world);
+
+    // Run scenario setup.
+    newScenario->setup(*world);
+
+    // Replace scenario and update ID.
+    scenario = std::move(newScenario);
+    scenario_id = newScenarioId;
+
+    // Reset step counter.
+    stepCount = 0;
+
+    LOG_INFO(State, "Switched to scenario '{}' successfully", scenario_id);
+
+    cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
 }
 
@@ -640,7 +668,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
+State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& /*dsm*/)
 {
     using Response = Api::SimRun::Response;
 
@@ -652,72 +680,6 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         cwc.sendResponse(Response::error(
             ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
         return std::move(*this);
-    }
-
-    // Check if scenario has changed - if so, reload the world.
-    if (cwc.command.scenario_id != scenario_id) {
-        spdlog::info(
-            "SimRunning: Switching scenario from '{}' to '{}'",
-            scenario_id,
-            cwc.command.scenario_id);
-
-        // Create new scenario instance from factory.
-        auto& registry = dsm.getScenarioRegistry();
-        scenario = registry.createScenario(cwc.command.scenario_id);
-
-        if (!scenario) {
-            spdlog::error(
-                "SimRunning: Scenario '{}' not found in registry", cwc.command.scenario_id);
-            cwc.sendResponse(
-                Response::error(ApiError("Scenario not found: " + cwc.command.scenario_id)));
-            return std::move(*this);
-        }
-
-        // Check if scenario requires specific world dimensions.
-        const auto& metadata = scenario->getMetadata();
-        uint32_t targetWidth, targetHeight;
-
-        if (metadata.requiredWidth > 0 && metadata.requiredHeight > 0) {
-            // Scenario requires specific dimensions.
-            targetWidth = metadata.requiredWidth;
-            targetHeight = metadata.requiredHeight;
-        }
-        else {
-            // Scenario is flexible - use default dimensions.
-            targetWidth = dsm.defaultWidth;
-            targetHeight = dsm.defaultHeight;
-        }
-
-        // Resize if needed.
-        if (world->getData().width != targetWidth || world->getData().height != targetHeight) {
-            spdlog::info(
-                "SimRunning: Resizing world from {}x{} to {}x{} for scenario '{}'",
-                world->getData().width,
-                world->getData().height,
-                targetWidth,
-                targetHeight,
-                cwc.command.scenario_id);
-            world->resizeGrid(targetWidth, targetHeight);
-        }
-
-        // Update scenario ID.
-        scenario_id = cwc.command.scenario_id;
-
-        // Clear world before applying new scenario.
-        for (uint32_t y = 0; y < world->getData().height; ++y) {
-            for (uint32_t x = 0; x < world->getData().width; ++x) {
-                world->getData().at(x, y) = Cell(); // Reset to empty cell.
-            }
-        }
-        spdlog::info("SimRunning: World cleared for new scenario '{}'", cwc.command.scenario_id);
-
-        // Initialize world with new scenario.
-        scenario->setup(*world);
-
-        // Reset step counter.
-        stepCount = 0;
-
-        spdlog::info("SimRunning: Scenario '{}' loaded and initialized", cwc.command.scenario_id);
     }
 
     // Store run parameters.

@@ -1,18 +1,24 @@
 #pragma once
 
-#include "core/ScenarioMetadata.h"
+#include "server/api/ScenarioListGet.h"
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace DirtSim {
 namespace Ui {
 
 /**
  * @brief Helper for building UI dropdowns from scenario metadata.
- * Wraps the static SCENARIO_METADATA array with UI-specific helpers.
+ * Caches scenario list fetched from server at runtime.
  */
 class ScenarioMetadataCache {
 public:
+    /**
+     * @brief Load scenario list from server response.
+     */
+    static void load(const std::vector<Api::ScenarioListGet::ScenarioInfo>& scenarios);
+
     /**
      * @brief Build dropdown options string ("Name1\nName2\n...").
      */
@@ -20,15 +26,16 @@ public:
 
     /**
      * @brief Map dropdown index to scenario ID.
-     * @return Scenario ID, or "sandbox" if index out of range.
      */
     static std::string scenarioIdFromIndex(uint16_t index);
 
     /**
      * @brief Map scenario ID to dropdown index.
-     * @return Index, or 0 if ID not found.
      */
     static uint16_t indexFromScenarioId(const std::string& id);
+
+private:
+    static std::vector<Api::ScenarioListGet::ScenarioInfo> scenarios_;
 };
 
 } // namespace Ui

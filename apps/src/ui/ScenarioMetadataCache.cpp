@@ -1,33 +1,48 @@
 #include "ScenarioMetadataCache.h"
-#include <cstdint>
+#include <cassert>
 #include <sstream>
 
 namespace DirtSim {
 namespace Ui {
 
+std::vector<Api::ScenarioListGet::ScenarioInfo> ScenarioMetadataCache::scenarios_;
+
+void ScenarioMetadataCache::load(const std::vector<Api::ScenarioListGet::ScenarioInfo>& scenarios)
+{
+    scenarios_ = scenarios;
+}
+
 std::string ScenarioMetadataCache::buildDropdownOptions()
 {
+    assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");
+
     std::ostringstream oss;
-    for (size_t i = 0; i < SCENARIO_METADATA.size(); ++i) {
+    for (size_t i = 0; i < scenarios_.size(); ++i) {
         if (i > 0) {
             oss << "\n";
         }
-        oss << SCENARIO_METADATA[i].name;
+        oss << scenarios_[i].name;
     }
     return oss.str();
 }
 
 std::string ScenarioMetadataCache::scenarioIdFromIndex(uint16_t index)
 {
-    if (index < SCENARIO_METADATA.size()) {
-        return std::string(SCENARIO_METADATA[index].id);
-    }
-    return "sandbox"; // Default fallback.
+    assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");
+    assert(index < scenarios_.size() && "Scenario index out of range");
+
+    return scenarios_[index].id;
 }
 
 uint16_t ScenarioMetadataCache::indexFromScenarioId(const std::string& id)
 {
-    return static_cast<uint16_t>(getScenarioIndex(id));
+    for (size_t i = 0; i < scenarios_.size(); ++i) {
+        if (scenarios_[i].id == id) {
+            return static_cast<uint16_t>(i);
+        }
+    }
+    assert(false && "Scenario ID not found in cache");
+    return 0;
 }
 
 } // namespace Ui

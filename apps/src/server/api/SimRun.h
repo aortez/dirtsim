@@ -18,14 +18,13 @@ DEFINE_API_NAME(SimRun);
 struct Command {
     double timestep = 0.016;
     int max_steps = -1;
-    std::string scenario_id = "Sandbox";
     int max_frame_ms = 0;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<3>;
 };
 
 struct Okay {
