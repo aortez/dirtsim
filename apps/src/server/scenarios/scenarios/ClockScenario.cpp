@@ -21,6 +21,133 @@
 
 namespace DirtSim {
 
+// ============================================================================
+// Default Event Configurations
+// ============================================================================
+
+const std::map<ClockEventType, EventTypeConfig> ClockScenario::DEFAULT_EVENT_CONFIGS = {
+    { ClockEventType::RAIN, { .duration = 10.0, .chance_per_second = 0.03, .cooldown = 15.0 } },
+    { ClockEventType::DUCK, { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 20.0 } },
+};
+
+// ============================================================================
+// DoorManager Implementation
+// ============================================================================
+
+Vector2i DoorManager::calculateRoofPos(Vector2i door_pos, DoorSide side)
+{
+    // Roof goes up one and inward one.
+    // Left door: inward = +1 x. Right door: inward = -1 x.
+    int dx = (side == DoorSide::LEFT) ? 1 : -1;
+    return Vector2i{ door_pos.x + dx, door_pos.y - 1 };
+}
+
+bool DoorManager::openDoor(Vector2i pos, DoorSide side, World& world)
+{
+    // Check if already open.
+    if (doors_.contains(pos) && doors_[pos].is_open) {
+        return false;
+    }
+
+    DoorState state;
+    state.is_open = true;
+    state.side = side;
+    state.door_pos = pos;
+    state.roof_pos = calculateRoofPos(pos, side);
+
+    // Clear the door cell (make it passable).
+    world.getData().at(pos.x, pos.y) = Cell();
+
+    // Place wall at roof position.
+    Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
+    roof_cell.replaceMaterial(MaterialType::WALL, 1.0);
+
+    doors_[pos] = state;
+
+    spdlog::info("DoorManager: Opened door at ({}, {}), roof at ({}, {})",
+        pos.x, pos.y, state.roof_pos.x, state.roof_pos.y);
+
+    return true;
+}
+
+void DoorManager::closeDoor(Vector2i pos, World& world)
+{
+    auto it = doors_.find(pos);
+    if (it == doors_.end() || !it->second.is_open) {
+        return;
+    }
+
+    const DoorState& state = it->second;
+
+    // Restore wall at door position.
+    Cell& door_cell = world.getData().at(pos.x, pos.y);
+    door_cell.replaceMaterial(MaterialType::WALL, 1.0);
+
+    // Clear roof cell (it will be restored by normal wall drawing if needed).
+    Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
+    roof_cell = Cell();
+
+    spdlog::info("DoorManager: Closed door at ({}, {})", pos.x, pos.y);
+
+    doors_.erase(it);
+}
+
+bool DoorManager::isOpenDoor(Vector2i pos) const
+{
+    auto it = doors_.find(pos);
+    return it != doors_.end() && it->second.is_open;
+}
+
+bool DoorManager::isRoofCell(Vector2i pos) const
+{
+    for (const auto& [door_pos, state] : doors_) {
+        if (state.is_open && state.roof_pos == pos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<Vector2i> DoorManager::getOpenDoorPositions() const
+{
+    std::vector<Vector2i> positions;
+    for (const auto& [pos, state] : doors_) {
+        if (state.is_open) {
+            positions.push_back(pos);
+        }
+    }
+    return positions;
+}
+
+std::vector<Vector2i> DoorManager::getRoofPositions() const
+{
+    std::vector<Vector2i> positions;
+    for (const auto& [pos, state] : doors_) {
+        if (state.is_open) {
+            positions.push_back(state.roof_pos);
+        }
+    }
+    return positions;
+}
+
+void DoorManager::closeAllDoors(World& world)
+{
+    // Collect positions first to avoid iterator invalidation.
+    std::vector<Vector2i> positions;
+    for (const auto& [pos, state] : doors_) {
+        if (state.is_open) {
+            positions.push_back(pos);
+        }
+    }
+    for (const auto& pos : positions) {
+        closeDoor(pos, world);
+    }
+}
+
+// ============================================================================
+// ClockScenario Implementation
+// ============================================================================
+
 ClockScenario::ClockScenario()
 {
     metadata_.name = "Clock";
@@ -211,8 +338,8 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                 config_.targetDisplayWidth,
                 config_.targetDisplayHeight);
 
-            // Cancel any active event before resizing.
-            cancelEvent(world);
+            // Cancel any active events before resizing.
+            cancelAllEvents(world);
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
             reset(world);  // Clear and redraw everything.
@@ -266,6 +393,9 @@ void ClockScenario::reset(World& world)
 
 void ClockScenario::tick(World& world, double deltaTime)
 {
+    // Redraw walls every frame (respects door state).
+    redrawWalls(world);
+
     // Get current time.
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
@@ -273,14 +403,13 @@ void ClockScenario::tick(World& world, double deltaTime)
 
     int current_second = local_time->tm_sec;
 
-    // Only redraw if the second has changed.
+    // Only redraw digits if the second has changed.
     if (current_second != last_second_) {
         last_second_ = current_second;
-        redrawWalls(world);
         drawTime(world);
     }
 
-    // Evaporate water from bottom row (10% per second).
+    // Evaporate water from bottom row.
     evaporateBottomRow(world, deltaTime);
 
     // Update event system.
@@ -472,10 +601,9 @@ void ClockScenario::drawTime(World& world)
     }
 }
 
-// Event system constants.
-static constexpr double BASE_EVENT_DELAY = 30.0; // Base delay between events (seconds).
-static constexpr double RAIN_DURATION = 10.0;    // Rain event duration (seconds).
-static constexpr double DUCK_SPEED = 8.0;        // Duck speed (cells per second).
+// ============================================================================
+// Event System
+// ============================================================================
 
 void ClockScenario::updateEvents(World& world, double deltaTime)
 {
@@ -484,87 +612,106 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
         return;
     }
 
-    time_since_init_ += deltaTime;
-
-    if (current_event_ == EventType::NONE) {
-        // No event active - check if we should start one.
-        if (!first_event_triggered_) {
-            // First event triggers immediately.
-            first_event_triggered_ = true;
-            // Random event: 50% DUCK, 50% RAIN.
-            EventType event = (uniform_dist_(rng_) < 0.8) ? EventType::DUCK : EventType::RAIN;
-            startEvent(world, event);
-        }
-        else {
-            // Wait for timer to expire.
-            event_timer_ -= deltaTime;
-            if (event_timer_ <= 0.0) {
-                // Time to start next event.
-                // Random event: 50% DUCK, 50% RAIN.
-                EventType event = (uniform_dist_(rng_) < 0.5) ? EventType::DUCK : EventType::RAIN;
-                startEvent(world, event);
-            }
+    // Decrement cooldowns.
+    for (auto& [type, cooldown] : event_cooldowns_) {
+        if (cooldown > 0.0) {
+            cooldown -= deltaTime;
         }
     }
-    else {
-        // Event is active - update it.
-        if (current_event_ == EventType::RAIN) {
-            updateRainEvent(world, deltaTime);
-        }
-        else if (current_event_ == EventType::DUCK) {
-            updateDuckEvent(world);
-        }
 
-        // Check if event should end.
-        event_timer_ -= deltaTime;
-        if (event_timer_ <= 0.0) {
-            endEvent(world);
+    // Check for new events once per second.
+    time_since_last_trigger_check_ += deltaTime;
+    if (time_since_last_trigger_check_ >= 1.0) {
+        time_since_last_trigger_check_ = 0.0;
+        tryTriggerEvents(world);
+    }
+
+    // Update active events and collect ones that need to end.
+    std::vector<ClockEventType> events_to_end;
+
+    for (auto& [type, event] : active_events_) {
+        updateEvent(world, type, event, deltaTime);
+
+        event.remaining_time -= deltaTime;
+        if (event.remaining_time <= 0.0) {
+            events_to_end.push_back(type);
+        }
+    }
+
+    // End expired events.
+    for (auto type : events_to_end) {
+        auto it = active_events_.find(type);
+        if (it != active_events_.end()) {
+            endEvent(world, type, it->second);
+            active_events_.erase(it);
         }
     }
 }
 
-void ClockScenario::startEvent(World& world, EventType type)
+void ClockScenario::tryTriggerEvents(World& world)
 {
-    current_event_ = type;
+    // Check each event type for triggering.
+    for (const auto& [type, config] : DEFAULT_EVENT_CONFIGS) {
+        // Skip if already active.
+        if (active_events_.contains(type)) {
+            continue;
+        }
 
-    if (type == EventType::RAIN) {
-        event_timer_ = RAIN_DURATION;
-        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", RAIN_DURATION);
+        // Skip if on cooldown.
+        if (event_cooldowns_.contains(type) && event_cooldowns_[type] > 0.0) {
+            continue;
+        }
+
+        // Scale chance by eventFrequency config.
+        double effective_chance = config.chance_per_second * config_.eventFrequency;
+
+        if (uniform_dist_(rng_) < effective_chance) {
+            startEvent(world, type);
+        }
     }
-    else if (type == EventType::DUCK) {
-        // Duck event duration (30 seconds).
-        event_timer_ = 30.0;
+}
 
-        // Use WallBouncingBrain with jumping enabled (temporarily always, will be 50/50 later).
+void ClockScenario::startEvent(World& world, ClockEventType type)
+{
+    const auto& config = DEFAULT_EVENT_CONFIGS.at(type);
+
+    ActiveEvent event;
+    event.remaining_time = config.duration;
+
+    if (type == ClockEventType::RAIN) {
+        event.state = RainEventState{};
+        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", config.duration);
+    }
+    else if (type == ClockEventType::DUCK) {
+        DuckEventState duck_state;
+
+        // Use WallBouncingBrain with jumping enabled.
         std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>(true);
-        spdlog::info("ClockScenario: Creating duck with WallBouncingBrain (jumping enabled)");
 
         // Choose random entrance side and calculate door position.
-        entrance_side_ = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
-        uint32_t door_y = world.getData().height - 2; // Floor level (above bottom wall).
-        uint32_t door_x = (entrance_side_ == DoorSide::LEFT) ? 0 : world.getData().width - 1;
+        duck_state.entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
+        uint32_t door_y = world.getData().height - 2;
+        uint32_t door_x = (duck_state.entrance_side == DoorSide::LEFT) ? 0 : world.getData().width - 1;
 
-        entrance_door_pos_ = Vector2i{ static_cast<int>(door_x), static_cast<int>(door_y) };
-        entrance_door_open_ = true;
-        exit_door_open_ = false;
+        duck_state.entrance_door_pos = Vector2i{ static_cast<int>(door_x), static_cast<int>(door_y) };
+        duck_state.entrance_door_open = true;
+        duck_state.exit_door_open = false;
 
         // Calculate exit door position (opposite side).
-        uint32_t exit_x = (entrance_side_ == DoorSide::LEFT) ? world.getData().width - 1 : 0;
-        exit_door_pos_ = Vector2i{ static_cast<int>(exit_x), static_cast<int>(door_y) };
+        uint32_t exit_x = (duck_state.entrance_side == DoorSide::LEFT) ? world.getData().width - 1 : 0;
+        duck_state.exit_door_pos = Vector2i{ static_cast<int>(exit_x), static_cast<int>(door_y) };
 
-        // Open entrance door (remove wall cell).
-        world.getData().at(door_x, door_y) = Cell();
+        // Open entrance door via DoorManager.
+        door_manager_.openDoor(duck_state.entrance_door_pos, duck_state.entrance_side, world);
 
-        // Spawn duck just inside the door (not at the wall column itself).
-        // Left door: spawn at x=1, Right door: spawn at x=width-2.
-        // TODO: Ideally spawn at door_x and fix physics at world boundary.
-        uint32_t duck_x = (entrance_side_ == DoorSide::LEFT) ? 1 : world.getData().width - 2;
+        // Spawn duck just inside the door.
+        uint32_t duck_x = (duck_state.entrance_side == DoorSide::LEFT) ? 1 : world.getData().width - 2;
         uint32_t duck_y = door_y;
-        duck_organism_id_ = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
+        duck_state.organism_id = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
 
         spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",
-            duck_organism_id_,
-            entrance_side_ == DoorSide::LEFT ? "LEFT" : "RIGHT",
+            duck_state.organism_id,
+            duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
             duck_x, duck_y);
 
         // Create Entity view for rendering.
@@ -579,11 +726,26 @@ void ClockScenario::startEvent(World& world, EventType type)
         duck_entity.mass = 1.0f;
         world.getData().entities.push_back(duck_entity);
 
-        spdlog::info("ClockScenario: Starting DUCK event (duration: 30s)");
+        event.state = duck_state;
+        spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", config.duration);
     }
+
+    active_events_[type] = std::move(event);
 }
 
-void ClockScenario::updateRainEvent(World& world, double deltaTime)
+void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEvent& event, double deltaTime)
+{
+    std::visit([&](auto& state) {
+        using T = std::decay_t<decltype(state)>;
+        if constexpr (std::is_same_v<T, RainEventState>) {
+            updateRainEvent(world, state, deltaTime);
+        } else if constexpr (std::is_same_v<T, DuckEventState>) {
+            updateDuckEvent(world, state, event.remaining_time);
+        }
+    }, event.state);
+}
+
+void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, double deltaTime)
 {
     // Spawn water drops at random X positions near the top.
     constexpr double DROPS_PER_SECOND = 10.0;
@@ -592,13 +754,13 @@ void ClockScenario::updateRainEvent(World& world, double deltaTime)
     if (uniform_dist_(rng_) < drop_probability) {
         std::uniform_int_distribution<uint32_t> x_dist(2, world.getData().width - 3);
         uint32_t x = x_dist(rng_);
-        uint32_t y = 2; // Near top (below wall border).
+        uint32_t y = 2;
 
         world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
     }
 
     // Evaporate water in drain at bottom center.
-    uint32_t bottomY = world.getData().height - 2; // Above wall border.
+    uint32_t bottomY = world.getData().height - 2;
     uint32_t centerX = world.getData().width / 2;
     constexpr uint32_t DRAIN_SIZE = 5;
     uint32_t halfDrain = DRAIN_SIZE / 2;
@@ -609,7 +771,6 @@ void ClockScenario::updateRainEvent(World& world, double deltaTime)
     for (uint32_t x = drainStart; x <= drainEnd; ++x) {
         Cell& cell = world.getData().at(x, bottomY);
         if (cell.material_type == MaterialType::WATER) {
-            // Evaporate water quickly (50% per tick).
             cell.fill_ratio -= 0.5;
             if (cell.fill_ratio < 0.01) {
                 cell.replaceMaterial(MaterialType::AIR, 0.0);
@@ -618,10 +779,10 @@ void ClockScenario::updateRainEvent(World& world, double deltaTime)
     }
 }
 
-void ClockScenario::updateDuckEvent(World& world)
+void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double remaining_time)
 {
     // Get duck organism.
-    Duck* duck_organism = world.getOrganismManager().getDuck(duck_organism_id_);
+    Duck* duck_organism = world.getOrganismManager().getDuck(state.organism_id);
     if (!duck_organism) return;
 
     Vector2i duck_cell = duck_organism->getAnchorCell();
@@ -636,56 +797,41 @@ void ClockScenario::updateDuckEvent(World& world)
     }
 
     // Close entrance door once duck moves away from it.
-    if (entrance_door_open_ && duck_cell != entrance_door_pos_) {
-        world.getData().at(entrance_door_pos_.x, entrance_door_pos_.y)
-            .replaceMaterial(MaterialType::WALL, 1.0);
-        entrance_door_open_ = false;
-        spdlog::info("ClockScenario: Entrance door closed at ({}, {})",
-            entrance_door_pos_.x, entrance_door_pos_.y);
+    if (state.entrance_door_open && duck_cell != state.entrance_door_pos) {
+        door_manager_.closeDoor(state.entrance_door_pos, world);
+        state.entrance_door_open = false;
     }
 
     // Open exit door in the last 7 seconds.
-    if (!exit_door_open_ && event_timer_ <= 7.0) {
-        world.getData().at(exit_door_pos_.x, exit_door_pos_.y) = Cell();
-        exit_door_open_ = true;
-        spdlog::info("ClockScenario: Exit door opened at ({}, {})",
-            exit_door_pos_.x, exit_door_pos_.y);
+    if (!state.exit_door_open && remaining_time <= 7.0) {
+        DoorSide exit_side = (state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
+        door_manager_.openDoor(state.exit_door_pos, exit_side, world);
+        state.exit_door_open = true;
     }
 
     // Check if duck entered the exit door and passed the middle of the cell.
-    // Exit is on opposite side of entrance, so check COM direction:
-    // - Entrance LEFT means exit RIGHT: duck moving right, trigger when COM.x > 0.
-    // - Entrance RIGHT means exit LEFT: duck moving left, trigger when COM.x < 0.
-    if (exit_door_open_ && duck_cell == exit_door_pos_) {
-        bool past_middle = (entrance_side_ == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
+    if (state.exit_door_open && duck_cell == state.exit_door_pos) {
+        bool past_middle = (state.entrance_side == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
         if (past_middle) {
             spdlog::info("ClockScenario: Duck exited through door at ({}, {}), COM.x={:.2f}",
-                exit_door_pos_.x, exit_door_pos_.y, duck_com.x);
+                state.exit_door_pos.x, state.exit_door_pos.y, duck_com.x);
 
-            // Remove the duck immediately so it disappears into the door.
-            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
-            duck_organism_id_ = INVALID_ORGANISM_ID;
+            // Remove the duck immediately.
+            world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
+            state.organism_id = INVALID_ORGANISM_ID;
             world.getData().entities.clear();
-
-            // Set timer to 1 second so the door stays open briefly, then closes.
-            if (event_timer_ > 1.0) {
-                event_timer_ = 1.0;
-            }
-            return; // Duck is gone, nothing more to update.
+            return;
         }
     }
 
-    // If duck is on ground, clamp COM.y to prevent sinking into floor.
-    // COM.y in range [-1, 1], where +1 = bottom of cell.
-    // Set to 0.0 (center) when grounded and COM is positive (bottom half).
+    // Clamp COM.y when grounded.
     if (duck_organism->isOnGround() && duck_com.y > 0.0) {
         duck_com.y = 0.0;
     }
 
-    // Find and update the duck entity to match organism position.
+    // Update duck entity to match organism position.
     for (auto& entity : world.getData().entities) {
         if (entity.type == EntityType::DUCK) {
-            // Sync entity position and COM with organism's cell.
             entity.position = Vector2<float>(
                 static_cast<float>(duck_cell.x),
                 static_cast<float>(duck_cell.y));
@@ -694,14 +840,13 @@ void ClockScenario::updateDuckEvent(World& world)
                 static_cast<float>(duck_com.y));
             entity.facing = duck_organism->getFacing();
 
-            // Copy sparkles from organism to entity for rendering.
             const auto& duck_sparkles = duck_organism->getSparkles();
             entity.sparkles.clear();
             entity.sparkles.reserve(duck_sparkles.size());
             for (const auto& ds : duck_sparkles) {
                 SparkleParticle sp;
                 sp.position = ds.position;
-                sp.opacity = ds.lifetime / ds.max_lifetime;  // Fade based on remaining lifetime.
+                sp.opacity = ds.lifetime / ds.max_lifetime;
                 entity.sparkles.push_back(sp);
             }
             break;
@@ -709,72 +854,54 @@ void ClockScenario::updateDuckEvent(World& world)
     }
 }
 
-void ClockScenario::endEvent(World& world)
+void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& event)
 {
-    spdlog::info("ClockScenario: Ending {} event", current_event_ == EventType::RAIN ? "RAIN" : "DUCK");
+    spdlog::info("ClockScenario: Ending {} event",
+        type == ClockEventType::RAIN ? "RAIN" : "DUCK");
 
-    // Clean up event-specific state.
-    if (current_event_ == EventType::DUCK) {
-        if (duck_organism_id_ != INVALID_ORGANISM_ID) {
-            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
-            duck_organism_id_ = INVALID_ORGANISM_ID;
+    if (type == ClockEventType::DUCK) {
+        auto& state = std::get<DuckEventState>(event.state);
+
+        if (state.organism_id != INVALID_ORGANISM_ID) {
+            world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
         }
 
         // Close any open doors.
-        if (entrance_door_open_) {
-            world.getData().at(entrance_door_pos_.x, entrance_door_pos_.y)
-                .replaceMaterial(MaterialType::WALL, 1.0);
-            entrance_door_open_ = false;
-            spdlog::info("ClockScenario: Entrance door closed at end of event");
+        if (state.entrance_door_open) {
+            door_manager_.closeDoor(state.entrance_door_pos, world);
         }
-        if (exit_door_open_) {
-            world.getData().at(exit_door_pos_.x, exit_door_pos_.y)
-                .replaceMaterial(MaterialType::WALL, 1.0);
-            exit_door_open_ = false;
-            spdlog::info("ClockScenario: Exit door closed at end of event");
+        if (state.exit_door_open) {
+            door_manager_.closeDoor(state.exit_door_pos, world);
         }
 
-        // Remove duck and sparkle entities.
         world.getData().entities.clear();
     }
 
-    // Schedule next event.
-    double delay = BASE_EVENT_DELAY * (1.0 - config_.eventFrequency);
-    // Add random jitter (±20%).
-    double jitter = (uniform_dist_(rng_) * 0.4 - 0.2) * delay;
-    event_timer_ = delay + jitter;
+    // Set cooldown for this event type.
+    const auto& config = DEFAULT_EVENT_CONFIGS.at(type);
+    event_cooldowns_[type] = config.cooldown;
 
-    current_event_ = EventType::NONE;
-
-    spdlog::info("ClockScenario: Next event in {:.1f}s", event_timer_);
+    spdlog::info("ClockScenario: Event {} on cooldown for {:.1f}s",
+        type == ClockEventType::RAIN ? "RAIN" : "DUCK", config.cooldown);
 }
 
-void ClockScenario::cancelEvent(World& world)
+void ClockScenario::cancelAllEvents(World& world)
 {
-    if (current_event_ == EventType::NONE) {
-        return;
-    }
+    spdlog::info("ClockScenario: Canceling all events");
 
-    spdlog::info("ClockScenario: Canceling {} event due to resize",
-        current_event_ == EventType::RAIN ? "RAIN" : "DUCK");
-
-    // Clean up event-specific state.
-    if (current_event_ == EventType::DUCK) {
-        if (duck_organism_id_ != INVALID_ORGANISM_ID) {
-            world.getOrganismManager().removeOrganismFromWorld(world, duck_organism_id_);
-            duck_organism_id_ = INVALID_ORGANISM_ID;
+    for (auto& [type, event] : active_events_) {
+        if (type == ClockEventType::DUCK) {
+            auto& state = std::get<DuckEventState>(event.state);
+            if (state.organism_id != INVALID_ORGANISM_ID) {
+                world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
+            }
         }
-        world.getData().entities.clear();
     }
 
-    // Reset all event state.
-    current_event_ = EventType::NONE;
-    event_timer_ = 0.0;
-    first_event_triggered_ = false;
-    entrance_door_open_ = false;
-    exit_door_open_ = false;
-    entrance_door_pos_ = Vector2i{ -1, -1 };
-    exit_door_pos_ = Vector2i{ -1, -1 };
+    active_events_.clear();
+    event_cooldowns_.clear();
+    door_manager_.closeAllDoors(world);
+    world.getData().entities.clear();
 }
 
 void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
@@ -882,14 +1009,33 @@ void ClockScenario::redrawWalls(World& world)
 
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
-        materializeWall(world, x, 0);
-        materializeWall(world, x, height - 1);
+        Vector2i top_pos{ static_cast<int>(x), 0 };
+        Vector2i bottom_pos{ static_cast<int>(x), static_cast<int>(height - 1) };
+
+        if (!door_manager_.isOpenDoor(top_pos)) {
+            materializeWall(world, x, 0);
+        }
+        if (!door_manager_.isOpenDoor(bottom_pos)) {
+            materializeWall(world, x, height - 1);
+        }
     }
 
     // Left and right borders.
     for (uint32_t y = 0; y < height; ++y) {
-        materializeWall(world, 0, y);
-        materializeWall(world, width - 1, y);
+        Vector2i left_pos{ 0, static_cast<int>(y) };
+        Vector2i right_pos{ static_cast<int>(width - 1), static_cast<int>(y) };
+
+        if (!door_manager_.isOpenDoor(left_pos)) {
+            materializeWall(world, 0, y);
+        }
+        if (!door_manager_.isOpenDoor(right_pos)) {
+            materializeWall(world, width - 1, y);
+        }
+    }
+
+    // Ensure roof cells are walls.
+    for (const auto& roof_pos : door_manager_.getRoofPositions()) {
+        materializeWall(world, roof_pos.x, roof_pos.y);
     }
 }
 

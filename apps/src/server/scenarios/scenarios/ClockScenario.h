@@ -6,39 +6,115 @@
 #include "core/organisms/OrganismType.h"
 #include "server/scenarios/Scenario.h"
 #include <array>
+#include <map>
 #include <memory>
 #include <random>
+#include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace DirtSim {
+
+class World;
+
+// ============================================================================
+// Event System Types
+// ============================================================================
+
+enum class ClockEventType {
+    RAIN,
+    DUCK
+};
+
+struct EventTypeConfig {
+    double duration;
+    double chance_per_second;
+    double cooldown;
+};
+
+struct RainEventState {
+    // Rain-specific state (could add intensity, pattern, etc.).
+};
+
+enum class DoorSide { LEFT, RIGHT };
+
+struct DuckEventState {
+    OrganismId organism_id = INVALID_ORGANISM_ID;
+    DoorSide entrance_side = DoorSide::LEFT;
+    Vector2i entrance_door_pos{ -1, -1 };
+    Vector2i exit_door_pos{ -1, -1 };
+    bool entrance_door_open = false;
+    bool exit_door_open = false;
+};
+
+using EventState = std::variant<RainEventState, DuckEventState>;
+
+struct ActiveEvent {
+    EventState state;
+    double remaining_time;
+};
+
+// ============================================================================
+// Door Manager
+// ============================================================================
+
+class DoorManager {
+public:
+    struct DoorState {
+        bool is_open = false;
+        DoorSide side = DoorSide::LEFT;
+        Vector2i door_pos{ -1, -1 };
+        Vector2i roof_pos{ -1, -1 };
+    };
+
+    bool openDoor(Vector2i pos, DoorSide side, World& world);
+    void closeDoor(Vector2i pos, World& world);
+    bool isOpenDoor(Vector2i pos) const;
+    bool isRoofCell(Vector2i pos) const;
+    std::vector<Vector2i> getOpenDoorPositions() const;
+    std::vector<Vector2i> getRoofPositions() const;
+    void closeAllDoors(World& world);
+
+private:
+    std::unordered_map<Vector2i, DoorState> doors_;
+
+    static Vector2i calculateRoofPos(Vector2i door_pos, DoorSide side);
+};
+
+// ============================================================================
+// Clock Scenario
+// ============================================================================
 
 /**
  * Clock scenario - displays system time as a digital clock.
  *
  * Supports multiple font styles: 7-segment, large 7-segment, and dot matrix.
  * Format: HH:MM:SS (or HH:MM if seconds disabled).
+ *
+ * Event system allows multiple concurrent events (rain, duck, etc.).
  */
 class ClockScenario : public Scenario {
 public:
-    // Timezone information.
     struct TimezoneInfo {
-        const char* name;  // Short name (e.g., "UTC", "PST").
-        const char* label; // Display label for UI.
-        int offset_hours;  // UTC offset in hours.
+        const char* name;
+        const char* label;
+        int offset_hours;
     };
 
     static constexpr std::array<TimezoneInfo, 10> TIMEZONES = {{
-        {"Local", "Local System Time", 0},           // Special: use system time as-is.
-        {"UTC", "UTC (Universal)", 0},               // +0.
-        {"PST", "Los Angeles (PST)", -8},            // -8.
-        {"MST", "Denver (MST)", -7},                 // -7.
-        {"CST", "Chicago (CST)", -6},                // -6.
-        {"EST", "New York (EST)", -5},               // -5.
-        {"GMT", "London (GMT)", 0},                  // +0.
-        {"CET", "Paris (CET)", +1},                  // +1.
-        {"JST", "Tokyo (JST)", +9},                  // +9.
-        {"AEST", "Sydney (AEST)", +10},              // +10.
+        {"Local", "Local System Time", 0},
+        {"UTC", "UTC (Universal)", 0},
+        {"PST", "Los Angeles (PST)", -8},
+        {"MST", "Denver (MST)", -7},
+        {"CST", "Chicago (CST)", -6},
+        {"EST", "New York (EST)", -5},
+        {"GMT", "London (GMT)", 0},
+        {"CET", "Paris (CET)", +1},
+        {"JST", "Tokyo (JST)", +9},
+        {"AEST", "Sydney (AEST)", +10},
     }};
+
+    static const std::map<ClockEventType, EventTypeConfig> DEFAULT_EVENT_CONFIGS;
 
     ClockScenario();
 
@@ -55,41 +131,13 @@ private:
     int last_second_ = -1;
 
     // Event system.
-    enum class EventType {
-        NONE,
-        RAIN,
-        DUCK
-    };
+    std::map<ClockEventType, ActiveEvent> active_events_;
+    std::map<ClockEventType, double> event_cooldowns_;
+    double time_since_last_trigger_check_ = 0.0;
+    uint32_t next_entity_id_ = 1;
 
-    enum class DuckAction {
-        WAIT,
-        RUN_LEFT,
-        RUN_RIGHT,
-        JUMP
-    };
-
-    struct DuckState {
-        DuckAction current_action = DuckAction::WAIT;
-        float action_timer = 0.0f;        // Time remaining for current action.
-        int run_distance = 0;             // Target cells to run (1-5).
-        float run_start_x = 0.0f;         // X position when run started.
-    };
-
-    EventType current_event_ = EventType::NONE;
-    double event_timer_ = 0.0;          // Time remaining for current event / until next event.
-    double time_since_init_ = 0.0;      // Total time since scenario started.
-    bool first_event_triggered_ = false; // Track if first event occurred.
-    uint32_t next_entity_id_ = 1;       // Entity ID counter.
-    DuckState duck_state_;              // Duck AI state.
-    OrganismId duck_organism_id_ = INVALID_ORGANISM_ID; // Current duck organism.
-
-    // Duck door mechanic state.
-    enum class DoorSide { LEFT, RIGHT };
-    DoorSide entrance_side_ = DoorSide::LEFT;   // Which side duck enters from.
-    Vector2i entrance_door_pos_{ -1, -1 };      // Position of entrance door.
-    Vector2i exit_door_pos_{ -1, -1 };          // Position of exit door.
-    bool entrance_door_open_ = false;           // True until duck moves away.
-    bool exit_door_open_ = false;               // True in last 5 seconds.
+    // Door management.
+    DoorManager door_manager_;
 
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
@@ -112,12 +160,16 @@ private:
 
     // Event system helpers.
     void updateEvents(World& world, double deltaTime);
-    void startEvent(World& world, EventType type);
-    void updateRainEvent(World& world, double deltaTime);
-    void updateDuckEvent(World& world);
-    void endEvent(World& world);
-    void cancelEvent(World& world);
+    void tryTriggerEvents(World& world);
+    void startEvent(World& world, ClockEventType type);
+    void updateEvent(World& world, ClockEventType type, ActiveEvent& event, double deltaTime);
+    void endEvent(World& world, ClockEventType type, ActiveEvent& event);
+    void cancelAllEvents(World& world);
     void evaporateBottomRow(World& world, double deltaTime);
+
+    // Event-specific update handlers (called via visitor).
+    void updateRainEvent(World& world, RainEventState& state, double deltaTime);
+    void updateDuckEvent(World& world, DuckEventState& state, double remaining_time);
 
     void materializeWall(World& world, int x, int y);
     void redrawWalls(World& world);
