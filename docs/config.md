@@ -84,17 +84,70 @@ Or flat naming:
 }
 ```
 
+## Config File Locations
+
+### Search Order
+
+Config files are searched in this order (first match wins):
+
+1. `--config-dir` flag (explicit override)
+2. `./config/` (CWD - for development)
+3. `~/.config/dirtsim/` (user overrides)
+4. `/etc/dirtsim/` (system defaults - Pi deployment)
+
+### Development Layout
+
+Developers run from the `apps/` directory. Configs live in `apps/config/`:
+
+```
+apps/
+├── config/
+│   ├── server.json
+│   ├── server-logging.json
+│   ├── ui.json
+│   └── ui-logging.json
+├── build-debug/bin/
+│   ├── cli
+│   ├── dirtsim-server
+│   └── dirtsim-ui
+└── Makefile
+```
+
+Running `make run` or `./build-debug/bin/cli run-all` from `apps/` finds configs in `./config/`.
+
+### Production Layout (Pi)
+
+Yocto bakes configs into the image at `/etc/dirtsim/`:
+
+```
+/etc/dirtsim/
+├── server.json
+├── server-logging.json
+├── ui.json
+└── ui-logging.json
+```
+
+User overrides (if needed) go in `~/.config/dirtsim/` and take precedence.
+
+### .local Override Pattern
+
+For local tweaks not committed to git, use `.local` suffix:
+
+```
+apps/config/server.json.local    # Overrides server.json
+apps/config/ui-logging.json.local
+```
+
 ## Implementation Notes
 
 - Use `ReflectSerializer` for automatic JSON conversion (already works for scenario configs).
-- Support XDG-style layering: system defaults in `/etc/dirtsim/`, user overrides in `~/.config/dirtsim/`.
-- Keep `.local` override pattern from logging (e.g., `config.json.local` for uncommitted tweaks).
+- Config loader should merge `.local` overrides on top of base config.
+- Keep backward compatibility: if no config found, use hardcoded defaults.
 
 ## Open Questions
 
-- Should logging configs move into per-process directories, or stay flat?
-- Where do shared settings (if any) belong?
 - Runtime state persistence (current scenario state, not just config)?
+- Should configs be hot-reloadable, or require restart?
 
 ## Next Steps
 
