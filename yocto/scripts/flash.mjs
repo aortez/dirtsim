@@ -325,14 +325,9 @@ async function main() {
     info(`Using hostname from config: ${hostname}`);
   }
 
-  // Get WiFi credentials (from file or prompt, skip if restoring backup).
-  let wifiCredentials = null;
-  if (!dryRun && !hasDataPartition(targetDevice)) {
-    wifiCredentials = await getWifiCredentials(WIFI_CREDS_FILE);
-  }
-
   // Check if we can backup /data from the disk before flashing.
   let backupDir = null;
+  let willRestoreBackup = false;
   if (!dryRun && hasDataPartition(targetDevice)) {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
@@ -349,7 +344,9 @@ async function main() {
 
     if (shouldBackup) {
       backupDir = backupDataPartition(targetDevice);
-      if (!backupDir) {
+      if (backupDir) {
+        willRestoreBackup = true;
+      } else {
         const continueAnyway = await prompt('Continue without backup? (y/N): ');
         if (continueAnyway.toLowerCase() !== 'y') {
           info('Aborted.');
@@ -357,6 +354,12 @@ async function main() {
         }
       }
     }
+  }
+
+  // Get WiFi credentials if we won't be restoring a backup (which contains WiFi config).
+  let wifiCredentials = null;
+  if (!dryRun && !willRestoreBackup) {
+    wifiCredentials = await getWifiCredentials(WIFI_CREDS_FILE);
   }
 
   // Flash!
@@ -373,8 +376,8 @@ async function main() {
     // Set hostname.
     await setHostname(targetDevice, hostname, dryRun);
 
-    // Inject WiFi credentials if provided (and not restoring a backup).
-    if (wifiCredentials && !backupDir) {
+    // Inject WiFi credentials if provided.
+    if (wifiCredentials) {
       await injectWifiCredentials(
         targetDevice,
         wifiCredentials.ssid,
