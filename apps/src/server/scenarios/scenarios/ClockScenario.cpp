@@ -164,6 +164,10 @@ int ClockScenario::getDigitWidth() const
         return ClockFonts::DOT_MATRIX_WIDTH;
     case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_WIDTH;
+    case Config::ClockFont::Segment7ExtraTall:
+        return ClockFonts::SEGMENT7_EXTRA_TALL_WIDTH;
+    case Config::ClockFont::Segment7Jumbo:
+        return ClockFonts::SEGMENT7_JUMBO_WIDTH;
     case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_WIDTH;
     case Config::ClockFont::Segment7Tall:
@@ -179,6 +183,10 @@ int ClockScenario::getDigitHeight() const
         return ClockFonts::DOT_MATRIX_HEIGHT;
     case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_HEIGHT;
+    case Config::ClockFont::Segment7ExtraTall:
+        return ClockFonts::SEGMENT7_EXTRA_TALL_HEIGHT;
+    case Config::ClockFont::Segment7Jumbo:
+        return ClockFonts::SEGMENT7_JUMBO_HEIGHT;
     case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_HEIGHT;
     case Config::ClockFont::Segment7Tall:
@@ -194,6 +202,10 @@ int ClockScenario::getDigitGap() const
         return ClockFonts::DOT_MATRIX_GAP;
     case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_GAP;
+    case Config::ClockFont::Segment7ExtraTall:
+        return ClockFonts::SEGMENT7_EXTRA_TALL_GAP;
+    case Config::ClockFont::Segment7Jumbo:
+        return ClockFonts::SEGMENT7_JUMBO_GAP;
     case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_GAP;
     case Config::ClockFont::Segment7Tall:
@@ -209,6 +221,10 @@ int ClockScenario::getColonWidth() const
         return ClockFonts::DOT_MATRIX_COLON_WIDTH;
     case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_WIDTH;
+    case Config::ClockFont::Segment7ExtraTall:
+        return ClockFonts::SEGMENT7_EXTRA_TALL_COLON_WIDTH;
+    case Config::ClockFont::Segment7Jumbo:
+        return ClockFonts::SEGMENT7_JUMBO_COLON_WIDTH;
     case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
     case Config::ClockFont::Segment7Tall:
@@ -224,6 +240,10 @@ int ClockScenario::getColonPadding() const
         return ClockFonts::DOT_MATRIX_COLON_PADDING;
     case Config::ClockFont::Segment7:
         return ClockFonts::SEGMENT7_COLON_PADDING;
+    case Config::ClockFont::Segment7ExtraTall:
+        return ClockFonts::SEGMENT7_EXTRA_TALL_COLON_PADDING;
+    case Config::ClockFont::Segment7Jumbo:
+        return ClockFonts::SEGMENT7_JUMBO_COLON_PADDING;
     case Config::ClockFont::Segment7Large:
         return ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
     case Config::ClockFont::Segment7Tall:
@@ -463,6 +483,12 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                 break;
             case Config::ClockFont::Segment7:
                 pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
+                break;
+            case Config::ClockFont::Segment7ExtraTall:
+                pixel = ClockFonts::SEGMENT7_EXTRA_TALL_PATTERNS[digit][row][col];
+                break;
+            case Config::ClockFont::Segment7Jumbo:
+                pixel = ClockFonts::SEGMENT7_JUMBO_PATTERNS[digit][row][col];
                 break;
             case Config::ClockFont::Segment7Large:
                 pixel = ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];

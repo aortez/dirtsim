@@ -34,9 +34,10 @@ ClockControls::~ClockControls()
 void ClockControls::createWidgets()
 {
     // Create font dropdown.
-    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7Large=2, Segment7Tall=3.
+    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7ExtraTall=2,
+    // Segment7Jumbo=3, Segment7Large=4, Segment7Tall=5.
     fontDropdown_ = LVGLBuilder::dropdown(controlsContainer_)
-                        .options("Dot Matrix\n7-Segment\n7-Segment Large\n7-Segment Tall")
+                        .options("Dot Matrix\n7-Segment\n7-Segment Extra Tall\n7-Segment Jumbo\n7-Segment Large\n7-Segment Tall")
                         .selected(0)
                         .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
                         .buildOrLog();
@@ -175,8 +176,9 @@ void ClockControls::onFontChanged(lv_event_t* e)
     lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
     uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
 
-    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7Large=2, Segment7Tall=3.
-    static const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Large", "7-Segment Tall"};
+    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7ExtraTall=2,
+    // Segment7Jumbo=3, Segment7Large=4, Segment7Tall=5.
+    static const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall", "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
     spdlog::info("ClockControls: Font changed to index {} ({})", selectedIdx, fontNames[selectedIdx]);
 
     // Get complete current config and send update.

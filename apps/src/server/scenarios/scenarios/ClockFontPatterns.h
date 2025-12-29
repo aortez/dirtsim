@@ -40,6 +40,20 @@ static constexpr int SEGMENT7_TALL_GAP = 1;
 static constexpr int SEGMENT7_TALL_COLON_WIDTH = 1;
 static constexpr int SEGMENT7_TALL_COLON_PADDING = 1;
 
+// Extra tall 7-segment dimensions (5×17) - narrow and elegant.
+static constexpr int SEGMENT7_EXTRA_TALL_WIDTH = 5;
+static constexpr int SEGMENT7_EXTRA_TALL_HEIGHT = 17;
+static constexpr int SEGMENT7_EXTRA_TALL_GAP = 1;
+static constexpr int SEGMENT7_EXTRA_TALL_COLON_WIDTH = 1;
+static constexpr int SEGMENT7_EXTRA_TALL_COLON_PADDING = 1;
+
+// Jumbo 7-segment dimensions (5×23) - maximum height, narrow width.
+static constexpr int SEGMENT7_JUMBO_WIDTH = 5;
+static constexpr int SEGMENT7_JUMBO_HEIGHT = 23;
+static constexpr int SEGMENT7_JUMBO_GAP = 1;
+static constexpr int SEGMENT7_JUMBO_COLON_WIDTH = 1;
+static constexpr int SEGMENT7_JUMBO_COLON_PADDING = 1;
+
 // clang-format off
 
 /**
@@ -556,6 +570,484 @@ static constexpr std::array<std::array<std::array<bool, SEGMENT7_TALL_WIDTH>, SE
             {false, false, false, false, true },  // Row 8.
             {false, false, false, false, true },  // Row 9.
             {false, true , true , true , false},  // Row 10: bottom (d).
+        }},
+    }};
+
+/**
+ * @brief Extra tall 7-segment patterns for digits 0-9.
+ * Each digit is a 5x17 grid where true = filled cell.
+ * Vertical segments span 7 rows each for very tall proportions.
+ */
+static constexpr std::array<std::array<std::array<bool, SEGMENT7_EXTRA_TALL_WIDTH>, SEGMENT7_EXTRA_TALL_HEIGHT>, 10>
+    SEGMENT7_EXTRA_TALL_PATTERNS = {{
+        // 0: segments a, b, c, d, e, f (all except g).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {false, false, false, false, false},  // Row 8: middle (g) - off.
+            {true , false, false, false, true },  // Row 9: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 10.
+            {true , false, false, false, true },  // Row 11.
+            {true , false, false, false, true },  // Row 12.
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 1: segments b, c (right side only).
+        {{
+            {false, false, false, false, false},  // Row 0: top (a) - off.
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, false},  // Row 8: middle (g) - off.
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, false},  // Row 16: bottom (d) - off.
+        }},
+        // 2: segments a, b, g, e, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {true , false, false, false, false},  // Row 9: lower left (e).
+            {true , false, false, false, false},  // Row 10.
+            {true , false, false, false, false},  // Row 11.
+            {true , false, false, false, false},  // Row 12.
+            {true , false, false, false, false},  // Row 13.
+            {true , false, false, false, false},  // Row 14.
+            {true , false, false, false, false},  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 3: segments a, b, g, c, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 4: segments f, g, b, c.
+        {{
+            {false, false, false, false, false},  // Row 0: top (a) - off.
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, false},  // Row 16: bottom (d) - off.
+        }},
+        // 5: segments a, f, g, c, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, false},  // Row 1: upper left (f).
+            {true , false, false, false, false},  // Row 2.
+            {true , false, false, false, false},  // Row 3.
+            {true , false, false, false, false},  // Row 4.
+            {true , false, false, false, false},  // Row 5.
+            {true , false, false, false, false},  // Row 6.
+            {true , false, false, false, false},  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 6: segments a, f, g, e, c, d (all except b).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, false},  // Row 1: upper left (f).
+            {true , false, false, false, false},  // Row 2.
+            {true , false, false, false, false},  // Row 3.
+            {true , false, false, false, false},  // Row 4.
+            {true , false, false, false, false},  // Row 5.
+            {true , false, false, false, false},  // Row 6.
+            {true , false, false, false, false},  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {true , false, false, false, true },  // Row 9: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 10.
+            {true , false, false, false, true },  // Row 11.
+            {true , false, false, false, true },  // Row 12.
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 7: segments a, b, c.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, false},  // Row 8: middle (g) - off.
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, false},  // Row 16: bottom (d) - off.
+        }},
+        // 8: all segments.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {true , false, false, false, true },  // Row 9: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 10.
+            {true , false, false, false, true },  // Row 11.
+            {true , false, false, false, true },  // Row 12.
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+        // 9: segments a, b, c, d, f, g (all except e).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {false, true , true , true , false},  // Row 8: middle (g).
+            {false, false, false, false, true },  // Row 9: lower right (c).
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, true },  // Row 11.
+            {false, false, false, false, true },  // Row 12.
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, true , true , true , false},  // Row 16: bottom (d).
+        }},
+    }};
+
+/**
+ * @brief Jumbo 7-segment patterns for digits 0-9.
+ * Each digit is a 5x23 grid where true = filled cell.
+ * Vertical segments span 10 rows each for maximum height.
+ */
+static constexpr std::array<std::array<std::array<bool, SEGMENT7_JUMBO_WIDTH>, SEGMENT7_JUMBO_HEIGHT>, 10>
+    SEGMENT7_JUMBO_PATTERNS = {{
+        // 0: segments a, b, c, d, e, f (all except g).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {true , false, false, false, true },  // Row 8.
+            {true , false, false, false, true },  // Row 9.
+            {true , false, false, false, true },  // Row 10.
+            {false, false, false, false, false},  // Row 11: middle (g) - off.
+            {true , false, false, false, true },  // Row 12: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {true , false, false, false, true },  // Row 16.
+            {true , false, false, false, true },  // Row 17.
+            {true , false, false, false, true },  // Row 18.
+            {true , false, false, false, true },  // Row 19.
+            {true , false, false, false, true },  // Row 20.
+            {true , false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 1: segments b, c (right side only).
+        {{
+            {false, false, false, false, false},  // Row 0: top (a) - off.
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, true },  // Row 8.
+            {false, false, false, false, true },  // Row 9.
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, false},  // Row 11: middle (g) - off.
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, false, false, false, false},  // Row 22: bottom (d) - off.
+        }},
+        // 2: segments a, b, g, e, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, true },  // Row 8.
+            {false, false, false, false, true },  // Row 9.
+            {false, false, false, false, true },  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {true , false, false, false, false},  // Row 12: lower left (e).
+            {true , false, false, false, false},  // Row 13.
+            {true , false, false, false, false},  // Row 14.
+            {true , false, false, false, false},  // Row 15.
+            {true , false, false, false, false},  // Row 16.
+            {true , false, false, false, false},  // Row 17.
+            {true , false, false, false, false},  // Row 18.
+            {true , false, false, false, false},  // Row 19.
+            {true , false, false, false, false},  // Row 20.
+            {true , false, false, false, false},  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 3: segments a, b, g, c, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, true },  // Row 8.
+            {false, false, false, false, true },  // Row 9.
+            {false, false, false, false, true },  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 4: segments f, g, b, c.
+        {{
+            {false, false, false, false, false},  // Row 0: top (a) - off.
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {true , false, false, false, true },  // Row 8.
+            {true , false, false, false, true },  // Row 9.
+            {true , false, false, false, true },  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, false, false, false, false},  // Row 22: bottom (d) - off.
+        }},
+        // 5: segments a, f, g, c, d.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, false},  // Row 1: upper left (f).
+            {true , false, false, false, false},  // Row 2.
+            {true , false, false, false, false},  // Row 3.
+            {true , false, false, false, false},  // Row 4.
+            {true , false, false, false, false},  // Row 5.
+            {true , false, false, false, false},  // Row 6.
+            {true , false, false, false, false},  // Row 7.
+            {true , false, false, false, false},  // Row 8.
+            {true , false, false, false, false},  // Row 9.
+            {true , false, false, false, false},  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 6: segments a, f, g, e, c, d (all except b).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, false},  // Row 1: upper left (f).
+            {true , false, false, false, false},  // Row 2.
+            {true , false, false, false, false},  // Row 3.
+            {true , false, false, false, false},  // Row 4.
+            {true , false, false, false, false},  // Row 5.
+            {true , false, false, false, false},  // Row 6.
+            {true , false, false, false, false},  // Row 7.
+            {true , false, false, false, false},  // Row 8.
+            {true , false, false, false, false},  // Row 9.
+            {true , false, false, false, false},  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {true , false, false, false, true },  // Row 12: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {true , false, false, false, true },  // Row 16.
+            {true , false, false, false, true },  // Row 17.
+            {true , false, false, false, true },  // Row 18.
+            {true , false, false, false, true },  // Row 19.
+            {true , false, false, false, true },  // Row 20.
+            {true , false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 7: segments a, b, c.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {false, false, false, false, true },  // Row 1: upper right (b).
+            {false, false, false, false, true },  // Row 2.
+            {false, false, false, false, true },  // Row 3.
+            {false, false, false, false, true },  // Row 4.
+            {false, false, false, false, true },  // Row 5.
+            {false, false, false, false, true },  // Row 6.
+            {false, false, false, false, true },  // Row 7.
+            {false, false, false, false, true },  // Row 8.
+            {false, false, false, false, true },  // Row 9.
+            {false, false, false, false, true },  // Row 10.
+            {false, false, false, false, false},  // Row 11: middle (g) - off.
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, false, false, false, false},  // Row 22: bottom (d) - off.
+        }},
+        // 8: all segments.
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {true , false, false, false, true },  // Row 8.
+            {true , false, false, false, true },  // Row 9.
+            {true , false, false, false, true },  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {true , false, false, false, true },  // Row 12: lower verticals (e, c).
+            {true , false, false, false, true },  // Row 13.
+            {true , false, false, false, true },  // Row 14.
+            {true , false, false, false, true },  // Row 15.
+            {true , false, false, false, true },  // Row 16.
+            {true , false, false, false, true },  // Row 17.
+            {true , false, false, false, true },  // Row 18.
+            {true , false, false, false, true },  // Row 19.
+            {true , false, false, false, true },  // Row 20.
+            {true , false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
+        }},
+        // 9: segments a, b, c, d, f, g (all except e).
+        {{
+            {false, true , true , true , false},  // Row 0: top (a).
+            {true , false, false, false, true },  // Row 1: upper verticals (f, b).
+            {true , false, false, false, true },  // Row 2.
+            {true , false, false, false, true },  // Row 3.
+            {true , false, false, false, true },  // Row 4.
+            {true , false, false, false, true },  // Row 5.
+            {true , false, false, false, true },  // Row 6.
+            {true , false, false, false, true },  // Row 7.
+            {true , false, false, false, true },  // Row 8.
+            {true , false, false, false, true },  // Row 9.
+            {true , false, false, false, true },  // Row 10.
+            {false, true , true , true , false},  // Row 11: middle (g).
+            {false, false, false, false, true },  // Row 12: lower right (c).
+            {false, false, false, false, true },  // Row 13.
+            {false, false, false, false, true },  // Row 14.
+            {false, false, false, false, true },  // Row 15.
+            {false, false, false, false, true },  // Row 16.
+            {false, false, false, false, true },  // Row 17.
+            {false, false, false, false, true },  // Row 18.
+            {false, false, false, false, true },  // Row 19.
+            {false, false, false, false, true },  // Row 20.
+            {false, false, false, false, true },  // Row 21.
+            {false, true , true , true , false},  // Row 22: bottom (d).
         }},
     }};
 

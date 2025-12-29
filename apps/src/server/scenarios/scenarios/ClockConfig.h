@@ -8,8 +8,10 @@ namespace DirtSim::Config {
 enum class ClockFont : uint8_t {
     DotMatrix = 0,
     Segment7 = 1,
-    Segment7Large = 2,
-    Segment7Tall = 3,
+    Segment7ExtraTall = 2,
+    Segment7Jumbo = 3,
+    Segment7Large = 4,
+    Segment7Tall = 5,
 };
 
 NLOHMANN_JSON_SERIALIZE_ENUM(
@@ -17,6 +19,8 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
     {
         {ClockFont::DotMatrix, "DotMatrix"},
         {ClockFont::Segment7, "Segment7"},
+        {ClockFont::Segment7ExtraTall, "Segment7ExtraTall"},
+        {ClockFont::Segment7Jumbo, "Segment7Jumbo"},
         {ClockFont::Segment7Large, "Segment7Large"},
         {ClockFont::Segment7Tall, "Segment7Tall"},
     })
@@ -27,7 +31,7 @@ struct Clock {
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
     uint8_t timezoneIndex = 2;
-    ClockFont font = ClockFont::Segment7Tall;
+    ClockFont font = ClockFont::Segment7ExtraTall;
     bool showSeconds = true;
     bool autoScale = true;
     uint32_t targetDisplayWidth = 752;
