@@ -3,7 +3,10 @@
 #include "ScenarioControlsBase.h"
 #include "core/ScenarioConfig.h"
 #include "lvgl/lvgl.h"
+#include "ui/PanelViewController.h"
 #include <functional>
+#include <memory>
+#include <unordered_map>
 
 namespace DirtSim {
 
@@ -29,7 +32,7 @@ using DisplayDimensionsGetter = std::function<DisplayDimensions()>;
 /**
  * @brief Clock scenario-specific controls.
  *
- * Includes: Font dropdown, Timezone dropdown, Show Seconds toggle.
+ * Includes: Font selector (modal), Timezone selector (modal), Show Seconds toggle.
  */
 class ClockControls : public ScenarioControlsBase {
 public:
@@ -52,10 +55,21 @@ protected:
     void createWidgets() override;
 
 private:
+    // View controller for modal navigation.
+    std::unique_ptr<PanelViewController> viewController_;
+
     // Widgets.
-    lv_obj_t* fontDropdown_ = nullptr;
-    lv_obj_t* timezoneDropdown_ = nullptr;
+    lv_obj_t* fontButton_ = nullptr;
+    lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
+
+    // Button to option index mappings.
+    std::unordered_map<lv_obj_t*, int> buttonToFontIndex_;
+    std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
+
+    // Current selections.
+    int currentFontIndex_ = 0;
+    int currentTimezoneIndex_ = 0;
 
     // Current config (cached from last updateFromConfig call).
     Config::Clock currentConfig_;
@@ -63,14 +77,20 @@ private:
     // Callback to get current display dimensions for auto-scaling.
     DisplayDimensionsGetter dimensionsGetter_;
 
+    // View creation.
+    void createMainView(lv_obj_t* view);
+    void createFontSelectionView(lv_obj_t* view);
+    void createTimezoneSelectionView(lv_obj_t* view);
+
     // Static LVGL callbacks.
-    static void onFontChanged(lv_event_t* e);
-    static void onTimezoneChanged(lv_event_t* e);
+    static void onFontButtonClicked(lv_event_t* e);
+    static void onFontSelected(lv_event_t* e);
+    static void onFontBackClicked(lv_event_t* e);
+    static void onTimezoneButtonClicked(lv_event_t* e);
+    static void onTimezoneSelected(lv_event_t* e);
+    static void onTimezoneBackClicked(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
 
-    /**
-     * @brief Get the current complete config from all controls.
-     */
     Config::Clock getCurrentConfig() const;
 };
 

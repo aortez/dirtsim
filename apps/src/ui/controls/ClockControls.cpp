@@ -1,4 +1,5 @@
 #include "ClockControls.h"
+#include "core/LoggingChannels.h"
 #include "server/scenarios/scenarios/ClockScenario.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
@@ -33,43 +34,58 @@ ClockControls::~ClockControls()
 
 void ClockControls::createWidgets()
 {
-    // Create font dropdown.
-    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7ExtraTall=2,
-    // Segment7Jumbo=3, Segment7Large=4, Segment7Tall=5.
-    fontDropdown_ = LVGLBuilder::dropdown(controlsContainer_)
-                        .options("Dot Matrix\n7-Segment\n7-Segment Extra Tall\n7-Segment Jumbo\n7-Segment Large\n7-Segment Tall")
-                        .selected(0)
-                        .size(LV_PCT(95), LVGLBuilder::Style::ACTION_SIZE)
-                        .buildOrLog();
+    // Create view controller.
+    viewController_ = std::make_unique<PanelViewController>(controlsContainer_);
 
-    if (fontDropdown_) {
-        lv_obj_set_user_data(fontDropdown_, this);
-        lv_obj_add_event_cb(fontDropdown_, onFontChanged, LV_EVENT_VALUE_CHANGED, this);
-    }
+    // Create main view.
+    lv_obj_t* mainView = viewController_->createView("main");
+    createMainView(mainView);
 
-    // Build dropdown options string from timezone array.
-    std::string options;
-    for (size_t i = 0; i < ClockScenario::TIMEZONES.size(); ++i) {
-        if (i > 0) {
-            options += "\n";
-        }
-        options += ClockScenario::TIMEZONES[i].label;
-    }
+    // Create font selection view.
+    lv_obj_t* fontView = viewController_->createView("font");
+    createFontSelectionView(fontView);
 
-    // Create timezone dropdown.
-    timezoneDropdown_ = LVGLBuilder::dropdown(controlsContainer_)
-                            .options(options.c_str())
-                            .selected(0)
-                            .size(LV_PCT(95), LVGLBuilder::Style::ACTION_SIZE)
-                            .buildOrLog();
+    // Create timezone selection view.
+    lv_obj_t* timezoneView = viewController_->createView("timezone");
+    createTimezoneSelectionView(timezoneView);
 
-    if (timezoneDropdown_) {
-        lv_obj_set_user_data(timezoneDropdown_, this);
-        lv_obj_add_event_cb(timezoneDropdown_, onTimezoneChanged, LV_EVENT_VALUE_CHANGED, this);
-    }
+    // Show main view initially.
+    viewController_->showView("main");
+}
 
-    // Create show seconds toggle.
-    secondsSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+void ClockControls::createMainView(lv_obj_t* view)
+{
+    // Font selector button.
+    const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
+                               "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+    std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
+
+    fontButton_ = LVGLBuilder::actionButton(view)
+                      .text(fontText.c_str())
+                      .icon(LV_SYMBOL_RIGHT)
+                      .width(LV_PCT(95))
+                      .height(LVGLBuilder::Style::ACTION_SIZE)
+                      .layoutRow()
+                      .alignLeft()
+                      .callback(onFontButtonClicked, this)
+                      .buildOrLog();
+
+    // Timezone selector button.
+    std::string timezoneText = std::string("Timezone: ") +
+                               ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+
+    timezoneButton_ = LVGLBuilder::actionButton(view)
+                          .text(timezoneText.c_str())
+                          .icon(LV_SYMBOL_RIGHT)
+                          .width(LV_PCT(95))
+                          .height(LVGLBuilder::Style::ACTION_SIZE)
+                          .layoutRow()
+                          .alignLeft()
+                          .callback(onTimezoneButtonClicked, this)
+                          .buildOrLog();
+
+    // Show seconds toggle.
+    secondsSwitch_ = LVGLBuilder::actionButton(view)
                          .text("Show Seconds")
                          .mode(LVGLBuilder::ActionMode::Toggle)
                          .size(80)
@@ -77,6 +93,93 @@ void ClockControls::createWidgets()
                          .glowColor(0x00CC00)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
+}
+
+void ClockControls::createFontSelectionView(lv_obj_t* view)
+{
+    // Back button.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onFontBackClicked, this)
+        .buildOrLog();
+
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Font");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Font option buttons.
+    // Order matches ClockFont enum.
+    const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
+                               "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+    buttonToFontIndex_.clear();
+
+    for (int i = 0; i < 6; i++) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(fontNames[i])
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (container) {
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                buttonToFontIndex_[button] = i;
+                lv_obj_add_event_cb(button, onFontSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
+}
+
+void ClockControls::createTimezoneSelectionView(lv_obj_t* view)
+{
+    // Back button.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onTimezoneBackClicked, this)
+        .buildOrLog();
+
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Timezone");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Timezone option buttons.
+    buttonToTimezoneIndex_.clear();
+
+    for (size_t i = 0; i < ClockScenario::TIMEZONES.size(); i++) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(ClockScenario::TIMEZONES[i].label)
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (container) {
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                buttonToTimezoneIndex_[button] = static_cast<int>(i);
+                lv_obj_add_event_cb(button, onTimezoneSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
 }
 
 void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
@@ -99,22 +202,43 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         initializing_ = true;
     }
 
-    // Update font dropdown.
-    if (fontDropdown_) {
-        lv_dropdown_set_selected(fontDropdown_, static_cast<uint16_t>(config.font));
-        spdlog::debug("ClockControls: Updated font dropdown to index {}", static_cast<int>(config.font));
+    // Update font selection and button text.
+    currentFontIndex_ = static_cast<int>(config.font);
+    if (fontButton_) {
+        const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
+                                   "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+        std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
+
+        lv_obj_t* button = lv_obj_get_child(fontButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1); // Second child is text.
+            if (label) {
+                lv_label_set_text(label, fontText.c_str());
+            }
+        }
+        LOG_DEBUG(Controls, "ClockControls: Updated font to index {}", currentFontIndex_);
     }
 
-    // Update timezone dropdown.
-    if (timezoneDropdown_) {
-        lv_dropdown_set_selected(timezoneDropdown_, config.timezoneIndex);
-        spdlog::debug("ClockControls: Updated timezone dropdown to index {}", config.timezoneIndex);
+    // Update timezone selection and button text.
+    currentTimezoneIndex_ = config.timezoneIndex;
+    if (timezoneButton_) {
+        std::string timezoneText = std::string("Timezone: ") +
+                                   ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+
+        lv_obj_t* button = lv_obj_get_child(timezoneButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1); // Second child is text.
+            if (label) {
+                lv_label_set_text(label, timezoneText.c_str());
+            }
+        }
+        LOG_DEBUG(Controls, "ClockControls: Updated timezone to index {}", currentTimezoneIndex_);
     }
 
     // Update seconds button.
     if (secondsSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(secondsSwitch_, config.showSeconds);
-        spdlog::debug("ClockControls: Updated seconds button to {}", config.showSeconds);
+        LOG_DEBUG(Controls, "ClockControls: Updated seconds button to {}", config.showSeconds);
     }
 
     // Restore initializing state.
@@ -128,15 +252,11 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Start with current config (preserves auto-scale settings).
     Config::Clock config = currentConfig_;
 
-    // Get font from dropdown.
-    if (fontDropdown_) {
-        config.font = static_cast<Config::ClockFont>(lv_dropdown_get_selected(fontDropdown_));
-    }
+    // Get font from current selection.
+    config.font = static_cast<Config::ClockFont>(currentFontIndex_);
 
-    // Get timezone index from dropdown.
-    if (timezoneDropdown_) {
-        config.timezoneIndex = static_cast<uint8_t>(lv_dropdown_get_selected(timezoneDropdown_));
-    }
+    // Get timezone index from current selection.
+    config.timezoneIndex = static_cast<uint8_t>(currentTimezoneIndex_);
 
     // Get showSeconds from button.
     if (secondsSwitch_) {
@@ -149,7 +269,8 @@ Config::Clock ClockControls::getCurrentConfig() const
         config.targetDisplayWidth = dims.width;
         config.targetDisplayHeight = dims.height;
         config.autoScale = true;
-        spdlog::debug(
+        LOG_DEBUG(
+            Controls,
             "ClockControls: Setting display dimensions {}x{} for auto-scale",
             dims.width,
             dims.height);
@@ -158,56 +279,126 @@ Config::Clock ClockControls::getCurrentConfig() const
     return config;
 }
 
-void ClockControls::onFontChanged(lv_event_t* e)
+void ClockControls::onFontButtonClicked(lv_event_t* e)
 {
-    auto* controls =
-        static_cast<ClockControls*>(lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
-    if (!controls)
-        return;
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
 
-    // Don't send updates during initialization.
-    if (controls->isInitializing()) {
-        spdlog::debug("ClockControls: Ignoring font change during initialization");
-        return;
-    }
-
-    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
-
-    // Order matches ClockFont enum: DotMatrix=0, Segment7=1, Segment7ExtraTall=2,
-    // Segment7Jumbo=3, Segment7Large=4, Segment7Tall=5.
-    static const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall", "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
-    spdlog::info("ClockControls: Font changed to index {} ({})", selectedIdx, fontNames[selectedIdx]);
-
-    // Get complete current config and send update.
-    Config::Clock config = controls->getCurrentConfig();
-    controls->sendConfigUpdate(config);
+    LOG_DEBUG(Controls, "ClockControls: Font button clicked");
+    self->viewController_->showView("font");
 }
 
-void ClockControls::onTimezoneChanged(lv_event_t* e)
+void ClockControls::onFontSelected(lv_event_t* e)
 {
-    auto* controls =
-        static_cast<ClockControls*>(lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
-    if (!controls)
-        return;
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) return;
 
-    // Don't send updates during initialization.
-    if (controls->isInitializing()) {
-        spdlog::debug("ClockControls: Ignoring timezone change during initialization");
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Look up font index from button mapping.
+    auto it = self->buttonToFontIndex_.find(btn);
+    if (it == self->buttonToFontIndex_.end()) {
+        LOG_ERROR(Controls, "ClockControls: Unknown font button clicked");
         return;
     }
 
-    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
+    int fontIndex = it->second;
+    static const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
+                                      "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+    LOG_INFO(Controls, "ClockControls: Font changed to index {} ({})", fontIndex, fontNames[fontIndex]);
 
-    spdlog::info(
-        "ClockControls: Timezone changed to index {} ({})",
-        selectedIdx,
-        ClockScenario::TIMEZONES[selectedIdx].label);
+    // Update selection and button text.
+    self->currentFontIndex_ = fontIndex;
+    if (self->fontButton_) {
+        std::string fontText = std::string("Font: ") + fontNames[fontIndex];
+        lv_obj_t* button = lv_obj_get_child(self->fontButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                lv_label_set_text(label, fontText.c_str());
+            }
+        }
+    }
 
-    // Get complete current config and send update.
-    Config::Clock config = controls->getCurrentConfig();
-    controls->sendConfigUpdate(config);
+    // Return to main view.
+    if (self->viewController_) {
+        self->viewController_->showView("main");
+    }
+
+    // Send config update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onFontBackClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    LOG_DEBUG(Controls, "ClockControls: Font back button clicked");
+    self->viewController_->showView("main");
+}
+
+void ClockControls::onTimezoneButtonClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    LOG_DEBUG(Controls, "ClockControls: Timezone button clicked");
+    self->viewController_->showView("timezone");
+}
+
+void ClockControls::onTimezoneSelected(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Look up timezone index from button mapping.
+    auto it = self->buttonToTimezoneIndex_.find(btn);
+    if (it == self->buttonToTimezoneIndex_.end()) {
+        LOG_ERROR(Controls, "ClockControls: Unknown timezone button clicked");
+        return;
+    }
+
+    int timezoneIndex = it->second;
+    LOG_INFO(Controls,
+             "ClockControls: Timezone changed to index {} ({})",
+             timezoneIndex,
+             ClockScenario::TIMEZONES[timezoneIndex].label);
+
+    // Update selection and button text.
+    self->currentTimezoneIndex_ = timezoneIndex;
+    if (self->timezoneButton_) {
+        std::string timezoneText = std::string("Timezone: ") +
+                                   ClockScenario::TIMEZONES[timezoneIndex].label;
+        lv_obj_t* button = lv_obj_get_child(self->timezoneButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                lv_label_set_text(label, timezoneText.c_str());
+            }
+        }
+    }
+
+    // Return to main view.
+    if (self->viewController_) {
+        self->viewController_->showView("main");
+    }
+
+    // Send config update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onTimezoneBackClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    LOG_DEBUG(Controls, "ClockControls: Timezone back button clicked");
+    self->viewController_->showView("main");
 }
 
 void ClockControls::onSecondsToggled(lv_event_t* e)
