@@ -12,36 +12,20 @@ PhysicsPanel::PhysicsPanel(lv_obj_t* container, Network::WebSocketService* wsSer
     // Cache all section configs upfront.
     configs_ = PhysicsControlHelpers::createAllColumnConfigs();
 
-    // Create the menu container (visible by default).
-    menuContainer_ = lv_obj_create(container_);
-    lv_obj_set_size(menuContainer_, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(menuContainer_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(
-        menuContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(menuContainer_, 0, 0);
-    lv_obj_set_style_pad_row(menuContainer_, 4, 0);
-    lv_obj_set_style_bg_opa(menuContainer_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(menuContainer_, 0, 0);
+    // Create view controller.
+    viewController_ = std::make_unique<PanelViewController>(container_);
 
-    // Create the section container (hidden by default).
-    sectionContainer_ = lv_obj_create(container_);
-    lv_obj_set_size(sectionContainer_, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(sectionContainer_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(
-        sectionContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(sectionContainer_, 0, 0);
-    lv_obj_set_style_pad_row(sectionContainer_, 4, 0);
-    lv_obj_set_style_bg_opa(sectionContainer_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(sectionContainer_, 0, 0);
-    lv_obj_add_flag(sectionContainer_, LV_OBJ_FLAG_HIDDEN);
+    // Create menu view.
+    lv_obj_t* menuView = viewController_->createView("menu");
+    createMenuView(menuView);
 
-    // Build the menu view.
-    createMenuView();
+    // Show menu view initially.
+    viewController_->showView("menu");
 
     // Fetch initial settings from server.
     fetchSettings();
 
-    LOG_INFO(Controls, "PhysicsPanel: Initialized with modal navigation (6 sections)");
+    LOG_INFO(Controls, "PhysicsPanel: Initialized with PanelViewController (6 sections)");
 }
 
 PhysicsPanel::~PhysicsPanel()
@@ -49,31 +33,32 @@ PhysicsPanel::~PhysicsPanel()
     LOG_INFO(Controls, "PhysicsPanel: Destroyed");
 }
 
-void PhysicsPanel::createMenuView()
+void PhysicsPanel::createMenuView(lv_obj_t* view)
 {
     // Section names matching the order in getSectionConfig().
     const char* sectionNames[] = { "General", "Pressure", "Forces", "Swap Tuning", "Swap2", "Frag" };
 
+    // Clear button mapping.
+    buttonToSection_.clear();
+
     for (int i = 0; i < 6; i++) {
-        lv_obj_t* btn = LVGLBuilder::button(menuContainer_)
-                            .text(sectionNames[i])
-                            .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
-                            .backgroundColor(LVGLBuilder::Style::BUTTON_BG_COLOR)
-                            .pressedColor(LVGLBuilder::Style::BUTTON_PRESSED_COLOR)
-                            .textColor(LVGLBuilder::Style::BUTTON_TEXT_COLOR)
-                            .radius(LVGLBuilder::Style::RADIUS)
-                            .buildOrLog();
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(sectionNames[i])
+                                  .icon(LV_SYMBOL_RIGHT)
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::CONTROL_HEIGHT)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .buildOrLog();
 
-        if (btn) {
-            // Store section index in user data.
-            lv_obj_set_user_data(btn, reinterpret_cast<void*>(static_cast<intptr_t>(i)));
-            lv_obj_add_event_cb(btn, onSectionClicked, LV_EVENT_CLICKED, this);
-
-            // Add a right arrow indicator.
-            lv_obj_t* arrow = lv_label_create(btn);
-            lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
-            lv_obj_set_style_text_color(arrow, lv_color_hex(0xAAAAAA), 0);
-            lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -10, 0);
+        if (container) {
+            // Get the inner button (first child of container).
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                // Store button->section mapping (don't touch ActionButton's user_data!).
+                buttonToSection_[button] = i;
+                lv_obj_add_event_cb(button, onSectionClicked, LV_EVENT_CLICKED, this);
+            }
         }
     }
 }
@@ -85,33 +70,45 @@ void PhysicsPanel::showSection(int sectionIndex)
         return;
     }
 
-    // Hide menu, show section container.
-    lv_obj_add_flag(menuContainer_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(sectionContainer_, LV_OBJ_FLAG_HIDDEN);
+    // Create section view if it doesn't exist.
+    if (!viewController_->hasView("section")) {
+        viewController_->createView("section");
+    }
 
-    // Clear any existing section content.
-    lv_obj_clean(sectionContainer_);
+    // Get section view and clear it.
+    lv_obj_t* sectionView = viewController_->getView("section");
+    lv_obj_clean(sectionView);
     controls_.clear();
     widgetToControl_.clear();
 
-    // Create back button header.
-    lv_obj_t* backBtn = LVGLBuilder::button(sectionContainer_)
-                            .text("Back")
-                            .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
-                            .backgroundColor(LVGLBuilder::Style::BUTTON_BG_COLOR)
-                            .pressedColor(LVGLBuilder::Style::BUTTON_PRESSED_COLOR)
-                            .textColor(LVGLBuilder::Style::BUTTON_TEXT_COLOR)
-                            .radius(LVGLBuilder::Style::RADIUS)
-                            .icon(LV_SYMBOL_LEFT)
-                            .buildOrLog();
+    // Create section content.
+    createSectionView(sectionView, sectionIndex);
 
-    if (backBtn) {
-        lv_obj_add_event_cb(backBtn, onBackClicked, LV_EVENT_CLICKED, this);
-    }
+    // Update state and show view.
+    activeSection_ = sectionIndex;
+    viewController_->showView("section");
+
+    const auto& config = getSectionConfig(sectionIndex);
+    LOG_INFO(
+        Controls, "PhysicsPanel: Showing section '{}' with {} controls", config.title, controls_.size());
+}
+
+void PhysicsPanel::createSectionView(lv_obj_t* view, int sectionIndex)
+{
+    // Create back button header.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::CONTROL_HEIGHT)
+        .layoutRow()
+        .alignLeft()
+        .callback(onBackClicked, this)
+        .buildOrLog();
 
     // Create section title.
     const auto& config = getSectionConfig(sectionIndex);
-    lv_obj_t* titleLabel = lv_label_create(sectionContainer_);
+    lv_obj_t* titleLabel = lv_label_create(view);
     lv_label_set_text(titleLabel, config.title);
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
@@ -119,7 +116,7 @@ void PhysicsPanel::showSection(int sectionIndex)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     // Create a container for the controls.
-    lv_obj_t* controlsContainer = lv_obj_create(sectionContainer_);
+    lv_obj_t* controlsContainer = lv_obj_create(view);
     lv_obj_set_size(controlsContainer, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(controlsContainer, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
@@ -136,40 +133,28 @@ void PhysicsPanel::showSection(int sectionIndex)
     controls_.resize(config.controls.size());
 
     // Create controls for this section.
-    size_t added = PhysicsControlHelpers::createControlsFromColumn(controlsContainer,
-                                                                    config,
-                                                                    controls_.data(),
-                                                                    0,
-                                                                    widgetToControl_,
-                                                                    onGenericToggle,
-                                                                    onGenericValueChange,
-                                                                    this);
-
-    // Update state.
-    activeSection_ = sectionIndex;
-    currentView_ = ViewMode::SECTION;
+    PhysicsControlHelpers::createControlsFromColumn(controlsContainer,
+                                                     config,
+                                                     controls_.data(),
+                                                     0,
+                                                     widgetToControl_,
+                                                     onGenericToggle,
+                                                     onGenericValueChange,
+                                                     this);
 
     // Update controls from current settings.
     PhysicsControlHelpers::updateControlsFromSettings(controls_.data(), controls_.size(), settings_);
-
-    LOG_INFO(
-        Controls, "PhysicsPanel: Showing section '{}' with {} controls", config.title, added);
 }
 
 void PhysicsPanel::showMenu()
 {
     // Clear section content.
-    lv_obj_clean(sectionContainer_);
     controls_.clear();
     widgetToControl_.clear();
 
-    // Hide section, show menu.
-    lv_obj_add_flag(sectionContainer_, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(menuContainer_, LV_OBJ_FLAG_HIDDEN);
-
-    // Update state.
+    // Update state and show menu view.
     activeSection_ = -1;
-    currentView_ = ViewMode::MENU;
+    viewController_->showView("menu");
 
     LOG_INFO(Controls, "PhysicsPanel: Returned to menu view");
 }
@@ -199,7 +184,7 @@ void PhysicsPanel::updateFromSettings(const PhysicsSettings& settings)
     settings_ = settings;
 
     // Only update controls if we're in section view.
-    if (currentView_ == ViewMode::SECTION && !controls_.empty()) {
+    if (activeSection_ >= 0 && !controls_.empty()) {
         PhysicsControlHelpers::updateControlsFromSettings(
             controls_.data(), controls_.size(), settings_);
     }
@@ -211,9 +196,15 @@ void PhysicsPanel::onSectionClicked(lv_event_t* e)
     if (!self) return;
 
     lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    intptr_t sectionIndex = reinterpret_cast<intptr_t>(lv_obj_get_user_data(btn));
 
-    self->showSection(static_cast<int>(sectionIndex));
+    // Look up section index from button mapping.
+    auto it = self->buttonToSection_.find(btn);
+    if (it == self->buttonToSection_.end()) {
+        LOG_ERROR(Controls, "PhysicsPanel: Unknown button clicked");
+        return;
+    }
+
+    self->showSection(it->second);
 }
 
 void PhysicsPanel::onBackClicked(lv_event_t* e)
@@ -330,7 +321,7 @@ void PhysicsPanel::fetchSettings()
     settings_ = PhysicsControlHelpers::fetchSettingsFromServer(wsService_);
 
     // Update controls if in section view.
-    if (currentView_ == ViewMode::SECTION && !controls_.empty()) {
+    if (activeSection_ >= 0 && !controls_.empty()) {
         PhysicsControlHelpers::updateControlsFromSettings(
             controls_.data(), controls_.size(), settings_);
     }

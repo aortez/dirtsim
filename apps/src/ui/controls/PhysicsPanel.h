@@ -3,6 +3,8 @@
 #include "PhysicsControlHelpers.h"
 #include "core/PhysicsSettings.h"
 #include "lvgl/lvgl.h"
+#include "ui/PanelViewController.h"
+#include <memory>
 #include <unordered_map>
 #include <vector>
 
@@ -37,29 +39,29 @@ public:
     void updateFromSettings(const PhysicsSettings& settings);
 
 private:
-    enum class ViewMode { MENU, SECTION };
-
     lv_obj_t* container_;
     Network::WebSocketService* wsService_;
 
-    // View state.
-    ViewMode currentView_ = ViewMode::MENU;
-    int activeSection_ = -1; // -1 = none, 0-5 = section index.
+    // View controller for modal navigation.
+    std::unique_ptr<PanelViewController> viewController_;
 
-    // Containers for the two views.
-    lv_obj_t* menuContainer_ = nullptr;
-    lv_obj_t* sectionContainer_ = nullptr;
+    // View state.
+    int activeSection_ = -1; // -1 = none, 0-5 = section index.
 
     // Physics settings and controls (only populated when in section view).
     PhysicsSettings settings_;
     std::vector<PhysicsControlHelpers::Control> controls_;
     std::unordered_map<lv_obj_t*, PhysicsControlHelpers::Control*> widgetToControl_;
 
+    // Section button to index mapping.
+    std::unordered_map<lv_obj_t*, int> buttonToSection_;
+
     // Cached section configs.
     PhysicsControlHelpers::AllColumnConfigs configs_;
 
     // View management.
-    void createMenuView();
+    void createMenuView(lv_obj_t* view);
+    void createSectionView(lv_obj_t* view, int sectionIndex);
     void showSection(int sectionIndex);
     void showMenu();
 

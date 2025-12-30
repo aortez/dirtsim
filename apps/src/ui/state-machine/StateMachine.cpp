@@ -238,7 +238,7 @@ void StateMachine::updateAnimations()
 
     double currentTime =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-    if (currentTime - lastLogTime >= 10.0) {
+    if (currentTime - lastLogTime >= 60.0) {
         double loopFps = callCount / (currentTime - lastLogTime);
         LOG_INFO(State, "Main loop FPS = {:.1f}", loopFps);
         callCount = 0;

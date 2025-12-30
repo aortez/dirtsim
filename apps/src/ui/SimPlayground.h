@@ -25,7 +25,7 @@ namespace Ui {
 
 class UiComponentManager;
 class CoreControls;
-class ScenarioControlsBase;
+class ScenarioPanel;
 class PhysicsPanel;
 class CellRenderer;
 class NeuralGridRenderer;
@@ -99,9 +99,8 @@ private:
 
     // Panel content (created lazily, one at a time).
     std::unique_ptr<CoreControls> coreControls_;
-    std::unique_ptr<ScenarioControlsBase> scenarioControls_;
+    std::unique_ptr<ScenarioPanel> scenarioPanel_;
     std::unique_ptr<PhysicsPanel> physicsPanel_;
-    lv_obj_t* scenarioContainer_ = nullptr; // ActionDropdown container.
 
     // Currently active panel.
     IconId activePanel_ = IconId::COUNT;
@@ -137,8 +136,6 @@ private:
     void showPanelContent(IconId panelId);
 
     void onIconSelected(IconId selectedId, IconId previousId);
-
-    static void onScenarioChanged(lv_event_t* e);
 };
 
 } // namespace Ui

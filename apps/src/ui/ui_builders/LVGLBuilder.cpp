@@ -1989,6 +1989,32 @@ LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::troughPaddin
     return *this;
 }
 
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::layoutRow()
+{
+    layout_flow_ = LV_FLEX_FLOW_ROW;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::layoutColumn()
+{
+    layout_flow_ = LV_FLEX_FLOW_COLUMN;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::alignLeft()
+{
+    main_align_ = LV_FLEX_ALIGN_START;
+    cross_align_ = LV_FLEX_ALIGN_CENTER;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::alignCenter()
+{
+    main_align_ = LV_FLEX_ALIGN_CENTER;
+    cross_align_ = LV_FLEX_ALIGN_CENTER;
+    return *this;
+}
+
 LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::backgroundColor(uint32_t color)
 {
     bg_color_ = color;
@@ -2101,11 +2127,15 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
     lv_obj_set_style_shadow_width(button_, 0, 0);
     lv_obj_set_style_shadow_spread(button_, 0, 0);
 
-    // Set up flex layout for icon + text.
-    lv_obj_set_flex_flow(button_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(button_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(button_, 4, 0);
-    lv_obj_set_style_pad_row(button_, 2, 0);
+    // Set up flex layout for icon + text (configurable).
+    lv_obj_set_flex_flow(button_, layout_flow_);
+    lv_obj_set_flex_align(button_, main_align_, cross_align_, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(button_, 8, 0);
+    if (layout_flow_ == LV_FLEX_FLOW_ROW) {
+        lv_obj_set_style_pad_column(button_, 8, 0);
+    } else {
+        lv_obj_set_style_pad_row(button_, 2, 0);
+    }
 
     // Create icon label if provided.
     if (!icon_.empty()) {
@@ -3105,4 +3135,309 @@ void LVGLBuilder::ActionRadioPanelBuilder::setSelected(lv_obj_t* container, uint
 LVGLBuilder::ActionRadioPanelBuilder LVGLBuilder::actionRadioPanel(lv_obj_t* parent)
 {
     return ActionRadioPanelBuilder(parent);
+}
+
+// ============================================================================
+// ActionRadioModalBuilder Implementation.
+// ============================================================================
+
+namespace {
+struct ActionRadioModalState {
+    lv_obj_t* buttonView;
+    lv_obj_t* optionsView;
+    lv_obj_t* selectionButton;
+    std::vector<lv_obj_t*> optionButtons;
+    std::vector<std::string> optionNames;
+    std::string labelText;
+    uint16_t selectedIndex;
+    lv_event_cb_t userCallback;
+    void* userData;
+};
+} // namespace
+
+LVGLBuilder::ActionRadioModalBuilder::ActionRadioModalBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr), buttonView_(nullptr), optionsView_(nullptr)
+{}
+
+LVGLBuilder::ActionRadioModalBuilder& LVGLBuilder::ActionRadioModalBuilder::label(const char* text)
+{
+    if (text) {
+        label_text_ = text;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionRadioModalBuilder& LVGLBuilder::ActionRadioModalBuilder::options(std::vector<std::string> opts)
+{
+    options_ = std::move(opts);
+    return *this;
+}
+
+LVGLBuilder::ActionRadioModalBuilder& LVGLBuilder::ActionRadioModalBuilder::selected(uint16_t index)
+{
+    selected_index_ = index;
+    return *this;
+}
+
+LVGLBuilder::ActionRadioModalBuilder& LVGLBuilder::ActionRadioModalBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionRadioModalBuilder& LVGLBuilder::ActionRadioModalBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionRadioModalBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "ActionRadioModalBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    if (options_.empty()) {
+        std::string error = "ActionRadioModalBuilder: options cannot be empty";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createActionRadioModal();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug("ActionRadioModalBuilder: Successfully created modal radio selection");
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::ActionRadioModalBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("ActionRadioModalBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionRadioModalBuilder::createActionRadioModal()
+{
+    // Create main container (holds both views).
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "ActionRadioModalBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    lv_obj_set_size(container_, width_, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_all(container_, 0, 0);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create state.
+    auto* state = new ActionRadioModalState{
+        nullptr, nullptr, nullptr, {}, options_, label_text_, selected_index_,
+        callback_, user_data_
+    };
+
+    // Create button view (visible by default).
+    buttonView_ = lv_obj_create(container_);
+    lv_obj_set_size(buttonView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(buttonView_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(buttonView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(buttonView_, 0, 0);
+    lv_obj_set_style_pad_all(buttonView_, 0, 0);
+    state->buttonView = buttonView_;
+
+    // Create options view (hidden by default).
+    optionsView_ = lv_obj_create(container_);
+    lv_obj_set_size(optionsView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(optionsView_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(optionsView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(optionsView_, 0, 0);
+    lv_obj_set_style_pad_all(optionsView_, 0, 0);
+    lv_obj_set_style_pad_row(optionsView_, 4, 0);
+    lv_obj_add_flag(optionsView_, LV_OBJ_FLAG_HIDDEN);
+    state->optionsView = optionsView_;
+
+    // Create selection button in button view.
+    std::string buttonText = label_text_;
+    if (selected_index_ < options_.size()) {
+        buttonText += ": " + options_[selected_index_];
+    }
+
+    lv_obj_t* selectionBtn = LVGLBuilder::button(buttonView_)
+                                 .text(buttonText.c_str())
+                                 .size(LV_PCT(95), Style::CONTROL_HEIGHT)
+                                 .backgroundColor(Style::BUTTON_BG_COLOR)
+                                 .pressedColor(Style::BUTTON_PRESSED_COLOR)
+                                 .textColor(Style::BUTTON_TEXT_COLOR)
+                                 .radius(Style::RADIUS)
+                                 .buildOrLog();
+
+    if (!selectionBtn) {
+        delete state;
+        return Result<lv_obj_t*, std::string>::error("Failed to create selection button");
+    }
+
+    state->selectionButton = selectionBtn;
+    lv_obj_add_event_cb(selectionBtn, onButtonClicked, LV_EVENT_CLICKED, state);
+
+    // Add right arrow indicator to selection button.
+    lv_obj_t* arrow = lv_label_create(selectionBtn);
+    lv_label_set_text(arrow, LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(arrow, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_align(arrow, LV_ALIGN_RIGHT_MID, -10, 0);
+
+    // Create back button in options view.
+    lv_obj_t* backBtn = LVGLBuilder::button(optionsView_)
+                            .text("Back")
+                            .size(LV_PCT(95), Style::CONTROL_HEIGHT)
+                            .backgroundColor(Style::BUTTON_BG_COLOR)
+                            .pressedColor(Style::BUTTON_PRESSED_COLOR)
+                            .textColor(Style::BUTTON_TEXT_COLOR)
+                            .radius(Style::RADIUS)
+                            .icon(LV_SYMBOL_LEFT)
+                            .buildOrLog();
+
+    if (backBtn) {
+        lv_obj_add_event_cb(backBtn, onBackClicked, LV_EVENT_CLICKED, state);
+    }
+
+    // Create title label in options view.
+    lv_obj_t* titleLabel = lv_label_create(optionsView_);
+    lv_label_set_text(titleLabel, label_text_.c_str());
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Create option buttons in options view.
+    for (const auto& optionName : options_) {
+        lv_obj_t* optionBtn = LVGLBuilder::button(optionsView_)
+                                  .text(optionName.c_str())
+                                  .size(LV_PCT(95), Style::CONTROL_HEIGHT)
+                                  .backgroundColor(Style::BUTTON_BG_COLOR)
+                                  .pressedColor(Style::BUTTON_PRESSED_COLOR)
+                                  .textColor(Style::BUTTON_TEXT_COLOR)
+                                  .radius(Style::RADIUS)
+                                  .buildOrLog();
+
+        if (optionBtn) {
+            state->optionButtons.push_back(optionBtn);
+            lv_obj_add_event_cb(optionBtn, onOptionClicked, LV_EVENT_CLICKED, state);
+        }
+    }
+
+    // Store state in container user data.
+    lv_obj_set_user_data(container_, state);
+
+    // Add cleanup callback.
+    lv_obj_add_event_cb(container_, [](lv_event_t* e) {
+        if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+        lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+        auto* st = static_cast<ActionRadioModalState*>(lv_obj_get_user_data(obj));
+        delete st;
+    }, LV_EVENT_DELETE, nullptr);
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+void LVGLBuilder::ActionRadioModalBuilder::onButtonClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionRadioModalState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    // Hide button view, show options view.
+    lv_obj_add_flag(state->buttonView, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(state->optionsView, LV_OBJ_FLAG_HIDDEN);
+}
+
+void LVGLBuilder::ActionRadioModalBuilder::onBackClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionRadioModalState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    // Hide options view, show button view.
+    lv_obj_add_flag(state->optionsView, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(state->buttonView, LV_OBJ_FLAG_HIDDEN);
+}
+
+void LVGLBuilder::ActionRadioModalBuilder::onOptionClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionRadioModalState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    lv_obj_t* clickedBtn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Find which option was clicked.
+    for (size_t i = 0; i < state->optionButtons.size(); i++) {
+        if (state->optionButtons[i] == clickedBtn) {
+            state->selectedIndex = i;
+
+            // Update selection button text.
+            std::string buttonText = state->labelText + ": " + state->optionNames[i];
+            lv_obj_t* label = lv_obj_get_child(state->selectionButton, 0);
+            if (label) {
+                lv_label_set_text(label, buttonText.c_str());
+            }
+
+            // Hide options view, show button view.
+            lv_obj_add_flag(state->optionsView, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_remove_flag(state->buttonView, LV_OBJ_FLAG_HIDDEN);
+
+            // Trigger callback.
+            if (state->userCallback) {
+                lv_obj_t* container = lv_obj_get_parent(state->buttonView);
+                if (container) {
+                    lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
+                }
+            }
+
+            break;
+        }
+    }
+}
+
+uint16_t LVGLBuilder::ActionRadioModalBuilder::getSelected(lv_obj_t* container)
+{
+    if (!container) return 0;
+
+    auto* state = static_cast<ActionRadioModalState*>(lv_obj_get_user_data(container));
+    if (!state) return 0;
+
+    return state->selectedIndex;
+}
+
+void LVGLBuilder::ActionRadioModalBuilder::setSelected(lv_obj_t* container, uint16_t index)
+{
+    if (!container) return;
+
+    auto* state = static_cast<ActionRadioModalState*>(lv_obj_get_user_data(container));
+    if (!state || index >= state->optionNames.size()) return;
+
+    state->selectedIndex = index;
+
+    // Update selection button text.
+    std::string buttonText = state->labelText + ": " + state->optionNames[index];
+    lv_obj_t* label = lv_obj_get_child(state->selectionButton, 0);
+    if (label) {
+        lv_label_set_text(label, buttonText.c_str());
+    }
+}
+
+LVGLBuilder::ActionRadioModalBuilder LVGLBuilder::actionRadioModal(lv_obj_t* parent)
+{
+    return ActionRadioModalBuilder(parent);
 }

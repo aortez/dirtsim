@@ -541,7 +541,7 @@ public:
 
         // Text and icon.
         ActionButtonBuilder& text(const char* text);
-        ActionButtonBuilder& icon(const char* symbol); // LV_SYMBOL_* or emoji, shown above text.
+        ActionButtonBuilder& icon(const char* symbol); // LV_SYMBOL_* or emoji.
 
         // Mode and state.
         ActionButtonBuilder& mode(ActionMode m);
@@ -552,6 +552,12 @@ public:
         ActionButtonBuilder& width(int w);
         ActionButtonBuilder& height(int h);
         ActionButtonBuilder& troughPadding(int px);
+
+        // Layout.
+        ActionButtonBuilder& layoutRow(); // Horizontal: icon on left, text on right (default for rectangular).
+        ActionButtonBuilder& layoutColumn(); // Vertical: icon above text (default for square).
+        ActionButtonBuilder& alignLeft(); // Left-align content (useful for row layout).
+        ActionButtonBuilder& alignCenter(); // Center-align content (default).
 
         // Colors.
         ActionButtonBuilder& backgroundColor(uint32_t color); // Button face color.
@@ -592,6 +598,10 @@ public:
         int width_ = Style::ACTION_SIZE;
         int height_ = Style::ACTION_SIZE;
         int trough_padding_ = Style::TROUGH_PADDING;
+
+        lv_flex_flow_t layout_flow_ = LV_FLEX_FLOW_COLUMN; // Default: vertical.
+        lv_flex_align_t main_align_ = LV_FLEX_ALIGN_CENTER;
+        lv_flex_align_t cross_align_ = LV_FLEX_ALIGN_CENTER;
 
         uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
         uint32_t trough_color_ = Style::TROUGH_COLOR;
@@ -837,6 +847,55 @@ public:
     };
 
     /**
+     * @brief ActionRadioModalBuilder - Modal radio selection that takes over the full panel.
+     *
+     * Similar to PhysicsPanel's modal navigation pattern:
+     * - Button view: Shows "Label: Current Selection" as a single button.
+     * - Options view: Clicking opens full-panel menu with Back button and all options.
+     * - Selection: Click option → updates selection → returns to button view.
+     *
+     * This provides a consistent modal navigation pattern across the UI.
+     */
+    class ActionRadioModalBuilder {
+    public:
+        explicit ActionRadioModalBuilder(lv_obj_t* parent);
+
+        ActionRadioModalBuilder& label(const char* text);
+        ActionRadioModalBuilder& options(std::vector<std::string> opts);
+        ActionRadioModalBuilder& selected(uint16_t index);
+        ActionRadioModalBuilder& width(int w);
+        ActionRadioModalBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        Result<lv_obj_t*, std::string> build();
+        lv_obj_t* buildOrLog();
+
+        lv_obj_t* getContainer() const { return container_; }
+
+        static uint16_t getSelected(lv_obj_t* container);
+        static void setSelected(lv_obj_t* container, uint16_t index);
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_;
+        lv_obj_t* buttonView_;
+        lv_obj_t* optionsView_;
+
+        std::string label_text_;
+        std::vector<std::string> options_;
+        uint16_t selected_index_ = 0;
+        int width_ = LV_PCT(100);
+
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createActionRadioModal();
+
+        static void onButtonClicked(lv_event_t* e);
+        static void onBackClicked(lv_event_t* e);
+        static void onOptionClicked(lv_event_t* e);
+    };
+
+    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -914,6 +973,7 @@ public:
     static ActionDropdownBuilder actionDropdown(lv_obj_t* parent);
     static ActionStepperBuilder actionStepper(lv_obj_t* parent);
     static ActionRadioPanelBuilder actionRadioPanel(lv_obj_t* parent);
+    static ActionRadioModalBuilder actionRadioModal(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {

@@ -371,6 +371,7 @@ add_library(dirtsim-ui-lib STATIC
 
     # UI components.
     src/ui/DisplayCapture.cpp
+    src/ui/PanelViewController.cpp
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
     src/ui/SimPlayground.cpp
@@ -381,6 +382,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
     src/ui/rendering/WebRtcStreamer.cpp
+    src/ui/controls/ClockControls.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
     src/ui/controls/ExpandablePanel.cpp
@@ -388,11 +390,11 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsControls.cpp
     src/ui/controls/PhysicsPanel.cpp
-    src/ui/controls/ClockControls.cpp
     src/ui/controls/RainingControls.cpp
     src/ui/controls/SandboxControls.cpp
     src/ui/controls/ScenarioControlsBase.cpp
     src/ui/controls/ScenarioControlsFactory.cpp
+    src/ui/controls/ScenarioPanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
     src/ui/ScenarioMetadataCache.cpp

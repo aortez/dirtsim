@@ -27,8 +27,27 @@ CoreControls::CoreControls(
       eventSink_(eventSink),
       currentRenderMode_(initialMode)
 {
+    // Create view controller.
+    viewController_ = std::make_unique<PanelViewController>(container_);
+
+    // Create main view.
+    lv_obj_t* mainView = viewController_->createView("main");
+    createMainView(mainView);
+
+    // Create render mode modal view.
+    lv_obj_t* renderModeView = viewController_->createView("render_mode");
+    createRenderModeView(renderModeView);
+
+    // Show main view initially.
+    viewController_->showView("main");
+
+    spdlog::info("CoreControls: Initialized with modal navigation");
+}
+
+void CoreControls::createMainView(lv_obj_t* view)
+{
     // Top row: Reset and Quit buttons (evenly spaced).
-    lv_obj_t* topRow = lv_obj_create(container_);
+    lv_obj_t* topRow = lv_obj_create(view);
     lv_obj_set_size(topRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(topRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(topRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -56,8 +75,8 @@ CoreControls::CoreControls(
                       .callback(onQuitClicked, this)
                       .buildOrLog();
 
-    // Debug toggle - second row.
-    debugSwitch_ = LVGLBuilder::actionButton(container_)
+    // Debug toggle.
+    debugSwitch_ = LVGLBuilder::actionButton(view)
                        .text("Debug Draw")
                        .mode(LVGLBuilder::ActionMode::Toggle)
                        .size(80)
@@ -66,33 +85,36 @@ CoreControls::CoreControls(
                        .callback(onDebugToggled, this)
                        .buildOrLog();
 
-    // Stats display (below debug button).
-    statsLabel_ = lv_label_create(container_);
+    // Stats display.
+    statsLabel_ = lv_label_create(view);
     lv_label_set_text(statsLabel_, "Server: -- FPS");
     lv_obj_set_style_text_font(statsLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(statsLabel_, lv_color_white(), 0);
 
-    statsLabelUI_ = lv_label_create(container_);
+    statsLabelUI_ = lv_label_create(view);
     lv_label_set_text(statsLabelUI_, "UI: -- FPS");
     lv_obj_set_style_text_font(statsLabelUI_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(statsLabelUI_, lv_color_white(), 0);
 
-    // Render Mode radio panel.
-    renderModeContainer_ = LVGLBuilder::actionRadioPanel(container_)
-                               .label("Render Mode")
-                               .options({"Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug"})
-                               .selected(0)
-                               .width(LV_PCT(95))
-                               .callback(onRenderModeChanged, this)
-                               .buildOrLog();
+    // Render Mode button - uses ActionButton with horizontal layout.
+    std::string renderModeText = "Render Mode: " + renderModeToString(currentRenderMode_);
+    renderModeButton_ = LVGLBuilder::actionButton(view)
+                            .text(renderModeText.c_str())
+                            .icon(LV_SYMBOL_RIGHT)
+                            .width(LV_PCT(95))
+                            .height(LVGLBuilder::Style::CONTROL_HEIGHT)
+                            .layoutRow()
+                            .alignLeft()
+                            .callback(onRenderModeButtonClicked, this)
+                            .buildOrLog();
 
-    // Scale Factor stepper (affects SHARP, SMOOTH, LVGL_DEBUG, and ADAPTIVE modes).
+    // Scale Factor stepper.
     scaleFactorStepper_ =
-        LVGLBuilder::actionStepper(container_)
+        LVGLBuilder::actionStepper(view)
             .label("Render Scale")
-            .range(1, 200)   // 0.01 to 2.0, scaled by 100.
-            .step(5)         // 0.05 increments.
-            .value(40)       // Default 0.40.
+            .range(1, 200)
+            .step(5)
+            .value(40)
             .valueFormat("%.2f")
             .valueScale(0.01)
             .width(LV_PCT(95))
@@ -101,7 +123,7 @@ CoreControls::CoreControls(
 
     // World Size stepper.
     worldSizeStepper_ =
-        LVGLBuilder::actionStepper(container_)
+        LVGLBuilder::actionStepper(view)
             .label("World Size")
             .range(1, 400)
             .step(1)
@@ -111,11 +133,50 @@ CoreControls::CoreControls(
             .width(LV_PCT(95))
             .callback(onWorldSizeChanged, this)
             .buildOrLog();
+}
 
-    // Set initial render mode in dropdown.
-    setRenderMode(initialMode);
+void CoreControls::createRenderModeView(lv_obj_t* view)
+{
+    // Back button.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::CONTROL_HEIGHT)
+        .layoutRow()
+        .alignLeft()
+        .callback(onRenderModeBackClicked, this)
+        .buildOrLog();
 
-    spdlog::info("CoreControls: Initialized");
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Render Mode");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Render mode option buttons.
+    buttonToRenderMode_.clear();
+    const char* modes[] = {"Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug"};
+    for (int i = 0; i < 5; i++) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(modes[i])
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::CONTROL_HEIGHT)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (container) {
+            // Get the inner button (first child of container).
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                // Store button->mode mapping (don't touch ActionButton's user_data!).
+                buttonToRenderMode_[button] = i;
+                lv_obj_add_event_cb(button, onRenderModeSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
 }
 
 CoreControls::~CoreControls()
@@ -141,31 +202,20 @@ void CoreControls::updateStats(double serverFPS, double uiFPS)
 
 void CoreControls::setRenderMode(RenderMode mode)
 {
-    currentRenderMode_ = mode; // Track the current mode.
-    if (!renderModeContainer_) return;
+    currentRenderMode_ = mode;
+    if (!renderModeButton_) return;
 
-    // Map RenderMode to dropdown index.
-    // Order: "Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug".
-    uint16_t index = 0;
-    switch (mode) {
-        case RenderMode::ADAPTIVE:
-            index = 0;
-            break;
-        case RenderMode::SHARP:
-            index = 1;
-            break;
-        case RenderMode::SMOOTH:
-            index = 2;
-            break;
-        case RenderMode::PIXEL_PERFECT:
-            index = 3;
-            break;
-        case RenderMode::LVGL_DEBUG:
-            index = 4;
-            break;
+    // ActionButton stores the container - need to get the inner button and then its label.
+    // The button is the first child of the container.
+    lv_obj_t* button = lv_obj_get_child(renderModeButton_, 0);
+    if (!button) return;
+
+    // In row layout: first child is icon, second is text label.
+    lv_obj_t* label = lv_obj_get_child(button, 1);
+    if (label) {
+        std::string renderModeText = "Render Mode: " + renderModeToString(mode);
+        lv_label_set_text(label, renderModeText.c_str());
     }
-
-    LVGLBuilder::ActionRadioPanelBuilder::setSelected(renderModeContainer_, index);
 }
 
 void CoreControls::onQuitClicked(lv_event_t* e)
@@ -215,20 +265,35 @@ void CoreControls::onDebugToggled(lv_event_t* e)
     self->eventSink_.queueEvent(cwc);
 }
 
-void CoreControls::onRenderModeChanged(lv_event_t* e)
+void CoreControls::onRenderModeButtonClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    spdlog::debug("CoreControls: Render mode button clicked");
+    self->viewController_->showView("render_mode");
+}
+
+void CoreControls::onRenderModeSelected(lv_event_t* e)
 {
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
     if (!self) return;
 
-    lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    if (!container) return;
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
 
-    uint16_t selected = LVGLBuilder::ActionRadioPanelBuilder::getSelected(container);
+    // Look up mode index from button mapping.
+    auto it = self->buttonToRenderMode_.find(btn);
+    if (it == self->buttonToRenderMode_.end()) {
+        spdlog::error("CoreControls: Unknown render mode button clicked");
+        return;
+    }
 
-    // Map dropdown index to RenderMode.
-    // Order matches dropdown options: "Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug".
+    int modeIndex = it->second;
+
+    // Map index to RenderMode.
+    // Order: "Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug".
     RenderMode mode;
-    switch (selected) {
+    switch (modeIndex) {
         case 0:
             mode = RenderMode::ADAPTIVE;
             break;
@@ -251,14 +316,29 @@ void CoreControls::onRenderModeChanged(lv_event_t* e)
 
     spdlog::info("CoreControls: Render mode changed to {}", renderModeToString(mode));
 
-    // Track the current mode.
+    // Update button text and track current mode.
     self->currentRenderMode_ = mode;
+    self->setRenderMode(mode);
+
+    // Return to main view.
+    if (self->viewController_) {
+        self->viewController_->showView("main");
+    }
 
     // Queue UI-local render mode select event.
     UiApi::RenderModeSelect::Cwc cwc;
     cwc.command.mode = mode;
     cwc.callback = [](auto&&) {}; // No response needed.
     self->eventSink_.queueEvent(cwc);
+}
+
+void CoreControls::onRenderModeBackClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    spdlog::debug("CoreControls: Render mode back button clicked");
+    self->viewController_->showView("main");
 }
 
 void CoreControls::onWorldSizeChanged(lv_event_t* e)

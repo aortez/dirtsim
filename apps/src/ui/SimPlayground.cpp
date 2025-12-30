@@ -4,18 +4,16 @@
 #include "controls/CoreControls.h"
 #include "controls/ExpandablePanel.h"
 #include "controls/PhysicsPanel.h"
-#include "controls/ScenarioControlsFactory.h"
+#include "controls/ScenarioPanel.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
-#include "server/api/ScenarioSwitch.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
-#include <atomic>
 #include <cstring>
 #include <spdlog/spdlog.h>
 
@@ -126,8 +124,7 @@ void SimPlayground::clearPanelContent()
     // Reset panel-specific controls.
     coreControls_.reset();
     physicsPanel_.reset();
-    scenarioControls_.reset();
-    scenarioContainer_ = nullptr;
+    scenarioPanel_.reset();
 
     // Clear the panel's content area.
     ExpandablePanel* panel = uiManager_->getExpandablePanel();
@@ -150,18 +147,6 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
-    // Build radio panel from metadata cache.
-    std::vector<std::string> options = ScenarioMetadataCache::buildOptionsList();
-    uint16_t selectedIdx = ScenarioMetadataCache::indexFromScenarioId(currentScenarioId_);
-
-    scenarioContainer_ = LVGLBuilder::actionRadioPanel(container)
-                             .label("Scenario")
-                             .options(options)
-                             .selected(selectedIdx)
-                             .width(LV_PCT(95))
-                             .callback(onScenarioChanged, this)
-                             .buildOrLog();
-
     // Create display dimensions getter for auto-scaling scenarios.
     DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
         lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
@@ -174,8 +159,8 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
         return DisplayDimensions{692, 480}; // Fallback to reasonable defaults.
     };
 
-    // Create scenario-specific controls using factory.
-    scenarioControls_ = ScenarioControlsFactory::create(
+    // Create scenario panel with modal navigation.
+    scenarioPanel_ = std::make_unique<ScenarioPanel>(
         container, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter);
 }
 
@@ -225,46 +210,13 @@ void SimPlayground::updateFromWorldData(
         }
     }
 
-    // Handle scenario changes.
-    if (scenario_id != currentScenarioId_) {
-        LOG_INFO(Controls, "Scenario changed to '{}'", scenario_id);
-
-        // Clear old scenario controls.
-        scenarioControls_.reset();
-
-        currentScenarioId_ = scenario_id;
-    }
-
-    // Store the config for use when panel is opened.
+    // Store current scenario info.
+    currentScenarioId_ = scenario_id;
     currentScenarioConfig_ = scenario_config;
 
-    // Create scenario controls if scenario panel is active and controls don't exist.
-    if (activePanel_ == IconId::SCENARIO && !scenarioControls_) {
-        ExpandablePanel* panel = uiManager_->getExpandablePanel();
-        if (panel) {
-            lv_obj_t* container = panel->getContentArea();
-            if (container) {
-                // Create display dimensions getter for auto-scaling scenarios.
-                DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
-                    lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
-                    if (worldArea) {
-                        lv_obj_update_layout(worldArea);
-                        return DisplayDimensions{
-                            static_cast<uint32_t>(lv_obj_get_width(worldArea)),
-                            static_cast<uint32_t>(lv_obj_get_height(worldArea))};
-                    }
-                    return DisplayDimensions{692, 480}; // Fallback to reasonable defaults.
-                };
-
-                scenarioControls_ = ScenarioControlsFactory::create(
-                    container, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter);
-            }
-        }
-    }
-
-    // Always update scenario controls with latest config.
-    if (scenarioControls_) {
-        scenarioControls_->updateFromConfig(scenario_config);
+    // Update scenario panel if active.
+    if (scenarioPanel_) {
+        scenarioPanel_->updateFromConfig(scenario_id, scenario_config);
     }
 }
 
@@ -305,32 +257,6 @@ void SimPlayground::renderNeuralGrid(const WorldData& data)
     }
 }
 
-void SimPlayground::onScenarioChanged(lv_event_t* e)
-{
-    auto* playground = static_cast<SimPlayground*>(lv_event_get_user_data(e));
-    if (!playground) return;
-
-    lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    uint16_t selectedIdx = LVGLBuilder::ActionRadioPanelBuilder::getSelected(container);
-
-    std::string scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
-    LOG_INFO(Controls, "Scenario changed to '{}'", scenarioId);
-
-    // Send ScenarioSwitch to server (server will use its default config).
-    if (playground->wsService_ && playground->wsService_->isConnected()) {
-        static std::atomic<uint64_t> nextId{ 1 };
-        const DirtSim::Api::ScenarioSwitch::Command cmd{ .scenario_id = scenarioId };
-
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-        auto result = playground->wsService_->sendBinary(Network::serialize_envelope(envelope));
-        if (result.isError()) {
-            LOG_ERROR(Controls, "Failed to send ScenarioSwitch: {}", result.errorValue());
-        }
-    }
-    else {
-        LOG_WARN(Controls, "WebSocket not connected, cannot switch scenario");
-    }
-}
 
 std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPixels()
 {

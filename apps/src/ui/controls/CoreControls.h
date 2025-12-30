@@ -3,6 +3,8 @@
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
 #include "ui/rendering/RenderMode.h"
+#include "ui/PanelViewController.h"
+#include <memory>
 
 namespace DirtSim {
 
@@ -47,21 +49,33 @@ private:
     EventSink& eventSink_;
     RenderMode currentRenderMode_; // Track current mode to preserve it.
 
+    // View controller for modal navigation.
+    std::unique_ptr<PanelViewController> viewController_;
+
     // Widgets.
     lv_obj_t* quitButton_ = nullptr;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
-    lv_obj_t* renderModeContainer_ = nullptr; // ActionDropdown container.
+    lv_obj_t* renderModeButton_ = nullptr; // Button to open render mode modal.
     lv_obj_t* worldSizeStepper_ = nullptr;
     lv_obj_t* scaleFactorStepper_ = nullptr;
+
+    // Render mode button to index mapping.
+    std::unordered_map<lv_obj_t*, int> buttonToRenderMode_;
+
+    // View creation helpers.
+    void createMainView(lv_obj_t* view);
+    void createRenderModeView(lv_obj_t* view);
 
     // Event handlers.
     static void onQuitClicked(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
-    static void onRenderModeChanged(lv_event_t* e);
+    static void onRenderModeButtonClicked(lv_event_t* e);
+    static void onRenderModeSelected(lv_event_t* e);
+    static void onRenderModeBackClicked(lv_event_t* e);
     static void onWorldSizeChanged(lv_event_t* e);
     static void onScaleFactorChanged(lv_event_t* e);
 };

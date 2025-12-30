@@ -6,36 +6,9 @@ Comments end in periods.  Add them if you see them missing. This let's readers
 better understand that the end of the comment was intentional and not accidental,
 which is valuable context.
 
-## Comments
-Comments that do not add any more information than code should be removed.
+## Documenting Code
 
-None of this - it's repeating the same thing many times.
-```
-// Do it.
-thingDoIt(); // Make the thing do it. (do it)
-```
-Instead, just do this:
-```
-thingDoIt();
-```
-```
-// E.g.
-stateMachine.mainLoopRun();
-
-// No need for a comment that says "Run the main loop."
-```
-
-And none of this:
-```
-/**
- * @brief Get current state name.
- */
-virtual std::string getCurrentStateName() const = 0;
-```
-
-If the comment almost entirely matches the function name and it doesn't provide any additional information, then it's a bad comment and it just makes it harder to read the code.  We don't want comments to tell us the obvious - they are there to tell us things we don't know from the context.
-
-## Naming
+Add documentation to files, structs, and classes but skip it for members.  Instead prefer to use meaningful method and variable names.
 
 **Case conventions:**
 - Types (classes, structs, enums): UpperCamelCase (`ServerConfig`, `ClockFont`)
