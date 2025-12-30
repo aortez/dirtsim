@@ -1,5 +1,6 @@
 #include "IconRail.h"
 #include "core/LoggingChannels.h"
+#include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -51,42 +52,33 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
-    // Create buttons for each icon.
+    // Create buttons for each icon using ActionButton.
     for (size_t i = 0; i < iconConfigs_.size(); i++) {
         const auto& config = iconConfigs_[i];
 
-        lv_obj_t* btn = lv_btn_create(container_);
-        if (!btn) {
+        lv_obj_t* btnContainer = LVGLBuilder::actionButton(container_)
+                                     .icon(config.symbol)
+                                     .mode(LVGLBuilder::ActionMode::Toggle)
+                                     .size(ICON_SIZE)
+                                     .glowColor(config.color)
+                                     .textColor(config.color)
+                                     .buildOrLog();
+
+        if (!btnContainer) {
             LOG_WARN(Controls, "Failed to create button for icon {}", config.tooltip);
             buttons_.push_back(nullptr);
             continue;
         }
 
-        // Style the button.
-        lv_obj_set_size(btn, ICON_SIZE, ICON_SIZE);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(BG_COLOR), 0);
-        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(btn, 8, 0);
-        lv_obj_set_style_border_width(btn, 0, 0);
-        lv_obj_set_style_pad_all(btn, 0, 0);
+        // Get the inner button for event callback.
+        lv_obj_t* btn = lv_obj_get_child(btnContainer, 0);
+        if (btn) {
+            // Store index in user data for callback.
+            lv_obj_set_user_data(btn, this);
+            lv_obj_add_event_cb(btn, onIconClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(i));
+        }
 
-        // Pressed state.
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x555555), LV_STATE_PRESSED);
-
-        // Create icon label with per-icon color.
-        lv_obj_t* label = lv_label_create(btn);
-        lv_label_set_text(label, config.symbol);
-        lv_obj_set_style_text_color(label, lv_color_hex(config.color), 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_40, 0);
-        lv_obj_center(label);
-
-        // Store index in user data for callback.
-        lv_obj_set_user_data(btn, this);
-
-        // Add click callback.
-        lv_obj_add_event_cb(btn, onIconClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(i));
-
-        buttons_.push_back(btn);
+        buttons_.push_back(btnContainer);
     }
 }
 
@@ -129,12 +121,11 @@ void IconRail::onIconClicked(lv_event_t* e)
 void IconRail::updateButtonVisuals()
 {
     for (size_t i = 0; i < buttons_.size() && i < iconConfigs_.size(); i++) {
-        lv_obj_t* btn = buttons_[i];
-        if (!btn) continue;
+        lv_obj_t* btnContainer = buttons_[i];
+        if (!btnContainer) continue;
 
         bool isSelected = (iconConfigs_[i].id == selectedId_);
-        uint32_t color = isSelected ? SELECTED_COLOR : BG_COLOR;
-        lv_obj_set_style_bg_color(btn, lv_color_hex(color), 0);
+        LVGLBuilder::ActionButtonBuilder::setChecked(btnContainer, isSelected);
     }
 }
 

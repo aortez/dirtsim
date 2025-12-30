@@ -462,56 +462,6 @@ public:
     };
 
     /**
-     * @brief IconButtonBuilder - Creates a square icon button for icon rails/toolbars.
-     *
-     * Layout: Square button with centered icon (symbol or text).
-     * Supports toggle state for showing selection.
-     */
-    class IconButtonBuilder {
-    public:
-        explicit IconButtonBuilder(lv_obj_t* parent);
-
-        // Configuration.
-        IconButtonBuilder& icon(const char* symbol);  // LV_SYMBOL_* or emoji text.
-        IconButtonBuilder& size(int dimension);       // Square button (width = height).
-        IconButtonBuilder& tooltip(const char* text); // Tooltip text (stored, not displayed yet).
-        IconButtonBuilder& toggleable(bool enabled);  // Can be selected/deselected.
-        IconButtonBuilder& selected(bool isSelected); // Initial selection state.
-        IconButtonBuilder& backgroundColor(uint32_t color);
-        IconButtonBuilder& selectedColor(uint32_t color);
-        IconButtonBuilder& iconColor(uint32_t color);
-        IconButtonBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
-
-        // Build the icon button.
-        Result<lv_obj_t*, std::string> build();
-
-        // Build with automatic error logging (returns button or nullptr).
-        lv_obj_t* buildOrLog();
-
-        // Access to created objects.
-        lv_obj_t* getButton() const { return button_; }
-        lv_obj_t* getIconLabel() const { return icon_label_; }
-
-    private:
-        lv_obj_t* parent_;
-        lv_obj_t* button_;
-        lv_obj_t* icon_label_;
-
-        std::string icon_text_ = LV_SYMBOL_SETTINGS;
-        std::string tooltip_text_;
-        int size_ = 48;
-        bool toggleable_ = false;
-        bool selected_ = false;
-        uint32_t bg_color_ = 0x404040;
-        uint32_t selected_color_ = 0x0066CC;
-        uint32_t icon_color_ = 0xFFFFFF;
-        lv_event_cb_t callback_ = nullptr;
-        void* user_data_ = nullptr;
-
-        Result<lv_obj_t*, std::string> createIconButton();
-    };
-
-    /**
      * @brief ActionMode - Determines button behavior.
      */
     enum class ActionMode {
@@ -858,7 +808,6 @@ public:
     static ButtonBuilder button(lv_obj_t* parent);
     static LabelBuilder label(lv_obj_t* parent);
     static DropdownBuilder dropdown(lv_obj_t* parent);
-    static IconButtonBuilder iconButton(lv_obj_t* parent);
     static IconRailBuilder iconRail(lv_obj_t* parent);
     static LabeledSwitchBuilder labeledSwitch(lv_obj_t* parent);
     static ToggleSliderBuilder toggleSlider(lv_obj_t* parent);
