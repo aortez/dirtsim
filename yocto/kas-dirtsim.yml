@@ -63,7 +63,8 @@ local_conf_header:
     hostname:pn-base-files = "dirtsim"
 
     # Use WIC format with A/B partitions for safe updates.
-    IMAGE_FSTYPES = "wic.gz wic.bmap"
+    # Also produce standalone ext4.gz for sudo-free remote updates.
+    IMAGE_FSTYPES = "wic.gz wic.bmap ext4.gz"
     WKS_FILE = "sdimage-ab.wks.in"
 
     # A/B partition layout configuration (from pi-base).

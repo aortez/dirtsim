@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * YOLO remote update - push image over network and dd directly to disk.
+ * YOLO remote update - push image over network and flash via A/B update.
  *
- * This is the "hold my mead" approach: we scp the image to the Pi,
- * verify the checksum, then dd it to the boot disk while running.
- * If it works, great! If not, pull the disk and reflash.
+ * This is the "hold my mead" approach: we scp the rootfs image to the Pi,
+ * verify the checksum, then flash it to the inactive partition.
+ * If it works, great! If not, the previous slot still works.
+ *
+ * No local sudo required! All privileged operations happen on the Pi.
  *
  * Usage:
  *   npm run yolo                              # Build + push + flash + reboot
@@ -17,9 +19,10 @@
  */
 
 import { execSync } from 'child_process';
-import { existsSync, statSync, readdirSync } from 'fs';
+import { existsSync, statSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
+import { tmpdir } from 'os';
 import { createConsola } from 'consola';
 
 // Shared utilities from pi-base.
@@ -37,7 +40,6 @@ import {
   loadConfig,
   run,
   createCleanupManager,
-  ssh,
   checkRemoteReachable,
   getRemoteTmpSpace,
   getRemoteBootDevice,
@@ -46,9 +48,7 @@ import {
   transferImage,
   verifyRemoteChecksum,
   calculateChecksum,
-  prepareRootfs,
-  cleanupPreparedImage,
-  remoteFlash,
+  remoteFlashWithKey,
 } from '../pi-base/scripts/lib/index.mjs';
 
 // Path setup.
@@ -115,27 +115,22 @@ async function build(forceClean = false, forceCleanAll = false) {
 // ============================================================================
 
 /**
- * Find the latest .wic.gz image file.
+ * Find the latest .ext4.gz rootfs image file.
+ * This is the standalone rootfs that can be flashed without local sudo.
  */
-function findLatestImage() {
+function findLatestRootfs() {
   if (!existsSync(IMAGE_DIR)) {
     return null;
   }
 
   const files = readdirSync(IMAGE_DIR)
-    .filter(f => f.endsWith('.wic.gz') && !f.includes('->'))
+    .filter(f => f.endsWith('.ext4.gz') && !f.includes('->'))
     .map(f => ({
       name: f,
       path: join(IMAGE_DIR, f),
       stat: statSync(join(IMAGE_DIR, f)),
     }))
     .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-
-  // Prefer our custom image.
-  const dirtsimImage = files.find(f => f.name === 'dirtsim-image-raspberrypi5.rootfs.wic.gz');
-  if (dirtsimImage) {
-    return dirtsimImage;
-  }
 
   return files[0] || null;
 }
@@ -162,6 +157,7 @@ async function main() {
     log('Usage: npm run yolo [options]');
     log('');
     log('Push a Yocto image to the Pi over the network and flash it live.');
+    log('No local sudo required - all privileged operations happen on the Pi.');
     log('');
     log('Options:');
     log('  --target <host>  Target hostname or IP (default: dirtsim.local)');
@@ -172,12 +168,13 @@ async function main() {
     log('  --hold-my-mead   Skip confirmation prompt (for scripts)');
     log('  -h, --help       Show this help');
     log('');
-    log('This is the YOLO approach - if it fails, pull the disk and reflash.');
+    log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
   }
 
   log('');
   log(`${colors.bold}${colors.cyan}Sparkle Duck YOLO Update${colors.reset}`);
+  log(`${colors.dim}(no local sudo required)${colors.reset}`);
   if (dryRun) {
     log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
   }
@@ -200,20 +197,23 @@ async function main() {
     await build(forceClean, forceCleanAll);
   }
 
-  // Find image.
-  const image = findLatestImage();
-  if (!image) {
-    error('No image found. Run "kas build kas-dirtsim.yml" first.');
+  // Find rootfs image (ext4.gz - no extraction needed).
+  const rootfs = findLatestRootfs();
+  if (!rootfs) {
+    error('No rootfs image found (*.ext4.gz).');
+    error('Make sure IMAGE_FSTYPES includes "ext4.gz" and run "kas build kas-dirtsim.yml".');
     process.exit(1);
   }
 
   log('');
-  info(`Image: ${image.name}`);
-  info(`Size: ${formatBytes(image.stat.size)}`);
-  info(`Built: ${image.stat.mtime.toLocaleString()}`);
+  info(`Rootfs: ${rootfs.name}`);
+  info(`Size: ${formatBytes(rootfs.stat.size)}`);
+  info(`Built: ${rootfs.stat.mtime.toLocaleString()}`);
 
-  // Load SSH key config for image customization.
+  // Load SSH key config for remote injection.
   const config = loadConfig(CONFIG_FILE);
+  let sshKeyPath = null;
+
   if (!config) {
     warn('No SSH key configured. Run "npm run flash -- --reconfigure" first.');
     warn('Image will be flashed without SSH key - you may be locked out!');
@@ -227,98 +227,101 @@ async function main() {
       }
     }
   } else {
-    info(`SSH key: ${basename(config.ssh_key_path)}`);
+    sshKeyPath = config.ssh_key_path;
+    info(`SSH key: ${basename(sshKeyPath)}`);
   }
 
-  // Extract rootfs and inject SSH key.
-  let rootfsToTransfer = image.path;
-  let workDir = null;
-
-  if (!dryRun && config) {
-    banner('Extracting and preparing rootfs...', consola);
-    const prepared = await prepareRootfs(image.path, config, REMOTE_USER);
-    rootfsToTransfer = prepared.preparedRootfsPath;
-    workDir = prepared.workDir;
-    cleanup.trackResource('tempdir', workDir);
+  // Check remote has enough space.
+  const remoteSpace = getRemoteTmpSpace(remoteTarget, REMOTE_TMP);
+  if (remoteSpace < rootfs.stat.size) {
+    error(`Not enough space in ${REMOTE_TMP} on ${remoteHost}`);
+    error(`Need: ${formatBytes(rootfs.stat.size)}, Have: ${formatBytes(remoteSpace)}`);
+    process.exit(1);
   }
+  success(`Remote has enough space (${formatBytes(remoteSpace)} available)`);
 
-  try {
-    // Get the size of the prepared rootfs.
-    const rootfsSize = statSync(rootfsToTransfer).size;
+  // Calculate checksum.
+  info('Calculating checksum...');
+  const checksum = await calculateChecksum(rootfs.path);
+  success(`Checksum: ${checksum.substring(0, 16)}...`);
 
-    // Check remote has enough space.
-    const remoteSpace = getRemoteTmpSpace(remoteTarget, REMOTE_TMP);
-    if (remoteSpace < rootfsSize) {
-      error(`Not enough space in ${REMOTE_TMP} on ${remoteHost}`);
-      error(`Need: ${formatBytes(rootfsSize)}, Have: ${formatBytes(remoteSpace)}`);
+  // Transfer rootfs.
+  banner('Transferring rootfs to Pi...', consola);
+  const { remoteImagePath, remoteChecksumPath } = await transferImage(
+    rootfs.path, checksum, remoteTarget, REMOTE_TMP, dryRun
+  );
+
+  // Verify (skip in dry-run since we didn't actually transfer).
+  if (!dryRun) {
+    if (!verifyRemoteChecksum(remoteImagePath, remoteChecksumPath, remoteTarget)) {
+      error('Transfer corrupted! Aborting.');
       process.exit(1);
     }
-    success(`Remote has enough space (${formatBytes(remoteSpace)} available)`);
+  }
 
-    // Calculate checksum of prepared rootfs.
-    info('Calculating checksum...');
-    const checksum = await calculateChecksum(rootfsToTransfer);
-    success(`Checksum: ${checksum.substring(0, 16)}...`);
+  // Transfer SSH key if configured.
+  let remoteKeyPath = null;
+  if (sshKeyPath && !dryRun) {
+    info('Transferring SSH key...');
+    remoteKeyPath = `${REMOTE_TMP}/authorized_keys`;
+    execSync(`scp -o BatchMode=yes "${sshKeyPath}" "${remoteTarget}:${remoteKeyPath}"`, { stdio: 'pipe' });
+    success('SSH key transferred');
+  }
 
-    // Transfer.
-    banner('Transferring image to Pi...', consola);
-    const { remoteImagePath, remoteChecksumPath } = await transferImage(
-      rootfsToTransfer, checksum, remoteTarget, REMOTE_TMP, dryRun
-    );
-
-    // Verify (skip in dry-run since we didn't actually transfer).
-    if (!dryRun) {
-      if (!verifyRemoteChecksum(remoteImagePath, remoteChecksumPath, remoteTarget)) {
-        error('Transfer corrupted! Aborting.');
-        process.exit(1);
-      }
-    }
-
-    // Get boot time before flash for reboot verification.
-    const originalBootTime = getRemoteBootTime(remoteTarget);
-
-    // Flash!
-    banner('Flashing image on Pi...', consola);
-    cleanup.enterCriticalSection();
-    await remoteFlash(remoteImagePath, bootDevice, remoteTarget, dryRun, holdMyMead);
-
-    if (!dryRun) {
-      // Wait for reboot.
-      banner('Waiting for Pi to reboot...', consola);
-      const online = await waitForReboot(remoteTarget, remoteHost, originalBootTime, 120);
-
-      // Exiting critical section - Ctrl+C re-enabled.
-      cleanup.exitCriticalSection();
-
-      log('');
-      if (online) {
-        log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-        success('YOLO update complete!');
-        info(`Connect with: ssh ${remoteTarget}`);
-        log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-      } else {
-        log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
-        warn('Pi did not come back online within timeout.');
-        warn('It may still be booting, or you may need to reflash.');
-        log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
-      }
-    } else {
-      log('');
-      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-      success('Dry run complete!');
-      info('Run without --dry-run to actually flash.');
-      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-    }
-
-    log('');
-
-  } finally {
-    // Clean up prepared image temp files.
-    if (workDir) {
-      cleanupPreparedImage(workDir);
-      cleanup.untrackResource('tempdir');
+  // Check if ab-update-with-key exists on remote, transfer if needed.
+  // This handles the bootstrap case where the Pi doesn't have the new script yet.
+  let remoteUpdateScript = 'ab-update-with-key';
+  if (!dryRun) {
+    try {
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "which ab-update-with-key"`, { stdio: 'pipe' });
+    } catch {
+      info('ab-update-with-key not found on Pi, transferring...');
+      const localScript = join(YOCTO_DIR, 'pi-base/yocto/meta-pi-base/recipes-support/ab-boot/files/ab-update-with-key');
+      const remoteScriptPath = `${REMOTE_TMP}/ab-update-with-key`;
+      execSync(`scp -o BatchMode=yes "${localScript}" "${remoteTarget}:${remoteScriptPath}"`, { stdio: 'pipe' });
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "chmod +x ${remoteScriptPath}"`, { stdio: 'pipe' });
+      remoteUpdateScript = remoteScriptPath;
+      success('Update script transferred');
     }
   }
+
+  // Get boot time before flash for reboot verification.
+  const originalBootTime = getRemoteBootTime(remoteTarget);
+
+  // Flash with key injection on the Pi (no local sudo needed!).
+  banner('Flashing image on Pi...', consola);
+  cleanup.enterCriticalSection();
+  await remoteFlashWithKey(remoteImagePath, remoteKeyPath, REMOTE_USER, remoteTarget, dryRun, holdMyMead, remoteUpdateScript);
+
+  if (!dryRun) {
+    // Wait for reboot.
+    banner('Waiting for Pi to reboot...', consola);
+    const online = await waitForReboot(remoteTarget, remoteHost, originalBootTime, 120);
+
+    // Exiting critical section - Ctrl+C re-enabled.
+    cleanup.exitCriticalSection();
+
+    log('');
+    if (online) {
+      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+      success('YOLO update complete!');
+      info(`Connect with: ssh ${remoteTarget}`);
+      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+    } else {
+      log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
+      warn('Pi did not come back online within timeout.');
+      warn('It may still be booting, or you may need to reflash.');
+      log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
+    }
+  } else {
+    log('');
+    log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+    success('Dry run complete!');
+    info('Run without --dry-run to actually flash.');
+    log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  }
+
+  log('');
 }
 
 main().catch(err => {
