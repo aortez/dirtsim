@@ -190,10 +190,16 @@ Executables (server, UI, CLI, tests) link against these libraries.
 - **EventSink**: Interface pattern for clean event routing
 
 ### UI Framework
-- **ControlPanel**: LVGL controls for scenario toggles and simulation parameters
+- **PanelViewController**: Manages modal view switching within panels
+- **ActionButton**: Trough-styled buttons with flexible layouts (all UI buttons)
+- **IconRail**: Vertical icon column for navigation (⚙️ 🎬 🌍 💧 🌳)
+- **ExpandablePanel**: 250px slide-out panel for controls
+- **CoreControls**: Core settings (Quit, Reset, Debug, Render Mode)
+- **ScenarioPanel**: Scenario selection with modal navigation
+- **PhysicsPanel**: Physics settings organized into sections (General, Pressure, Forces, etc.)
 - **CellRenderer**: Renders world state to LVGL canvases
 - **NeuralGridRenderer**: Renders 15×15 tree organism perception (side-by-side with world)
-- **UiComponentManager**: Manages LVGL screen and containers (50/50 split layout)
+- **UiComponentManager**: Manages LVGL screen and containers (icon rail + expandable panel + world)
 - **WebSocketClient**: Connects to DSSM server for world data
 - **WebSocketServer**: Accepts remote control commands (port 7070)
 
@@ -422,8 +428,14 @@ Can be found here:
   │   │   │   ├── states/                    # UI states (Disconnected, SimRunning, etc.)
   │   │   │   ├── api/                       # UI API commands (DrawDebugToggle, etc.)
   │   │   │   └── network/                   # WebSocket client and server
+  │   │   ├── PanelViewController.{cpp,h}    # Modal view management
   │   │   ├── rendering/CellRenderer         # World rendering to LVGL
-  │   │   ├── controls/ControlPanel          # UI controls (toggles, buttons)
+  │   │   ├── controls/                      # UI control panels
+  │   │   │   ├── CoreControls               # Core settings panel
+  │   │   │   ├── ScenarioPanel              # Scenario selection panel
+  │   │   │   ├── PhysicsPanel               # Physics settings panel
+  │   │   │   ├── IconRail                   # Icon navigation rail
+  │   │   │   └── ExpandablePanel            # Slide-out panel container
   │   │   ├── ui_builders/LVGLBuilder        # Fluent API for LVGL widgets
   │   │   └── lib/display_backends/          # Wayland, X11, FBDEV backends
   │   ├── cli/                               # Command-line client
@@ -445,36 +457,34 @@ Can be found here:
 
 ## Development Status
 
-### Current Focus: Icon-Based UI for HyperPixel 4.0 (In Progress)
+### Current Focus: Icon-Based UI for HyperPixel 4.0 (Complete)
 
 **Completed:**
-- ✅ IconButtonBuilder & IconRailBuilder fluent API in LVGLBuilder
 - ✅ IconRail component (48px wide vertical icon column)
 - ✅ ExpandablePanel component (250px slide-out panel)
 - ✅ UiComponentManager refactored for icon-based layout
-- ✅ SimPlayground panel switching infrastructure
-- ✅ Core panel (⚙️) - Quit, stats, debug, render mode controls working
-- ✅ Scenario panel (🎬) - Scenario dropdown + sandbox controls working
+- ✅ PanelViewController for unified modal navigation
+- ✅ ActionButton with flexible layouts (row/column) and trough styling
+- ✅ CoreControls panel - Quit, Reset, Debug, Render Mode (modal selection)
+- ✅ ScenarioPanel - Scenario selection with modal navigation
+- ✅ PhysicsPanel - 6 sections with modal navigation (General, Pressure, Forces, Swap Tuning, Swap2, Frag)
+- ✅ ClockControls - Font and Timezone selectors with modal navigation
 - ✅ Tree icon (🌳) - Shows/hides based on tree presence, toggles neural grid
+- ✅ All buttons use uniform 80px height (ACTION_SIZE)
 
-**In Progress:**
-- Physics panel splitting - Currently General panel shows all PhysicsControls
-- Need to extract: PressurePanel, ForcesPanel from PhysicsControls
-
-**New Layout:**
+**Layout:**
 ```
-Collapsed (default):              Panel Open:
+Collapsed (default):              Panel Open (e.g., Physics):
 ┌───┬─────────────────────┐     ┌───┬────────┬──────────┐
-│ ⚙ │                     │     │[⚙]│ Panel  │          │
-│ 🎬 │                     │     │ 🎬 │ 250px  │  World   │
-│ 🌍 │   World Display     │     │ 🌍 │        │  ~500px  │
-│ 💧 │   (~750 x 480)      │     │ 💧 │        │          │
-│ ⚡ │                     │     │ ⚡ │        │          │
-│ 🌳 │                     │     │ 🌳 │        │          │
+│[⚙]│                     │     │ ⚙ │ Back   │          │
+│ 🎬 │                     │     │ 🎬 │General │  World   │
+│[🌍]│   World Display     │     │[🌍]│Pressure│  ~500px  │
+│ 💧 │   (~750 x 480)      │     │ 💧 │Forces  │          │
+│ 🌳 │                     │     │ 🌳 │Swap... │          │
 └───┴─────────────────────┘     └───┴────────┴──────────┘
-```
 
-See `design_docs/icon-rail-ui.md` for full design documentation.
+Clicking any section → Full panel with controls
+```
 
 ### Tree Organisms (Phase 2 Complete, Phase 3 Next)
 
