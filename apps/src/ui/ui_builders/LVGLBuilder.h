@@ -47,10 +47,9 @@ public:
      */
     struct Style {
         // Control dimensions.
-        static constexpr int CONTROL_HEIGHT = 56;
+        static constexpr int ACTION_SIZE = 80;
         static constexpr int CONTROL_WIDTH = LV_PCT(80);
         static constexpr int RADIUS = 8;
-        static constexpr int ACTION_SIZE = 80;
 
         // Slider dimensions.
         static constexpr int SLIDER_TRACK_HEIGHT = 15;
@@ -326,7 +325,7 @@ public:
 
         // Sizing (defaults from Style constants).
         int width_ = Style::CONTROL_WIDTH;
-        int height_ = Style::CONTROL_HEIGHT;
+        int height_ = Style::ACTION_SIZE;
 
         Result<lv_obj_t*, std::string> createLabeledSwitch();
     };

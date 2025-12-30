@@ -39,7 +39,7 @@ void ClockControls::createWidgets()
     fontDropdown_ = LVGLBuilder::dropdown(controlsContainer_)
                         .options("Dot Matrix\n7-Segment\n7-Segment Extra Tall\n7-Segment Jumbo\n7-Segment Large\n7-Segment Tall")
                         .selected(0)
-                        .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
+                        .size(LV_PCT(95), LVGLBuilder::Style::ACTION_SIZE)
                         .buildOrLog();
 
     if (fontDropdown_) {
@@ -60,7 +60,7 @@ void ClockControls::createWidgets()
     timezoneDropdown_ = LVGLBuilder::dropdown(controlsContainer_)
                             .options(options.c_str())
                             .selected(0)
-                            .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
+                            .size(LV_PCT(95), LVGLBuilder::Style::ACTION_SIZE)
                             .buildOrLog();
 
     if (timezoneDropdown_) {

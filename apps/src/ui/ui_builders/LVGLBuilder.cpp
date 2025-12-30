@@ -339,7 +339,7 @@ LVGLBuilder::ButtonBuilder::ButtonBuilder(lv_obj_t* parent)
     : parent_(parent),
       button_(nullptr),
       label_(nullptr),
-      size_(Style::CONTROL_WIDTH, Style::CONTROL_HEIGHT),
+      size_(Style::CONTROL_WIDTH, Style::ACTION_SIZE),
       position_(0, 0, LV_ALIGN_TOP_LEFT),
       is_toggle_(false),
       is_checkable_(false),
@@ -655,7 +655,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabelBuilder::build()
 // ============================================================================
 
 LVGLBuilder::DropdownBuilder::DropdownBuilder(lv_obj_t* parent)
-    : parent_(parent), position_(0, 0, LV_ALIGN_TOP_LEFT), size_(Style::CONTROL_WIDTH, Style::CONTROL_HEIGHT)
+    : parent_(parent), position_(0, 0, LV_ALIGN_TOP_LEFT), size_(Style::CONTROL_WIDTH, Style::ACTION_SIZE)
 {}
 
 LVGLBuilder::DropdownBuilder& LVGLBuilder::DropdownBuilder::options(const char* options)
@@ -1567,7 +1567,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
         return Result<lv_obj_t*, std::string>::error(error);
     }
 
-    lv_obj_set_size(header_, LV_PCT(100), Style::CONTROL_HEIGHT);
+    lv_obj_set_size(header_, LV_PCT(100), Style::ACTION_SIZE);
     lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(header_, Style::PAD_HORIZONTAL, 0);
