@@ -1184,11 +1184,9 @@ lv_obj_t* LVGLBuilder::ToggleSliderBuilder::buildOrLog()
 
 // State structure for icon rail radio-button behavior.
 struct IconRailState {
-    std::vector<lv_obj_t*>* buttons;
+    std::vector<lv_obj_t*>* buttons; // ActionButton containers.
     std::vector<LVGLBuilder::IconConfig>* icons;
     LVGLBuilder::IconId selected_id;
-    uint32_t bg_color;
-    uint32_t selected_color;
     lv_event_cb_t user_callback;
     void* user_data;
 };
@@ -1197,7 +1195,9 @@ static void iconRailButtonClickCallback(lv_event_t* e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
 
-    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    // The target is the inner button, but we need to find the ActionButton container.
+    lv_obj_t* innerBtn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    lv_obj_t* container = lv_obj_get_parent(innerBtn); // ActionButton container.
     IconRailState* state = static_cast<IconRailState*>(lv_event_get_user_data(e));
 
     if (!state || !state->buttons || !state->icons) return;
@@ -1205,7 +1205,7 @@ static void iconRailButtonClickCallback(lv_event_t* e)
     // Find which button was clicked.
     LVGLBuilder::IconId clicked_id = LVGLBuilder::IconId::COUNT;
     for (size_t i = 0; i < state->buttons->size(); i++) {
-        if ((*state->buttons)[i] == btn) {
+        if ((*state->buttons)[i] == container) {
             clicked_id = (*state->icons)[i].id;
             break;
         }
@@ -1213,27 +1213,21 @@ static void iconRailButtonClickCallback(lv_event_t* e)
 
     if (clicked_id == LVGLBuilder::IconId::COUNT) return;
 
-    // If clicking already-selected icon, deselect it (toggle off).
-    if (clicked_id == state->selected_id) {
-        // Deselect current.
-        lv_obj_set_style_bg_color(btn, lv_color_hex(state->bg_color), 0);
-        state->selected_id = LVGLBuilder::IconId::COUNT;
+    // Radio-button behavior: uncheck all others, toggle clicked one.
+    bool was_checked = LVGLBuilder::ActionButtonBuilder::isChecked(container);
+
+    // Uncheck all buttons first.
+    for (size_t i = 0; i < state->buttons->size(); i++) {
+        LVGLBuilder::ActionButtonBuilder::setChecked((*state->buttons)[i], false);
+    }
+
+    // If it wasn't checked before, check it now. Otherwise leave all unchecked.
+    if (!was_checked) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(container, true);
+        state->selected_id = clicked_id;
     }
     else {
-        // Deselect previous.
-        if (state->selected_id != LVGLBuilder::IconId::COUNT) {
-            for (size_t i = 0; i < state->icons->size(); i++) {
-                if ((*state->icons)[i].id == state->selected_id) {
-                    lv_obj_set_style_bg_color(
-                        (*state->buttons)[i], lv_color_hex(state->bg_color), 0);
-                    break;
-                }
-            }
-        }
-
-        // Select new.
-        lv_obj_set_style_bg_color(btn, lv_color_hex(state->selected_color), 0);
-        state->selected_id = clicked_id;
+        state->selected_id = LVGLBuilder::IconId::COUNT;
     }
 
     // Call user callback if provided.
@@ -1369,20 +1363,17 @@ void LVGLBuilder::IconRailBuilder::setIconVisible(IconId id, bool visible)
 
 void LVGLBuilder::IconRailBuilder::setSelectedIcon(IconId id)
 {
-    // Deselect current.
-    if (selected_id_ != IconId::COUNT) {
-        lv_obj_t* oldBtn = getIconButton(selected_id_);
-        if (oldBtn) {
-            lv_obj_set_style_bg_color(oldBtn, lv_color_hex(bg_color_), 0);
-        }
+    // Uncheck all buttons first.
+    for (lv_obj_t* btn : buttons_) {
+        ActionButtonBuilder::setChecked(btn, false);
     }
 
-    // Select new.
+    // Check the new selection.
     selected_id_ = id;
     if (id != IconId::COUNT) {
         lv_obj_t* newBtn = getIconButton(id);
         if (newBtn) {
-            lv_obj_set_style_bg_color(newBtn, lv_color_hex(selected_color_), 0);
+            ActionButtonBuilder::setChecked(newBtn, true);
         }
     }
 }
@@ -1419,41 +1410,31 @@ Result<lv_obj_t*, std::string> LVGLBuilder::IconRailBuilder::createIconRail()
     auto* persistentIcons = new std::vector<IconConfig>(icons_);
     auto* persistentButtons = new std::vector<lv_obj_t*>();
     IconRailState* state = new IconRailState{
-        persistentButtons, persistentIcons,  selected_id_,     bg_color_,
-        selected_color_,   select_callback_, user_data_
+        persistentButtons, persistentIcons, selected_id_, select_callback_, user_data_
     };
 
-    // Create icon buttons.
+    // Create icon buttons using ActionButtonBuilder.
     for (const auto& iconConfig : icons_) {
-        lv_obj_t* btn = lv_btn_create(container_);
-        if (!btn) {
-            spdlog::warn("IconRailBuilder: Failed to create button for icon {}", iconConfig.tooltip);
+        // Build ActionButton with icon only (no text), toggle mode for selection.
+        lv_obj_t* actionBtn = LVGLBuilder::actionButton(container_)
+                                  .icon(iconConfig.symbol)
+                                  .mode(ActionMode::Toggle)
+                                  .size(icon_size_)
+                                  .troughPadding(2) // Smaller padding for icon buttons.
+                                  .backgroundColor(bg_color_)
+                                  .troughColor(bg_color_) // Match container background.
+                                  .glowColor(selected_color_)
+                                  .textColor(icon_color_)
+                                  .callback(iconRailButtonClickCallback, state)
+                                  .buildOrLog();
+
+        if (!actionBtn) {
+            spdlog::warn("IconRailBuilder: Failed to create ActionButton for icon {}", iconConfig.tooltip);
             continue;
         }
 
-        // Style the button.
-        lv_obj_set_size(btn, icon_size_, icon_size_);
-        lv_obj_set_style_bg_color(btn, lv_color_hex(bg_color_), 0);
-        lv_obj_set_style_bg_opa(btn, LV_OPA_COVER, 0);
-        lv_obj_set_style_radius(btn, 8, 0);
-        lv_obj_set_style_border_width(btn, 0, 0);
-        lv_obj_set_style_pad_all(btn, 0, 0);
-
-        // Pressed state.
-        lv_obj_set_style_bg_color(btn, lv_color_hex(0x555555), LV_STATE_PRESSED);
-
-        // Create icon label.
-        lv_obj_t* label = lv_label_create(btn);
-        lv_label_set_text(label, iconConfig.symbol);
-        lv_obj_set_style_text_color(label, lv_color_hex(icon_color_), 0);
-        lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
-        lv_obj_center(label);
-
-        // Add click callback.
-        lv_obj_add_event_cb(btn, iconRailButtonClickCallback, LV_EVENT_CLICKED, state);
-
-        buttons_.push_back(btn);
-        persistentButtons->push_back(btn);
+        buttons_.push_back(actionBtn);
+        persistentButtons->push_back(actionBtn);
     }
 
     // Add cleanup callback to container.
@@ -2257,4 +2238,232 @@ bool LVGLBuilder::ActionButtonBuilder::isChecked(lv_obj_t* container)
     if (!state) return false;
 
     return state->is_checked;
+}
+
+// ============================================================================
+// ActionDropdownBuilder Implementation
+// ============================================================================
+
+LVGLBuilder::ActionDropdownBuilder::ActionDropdownBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr), dropdown_(nullptr), label_(nullptr)
+{}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::options(const char* opts)
+{
+    if (opts) {
+        options_ = opts;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::selected(uint16_t index)
+{
+    selected_index_ = index;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::label(const char* text)
+{
+    if (text) {
+        label_text_ = text;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::dropdownWidth(int w)
+{
+    dropdown_width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::troughPadding(int px)
+{
+    trough_padding_ = px;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::backgroundColor(uint32_t color)
+{
+    bg_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::troughColor(uint32_t color)
+{
+    trough_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::textColor(uint32_t color)
+{
+    text_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::labelColor(uint32_t color)
+{
+    label_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "ActionDropdownBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createActionDropdown();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug("ActionDropdownBuilder: Successfully created action dropdown");
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::ActionDropdownBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("ActionDropdownBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::createActionDropdown()
+{
+    // Create outer container (the trough).
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "ActionDropdownBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Style the trough - dark, inset appearance.
+    lv_obj_set_size(container_, width_, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(trough_color_), 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(container_, 8, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_all(container_, trough_padding_, 0);
+
+    // Use row layout for label + dropdown.
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(container_, 8, 0);
+
+    // Remove scrollbars.
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create label if provided.
+    if (!label_text_.empty()) {
+        label_ = lv_label_create(container_);
+        if (label_) {
+            lv_label_set_text(label_, label_text_.c_str());
+            lv_obj_set_style_text_color(label_, lv_color_hex(label_color_), 0);
+            lv_obj_set_style_text_font(label_, &lv_font_montserrat_14, 0);
+        }
+    }
+
+    // Create dropdown.
+    dropdown_ = lv_dropdown_create(container_);
+    if (!dropdown_) {
+        std::string error = "ActionDropdownBuilder: Failed to create dropdown";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Set dropdown options and selection.
+    if (!options_.empty()) {
+        lv_dropdown_set_options(dropdown_, options_.c_str());
+    }
+    lv_dropdown_set_selected(dropdown_, selected_index_);
+
+    // Size the dropdown.
+    if (dropdown_width_ > 0) {
+        lv_obj_set_width(dropdown_, dropdown_width_);
+    }
+    else {
+        // Flex grow to fill available space.
+        lv_obj_set_flex_grow(dropdown_, 1);
+    }
+    lv_obj_set_height(dropdown_, 44);
+
+    // Style the dropdown button.
+    lv_obj_set_style_bg_color(dropdown_, lv_color_hex(bg_color_), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dropdown_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_text_color(dropdown_, lv_color_hex(text_color_), LV_PART_MAIN);
+    lv_obj_set_style_border_width(dropdown_, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(dropdown_, 6, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(dropdown_, 8, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(dropdown_, 8, LV_PART_MAIN);
+
+    // Style the dropdown list (popup).
+    lv_obj_t* list = lv_dropdown_get_list(dropdown_);
+    if (list) {
+        lv_obj_set_style_bg_color(list, lv_color_hex(bg_color_), LV_PART_MAIN);
+        lv_obj_set_style_text_color(list, lv_color_hex(text_color_), LV_PART_MAIN);
+        lv_obj_set_style_border_color(list, lv_color_hex(trough_color_), LV_PART_MAIN);
+        lv_obj_set_style_border_width(list, 2, LV_PART_MAIN);
+        lv_obj_set_style_radius(list, 6, LV_PART_MAIN);
+
+        // Selected item styling.
+        lv_obj_set_style_bg_color(list, lv_color_hex(0x0066CC), LV_PART_SELECTED);
+        lv_obj_set_style_text_color(list, lv_color_hex(0xFFFFFF), LV_PART_SELECTED);
+    }
+
+    // Store dropdown pointer in container for static helpers.
+    lv_obj_set_user_data(container_, dropdown_);
+
+    // Add callback if provided.
+    if (callback_) {
+        lv_obj_add_event_cb(dropdown_, callback_, LV_EVENT_VALUE_CHANGED, user_data_);
+    }
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+uint16_t LVGLBuilder::ActionDropdownBuilder::getSelected(lv_obj_t* container)
+{
+    if (!container) return 0;
+
+    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_obj_get_user_data(container));
+    if (!dropdown) return 0;
+
+    return lv_dropdown_get_selected(dropdown);
+}
+
+void LVGLBuilder::ActionDropdownBuilder::setSelected(lv_obj_t* container, uint16_t index)
+{
+    if (!container) return;
+
+    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_obj_get_user_data(container));
+    if (!dropdown) return;
+
+    lv_dropdown_set_selected(dropdown, index);
+}
+
+LVGLBuilder::ActionDropdownBuilder LVGLBuilder::actionDropdown(lv_obj_t* parent)
+{
+    return ActionDropdownBuilder(parent);
 }

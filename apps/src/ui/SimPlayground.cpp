@@ -127,7 +127,7 @@ void SimPlayground::clearPanelContent()
     coreControls_.reset();
     physicsPanel_.reset();
     scenarioControls_.reset();
-    scenarioDropdown_ = nullptr;
+    scenarioContainer_ = nullptr;
 
     // Clear the panel's content area.
     ExpandablePanel* panel = uiManager_->getExpandablePanel();
@@ -150,46 +150,17 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
-    // Scenario title with emphasis.
-    lv_obj_t* scenarioLabel = lv_label_create(container);
-    lv_label_set_text(scenarioLabel, "Scenario");
-    lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xFFFFFF), 0);
-    lv_obj_set_style_text_font(scenarioLabel, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_decor(scenarioLabel, LV_TEXT_DECOR_UNDERLINE, 0);
-    lv_obj_set_style_pad_bottom(scenarioLabel, 8, 0);
-
-    // Build dropdown from metadata cache.
+    // Build dropdown from metadata cache with ActionDropdown styling.
     std::string dropdownOptions = ScenarioMetadataCache::buildDropdownOptions();
     uint16_t selectedIdx = ScenarioMetadataCache::indexFromScenarioId(currentScenarioId_);
 
-    scenarioDropdown_ = LVGLBuilder::dropdown(container)
-                            .options(dropdownOptions.c_str())
-                            .selected(selectedIdx)
-                            .size(LV_PCT(95), LVGLBuilder::Style::CONTROL_HEIGHT)
-                            .buildOrLog();
-
-    if (scenarioDropdown_) {
-        // Style the dropdown button (light green background, dark purple text).
-        lv_obj_set_style_bg_color(
-            scenarioDropdown_, lv_color_hex(0x90EE90), LV_PART_MAIN); // Light green.
-        lv_obj_set_style_text_color(
-            scenarioDropdown_, lv_color_hex(0x4B0082), LV_PART_MAIN); // Dark purple (indigo).
-
-        // Style the dropdown list (when opened).
-        lv_obj_t* list = lv_dropdown_get_list(scenarioDropdown_);
-        lv_obj_set_style_bg_color(list, lv_color_hex(0x90EE90), LV_PART_MAIN); // Light green.
-        lv_obj_set_style_text_color(list, lv_color_hex(0x4B0082), LV_PART_MAIN); // Dark purple.
-
-        // Make list items touch-friendly height.
-        lv_obj_set_style_text_line_space(list, LVGLBuilder::Style::CONTROL_HEIGHT - 16, LV_PART_MAIN);
-        lv_obj_set_style_pad_ver(list, 8, LV_PART_MAIN);
-
-        // Set max height to fit all scenarios (7 items × ~48px each + padding).
-        lv_obj_set_style_max_height(list, 400, LV_PART_MAIN);
-
-        lv_obj_set_user_data(scenarioDropdown_, this);
-        lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
-    }
+    scenarioContainer_ = LVGLBuilder::actionDropdown(container)
+                             .label("Scenario:")
+                             .options(dropdownOptions.c_str())
+                             .selected(selectedIdx)
+                             .width(LV_PCT(95))
+                             .callback(onScenarioChanged, this)
+                             .buildOrLog();
 
     // Create display dimensions getter for auto-scaling scenarios.
     DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
@@ -336,8 +307,7 @@ void SimPlayground::renderNeuralGrid(const WorldData& data)
 
 void SimPlayground::onScenarioChanged(lv_event_t* e)
 {
-    auto* playground = static_cast<SimPlayground*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* playground = static_cast<SimPlayground*>(lv_event_get_user_data(e));
     if (!playground) return;
 
     lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));

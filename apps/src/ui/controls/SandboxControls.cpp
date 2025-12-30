@@ -31,8 +31,17 @@ SandboxControls::SandboxControls(
 
 void SandboxControls::createWidgets()
 {
+    // Row 1: Add Seed and Drop Dirt buttons (evenly spaced).
+    lv_obj_t* row1 = lv_obj_create(controlsContainer_);
+    lv_obj_set_size(row1, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row1, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row1, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(row1, 4, 0);
+    lv_obj_set_style_bg_opa(row1, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row1, 0, 0);
+
     // Add Seed button - green for growth/life (push button).
-    addSeedButton_ = LVGLBuilder::actionButton(controlsContainer_)
+    addSeedButton_ = LVGLBuilder::actionButton(row1)
                          .text("Add Seed")
                          .icon(LV_SYMBOL_PLUS)
                          .mode(LVGLBuilder::ActionMode::Push)
@@ -42,7 +51,7 @@ void SandboxControls::createWidgets()
                          .buildOrLog();
 
     // Drop Dirt Ball button - brown/earth tone (push button).
-    dropDirtBallButton_ = LVGLBuilder::actionButton(controlsContainer_)
+    dropDirtBallButton_ = LVGLBuilder::actionButton(row1)
                               .text("Drop Dirt")
                               .icon(LV_SYMBOL_DOWNLOAD)
                               .mode(LVGLBuilder::ActionMode::Push)
@@ -51,8 +60,18 @@ void SandboxControls::createWidgets()
                               .callback(onDropDirtBallClicked, this)
                               .buildOrLog();
 
+    // Row 2: Quadrant, Water Column, Right Throw (evenly spaced).
+    lv_obj_t* row2 = lv_obj_create(controlsContainer_);
+    lv_obj_set_size(row2, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row2, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(row2, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(row2, 4, 0);
+    lv_obj_set_style_bg_opa(row2, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row2, 0, 0);
+    lv_obj_clear_flag(row2, LV_OBJ_FLAG_SCROLLABLE);
+
     // Quadrant toggle.
-    quadrantSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+    quadrantSwitch_ = LVGLBuilder::actionButton(row2)
                           .text("Quadrant")
                           .mode(LVGLBuilder::ActionMode::Toggle)
                           .size(80)
@@ -62,7 +81,7 @@ void SandboxControls::createWidgets()
                           .buildOrLog();
 
     // Water column toggle.
-    waterColumnSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+    waterColumnSwitch_ = LVGLBuilder::actionButton(row2)
                              .text("Water Column")
                              .mode(LVGLBuilder::ActionMode::Toggle)
                              .size(80)
@@ -72,7 +91,7 @@ void SandboxControls::createWidgets()
                              .buildOrLog();
 
     // Right throw toggle.
-    rightThrowSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+    rightThrowSwitch_ = LVGLBuilder::actionButton(row2)
                             .text("Right Throw")
                             .mode(LVGLBuilder::ActionMode::Toggle)
                             .size(80)

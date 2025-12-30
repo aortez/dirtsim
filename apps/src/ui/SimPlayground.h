@@ -101,7 +101,7 @@ private:
     std::unique_ptr<CoreControls> coreControls_;
     std::unique_ptr<ScenarioControlsBase> scenarioControls_;
     std::unique_ptr<PhysicsPanel> physicsPanel_;
-    lv_obj_t* scenarioDropdown_ = nullptr;
+    lv_obj_t* scenarioContainer_ = nullptr; // ActionDropdown container.
 
     // Currently active panel.
     IconId activePanel_ = IconId::COUNT;

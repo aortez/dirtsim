@@ -67,8 +67,8 @@ private:
     // Scenario-specific controls container.
     lv_obj_t* scenarioPanel_ = nullptr;
 
-    // Scenario selector.
-    lv_obj_t* scenarioDropdown_ = nullptr;
+    // Scenario selector (ActionDropdown container).
+    lv_obj_t* scenarioContainer_ = nullptr;
 
     // Sandbox scenario controls.
     lv_obj_t* sandboxAddSeedButton_ = nullptr;

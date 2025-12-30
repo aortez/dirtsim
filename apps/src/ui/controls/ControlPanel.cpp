@@ -130,23 +130,19 @@ void ControlPanel::createScenarioControls(
     lv_obj_set_flex_align(
         scenarioPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
 
-    // Scenario dropdown selector (always visible, regardless of scenario type).
-    lv_obj_t* scenarioLabel = lv_label_create(scenarioPanel_);
-    lv_label_set_text(scenarioLabel, "Scenario:");
-
-    scenarioDropdown_ =
-        LVGLBuilder::dropdown(scenarioPanel_)
+    // Scenario dropdown selector with ActionDropdown styling.
+    scenarioContainer_ =
+        LVGLBuilder::actionDropdown(scenarioPanel_)
+            .label("Scenario:")
             .options("Benchmark\nDam Break\nEmpty\nFalling Dirt\nRaining\nSandbox\nTree "
                      "Germination\nWater Equalization")
             .selected(0) // "Benchmark" selected by default.
-            .size(LV_PCT(90), 40)
+            .width(LV_PCT(95))
+            .callback(onScenarioChanged, this)
             .buildOrLog();
 
-    // Add event handler for dropdown.
-    if (scenarioDropdown_) {
+    if (scenarioContainer_) {
         spdlog::info("ControlPanel: Scenario dropdown created successfully");
-        lv_obj_set_user_data(scenarioDropdown_, this);
-        lv_obj_add_event_cb(scenarioDropdown_, onScenarioChanged, LV_EVENT_VALUE_CHANGED, this);
     }
     else {
         spdlog::error("ControlPanel: Failed to create scenario dropdown!");
@@ -168,7 +164,7 @@ void ControlPanel::clearScenarioControls()
     if (scenarioPanel_) {
         lv_obj_del(scenarioPanel_);
         scenarioPanel_ = nullptr;
-        scenarioDropdown_ = nullptr;
+        scenarioContainer_ = nullptr;
         sandboxAddSeedButton_ = nullptr;
         sandboxQuadrantSwitch_ = nullptr;
         sandboxRainSlider_ = nullptr;
@@ -252,8 +248,7 @@ void ControlPanel::createSandboxControls(const Config::Sandbox& config)
 
 void ControlPanel::onScenarioChanged(lv_event_t* e)
 {
-    auto* panel = static_cast<ControlPanel*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* panel = static_cast<ControlPanel*>(lv_event_get_user_data(e));
     if (!panel) return;
 
     lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));

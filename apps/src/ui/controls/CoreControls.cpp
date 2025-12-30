@@ -27,18 +27,17 @@ CoreControls::CoreControls(
       eventSink_(eventSink),
       currentRenderMode_(initialMode)
 {
-    // Quit button - red with power icon (push).
-    quitButton_ = LVGLBuilder::actionButton(container_)
-                      .text("Quit")
-                      .icon(LV_SYMBOL_POWER)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onQuitClicked, this)
-                      .buildOrLog();
+    // Top row: Reset and Quit buttons (evenly spaced).
+    lv_obj_t* topRow = lv_obj_create(container_);
+    lv_obj_set_size(topRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(topRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(topRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(topRow, 4, 0);
+    lv_obj_set_style_bg_opa(topRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(topRow, 0, 0);
 
     // Reset button - orange with refresh icon (push).
-    resetButton_ = LVGLBuilder::actionButton(container_)
+    resetButton_ = LVGLBuilder::actionButton(topRow)
                        .text("Reset")
                        .icon(LV_SYMBOL_REFRESH)
                        .mode(LVGLBuilder::ActionMode::Push)
@@ -47,7 +46,27 @@ CoreControls::CoreControls(
                        .callback(onResetClicked, this)
                        .buildOrLog();
 
-    // Stats display.
+    // Quit button - red with power icon (push).
+    quitButton_ = LVGLBuilder::actionButton(topRow)
+                      .text("Quit")
+                      .icon(LV_SYMBOL_POWER)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .size(80)
+                      .backgroundColor(0xCC0000)
+                      .callback(onQuitClicked, this)
+                      .buildOrLog();
+
+    // Debug toggle - second row.
+    debugSwitch_ = LVGLBuilder::actionButton(container_)
+                       .text("Debug Draw")
+                       .mode(LVGLBuilder::ActionMode::Toggle)
+                       .size(80)
+                       .checked(false)
+                       .glowColor(0x00CC00)
+                       .callback(onDebugToggled, this)
+                       .buildOrLog();
+
+    // Stats display (below debug button).
     statsLabel_ = lv_label_create(container_);
     lv_label_set_text(statsLabel_, "Server: -- FPS");
     lv_obj_set_style_text_font(statsLabel_, &lv_font_montserrat_12, 0);
@@ -58,37 +77,14 @@ CoreControls::CoreControls(
     lv_obj_set_style_text_font(statsLabelUI_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(statsLabelUI_, lv_color_white(), 0);
 
-    // Debug toggle.
-    debugSwitch_ = LVGLBuilder::actionButton(container_)
-                       .text("Debug Draw")
-                       .mode(LVGLBuilder::ActionMode::Toggle)
-                       .size(80)
-                       .checked(false)
-                       .glowColor(0x00CC00)
-                       .callback(onDebugToggled, this)
-                       .buildOrLog();
-
-    // Render Mode dropdown (styled like labeledSwitch).
-    lv_obj_t* renderModeContainer = lv_obj_create(container_);
-    lv_obj_set_size(renderModeContainer, LV_PCT(90), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(renderModeContainer, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        renderModeContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(renderModeContainer, 5, 0);
-    lv_obj_set_style_pad_column(renderModeContainer, 8, 0);
-    lv_obj_set_style_bg_color(renderModeContainer, lv_color_hex(0x0000FF), 0); // Blue background.
-    lv_obj_set_style_bg_opa(renderModeContainer, LV_OPA_COVER, 0);
-    lv_obj_set_style_radius(renderModeContainer, 5, 0); // Rounded corners.
-
-    lv_obj_t* renderModeLabel = lv_label_create(renderModeContainer);
-    lv_label_set_text(renderModeLabel, "Render Mode:");
-    lv_obj_set_style_text_color(renderModeLabel, lv_color_hex(0xFFFFFF), 0);
-
-    renderModeDropdown_ = lv_dropdown_create(renderModeContainer);
-    lv_dropdown_set_options(
-        renderModeDropdown_, "Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug");
-    lv_dropdown_set_selected(renderModeDropdown_, 0); // Default to Adaptive.
-    lv_obj_add_event_cb(renderModeDropdown_, onRenderModeChanged, LV_EVENT_VALUE_CHANGED, this);
+    // Render Mode dropdown with ActionDropdown styling.
+    renderModeContainer_ = LVGLBuilder::actionDropdown(container_)
+                               .label("Render:")
+                               .options("Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug")
+                               .selected(0)
+                               .width(LV_PCT(95))
+                               .callback(onRenderModeChanged, this)
+                               .buildOrLog();
 
     // Scale Factor slider (affects SHARP, SMOOTH, LVGL_DEBUG, and ADAPTIVE modes).
     // Place right after Render Mode dropdown.
@@ -177,7 +173,7 @@ void CoreControls::updateStats(double serverFPS, double uiFPS)
 void CoreControls::setRenderMode(RenderMode mode)
 {
     currentRenderMode_ = mode; // Track the current mode.
-    if (!renderModeDropdown_) return;
+    if (!renderModeContainer_) return;
 
     // Map RenderMode to dropdown index.
     // Order: "Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug".
@@ -200,7 +196,7 @@ void CoreControls::setRenderMode(RenderMode mode)
             break;
     }
 
-    lv_dropdown_set_selected(renderModeDropdown_, index);
+    LVGLBuilder::ActionDropdownBuilder::setSelected(renderModeContainer_, index);
 }
 
 void CoreControls::onQuitClicked(lv_event_t* e)

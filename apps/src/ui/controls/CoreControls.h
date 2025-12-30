@@ -53,7 +53,7 @@ private:
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
-    lv_obj_t* renderModeDropdown_ = nullptr;
+    lv_obj_t* renderModeContainer_ = nullptr; // ActionDropdown container.
     lv_obj_t* worldSizeContainer_ = nullptr;
     lv_obj_t* worldSizeSwitch_ = nullptr;
     lv_obj_t* worldSizeSlider_ = nullptr;

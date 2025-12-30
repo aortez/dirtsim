@@ -72,6 +72,11 @@ public:
         static constexpr int PAD_HORIZONTAL = 10; // Left/right padding inside controls.
         static constexpr int PAD_VERTICAL = 8;    // Top/bottom padding inside controls.
         static constexpr int GAP = 8;             // Gap between elements inside controls.
+        static constexpr int TROUGH_PADDING = 4;  // Padding inside trough containers.
+
+        // Trough colors (for ActionButton, ActionDropdown, etc.).
+        static constexpr uint32_t TROUGH_COLOR = 0x202020;      // Dark inset trough.
+        static constexpr uint32_t TROUGH_INNER_COLOR = 0x404040; // Inner element background.
     };
 
     /**
@@ -581,11 +586,11 @@ public:
         std::string icon_;
         ActionMode mode_ = ActionMode::Push;
         bool initial_checked_ = false;
-        int size_ = 80;          // Square dimension.
-        int trough_padding_ = 4; // Padding for trough visibility.
+        int size_ = 80;                                  // Square dimension.
+        int trough_padding_ = Style::TROUGH_PADDING;
 
-        uint32_t bg_color_ = 0x404040;      // Button face.
-        uint32_t trough_color_ = 0x202020;  // Dark trough.
+        uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
+        uint32_t trough_color_ = Style::TROUGH_COLOR;
         uint32_t glow_color_ = 0x00CC00;    // Green glow when on.
         uint32_t text_color_ = 0xFFFFFF;
 
@@ -606,6 +611,82 @@ public:
         };
 
         void applyCheckedStyle(bool checked);
+    };
+
+    /**
+     * @brief ActionDropdownBuilder - Creates a dropdown with trough styling matching ActionButton.
+     *
+     * Layout: Outer trough container with optional label and styled dropdown.
+     *
+     * Visual structure:
+     * ┌─────────────────────────────┐  ← Outer trough (dark, inset look)
+     * │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+     * │ ░ Label:  [Dropdown    ▼] ░ │  ← Label + dropdown inside
+     * │ ░░░░░░░░░░░░░░░░░░░░░░░░░░░ │
+     * └─────────────────────────────┘
+     */
+    class ActionDropdownBuilder {
+    public:
+        explicit ActionDropdownBuilder(lv_obj_t* parent);
+
+        // Dropdown options (newline-separated).
+        ActionDropdownBuilder& options(const char* opts);
+        ActionDropdownBuilder& selected(uint16_t index);
+
+        // Optional label.
+        ActionDropdownBuilder& label(const char* text);
+
+        // Sizing.
+        ActionDropdownBuilder& width(int w);           // Total width including trough.
+        ActionDropdownBuilder& dropdownWidth(int w);   // Width of dropdown itself.
+        ActionDropdownBuilder& troughPadding(int px);
+
+        // Colors.
+        ActionDropdownBuilder& backgroundColor(uint32_t color); // Dropdown background.
+        ActionDropdownBuilder& troughColor(uint32_t color);     // Outer trough color.
+        ActionDropdownBuilder& textColor(uint32_t color);
+        ActionDropdownBuilder& labelColor(uint32_t color);
+
+        // Event handling.
+        ActionDropdownBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        // Build the dropdown (returns the outer trough container).
+        Result<lv_obj_t*, std::string> build();
+
+        // Build with automatic error logging.
+        lv_obj_t* buildOrLog();
+
+        // Access to created objects.
+        lv_obj_t* getContainer() const { return container_; }
+        lv_obj_t* getDropdown() const { return dropdown_; }
+        lv_obj_t* getLabel() const { return label_; }
+
+        // Runtime helpers.
+        static uint16_t getSelected(lv_obj_t* container);
+        static void setSelected(lv_obj_t* container, uint16_t index);
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_; // Outer trough.
+        lv_obj_t* dropdown_;
+        lv_obj_t* label_;
+
+        std::string options_;
+        std::string label_text_;
+        uint16_t selected_index_ = 0;
+        int width_ = LV_PCT(90);
+        int dropdown_width_ = 0; // 0 = auto (fill available space).
+        int trough_padding_ = Style::TROUGH_PADDING;
+
+        uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
+        uint32_t trough_color_ = Style::TROUGH_COLOR;
+        uint32_t text_color_ = 0xFFFFFF;
+        uint32_t label_color_ = 0xFFFFFF;
+
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createActionDropdown();
     };
 
     /**
@@ -683,6 +764,7 @@ public:
     static ToggleSliderBuilder toggleSlider(lv_obj_t* parent);
     static CollapsiblePanelBuilder collapsiblePanel(lv_obj_t* parent);
     static ActionButtonBuilder actionButton(lv_obj_t* parent);
+    static ActionDropdownBuilder actionDropdown(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {
