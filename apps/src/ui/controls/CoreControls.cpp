@@ -86,62 +86,31 @@ CoreControls::CoreControls(
                                .callback(onRenderModeChanged, this)
                                .buildOrLog();
 
-    // Scale Factor slider (affects SHARP, SMOOTH, LVGL_DEBUG, and ADAPTIVE modes).
-    // Place right after Render Mode dropdown.
-    scaleFactorSlider_ =
-        LVGLBuilder::slider(container_)
-            .size(LV_PCT(90), 10)
-            .range(1, 200) // 0.01 to 2.0, scaled by 100
-            .value(40)
+    // Scale Factor stepper (affects SHARP, SMOOTH, LVGL_DEBUG, and ADAPTIVE modes).
+    scaleFactorStepper_ =
+        LVGLBuilder::actionStepper(container_)
             .label("Render Scale")
-            .valueLabel("%.2f")
-            .valueTransform([](int32_t val) { return val / 100.0; })
+            .range(1, 200)   // 0.01 to 2.0, scaled by 100.
+            .step(5)         // 0.05 increments.
+            .value(40)       // Default 0.40.
+            .valueFormat("%.2f")
+            .valueScale(0.01)
+            .width(LV_PCT(95))
             .callback(onScaleFactorChanged, this)
-            .events(LV_EVENT_RELEASED) // Only trigger on release, not while dragging.
             .buildOrLog();
 
-    // World Size toggle slider.
-    auto worldSizeBuilder = LVGLBuilder::toggleSlider(container_)
-                                .label("World Size")
-                                .range(1, 400)   // Max world size
-                                .defaultValue(1) // When off, defaults to 1
-                                .value(28)       // Initial value when on
-                                .sliderWidth(LV_PCT(85))
-                                .valueFormat("%.0f")    // Format as floating point with 0 decimals
-                                .valueScale(1.0)        // No scaling needed
-                                .initiallyEnabled(true) // Start with toggle on to show current size
-                                .onToggle(onWorldSizeToggled, this)
-                                .onSliderChange(onWorldSizeChanged, this);
-
-    worldSizeContainer_ = worldSizeBuilder.buildOrLog();
-    if (worldSizeContainer_) {
-        // Find the switch and slider within the container
-        // The ToggleSliderBuilder creates them as children
-        uint32_t child_cnt = lv_obj_get_child_count(worldSizeContainer_);
-        for (uint32_t i = 0; i < child_cnt; i++) {
-            lv_obj_t* child = lv_obj_get_child(worldSizeContainer_, i);
-            if (lv_obj_check_type(child, &lv_switch_class)) {
-                worldSizeSwitch_ = child;
-                spdlog::debug("CoreControls: Found world size switch");
-            }
-            else if (lv_obj_check_type(child, &lv_slider_class)) {
-                worldSizeSlider_ = child;
-                spdlog::debug("CoreControls: Found world size slider");
-            }
-        }
-
-        if (!worldSizeSwitch_) {
-            spdlog::error("CoreControls: Failed to find world size switch in container");
-        }
-        if (!worldSizeSlider_) {
-            spdlog::error("CoreControls: Failed to find world size slider in container");
-        }
-        else {
-            // Add RELEASED event handler to the slider for throttling
-            // The VALUE_CHANGED event is already handled by the ToggleSliderBuilder
-            lv_obj_add_event_cb(worldSizeSlider_, onWorldSizeChanged, LV_EVENT_RELEASED, this);
-        }
-    }
+    // World Size stepper.
+    worldSizeStepper_ =
+        LVGLBuilder::actionStepper(container_)
+            .label("World Size")
+            .range(1, 400)
+            .step(1)
+            .value(28)
+            .valueFormat("%.0f")
+            .valueScale(1.0)
+            .width(LV_PCT(95))
+            .callback(onWorldSizeChanged, this)
+            .buildOrLog();
 
     // Set initial render mode in dropdown.
     setRenderMode(initialMode);
@@ -292,129 +261,40 @@ void CoreControls::onRenderModeChanged(lv_event_t* e)
     self->eventSink_.queueEvent(cwc);
 }
 
-void CoreControls::onWorldSizeToggled(lv_event_t* e)
-{
-    // Get the switch object from the event target.
-    lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-
-    // Get CoreControls from the switch's user data (NOT the event's user data, which is
-    // ToggleSliderState* from the builder's internal callback wrapper).
-    CoreControls* self = static_cast<CoreControls*>(lv_obj_get_user_data(switch_obj));
-    if (!self) {
-        spdlog::error("CoreControls: onWorldSizeToggled called with null self");
-        return;
-    }
-
-    bool enabled = lv_obj_has_state(switch_obj, LV_STATE_CHECKED);
-
-    spdlog::info("CoreControls: World size toggle switched to {}", enabled ? "ON" : "OFF");
-
-    // When toggled off, the slider defaults to value 1.
-    // When toggled on, it uses the slider's current value.
-    static std::atomic<uint64_t> nextId{ 1 };
-
-    if (!enabled) {
-        // Send resize command with size 1x1 (minimum world size).
-        const Api::WorldResize::Command cmd{ .width = 1, .height = 1 };
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
-        if (result.isError()) {
-            spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
-        }
-        spdlog::info("CoreControls: Resizing world to 1x1 (toggle off)");
-    }
-    else {
-        // Get the current slider value and resize to that.
-        if (!self->worldSizeSlider_) {
-            spdlog::error("CoreControls: worldSizeSlider_ is null!");
-            // Use default value if slider is not available.
-            const Api::WorldResize::Command cmd{ .width = 28, .height = 28 };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
-            if (result.isError()) {
-                spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
-            }
-            spdlog::info("CoreControls: Resizing world to 28x28 (default, slider unavailable)");
-        }
-        else {
-            int32_t value = lv_slider_get_value(self->worldSizeSlider_);
-            const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
-                                                 .height = static_cast<uint32_t>(value) };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
-            if (result.isError()) {
-                spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
-            }
-            spdlog::info("CoreControls: Resizing world to {}x{} (toggle on)", value, value);
-        }
-    }
-}
-
 void CoreControls::onWorldSizeChanged(lv_event_t* e)
 {
-    // Get the slider object first
-    lv_obj_t* slider = static_cast<lv_obj_t*>(lv_event_get_target(e));
-
-    // Get CoreControls from the slider's user data, not the event's user data
-    CoreControls* self = static_cast<CoreControls*>(lv_obj_get_user_data(slider));
-    if (!self) {
-        spdlog::error("CoreControls: onWorldSizeChanged called with null self");
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->worldSizeStepper_) {
+        spdlog::error("CoreControls: onWorldSizeChanged called with null self or stepper");
         return;
     }
 
-    int32_t value = lv_slider_get_value(slider);
+    // Get value from stepper.
+    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->worldSizeStepper_);
 
-    // Throttle resize commands - only send on value release, not while dragging
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_VALUE_CHANGED) {
-        // Store the pending value but don't send command yet
-        self->pendingWorldSize_ = value;
-        return;
-    }
-    else if (code != LV_EVENT_RELEASED) {
-        // Only process RELEASED events
-        return;
-    }
+    spdlog::info("CoreControls: World size changed to {}", value);
 
-    // Use pending value if set, otherwise current value
-    if (self->pendingWorldSize_ > 0) {
-        value = self->pendingWorldSize_;
-        self->pendingWorldSize_ = 0;
-    }
-
-    // Only send resize if the toggle is enabled.
-    if (self->worldSizeSwitch_ && lv_obj_has_state(self->worldSizeSwitch_, LV_STATE_CHECKED)) {
-        spdlog::info("CoreControls: World size slider released at {}", value);
-
-        // Send binary WorldResize API command.
-        static std::atomic<uint64_t> nextId{ 1 };
-        const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
-                                             .height = static_cast<uint32_t>(value) };
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-        auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
-        if (result.isError()) {
-            spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
-        }
-        spdlog::info("CoreControls: Resizing world to {}x{}", value, value);
+    // Send binary WorldResize API command.
+    static std::atomic<uint64_t> nextId{ 1 };
+    const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
+                                         .height = static_cast<uint32_t>(value) };
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error("CoreControls: Failed to send WorldResize: {}", result.errorValue());
     }
 }
 
 void CoreControls::onScaleFactorChanged(lv_event_t* e)
 {
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
-    if (!self) {
-        spdlog::error("CoreControls: onScaleFactorChanged called with null self");
+    if (!self || !self->scaleFactorStepper_) {
+        spdlog::error("CoreControls: onScaleFactorChanged called with null self or stepper");
         return;
     }
 
-    // Only process RELEASED events to avoid spam while dragging.
-    lv_event_code_t code = lv_event_get_code(e);
-    if (code != LV_EVENT_RELEASED) {
-        return;
-    }
-
-    lv_obj_t* slider = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    int32_t value = lv_slider_get_value(slider);
+    // Get value from stepper.
+    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->scaleFactorStepper_);
 
     // Convert from integer (1-200) to double (0.01-2.0).
     double scaleFactor = value / 100.0;

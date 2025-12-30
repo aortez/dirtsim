@@ -54,20 +54,14 @@ private:
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
     lv_obj_t* renderModeContainer_ = nullptr; // ActionDropdown container.
-    lv_obj_t* worldSizeContainer_ = nullptr;
-    lv_obj_t* worldSizeSwitch_ = nullptr;
-    lv_obj_t* worldSizeSlider_ = nullptr;
-    lv_obj_t* scaleFactorSlider_ = nullptr;
-
-    // State for throttling world size changes
-    int32_t pendingWorldSize_ = 0;
+    lv_obj_t* worldSizeStepper_ = nullptr;
+    lv_obj_t* scaleFactorStepper_ = nullptr;
 
     // Event handlers.
     static void onQuitClicked(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
     static void onRenderModeChanged(lv_event_t* e);
-    static void onWorldSizeToggled(lv_event_t* e);
     static void onWorldSizeChanged(lv_event_t* e);
     static void onScaleFactorChanged(lv_event_t* e);
 };

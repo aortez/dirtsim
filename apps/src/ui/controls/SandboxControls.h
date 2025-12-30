@@ -1,10 +1,8 @@
 #pragma once
 
 #include "ScenarioControlsBase.h"
-#include "ToggleSlider.h"
 #include "core/ScenarioConfig.h"
 #include "lvgl/lvgl.h"
-#include <memory>
 
 namespace DirtSim {
 
@@ -49,7 +47,7 @@ private:
     lv_obj_t* quadrantSwitch_ = nullptr;
     lv_obj_t* waterColumnSwitch_ = nullptr;
     lv_obj_t* rightThrowSwitch_ = nullptr;
-    std::unique_ptr<ToggleSlider> rainControl_;
+    lv_obj_t* rainStepper_ = nullptr;
 
     // World dimensions for seed placement.
     uint32_t worldWidth_ = 28;
@@ -61,10 +59,7 @@ private:
     static void onQuadrantToggled(lv_event_t* e);
     static void onWaterColumnToggled(lv_event_t* e);
     static void onRightThrowToggled(lv_event_t* e);
-
-    // ToggleSlider callbacks (member functions, not static LVGL callbacks).
-    void onRainToggled(bool enabled);
-    void onRainSliderChanged(int value);
+    static void onRainChanged(lv_event_t* e);
 
     /**
      * @brief Get the current complete config from all controls.

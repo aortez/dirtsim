@@ -2358,8 +2358,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::createActionD
         return Result<lv_obj_t*, std::string>::error(error);
     }
 
-    // Style the trough - dark, inset appearance.
-    lv_obj_set_size(container_, width_, LV_SIZE_CONTENT);
+    // Style the trough.
+    lv_obj_set_size(container_, width_, Style::ACTION_SIZE);
     lv_obj_set_style_bg_color(container_, lv_color_hex(trough_color_), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(container_, 8, 0);
@@ -2407,7 +2407,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::createActionD
         // Flex grow to fill available space.
         lv_obj_set_flex_grow(dropdown_, 1);
     }
-    lv_obj_set_height(dropdown_, 44);
+    lv_obj_set_height(dropdown_, Style::ACTION_SIZE - (Style::TROUGH_PADDING * 2));
 
     // Style the dropdown button.
     lv_obj_set_style_bg_color(dropdown_, lv_color_hex(bg_color_), LV_PART_MAIN);
@@ -2466,4 +2466,343 @@ void LVGLBuilder::ActionDropdownBuilder::setSelected(lv_obj_t* container, uint16
 LVGLBuilder::ActionDropdownBuilder LVGLBuilder::actionDropdown(lv_obj_t* parent)
 {
     return ActionDropdownBuilder(parent);
+}
+
+// ============================================================================
+// ActionStepperBuilder Implementation
+// ============================================================================
+
+// State structure for stepper (stored in container's user_data).
+struct ActionStepperState {
+    lv_obj_t* valueLabel;
+    int32_t value;
+    int32_t min;
+    int32_t max;
+    int32_t step;
+    double scale;
+    std::string format;
+};
+
+LVGLBuilder::ActionStepperBuilder::ActionStepperBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr), minusBtn_(nullptr), plusBtn_(nullptr),
+      labelObj_(nullptr), valueObj_(nullptr)
+{}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::label(const char* text)
+{
+    if (text) {
+        label_text_ = text;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::range(int32_t min, int32_t max)
+{
+    min_ = min;
+    max_ = max;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::step(int32_t stepSize)
+{
+    step_ = stepSize;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::value(int32_t initialValue)
+{
+    value_ = initialValue;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::valueFormat(const char* fmt)
+{
+    if (fmt) {
+        value_format_ = fmt;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::valueScale(double scale)
+{
+    value_scale_ = scale;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::height(int h)
+{
+    height_ = h;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::backgroundColor(uint32_t color)
+{
+    bg_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::troughColor(uint32_t color)
+{
+    trough_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::textColor(uint32_t color)
+{
+    text_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::buttonColor(uint32_t color)
+{
+    button_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "ActionStepperBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createActionStepper();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug("ActionStepperBuilder: Successfully created action stepper");
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::ActionStepperBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("ActionStepperBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionStepper()
+{
+    // Create outer container (the trough).
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "ActionStepperBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Style the trough.
+    lv_obj_set_size(container_, width_, height_);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(trough_color_), 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(container_, 8, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_all(container_, Style::TROUGH_PADDING, 0);
+
+    // Row layout for the three sections.
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(container_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(container_, Style::TROUGH_PADDING, 0);
+
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Calculate button size (square, height minus padding).
+    int btnSize = height_ - (Style::TROUGH_PADDING * 2);
+
+    // Create state structure.
+    auto* state = new ActionStepperState{
+        nullptr, value_, min_, max_, step_, value_scale_, value_format_
+    };
+
+    // --- Minus button ---
+    minusBtn_ = lv_btn_create(container_);
+    lv_obj_set_size(minusBtn_, btnSize, btnSize);
+    lv_obj_set_style_bg_color(minusBtn_, lv_color_hex(button_color_), 0);
+    lv_obj_set_style_bg_opa(minusBtn_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(minusBtn_, 6, 0);
+    lv_obj_set_style_border_width(minusBtn_, 0, 0);
+    lv_obj_set_style_shadow_width(minusBtn_, 0, 0);
+    lv_obj_set_style_bg_color(minusBtn_, lv_color_hex(0x606060), LV_STATE_PRESSED);
+
+    lv_obj_t* minusLabel = lv_label_create(minusBtn_);
+    lv_label_set_text(minusLabel, LV_SYMBOL_MINUS);
+    lv_obj_set_style_text_color(minusLabel, lv_color_hex(text_color_), 0);
+    lv_obj_set_style_text_font(minusLabel, &lv_font_montserrat_20, 0);
+    lv_obj_center(minusLabel);
+
+    lv_obj_add_event_cb(minusBtn_, onMinusClicked, LV_EVENT_CLICKED, state);
+
+    // --- Center section (label + value) ---
+    lv_obj_t* centerSection = lv_obj_create(container_);
+    lv_obj_set_flex_grow(centerSection, 1);
+    lv_obj_set_height(centerSection, btnSize);
+    lv_obj_set_style_bg_color(centerSection, lv_color_hex(bg_color_), 0);
+    lv_obj_set_style_bg_opa(centerSection, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(centerSection, 6, 0);
+    lv_obj_set_style_border_width(centerSection, 0, 0);
+    lv_obj_set_style_pad_all(centerSection, 4, 0);
+
+    lv_obj_set_flex_flow(centerSection, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(centerSection, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_scrollbar_mode(centerSection, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(centerSection, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Label (if provided).
+    if (!label_text_.empty()) {
+        labelObj_ = lv_label_create(centerSection);
+        lv_label_set_text(labelObj_, label_text_.c_str());
+        lv_obj_set_style_text_color(labelObj_, lv_color_hex(text_color_), 0);
+        lv_obj_set_style_text_font(labelObj_, &lv_font_montserrat_14, 0);
+    }
+
+    // Value display.
+    valueObj_ = lv_label_create(centerSection);
+    lv_obj_set_style_text_color(valueObj_, lv_color_hex(text_color_), 0);
+    lv_obj_set_style_text_font(valueObj_, &lv_font_montserrat_20, 0);
+    state->valueLabel = valueObj_;
+
+    // Set initial value display.
+    char buf[32];
+    snprintf(buf, sizeof(buf), value_format_.c_str(), value_ * value_scale_);
+    lv_label_set_text(valueObj_, buf);
+
+    // --- Plus button ---
+    plusBtn_ = lv_btn_create(container_);
+    lv_obj_set_size(plusBtn_, btnSize, btnSize);
+    lv_obj_set_style_bg_color(plusBtn_, lv_color_hex(button_color_), 0);
+    lv_obj_set_style_bg_opa(plusBtn_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(plusBtn_, 6, 0);
+    lv_obj_set_style_border_width(plusBtn_, 0, 0);
+    lv_obj_set_style_shadow_width(plusBtn_, 0, 0);
+    lv_obj_set_style_bg_color(plusBtn_, lv_color_hex(0x606060), LV_STATE_PRESSED);
+
+    lv_obj_t* plusLabel = lv_label_create(plusBtn_);
+    lv_label_set_text(plusLabel, LV_SYMBOL_PLUS);
+    lv_obj_set_style_text_color(plusLabel, lv_color_hex(text_color_), 0);
+    lv_obj_set_style_text_font(plusLabel, &lv_font_montserrat_20, 0);
+    lv_obj_center(plusLabel);
+
+    lv_obj_add_event_cb(plusBtn_, onPlusClicked, LV_EVENT_CLICKED, state);
+
+    // Store state in container.
+    lv_obj_set_user_data(container_, state);
+
+    // Register user callback on container (if provided).
+    if (callback_) {
+        lv_obj_add_event_cb(container_, callback_, LV_EVENT_VALUE_CHANGED, user_data_);
+    }
+
+    // Cleanup callback.
+    lv_obj_add_event_cb(container_, [](lv_event_t* e) {
+        if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+        lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+        auto* st = static_cast<ActionStepperState*>(lv_obj_get_user_data(obj));
+        delete st;
+    }, LV_EVENT_DELETE, nullptr);
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+void LVGLBuilder::ActionStepperBuilder::onMinusClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    // Decrement value.
+    state->value -= state->step;
+    if (state->value < state->min) {
+        state->value = state->min;
+    }
+
+    spdlog::info("ActionStepper: Decremented to {}", state->value);
+
+    // Update display.
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
+    lv_label_set_text(state->valueLabel, buf);
+
+    // Trigger VALUE_CHANGED event on container.
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    lv_obj_t* container = lv_obj_get_parent(btn); // btn is direct child of container.
+    if (container) {
+        lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
+    }
+}
+
+void LVGLBuilder::ActionStepperBuilder::onPlusClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    // Increment value.
+    state->value += state->step;
+    if (state->value > state->max) {
+        state->value = state->max;
+    }
+
+    spdlog::info("ActionStepper: Incremented to {}", state->value);
+
+    // Update display.
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
+    lv_label_set_text(state->valueLabel, buf);
+
+    // Trigger VALUE_CHANGED event on container.
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    lv_obj_t* container = lv_obj_get_parent(btn); // btn is direct child of container.
+    if (container) {
+        lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
+    }
+}
+
+int32_t LVGLBuilder::ActionStepperBuilder::getValue(lv_obj_t* container)
+{
+    if (!container) return 0;
+
+    auto* state = static_cast<ActionStepperState*>(lv_obj_get_user_data(container));
+    if (!state) return 0;
+
+    return state->value;
+}
+
+void LVGLBuilder::ActionStepperBuilder::setValue(lv_obj_t* container, int32_t value)
+{
+    if (!container) return;
+
+    auto* state = static_cast<ActionStepperState*>(lv_obj_get_user_data(container));
+    if (!state) return;
+
+    // Clamp value to range.
+    state->value = std::clamp(value, state->min, state->max);
+
+    // Update display.
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
+    lv_label_set_text(state->valueLabel, buf);
+}
+
+LVGLBuilder::ActionStepperBuilder LVGLBuilder::actionStepper(lv_obj_t* parent)
+{
+    return ActionStepperBuilder(parent);
 }

@@ -100,19 +100,17 @@ void SandboxControls::createWidgets()
                             .callback(onRightThrowToggled, this)
                             .buildOrLog();
 
-    // Rain toggle slider - fancy control with enable/disable toggle.
-    rainControl_ = ToggleSlider::create(controlsContainer_)
+    // Rain stepper (0 = off, 1-100 = rain rate 0.1-10.0).
+    rainStepper_ = LVGLBuilder::actionStepper(controlsContainer_)
                        .label("Rain")
                        .range(0, 100)
+                       .step(5)
                        .value(0)
-                       .defaultValue(50)
-                       .valueScale(0.1)
                        .valueFormat("%.1f")
-                       .initiallyEnabled(false)
-                       .sliderWidth(180)
-                       .onToggle([this](bool enabled) { onRainToggled(enabled); })
-                       .onValueChange([this](int value) { onRainSliderChanged(value); })
-                       .build();
+                       .valueScale(0.1)
+                       .width(LV_PCT(95))
+                       .callback(onRainChanged, this)
+                       .buildOrLog();
 }
 
 SandboxControls::~SandboxControls()
@@ -167,16 +165,11 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
         }
     }
 
-    // Update rain control.
-    if (rainControl_) {
-        bool shouldBeEnabled = config.rainRate > 0.0;
-        int sliderValue = static_cast<int>(config.rainRate * 10); // Scale to [0, 100].
-        rainControl_->setEnabled(shouldBeEnabled);
-        if (shouldBeEnabled) {
-            rainControl_->setValue(sliderValue);
-        }
-        spdlog::debug(
-            "SandboxControls: Updated rain control (enabled={}, value={})", shouldBeEnabled, sliderValue);
+    // Update rain stepper.
+    if (rainStepper_) {
+        int stepperValue = static_cast<int>(config.rainRate * 10); // Scale to [0, 100].
+        LVGLBuilder::ActionStepperBuilder::setValue(rainStepper_, stepperValue);
+        spdlog::debug("SandboxControls: Updated rain stepper to {}", stepperValue);
     }
 
     // Restore initializing state.
@@ -209,13 +202,9 @@ Config::Sandbox SandboxControls::getCurrentConfig() const
         config.rightThrowEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(rightThrowSwitch_);
     }
 
-    if (rainControl_) {
-        if (rainControl_->isEnabled()) {
-            config.rainRate = rainControl_->getScaledValue();
-        }
-        else {
-            config.rainRate = 0.0;
-        }
+    if (rainStepper_) {
+        int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(rainStepper_);
+        config.rainRate = value * 0.1; // Convert [0, 100] to [0.0, 10.0].
     }
 
     return config;
@@ -340,44 +329,29 @@ void SandboxControls::onRightThrowToggled(lv_event_t* e)
     self->sendConfigUpdate(config);
 }
 
-void SandboxControls::onRainToggled(bool enabled)
+void SandboxControls::onRainChanged(lv_event_t* e)
 {
-    // Don't send updates during initialization.
-    if (initializing_) {
-        spdlog::debug("SandboxControls: Ignoring rain toggle during initialization");
+    SandboxControls* self = static_cast<SandboxControls*>(lv_event_get_user_data(e));
+    if (!self || !self->rainStepper_) {
+        spdlog::error("SandboxControls: onRainChanged called with null self or stepper");
         return;
     }
 
-    spdlog::info("SandboxControls: Rain toggled to {}", enabled ? "ON" : "OFF");
-
-    // Get current config and update.
-    Config::Sandbox config = getCurrentConfig();
-    sendConfigUpdate(config);
-}
-
-void SandboxControls::onRainSliderChanged(int value)
-{
     // Don't send updates during initialization.
-    if (initializing_) {
-        spdlog::debug("SandboxControls: Ignoring rain slider during initialization");
+    if (self->initializing_) {
+        spdlog::debug("SandboxControls: Ignoring rain change during initialization");
         return;
     }
 
+    // Get value from stepper.
+    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->rainStepper_);
     double rainRate = value * 0.1;
-
-    // Track last value to prevent redundant updates.
-    static double lastRainRate = -1.0;
-    if (std::abs(rainRate - lastRainRate) < 0.01) {
-        // Value hasn't changed - don't send update.
-        return;
-    }
-    lastRainRate = rainRate;
 
     spdlog::info("SandboxControls: Rain rate changed to {:.1f}", rainRate);
 
     // Get complete current config from all controls.
-    Config::Sandbox config = getCurrentConfig();
-    sendConfigUpdate(config);
+    Config::Sandbox config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
 }
 
 } // namespace Ui

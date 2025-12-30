@@ -47,9 +47,10 @@ public:
      */
     struct Style {
         // Control dimensions.
-        static constexpr int CONTROL_HEIGHT = 56;        // Standard height for buttons/switches.
-        static constexpr int CONTROL_WIDTH = LV_PCT(80); // Standard width (80% of container).
-        static constexpr int RADIUS = 8;                 // Corner radius for rounded controls.
+        static constexpr int CONTROL_HEIGHT = 56;
+        static constexpr int CONTROL_WIDTH = LV_PCT(80);
+        static constexpr int RADIUS = 8;
+        static constexpr int ACTION_SIZE = 80;
 
         // Slider dimensions.
         static constexpr int SLIDER_TRACK_HEIGHT = 15;
@@ -586,7 +587,7 @@ public:
         std::string icon_;
         ActionMode mode_ = ActionMode::Push;
         bool initial_checked_ = false;
-        int size_ = 80;                                  // Square dimension.
+        int size_ = Style::ACTION_SIZE;
         int trough_padding_ = Style::TROUGH_PADDING;
 
         uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
@@ -690,6 +691,92 @@ public:
     };
 
     /**
+     * @brief ActionStepperBuilder - Creates a stepper control with − value + layout.
+     *
+     * Visual structure (80px tall to match ActionButton):
+     * ┌─────────┬─────────────────┬─────────┐
+     * │         │      Label      │         │
+     * │    −    │      5.0        │    +    │
+     * │         │                 │         │
+     * └─────────┴─────────────────┴─────────┘
+     *
+     * Three sections inside one trough: minus button, center label+value, plus button.
+     */
+    class ActionStepperBuilder {
+    public:
+        explicit ActionStepperBuilder(lv_obj_t* parent);
+
+        // Label displayed above the value.
+        ActionStepperBuilder& label(const char* text);
+
+        // Value range and step.
+        ActionStepperBuilder& range(int32_t min, int32_t max);
+        ActionStepperBuilder& step(int32_t stepSize);
+        ActionStepperBuilder& value(int32_t initialValue);
+
+        // Display formatting.
+        ActionStepperBuilder& valueFormat(const char* fmt);  // e.g., "%.1f"
+        ActionStepperBuilder& valueScale(double scale);      // Display as value * scale.
+
+        // Sizing.
+        ActionStepperBuilder& width(int w);
+        ActionStepperBuilder& height(int h);  // Default 80 to match ActionButton.
+
+        // Colors.
+        ActionStepperBuilder& backgroundColor(uint32_t color);
+        ActionStepperBuilder& troughColor(uint32_t color);
+        ActionStepperBuilder& textColor(uint32_t color);
+        ActionStepperBuilder& buttonColor(uint32_t color);
+
+        // Event handling (called on value change).
+        ActionStepperBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        // Build the stepper (returns the outer trough container).
+        Result<lv_obj_t*, std::string> build();
+        lv_obj_t* buildOrLog();
+
+        // Access to created objects.
+        lv_obj_t* getContainer() const { return container_; }
+
+        // Runtime helpers.
+        static int32_t getValue(lv_obj_t* container);
+        static void setValue(lv_obj_t* container, int32_t value);
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_;      // Outer trough.
+        lv_obj_t* minusBtn_;
+        lv_obj_t* plusBtn_;
+        lv_obj_t* labelObj_;
+        lv_obj_t* valueObj_;
+
+        std::string label_text_;
+        std::string value_format_ = "%.0f";
+        int32_t min_ = 0;
+        int32_t max_ = 100;
+        int32_t step_ = 1;
+        int32_t value_ = 0;
+        double value_scale_ = 1.0;
+
+        int width_ = LV_PCT(95);
+        int height_ = Style::ACTION_SIZE;
+
+        uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
+        uint32_t trough_color_ = Style::TROUGH_COLOR;
+        uint32_t text_color_ = 0xFFFFFF;
+        uint32_t button_color_ = Style::TROUGH_INNER_COLOR;
+
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createActionStepper();
+        void updateValueDisplay();
+
+        static void onMinusClicked(lv_event_t* e);
+        static void onPlusClicked(lv_event_t* e);
+    };
+
+    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -765,6 +852,7 @@ public:
     static CollapsiblePanelBuilder collapsiblePanel(lv_obj_t* parent);
     static ActionButtonBuilder actionButton(lv_obj_t* parent);
     static ActionDropdownBuilder actionDropdown(lv_obj_t* parent);
+    static ActionStepperBuilder actionStepper(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {
