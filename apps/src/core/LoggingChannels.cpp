@@ -231,7 +231,26 @@ bool LoggingChannels::initializeFromConfig(
 
 bool LoggingChannels::createDefaultConfigFile(const std::string& path)
 {
-    // Default configuration.
+    // Default configuration (differs for production vs development builds).
+#ifdef DIRTSIM_PRODUCTION_BUILD
+    // Production defaults: less verbose, rotating logs.
+    nlohmann::json defaultConfig = {
+        { "defaults",
+          { { "console_level", "info" },
+            { "file_level", "info" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
+            { "flush_interval_ms", 1000 } } },
+        { "sinks",
+          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
+            { "file",
+              { { "enabled", true },
+                { "level", "info" },
+                { "path", "dirtsim.log" },
+                { "truncate", false },
+                { "max_size_mb", 10 },
+                { "max_files", 3 } } },
+#else
+    // Development defaults: verbose logging, truncate for fresh logs each run.
     nlohmann::json defaultConfig = {
         { "defaults",
           { { "console_level", "info" },
@@ -247,6 +266,7 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
                 { "truncate", true },
                 { "max_size_mb", 100 },
                 { "max_files", 3 } } },
+#endif
             { "specialized",
               { { "swap_trace",
                   { { "enabled", false },
@@ -268,7 +288,11 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
             { "physics", "info" },
             { "pressure", "info" },
             { "scenario", "info" },
+#ifdef DIRTSIM_PRODUCTION_BUILD
+            { "state", "info" },
+#else
             { "state", "debug" },
+#endif
             { "support", "info" },
             { "swap", "info" },
             { "ui", "info" },
@@ -297,7 +321,26 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
 {
     namespace fs = std::filesystem;
 
-    // Default configuration (in-memory fallback).
+    // Default configuration (in-memory fallback, differs for production vs development).
+#ifdef DIRTSIM_PRODUCTION_BUILD
+    // Production defaults.
+    nlohmann::json defaultConfig = {
+        { "defaults",
+          { { "console_level", "info" },
+            { "file_level", "info" },
+            { "pattern", "[%H:%M:%S.%e] [%n] [%^%l%$] [%s:%#] %v" },
+            { "flush_interval_ms", 1000 } } },
+        { "sinks",
+          { { "console", { { "enabled", true }, { "level", "info" }, { "colored", true } } },
+            { "file",
+              { { "enabled", true },
+                { "level", "info" },
+                { "path", "dirtsim.log" },
+                { "truncate", false },
+                { "max_size_mb", 10 },
+                { "max_files", 3 } } } } },
+#else
+    // Development defaults.
     nlohmann::json defaultConfig = {
         { "defaults",
           { { "console_level", "info" },
@@ -311,6 +354,7 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
                 { "level", "debug" },
                 { "path", "dirtsim.log" },
                 { "truncate", true } } } } },
+#endif
         { "channels",
           { { "brain", "info" },
             { "collision", "info" },
@@ -320,7 +364,11 @@ nlohmann::json LoggingChannels::loadConfigFile(const std::string& configPath)
             { "physics", "info" },
             { "pressure", "info" },
             { "scenario", "info" },
+#ifdef DIRTSIM_PRODUCTION_BUILD
+            { "state", "info" },
+#else
             { "state", "debug" },
+#endif
             { "support", "info" },
             { "swap", "info" },
             { "ui", "info" },

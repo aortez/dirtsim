@@ -7,7 +7,7 @@ Requires=dirtsim-server.service
 Type=simple
 User=dirtsim
 Group=video
-WorkingDirectory=/home/dirtsim/dirtsim
+WorkingDirectory=/data/dirtsim
 
 # Unbind kernel console from framebuffer so dmesg doesn't draw over LVGL.
 # Pi4 has vtcon1 (framebuffer console), Pi5 only has vtcon0 (dummy).

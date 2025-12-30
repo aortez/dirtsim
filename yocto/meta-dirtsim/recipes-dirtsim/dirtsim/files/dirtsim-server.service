@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=dirtsim
-WorkingDirectory=/home/dirtsim/dirtsim
+WorkingDirectory=/data/dirtsim
 ExecStart=/usr/bin/dirtsim-server -p 8080
 Restart=always
 RestartSec=5
