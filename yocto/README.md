@@ -178,23 +178,45 @@ The image uses **A/B partitions** for safe remote updates - no more corrupted fi
 ```bash
 npm run yolo                            # Build + flash to inactive slot + reboot
 npm run yolo -- --target 192.168.1.50   # Target a specific host (default: dirtsim.local)
+npm run yolo -- --fast                  # Fast dev deploy (~10s, see below)
 npm run yolo -- --clean                 # Force rebuild (cleans sstate first)
 npm run yolo -- --skip-build            # Flash existing image (skip kas build)
 npm run yolo -- --hold-my-mead          # Skip confirmation prompt (for scripts)
 npm run yolo -- --dry-run               # Show what would happen
 ```
 
-### Quick Deploy (Userspace Apps)
+### Fast Dev Deploy (--fast)
 
-For fast iteration on application code without rebuilding the full image:
+For rapid iteration on application code (~10s instead of ~2min):
 
 ```bash
-npm run deploy          # Deploy both server and UI (~20-60s)
+./update.sh --target dirtsim.local --fast   # Build + deploy + restart (~10s)
+```
+
+**What it does:**
+1. Runs `ninja` directly (bypasses kas/bitbake overhead)
+2. Strips binaries (109MB → 5.5MB, 151MB → 3.8MB)
+3. SCPs stripped binaries to Pi
+4. Restarts services (no reboot needed)
+
+**When to use:**
+- App code changes only (C++ in `apps/`)
+- Pi is already running with SSH access
+- You ran a full build at least once (ninja build dirs exist)
+
+**When NOT to use:**
+- Kernel, systemd, or new package changes (need full update)
+- First deployment to a new device (need flash)
+
+### Quick Deploy (Legacy)
+
+The older `npm run deploy` also works but is slower (~60s) as it still uses bitbake:
+
+```bash
+npm run deploy          # Deploy both server and UI (~60s)
 npm run deploy server   # Deploy server only
 npm run deploy ui       # Deploy UI only
 ```
-
-This cross-compiles via Yocto, SCPs binaries to the Pi, and restarts services. Much faster than a full YOLO update when you're just changing application code.
 
 **How it works:**
 1. Builds the image (unless `--skip-build`)

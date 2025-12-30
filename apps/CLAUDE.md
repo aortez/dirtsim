@@ -290,7 +290,8 @@ The project uses Yocto to build complete bootable images for the Pi.
 **Deploy from workstation:**
 ```bash
 cd ../yocto
-npm run yolo -- --hold-my-mead          # Build + deploy + reboot
+./update.sh --target dirtsim.local --fast   # Fast dev deploy (~10s)
+npm run yolo -- --hold-my-mead              # Full update + reboot (~2min)
 npm run yolo -- --clean-all --hold-my-mead  # Full rebuild + deploy
 ```
 

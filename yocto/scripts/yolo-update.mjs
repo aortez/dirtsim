@@ -14,6 +14,7 @@
  *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
  *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + image)
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
+ *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
  *   npm run yolo -- --dry-run                 # Show what would happen
  *   npm run yolo -- --help                    # Show help
  */
@@ -136,6 +137,213 @@ function findLatestRootfs() {
 }
 
 // ============================================================================
+// Fast Deploy Mode (Direct ninja + scp + restart)
+// ============================================================================
+
+// Build directory paths for ninja builds.
+const WORK_DIR = join(YOCTO_DIR, 'build/tmp/work');
+const ARCH_PATTERNS = ['cortexa72-poky-linux', 'cortexa76-poky-linux'];
+
+// Cross-toolchain strip for reducing binary size.
+const STRIP_TOOL = join(YOCTO_DIR, 'build/tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip');
+
+/**
+ * Find the build directory for a recipe.
+ * Returns the most recently modified build directory across architectures.
+ */
+function findBuildDir(recipe) {
+  for (const arch of ARCH_PATTERNS) {
+    const buildDir = join(WORK_DIR, arch, recipe, 'git/build');
+    if (existsSync(buildDir)) {
+      return buildDir;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the binary path for a recipe.
+ */
+function findBinary(recipe, binaryName) {
+  const buildDir = findBuildDir(recipe);
+  if (!buildDir) return null;
+
+  const binaryPath = join(buildDir, 'bin', binaryName);
+  return existsSync(binaryPath) ? binaryPath : null;
+}
+
+/**
+ * Fast deploy: ninja build + scp binaries + restart services.
+ * Skips rootfs regeneration, image creation, and flash/reboot.
+ */
+async function fastDeploy(remoteHost, remoteTarget, dryRun) {
+  const startTime = Date.now();
+
+  log('');
+  log(`${colors.bold}${colors.cyan}Sparkle Duck Fast Deploy${colors.reset}`);
+  log(`${colors.dim}(ninja build + scp + restart)${colors.reset}`);
+  if (dryRun) {
+    log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
+  }
+  log('');
+
+  // Check Pi is reachable.
+  if (!checkRemoteReachable(remoteHost, remoteTarget)) {
+    error(`Cannot reach ${remoteHost}`);
+    error('Make sure the Pi is running and accessible via SSH.');
+    process.exit(1);
+  }
+  success(`${remoteHost} is reachable`);
+
+  // Find build directories.
+  const uiBuildDir = findBuildDir('dirtsim-ui');
+  const serverBuildDir = findBuildDir('dirtsim-server');
+
+  if (!uiBuildDir && !serverBuildDir) {
+    error('No build directories found.');
+    error('Run a full build first: ./update.sh --target <host>');
+    process.exit(1);
+  }
+
+  // Build with ninja.
+  banner('Building with ninja...', consola);
+
+  const targets = [];
+  if (uiBuildDir) {
+    info(`UI build dir: ${uiBuildDir}`);
+    targets.push({ name: 'dirtsim-ui', buildDir: uiBuildDir, target: 'dirtsim-ui' });
+  }
+  if (serverBuildDir) {
+    info(`Server build dir: ${serverBuildDir}`);
+    targets.push({ name: 'dirtsim-server', buildDir: serverBuildDir, target: 'dirtsim-server' });
+  }
+
+  for (const t of targets) {
+    if (!dryRun) {
+      try {
+        info(`Building ${t.name}...`);
+        execSync(`ninja ${t.target}`, { cwd: t.buildDir, stdio: 'inherit' });
+      } catch (err) {
+        error(`Failed to build ${t.name}`);
+        process.exit(1);
+      }
+    } else {
+      info(`Would build ${t.name} in ${t.buildDir}`);
+    }
+  }
+  success('Build complete!');
+
+  // Find binaries.
+  const binaries = [];
+  const uiBinary = findBinary('dirtsim-ui', 'dirtsim-ui');
+  const serverBinary = findBinary('dirtsim-server', 'dirtsim-server');
+
+  if (uiBinary) {
+    const stat = statSync(uiBinary);
+    binaries.push({
+      name: 'dirtsim-ui',
+      path: uiBinary,
+      size: stat.size,
+      service: 'dirtsim-ui',
+      remotePath: '/usr/bin/dirtsim-ui',
+    });
+  }
+  if (serverBinary) {
+    const stat = statSync(serverBinary);
+    binaries.push({
+      name: 'dirtsim-server',
+      path: serverBinary,
+      size: stat.size,
+      service: 'dirtsim-server',
+      remotePath: '/usr/bin/dirtsim-server',
+    });
+  }
+
+  if (binaries.length === 0) {
+    error('No binaries found after build.');
+    process.exit(1);
+  }
+
+  // Strip and transfer binaries.
+  banner('Stripping and transferring binaries...', consola);
+
+  const hasStrip = existsSync(STRIP_TOOL);
+  if (!hasStrip) {
+    warn('Cross-strip tool not found, transferring unstripped binaries (slower).');
+  }
+
+  for (const bin of binaries) {
+    info(`${bin.name}: ${formatBytes(bin.size)} (unstripped)`);
+
+    if (!dryRun) {
+      try {
+        // Strip to temp file to avoid modifying build output.
+        const strippedPath = `/tmp/${bin.name}.stripped`;
+        if (hasStrip) {
+          execSync(`cp "${bin.path}" "${strippedPath}" && "${STRIP_TOOL}" "${strippedPath}"`, { stdio: 'pipe' });
+          const strippedStat = statSync(strippedPath);
+          info(`${bin.name}: ${formatBytes(strippedStat.size)} (stripped)`);
+          execSync(`scp -o BatchMode=yes "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          unlinkSync(strippedPath);
+        } else {
+          execSync(`scp -o BatchMode=yes "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+        }
+        success(`${bin.name} transferred`);
+      } catch (err) {
+        error(`Failed to transfer ${bin.name}`);
+        process.exit(1);
+      }
+    } else {
+      info(`Would strip and scp ${bin.path} to ${remoteTarget}:/tmp/${bin.name}`);
+    }
+  }
+
+  // Stop services, copy binaries, start services.
+  banner('Restarting services...', consola);
+
+  const serviceNames = binaries.map(b => b.service).join(' ');
+  const copyCommands = binaries.map(b => `sudo cp /tmp/${b.name} ${b.remotePath}`).join(' && ');
+
+  const remoteCmd = `sudo systemctl stop ${serviceNames} && ${copyCommands} && sudo systemctl start ${serviceNames}`;
+
+  // Delete old binaries before copying to avoid "no space" errors when rootfs is tight.
+  const deleteCommands = binaries.map(b => `sudo rm -f ${b.remotePath}`).join(' && ');
+
+  if (!dryRun) {
+    try {
+      info('Stopping services...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl stop ${serviceNames}"`, { stdio: 'pipe' });
+
+      info('Removing old binaries...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${deleteCommands}"`, { stdio: 'pipe' });
+
+      info('Copying new binaries...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${copyCommands}"`, { stdio: 'pipe' });
+
+      info('Starting services...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl start ${serviceNames}"`, { stdio: 'pipe' });
+
+      success('Services restarted!');
+    } catch (err) {
+      error('Failed to restart services');
+      error(err.message);
+      process.exit(1);
+    }
+  } else {
+    info(`Would run on Pi: ${deleteCommands} && ${remoteCmd}`);
+  }
+
+  // Done!
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  log('');
+  log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  success(`Fast deploy complete in ${elapsed}s!`);
+  info(`Connect with: ssh ${remoteTarget}`);
+  log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  log('');
+}
+
+// ============================================================================
 // Main Entry Point
 // ============================================================================
 
@@ -147,6 +355,7 @@ async function main() {
   const forceCleanAll = args.includes('--clean-all');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
+  const fastMode = args.includes('--fast');
 
   // Parse --target <hostname> argument.
   const targetIdx = args.indexOf('--target');
@@ -162,6 +371,8 @@ async function main() {
     log('Options:');
     log('  --target <host>  Target hostname or IP (default: dirtsim.local)');
     log('  --skip-build     Skip kas build, use existing image');
+    log('  --fast           Fast dev deploy: ninja build + scp binaries + restart');
+    log('                   Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean          Force rebuild by cleaning image sstate first');
     log('  --clean-all      Force full rebuild (cleans server + image sstate)');
     log('  --dry-run        Show what would happen without doing it');
@@ -170,6 +381,12 @@ async function main() {
     log('');
     log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
+  }
+
+  // Fast mode: ninja build + scp + restart (skip rootfs/image/flash).
+  if (fastMode) {
+    await fastDeploy(remoteHost, remoteTarget, dryRun);
+    return;
   }
 
   log('');
