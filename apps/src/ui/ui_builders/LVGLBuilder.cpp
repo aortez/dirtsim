@@ -1941,3 +1941,320 @@ LVGLBuilder::CollapsiblePanelBuilder LVGLBuilder::collapsiblePanel(lv_obj_t* par
 {
     return CollapsiblePanelBuilder(parent);
 }
+
+LVGLBuilder::ActionButtonBuilder LVGLBuilder::actionButton(lv_obj_t* parent)
+{
+    return ActionButtonBuilder(parent);
+}
+
+// ============================================================================
+// ActionButtonBuilder Implementation
+// ============================================================================
+
+LVGLBuilder::ActionButtonBuilder::ActionButtonBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr), button_(nullptr), label_(nullptr), icon_label_(nullptr)
+{}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::text(const char* txt)
+{
+    if (txt) {
+        text_ = txt;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::icon(const char* symbol)
+{
+    if (symbol) {
+        icon_ = symbol;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::mode(ActionMode m)
+{
+    mode_ = m;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::checked(bool initial)
+{
+    initial_checked_ = initial;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::size(int dimension)
+{
+    size_ = dimension;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::troughPadding(int px)
+{
+    trough_padding_ = px;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::backgroundColor(uint32_t color)
+{
+    bg_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::troughColor(uint32_t color)
+{
+    trough_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::glowColor(uint32_t color)
+{
+    glow_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::textColor(uint32_t color)
+{
+    text_color_ = color;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "ActionButtonBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createActionButton();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug(
+        "ActionButtonBuilder: Successfully created action button '{}' ({}x{}, mode={})",
+        text_,
+        size_,
+        size_,
+        mode_ == ActionMode::Toggle ? "toggle" : "push");
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::ActionButtonBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("ActionButtonBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionButton()
+{
+    // Create outer container (the trough).
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "ActionButtonBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Style the trough - dark, inset appearance.
+    lv_obj_set_size(container_, size_, size_);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(trough_color_), 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(container_, 8, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_all(container_, trough_padding_, 0);
+
+    // Remove scrollbars from container.
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_remove_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create inner button face.
+    button_ = lv_btn_create(container_);
+    if (!button_) {
+        std::string error = "ActionButtonBuilder: Failed to create button";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    // Button fills the container minus padding.
+    lv_obj_set_size(button_, LV_PCT(100), LV_PCT(100));
+    lv_obj_center(button_);
+
+    // Style the button face.
+    lv_obj_set_style_bg_color(button_, lv_color_hex(bg_color_), 0);
+    lv_obj_set_style_bg_opa(button_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(button_, 6, 0);
+    lv_obj_set_style_border_width(button_, 0, 0);
+
+    // Pressed state - slightly darker.
+    lv_obj_set_style_bg_color(button_, lv_color_hex(bg_color_ - 0x101010), LV_STATE_PRESSED);
+
+    // No shadow by default (off state).
+    lv_obj_set_style_shadow_width(button_, 0, 0);
+    lv_obj_set_style_shadow_spread(button_, 0, 0);
+
+    // Set up flex layout for icon + text.
+    lv_obj_set_flex_flow(button_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(button_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(button_, 4, 0);
+    lv_obj_set_style_pad_row(button_, 2, 0);
+
+    // Create icon label if provided.
+    if (!icon_.empty()) {
+        icon_label_ = lv_label_create(button_);
+        if (icon_label_) {
+            lv_label_set_text(icon_label_, icon_.c_str());
+            lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
+            lv_obj_set_style_text_font(icon_label_, &lv_font_montserrat_20, 0);
+        }
+    }
+
+    // Create text label.
+    if (!text_.empty()) {
+        label_ = lv_label_create(button_);
+        if (label_) {
+            lv_label_set_text(label_, text_.c_str());
+            lv_obj_set_style_text_color(label_, lv_color_hex(text_color_), 0);
+            // Use smaller font if we also have an icon, or if text is long.
+            bool use_small_font = !icon_.empty() || text_.length() > 8;
+            lv_obj_set_style_text_font(
+                label_, use_small_font ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_align(label_, LV_TEXT_ALIGN_CENTER, 0);
+            lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
+            // Limit label width to button width minus padding.
+            lv_obj_set_width(label_, size_ - trough_padding_ * 2 - 12);
+        }
+    }
+
+    // Allocate and store state for toggle behavior.
+    ActionButtonState* state = new ActionButtonState{
+        .is_toggle = (mode_ == ActionMode::Toggle),
+        .is_checked = initial_checked_,
+        .glow_color = glow_color_,
+        .button = button_,
+        .user_callback = nullptr, // Not used - we register user callback separately.
+        .user_data = nullptr
+    };
+    lv_obj_set_user_data(container_, state);
+
+    // Add our internal click handler for toggle behavior.
+    lv_obj_add_event_cb(button_, onButtonClicked, LV_EVENT_CLICKED, container_);
+
+    // Add user's callback separately with their user_data.
+    if (callback_) {
+        lv_obj_add_event_cb(button_, callback_, LV_EVENT_CLICKED, user_data_);
+    }
+
+    // Add cleanup handler for when container is deleted.
+    lv_obj_add_event_cb(
+        container_,
+        [](lv_event_t* e) {
+            lv_obj_t* cont = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            ActionButtonState* st = static_cast<ActionButtonState*>(lv_obj_get_user_data(cont));
+            delete st;
+        },
+        LV_EVENT_DELETE,
+        nullptr);
+
+    // Apply initial checked style if toggle mode and initially checked.
+    if (mode_ == ActionMode::Toggle && initial_checked_) {
+        applyCheckedStyle(true);
+    }
+
+    // Allow touch to cancel by dragging away.
+    lv_obj_remove_flag(button_, LV_OBJ_FLAG_PRESS_LOCK);
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+void LVGLBuilder::ActionButtonBuilder::onButtonClicked(lv_event_t* e)
+{
+    lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
+    if (!container) return;
+
+    ActionButtonState* state = static_cast<ActionButtonState*>(lv_obj_get_user_data(container));
+    if (!state) return;
+
+    if (state->is_toggle) {
+        // Toggle the state.
+        state->is_checked = !state->is_checked;
+
+        // Apply visual update.
+        if (state->is_checked) {
+            // ON: Add glow shadow.
+            lv_obj_set_style_shadow_color(state->button, lv_color_hex(state->glow_color), 0);
+            lv_obj_set_style_shadow_width(state->button, 15, 0);
+            lv_obj_set_style_shadow_spread(state->button, 3, 0);
+            lv_obj_set_style_shadow_opa(state->button, LV_OPA_80, 0);
+        }
+        else {
+            // OFF: Remove glow.
+            lv_obj_set_style_shadow_width(state->button, 0, 0);
+            lv_obj_set_style_shadow_spread(state->button, 0, 0);
+        }
+    }
+    // User callback is registered separately and will be called by LVGL after this handler.
+}
+
+void LVGLBuilder::ActionButtonBuilder::applyCheckedStyle(bool checked)
+{
+    if (!button_) return;
+
+    if (checked) {
+        // ON: Add glow shadow.
+        lv_obj_set_style_shadow_color(button_, lv_color_hex(glow_color_), 0);
+        lv_obj_set_style_shadow_width(button_, 15, 0);
+        lv_obj_set_style_shadow_spread(button_, 3, 0);
+        lv_obj_set_style_shadow_opa(button_, LV_OPA_80, 0);
+    }
+    else {
+        // OFF: Remove glow.
+        lv_obj_set_style_shadow_width(button_, 0, 0);
+        lv_obj_set_style_shadow_spread(button_, 0, 0);
+    }
+}
+
+void LVGLBuilder::ActionButtonBuilder::setChecked(lv_obj_t* container, bool checked)
+{
+    if (!container) return;
+
+    ActionButtonState* state = static_cast<ActionButtonState*>(lv_obj_get_user_data(container));
+    if (!state || !state->is_toggle) return;
+
+    state->is_checked = checked;
+
+    if (checked) {
+        lv_obj_set_style_shadow_color(state->button, lv_color_hex(state->glow_color), 0);
+        lv_obj_set_style_shadow_width(state->button, 15, 0);
+        lv_obj_set_style_shadow_spread(state->button, 3, 0);
+        lv_obj_set_style_shadow_opa(state->button, LV_OPA_80, 0);
+    }
+    else {
+        lv_obj_set_style_shadow_width(state->button, 0, 0);
+        lv_obj_set_style_shadow_spread(state->button, 0, 0);
+    }
+}
+
+bool LVGLBuilder::ActionButtonBuilder::isChecked(lv_obj_t* container)
+{
+    if (!container) return false;
+
+    ActionButtonState* state = static_cast<ActionButtonState*>(lv_obj_get_user_data(container));
+    if (!state) return false;
+
+    return state->is_checked;
+}

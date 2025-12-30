@@ -506,6 +506,109 @@ public:
     };
 
     /**
+     * @brief ActionMode - Determines button behavior.
+     */
+    enum class ActionMode {
+        Push,  // Momentary action, no latched state.
+        Toggle // Latched on/off state.
+    };
+
+    /**
+     * @brief ActionButtonBuilder - Creates a square button with inset trough and glow effect.
+     *
+     * Layout: Outer trough container with inner button face.
+     * Toggle mode shows colored glow when checked.
+     *
+     * Visual structure:
+     * ┌─────────────────────────┐  ← Outer trough (dark, inset look)
+     * │ ░░░░░░░░░░░░░░░░░░░░░░░ │  ← Padding reveals the trough
+     * │ ░┌───────────────────┐░ │
+     * │ ░│    Button Text    │░ │  ← Inner button face
+     * │ ░└───────────────────┘░ │
+     * └─────────────────────────┘
+     *
+     * ON state: Inner button gets colored shadow that glows into trough.
+     */
+    class ActionButtonBuilder {
+    public:
+        explicit ActionButtonBuilder(lv_obj_t* parent);
+
+        // Text and icon.
+        ActionButtonBuilder& text(const char* text);
+        ActionButtonBuilder& icon(const char* symbol); // LV_SYMBOL_* or emoji, shown above text.
+
+        // Mode and state.
+        ActionButtonBuilder& mode(ActionMode m);
+        ActionButtonBuilder& checked(bool initial); // Initial state for Toggle mode.
+
+        // Sizing - square by default.
+        ActionButtonBuilder& size(int dimension);   // Square size (width = height).
+        ActionButtonBuilder& troughPadding(int px); // Padding between trough and button face.
+
+        // Colors.
+        ActionButtonBuilder& backgroundColor(uint32_t color); // Button face color.
+        ActionButtonBuilder& troughColor(uint32_t color);     // Outer trough color.
+        ActionButtonBuilder& glowColor(uint32_t color);       // Glow color when checked.
+        ActionButtonBuilder& textColor(uint32_t color);
+
+        // Event handling.
+        ActionButtonBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        // Build the action button (returns the outer trough container).
+        Result<lv_obj_t*, std::string> build();
+
+        // Build with automatic error logging.
+        lv_obj_t* buildOrLog();
+
+        // Access to created objects.
+        lv_obj_t* getContainer() const { return container_; }
+        lv_obj_t* getButton() const { return button_; }
+        lv_obj_t* getLabel() const { return label_; }
+        lv_obj_t* getIconLabel() const { return icon_label_; }
+
+        // Runtime state control (for Toggle mode).
+        static void setChecked(lv_obj_t* container, bool checked);
+        static bool isChecked(lv_obj_t* container);
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_; // Outer trough.
+        lv_obj_t* button_;    // Inner button face.
+        lv_obj_t* label_;     // Text label.
+        lv_obj_t* icon_label_; // Icon label (optional).
+
+        std::string text_;
+        std::string icon_;
+        ActionMode mode_ = ActionMode::Push;
+        bool initial_checked_ = false;
+        int size_ = 80;          // Square dimension.
+        int trough_padding_ = 4; // Padding for trough visibility.
+
+        uint32_t bg_color_ = 0x404040;      // Button face.
+        uint32_t trough_color_ = 0x202020;  // Dark trough.
+        uint32_t glow_color_ = 0x00CC00;    // Green glow when on.
+        uint32_t text_color_ = 0xFFFFFF;
+
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createActionButton();
+        static void onButtonClicked(lv_event_t* e);
+
+        // State stored in container's user data.
+        struct ActionButtonState {
+            bool is_toggle;
+            bool is_checked;
+            uint32_t glow_color;
+            lv_obj_t* button; // Inner button for styling.
+            lv_event_cb_t user_callback;
+            void* user_data;
+        };
+
+        void applyCheckedStyle(bool checked);
+    };
+
+    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -579,6 +682,7 @@ public:
     static LabeledSwitchBuilder labeledSwitch(lv_obj_t* parent);
     static ToggleSliderBuilder toggleSlider(lv_obj_t* parent);
     static CollapsiblePanelBuilder collapsiblePanel(lv_obj_t* parent);
+    static ActionButtonBuilder actionButton(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {

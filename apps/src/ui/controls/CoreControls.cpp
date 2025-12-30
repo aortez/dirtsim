@@ -27,21 +27,23 @@ CoreControls::CoreControls(
       eventSink_(eventSink),
       currentRenderMode_(initialMode)
 {
-    // Quit button - red with power icon.
-    quitButton_ = LVGLBuilder::button(container_)
+    // Quit button - red with power icon (push).
+    quitButton_ = LVGLBuilder::actionButton(container_)
                       .text("Quit")
                       .icon(LV_SYMBOL_POWER)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .size(80)
                       .backgroundColor(0xCC0000)
-                      .pressedColor(0x990000)
                       .callback(onQuitClicked, this)
                       .buildOrLog();
 
-    // Reset button - orange with refresh icon.
-    resetButton_ = LVGLBuilder::button(container_)
+    // Reset button - orange with refresh icon (push).
+    resetButton_ = LVGLBuilder::actionButton(container_)
                        .text("Reset")
                        .icon(LV_SYMBOL_REFRESH)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .size(80)
                        .backgroundColor(0xFF8800)
-                       .pressedColor(0xCC6600)
                        .callback(onResetClicked, this)
                        .buildOrLog();
 
@@ -57,9 +59,12 @@ CoreControls::CoreControls(
     lv_obj_set_style_text_color(statsLabelUI_, lv_color_white(), 0);
 
     // Debug toggle.
-    debugSwitch_ = LVGLBuilder::labeledSwitch(container_)
-                       .label("Debug Draw")
-                       .initialState(false)
+    debugSwitch_ = LVGLBuilder::actionButton(container_)
+                       .text("Debug Draw")
+                       .mode(LVGLBuilder::ActionMode::Toggle)
+                       .size(80)
+                       .checked(false)
+                       .glowColor(0x00CC00)
                        .callback(onDebugToggled, this)
                        .buildOrLog();
 
@@ -232,8 +237,9 @@ void CoreControls::onDebugToggled(lv_event_t* e)
 {
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
     if (!self) return;
-    lv_obj_t* switch_obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(switch_obj, LV_STATE_CHECKED);
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->debugSwitch_);
 
     spdlog::info("CoreControls: Debug draw toggled to {}", enabled ? "ON" : "OFF");
 

@@ -31,42 +31,53 @@ SandboxControls::SandboxControls(
 
 void SandboxControls::createWidgets()
 {
-    // Add Seed button - green for growth/life.
-    addSeedButton_ = LVGLBuilder::button(controlsContainer_)
+    // Add Seed button - green for growth/life (push button).
+    addSeedButton_ = LVGLBuilder::actionButton(controlsContainer_)
                          .text("Add Seed")
                          .icon(LV_SYMBOL_PLUS)
+                         .mode(LVGLBuilder::ActionMode::Push)
+                         .size(80)
                          .backgroundColor(0x228B22) // Forest green.
-                         .pressedColor(0x186618)
                          .callback(onAddSeedClicked, this)
                          .buildOrLog();
 
-    // Drop Dirt Ball button - brown/earth tone.
-    dropDirtBallButton_ = LVGLBuilder::button(controlsContainer_)
+    // Drop Dirt Ball button - brown/earth tone (push button).
+    dropDirtBallButton_ = LVGLBuilder::actionButton(controlsContainer_)
                               .text("Drop Dirt")
                               .icon(LV_SYMBOL_DOWNLOAD)
+                              .mode(LVGLBuilder::ActionMode::Push)
+                              .size(80)
                               .backgroundColor(0x8B4513) // Saddle brown.
-                              .pressedColor(0x5C2E0D)
                               .callback(onDropDirtBallClicked, this)
                               .buildOrLog();
 
     // Quadrant toggle.
-    quadrantSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
-                          .label("Quadrant")
-                          .initialState(false)
+    quadrantSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+                          .text("Quadrant")
+                          .mode(LVGLBuilder::ActionMode::Toggle)
+                          .size(80)
+                          .checked(false)
+                          .glowColor(0x00CC00) // Green glow when on.
                           .callback(onQuadrantToggled, this)
                           .buildOrLog();
 
     // Water column toggle.
-    waterColumnSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
-                             .label("Water Column")
-                             .initialState(false)
+    waterColumnSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+                             .text("Water Column")
+                             .mode(LVGLBuilder::ActionMode::Toggle)
+                             .size(80)
+                             .checked(false)
+                             .glowColor(0x0088FF) // Blue glow for water.
                              .callback(onWaterColumnToggled, this)
                              .buildOrLog();
 
     // Right throw toggle.
-    rightThrowSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
-                            .label("Right Throw")
-                            .initialState(false)
+    rightThrowSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+                            .text("Right Throw")
+                            .mode(LVGLBuilder::ActionMode::Toggle)
+                            .size(80)
+                            .checked(false)
+                            .glowColor(0x00CC00)
                             .callback(onRightThrowToggled, this)
                             .buildOrLog();
 
@@ -107,48 +118,33 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
         initializing_ = true;
     }
 
-    // Update quadrant switch.
+    // Update quadrant button.
     if (quadrantSwitch_) {
-        bool currentState = lv_obj_has_state(quadrantSwitch_, LV_STATE_CHECKED);
+        bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(quadrantSwitch_);
         if (currentState != config.quadrantEnabled) {
-            if (config.quadrantEnabled) {
-                lv_obj_add_state(quadrantSwitch_, LV_STATE_CHECKED);
-            }
-            else {
-                lv_obj_remove_state(quadrantSwitch_, LV_STATE_CHECKED);
-            }
+            LVGLBuilder::ActionButtonBuilder::setChecked(quadrantSwitch_, config.quadrantEnabled);
             spdlog::debug(
-                "SandboxControls: Updated quadrant switch to {}", config.quadrantEnabled);
+                "SandboxControls: Updated quadrant button to {}", config.quadrantEnabled);
         }
     }
 
-    // Update water column switch.
+    // Update water column button.
     if (waterColumnSwitch_) {
-        bool currentState = lv_obj_has_state(waterColumnSwitch_, LV_STATE_CHECKED);
+        bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(waterColumnSwitch_);
         if (currentState != config.waterColumnEnabled) {
-            if (config.waterColumnEnabled) {
-                lv_obj_add_state(waterColumnSwitch_, LV_STATE_CHECKED);
-            }
-            else {
-                lv_obj_remove_state(waterColumnSwitch_, LV_STATE_CHECKED);
-            }
+            LVGLBuilder::ActionButtonBuilder::setChecked(waterColumnSwitch_, config.waterColumnEnabled);
             spdlog::info(
-                "SandboxControls: Updated water column switch to {}", config.waterColumnEnabled);
+                "SandboxControls: Updated water column button to {}", config.waterColumnEnabled);
         }
     }
 
-    // Update right throw switch.
+    // Update right throw button.
     if (rightThrowSwitch_) {
-        bool currentState = lv_obj_has_state(rightThrowSwitch_, LV_STATE_CHECKED);
+        bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(rightThrowSwitch_);
         if (currentState != config.rightThrowEnabled) {
-            if (config.rightThrowEnabled) {
-                lv_obj_add_state(rightThrowSwitch_, LV_STATE_CHECKED);
-            }
-            else {
-                lv_obj_remove_state(rightThrowSwitch_, LV_STATE_CHECKED);
-            }
+            LVGLBuilder::ActionButtonBuilder::setChecked(rightThrowSwitch_, config.rightThrowEnabled);
             spdlog::debug(
-                "SandboxControls: Updated right throw switch to {}", config.rightThrowEnabled);
+                "SandboxControls: Updated right throw button to {}", config.rightThrowEnabled);
         }
     }
 
@@ -181,17 +177,17 @@ Config::Sandbox SandboxControls::getCurrentConfig() const
 {
     Config::Sandbox config;
 
-    // Get current state of all controls
+    // Get current state of all controls.
     if (quadrantSwitch_) {
-        config.quadrantEnabled = lv_obj_has_state(quadrantSwitch_, LV_STATE_CHECKED);
+        config.quadrantEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(quadrantSwitch_);
     }
 
     if (waterColumnSwitch_) {
-        config.waterColumnEnabled = lv_obj_has_state(waterColumnSwitch_, LV_STATE_CHECKED);
+        config.waterColumnEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(waterColumnSwitch_);
     }
 
     if (rightThrowSwitch_) {
-        config.rightThrowEnabled = lv_obj_has_state(rightThrowSwitch_, LV_STATE_CHECKED);
+        config.rightThrowEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(rightThrowSwitch_);
     }
 
     if (rainControl_) {
@@ -264,17 +260,17 @@ void SandboxControls::onQuadrantToggled(lv_event_t* e)
         return;
     }
 
-    // Don't send updates during initialization
+    // Don't send updates during initialization.
     if (self->initializing_) {
         spdlog::debug("SandboxControls: Ignoring quadrant toggle during initialization");
         return;
     }
 
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->quadrantSwitch_);
     spdlog::info("SandboxControls: Quadrant toggled to {}", enabled ? "ON" : "OFF");
 
-    // Get complete current config from all controls
+    // Get complete current config from all controls.
     Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
@@ -287,17 +283,17 @@ void SandboxControls::onWaterColumnToggled(lv_event_t* e)
         return;
     }
 
-    // Don't send updates during initialization
+    // Don't send updates during initialization.
     if (self->initializing_) {
         spdlog::debug("SandboxControls: Ignoring water column toggle during initialization");
         return;
     }
 
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->waterColumnSwitch_);
     spdlog::info("SandboxControls: Water Column toggled to {}", enabled ? "ON" : "OFF");
 
-    // Get complete current config from all controls
+    // Get complete current config from all controls.
     Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }
@@ -310,17 +306,17 @@ void SandboxControls::onRightThrowToggled(lv_event_t* e)
         return;
     }
 
-    // Don't send updates during initialization
+    // Don't send updates during initialization.
     if (self->initializing_) {
         spdlog::debug("SandboxControls: Ignoring right throw toggle during initialization");
         return;
     }
 
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->rightThrowSwitch_);
     spdlog::info("SandboxControls: Right Throw toggled to {}", enabled ? "ON" : "OFF");
 
-    // Get complete current config from all controls
+    // Get complete current config from all controls.
     Config::Sandbox config = self->getCurrentConfig();
     self->sendConfigUpdate(config);
 }

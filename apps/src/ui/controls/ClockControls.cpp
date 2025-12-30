@@ -69,9 +69,12 @@ void ClockControls::createWidgets()
     }
 
     // Create show seconds toggle.
-    secondsSwitch_ = LVGLBuilder::labeledSwitch(controlsContainer_)
-                         .label("Show Seconds")
-                         .initialState(true)
+    secondsSwitch_ = LVGLBuilder::actionButton(controlsContainer_)
+                         .text("Show Seconds")
+                         .mode(LVGLBuilder::ActionMode::Toggle)
+                         .size(80)
+                         .checked(true)
+                         .glowColor(0x00CC00)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
 }
@@ -108,15 +111,10 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         spdlog::debug("ClockControls: Updated timezone dropdown to index {}", config.timezoneIndex);
     }
 
-    // Update seconds switch.
+    // Update seconds button.
     if (secondsSwitch_) {
-        if (config.showSeconds) {
-            lv_obj_add_state(secondsSwitch_, LV_STATE_CHECKED);
-        }
-        else {
-            lv_obj_remove_state(secondsSwitch_, LV_STATE_CHECKED);
-        }
-        spdlog::debug("ClockControls: Updated seconds switch to {}", config.showSeconds);
+        LVGLBuilder::ActionButtonBuilder::setChecked(secondsSwitch_, config.showSeconds);
+        spdlog::debug("ClockControls: Updated seconds button to {}", config.showSeconds);
     }
 
     // Restore initializing state.
@@ -140,9 +138,9 @@ Config::Clock ClockControls::getCurrentConfig() const
         config.timezoneIndex = static_cast<uint8_t>(lv_dropdown_get_selected(timezoneDropdown_));
     }
 
-    // Get showSeconds from switch.
+    // Get showSeconds from button.
     if (secondsSwitch_) {
-        config.showSeconds = lv_obj_has_state(secondsSwitch_, LV_STATE_CHECKED);
+        config.showSeconds = LVGLBuilder::ActionButtonBuilder::isChecked(secondsSwitch_);
     }
 
     // Populate display dimensions from getter for auto-scaling.
@@ -226,8 +224,8 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
         return;
     }
 
-    lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    bool enabled = lv_obj_has_state(target, LV_STATE_CHECKED);
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->secondsSwitch_);
 
     spdlog::info("ClockControls: Show seconds toggled to {}", enabled ? "ON" : "OFF");
 

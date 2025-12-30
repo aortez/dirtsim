@@ -107,9 +107,12 @@ void ControlPanel::createCoreControls()
     lv_obj_set_style_border_width(spacer2, 0, 0);
 
     // Debug toggle.
-    debugSwitch_ = LVGLBuilder::labeledSwitch(panelContainer_)
-                       .label("Debug Draw")
-                       .initialState(false)
+    debugSwitch_ = LVGLBuilder::actionButton(panelContainer_)
+                       .text("Debug Draw")
+                       .mode(LVGLBuilder::ActionMode::Toggle)
+                       .size(80)
+                       .checked(false)
+                       .glowColor(0x00CC00)
                        .callback(onDebugToggled, this)
                        .buildOrLog();
 
@@ -181,38 +184,53 @@ void ControlPanel::createSandboxControls(const Config::Sandbox& config)
     lv_obj_t* sandboxLabel = lv_label_create(scenarioPanel_);
     lv_label_set_text(sandboxLabel, "--- Sandbox Controls ---");
 
-    // Add Seed button.
-    sandboxAddSeedButton_ = LVGLBuilder::button(scenarioPanel_)
-                                .size(LV_PCT(90), 40)
+    // Add Seed button (push).
+    sandboxAddSeedButton_ = LVGLBuilder::actionButton(scenarioPanel_)
                                 .text("Add Seed")
+                                .icon(LV_SYMBOL_PLUS)
+                                .mode(LVGLBuilder::ActionMode::Push)
+                                .size(80)
+                                .backgroundColor(0x228B22)
                                 .callback(onAddSeedClicked, this)
                                 .buildOrLog();
 
     // Quadrant toggle.
-    sandboxQuadrantSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
-                                 .label("Quadrant")
-                                 .initialState(config.quadrantEnabled)
+    sandboxQuadrantSwitch_ = LVGLBuilder::actionButton(scenarioPanel_)
+                                 .text("Quadrant")
+                                 .mode(LVGLBuilder::ActionMode::Toggle)
+                                 .size(80)
+                                 .checked(config.quadrantEnabled)
+                                 .glowColor(0x00CC00)
                                  .callback(onSandboxQuadrantToggled, this)
                                  .buildOrLog();
 
     // Water column toggle.
-    sandboxWaterColumnSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
-                                    .label("Water Column")
-                                    .initialState(config.waterColumnEnabled)
+    sandboxWaterColumnSwitch_ = LVGLBuilder::actionButton(scenarioPanel_)
+                                    .text("Water Column")
+                                    .mode(LVGLBuilder::ActionMode::Toggle)
+                                    .size(80)
+                                    .checked(config.waterColumnEnabled)
+                                    .glowColor(0x0088FF)
                                     .callback(onSandboxWaterColumnToggled, this)
                                     .buildOrLog();
 
     // Right throw toggle.
-    sandboxRightThrowSwitch_ = LVGLBuilder::labeledSwitch(scenarioPanel_)
-                                   .label("Right Throw")
-                                   .initialState(config.rightThrowEnabled)
+    sandboxRightThrowSwitch_ = LVGLBuilder::actionButton(scenarioPanel_)
+                                   .text("Right Throw")
+                                   .mode(LVGLBuilder::ActionMode::Toggle)
+                                   .size(80)
+                                   .checked(config.rightThrowEnabled)
+                                   .glowColor(0x00CC00)
                                    .callback(onSandboxRightThrowToggled, this)
                                    .buildOrLog();
 
-    // Drop Dirt Ball button.
-    sandboxDropDirtBallButton_ = LVGLBuilder::button(scenarioPanel_)
-                                     .size(LV_PCT(90), 40)
-                                     .text("Drop Dirt Ball")
+    // Drop Dirt Ball button (push).
+    sandboxDropDirtBallButton_ = LVGLBuilder::actionButton(scenarioPanel_)
+                                     .text("Drop Dirt")
+                                     .icon(LV_SYMBOL_DOWNLOAD)
+                                     .mode(LVGLBuilder::ActionMode::Push)
+                                     .size(80)
+                                     .backgroundColor(0x8B4513)
                                      .callback(onDropDirtBallClicked, this)
                                      .buildOrLog();
 
@@ -302,12 +320,10 @@ void ControlPanel::onQuitClicked(lv_event_t* e)
 
 void ControlPanel::onDebugToggled(lv_event_t* e)
 {
-    auto* panel = static_cast<ControlPanel*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* panel = static_cast<ControlPanel*>(lv_event_get_user_data(e));
     if (!panel) return;
 
-    bool enabled =
-        lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED);
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(panel->debugSwitch_);
     spdlog::info("ControlPanel: Debug draw toggled: {}", enabled);
 
     panel->sendDebugUpdate(enabled);
@@ -315,24 +331,20 @@ void ControlPanel::onDebugToggled(lv_event_t* e)
 
 void ControlPanel::onSandboxQuadrantToggled(lv_event_t* e)
 {
-    auto* panel = static_cast<ControlPanel*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* panel = static_cast<ControlPanel*>(lv_event_get_user_data(e));
     if (!panel) return;
 
-    bool enabled =
-        lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED);
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxQuadrantSwitch_);
     spdlog::info("ControlPanel: Sandbox quadrant toggled: {}", enabled);
 
     // Create updated config.
     Config::Sandbox config;
     config.quadrantEnabled = enabled;
     config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxWaterColumnSwitch_)
         : true;
     config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxRightThrowSwitch_)
         : true;
     config.rainRate = panel->sandboxRainSlider_
         ? lv_slider_get_value(static_cast<lv_obj_t*>(panel->sandboxRainSlider_)) / 10.0
@@ -343,23 +355,20 @@ void ControlPanel::onSandboxQuadrantToggled(lv_event_t* e)
 
 void ControlPanel::onSandboxWaterColumnToggled(lv_event_t* e)
 {
-    auto* panel = static_cast<ControlPanel*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* panel = static_cast<ControlPanel*>(lv_event_get_user_data(e));
     if (!panel) return;
 
-    bool enabled =
-        lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED);
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxWaterColumnSwitch_);
     spdlog::info("ControlPanel: Sandbox water column toggled: {}", enabled);
 
     // Create updated config with all current values.
     Config::Sandbox config;
     config.quadrantEnabled = panel->sandboxQuadrantSwitch_
-        ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxQuadrantSwitch_)
         : true;
     config.waterColumnEnabled = enabled;
     config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxRightThrowSwitch_)
         : true;
     config.rainRate = panel->sandboxRainSlider_
         ? lv_slider_get_value(static_cast<lv_obj_t*>(panel->sandboxRainSlider_)) / 10.0
@@ -370,21 +379,18 @@ void ControlPanel::onSandboxWaterColumnToggled(lv_event_t* e)
 
 void ControlPanel::onSandboxRightThrowToggled(lv_event_t* e)
 {
-    auto* panel = static_cast<ControlPanel*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* panel = static_cast<ControlPanel*>(lv_event_get_user_data(e));
     if (!panel) return;
 
-    bool enabled =
-        lv_obj_has_state(static_cast<lv_obj_t*>(lv_event_get_target(e)), LV_STATE_CHECKED);
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxRightThrowSwitch_);
     spdlog::info("ControlPanel: Sandbox right throw toggled: {}", enabled);
 
     Config::Sandbox config;
     config.quadrantEnabled = panel->sandboxQuadrantSwitch_
-        ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxQuadrantSwitch_)
         : true;
     config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxWaterColumnSwitch_)
         : true;
     config.rightThrowEnabled = enabled;
     config.rainRate = panel->sandboxRainSlider_
@@ -407,15 +413,13 @@ void ControlPanel::onSandboxRainSliderChanged(lv_event_t* e)
 
     Config::Sandbox config;
     config.quadrantEnabled = panel->sandboxQuadrantSwitch_
-        ? lv_obj_has_state(static_cast<lv_obj_t*>(panel->sandboxQuadrantSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxQuadrantSwitch_)
         : true;
     config.waterColumnEnabled = panel->sandboxWaterColumnSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxWaterColumnSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxWaterColumnSwitch_)
         : true;
     config.rightThrowEnabled = panel->sandboxRightThrowSwitch_
-        ? lv_obj_has_state(
-              static_cast<lv_obj_t*>(panel->sandboxRightThrowSwitch_), LV_STATE_CHECKED)
+        ? LVGLBuilder::ActionButtonBuilder::isChecked(panel->sandboxRightThrowSwitch_)
         : true;
     config.rainRate = rainRate;
 
