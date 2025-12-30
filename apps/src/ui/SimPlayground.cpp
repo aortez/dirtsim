@@ -150,13 +150,13 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
-    // Build dropdown from metadata cache with ActionDropdown styling.
-    std::string dropdownOptions = ScenarioMetadataCache::buildDropdownOptions();
+    // Build radio panel from metadata cache.
+    std::vector<std::string> options = ScenarioMetadataCache::buildOptionsList();
     uint16_t selectedIdx = ScenarioMetadataCache::indexFromScenarioId(currentScenarioId_);
 
-    scenarioContainer_ = LVGLBuilder::actionDropdown(container)
-                             .label("Scenario:")
-                             .options(dropdownOptions.c_str())
+    scenarioContainer_ = LVGLBuilder::actionRadioPanel(container)
+                             .label("Scenario")
+                             .options(options)
                              .selected(selectedIdx)
                              .width(LV_PCT(95))
                              .callback(onScenarioChanged, this)
@@ -310,11 +310,11 @@ void SimPlayground::onScenarioChanged(lv_event_t* e)
     auto* playground = static_cast<SimPlayground*>(lv_event_get_user_data(e));
     if (!playground) return;
 
-    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    uint16_t selectedIdx = lv_dropdown_get_selected(dropdown);
+    lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    uint16_t selectedIdx = LVGLBuilder::ActionRadioPanelBuilder::getSelected(container);
 
     std::string scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
-    LOG_INFO(Controls, "Scenario dropdown changed to '{}'", scenarioId);
+    LOG_INFO(Controls, "Scenario changed to '{}'", scenarioId);
 
     // Send ScenarioSwitch to server (server will use its default config).
     if (playground->wsService_ && playground->wsService_->isConnected()) {

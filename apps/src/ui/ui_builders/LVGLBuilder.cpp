@@ -1966,7 +1966,20 @@ LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::checked(bool
 
 LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::size(int dimension)
 {
-    size_ = dimension;
+    width_ = dimension;
+    height_ = dimension;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::height(int h)
+{
+    height_ = h;
     return *this;
 }
 
@@ -2024,8 +2037,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::build()
     spdlog::debug(
         "ActionButtonBuilder: Successfully created action button '{}' ({}x{}, mode={})",
         text_,
-        size_,
-        size_,
+        width_,
+        height_,
         mode_ == ActionMode::Toggle ? "toggle" : "push");
 
     return Result<lv_obj_t*, std::string>::okay(container_);
@@ -2051,8 +2064,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         return Result<lv_obj_t*, std::string>::error(error);
     }
 
-    // Style the trough - dark, inset appearance.
-    lv_obj_set_size(container_, size_, size_);
+    // Style the trough.
+    lv_obj_set_size(container_, width_, height_);
     lv_obj_set_style_bg_color(container_, lv_color_hex(trough_color_), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(container_, 8, 0);
@@ -2116,8 +2129,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
                 label_, use_small_font ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_align(label_, LV_TEXT_ALIGN_CENTER, 0);
             lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
-            // Limit label width to button width minus padding.
-            lv_obj_set_width(label_, size_ - trough_padding_ * 2 - 12);
+            lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
         }
     }
 
@@ -2805,4 +2817,292 @@ void LVGLBuilder::ActionStepperBuilder::setValue(lv_obj_t* container, int32_t va
 LVGLBuilder::ActionStepperBuilder LVGLBuilder::actionStepper(lv_obj_t* parent)
 {
     return ActionStepperBuilder(parent);
+}
+
+// ============================================================================
+// ActionRadioPanelBuilder Implementation
+// ============================================================================
+
+struct ActionRadioPanelState {
+    lv_obj_t* content;
+    lv_obj_t* indicator;
+    lv_obj_t* headerLabel;
+    std::vector<lv_obj_t*> buttons;
+    std::vector<std::string> optionNames;
+    std::string labelText;
+    uint16_t selectedIndex;
+    bool isExpanded;
+    lv_event_cb_t userCallback;
+    void* userData;
+};
+
+LVGLBuilder::ActionRadioPanelBuilder::ActionRadioPanelBuilder(lv_obj_t* parent)
+    : parent_(parent), container_(nullptr), header_(nullptr), headerLabel_(nullptr),
+      content_(nullptr), indicator_(nullptr)
+{}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::label(const char* text)
+{
+    if (text) {
+        label_text_ = text;
+    }
+    return *this;
+}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::options(std::vector<std::string> opts)
+{
+    options_ = std::move(opts);
+    return *this;
+}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::selected(uint16_t index)
+{
+    selected_index_ = index;
+    return *this;
+}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::width(int w)
+{
+    width_ = w;
+    return *this;
+}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::initiallyExpanded(bool expanded)
+{
+    initially_expanded_ = expanded;
+    return *this;
+}
+
+LVGLBuilder::ActionRadioPanelBuilder& LVGLBuilder::ActionRadioPanelBuilder::callback(
+    lv_event_cb_t cb, void* user_data)
+{
+    callback_ = cb;
+    user_data_ = user_data;
+    return *this;
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionRadioPanelBuilder::build()
+{
+    if (!parent_) {
+        std::string error = "ActionRadioPanelBuilder: parent cannot be null";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    if (options_.empty()) {
+        std::string error = "ActionRadioPanelBuilder: options cannot be empty";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    auto result = createActionRadioPanel();
+    if (result.isError()) {
+        return result;
+    }
+
+    spdlog::debug("ActionRadioPanelBuilder: Successfully created action radio panel");
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+lv_obj_t* LVGLBuilder::ActionRadioPanelBuilder::buildOrLog()
+{
+    auto result = build();
+    if (result.isError()) {
+        spdlog::error("ActionRadioPanelBuilder::buildOrLog failed: {}", result.errorValue());
+        return nullptr;
+    }
+    return result.value();
+}
+
+Result<lv_obj_t*, std::string> LVGLBuilder::ActionRadioPanelBuilder::createActionRadioPanel()
+{
+    container_ = lv_obj_create(parent_);
+    if (!container_) {
+        std::string error = "ActionRadioPanelBuilder: Failed to create container";
+        spdlog::error(error);
+        return Result<lv_obj_t*, std::string>::error(error);
+    }
+
+    lv_obj_set_size(container_, width_, LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(Style::TROUGH_COLOR), 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(container_, 8, 0);
+    lv_obj_set_style_border_width(container_, 0, 0);
+    lv_obj_set_style_pad_all(container_, Style::TROUGH_PADDING, 0);
+    lv_obj_set_style_pad_row(container_, Style::TROUGH_PADDING, 0);
+    lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
+
+    auto* state = new ActionRadioPanelState{
+        nullptr, nullptr, nullptr, {}, options_, label_text_, selected_index_,
+        initially_expanded_, callback_, user_data_
+    };
+
+    header_ = lv_obj_create(container_);
+    lv_obj_set_size(header_, LV_PCT(100), Style::ACTION_SIZE - (Style::TROUGH_PADDING * 2));
+    lv_obj_set_flex_flow(header_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(header_, lv_color_hex(Style::TROUGH_INNER_COLOR), 0);
+    lv_obj_set_style_bg_opa(header_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(header_, 6, 0);
+    lv_obj_set_style_border_width(header_, 0, 0);
+    lv_obj_set_style_pad_all(header_, 8, 0);
+    lv_obj_set_style_pad_column(header_, 8, 0);
+    lv_obj_add_flag(header_, LV_OBJ_FLAG_CLICKABLE);
+
+    indicator_ = lv_label_create(header_);
+    lv_label_set_text(indicator_, initially_expanded_ ? LV_SYMBOL_DOWN : LV_SYMBOL_RIGHT);
+    lv_obj_set_style_text_color(indicator_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(indicator_, &lv_font_montserrat_16, 0);
+    state->indicator = indicator_;
+
+    headerLabel_ = lv_label_create(header_);
+    lv_obj_set_style_text_color(headerLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(headerLabel_, &lv_font_montserrat_16, 0);
+    state->headerLabel = headerLabel_;
+
+    content_ = lv_obj_create(container_);
+    lv_obj_set_size(content_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(content_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(content_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(content_, 0, 0);
+    lv_obj_set_style_pad_all(content_, 0, 0);
+    lv_obj_set_style_pad_row(content_, Style::TROUGH_PADDING, 0);
+    lv_obj_set_scrollbar_mode(content_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_clear_flag(content_, LV_OBJ_FLAG_SCROLLABLE);
+    state->content = content_;
+
+    for (const auto& optionName : options_) {
+        lv_obj_t* optionBtn = LVGLBuilder::actionButton(content_)
+                                  .text(optionName.c_str())
+                                  .mode(ActionMode::Toggle)
+                                  .width(LV_PCT(100))
+                                  .height(Style::ACTION_SIZE)
+                                  .callback(onOptionClicked, state)
+                                  .buildOrLog();
+        if (optionBtn) {
+            optionButtons_.push_back(optionBtn);
+            state->buttons.push_back(optionBtn);
+        }
+    }
+
+    if (selected_index_ < optionButtons_.size()) {
+        ActionButtonBuilder::setChecked(optionButtons_[selected_index_], true);
+    }
+
+    if (!initially_expanded_) {
+        lv_obj_add_flag(content_, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    std::string headerText = label_text_;
+    if (!initially_expanded_ && selected_index_ < options_.size()) {
+        headerText += ": " + options_[selected_index_];
+    }
+    lv_label_set_text(headerLabel_, headerText.c_str());
+
+    lv_obj_set_user_data(container_, state);
+    lv_obj_add_event_cb(header_, onHeaderClicked, LV_EVENT_CLICKED, state);
+
+    if (callback_) {
+        lv_obj_add_event_cb(container_, callback_, LV_EVENT_VALUE_CHANGED, user_data_);
+    }
+
+    lv_obj_add_event_cb(container_, [](lv_event_t* e) {
+        if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+        lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+        auto* st = static_cast<ActionRadioPanelState*>(lv_obj_get_user_data(obj));
+        delete st;
+    }, LV_EVENT_DELETE, nullptr);
+
+    return Result<lv_obj_t*, std::string>::okay(container_);
+}
+
+void LVGLBuilder::ActionRadioPanelBuilder::onHeaderClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionRadioPanelState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    state->isExpanded = !state->isExpanded;
+
+    if (state->isExpanded) {
+        lv_obj_clear_flag(state->content, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(state->indicator, LV_SYMBOL_DOWN);
+        lv_label_set_text(state->headerLabel, state->labelText.c_str());
+    }
+    else {
+        lv_obj_add_flag(state->content, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(state->indicator, LV_SYMBOL_RIGHT);
+        std::string headerText = state->labelText;
+        if (state->selectedIndex < state->optionNames.size()) {
+            headerText += ": " + state->optionNames[state->selectedIndex];
+        }
+        lv_label_set_text(state->headerLabel, headerText.c_str());
+    }
+}
+
+void LVGLBuilder::ActionRadioPanelBuilder::onOptionClicked(lv_event_t* e)
+{
+    auto* state = static_cast<ActionRadioPanelState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    lv_obj_t* clickedBtn = lv_obj_get_parent(static_cast<lv_obj_t*>(lv_event_get_target(e)));
+
+    for (size_t i = 0; i < state->buttons.size(); i++) {
+        if (state->buttons[i] == clickedBtn) {
+            for (auto* btn : state->buttons) {
+                ActionButtonBuilder::setChecked(btn, false);
+            }
+            ActionButtonBuilder::setChecked(clickedBtn, true);
+            state->selectedIndex = i;
+
+            state->isExpanded = false;
+            lv_obj_add_flag(state->content, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(state->indicator, LV_SYMBOL_RIGHT);
+            std::string headerText = state->labelText + ": " + state->optionNames[i];
+            lv_label_set_text(state->headerLabel, headerText.c_str());
+
+            lv_obj_t* container = lv_obj_get_parent(state->content);
+            if (container && state->userCallback) {
+                lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
+            }
+
+            break;
+        }
+    }
+}
+
+uint16_t LVGLBuilder::ActionRadioPanelBuilder::getSelected(lv_obj_t* container)
+{
+    if (!container) return 0;
+
+    auto* state = static_cast<ActionRadioPanelState*>(lv_obj_get_user_data(container));
+    if (!state) return 0;
+
+    return state->selectedIndex;
+}
+
+void LVGLBuilder::ActionRadioPanelBuilder::setSelected(lv_obj_t* container, uint16_t index)
+{
+    if (!container) return;
+
+    auto* state = static_cast<ActionRadioPanelState*>(lv_obj_get_user_data(container));
+    if (!state || index >= state->buttons.size()) return;
+
+    for (auto* btn : state->buttons) {
+        ActionButtonBuilder::setChecked(btn, false);
+    }
+    ActionButtonBuilder::setChecked(state->buttons[index], true);
+    state->selectedIndex = index;
+
+    if (!state->isExpanded) {
+        std::string headerText = state->labelText + ": " + state->optionNames[index];
+        lv_label_set_text(state->headerLabel, headerText.c_str());
+    }
+}
+
+LVGLBuilder::ActionRadioPanelBuilder LVGLBuilder::actionRadioPanel(lv_obj_t* parent)
+{
+    return ActionRadioPanelBuilder(parent);
 }

@@ -25,6 +25,11 @@ public:
     static std::string buildDropdownOptions();
 
     /**
+     * @brief Build options list for radio panels.
+     */
+    static std::vector<std::string> buildOptionsList();
+
+    /**
      * @brief Map dropdown index to scenario ID.
      */
     static std::string scenarioIdFromIndex(uint16_t index);

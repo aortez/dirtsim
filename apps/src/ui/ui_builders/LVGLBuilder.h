@@ -547,9 +547,11 @@ public:
         ActionButtonBuilder& mode(ActionMode m);
         ActionButtonBuilder& checked(bool initial); // Initial state for Toggle mode.
 
-        // Sizing - square by default.
+        // Sizing.
         ActionButtonBuilder& size(int dimension);   // Square size (width = height).
-        ActionButtonBuilder& troughPadding(int px); // Padding between trough and button face.
+        ActionButtonBuilder& width(int w);
+        ActionButtonBuilder& height(int h);
+        ActionButtonBuilder& troughPadding(int px);
 
         // Colors.
         ActionButtonBuilder& backgroundColor(uint32_t color); // Button face color.
@@ -587,7 +589,8 @@ public:
         std::string icon_;
         ActionMode mode_ = ActionMode::Push;
         bool initial_checked_ = false;
-        int size_ = Style::ACTION_SIZE;
+        int width_ = Style::ACTION_SIZE;
+        int height_ = Style::ACTION_SIZE;
         int trough_padding_ = Style::TROUGH_PADDING;
 
         uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
@@ -777,6 +780,63 @@ public:
     };
 
     /**
+     * @brief ActionRadioPanelBuilder - Creates an expandable panel with radio button options.
+     *
+     * Collapsed: ▶ Label: SelectedOption
+     * Expanded:  ▼ Label
+     *              ○ Option1 (selected, glowing)
+     *              ○ Option2
+     *              ○ Option3
+     *
+     * Clicking an option selects it and auto-collapses the panel.
+     */
+    class ActionRadioPanelBuilder {
+    public:
+        explicit ActionRadioPanelBuilder(lv_obj_t* parent);
+
+        ActionRadioPanelBuilder& label(const char* text);
+        ActionRadioPanelBuilder& options(std::vector<std::string> opts);
+        ActionRadioPanelBuilder& selected(uint16_t index);
+        ActionRadioPanelBuilder& width(int w);
+        ActionRadioPanelBuilder& initiallyExpanded(bool expanded);
+        ActionRadioPanelBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
+
+        Result<lv_obj_t*, std::string> build();
+        lv_obj_t* buildOrLog();
+
+        lv_obj_t* getContainer() const { return container_; }
+
+        static uint16_t getSelected(lv_obj_t* container);
+        static void setSelected(lv_obj_t* container, uint16_t index);
+
+    private:
+        lv_obj_t* parent_;
+        lv_obj_t* container_;
+        lv_obj_t* header_;
+        lv_obj_t* headerLabel_;
+        lv_obj_t* content_;
+        lv_obj_t* indicator_;
+        std::vector<lv_obj_t*> optionButtons_;
+
+        std::string label_text_;
+        std::vector<std::string> options_;
+        uint16_t selected_index_ = 0;
+        int width_ = LV_PCT(95);
+        bool initially_expanded_ = false;
+
+        lv_event_cb_t callback_ = nullptr;
+        void* user_data_ = nullptr;
+
+        Result<lv_obj_t*, std::string> createActionRadioPanel();
+        void updateHeaderText();
+        void collapsePanel();
+        void expandPanel();
+
+        static void onHeaderClicked(lv_event_t* e);
+        static void onOptionClicked(lv_event_t* e);
+    };
+
+    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -853,6 +913,7 @@ public:
     static ActionButtonBuilder actionButton(lv_obj_t* parent);
     static ActionDropdownBuilder actionDropdown(lv_obj_t* parent);
     static ActionStepperBuilder actionStepper(lv_obj_t* parent);
+    static ActionRadioPanelBuilder actionRadioPanel(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {

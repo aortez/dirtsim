@@ -26,6 +26,17 @@ std::string ScenarioMetadataCache::buildDropdownOptions()
     return oss.str();
 }
 
+std::vector<std::string> ScenarioMetadataCache::buildOptionsList()
+{
+    assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");
+
+    std::vector<std::string> options;
+    for (const auto& scenario : scenarios_) {
+        options.push_back(scenario.name);
+    }
+    return options;
+}
+
 std::string ScenarioMetadataCache::scenarioIdFromIndex(uint16_t index)
 {
     assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");

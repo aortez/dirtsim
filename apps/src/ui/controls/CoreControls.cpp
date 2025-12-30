@@ -77,10 +77,10 @@ CoreControls::CoreControls(
     lv_obj_set_style_text_font(statsLabelUI_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_text_color(statsLabelUI_, lv_color_white(), 0);
 
-    // Render Mode dropdown with ActionDropdown styling.
-    renderModeContainer_ = LVGLBuilder::actionDropdown(container_)
-                               .label("Render:")
-                               .options("Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug")
+    // Render Mode radio panel.
+    renderModeContainer_ = LVGLBuilder::actionRadioPanel(container_)
+                               .label("Render Mode")
+                               .options({"Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug"})
                                .selected(0)
                                .width(LV_PCT(95))
                                .callback(onRenderModeChanged, this)
@@ -165,7 +165,7 @@ void CoreControls::setRenderMode(RenderMode mode)
             break;
     }
 
-    LVGLBuilder::ActionDropdownBuilder::setSelected(renderModeContainer_, index);
+    LVGLBuilder::ActionRadioPanelBuilder::setSelected(renderModeContainer_, index);
 }
 
 void CoreControls::onQuitClicked(lv_event_t* e)
@@ -220,10 +220,10 @@ void CoreControls::onRenderModeChanged(lv_event_t* e)
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
     if (!self) return;
 
-    lv_obj_t* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    if (!dropdown) return;
+    lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (!container) return;
 
-    uint16_t selected = lv_dropdown_get_selected(dropdown);
+    uint16_t selected = LVGLBuilder::ActionRadioPanelBuilder::getSelected(container);
 
     // Map dropdown index to RenderMode.
     // Order matches dropdown options: "Adaptive\nSharp\nSmooth\nPixel Perfect\nLVGL Debug".
