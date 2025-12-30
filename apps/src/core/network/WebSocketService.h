@@ -55,6 +55,7 @@ public:
     using BinaryCallback = std::function<void(const std::vector<std::byte>&)>;
     using ConnectionCallback = std::function<void()>;
     using ErrorCallback = std::function<void(const std::string&)>;
+    using ClientDisconnectCallback = std::function<void(const std::string& connectionId)>;
     // Generic JSON deserializer - returns std::any to support both Server and UI command variants.
     using JsonDeserializer = std::function<std::any(const std::string&)>;
 
@@ -188,6 +189,17 @@ public:
     void onConnected(ConnectionCallback callback) { connectedCallback_ = callback; }
     void onDisconnected(ConnectionCallback callback) { disconnectedCallback_ = callback; }
     void onError(ErrorCallback callback) { errorCallback_ = callback; }
+
+    /**
+     * @brief Set callback for server-side client disconnect notifications.
+     *
+     * Called when a client disconnects from the server, providing the connection ID
+     * so external code (e.g., StateMachine) can clean up associated state.
+     */
+    void onClientDisconnect(ClientDisconnectCallback callback)
+    {
+        clientDisconnectCallback_ = callback;
+    }
 
     /**
      * @brief Set JSON deserializer for server-side JSON protocol support.
@@ -409,6 +421,7 @@ private:
     ConnectionCallback connectedCallback_;
     ConnectionCallback disconnectedCallback_;
     ErrorCallback errorCallback_;
+    ClientDisconnectCallback clientDisconnectCallback_;
 
     // =========================================================================
     // Server-side state (listening for connections).

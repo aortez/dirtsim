@@ -607,6 +607,15 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
     // Set up close handler.
     ws->onClosed([this, ws]() {
         LOG_INFO(Network, "Client disconnected");
+
+        // Get connection ID before cleanup (needed for callback).
+        std::string connectionId;
+        auto idIt = connectionIds_.find(ws);
+        if (idIt != connectionIds_.end()) {
+            connectionId = idIt->second;
+        }
+
+        // Clean up internal state.
         connectedClients_.erase(
             std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
             connectedClients_.end());
@@ -614,10 +623,14 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
         clientRenderFormats_.erase(ws);
 
         // Clean up connection registry.
-        auto idIt = connectionIds_.find(ws);
-        if (idIt != connectionIds_.end()) {
-            connectionRegistry_.erase(idIt->second);
+        if (!connectionId.empty()) {
+            connectionRegistry_.erase(connectionId);
             connectionIds_.erase(idIt);
+
+            // Notify external listeners (e.g., StateMachine) about the disconnect.
+            if (clientDisconnectCallback_) {
+                clientDisconnectCallback_(connectionId);
+            }
         }
     });
 

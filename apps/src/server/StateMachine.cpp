@@ -129,6 +129,21 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     // Store pointer for later access (broadcasting, etc.).
     setWebSocketService(&service);
 
+    // Register for client disconnect notifications to clean up subscriber list.
+    service.onClientDisconnect([this](const std::string& connectionId) {
+        auto it = std::remove_if(
+            pImpl->subscribedClients_.begin(),
+            pImpl->subscribedClients_.end(),
+            [&connectionId](const SubscribedClient& c) { return c.connectionId == connectionId; });
+        if (it != pImpl->subscribedClients_.end()) {
+            pImpl->subscribedClients_.erase(it, pImpl->subscribedClients_.end());
+            spdlog::info(
+                "StateMachine: Client '{}' disconnected, removed from subscribers (remaining={})",
+                connectionId,
+                pImpl->subscribedClients_.size());
+        }
+    });
+
     // =========================================================================
     // JSON protocol support - inject deserializer and dispatcher.
     // =========================================================================
