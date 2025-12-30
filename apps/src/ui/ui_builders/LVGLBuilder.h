@@ -790,112 +790,6 @@ public:
     };
 
     /**
-     * @brief ActionRadioPanelBuilder - Creates an expandable panel with radio button options.
-     *
-     * Collapsed: ▶ Label: SelectedOption
-     * Expanded:  ▼ Label
-     *              ○ Option1 (selected, glowing)
-     *              ○ Option2
-     *              ○ Option3
-     *
-     * Clicking an option selects it and auto-collapses the panel.
-     */
-    class ActionRadioPanelBuilder {
-    public:
-        explicit ActionRadioPanelBuilder(lv_obj_t* parent);
-
-        ActionRadioPanelBuilder& label(const char* text);
-        ActionRadioPanelBuilder& options(std::vector<std::string> opts);
-        ActionRadioPanelBuilder& selected(uint16_t index);
-        ActionRadioPanelBuilder& width(int w);
-        ActionRadioPanelBuilder& initiallyExpanded(bool expanded);
-        ActionRadioPanelBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
-
-        Result<lv_obj_t*, std::string> build();
-        lv_obj_t* buildOrLog();
-
-        lv_obj_t* getContainer() const { return container_; }
-
-        static uint16_t getSelected(lv_obj_t* container);
-        static void setSelected(lv_obj_t* container, uint16_t index);
-
-    private:
-        lv_obj_t* parent_;
-        lv_obj_t* container_;
-        lv_obj_t* header_;
-        lv_obj_t* headerLabel_;
-        lv_obj_t* content_;
-        lv_obj_t* indicator_;
-        std::vector<lv_obj_t*> optionButtons_;
-
-        std::string label_text_;
-        std::vector<std::string> options_;
-        uint16_t selected_index_ = 0;
-        int width_ = LV_PCT(95);
-        bool initially_expanded_ = false;
-
-        lv_event_cb_t callback_ = nullptr;
-        void* user_data_ = nullptr;
-
-        Result<lv_obj_t*, std::string> createActionRadioPanel();
-        void updateHeaderText();
-        void collapsePanel();
-        void expandPanel();
-
-        static void onHeaderClicked(lv_event_t* e);
-        static void onOptionClicked(lv_event_t* e);
-    };
-
-    /**
-     * @brief ActionRadioModalBuilder - Modal radio selection that takes over the full panel.
-     *
-     * Similar to PhysicsPanel's modal navigation pattern:
-     * - Button view: Shows "Label: Current Selection" as a single button.
-     * - Options view: Clicking opens full-panel menu with Back button and all options.
-     * - Selection: Click option → updates selection → returns to button view.
-     *
-     * This provides a consistent modal navigation pattern across the UI.
-     */
-    class ActionRadioModalBuilder {
-    public:
-        explicit ActionRadioModalBuilder(lv_obj_t* parent);
-
-        ActionRadioModalBuilder& label(const char* text);
-        ActionRadioModalBuilder& options(std::vector<std::string> opts);
-        ActionRadioModalBuilder& selected(uint16_t index);
-        ActionRadioModalBuilder& width(int w);
-        ActionRadioModalBuilder& callback(lv_event_cb_t cb, void* user_data = nullptr);
-
-        Result<lv_obj_t*, std::string> build();
-        lv_obj_t* buildOrLog();
-
-        lv_obj_t* getContainer() const { return container_; }
-
-        static uint16_t getSelected(lv_obj_t* container);
-        static void setSelected(lv_obj_t* container, uint16_t index);
-
-    private:
-        lv_obj_t* parent_;
-        lv_obj_t* container_;
-        lv_obj_t* buttonView_;
-        lv_obj_t* optionsView_;
-
-        std::string label_text_;
-        std::vector<std::string> options_;
-        uint16_t selected_index_ = 0;
-        int width_ = LV_PCT(100);
-
-        lv_event_cb_t callback_ = nullptr;
-        void* user_data_ = nullptr;
-
-        Result<lv_obj_t*, std::string> createActionRadioModal();
-
-        static void onButtonClicked(lv_event_t* e);
-        static void onBackClicked(lv_event_t* e);
-        static void onOptionClicked(lv_event_t* e);
-    };
-
-    /**
      * @brief CollapsiblePanelBuilder - Creates a collapsible panel with header and content area.
      *
      * Layout: [▼ Title]
@@ -972,8 +866,6 @@ public:
     static ActionButtonBuilder actionButton(lv_obj_t* parent);
     static ActionDropdownBuilder actionDropdown(lv_obj_t* parent);
     static ActionStepperBuilder actionStepper(lv_obj_t* parent);
-    static ActionRadioPanelBuilder actionRadioPanel(lv_obj_t* parent);
-    static ActionRadioModalBuilder actionRadioModal(lv_obj_t* parent);
 
     // Common value transform functions for sliders.
     struct Transforms {
