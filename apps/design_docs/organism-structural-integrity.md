@@ -490,14 +490,32 @@ This order builds up the system incrementally - each step depends on previous st
 
 ## Implementation Status
 
-**Phase 1 - TODO:**
-- [ ] Add continuous position/velocity to Organism struct
-- [ ] Implement collision detection
-- [ ] Implement impulse-based collision response
-- [ ] Implement grid projection
-- [ ] Apply reaction forces to environment
-- [ ] Migrate Tree to new system
+**Phase 1 - Completed:**
+- ✅ Add continuous position/velocity to Organism struct
+- ✅ Add LocalCell struct for local shape definition
+- ✅ Implement mass computation (recomputeMass)
+- ✅ Implement center of mass computation (recomputeCenterOfMass)
+- ✅ Implement position integration (integratePosition)
+- ✅ Implement force application (applyForce)
+- ✅ Write OrganismPhysics_test.cpp (13 tests, all passing)
+
+**Phase 1 - In Progress:**
+- [ ] Write OrganismGridProjection_test.cpp
+- [ ] Implement grid projection (projectToGrid)
+- [ ] Write OrganismForceGathering_test.cpp
+- [ ] Implement force gathering (gatherEnvironmentForces)
+- [ ] Write OrganismCollision_test.cpp
+- [ ] Implement collision detection (detectCollisions)
+- [ ] Write OrganismCollisionResponse_test.cpp
+- [ ] Implement impulse-based collision response (handleCollision_Impulse)
+- [ ] Integrate with World::resolveRigidBodies
+- [ ] Migrate Tree to use new physics
 - [ ] Remove old velocity sync code
+
+**Commits:**
+- `e949caf` - Updated design doc for rigid body approach
+- `69ce237` - Added comprehensive test plan
+- `2d10812` - Implemented organism physics foundation with passing tests
 
 ---
 
