@@ -43,7 +43,16 @@ void SimPlayground::connectToIconRail()
             [this](IconId selectedId, IconId previousId) {
                 onIconSelected(selectedId, previousId);
             });
-        LOG_INFO(Controls, "Connected to IconRail selection callback");
+
+        iconRail->setModeChangeCallback(
+            [this](RailMode newMode) {
+                LOG_INFO(Controls, "IconRail mode changed to: {}",
+                    newMode == RailMode::Minimized ? "Minimized" : "Normal");
+                // Trigger display resize for auto-scaling scenarios like Clock.
+                sendDisplayResizeUpdate();
+            });
+
+        LOG_INFO(Controls, "Connected to IconRail selection and mode callbacks");
     }
     else {
         LOG_ERROR(Controls, "No IconRail available to connect to");
@@ -148,15 +157,28 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
     // Create display dimensions getter for auto-scaling scenarios.
+    // Always returns dimensions as if IconRail is minimized, so scenarios are
+    // sized for the largest possible display area. This prevents gaps when
+    // the rail auto-shrinks.
     DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
         lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
         if (worldArea) {
             lv_obj_update_layout(worldArea);
-            return DisplayDimensions{
-                static_cast<uint32_t>(lv_obj_get_width(worldArea)),
-                static_cast<uint32_t>(lv_obj_get_height(worldArea))};
+            uint32_t width = static_cast<uint32_t>(lv_obj_get_width(worldArea));
+            uint32_t height = static_cast<uint32_t>(lv_obj_get_height(worldArea));
+
+            // Adjust width to account for minimized rail state.
+            // When rail is expanded, add the difference to get minimized dimensions.
+            IconRail* iconRail = uiManager_->getIconRail();
+            if (iconRail && !iconRail->isMinimized()) {
+                // Rail is expanded - add width difference to simulate minimized state.
+                constexpr uint32_t RAIL_WIDTH_DIFF = 108 - 40; // RAIL_WIDTH - MINIMIZED_RAIL_WIDTH
+                width += RAIL_WIDTH_DIFF;
+            }
+
+            return DisplayDimensions{width, height};
         }
-        return DisplayDimensions{692, 480}; // Fallback to reasonable defaults.
+        return DisplayDimensions{760, 480}; // Fallback assumes minimized rail.
     };
 
     // Create scenario panel with modal navigation.
@@ -299,16 +321,34 @@ void SimPlayground::sendDisplayResizeUpdate()
         return;
     }
 
-    // Force layout update to get accurate dimensions after panel closed.
+    // Force layout update to get accurate dimensions after panel/rail changes.
+    // Must update from parent level to recalculate flex layout after IconRail resize.
     lv_obj_t* worldArea = uiManager_->getWorldDisplayArea();
     if (!worldArea) {
         return;
     }
-    lv_obj_update_layout(worldArea);
+    lv_obj_t* parent = lv_obj_get_parent(worldArea);
+    if (parent) {
+        lv_obj_t* grandparent = lv_obj_get_parent(parent);
+        if (grandparent) {
+            lv_obj_update_layout(grandparent);
+        } else {
+            lv_obj_update_layout(parent);
+        }
+    } else {
+        lv_obj_update_layout(worldArea);
+    }
 
-    // Get new display dimensions.
+    // Get new display dimensions, adjusted for minimized rail state.
     uint32_t newWidth = static_cast<uint32_t>(lv_obj_get_width(worldArea));
     uint32_t newHeight = static_cast<uint32_t>(lv_obj_get_height(worldArea));
+
+    // Always compute for minimized rail to prevent gaps when rail shrinks.
+    IconRail* iconRail = uiManager_->getIconRail();
+    if (iconRail && !iconRail->isMinimized()) {
+        constexpr uint32_t RAIL_WIDTH_DIFF = 108 - 40; // RAIL_WIDTH - MINIMIZED_RAIL_WIDTH
+        newWidth += RAIL_WIDTH_DIFF;
+    }
 
     // Update the config with new dimensions.
     Config::Clock config = std::get<Config::Clock>(currentScenarioConfig_);

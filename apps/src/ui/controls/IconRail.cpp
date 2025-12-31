@@ -324,6 +324,11 @@ void IconRail::setMode(RailMode mode)
     }
 
     applyMode();
+
+    // Notify mode change listeners.
+    if (modeChangeCallback_) {
+        modeChangeCallback_(mode_);
+    }
 }
 
 void IconRail::toggleMode()

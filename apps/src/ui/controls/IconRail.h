@@ -89,6 +89,14 @@ public:
      */
     void setSecondaryCallback(SelectCallback callback) { secondaryCallback_ = std::move(callback); }
 
+    using ModeChangeCallback = std::function<void(RailMode newMode)>;
+
+    /**
+     * @brief Set a callback for when the rail mode changes (Normal <-> Minimized).
+     * Called when auto-shrink or manual collapse/expand occurs.
+     */
+    void setModeChangeCallback(ModeChangeCallback callback) { modeChangeCallback_ = std::move(callback); }
+
     RailMode getMode() const { return mode_; }
     void setMode(RailMode mode);
     void toggleMode();
@@ -103,6 +111,7 @@ private:
     bool treeIconVisible_ = false;
     SelectCallback onSelectCallback_;
     SelectCallback secondaryCallback_;
+    ModeChangeCallback modeChangeCallback_;
 
     // Mode support.
     RailMode mode_ = RailMode::Normal;
