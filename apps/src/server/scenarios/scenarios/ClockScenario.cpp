@@ -757,8 +757,23 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     event.remaining_time = eventConfig.duration;
 
     if (type == ClockEventType::MELTDOWN) {
-        event.state = MeltdownEventState{};
-        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s)", eventConfig.duration);
+        MeltdownEventState melt_state;
+
+        // Scan world to find the bottom edge of the digits (max Y with METAL).
+        const WorldData& data = world.getData();
+        int max_metal_y = 0;
+        for (uint32_t y = 0; y < data.height; ++y) {
+            for (uint32_t x = 0; x < data.width; ++x) {
+                if (data.at(x, y).material_type == MaterialType::METAL) {
+                    max_metal_y = std::max(max_metal_y, static_cast<int>(y));
+                }
+            }
+        }
+        melt_state.digit_bottom_y = max_metal_y;
+
+        event.state = melt_state;
+        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s, digit_bottom_y: {})",
+            eventConfig.duration, melt_state.digit_bottom_y);
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
@@ -1026,10 +1041,24 @@ bool ClockScenario::isMeltdownActive() const
     return active_events_.contains(ClockEventType::MELTDOWN);
 }
 
-void ClockScenario::updateMeltdownEvent(World& /*world*/, MeltdownEventState& /*state*/, double /*deltaTime*/)
+void ClockScenario::updateMeltdownEvent(World& world, MeltdownEventState& state, double /*deltaTime*/)
 {
-    // Meltdown is passive - just lets gravity do its work.
-    // The tick() function skips drawTime() while this event is active.
+    // Convert falling METAL to WATER when it crashes (velocity stops or reverses).
+    WorldData& data = world.getData();
+
+    // Scan for crashed metal: below digit area and not falling (velocity.y <= 0).
+    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y) + 1; y < data.height - 1; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            Cell& cell = data.at(x, y);
+            if (cell.material_type == MaterialType::METAL) {
+                // Convert if velocity is zero or going up (crashed/bounced).
+                // +y is down, so <= 0 means stopped or bouncing upward.
+                if (cell.velocity.y <= 0.0) {
+                    cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
+                }
+            }
+        }
+    }
 }
 
 void ClockScenario::convertStrayMetalToWater(World& world)

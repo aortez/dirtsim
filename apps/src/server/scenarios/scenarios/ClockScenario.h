@@ -35,7 +35,8 @@ struct EventTypeConfig {
 };
 
 struct MeltdownEventState {
-    // Meltdown lets digits fall, then converts stray metal to water.
+    // Meltdown lets digits fall, converts metal to water on impact.
+    int digit_bottom_y = 0;  // Scanned at event start: lowest Y with METAL.
 };
 
 struct RainEventState {
