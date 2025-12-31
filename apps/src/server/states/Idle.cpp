@@ -84,6 +84,9 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);
 
+    // Register scenario with World for tick during advanceTime.
+    newState.world->setScenario(newState.scenario.get());
+
     LOG_INFO(State, "Scenario '{}' applied to new world", scenarioId);
 
     // Set run parameters.

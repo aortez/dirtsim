@@ -14,7 +14,7 @@
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/ScenarioSwitch.h"
-#include "server/scenarios/Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
 #include <cmath>
@@ -65,6 +65,9 @@ void SimRunning::onEnter(StateMachine& dsm)
             // Run scenario setup to initialize world.
             scenario->setup(*world);
 
+            // Register scenario with World for tick during advanceTime.
+            world->setScenario(scenario.get());
+
             spdlog::info("SimRunning: Startup scenario '{}' applied with config", startupScenarioId);
         }
     }
@@ -91,14 +94,8 @@ void SimRunning::tick(StateMachine& dsm)
     // Measure real elapsed time since last physics update.
     const auto now = std::chrono::steady_clock::now();
 
-    // Scenario tick (particle generation, timed events, etc.).
-    if (scenario) {
-        dsm.getTimers().startTimer("scenario_tick");
-        scenario->tick(*world, FIXED_TIMESTEP_SECONDS);
-        dsm.getTimers().stopTimer("scenario_tick");
-    }
-
     // Advance physics by fixed timestep.
+    // Note: Scenario tick is called inside World::advanceTime() after force clear.
     dsm.getTimers().startTimer("physics_step");
     world->advanceTime(FIXED_TIMESTEP_SECONDS);
     dsm.getTimers().stopTimer("physics_step");
@@ -250,6 +247,9 @@ State::Any SimRunning::onEvent(const ApplyScenarioCommand& cmd, StateMachine& ds
     if (world) {
         // Update scenario ID.
         scenario_id = cmd.scenarioName;
+
+        // Register scenario with World for tick during advanceTime.
+        world->setScenario(scenario.get());
 
         spdlog::info("SimRunning: Scenario '{}' applied", cmd.scenarioName);
     }
@@ -526,6 +526,9 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
     // Replace scenario and update ID.
     scenario = std::move(newScenario);
     scenario_id = newScenarioId;
+
+    // Register scenario with World for tick during advanceTime.
+    world->setScenario(scenario.get());
 
     // Reset step counter.
     stepCount = 0;

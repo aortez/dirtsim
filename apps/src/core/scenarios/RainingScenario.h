@@ -1,19 +1,18 @@
 #pragma once
 
-#include "BenchmarkConfig.h"
-#include "core/MaterialType.h"
-#include "server/scenarios/Scenario.h"
+#include "RainingConfig.h"
+#include "core/scenarios/Scenario.h"
 #include <memory>
+#include <random>
 
 namespace DirtSim {
 
 /**
- * Benchmark scenario - Performance testing with complex physics.
- * 200x200 world with water pool and falling metal/wood balls.
+ * Raining scenario - Rain falling from the sky.
  */
-class BenchmarkScenario : public Scenario {
+class RainingScenario : public Scenario {
 public:
-    BenchmarkScenario();
+    RainingScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -24,10 +23,11 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    Config::Benchmark config_;
+    Config::Raining config_;
 
-    void addBall(
-        World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material);
+    // Random number generation for rain drops.
+    std::mt19937 rng_{ 42 }; // Deterministic seed for consistency.
+    std::uniform_real_distribution<double> drop_dist_{ 0.0, 1.0 };
 };
 
 } // namespace DirtSim

@@ -1,40 +1,13 @@
 #pragma once
 
+#include "core/ScenarioConfig.h"
 #include <cstdint>
 #include <memory>
 #include <string>
-#include <variant>
 
-// Forward declarations.
 namespace DirtSim {
+
 class World;
-
-namespace Config {
-struct Benchmark;
-struct Clock;
-struct DamBreak;
-struct Empty;
-struct FallingDirt;
-struct Raining;
-struct Sandbox;
-struct TreeGermination;
-struct WaterEqualization;
-} // namespace Config
-
-// Forward-declare the config variant.
-using ScenarioConfig = std::variant<
-    Config::Benchmark,
-    Config::Clock,
-    Config::DamBreak,
-    Config::Empty,
-    Config::FallingDirt,
-    Config::Raining,
-    Config::Sandbox,
-    Config::TreeGermination,
-    Config::WaterEqualization>;
-} // namespace DirtSim
-
-using namespace DirtSim;
 
 struct ScenarioMetadata {
     std::string name;
@@ -55,3 +28,5 @@ public:
     virtual void reset(World& world) = 0;
     virtual void tick(World& world, double deltaTime) = 0;
 };
+
+} // namespace DirtSim

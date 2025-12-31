@@ -1,18 +1,18 @@
 #pragma once
 
-#include "FallingDirtConfig.h"
-#include "server/scenarios/Scenario.h"
+#include "WaterEqualizationConfig.h"
+#include "core/scenarios/Scenario.h"
 #include <memory>
-#include <random>
 
 namespace DirtSim {
 
 /**
- * Falling Dirt scenario - Dirt particles falling and accumulating.
+ * Water Equalization scenario - Demonstrates hydrostatic pressure and flow.
+ * Water flows through a small opening at the bottom to achieve equilibrium between two columns.
  */
-class FallingDirtScenario : public Scenario {
+class WaterEqualizationScenario : public Scenario {
 public:
-    FallingDirtScenario();
+    WaterEqualizationScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -23,11 +23,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    Config::FallingDirt config_;
-
-    // Random number generation for dirt drops.
-    std::mt19937 rng_{ 123 }; // Different seed than rain.
-    std::uniform_real_distribution<double> drop_dist_{ 0.0, 1.0 };
+    Config::WaterEqualization config_;
 };
 
 } // namespace DirtSim

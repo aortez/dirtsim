@@ -5,7 +5,7 @@
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
-#include "server/scenarios/Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include <array>
 #include <map>
 #include <memory>
@@ -155,6 +155,11 @@ private:
     // Door management.
     DoorManager door_manager_;
 
+    // Floor drain state.
+    bool drain_open_ = false;
+    uint32_t drain_start_x_ = 0;
+    uint32_t drain_end_x_ = 0;
+
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
 
@@ -178,7 +183,8 @@ private:
     void updateEvent(World& world, ClockEventType type, ActiveEvent& event, double deltaTime);
     void endEvent(World& world, ClockEventType type, ActiveEvent& event);
     void cancelAllEvents(World& world);
-    void evaporateBottomRow(World& world, double deltaTime);
+    double countWaterInBottomThird(const World& world) const;
+    void updateDrain(World& world);
 
     // Event-specific update handlers (called via visitor).
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);

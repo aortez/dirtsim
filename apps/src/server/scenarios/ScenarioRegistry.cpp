@@ -1,15 +1,16 @@
 #include "ScenarioRegistry.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
-#include "scenarios/BenchmarkScenario.h"
-#include "scenarios/ClockScenario.h"
-#include "scenarios/DamBreakScenario.h"
-#include "scenarios/EmptyScenario.h"
-#include "scenarios/FallingDirtScenario.h"
-#include "scenarios/RainingScenario.h"
-#include "scenarios/SandboxScenario.h"
-#include "scenarios/TreeGerminationScenario.h"
-#include "scenarios/WaterEqualizationScenario.h"
+#include "core/scenarios/BenchmarkScenario.h"
+#include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/DamBreakScenario.h"
+#include "core/scenarios/EmptyScenario.h"
+#include "core/scenarios/FallingDirtScenario.h"
+#include "core/scenarios/GooseTestScenario.h"
+#include "core/scenarios/RainingScenario.h"
+#include "core/scenarios/SandboxScenario.h"
+#include "core/scenarios/TreeGerminationScenario.h"
+#include "core/scenarios/WaterEqualizationScenario.h"
 #include <algorithm>
 
 using namespace DirtSim;
@@ -58,6 +59,14 @@ ScenarioRegistry ScenarioRegistry::createDefault()
         std::string id = getScenarioId(temp->getConfig());
         registry.registerScenario(id, temp->getMetadata(), []() {
             return std::make_unique<FallingDirtScenario>();
+        });
+    }
+
+    {
+        auto temp = std::make_unique<GooseTestScenario>();
+        std::string id = getScenarioId(temp->getConfig());
+        registry.registerScenario(id, temp->getMetadata(), []() {
+            return std::make_unique<GooseTestScenario>();
         });
     }
 

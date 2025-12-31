@@ -289,16 +289,16 @@ add_library(dirtsim-server-lib STATIC
 
     # Scenarios.
     src/server/scenarios/ScenarioRegistry.cpp
-    src/server/scenarios/scenarios/BenchmarkScenario.cpp
-    src/server/scenarios/scenarios/ClockScenario.cpp
-    src/server/scenarios/scenarios/DamBreakScenario.cpp
-    src/server/scenarios/scenarios/EmptyScenario.cpp
-    src/server/scenarios/scenarios/FallingDirtScenario.cpp
-    src/server/scenarios/scenarios/GooseTestScenario.cpp
-    src/server/scenarios/scenarios/RainingScenario.cpp
-    src/server/scenarios/scenarios/SandboxScenario.cpp
-    src/server/scenarios/scenarios/TreeGerminationScenario.cpp
-    src/server/scenarios/scenarios/WaterEqualizationScenario.cpp
+    src/core/scenarios/BenchmarkScenario.cpp
+    src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/DamBreakScenario.cpp
+    src/core/scenarios/EmptyScenario.cpp
+    src/core/scenarios/FallingDirtScenario.cpp
+    src/core/scenarios/GooseTestScenario.cpp
+    src/core/scenarios/RainingScenario.cpp
+    src/core/scenarios/SandboxScenario.cpp
+    src/core/scenarios/TreeGerminationScenario.cpp
+    src/core/scenarios/WaterEqualizationScenario.cpp
 
     # Physics engine.
     src/core/World.cpp

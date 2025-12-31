@@ -1,17 +1,19 @@
 #pragma once
 
-#include "TreeGerminationConfig.h"
-#include "server/scenarios/Scenario.h"
+#include "BenchmarkConfig.h"
+#include "core/MaterialType.h"
+#include "core/scenarios/Scenario.h"
 #include <memory>
 
 namespace DirtSim {
 
 /**
- * Tree Germination scenario - 9x9 world with seed growing into balanced tree.
+ * Benchmark scenario - Performance testing with complex physics.
+ * 200x200 world with water pool and falling metal/wood balls.
  */
-class TreeGerminationScenario : public Scenario {
+class BenchmarkScenario : public Scenario {
 public:
-    TreeGerminationScenario();
+    BenchmarkScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -22,7 +24,10 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    Config::TreeGermination config_;
+    Config::Benchmark config_;
+
+    void addBall(
+        World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material);
 };
 
 } // namespace DirtSim

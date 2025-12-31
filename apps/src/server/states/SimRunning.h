@@ -6,7 +6,7 @@
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
-#include "server/scenarios/Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include <chrono>
 #include <cstdint>
 #include <memory>

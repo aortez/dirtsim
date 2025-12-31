@@ -1,15 +1,15 @@
 #pragma once
 
 #include "VariantSerializer.h"
-#include "server/scenarios/scenarios/BenchmarkConfig.h"
-#include "server/scenarios/scenarios/ClockConfig.h"
-#include "server/scenarios/scenarios/DamBreakConfig.h"
-#include "server/scenarios/scenarios/EmptyConfig.h"
-#include "server/scenarios/scenarios/FallingDirtConfig.h"
-#include "server/scenarios/scenarios/RainingConfig.h"
-#include "server/scenarios/scenarios/SandboxConfig.h"
-#include "server/scenarios/scenarios/TreeGerminationConfig.h"
-#include "server/scenarios/scenarios/WaterEqualizationConfig.h"
+#include "core/scenarios/BenchmarkConfig.h"
+#include "core/scenarios/ClockConfig.h"
+#include "core/scenarios/DamBreakConfig.h"
+#include "core/scenarios/EmptyConfig.h"
+#include "core/scenarios/FallingDirtConfig.h"
+#include "core/scenarios/RainingConfig.h"
+#include "core/scenarios/SandboxConfig.h"
+#include "core/scenarios/TreeGerminationConfig.h"
+#include "core/scenarios/WaterEqualizationConfig.h"
 #include <string>
 #include <variant>
 

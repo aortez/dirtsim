@@ -480,8 +480,8 @@ void ClockScenario::tick(World& world, double deltaTime)
         drawTime(world);
     }
 
-    // Evaporate water from bottom row.
-    evaporateBottomRow(world, deltaTime);
+    // Manage floor drain based on water level.
+    updateDrain(world);
 
     // Update event system.
     updateEvents(world, deltaTime);
@@ -837,24 +837,7 @@ void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, dou
         world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
     }
 
-    // Evaporate water in drain at bottom center.
-    uint32_t bottomY = world.getData().height - 2;
-    uint32_t centerX = world.getData().width / 2;
-    constexpr uint32_t DRAIN_SIZE = 5;
-    uint32_t halfDrain = DRAIN_SIZE / 2;
-
-    uint32_t drainStart = (centerX > halfDrain) ? centerX - halfDrain : 1;
-    uint32_t drainEnd = std::min(centerX + halfDrain, world.getData().width - 2);
-
-    for (uint32_t x = drainStart; x <= drainEnd; ++x) {
-        Cell& cell = world.getData().at(x, bottomY);
-        if (cell.material_type == MaterialType::WATER) {
-            cell.fill_ratio -= 0.5;
-            if (cell.fill_ratio < 0.01) {
-                cell.replaceMaterial(MaterialType::AIR, 0.0);
-            }
-        }
-    }
+    // Water drainage is handled by updateDrain() in tick().
 }
 
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
@@ -1131,26 +1114,103 @@ void ClockScenario::convertStrayMetalToWater(World& world)
     drawTime(world);
 }
 
-void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
+double ClockScenario::countWaterInBottomThird(const World& world) const
+{
+    const WorldData& data = world.getData();
+
+    // Count water in the bottom 1/3 of the world.
+    uint32_t bottom_third_start = (data.height * 2) / 3;
+    double total_water = 0.0;
+
+    for (uint32_t y = bottom_third_start; y < data.height - 1; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            const Cell& cell = data.at(x, y);
+            if (cell.material_type == MaterialType::WATER) {
+                total_water += cell.fill_ratio;
+            }
+        }
+    }
+
+    return total_water;
+}
+
+void ClockScenario::updateDrain(World& world)
 {
     WorldData& data = world.getData();
+    if (data.height < 3 || data.width < 5) return;
 
-    // Bottom playable row (height-1 is wall, height-2 is where water sits).
-    if (data.height < 2) return;
-    uint32_t bottom_y = data.height - 2;
+    // Calculate drain position (center of bottom wall).
+    constexpr uint32_t DRAIN_SIZE = 5;
+    uint32_t center_x = data.width / 2;
+    uint32_t half_drain = DRAIN_SIZE / 2;
+    drain_start_x_ = (center_x > half_drain) ? center_x - half_drain : 1;
+    drain_end_x_ = std::min(center_x + half_drain, data.width - 2);
 
-    // Evaporation rate: 50% of fill per second.
-    constexpr double EVAPORATION_RATE = 0.5;
-    double evaporation_amount = EVAPORATION_RATE * deltaTime;
+    // Count water in bottom third.
+    double water_amount = countWaterInBottomThird(world);
 
-    // Evaporate water from entire bottom row (excluding wall borders).
-    for (uint32_t x = 1; x < data.width - 1; ++x) {
-        Cell& cell = data.at(x, bottom_y);
-        if (cell.material_type == MaterialType::WATER) {
-            cell.fill_ratio -= evaporation_amount;
-            if (cell.fill_ratio < 0.01) {
-                cell.replaceMaterial(MaterialType::AIR, 0.0);
+    // Thresholds for opening/closing drain (with hysteresis to prevent flapping).
+    constexpr double OPEN_THRESHOLD = 3.0;   // Open when water exceeds this.
+    constexpr double CLOSE_THRESHOLD = 1.0;  // Close when water drops below this.
+
+    bool should_open = water_amount >= OPEN_THRESHOLD;
+    bool should_close = water_amount < CLOSE_THRESHOLD;
+
+    uint32_t drain_y = data.height - 1;  // Bottom wall row.
+
+    if (!drain_open_ && should_open) {
+        // Open the drain - remove wall cells.
+        drain_open_ = true;
+        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
+            data.at(x, drain_y) = Cell();
+        }
+        spdlog::info("ClockScenario: Drain opened (water level: {:.1f})", water_amount);
+    }
+    else if (drain_open_ && should_close) {
+        // Close the drain - restore wall cells.
+        drain_open_ = false;
+        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
+            data.at(x, drain_y).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+        spdlog::info("ClockScenario: Drain closed (water level: {:.1f})", water_amount);
+    }
+
+    // If drain is open, remove any water that falls into the drain cells.
+    if (drain_open_) {
+        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
+            Cell& cell = data.at(x, drain_y);
+            if (cell.material_type == MaterialType::WATER) {
+                cell = Cell();  // Water drains away.
             }
+        }
+
+        // Apply suction force to water on the bottom playable row.
+        uint32_t bottom_row = drain_y - 1;  // Row above the drain (height - 2).
+        double drain_center = static_cast<double>(drain_start_x_ + drain_end_x_) / 2.0;
+        double max_distance = static_cast<double>(data.width) / 2.0;
+        constexpr double MAX_FORCE = 500.0;  // Maximum suction force.
+
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            Cell& cell = data.at(x, bottom_row);
+            if (cell.material_type != MaterialType::WATER) {
+                continue;
+            }
+
+            // Calculate distance to drain center.
+            double cell_x = static_cast<double>(x);
+            double distance = std::abs(cell_x - drain_center);
+
+            // Force strength: stronger when close.
+            double strength = 1.0 - 0.5 * std::min(distance / max_distance, 1.0);
+            double force_magnitude = MAX_FORCE * strength;
+
+            // Direction toward drain center.
+            double direction = (cell_x < drain_center) ? 1.0 : -1.0;
+            if (std::abs(cell_x - drain_center) < 0.5) {
+                direction = 0.0;  // Already at drain.
+            }
+
+            cell.addPendingForce(Vector2d{ direction * force_magnitude, 0.0 });
         }
     }
 }
@@ -1242,7 +1302,10 @@ void ClockScenario::redrawWalls(World& world)
         if (!door_manager_.isOpenDoor(top_pos)) {
             materializeMaterial(world, x, 0, MaterialType::WALL);
         }
-        if (!door_manager_.isOpenDoor(bottom_pos)) {
+
+        // Skip drain cells in bottom wall when drain is open.
+        bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
+        if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell) {
             materializeMaterial(world, x, height - 1, MaterialType::WALL);
         }
     }

@@ -29,6 +29,7 @@ class GridOfCells;
 namespace DirtSim {
 
 class OrganismManager;
+class Scenario;
 struct OrganismTransfer;
 
 class World {
@@ -244,11 +245,17 @@ public:
     class OrganismManager& getOrganismManager() { return *organism_manager_; }
     const class OrganismManager& getOrganismManager() const { return *organism_manager_; }
 
+    // Scenario - called during advanceTime after force clear, before force application.
+    void setScenario(Scenario* scenario) { scenario_ = scenario; }
+    Scenario* getScenario() const { return scenario_; }
+
     std::unique_ptr<std::mt19937> rng_;
 
     void setRandomSeed(uint32_t seed);
 
 private:
+    Scenario* scenario_ = nullptr;
+
     void applyGravity();
     void applyAirResistance();
     void applyCohesionForces(const GridOfCells& grid);

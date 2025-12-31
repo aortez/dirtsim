@@ -1,7 +1,7 @@
 #pragma once
 
 #include "SandboxConfig.h"
-#include "server/scenarios/Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include <memory>
 #include <random>
 

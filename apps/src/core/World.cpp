@@ -21,6 +21,7 @@
 #include "WorldVelocityLimitCalculator.h"
 #include "WorldViscosityCalculator.h"
 #include "organisms/OrganismManager.h"
+#include "scenarios/Scenario.h"
 #include "spdlog/spdlog.h"
 
 #include <algorithm>
@@ -785,6 +786,13 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 cell.clearPendingForce();
             }
         }
+    }
+
+    // Scenario tick - apply scenario forces after clear, before physics forces.
+    // This allows scenarios to use addPendingForce() and have forces processed normally.
+    if (scenario_) {
+        ScopeTimer scenarioTimer(timers, "resolve_forces_scenario_tick");
+        scenario_->tick(*this, deltaTime);
     }
 
     // Apply gravity forces.

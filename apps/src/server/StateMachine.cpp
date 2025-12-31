@@ -17,7 +17,7 @@
 #include "network/CommandDeserializerJson.h"
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
-#include "scenarios/Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include "scenarios/ScenarioRegistry.h"
 #include "states/State.h"
 #include <cassert>

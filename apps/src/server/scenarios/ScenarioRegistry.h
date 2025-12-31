@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Scenario.h"
+#include "core/scenarios/Scenario.h"
 #include <functional>
 #include <memory>
 #include <string>
@@ -23,15 +23,15 @@ public:
     static ScenarioRegistry createDefault();
 
     // Register a scenario factory function with the given ID.
-    using ScenarioFactory = std::function<std::unique_ptr<Scenario>()>;
+    using ScenarioFactory = std::function<std::unique_ptr<DirtSim::Scenario>()>;
     void registerScenario(
-        const std::string& id, const ScenarioMetadata& metadata, ScenarioFactory factory);
+        const std::string& id, const DirtSim::ScenarioMetadata& metadata, ScenarioFactory factory);
 
     // Create a new scenario instance by ID (factory pattern).
-    std::unique_ptr<Scenario> createScenario(const std::string& id) const;
+    std::unique_ptr<DirtSim::Scenario> createScenario(const std::string& id) const;
 
     // Get metadata for a scenario by ID (no instance created).
-    const ScenarioMetadata* getMetadata(const std::string& id) const;
+    const DirtSim::ScenarioMetadata* getMetadata(const std::string& id) const;
 
     // Get all registered scenario IDs.
     std::vector<std::string> getScenarioIds() const;
@@ -45,7 +45,7 @@ public:
 private:
     // Storage for scenario metadata and factories.
     struct ScenarioEntry {
-        ScenarioMetadata metadata;
+        DirtSim::ScenarioMetadata metadata;
         ScenarioFactory factory;
     };
     std::unordered_map<std::string, ScenarioEntry> scenarios_;

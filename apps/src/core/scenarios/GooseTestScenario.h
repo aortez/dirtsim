@@ -1,18 +1,16 @@
 #pragma once
 
-#include "RainingConfig.h"
-#include "server/scenarios/Scenario.h"
-#include <memory>
-#include <random>
+#include "core/organisms/OrganismType.h"
+#include "core/scenarios/Scenario.h"
 
 namespace DirtSim {
 
 /**
- * Raining scenario - Rain falling from the sky.
+ * Goose Test scenario - simple world with a goose to test rigid body physics.
  */
-class RainingScenario : public Scenario {
+class GooseTestScenario : public Scenario {
 public:
-    RainingScenario();
+    GooseTestScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -23,11 +21,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    Config::Raining config_;
-
-    // Random number generation for rain drops.
-    std::mt19937 rng_{ 42 }; // Deterministic seed for consistency.
-    std::uniform_real_distribution<double> drop_dist_{ 0.0, 1.0 };
+    OrganismId goose_id_ = 0;
 };
 
 } // namespace DirtSim
