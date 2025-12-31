@@ -1,247 +1,366 @@
 # Organism Structural Integrity Design
 
-## The Insight
+## Overview
 
-**Use existing organism infrastructure!** Trees already have:
-- `organism_id` tracking which cells belong to which tree
-- Seed cell (the "root" of the tree)
-- TreeManager tracking all trees
+Organisms (trees, future creatures) are represented as **rigid bodies in continuous space** that project onto the discrete cell grid each frame. This approach treats organisms as proper physics objects rather than collections of cells with synchronized velocities.
 
-**Integrate with existing rigid body system!** `World::resolveRigidBodies()` already:
-- Finds connected organism structures via flood fill
-- Applies unified velocity to structures
+## Problem with Previous Approach
 
-We modify it to start from seed positions and prune disconnected fragments.
+The original design used **velocity synchronization**: all cells in an organism received the same velocity via flood-fill. This had a fundamental flaw:
 
-## Core Algorithm: Flood-Fill + Prune + Velocity Sync
+**Cells have independent COMs (Centers of Mass)** that move based on velocity. Even with unified velocity, cells cross grid boundaries at different times because their COMs start at different positions within their cells. This causes the structure to tear apart during movement.
 
-This happens inside `World::resolveRigidBodies()`, which receives TreeManager.
+```
+Organism moving right at velocity (0.5, 0):
 
-### For Each Tree:
+[WOOD A]─[WOOD B]─[WOOD C]
+com.x=0.8  com.x=0.2  com.x=-0.3
 
-1. **FLOOD FILL FROM SEED**
-   ```
-   Start flood-fill from tree.seed_position
-   Only follow ROOT and WOOD cells (LEAF excluded - handled by bones)
-   Only cells with matching organism_id
-   4-connected (cardinal directions only)
-   Build set of "connected" positions
-   ```
+Frame 1: Cell A crosses boundary first (com reaches 1.0)
+Frame 2: Cell B still inside its cell
+Frame 3: Cell B crosses boundary
+→ Structure tears apart!
+```
 
-2. **PRUNE DISCONNECTED FRAGMENTS**
-   ```
-   For all cells in tree.cells:
-       If cell is ROOT or WOOD and NOT in connected set:
-           cell.organism_id = 0  // Remove from organism
-           Remove from tree.cells
-           Remove from cell_to_tree_ map
-           // Cell becomes independent particle
-   ```
+The velocity sync approach is preserved below for historical reference but is **obsolete**.
 
-3. **APPLY UNIFIED VELOCITY**
-   ```
-   Gather pending_force from all connected cells
-   acceleration = total_force / total_mass
-   unified_velocity += acceleration * deltaTime
-   Set all connected cells to unified_velocity
-   ```
-   Result: Tree moves as rigid unit, fragments fall independently
+---
 
-## Implementation
+## New Design: Organisms as Continuous-Space Rigid Bodies
 
-### Modified World::resolveRigidBodies()
+### Core Concept
+
+**Two representations:**
+1. **Physics**: Organism lives in continuous space (position, velocity as Vector2d)
+2. **Rendering**: Organism projects onto discrete grid each frame
+
+```
+Physics (continuous) → Collision Detection → Response → Grid Projection
+         ↑                                                      ↓
+         └──────────── Forces Gathered ─────────────────────────┘
+```
+
+### Phase 1: Position + Velocity (No Rotation)
+
+#### Organism Structure
 
 ```cpp
-void World::resolveRigidBodies(double deltaTime)
-{
-    if (!tree_manager_) {
-        return;
+struct Organism {
+    OrganismId id;
+    OrganismType type;  // TREE, DUCK, etc.
+
+    // Continuous rigid body state
+    Vector2d position;        // Anchor point (seed/root location)
+    Vector2d velocity;        // Linear velocity (cells/sec)
+    double mass;              // Total mass (computed from shape)
+    Vector2d center_of_mass;  // Relative to position (computed)
+
+    // Shape definition (local coordinates, axis-aligned)
+    struct LocalCell {
+        Vector2i local_pos;      // Position relative to anchor
+        MaterialType material;
+        double fill_ratio;
+    };
+    std::vector<LocalCell> local_shape;
+
+    // Current grid projection (updated each frame)
+    std::vector<Vector2i> occupied_cells;
+};
+```
+
+#### Update Loop (Each Frame)
+
+```cpp
+void updateOrganism(Organism& org, Grid& grid, double dt) {
+    // 1. Gather forces from environment
+    Vector2d total_force = gatherEnvironmentForces(org, grid);
+
+    // 2. Compute desired movement
+    Vector2d acceleration = total_force / org.mass;
+    Vector2d desired_velocity = org.velocity + acceleration * dt;
+    Vector2d desired_position = org.position + desired_velocity * dt;
+
+    // 3. Predict where cells would be
+    std::vector<Vector2i> predicted_cells;
+    for (const auto& local : org.local_shape) {
+        Vector2d world = desired_position + Vector2d(local.local_pos);
+        predicted_cells.push_back(snap(world));  // floor()
     }
 
-    WorldData& data = getData();
+    // 4. Detect collisions
+    CollisionInfo collision = detectCollisions(predicted_cells, grid, org.id);
 
-    for (auto& [tree_id, tree] : tree_manager_->getTrees()) {
-        // 1. Flood fill from seed to find connected structural cells.
-        std::unordered_set<Vector2i> connected;
-        std::queue<Vector2i> frontier;
+    // 5. Collision response (impulse-based)
+    if (collision.blocked) {
+        handleCollision_Impulse(org, collision, grid, dt);
+    } else {
+        org.position = desired_position;
+        org.velocity = desired_velocity;
+    }
 
-        frontier.push(tree.seed_position);
+    // 6. Project organism onto grid
+    projectToGrid(org, grid);
+}
+```
 
-        while (!frontier.empty()) {
-            Vector2i pos = frontier.front();
-            frontier.pop();
+### Collision Detection
 
-            // Bounds check.
-            if (pos.x < 0 || pos.y < 0 ||
-                pos.x >= (int)data.width || pos.y >= (int)data.height) {
-                continue;
-            }
+```cpp
+struct CollisionInfo {
+    bool blocked;
+    std::vector<Vector2i> blocked_cells;
+    Vector2d contact_normal;  // Average surface normal
+};
 
-            // Already visited.
-            if (connected.count(pos)) {
-                continue;
-            }
+CollisionInfo detectCollisions(
+    const std::vector<Vector2i>& target_cells,
+    const Grid& grid,
+    OrganismId org_id)
+{
+    CollisionInfo info{.blocked = false};
+    Vector2d normal_sum = {0, 0};
 
-            Cell& cell = data.at(pos.x, pos.y);
-
-            // Must belong to this organism.
-            if (cell.organism_id != tree_id) {
-                continue;
-            }
-
-            // Only ROOT and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != MaterialType::ROOT &&
-                cell.material_type != MaterialType::WOOD &&
-                cell.material_type != MaterialType::SEED) {
-                continue;
-            }
-
-            connected.insert(pos);
-
-            // Add 4 cardinal neighbors to frontier.
-            frontier.push({pos.x - 1, pos.y});
-            frontier.push({pos.x + 1, pos.y});
-            frontier.push({pos.x, pos.y - 1});
-            frontier.push({pos.x, pos.y + 1});
-        }
-
-        // 2. Prune disconnected ROOT/WOOD cells.
-        std::vector<Vector2i> to_remove;
-        for (const auto& pos : tree.cells) {
-            Cell& cell = data.at(pos.x, pos.y);
-
-            // Only prune structural materials.
-            if (cell.material_type != MaterialType::ROOT &&
-                cell.material_type != MaterialType::WOOD) {
-                continue;
-            }
-
-            if (!connected.count(pos)) {
-                cell.organism_id = 0;  // Fragment breaks off.
-                to_remove.push_back(pos);
-                spdlog::info("Tree {} fragment at ({},{}) disconnected",
-                             tree_id, pos.x, pos.y);
-            }
-        }
-
-        // Update tree's cell tracking.
-        for (const auto& pos : to_remove) {
-            tree.cells.erase(pos);
-            // Note: cell_to_tree_ update handled by TreeManager.
-        }
-
-        // 3. Apply unified velocity to connected structure.
-        if (connected.empty()) {
+    for (const auto& cell_pos : target_cells) {
+        if (!isInBounds(cell_pos, grid)) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            normal_sum += computeBoundaryNormal(cell_pos);
             continue;
         }
 
-        // Gather forces and mass.
-        Vector2d total_force;
-        double total_mass = 0;
+        const Cell& cell = grid.at(cell_pos);
 
-        for (const auto& pos : connected) {
-            Cell& cell = data.at(pos.x, pos.y);
-            total_force += cell.pending_force;
-            total_mass += cell.getMass();
+        // Blocked by wall
+        if (cell.material_type == MaterialType::WALL) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            normal_sum += computeContactNormal(cell_pos, grid);
+        }
+        // Blocked by another organism
+        else if (cell.organism_id != 0 && cell.organism_id != org_id) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            normal_sum += computeContactNormal(cell_pos, grid);
+        }
+        // Blocked by dense solid material
+        else if (isSolidMaterial(cell) && cell.fill_ratio > 0.8) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            normal_sum += computeContactNormal(cell_pos, grid);
+        }
+    }
+
+    if (info.blocked) {
+        info.contact_normal = normal_sum.normalize();
+    }
+
+    return info;
+}
+```
+
+### Collision Response (Impulse-Based)
+
+Standard rigid body impulse calculation, same method used in Box2D/PhysX/Bullet:
+
+```cpp
+void handleCollision_Impulse(
+    Organism& org,
+    const CollisionInfo& collision,
+    Grid& grid,
+    double dt)
+{
+    Vector2d normal = collision.contact_normal;
+    double v_normal = dot(org.velocity, normal);
+
+    if (v_normal >= 0) return;  // Moving away from surface
+
+    // Coefficient of restitution
+    // 0.0 = perfectly inelastic (no bounce)
+    // 1.0 = perfectly elastic (full bounce)
+    double e = 0.3;
+
+    // Impulse magnitude: j = -(1 + e) * v_n * m
+    double j = -(1 + e) * v_normal * org.mass;
+    Vector2d impulse = normal * j;
+
+    // Apply to organism
+    org.velocity += impulse / org.mass;
+
+    // Apply reaction forces to environment (Newton's 3rd law)
+    int num_contacts = collision.blocked_cells.size();
+    Vector2d force_per_cell = -impulse / (dt * num_contacts);
+
+    for (const auto& cell_pos : collision.blocked_cells) {
+        Cell& cell = grid.at(cell_pos);
+
+        if (cell.material_type == MaterialType::WALL) {
+            continue;  // Walls are immovable
         }
 
-        if (total_mass < 0.0001) {
-            continue;
-        }
-
-        // F = ma -> a = F/m.
-        Vector2d acceleration = total_force * (1.0 / total_mass);
-
-        // Get current velocity from first cell (should be unified already).
-        Vector2d velocity = data.at(tree.seed_position.x,
-                                     tree.seed_position.y).velocity;
-        velocity += acceleration * deltaTime;
-
-        // Apply unified velocity to all connected cells.
-        for (const auto& pos : connected) {
-            data.at(pos.x, pos.y).velocity = velocity;
-        }
+        // Apply force uniformly - material properties handle response
+        cell.pending_force += force_per_cell;
     }
 }
 ```
 
-### Integration Point
+### Reaction Forces (Newton's 3rd Law)
 
-Already in place - `resolveRigidBodies()` is called from `World::advanceTime()`:
+Organisms apply forces back to the environment. No material-specific heuristics - the existing physics system handles material differences through viscosity, friction, and pressure.
 
 ```cpp
-resolveForces(scaledDeltaTime);
-resolveRigidBodies(scaledDeltaTime);  // Now handles pruning + unified velocity
-processVelocityLimiting(scaledDeltaTime);
+void applyWeightToGround(Organism& org, Grid& grid) {
+    double weight = org.mass * gravity;
+    std::vector<Vector2i> bottom_cells = findGroundContactCells(org);
+
+    if (bottom_cells.empty()) return;
+
+    Vector2d force_per_cell = {0, weight / bottom_cells.size()};
+
+    for (const auto& cell_pos : bottom_cells) {
+        Vector2i ground_pos = cell_pos + Vector2i{0, 1};
+        if (!isInBounds(ground_pos)) continue;
+
+        Cell& ground_cell = grid.at(ground_pos);
+        if (ground_cell.organism_id == org.id) continue;
+        if (ground_cell.material_type == MaterialType::WALL) continue;
+
+        ground_cell.pending_force += force_per_cell;
+    }
+}
 ```
 
-## Benefits
+### Grid Projection
 
-✅ **Uses existing infrastructure** - organism_id, seed tracking, TreeManager
-✅ **Automatic fragmentation** - damaged trees naturally break into pieces
-✅ **Simple implementation** - just flood fill + velocity averaging
-✅ **Works with existing physics** - no new force calculations
-✅ **Emergent behavior** - disconnected fragments fall realistically
-✅ **Trees maintain shape** - horizontal branches don't sag
+```cpp
+void projectToGrid(Organism& org, Grid& grid) {
+    // Clear old projections
+    for (const auto& old_pos : org.occupied_cells) {
+        Cell& cell = grid.at(old_pos);
+        if (cell.organism_id == org.id) {
+            cell.organism_id = 0;
+            cell.material_type = MaterialType::AIR;
+            cell.fill_ratio = 0.0;
+        }
+    }
 
-## Limitations
+    org.occupied_cells.clear();
 
-❌ **No rotation** - whole tree can't tip over as unit (yet)
-❌ **No local flex** - tree is rigid (might feel stiff)
-❌ **Only organisms** - doesn't help generic rigid materials
-❌ **Performance** - flood fill every frame (but should be fast for small trees)
+    // Project each local cell to grid
+    for (const auto& local : org.local_shape) {
+        Vector2d world_pos = org.position + Vector2d(local.local_pos);
+        Vector2i grid_pos = snap(world_pos);  // floor()
 
-## Examples
+        if (!isInBounds(grid_pos, grid)) continue;
 
-### Example 1: Healthy Tree
-```
-        [SEED]
-          |
-        [WOOD]
-          |
-    [WOOD]-[WOOD]-[WOOD]-[WOOD]  ← horizontal branch
+        Cell& cell = grid.at(grid_pos);
+        cell.organism_id = org.id;
+        cell.material_type = local.material;
+        cell.fill_ratio = local.fill_ratio;
+        cell.velocity = org.velocity;
 
-Flood fill finds all 6 cells connected to SEED
-All get same velocity → branch stays horizontal
-```
+        // Compute sub-cell COM from fractional position
+        Vector2d offset = world_pos - Vector2d(grid_pos);
+        cell.com = offset * 2.0 - Vector2d{1, 1};  // Map [0,1] → [-1,1]
 
-### Example 2: Damaged Tree
-```
-Before:                  After removing middle WOOD:
-    [SEED]                   [SEED]
-      |                        |
-    [WOOD]                   [WOOD]
-      |
-    [WOOD]-[WOOD]                   [WOOD] ← disconnected!
-
-Flood fill from SEED:
-- Finds: SEED, 2 WOOD (connected via vertical path)
-- Doesn't find: rightmost WOOD (no path to seed)
-- Disconnected WOOD loses organism_id → falls as particle
+        org.occupied_cells.push_back(grid_pos);
+    }
+}
 ```
 
-## Implementation Status
+### Force Gathering
 
-### Completed
-- ✅ Modified `World::resolveRigidBodies()` to use TreeManager
-- ✅ Flood fill from seed_position (ROOT + WOOD + SEED only)
-- ✅ Prune disconnected fragments (set organism_id = 0)
-- ✅ Unified velocity for connected structure
-- ✅ `TreeManager::removeCellsFromTree()` for pruning
-- ✅ `TreeManager::addCellToTree()` for growth and testing
-- ✅ Tests updated to use TreeManager properly
-- ✅ New test: `DisconnectedFragmentGetsPruned`
+```cpp
+Vector2d gatherEnvironmentForces(const Organism& org, const Grid& grid) {
+    Vector2d total_force = {0, 0};
 
-### Next
-- Convert `CantileverSupport_test` to use TreeManager (tests tree cantilever/horizontal branch stability)
+    for (const auto& local : org.local_shape) {
+        Vector2d world_pos = org.position + Vector2d(local.local_pos);
+        Vector2i grid_pos = snap(world_pos);
 
-### Future
-- Add rotation (track angular velocity for whole structure)
-- Add fracture threshold (break connections under stress)
+        if (!isInBounds(grid_pos, grid)) continue;
+
+        total_force += grid.at(grid_pos).pending_force;
+    }
+
+    // Gravity
+    total_force += org.mass * gravity_vector;
+
+    return total_force;
+}
+```
+
+### Growth
+
+```cpp
+void growCell(Organism& org, Vector2i local_pos, MaterialType mat) {
+    org.local_shape.push_back({
+        .local_pos = local_pos,
+        .material = mat,
+        .fill_ratio = 1.0
+    });
+
+    double new_mass = getMaterialProperties(mat).density;
+    org.mass += new_mass;
+    org.center_of_mass = recomputeCOM(org.local_shape);
+    // Position (anchor) stays fixed, COM shifts relative to it
+}
+```
 
 ## Design Decisions
 
-1. **4-connected flood fill** (cardinal neighbors only, no diagonals)
-2. **Every frame** - structural integrity checked each physics timestep
-3. **Bones still exist** - this doesn't replace bone forces, they work together
-4. **ROOT + WOOD + SEED form rigid structure** - LEAF excluded (handled by bones)
+1. **Position = anchor point (not COM)**: Keeps coordinates stable during growth.
+2. **No rotation in Phase 1**: Axis-aligned organisms only. Add rotation later.
+3. **Impulse-based collision**: Industry standard, physically correct.
+4. **No connectivity checks**: Removed for now. Can add back for fragmentation.
+5. **Simple force gathering**: floor() for grid lookup, sufficient for phase 1.
+6. **Uniform force application**: No material-specific heuristics.
+7. **Grid-only serialization**: Client sees projected grid, unchanged.
+
+## Phase 2: Future Enhancements
+
+- **Rotation**: Add `rotation`, `angular_velocity`, `moment_of_inertia`.
+- **Torque**: Compute from force positions relative to COM.
+- **Stress-based fracture**: Track stress at bonds, break under load.
+- **Organism-organism collision**: Two-body impulse resolution.
+
+## Implementation Status
+
+**Phase 1 - TODO:**
+- [ ] Add continuous position/velocity to Organism struct
+- [ ] Implement collision detection
+- [ ] Implement impulse-based collision response
+- [ ] Implement grid projection
+- [ ] Apply reaction forces to environment
+- [ ] Migrate Tree to new system
+- [ ] Remove old velocity sync code
+
+---
+
+## Historical Reference: Velocity Sync Approach (OBSOLETE)
+
+The following documents the original approach for reference. **Do not implement this** - it has fundamental flaws described above.
+
+### Original Algorithm: Flood-Fill + Prune + Velocity Sync
+
+1. **FLOOD FILL FROM SEED**
+   - Start from tree.seed_position
+   - Follow ROOT, WOOD, SEED cells (4-connected)
+   - Build set of connected positions
+
+2. **PRUNE DISCONNECTED FRAGMENTS**
+   - Any ROOT/WOOD not in connected set loses organism_id
+   - Becomes independent particle
+
+3. **APPLY UNIFIED VELOCITY**
+   - Gather pending_force from all connected cells
+   - acceleration = total_force / total_mass
+   - Set all connected cells to same velocity
+
+### Why It Failed
+
+- Unified velocity doesn't unify COM positions
+- Each cell's COM still moves independently
+- Boundary crossings happen at different times
+- Structure tears apart during movement
+- No mechanism for collision detection/response
+- No reaction forces applied to environment
