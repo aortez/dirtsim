@@ -1139,40 +1139,74 @@ void ClockScenario::updateDrain(World& world)
     WorldData& data = world.getData();
     if (data.height < 3 || data.width < 5) return;
 
-    // Calculate drain position (center of bottom wall).
-    constexpr uint32_t DRAIN_SIZE = 5;
-    uint32_t center_x = data.width / 2;
-    uint32_t half_drain = DRAIN_SIZE / 2;
-    drain_start_x_ = (center_x > half_drain) ? center_x - half_drain : 1;
-    drain_end_x_ = std::min(center_x + half_drain, data.width - 2);
-
     // Count water in bottom third.
     double water_amount = countWaterInBottomThird(world);
 
-    // Thresholds for opening/closing drain (with hysteresis to prevent flapping).
-    constexpr double OPEN_THRESHOLD = 3.0;   // Open when water exceeds this.
-    constexpr double CLOSE_THRESHOLD = 1.0;  // Close when water drops below this.
+    // Thresholds for drain opening size.
+    constexpr double CLOSE_THRESHOLD = 1.0;   // Below this, drain is closed.
+    constexpr double FULL_OPEN_THRESHOLD = 100.0;  // At or above this, drain is fully open.
+    constexpr uint32_t MAX_DRAIN_SIZE = 5;    // Maximum drain opening width.
 
-    bool should_open = water_amount >= OPEN_THRESHOLD;
-    bool should_close = water_amount < CLOSE_THRESHOLD;
+    // Calculate proportional drain size based on water level.
+    uint32_t target_drain_size = 0;
+    if (water_amount >= FULL_OPEN_THRESHOLD) {
+        target_drain_size = MAX_DRAIN_SIZE;
+    } else if (water_amount >= CLOSE_THRESHOLD) {
+        // Linear interpolation from 1 to MAX_DRAIN_SIZE.
+        double t = (water_amount - CLOSE_THRESHOLD) / (FULL_OPEN_THRESHOLD - CLOSE_THRESHOLD);
+        target_drain_size = 1 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
+    }
+    // else target_drain_size remains 0 (closed).
 
+    uint32_t center_x = data.width / 2;
     uint32_t drain_y = data.height - 1;  // Bottom wall row.
 
-    if (!drain_open_ && should_open) {
-        // Open the drain - remove wall cells.
-        drain_open_ = true;
-        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
-            data.at(x, drain_y) = Cell();
+    // Calculate new drain bounds based on target size (centered).
+    uint32_t half_drain = target_drain_size / 2;
+    uint32_t new_start_x = (target_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
+    uint32_t new_end_x = (target_drain_size > 0) ? std::min(new_start_x + target_drain_size - 1, data.width - 2) : 0;
+
+    // Ensure start doesn't go below 1 (keep wall border).
+    if (new_start_x < 1) new_start_x = 1;
+
+    // Track if drain size changed.
+    bool drain_was_open = drain_open_;
+    uint32_t old_start_x = drain_start_x_;
+    uint32_t old_end_x = drain_end_x_;
+
+    drain_open_ = (target_drain_size > 0);
+    drain_start_x_ = new_start_x;
+    drain_end_x_ = new_end_x;
+
+    // Update drain cells if size changed.
+    if (drain_was_open || drain_open_) {
+        // Restore wall on cells that are no longer in the drain.
+        if (drain_was_open) {
+            for (uint32_t x = old_start_x; x <= old_end_x; ++x) {
+                bool still_open = drain_open_ && x >= new_start_x && x <= new_end_x;
+                if (!still_open) {
+                    data.at(x, drain_y).replaceMaterial(MaterialType::WALL, 1.0);
+                }
+            }
         }
-        spdlog::info("ClockScenario: Drain opened (water level: {:.1f})", water_amount);
-    }
-    else if (drain_open_ && should_close) {
-        // Close the drain - restore wall cells.
-        drain_open_ = false;
-        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
-            data.at(x, drain_y).replaceMaterial(MaterialType::WALL, 1.0);
+
+        // Open new drain cells.
+        if (drain_open_) {
+            for (uint32_t x = new_start_x; x <= new_end_x; ++x) {
+                bool was_open = drain_was_open && x >= old_start_x && x <= old_end_x;
+                if (!was_open) {
+                    data.at(x, drain_y) = Cell();
+                }
+            }
         }
-        spdlog::info("ClockScenario: Drain closed (water level: {:.1f})", water_amount);
+
+        // Log significant changes.
+        if (!drain_was_open && drain_open_) {
+            spdlog::info("ClockScenario: Drain opened (size: {}, water: {:.1f})",
+                target_drain_size, water_amount);
+        } else if (drain_was_open && !drain_open_) {
+            spdlog::info("ClockScenario: Drain closed (water: {:.1f})", water_amount);
+        }
     }
 
     // If drain is open, remove any water that falls into the drain cells.
@@ -1184,11 +1218,38 @@ void ClockScenario::updateDrain(World& world)
             }
         }
 
-        // Apply suction force to water on the bottom playable row.
+        // Drain center position.
+        double drain_center_x = static_cast<double>(drain_start_x_ + drain_end_x_) / 2.0;
+        double drain_center_y = static_cast<double>(drain_y);
+
+        // Apply global gravity-like pull toward drain for all water in the world.
+        constexpr double DRAIN_GRAVITY = 1.0;  // Gentle pull toward drain.
+
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                Cell& cell = data.at(x, y);
+                if (cell.material_type != MaterialType::WATER) {
+                    continue;
+                }
+
+                // Vector from cell to drain center.
+                double dx = drain_center_x - static_cast<double>(x);
+                double dy = drain_center_y - static_cast<double>(y);
+
+                // Normalize direction.
+                double dist = std::sqrt(dx * dx + dy * dy);
+                if (dist > 0.5) {
+                    dx /= dist;
+                    dy /= dist;
+                    cell.addPendingForce(Vector2d{ dx * DRAIN_GRAVITY, dy * DRAIN_GRAVITY });
+                }
+            }
+        }
+
+        // Apply stronger suction force to water on the bottom playable row.
         uint32_t bottom_row = drain_y - 1;  // Row above the drain (height - 2).
-        double drain_center = static_cast<double>(drain_start_x_ + drain_end_x_) / 2.0;
         double max_distance = static_cast<double>(data.width) / 2.0;
-        constexpr double MAX_FORCE = 500.0;  // Maximum suction force.
+        constexpr double MAX_FORCE = 5.0;  // Maximum suction force.
 
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, bottom_row);
@@ -1198,15 +1259,15 @@ void ClockScenario::updateDrain(World& world)
 
             // Calculate distance to drain center.
             double cell_x = static_cast<double>(x);
-            double distance = std::abs(cell_x - drain_center);
+            double distance = std::abs(cell_x - drain_center_x);
 
             // Force strength: stronger when close.
-            double strength = 1.0 - 0.5 * std::min(distance / max_distance, 1.0);
+            double strength = 1.0 - 0.9 * std::min(distance / max_distance, 1.0);
             double force_magnitude = MAX_FORCE * strength;
 
             // Direction toward drain center.
-            double direction = (cell_x < drain_center) ? 1.0 : -1.0;
-            if (std::abs(cell_x - drain_center) < 0.5) {
+            double direction = (cell_x < drain_center_x) ? 1.0 : -1.0;
+            if (std::abs(cell_x - drain_center_x) < 0.5) {
                 direction = 0.0;  // Already at drain.
             }
 
