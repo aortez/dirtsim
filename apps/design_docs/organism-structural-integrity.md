@@ -589,16 +589,64 @@ Investigation comparing Duck (cell-based physics) and Goose (rigid body physics)
 
 **Fixes Needed:**
 
-1. **Update test expectations** to match actual walking speed (~30 cells in 100 frames)
+1. **Investigate Goose vs Duck physics difference** (see below)
 2. **Add deceleration friction** so organisms slow down when they stop walking
 3. **Fix contact normal** to compute actual direction from organism to obstacle
+
+### Session Notes: Next Steps
+
+**Resume commands:**
+```bash
+cd /home/data/workspace/dirtsim/apps
+./build-debug/bin/dirtsim-tests --gtest_filter="GooseTest*"      # 4/8 passing
+./build-debug/bin/dirtsim-tests --gtest_filter="DuckTest.DuckWalkingSpeedOnDifferentSurfaces"
+```
+
+**Where we left off:**
+We discovered Duck and Goose have different physics while updating walking tests. The walking tests are updated but failing because we need to decide how Goose physics should work.
+
+**Immediate question to resolve:**
+Goose travels 53 cells with max velocity 27 cells/sec, while Duck travels 30 cells with max velocity 50 cells/sec. This seems backwards (higher velocity should mean more distance). Investigate:
+1. Is Goose velocity measurement correct? (Check `goose->velocity` vs actual movement)
+2. Is air resistance the key difference? (Duck has it via world physics, Goose doesn't)
+3. Should we add air resistance to `Organism::applyForce()` for rigid bodies?
+
+**Once physics is resolved:**
+1. Update Goose walking test expectations to match actual behavior
+2. Fix contact normal at `Organism.cpp:236` (hardcoded as floor)
+3. Add deceleration friction so organisms stop when walking stops
+4. Then extend Goose to multi-cell (1x2)
+
+**Key files:**
+- `src/core/organisms/Organism.cpp:196` - `applyForce()` for rigid bodies
+- `src/core/organisms/Goose.cpp:76` - Goose physics integration
+- `src/core/organisms/Duck.cpp:136` - Duck uses `cell.addPendingForce()`
+- `src/core/organisms/tests/Goose_test.cpp` - Walking tests (lines 209-333)
+
+### Goose vs Duck Physics Discrepancy
+
+When updating Goose walking tests, we discovered **Goose has very different physics than Duck**:
+
+| Organism | Distance (100 frames) | Max Velocity | Physics Model |
+|----------|----------------------|--------------|---------------|
+| Duck     | 30 cells             | 50 cells/sec | Cell-based (world physics) |
+| Goose    | 53 cells             | 26.7 cells/sec | Rigid body (own velocity) |
+
+**Key Difference:**
+- Duck: Uses `cell.addPendingForce()` → world physics applies air resistance → terminal velocity ~50
+- Goose: Uses `Organism::applyForce()` → no air resistance applied → velocity grows differently
+
+**Investigation needed:**
+- Why does Goose travel farther (53 vs 30) with lower max velocity (27 vs 50)?
+- Should Goose have air resistance applied to match Duck behavior?
+- Or is the rigid body physics intentionally different?
 
 ### Phase 1 - In Progress
 
 **Collision Response Tuning:**
 - [ ] Fix contact normal computation for vertical walls (hardcoded floor normal at `Organism.cpp:236`)
 - [ ] Add deceleration friction so organisms slow down when they stop walking
-- [ ] Update Goose test expectations to match actual walking speed (~30 cells in 100 frames)
+- [ ] Investigate Goose vs Duck physics discrepancy and decide on unified behavior
 
 **Multi-Cell Goose:**
 - [ ] Extend Goose to 1x2 (two cells tall)

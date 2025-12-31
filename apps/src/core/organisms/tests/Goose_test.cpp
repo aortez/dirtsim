@@ -208,7 +208,8 @@ TEST_F(GooseTest, GooseFallsToFloorThenStops)
 
 TEST_F(GooseTest, GooseWalksRightWhenOnGround)
 {
-    auto world = createTestWorld();
+    // Use a larger world so goose has room to reach terminal velocity.
+    auto world = createTestWorld(100, 10);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create a test brain we can control.
@@ -233,21 +234,35 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
         << "Goose should be at y=" << expected_y << " after settling, not inside the floor";
     spdlog::info("Goose settled at ({}, {})", goose->getAnchorCell().x, goose->getAnchorCell().y);
 
-    // Now walk right for 100 frames (~1.6 seconds).
+    // Walk right for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_RIGHT);
+    double max_velocity = 0.0;
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
+
+        // Track max velocity.
+        Vector2i pos = goose->getAnchorCell();
+        if (pos.x >= 0 && pos.x < 100) {
+            double vel = goose->velocity.x;
+            if (vel > max_velocity) {
+                max_velocity = vel;
+            }
+        }
     }
 
     Vector2i final_pos = goose->getAnchorCell();
     int distance_moved = final_pos.x - start_x;
 
-    spdlog::info("Goose walked from x={} to x={}, distance={} cells", start_x, final_pos.x, distance_moved);
+    spdlog::info("Goose walked from x={} to x={}, distance={} cells, max_velocity={:.1f}",
+        start_x, final_pos.x, distance_moved, max_velocity);
 
-    // Check horizontal movement: expect 2-6 cells in 100 frames at ~60fps.
-    // With WALK_FORCE=50 and reasonable physics, this is approximately 2-3 cells/second.
-    EXPECT_GE(distance_moved, 2) << "Goose should move at least 2 cells when walking right for 100 frames";
-    EXPECT_LE(distance_moved, 8) << "Goose should not move more than 8 cells (unreasonably fast)";
+    // Check horizontal movement: expect ~30 cells in 100 frames with terminal velocity ~50.
+    EXPECT_GE(distance_moved, 25) << "Goose should move at least 25 cells when walking right for 100 frames";
+    EXPECT_LE(distance_moved, 35) << "Goose should not move more than 35 cells in 100 frames";
+
+    // Check terminal velocity is in expected range (45-51 cells/sec).
+    EXPECT_GE(max_velocity, 45.0) << "Goose terminal velocity should be at least 45 cells/sec";
+    EXPECT_LE(max_velocity, 51.0) << "Goose terminal velocity should not exceed 51 cells/sec";
 
     // Check vertical position: should still be on the floor, not fallen through.
     EXPECT_EQ(final_pos.y, expected_y)
@@ -256,7 +271,8 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
 
 TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
 {
-    auto world = createTestWorld();
+    // Use a larger world so goose has room to reach terminal velocity.
+    auto world = createTestWorld(100, 10);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create a test brain we can control.
@@ -264,7 +280,7 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
     TestGooseBrain* brain_ptr = test_brain.get();
 
     // Create goose on the floor, starting from the right side (y=8, floor at y=9).
-    int start_x = 15;
+    int start_x = 90;
     int expected_y = 8; // Should stay just above the floor.
     OrganismId goose_id = manager.createGoose(*world, start_x, expected_y, std::move(test_brain));
     Goose* goose = manager.getGoose(goose_id);
@@ -281,20 +297,35 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
         << "Goose should be at y=" << expected_y << " after settling, not inside the floor";
     spdlog::info("Goose settled at ({}, {})", goose->getAnchorCell().x, goose->getAnchorCell().y);
 
-    // Now walk left for 100 frames (~1.6 seconds).
+    // Walk left for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_LEFT);
+    double max_velocity = 0.0;
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
+
+        // Track max velocity (absolute value since going left).
+        Vector2i pos = goose->getAnchorCell();
+        if (pos.x >= 0 && pos.x < 100) {
+            double vel = std::abs(goose->velocity.x);
+            if (vel > max_velocity) {
+                max_velocity = vel;
+            }
+        }
     }
 
     Vector2i final_pos = goose->getAnchorCell();
     int distance_moved = start_x - final_pos.x; // Inverted for left movement.
 
-    spdlog::info("Goose walked from x={} to x={}, distance={} cells left", start_x, final_pos.x, distance_moved);
+    spdlog::info("Goose walked from x={} to x={}, distance={} cells left, max_velocity={:.1f}",
+        start_x, final_pos.x, distance_moved, max_velocity);
 
-    // Check horizontal movement: expect 2-6 cells in 100 frames at ~60fps.
-    EXPECT_GE(distance_moved, 2) << "Goose should move at least 2 cells when walking left for 100 frames";
-    EXPECT_LE(distance_moved, 8) << "Goose should not move more than 8 cells (unreasonably fast)";
+    // Check horizontal movement: expect ~30 cells in 100 frames with terminal velocity ~50.
+    EXPECT_GE(distance_moved, 25) << "Goose should move at least 25 cells when walking left for 100 frames";
+    EXPECT_LE(distance_moved, 35) << "Goose should not move more than 35 cells in 100 frames";
+
+    // Check terminal velocity is in expected range (45-51 cells/sec).
+    EXPECT_GE(max_velocity, 45.0) << "Goose terminal velocity should be at least 45 cells/sec";
+    EXPECT_LE(max_velocity, 51.0) << "Goose terminal velocity should not exceed 51 cells/sec";
 
     // Check vertical position: should still be on the floor, not fallen through.
     EXPECT_EQ(final_pos.y, expected_y)
