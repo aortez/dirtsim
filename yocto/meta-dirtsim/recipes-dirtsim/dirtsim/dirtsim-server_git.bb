@@ -17,6 +17,7 @@ EXTERNALSRC_BUILD = "${WORKDIR}/build"
 DEPENDS = " \
     avahi \
     boost \
+    libsdl2 \
     libyuv \
     openh264 \
     openssl \
@@ -64,6 +65,7 @@ FILES:${PN} = " \
 # Runtime dependencies.
 RDEPENDS:${PN} = " \
     avahi-daemon \
+    libsdl2 \
     libyuv \
     openh264 \
 "

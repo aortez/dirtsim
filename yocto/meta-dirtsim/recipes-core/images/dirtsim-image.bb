@@ -15,11 +15,11 @@ HOSTNAME_DEFAULT = "dirtsim"
 # ============================================================================
 # User Configuration
 # ============================================================================
-# Create 'dirtsim' user with sudo access. SSH key is injected at flash time.
+# Create 'dirtsim' user with sudo and input access. SSH key is injected at flash time.
 inherit extrausers
 
 EXTRA_USERS_PARAMS = " \
-    useradd -m -s /bin/bash -G sudo dirtsim; \
+    useradd -m -s /bin/bash -G sudo,input dirtsim; \
     usermod -p '*' dirtsim; \
 "
 

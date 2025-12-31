@@ -31,6 +31,7 @@ DEPENDS = " \
     boost \
     libdrm \
     libinput \
+    libsdl2 \
     libyuv \
     openh264 \
     openssl \
@@ -47,14 +48,15 @@ EXTRA_OECMAKE = " \
 # Allow network access during configure for FetchContent.
 do_configure[network] = "1"
 
-# Build the UI binary.
+# Build the UI and CLI binaries.
 do_compile() {
-    cmake --build ${B} --target dirtsim-ui -- ${PARALLEL_MAKE}
+    cmake --build ${B} --target dirtsim-ui cli -- ${PARALLEL_MAKE}
 }
 
 do_install() {
     install -d ${D}${bindir}
     install -m 0755 ${B}/bin/dirtsim-ui ${D}${bindir}/
+    install -m 0755 ${B}/bin/cli ${D}${bindir}/dirtsim-cli
 
     # Install system configuration scripts.
     install -m 0755 ${WORKDIR}/dirtsim-detect-display.sh ${D}${bindir}/
@@ -77,8 +79,9 @@ do_install() {
 SYSTEMD_SERVICE:${PN} = "dirtsim-ui.service dirtsim-detect-display.service dirtsim-set-hostname.service dirtsim-config-setup.service"
 SYSTEMD_AUTO_ENABLE = "enable"
 
-# Package the binary.
+# Package the binaries.
 FILES:${PN} = " \
+    ${bindir}/dirtsim-cli \
     ${bindir}/dirtsim-ui \
     ${bindir}/dirtsim-detect-display.sh \
     ${bindir}/dirtsim-set-hostname.sh \
@@ -93,10 +96,11 @@ FILES:${PN} = " \
 # Runtime dependencies.
 RDEPENDS:${PN} = " \
     avahi-daemon \
+    dirtsim-server \
     libdrm \
     libinput \
+    libsdl2 \
     libyuv \
     openh264 \
-    dirtsim-server \
     xkeyboard-config \
 "

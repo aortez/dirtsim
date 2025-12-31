@@ -116,12 +116,19 @@ set(CMAKE_CXX_STANDARD 23) #C++23
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 
+# Find SDL2 for gamepad support (optional) and display backend.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(SDL2 sdl2)
+if(SDL2_FOUND)
+    message(STATUS "SDL2 found - gamepad support enabled")
+else()
+    message(STATUS "SDL2 not found - gamepad support disabled")
+endif()
+
 # Configuration
 if (LV_USE_SDL)
 
-    message("Including SDL2 support")
-    find_package(PkgConfig REQUIRED)
-    pkg_check_modules(SDL2 REQUIRED sdl2)
+    message("Including SDL2 display backend support")
     pkg_check_modules(SDL2_IMAGE REQUIRED SDL2_image)
 
     list(APPEND PKG_CONFIG_LIB ${SDL2_LIBRARIES} ${SDL2_IMAGE_LIBRARIES})
@@ -209,7 +216,7 @@ target_link_libraries(lvgl_linux PUBLIC msgpack-cxx nlohmann_json::nlohmann_json
 # ============================================================================
 
 # Core library - minimal shared types for serialization.
-add_library(dirtsim-core STATIC
+set(DIRTSIM_CORE_SOURCES
     src/core/Cell.cpp
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
@@ -235,8 +242,22 @@ add_library(dirtsim-core STATIC
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
 )
+
+# Gamepad support requires SDL2.
+if(SDL2_FOUND)
+    list(APPEND DIRTSIM_CORE_SOURCES src/core/input/GamepadManager.cpp)
+endif()
+
+add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
 target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
 target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json msgpack-cxx spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
+
+# Link SDL2 for gamepad support if available.
+if(SDL2_FOUND)
+    target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})
+    target_link_libraries(dirtsim-core PUBLIC ${SDL2_LIBRARIES})
+    target_compile_definitions(dirtsim-core PUBLIC DIRTSIM_HAS_GAMEPAD)
+endif()
 
 # Define DIRTSIM_PRODUCTION_BUILD for Release builds to use production logging defaults.
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

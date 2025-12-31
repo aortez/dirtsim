@@ -6,11 +6,18 @@
 #include "RunAllRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
+#ifdef DIRTSIM_HAS_GAMEPAD
+#include "core/input/GamepadManager.h"
+#endif
 #include "core/network/WebSocketService.h"
 #include "server/api/StatusGet.h"
 #include <args.hxx>
+#include <chrono>
+#include <cmath>
+#include <thread>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -96,6 +103,7 @@ struct CliCommandInfo {
 static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "benchmark", "Run performance benchmark (launches server)" },
     { "cleanup", "Clean up rogue dirtsim processes" },
+    { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "integration_test", "Run integration test (launches server + UI)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
@@ -355,6 +363,86 @@ int main(int argc, char** argv)
         return results.empty() ? 0 : 0; // Always return 0 on success.
     }
 
+    // Handle gamepad-test command (prints gamepad state to console).
+    if (targetName == "gamepad-test") {
+#ifdef DIRTSIM_HAS_GAMEPAD
+        std::cout << "Gamepad test mode. Press Ctrl+C to exit.\n" << std::endl;
+
+        GamepadManager manager;
+
+        if (!manager.isAvailable()) {
+            std::cerr << "Error: SDL gamecontroller subsystem not available." << std::endl;
+            return 1;
+        }
+
+        // Track previous state to detect changes.
+        std::vector<GamepadState> prevStates;
+
+        // Poll loop.
+        while (true) {
+            manager.poll();
+
+            // Report newly connected gamepads.
+            for (size_t idx : manager.getNewlyConnected()) {
+                std::cout << "[Gamepad " << idx << "] Connected: "
+                          << manager.getGamepadName(idx) << std::endl;
+            }
+
+            // Report newly disconnected gamepads.
+            for (size_t idx : manager.getNewlyDisconnected()) {
+                std::cout << "[Gamepad " << idx << "] Disconnected" << std::endl;
+            }
+
+            // Resize prevStates if needed.
+            while (prevStates.size() < manager.getDeviceCount()) {
+                prevStates.emplace_back();
+            }
+
+            // Print state for each connected gamepad (only on change).
+            for (size_t i = 0; i < manager.getDeviceCount(); ++i) {
+                const GamepadState* state = manager.getGamepadState(i);
+                if (!state || !state->connected) {
+                    continue;
+                }
+
+                GamepadState& prev = prevStates[i];
+
+                // Check if state changed (with small deadzone for analog).
+                bool changed = false;
+                if (std::abs(state->stick_x - prev.stick_x) > 0.05f) changed = true;
+                if (std::abs(state->stick_y - prev.stick_y) > 0.05f) changed = true;
+                if (state->dpad_x != prev.dpad_x) changed = true;
+                if (state->dpad_y != prev.dpad_y) changed = true;
+                if (state->button_a != prev.button_a) changed = true;
+                if (state->button_b != prev.button_b) changed = true;
+
+                if (changed) {
+                    std::cout << "[Gamepad " << i << "] "
+                              << "stick_x: " << std::fixed << std::setprecision(2)
+                              << std::setw(6) << state->stick_x << "  "
+                              << "stick_y: " << std::setw(6) << state->stick_y << "  "
+                              << "dpad: (" << static_cast<int>(state->dpad_x) << ", "
+                              << static_cast<int>(state->dpad_y) << ")  "
+                              << "A: " << (state->button_a ? "true " : "false") << "  "
+                              << "B: " << (state->button_b ? "true " : "false")
+                              << std::endl;
+
+                    prev = *state;
+                }
+            }
+
+            // Sleep to avoid busy-waiting (~60Hz poll rate).
+            std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+
+        return 0;
+#else
+        std::cerr << "Error: Gamepad support not available (SDL2 not found at build time)."
+                  << std::endl;
+        return 1;
+#endif
+    }
+
     // Handle integration_test command (auto-launches server and UI).
     if (targetName == "integration_test") {
         // Find server and UI binaries (assume they're in same directory as CLI).
@@ -583,8 +671,8 @@ int main(int argc, char** argv)
     // Handle server/ui targets - normal command mode.
     if (targetName != "server" && targetName != "ui") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
-        std::cerr << "Valid targets: server, ui, benchmark, cleanup, integration_test, run-all, "
-                     "test_binary\n\n";
+        std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
+                     "integration_test, run-all, test_binary\n\n";
         std::cerr << parser;
         return 1;
     }

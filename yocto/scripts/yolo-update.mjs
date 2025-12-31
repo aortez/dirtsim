@@ -212,6 +212,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   if (uiBuildDir) {
     info(`UI build dir: ${uiBuildDir}`);
     targets.push({ name: 'dirtsim-ui', buildDir: uiBuildDir, target: 'dirtsim-ui' });
+    targets.push({ name: 'dirtsim-cli', buildDir: uiBuildDir, target: 'cli' });
   }
   if (serverBuildDir) {
     info(`Server build dir: ${serverBuildDir}`);
@@ -237,6 +238,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const binaries = [];
   const uiBinary = findBinary('dirtsim-ui', 'dirtsim-ui');
   const serverBinary = findBinary('dirtsim-server', 'dirtsim-server');
+  const cliBinary = findBinary('dirtsim-ui', 'cli');  // CLI is built with UI.
 
   if (uiBinary) {
     const stat = statSync(uiBinary);
@@ -256,6 +258,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       size: stat.size,
       service: 'dirtsim-server',
       remotePath: '/usr/bin/dirtsim-server',
+    });
+  }
+  if (cliBinary) {
+    const stat = statSync(cliBinary);
+    binaries.push({
+      name: 'dirtsim-cli',
+      path: cliBinary,
+      size: stat.size,
+      service: null,  // No service for CLI.
+      remotePath: '/usr/bin/dirtsim-cli',
     });
   }
 
@@ -351,7 +363,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   // Stop services, copy binaries, start services.
   banner('Restarting services...', consola);
 
-  const serviceNames = binaries.map(b => b.service).join(' ');
+  const serviceNames = binaries.map(b => b.service).filter(s => s).join(' ');
   const copyCommands = binaries.map(b => `sudo cp /tmp/${b.name} ${b.remotePath}`).join(' && ');
 
   const remoteCmd = `sudo systemctl stop ${serviceNames} && ${copyCommands} && sudo systemctl start ${serviceNames}`;
