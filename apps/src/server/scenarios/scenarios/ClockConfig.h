@@ -31,16 +31,16 @@ struct Clock {
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
     uint8_t timezoneIndex = 2;
-    ClockFont font = ClockFont::Segment7;
+    ClockFont font = ClockFont::DotMatrix;
     bool showSeconds = false;
     bool autoScale = true;
     uint32_t targetDisplayWidth = 752;
     uint32_t targetDisplayHeight = 480;
     uint32_t marginPixels = 20;
     double eventFrequency = 0.5;
-    bool duckEnabled = false;      // Manual toggle for duck event.
-    bool meltdownEnabled = false;  // Manual trigger for meltdown event.
-    bool rainEnabled = false;      // Manual toggle for rain event.
+    bool duckEnabled = false;
+    bool meltdownEnabled = false;
+    bool rainEnabled = false;
 };
 
 } // namespace DirtSim::Config
