@@ -27,6 +27,18 @@ struct LocalCell {
 };
 
 /**
+ * Result of collision detection for an organism.
+ *
+ * Used to determine if an organism can move to a predicted position
+ * and to compute collision response (impulse, bounce).
+ */
+struct CollisionInfo {
+    bool blocked = false;                    // True if any cell is blocked.
+    std::vector<Vector2i> blocked_cells;     // Grid positions that caused blocking.
+    Vector2d contact_normal{ 0.0, 0.0 };     // Average surface normal for bounce direction.
+};
+
+/**
  * Hinge configuration for bone connections.
  */
 enum class HingeEnd {
@@ -125,6 +137,10 @@ public:
     void recomputeCenterOfMass();
     void integratePosition(double dt);
     void applyForce(Vector2d force, double dt);
+
+    CollisionInfo detectCollisions(
+        const std::vector<Vector2i>& target_cells,
+        const World& world) const;
 
 protected:
     OrganismId id_;

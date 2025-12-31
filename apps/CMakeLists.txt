@@ -294,6 +294,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/scenarios/scenarios/DamBreakScenario.cpp
     src/server/scenarios/scenarios/EmptyScenario.cpp
     src/server/scenarios/scenarios/FallingDirtScenario.cpp
+    src/server/scenarios/scenarios/GooseTestScenario.cpp
     src/server/scenarios/scenarios/RainingScenario.cpp
     src/server/scenarios/scenarios/SandboxScenario.cpp
     src/server/scenarios/scenarios/TreeGerminationScenario.cpp
@@ -318,6 +319,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/Duck.cpp
     src/core/organisms/DuckBrain.cpp
     src/core/organisms/DuckSensoryData.cpp
+    src/core/organisms/Goose.cpp
+    src/core/organisms/GooseBrain.cpp
     src/core/organisms/Organism.cpp
     src/core/organisms/OrganismManager.cpp
     src/core/organisms/OrganismSensoryData.cpp
@@ -498,6 +501,8 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/CantileverSupport_test.cpp
     src/core/organisms/tests/CellTrackerUtil.cpp
     src/core/organisms/tests/Duck_test.cpp
+    src/core/organisms/tests/Goose_test.cpp
+    src/core/organisms/tests/OrganismCollision_test.cpp
     src/core/organisms/tests/OrganismPhysics_test.cpp
     src/core/organisms/tests/OrganismSensoryData_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp

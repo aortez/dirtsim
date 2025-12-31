@@ -490,7 +490,23 @@ This order builds up the system incrementally - each step depends on previous st
 
 ## Implementation Status
 
-**Phase 1 - Completed:**
+### Development Strategy: Goose as Testbed
+
+We're using **Goose** as the testbed organism for developing rigid body physics:
+
+1. **Goose** is a new organism type that uses the rigid body approach from the start.
+2. It will be extended from single-cell to multi-cell to validate the tearing fix.
+3. Once proven, the same approach will be applied to Tree.
+4. **Duck** stays as-is (single-cell, cell-based physics works fine).
+
+**Why Goose?**
+- Clean slate - no legacy code to work around.
+- Can test multi-cell physics without breaking existing Tree functionality.
+- Permanent organism type that coexists with Duck.
+
+### Phase 1 - Completed
+
+**Organism Base Class:**
 - ✅ Add continuous position/velocity to Organism struct
 - ✅ Add LocalCell struct for local shape definition
 - ✅ Implement mass computation (recomputeMass)
@@ -499,23 +515,100 @@ This order builds up the system incrementally - each step depends on previous st
 - ✅ Implement force application (applyForce)
 - ✅ Write OrganismPhysics_test.cpp (13 tests, all passing)
 
-**Phase 1 - In Progress:**
-- [ ] Write OrganismGridProjection_test.cpp
-- [ ] Implement grid projection (projectToGrid)
-- [ ] Write OrganismForceGathering_test.cpp
-- [ ] Implement force gathering (gatherEnvironmentForces)
-- [ ] Write OrganismCollision_test.cpp
-- [ ] Implement collision detection (detectCollisions)
-- [ ] Write OrganismCollisionResponse_test.cpp
-- [ ] Implement impulse-based collision response (handleCollision_Impulse)
-- [ ] Integrate with World::resolveRigidBodies
-- [ ] Migrate Tree to use new physics
-- [ ] Remove old velocity sync code
+**Goose Implementation:**
+- ✅ Create Goose organism class (Goose.h, Goose.cpp)
+- ✅ Create GooseBrain interface and RandomGooseBrain
+- ✅ Implement projectToGrid() in Goose
+- ✅ Implement gatherForces() in Goose
+- ✅ Add GOOSE to OrganismType and EntityType enums
+- ✅ Add Goose to OrganismManager (createGoose, getGoose)
+- ✅ Add Goose sprite rendering to EntityRenderer
+- ✅ Create GooseTestScenario for testing
 
-**Commits:**
+### Phase 1 - Completed (Collision Detection)
+
+**Collision System:**
+- ✅ Add CollisionInfo struct to Organism.h
+- ✅ Implement detectCollisions() in Organism base class
+  - Checks: WALL, other organisms, dense solids (DIRT/SAND/WOOD/METAL/ROOT > 0.8), world boundaries
+  - Returns: blocked status, blocked cells, contact normal
+- ✅ Write OrganismCollision_test.cpp (11 tests, all passing)
+- ✅ Integrate detectCollisions() into Goose update loop
+  - Predict position before moving
+  - Check collisions at predicted cells
+  - Apply velocity-based collision response
+
+**Testing:**
+- ✅ Write Goose_test.cpp (8 tests)
+  - TestGooseBrain for controlled testing
+  - Stand still, fall to floor, walk left/right
+  - Vertical wall collision, organism-organism collision
+- ✅ Write OrganismCollision_test.cpp (11 tests, all passing)
+  - Empty space, WALL, floor, out of bounds (all 4 edges)
+  - Other organism, own cells, dense solids (DIRT), multi-cell collision
+
+**Goose Tests Status:** 4/8 passing
+- ✅ CreateGoosePlacesWoodCell
+- ✅ GooseStandsStillWithWaitAction
+- ✅ GooseFallsToFloorThenStops
+- ✅ GooseCannotWalkThroughOtherOrganism
+- ❌ GooseWalksRightWhenOnGround (walking works but too fast)
+- ❌ GooseWalksLeftWhenOnGround (walking works but too fast)
+- ❌ GooseStopsWhenWalkDirectionChangesToZero (velocity issue)
+- ❌ GooseCannotWalkThroughVerticalWall (contact normal issue)
+
+### Phase 1 - In Progress
+
+**Collision Response Tuning:**
+- [ ] Fix contact normal computation for proper slide behavior
+- [ ] Add friction/damping to prevent excessive speed
+- [ ] Implement proper impulse-based bounce (handleCollision_Impulse)
+
+**Multi-Cell Goose:**
+- [ ] Extend Goose to 1x2 (two cells tall)
+- [ ] Verify both cells move together without tearing
+- [ ] Extend to 2x2 to test larger shapes
+
+### Phase 1 - Future
+
+- [ ] Migrate Tree to use rigid body physics
+- [ ] Remove old velocity sync code from WorldRigidBodyCalculator
+- [ ] Consider migrating Duck (optional - single-cell works fine as-is)
+
+### Files Created/Modified
+
+**Organism Base Class:**
+| File | Description |
+|------|-------------|
+| `src/core/organisms/Organism.h` | Added CollisionInfo struct, detectCollisions() method |
+| `src/core/organisms/Organism.cpp` | Implemented detectCollisions() with full collision checks |
+
+**Goose Implementation:**
+| File | Description |
+|------|-------------|
+| `src/core/organisms/Goose.h` | Goose class with rigid body physics |
+| `src/core/organisms/Goose.cpp` | Collision-aware update loop, projectToGrid(), gatherForces() |
+| `src/core/organisms/GooseBrain.h` | Brain interface and RandomGooseBrain |
+| `src/core/organisms/GooseBrain.cpp` | Random brain implementation |
+
+**Tests:**
+| File | Description |
+|------|-------------|
+| `src/core/organisms/tests/Goose_test.cpp` | 8 integration tests for Goose physics (4/8 passing) |
+| `src/core/organisms/tests/OrganismCollision_test.cpp` | 11 unit tests for detectCollisions() (11/11 passing) |
+
+**Scenario:**
+| File | Description |
+|------|-------------|
+| `src/server/scenarios/scenarios/GooseTestScenario.h` | Test scenario header |
+| `src/server/scenarios/scenarios/GooseTestScenario.cpp` | Scenario that creates Goose and Entity |
+
+### Commits
+
 - `e949caf` - Updated design doc for rigid body approach
 - `69ce237` - Added comprehensive test plan
 - `2d10812` - Implemented organism physics foundation with passing tests
+- (next) - Implement collision detection for organisms
 
 ---
 

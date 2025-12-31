@@ -204,4 +204,69 @@ void Organism::applyForce(Vector2d force, double dt)
     velocity.y += acceleration.y * dt;
 }
 
+CollisionInfo Organism::detectCollisions(
+    const std::vector<Vector2i>& target_cells,
+    const World& world) const
+{
+    CollisionInfo info;
+    const WorldData& data = world.getData();
+    Vector2d normal_sum{ 0.0, 0.0 };
+
+    for (const auto& cell_pos : target_cells) {
+        // Check world boundaries.
+        if (cell_pos.x < 0 || cell_pos.y < 0
+            || static_cast<uint32_t>(cell_pos.x) >= data.width
+            || static_cast<uint32_t>(cell_pos.y) >= data.height) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            // Boundary normal points inward.
+            if (cell_pos.x < 0) normal_sum.x += 1.0;
+            if (cell_pos.x >= static_cast<int>(data.width)) normal_sum.x -= 1.0;
+            if (cell_pos.y < 0) normal_sum.y += 1.0;
+            if (cell_pos.y >= static_cast<int>(data.height)) normal_sum.y -= 1.0;
+            continue;
+        }
+
+        const Cell& cell = data.at(cell_pos.x, cell_pos.y);
+
+        // Check for WALL.
+        if (cell.material_type == MaterialType::WALL) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            normal_sum.y -= 1.0; // Assume floor for now, refine later.
+            continue;
+        }
+
+        // Check for other organism.
+        if (cell.organism_id != 0 && cell.organism_id != id_) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            continue;
+        }
+
+        // Check for dense solid material (skip our own cells).
+        bool is_solid = cell.material_type == MaterialType::DIRT
+            || cell.material_type == MaterialType::SAND
+            || cell.material_type == MaterialType::WOOD
+            || cell.material_type == MaterialType::METAL
+            || cell.material_type == MaterialType::ROOT;
+        if (is_solid && cell.fill_ratio > 0.8 && cell.organism_id != id_) {
+            info.blocked = true;
+            info.blocked_cells.push_back(cell_pos);
+            continue;
+        }
+    }
+
+    // Compute average contact normal.
+    if (info.blocked && (normal_sum.x != 0.0 || normal_sum.y != 0.0)) {
+        double len = std::sqrt(normal_sum.x * normal_sum.x + normal_sum.y * normal_sum.y);
+        if (len > 0.0001) {
+            info.contact_normal.x = normal_sum.x / len;
+            info.contact_normal.y = normal_sum.y / len;
+        }
+    }
+
+    return info;
+}
+
 } // namespace DirtSim
