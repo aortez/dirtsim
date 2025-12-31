@@ -608,7 +608,7 @@ We're using **Goose** as the testbed organism for developing rigid body physics:
 - `e949caf` - Updated design doc for rigid body approach
 - `69ce237` - Added comprehensive test plan
 - `2d10812` - Implemented organism physics foundation with passing tests
-- (next) - Implement collision detection for organisms
+- `4a1281d` - Implement collision detection for rigid body organisms
 
 ---
 
