@@ -160,4 +160,48 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
     }
 }
 
+void Organism::recomputeMass()
+{
+    mass = 0.0;
+    for (const auto& cell : local_shape) {
+        double cell_mass = getMaterialProperties(cell.material).density * cell.fill_ratio;
+        mass += cell_mass;
+    }
+}
+
+void Organism::recomputeCenterOfMass()
+{
+    if (local_shape.empty() || mass < 0.0001) {
+        center_of_mass = { 0.0, 0.0 };
+        return;
+    }
+
+    Vector2d weighted_sum{ 0.0, 0.0 };
+    for (const auto& cell : local_shape) {
+        double cell_mass = getMaterialProperties(cell.material).density * cell.fill_ratio;
+        weighted_sum.x += static_cast<double>(cell.local_pos.x) * cell_mass;
+        weighted_sum.y += static_cast<double>(cell.local_pos.y) * cell_mass;
+    }
+
+    center_of_mass.x = weighted_sum.x / mass;
+    center_of_mass.y = weighted_sum.y / mass;
+}
+
+void Organism::integratePosition(double dt)
+{
+    position.x += velocity.x * dt;
+    position.y += velocity.y * dt;
+}
+
+void Organism::applyForce(Vector2d force, double dt)
+{
+    if (mass < 0.0001) {
+        return;
+    }
+
+    Vector2d acceleration{ force.x / mass, force.y / mass };
+    velocity.x += acceleration.x * dt;
+    velocity.y += acceleration.y * dt;
+}
+
 } // namespace DirtSim

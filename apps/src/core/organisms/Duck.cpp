@@ -45,7 +45,7 @@ void Duck::update(World& world, double deltaTime)
 
     // Gather sensory data and let brain decide what to do.
     if (brain_) {
-        DuckSensoryData sensory = gatherSensoryData(world);
+        DuckSensoryData sensory = gatherSensoryData(world, deltaTime);
         brain_->think(*this, sensory, deltaTime);
     }
 
@@ -187,7 +187,7 @@ void Duck::logPhysicsState(const World& world)
         static_cast<int>(cell.material_type));
 }
 
-DuckSensoryData Duck::gatherSensoryData(const World& world) const
+DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) const
 {
     DuckSensoryData data;
 
@@ -205,7 +205,7 @@ DuckSensoryData Duck::gatherSensoryData(const World& world) const
     data.position = anchor_cell_;
     data.on_ground = on_ground_;
     data.facing_x = facing_.x;
-    data.age_seconds = age_seconds_;
+    data.delta_time_seconds = deltaTime;
 
     // Get velocity from our cell.
     const WorldData& world_data = world.getData();

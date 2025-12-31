@@ -26,7 +26,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
     })
 
 struct Clock {
-    using serialize = zpp::bits::members<10>;
+    using serialize = zpp::bits::members<12>;
 
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
@@ -38,6 +38,8 @@ struct Clock {
     uint32_t targetDisplayHeight = 480;
     uint32_t marginPixels = 20;
     double eventFrequency = 0.5;
+    bool duckEnabled = false;   // Manual toggle for duck event.
+    bool rainEnabled = false;   // Manual toggle for rain event.
 };
 
 } // namespace DirtSim::Config

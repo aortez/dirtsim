@@ -339,7 +339,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
     }
 
     // Gather sensory data.
-    DuckSensoryData sensory = duck->gatherSensoryData(*world);
+    DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
 
     // Position should match anchor cell.
     EXPECT_EQ(sensory.position.x, duck->getAnchorCell().x);
@@ -386,7 +386,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     ASSERT_NE(duck, nullptr);
 
     // Gather sensory data immediately (before physics moves duck).
-    DuckSensoryData sensory = duck->gatherSensoryData(*world);
+    DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
 
     // Duck at (7,12), 9x9 grid centered on duck.
     // Offset = (7-4, 12-4) = (3, 8). No clamping - out-of-bounds treated as WALL.
@@ -445,7 +445,7 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
     Duck* duck = world->getOrganismManager().getDuck(duck_id);
     ASSERT_NE(duck, nullptr);
 
-    DuckSensoryData sensory = duck->gatherSensoryData(*world);
+    DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
 
     // Duck at (7,12), wall at (9,12).
     // Neural coords: duck center at (4,4), wall at (9-3, 12-8) = (6, 4).

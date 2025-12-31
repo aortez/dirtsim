@@ -485,7 +485,7 @@ TEST_F(DuckTest, WallBouncingBrainBouncesOffWall)
     printWorld(*world, "After duck settled");
 
     // Print duck's sensory view.
-    DuckSensoryData sensory = duck->gatherSensoryData(*world);
+    DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
     spdlog::info("Duck sensory grid (9x9, center at [4][4], WALL=W, WOOD=D):");
     for (int y = 0; y < 9; ++y) {
         std::string row;

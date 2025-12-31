@@ -62,6 +62,8 @@ private:
     lv_obj_t* fontButton_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
+    lv_obj_t* rainSwitch_ = nullptr;
+    lv_obj_t* duckSwitch_ = nullptr;
 
     // Button to option index mappings.
     std::unordered_map<lv_obj_t*, int> buttonToFontIndex_;
@@ -90,6 +92,8 @@ private:
     static void onTimezoneSelected(lv_event_t* e);
     static void onTimezoneBackClicked(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
+    static void onRainToggled(lv_event_t* e);
+    static void onDuckToggled(lv_event_t* e);
 
     Config::Clock getCurrentConfig() const;
 };

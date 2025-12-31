@@ -106,4 +106,42 @@ private:
     void updateJumpTimer(Duck& duck, float deltaTime);
 };
 
+/**
+ * Dead-reckoning duck brain with exit-seeking behavior.
+ *
+ * On first tick, scans the environment to determine which side has walls
+ * (entry side) and heads toward the opposite side (exit). Jumps for fun
+ * when in open space between walls.
+ *
+ * Accumulates elapsed time and displacement internally from per-frame
+ * sensory data (delta_time_seconds, velocity).
+ */
+class DuckBrain2 : public DuckBrain {
+public:
+    void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
+
+private:
+    enum class ExitDirection { LEFT, RIGHT, UNKNOWN };
+
+    ExitDirection exit_direction_ = ExitDirection::UNKNOWN;
+    bool initialized_ = false;
+
+    // Accumulated state from per-frame sensory data.
+    double elapsed_time_seconds_ = 0.0;
+    Vector2d displacement_from_spawn_{ 0.0, 0.0 };
+    Vector2i spawn_position_{ 0, 0 };
+
+    // Jump timing.
+    float time_since_last_jump_ = 0.0f;
+    static constexpr float JUMP_COOLDOWN = 1.5f;
+
+    // Debug logging throttle.
+    int debug_frame_counter_ = 0;
+
+    void initialize(const DuckSensoryData& sensory);
+    ExitDirection detectExitDirection(const DuckSensoryData& sensory) const;
+    bool isTouchingWall(const DuckSensoryData& sensory, ExitDirection side) const;
+    bool isInOpenSpace(const DuckSensoryData& sensory) const;
+};
+
 } // namespace DirtSim

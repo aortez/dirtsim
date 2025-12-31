@@ -498,6 +498,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/CantileverSupport_test.cpp
     src/core/organisms/tests/CellTrackerUtil.cpp
     src/core/organisms/tests/Duck_test.cpp
+    src/core/organisms/tests/OrganismPhysics_test.cpp
     src/core/organisms/tests/OrganismSensoryData_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp

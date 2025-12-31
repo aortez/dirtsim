@@ -93,6 +93,36 @@ void ClockControls::createMainView(lv_obj_t* view)
                          .glowColor(0x00CC00)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
+
+    // Event toggle row.
+    lv_obj_t* eventRow = lv_obj_create(view);
+    lv_obj_set_size(eventRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(eventRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(eventRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(eventRow, 4, 0);
+    lv_obj_set_style_bg_opa(eventRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(eventRow, 0, 0);
+    lv_obj_clear_flag(eventRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Rain event toggle.
+    rainSwitch_ = LVGLBuilder::actionButton(eventRow)
+                      .text("Rain")
+                      .mode(LVGLBuilder::ActionMode::Toggle)
+                      .size(80)
+                      .checked(false)
+                      .glowColor(0x0088FF)  // Blue glow for water/rain.
+                      .callback(onRainToggled, this)
+                      .buildOrLog();
+
+    // Duck event toggle.
+    duckSwitch_ = LVGLBuilder::actionButton(eventRow)
+                      .text("Duck")
+                      .mode(LVGLBuilder::ActionMode::Toggle)
+                      .size(80)
+                      .checked(false)
+                      .glowColor(0xFFCC00)  // Yellow glow for duck.
+                      .callback(onDuckToggled, this)
+                      .buildOrLog();
 }
 
 void ClockControls::createFontSelectionView(lv_obj_t* view)
@@ -241,6 +271,21 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated seconds button to {}", config.showSeconds);
     }
 
+    // Update rain button.
+    if (rainSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(rainSwitch_, config.rainEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated rain button to {}", config.rainEnabled);
+    }
+
+    // Update duck button.
+    if (duckSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(duckSwitch_, config.duckEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated duck button to {}", config.duckEnabled);
+    }
+
+    // Cache current config.
+    currentConfig_ = config;
+
     // Restore initializing state.
     if (!wasInitializing) {
         initializing_ = false;
@@ -261,6 +306,16 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Get showSeconds from button.
     if (secondsSwitch_) {
         config.showSeconds = LVGLBuilder::ActionButtonBuilder::isChecked(secondsSwitch_);
+    }
+
+    // Get rain enabled from button.
+    if (rainSwitch_) {
+        config.rainEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(rainSwitch_);
+    }
+
+    // Get duck enabled from button.
+    if (duckSwitch_) {
+        config.duckEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(duckSwitch_);
     }
 
     // Populate display dimensions from getter for auto-scaling.
@@ -419,6 +474,54 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->secondsSwitch_);
 
     spdlog::info("ClockControls: Show seconds toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onRainToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onRainToggled called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring rain toggle during initialization");
+        return;
+    }
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->rainSwitch_);
+
+    spdlog::info("ClockControls: Rain toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onDuckToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onDuckToggled called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring duck toggle during initialization");
+        return;
+    }
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->duckSwitch_);
+
+    spdlog::info("ClockControls: Duck toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();

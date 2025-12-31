@@ -343,6 +343,10 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                             (incoming.targetDisplayHeight != config_.targetDisplayHeight) ||
                             (incoming.marginPixels != config_.marginPixels);
 
+        // Track event toggle changes before updating config_.
+        bool rain_was_enabled = config_.rainEnabled;
+        bool duck_was_enabled = config_.duckEnabled;
+
         config_ = incoming;
 
         // Recalculate and reset if dimensions changed (including font).
@@ -363,6 +367,47 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
             reset(world);  // Clear and redraw everything.
+        }
+
+        // Handle manual event toggling.
+        // Rain event toggle.
+        if (config_.rainEnabled && !rain_was_enabled) {
+            // User enabled rain - start it if not already active.
+            if (!active_events_.contains(ClockEventType::RAIN)) {
+                event_cooldowns_[ClockEventType::RAIN] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::RAIN);
+                spdlog::info("ClockScenario: Rain manually enabled");
+            }
+        }
+        else if (!config_.rainEnabled && rain_was_enabled) {
+            // User disabled rain - stop it if active.
+            auto it = active_events_.find(ClockEventType::RAIN);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::RAIN, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::RAIN] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Rain manually disabled");
+            }
+        }
+
+        // Duck event toggle.
+        if (config_.duckEnabled && !duck_was_enabled) {
+            // User enabled duck - start it if not already active.
+            if (!active_events_.contains(ClockEventType::DUCK)) {
+                event_cooldowns_[ClockEventType::DUCK] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::DUCK);
+                spdlog::info("ClockScenario: Duck manually enabled");
+            }
+        }
+        else if (!config_.duckEnabled && duck_was_enabled) {
+            // User disabled duck - stop it if active.
+            auto it = active_events_.find(ClockEventType::DUCK);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::DUCK, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::DUCK] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Duck manually disabled");
+            }
         }
 
         spdlog::info("ClockScenario: Config updated");
@@ -699,20 +744,21 @@ void ClockScenario::tryTriggerEvents(World& world)
 
 void ClockScenario::startEvent(World& world, ClockEventType type)
 {
-    const auto& config = DEFAULT_EVENT_CONFIGS.at(type);
+    const auto& eventConfig = DEFAULT_EVENT_CONFIGS.at(type);
 
     ActiveEvent event;
-    event.remaining_time = config.duration;
+    event.remaining_time = eventConfig.duration;
 
     if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
-        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", config.duration);
+        config_.rainEnabled = true;  // Sync config flag.
+        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventConfig.duration);
     }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
 
-        // Use WallBouncingBrain with jumping enabled.
-        std::unique_ptr<DuckBrain> brain = std::make_unique<WallBouncingBrain>(true);
+        // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
+        std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
 
         // Choose random entrance side and calculate door position.
         duck_state.entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
@@ -753,7 +799,8 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         world.getData().entities.push_back(duck_entity);
 
         event.state = duck_state;
-        spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", config.duration);
+        config_.duckEnabled = true;  // Sync config flag.
+        spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventConfig.duration);
     }
 
     active_events_[type] = std::move(event);
@@ -885,6 +932,14 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     spdlog::info("ClockScenario: Ending {} event",
         type == ClockEventType::RAIN ? "RAIN" : "DUCK");
 
+    // Sync config flags.
+    if (type == ClockEventType::RAIN) {
+        config_.rainEnabled = false;
+    }
+    else if (type == ClockEventType::DUCK) {
+        config_.duckEnabled = false;
+    }
+
     if (type == ClockEventType::DUCK) {
         auto& state = std::get<DuckEventState>(event.state);
 
@@ -923,6 +978,10 @@ void ClockScenario::cancelAllEvents(World& world)
             }
         }
     }
+
+    // Clear config flags.
+    config_.rainEnabled = false;
+    config_.duckEnabled = false;
 
     active_events_.clear();
     event_cooldowns_.clear();

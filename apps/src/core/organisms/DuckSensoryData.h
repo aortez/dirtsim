@@ -41,8 +41,7 @@ struct DuckSensoryData {
     // Facing direction (-1 = left, +1 = right).
     float facing_x = 1.0f;
 
-    // Age in seconds.
-    double age_seconds = 0.0;
+    double delta_time_seconds = 0.0;
 
     using serialize = zpp::bits::members<12>;
 };

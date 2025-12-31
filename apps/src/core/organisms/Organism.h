@@ -3,6 +3,8 @@
 #include "OrganismType.h"
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
+#include "core/Vector2d.h"
+#include "core/Vector2i.h"
 #include <unordered_set>
 #include <vector>
 
@@ -10,6 +12,19 @@ namespace DirtSim {
 
 // Forward declarations.
 class World;
+
+/**
+ * A cell in the organism's local coordinate system.
+ *
+ * Local cells define the organism's shape relative to its anchor position.
+ * These are projected onto the grid each frame based on the organism's
+ * continuous position.
+ */
+struct LocalCell {
+    Vector2i local_pos;      // Position relative to organism anchor.
+    MaterialType material;   // Material type of this cell.
+    double fill_ratio;       // Fill ratio [0, 1].
+};
 
 /**
  * Hinge configuration for bone connections.
@@ -97,6 +112,19 @@ public:
 
     // Create bones connecting a new cell to existing organism cells.
     void createBonesForCell(Vector2i new_cell, MaterialType material, const World& world);
+
+    // Rigid body state.
+    Vector2d position{ 0.0, 0.0 };
+    Vector2d velocity{ 0.0, 0.0 };
+    double mass = 0.0;
+    Vector2d center_of_mass{ 0.0, 0.0 };
+    std::vector<LocalCell> local_shape;
+    std::vector<Vector2i> occupied_cells;
+
+    void recomputeMass();
+    void recomputeCenterOfMass();
+    void integratePosition(double dt);
+    void applyForce(Vector2d force, double dt);
 
 protected:
     OrganismId id_;

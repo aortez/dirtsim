@@ -69,7 +69,7 @@ public:
     const std::vector<DuckSparkle>& getSparkles() const { return sparkles_; }
 
     // Sensory data gathering for brain decisions.
-    DuckSensoryData gatherSensoryData(const World& world) const;
+    DuckSensoryData gatherSensoryData(const World& world, double deltaTime) const;
 
 private:
     Vector2i anchor_cell_{ 0, 0 };
