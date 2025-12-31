@@ -24,15 +24,7 @@ void StartMenu::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Connected to server, ready to start simulation");
 
-    // Check if autoRun is enabled (skip UI, start simulation immediately).
-    if (sm.getUiConfig().autoRun) {
-        LOG_INFO(State, "autoRun enabled, starting simulation immediately");
-        // Queue the start event for processing after onEnter completes.
-        sm.queueEvent(StartButtonClickedEvent{});
-        return; // Skip UI setup.
-    }
-
-    // Request scenario list from server and cache it.
+    // Request scenario list from server and cache it (needed even for autoRun).
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
         const Api::ScenarioListGet::Command cmd{};
@@ -50,6 +42,14 @@ void StartMenu::onEnter(StateMachine& sm)
         else {
             LOG_ERROR(State, "Failed to request scenario list: {}", result.errorValue());
         }
+    }
+
+    // Check if autoRun is enabled (skip UI, start simulation immediately).
+    if (sm.getUiConfig().autoRun) {
+        LOG_INFO(State, "autoRun enabled, starting simulation immediately");
+        // Queue the start event for processing after onEnter completes.
+        sm.queueEvent(StartButtonClickedEvent{});
+        return; // Skip UI setup.
     }
 
     // Get main menu container (switches to menu screen).
