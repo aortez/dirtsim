@@ -106,9 +106,10 @@ void ClockControls::createMainView(lv_obj_t* view)
 
     // Melt button (one-shot trigger).
     meltButton_ = LVGLBuilder::actionButton(secondsRow)
-                      .text(LV_SYMBOL_WARNING " Melt")
+                      .text(LV_SYMBOL_WARNING "\nMelt")
                       .size(80)
-                      .glowColor(0xFF4400)  // Orange glow for meltdown.
+                      .textColor(0xFFA500)   // Construction orange.
+                      .glowColor(0xFF4400)   // Orange glow for meltdown.
                       .callback(onMeltClicked, this)
                       .buildOrLog();
 
@@ -124,10 +125,11 @@ void ClockControls::createMainView(lv_obj_t* view)
 
     // Rain event toggle.
     rainSwitch_ = LVGLBuilder::actionButton(eventRow)
-                      .text(LV_SYMBOL_TINT " Rain")
+                      .text(LV_SYMBOL_TINT "\nRain")
                       .mode(LVGLBuilder::ActionMode::Toggle)
                       .size(80)
                       .checked(false)
+                      .textColor(0x0088FF)  // Blue text.
                       .glowColor(0x0088FF)  // Blue glow for water/rain.
                       .callback(onRainToggled, this)
                       .buildOrLog();

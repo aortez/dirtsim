@@ -783,9 +783,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
 
-        // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
-        std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
-
         // Choose random entrance side and calculate door position.
         duck_state.entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
         uint32_t door_y = world.getData().height - 2;
@@ -799,30 +796,13 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         uint32_t exit_x = (duck_state.entrance_side == DoorSide::LEFT) ? world.getData().width - 1 : 0;
         duck_state.exit_door_pos = Vector2i{ static_cast<int>(exit_x), static_cast<int>(door_y) };
 
-        // Open entrance door via DoorManager.
+        // Open entrance door via DoorManager. Duck spawns after delay.
         door_manager_.openDoor(duck_state.entrance_door_pos, duck_state.entrance_side, world);
+        duck_state.phase = DuckEventPhase::DOOR_OPENING;
+        duck_state.door_open_timer = 0.0;
 
-        // Spawn duck just inside the door.
-        uint32_t duck_x = (duck_state.entrance_side == DoorSide::LEFT) ? 1 : world.getData().width - 2;
-        uint32_t duck_y = door_y;
-        duck_state.organism_id = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
-
-        spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",
-            duck_state.organism_id,
-            duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
-            duck_x, duck_y);
-
-        // Create Entity view for rendering.
-        Entity duck_entity;
-        duck_entity.id = next_entity_id_++;
-        duck_entity.type = EntityType::DUCK;
-        duck_entity.visible = true;
-        duck_entity.position = Vector2<float>(static_cast<float>(duck_x), static_cast<float>(duck_y));
-        duck_entity.com = Vector2<float>(0.0f, 0.0f);
-        duck_entity.velocity = Vector2<float>(0.0f, 0.0f);
-        duck_entity.facing = Vector2<float>(1.0f, 0.0f);
-        duck_entity.mass = 1.0f;
-        world.getData().entities.push_back(duck_entity);
+        spdlog::info("ClockScenario: Opening {} door for duck entrance",
+            duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT");
 
         event.state = duck_state;
         config_.duckEnabled = true;  // Sync config flag.
@@ -837,7 +817,7 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
     std::visit([&](auto& state) {
         using T = std::decay_t<decltype(state)>;
         if constexpr (std::is_same_v<T, DuckEventState>) {
-            updateDuckEvent(world, state, event.remaining_time);
+            updateDuckEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
             updateMeltdownEvent(world, state, deltaTime);
         } else if constexpr (std::is_same_v<T, RainEventState>) {
@@ -880,8 +860,62 @@ void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, dou
     }
 }
 
-void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double remaining_time)
+void ClockScenario::spawnDuck(World& world, DuckEventState& state)
 {
+    // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
+    std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
+
+    // Spawn duck in the door opening.
+    uint32_t duck_x = static_cast<uint32_t>(state.entrance_door_pos.x);
+    uint32_t duck_y = static_cast<uint32_t>(state.entrance_door_pos.y);
+    state.organism_id = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
+
+    spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",
+        state.organism_id,
+        state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
+        duck_x, duck_y);
+
+    // Create Entity view for rendering.
+    Entity duck_entity;
+    duck_entity.id = next_entity_id_++;
+    duck_entity.type = EntityType::DUCK;
+    duck_entity.visible = true;
+    duck_entity.position = Vector2<float>(static_cast<float>(duck_x), static_cast<float>(duck_y));
+    duck_entity.com = Vector2<float>(0.0f, 0.0f);
+    duck_entity.velocity = Vector2<float>(0.0f, 0.0f);
+    duck_entity.facing = Vector2<float>(1.0f, 0.0f);
+    duck_entity.mass = 1.0f;
+    world.getData().entities.push_back(duck_entity);
+
+    state.phase = DuckEventPhase::DUCK_ACTIVE;
+}
+
+void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime)
+{
+    // Phase 1: Wait for door to be open a bit before spawning duck.
+    constexpr double DOOR_OPEN_DELAY = 2.0;
+
+    if (state.phase == DuckEventPhase::DOOR_OPENING) {
+        state.door_open_timer += deltaTime;
+        if (state.door_open_timer >= DOOR_OPEN_DELAY) {
+            spawnDuck(world, state);
+        }
+        return;
+    }
+
+    // Phase 3: Duck exited, wait briefly then close door and end event.
+    constexpr double DOOR_CLOSE_DELAY = 1.0;
+
+    if (state.phase == DuckEventPhase::DOOR_CLOSING) {
+        state.door_close_timer += deltaTime;
+        if (state.door_close_timer >= DOOR_CLOSE_DELAY) {
+            // Signal event to end by setting remaining time to zero.
+            remaining_time = 0.0;
+        }
+        return;
+    }
+
+    // Phase 2: Duck is active and walking.
     // Get duck organism.
     Duck* duck_organism = world.getOrganismManager().getDuck(state.organism_id);
     if (!duck_organism) return;
@@ -927,6 +961,10 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double 
             world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             state.organism_id = INVALID_ORGANISM_ID;
             world.getData().entities.clear();
+
+            // Transition to door closing phase.
+            state.phase = DuckEventPhase::DOOR_CLOSING;
+            state.door_close_timer = 0.0;
             return;
         }
     }

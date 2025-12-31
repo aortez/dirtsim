@@ -45,6 +45,12 @@ struct RainEventState {
 
 enum class DoorSide { LEFT, RIGHT };
 
+enum class DuckEventPhase {
+    DOOR_OPENING,  // Door open, waiting before spawning duck.
+    DUCK_ACTIVE,   // Duck spawned and walking.
+    DOOR_CLOSING   // Duck exited, waiting briefly before closing door.
+};
+
 struct DuckEventState {
     OrganismId organism_id = INVALID_ORGANISM_ID;
     DoorSide entrance_side = DoorSide::LEFT;
@@ -52,6 +58,9 @@ struct DuckEventState {
     Vector2i exit_door_pos{ -1, -1 };
     bool entrance_door_open = false;
     bool exit_door_open = false;
+    DuckEventPhase phase = DuckEventPhase::DOOR_OPENING;
+    double door_open_timer = 0.0;   // Time door has been open before duck spawns.
+    double door_close_timer = 0.0;  // Time since duck exited, before closing door.
 };
 
 using EventState = std::variant<DuckEventState, MeltdownEventState, RainEventState>;
@@ -175,7 +184,8 @@ private:
     void evaporateBottomRow(World& world, double deltaTime);
 
     // Event-specific update handlers (called via visitor).
-    void updateDuckEvent(World& world, DuckEventState& state, double remaining_time);
+    void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
+    void spawnDuck(World& world, DuckEventState& state);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 
