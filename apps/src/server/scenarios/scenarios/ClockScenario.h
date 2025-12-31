@@ -158,9 +158,6 @@ private:
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
 
-    // Track which cells were painted for the clock display.
-    std::vector<Vector2i> painted_cells_;
-
     // Font dimension helpers.
     int getDigitWidth() const;
     int getDigitHeight() const;
@@ -186,7 +183,7 @@ private:
     // Event-specific update handlers (called via visitor).
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
-    void updateMeltdownEvent(World& world, MeltdownEventState& state, double deltaTime);
+    void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 
     bool isMeltdownActive() const;

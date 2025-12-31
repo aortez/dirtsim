@@ -15,7 +15,6 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
-#include <set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -552,7 +551,6 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
 
             if (pixel) {
                 materializeMaterial(world, x, y, MaterialType::METAL);
-                painted_cells_.push_back(Vector2i{ x, y });
             }
         }
     }
@@ -583,11 +581,9 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
                 materializeMaterial(world, x, y1, MaterialType::METAL);
-                painted_cells_.push_back(Vector2i{ x, y1 });
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
                 materializeMaterial(world, x, y2, MaterialType::METAL);
-                painted_cells_.push_back(Vector2i{ x, y2 });
             }
         }
     }
@@ -625,15 +621,15 @@ void ClockScenario::drawTime(World& world)
     int minutes = time_info->tm_min;
     int seconds = time_info->tm_sec;
 
-    // Iterate over painted_cells_
-    for (const auto& pos : painted_cells_) {
-        if (pos.x >= 0 && pos.x < static_cast<int>(world.getData().width) &&
-            pos.y >= 0 && pos.y < static_cast<int>(world.getData().height)) {
-            world.getData().at(pos.x, pos.y) = Cell();
+    // Clear all metal from the world before drawing fresh digits.
+    WorldData& data = world.getData();
+    for (uint32_t y = 1; y < data.height - 1; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            if (data.at(x, y).material_type == MaterialType::METAL) {
+                data.at(x, y) = Cell();
+            }
         }
     }
-
-    painted_cells_.clear();
 
     // Get font dimensions.
     int dw = getDigitWidth();
@@ -1122,27 +1118,17 @@ void ClockScenario::convertStrayMetalToWater(World& world)
 {
     WorldData& data = world.getData();
 
-    // First, redraw the digits to mark current digit positions.
-    drawTime(world);
-
-    // Create a set of current digit positions for fast lookup.
-    std::set<std::pair<int, int>> digit_positions;
-    for (const auto& pos : painted_cells_) {
-        digit_positions.insert({ pos.x, pos.y });
-    }
-
-    // Convert any METAL not in digit positions to WATER.
+    // Convert all metal to water, then redraw fresh digits.
     for (uint32_t y = 1; y < data.height - 1; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::METAL) {
-                if (!digit_positions.contains({ static_cast<int>(x), static_cast<int>(y) })) {
-                    cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
-                    spdlog::debug("ClockScenario: Converted stray METAL at ({}, {}) to WATER", x, y);
-                }
+                cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
             }
         }
     }
+
+    drawTime(world);
 }
 
 void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
