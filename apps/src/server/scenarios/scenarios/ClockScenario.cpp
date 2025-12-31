@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <set>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
@@ -27,8 +28,9 @@ namespace DirtSim {
 // ============================================================================
 
 const std::map<ClockEventType, EventTypeConfig> ClockScenario::DEFAULT_EVENT_CONFIGS = {
-    { ClockEventType::RAIN, { .duration = 10.0, .chance_per_second = 0.03, .cooldown = 15.0 } },
-    { ClockEventType::DUCK, { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 20.0 } },
+    { ClockEventType::DUCK, { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
+    { ClockEventType::MELTDOWN, { .duration = 5.0, .chance_per_second = 0.02, .cooldown = 30.0 } },
+    { ClockEventType::RAIN, { .duration = 20.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
 };
 
 // ============================================================================
@@ -411,6 +413,18 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             }
         }
 
+        // Meltdown event trigger (one-shot).
+        if (config_.meltdownEnabled) {
+            // User triggered meltdown - start it if not already active.
+            if (!active_events_.contains(ClockEventType::MELTDOWN)) {
+                event_cooldowns_[ClockEventType::MELTDOWN] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::MELTDOWN);
+                spdlog::info("ClockScenario: Meltdown manually triggered");
+            }
+            // Reset the trigger flag immediately.
+            config_.meltdownEnabled = false;
+        }
+
         spdlog::info("ClockScenario: Config updated");
     }
     else {
@@ -435,14 +449,14 @@ void ClockScenario::setup(World& world)
 
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
-        materializeWall(world, x, 0);
-        materializeWall(world, x, height - 1);
+        materializeMaterial(world, x, 0, MaterialType::WALL);
+        materializeMaterial(world, x, height - 1, MaterialType::WALL);
     }
 
     // Left and right borders.
     for (uint32_t y = 0; y < height; ++y) {
-        materializeWall(world, 0, y);
-        materializeWall(world, width - 1, y);
+        materializeMaterial(world, 0, y, MaterialType::WALL);
+        materializeMaterial(world, width - 1, y, MaterialType::WALL);
     }
 
     // Draw current time.
@@ -462,16 +476,8 @@ void ClockScenario::tick(World& world, double deltaTime)
     // Redraw walls every frame (respects door state).
     redrawWalls(world);
 
-    // Get current time.
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-    std::tm* local_time = std::localtime(&now_time);
-
-    int current_second = local_time->tm_sec;
-
-    // Only redraw digits if the second has changed.
-    if (current_second != last_second_) {
-        last_second_ = current_second;
+    // Redraw digits every frame to keep METAL in place (unless meltdown is active).
+    if (!isMeltdownActive()) {
         drawTime(world);
     }
 
@@ -545,7 +551,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                materializeWall(world, x, y);
+                materializeMaterial(world, x, y, MaterialType::METAL);
                 painted_cells_.push_back(Vector2i{ x, y });
             }
         }
@@ -576,11 +582,11 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
-                materializeWall(world, x, y1);
+                materializeMaterial(world, x, y1, MaterialType::METAL);
                 painted_cells_.push_back(Vector2i{ x, y1 });
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
-                materializeWall(world, x, y2);
+                materializeMaterial(world, x, y2, MaterialType::METAL);
                 painted_cells_.push_back(Vector2i{ x, y2 });
             }
         }
@@ -750,7 +756,11 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     ActiveEvent event;
     event.remaining_time = eventConfig.duration;
 
-    if (type == ClockEventType::RAIN) {
+    if (type == ClockEventType::MELTDOWN) {
+        event.state = MeltdownEventState{};
+        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s)", eventConfig.duration);
+    }
+    else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
         config_.rainEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventConfig.duration);
@@ -811,10 +821,12 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
 {
     std::visit([&](auto& state) {
         using T = std::decay_t<decltype(state)>;
-        if constexpr (std::is_same_v<T, RainEventState>) {
-            updateRainEvent(world, state, deltaTime);
-        } else if constexpr (std::is_same_v<T, DuckEventState>) {
+        if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time);
+        } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
+            updateMeltdownEvent(world, state, deltaTime);
+        } else if constexpr (std::is_same_v<T, RainEventState>) {
+            updateRainEvent(world, state, deltaTime);
         }
     }, event.state);
 }
@@ -934,10 +946,19 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double 
     }
 }
 
+static const char* eventTypeName(ClockEventType type)
+{
+    switch (type) {
+        case ClockEventType::DUCK: return "DUCK";
+        case ClockEventType::MELTDOWN: return "MELTDOWN";
+        case ClockEventType::RAIN: return "RAIN";
+    }
+    return "UNKNOWN";
+}
+
 void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& event)
 {
-    spdlog::info("ClockScenario: Ending {} event",
-        type == ClockEventType::RAIN ? "RAIN" : "DUCK");
+    spdlog::info("ClockScenario: Ending {} event", eventTypeName(type));
 
     // Sync config flags.
     if (type == ClockEventType::RAIN) {
@@ -947,7 +968,11 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         config_.duckEnabled = false;
     }
 
-    if (type == ClockEventType::DUCK) {
+    if (type == ClockEventType::MELTDOWN) {
+        // Convert any stray metal (fallen digits) to water.
+        convertStrayMetalToWater(world);
+    }
+    else if (type == ClockEventType::DUCK) {
         auto& state = std::get<DuckEventState>(event.state);
 
         if (state.organism_id != INVALID_ORGANISM_ID) {
@@ -970,7 +995,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     event_cooldowns_[type] = config.cooldown;
 
     spdlog::info("ClockScenario: Event {} on cooldown for {:.1f}s",
-        type == ClockEventType::RAIN ? "RAIN" : "DUCK", config.cooldown);
+        eventTypeName(type), config.cooldown);
 }
 
 void ClockScenario::cancelAllEvents(World& world)
@@ -994,6 +1019,44 @@ void ClockScenario::cancelAllEvents(World& world)
     event_cooldowns_.clear();
     door_manager_.closeAllDoors(world);
     world.getData().entities.clear();
+}
+
+bool ClockScenario::isMeltdownActive() const
+{
+    return active_events_.contains(ClockEventType::MELTDOWN);
+}
+
+void ClockScenario::updateMeltdownEvent(World& /*world*/, MeltdownEventState& /*state*/, double /*deltaTime*/)
+{
+    // Meltdown is passive - just lets gravity do its work.
+    // The tick() function skips drawTime() while this event is active.
+}
+
+void ClockScenario::convertStrayMetalToWater(World& world)
+{
+    WorldData& data = world.getData();
+
+    // First, redraw the digits to mark current digit positions.
+    drawTime(world);
+
+    // Create a set of current digit positions for fast lookup.
+    std::set<std::pair<int, int>> digit_positions;
+    for (const auto& pos : painted_cells_) {
+        digit_positions.insert({ pos.x, pos.y });
+    }
+
+    // Convert any METAL not in digit positions to WATER.
+    for (uint32_t y = 1; y < data.height - 1; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            Cell& cell = data.at(x, y);
+            if (cell.material_type == MaterialType::METAL) {
+                if (!digit_positions.contains({ static_cast<int>(x), static_cast<int>(y) })) {
+                    cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
+                    spdlog::debug("ClockScenario: Converted stray METAL at ({}, {}) to WATER", x, y);
+                }
+            }
+        }
+    }
 }
 
 void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
@@ -1020,7 +1083,7 @@ void ClockScenario::evaporateBottomRow(World& world, double deltaTime)
     }
 }
 
-void ClockScenario::materializeWall(World& world, int x, int y)
+void ClockScenario::materializeMaterial(World& world, int x, int y, MaterialType material)
 {
     const WorldData& data = world.getData();
 
@@ -1031,8 +1094,8 @@ void ClockScenario::materializeWall(World& world, int x, int y)
 
     Cell& cell = world.getData().at(x, y);
 
-    if (cell.isEmpty() || cell.material_type == MaterialType::WALL) {
-        cell.replaceMaterial(MaterialType::WALL, 1.0);
+    if (cell.isEmpty() || cell.material_type == material) {
+        cell.replaceMaterial(material, 1.0);
         return;
     }
 
@@ -1068,21 +1131,21 @@ void ClockScenario::materializeWall(World& world, int x, int y)
 
     if (best_dir.x == 0 && best_dir.y == 0) {
         // No open cell available - just overwrite.
-        cell.replaceMaterial(MaterialType::WALL, 1.0);
+        cell.replaceMaterial(material, 1.0);
         return;
     }
 
-    // WALL "arrives" from the open cell direction.
+    // Material "arrives" from the open cell direction.
     Cell& source = world.getData().at(x + best_dir.x, y + best_dir.y);
-    source.replaceMaterial(MaterialType::WALL, 1.0);
+    source.replaceMaterial(material, 1.0);
 
-    // Create MaterialMove for WALL moving into the cell.
+    // Create MaterialMove for material moving into the cell.
     MaterialMove move;
     move.fromX = x + best_dir.x;
     move.fromY = y + best_dir.y;
     move.toX = x;
     move.toY = y;
-    move.material = MaterialType::WALL;
+    move.material = material;
     move.momentum = Vector2d(-best_dir.x, -best_dir.y) * 2.0;
     move.collision_energy = 100.0;
     move.boundary_normal = Vector2d(-best_dir.x, -best_dir.y);
@@ -1105,10 +1168,10 @@ void ClockScenario::redrawWalls(World& world)
         Vector2i bottom_pos{ static_cast<int>(x), static_cast<int>(height - 1) };
 
         if (!door_manager_.isOpenDoor(top_pos)) {
-            materializeWall(world, x, 0);
+            materializeMaterial(world, x, 0, MaterialType::WALL);
         }
         if (!door_manager_.isOpenDoor(bottom_pos)) {
-            materializeWall(world, x, height - 1);
+            materializeMaterial(world, x, height - 1, MaterialType::WALL);
         }
     }
 
@@ -1118,16 +1181,16 @@ void ClockScenario::redrawWalls(World& world)
         Vector2i right_pos{ static_cast<int>(width - 1), static_cast<int>(y) };
 
         if (!door_manager_.isOpenDoor(left_pos)) {
-            materializeWall(world, 0, y);
+            materializeMaterial(world, 0, y, MaterialType::WALL);
         }
         if (!door_manager_.isOpenDoor(right_pos)) {
-            materializeWall(world, width - 1, y);
+            materializeMaterial(world, width - 1, y, MaterialType::WALL);
         }
     }
 
     // Ensure roof cells are walls.
     for (const auto& roof_pos : door_manager_.getRoofPositions()) {
-        materializeWall(world, roof_pos.x, roof_pos.y);
+        materializeMaterial(world, roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
 }
 

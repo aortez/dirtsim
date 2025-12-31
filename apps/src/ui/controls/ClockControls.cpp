@@ -84,15 +84,33 @@ void ClockControls::createMainView(lv_obj_t* view)
                           .callback(onTimezoneButtonClicked, this)
                           .buildOrLog();
 
+    // Row for Show Seconds and Melt buttons.
+    lv_obj_t* secondsRow = lv_obj_create(view);
+    lv_obj_set_size(secondsRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(secondsRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(secondsRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(secondsRow, 4, 0);
+    lv_obj_set_style_bg_opa(secondsRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(secondsRow, 0, 0);
+    lv_obj_clear_flag(secondsRow, LV_OBJ_FLAG_SCROLLABLE);
+
     // Show seconds toggle.
-    secondsSwitch_ = LVGLBuilder::actionButton(view)
-                         .text("Show Seconds")
+    secondsSwitch_ = LVGLBuilder::actionButton(secondsRow)
+                         .text("Seconds")
                          .mode(LVGLBuilder::ActionMode::Toggle)
                          .size(80)
                          .checked(true)
                          .glowColor(0x00CC00)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
+
+    // Melt button (one-shot trigger).
+    meltButton_ = LVGLBuilder::actionButton(secondsRow)
+                      .text(LV_SYMBOL_WARNING " Melt")
+                      .size(80)
+                      .glowColor(0xFF4400)  // Orange glow for meltdown.
+                      .callback(onMeltClicked, this)
+                      .buildOrLog();
 
     // Event toggle row.
     lv_obj_t* eventRow = lv_obj_create(view);
@@ -106,7 +124,7 @@ void ClockControls::createMainView(lv_obj_t* view)
 
     // Rain event toggle.
     rainSwitch_ = LVGLBuilder::actionButton(eventRow)
-                      .text("Rain")
+                      .text(LV_SYMBOL_TINT " Rain")
                       .mode(LVGLBuilder::ActionMode::Toggle)
                       .size(80)
                       .checked(false)
@@ -477,6 +495,28 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onMeltClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onMeltClicked called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring melt click during initialization");
+        return;
+    }
+
+    spdlog::info("ClockControls: Melt button clicked - triggering meltdown");
+
+    // Get current config and set meltdown trigger.
+    Config::Clock config = self->getCurrentConfig();
+    config.meltdownEnabled = true;
     self->sendConfigUpdate(config);
 }
 

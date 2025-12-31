@@ -62,6 +62,7 @@ private:
     lv_obj_t* fontButton_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
+    lv_obj_t* meltButton_ = nullptr;
     lv_obj_t* rainSwitch_ = nullptr;
     lv_obj_t* duckSwitch_ = nullptr;
 
@@ -92,6 +93,7 @@ private:
     static void onTimezoneSelected(lv_event_t* e);
     static void onTimezoneBackClicked(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
+    static void onMeltClicked(lv_event_t* e);
     static void onRainToggled(lv_event_t* e);
     static void onDuckToggled(lv_event_t* e);
 

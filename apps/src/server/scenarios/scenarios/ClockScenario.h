@@ -2,6 +2,7 @@
 
 #include "ClockConfig.h"
 #include "ClockFontPatterns.h"
+#include "core/MaterialType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "server/scenarios/Scenario.h"
@@ -22,14 +23,19 @@ class World;
 // ============================================================================
 
 enum class ClockEventType {
-    RAIN,
-    DUCK
+    DUCK,
+    MELTDOWN,
+    RAIN
 };
 
 struct EventTypeConfig {
     double duration;
     double chance_per_second;
     double cooldown;
+};
+
+struct MeltdownEventState {
+    // Meltdown lets digits fall, then converts stray metal to water.
 };
 
 struct RainEventState {
@@ -47,7 +53,7 @@ struct DuckEventState {
     bool exit_door_open = false;
 };
 
-using EventState = std::variant<RainEventState, DuckEventState>;
+using EventState = std::variant<DuckEventState, MeltdownEventState, RainEventState>;
 
 struct ActiveEvent {
     EventState state;
@@ -168,10 +174,13 @@ private:
     void evaporateBottomRow(World& world, double deltaTime);
 
     // Event-specific update handlers (called via visitor).
-    void updateRainEvent(World& world, RainEventState& state, double deltaTime);
     void updateDuckEvent(World& world, DuckEventState& state, double remaining_time);
+    void updateMeltdownEvent(World& world, MeltdownEventState& state, double deltaTime);
+    void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 
-    void materializeWall(World& world, int x, int y);
+    bool isMeltdownActive() const;
+    void convertStrayMetalToWater(World& world);
+    void materializeMaterial(World& world, int x, int y, MaterialType material);
     void redrawWalls(World& world);
 };
 
