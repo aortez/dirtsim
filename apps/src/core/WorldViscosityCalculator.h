@@ -51,18 +51,6 @@ public:
         uint32_t y,
         double viscosity_strength,
         const GridOfCells* grid = nullptr) const;
-
-private:
-    /**
-     * Calculate weighted average velocity of same-material neighbors.
-     * @param world The world containing the cell.
-     * @param x Cell x coordinate.
-     * @param y Cell y coordinate.
-     * @param centerMaterial Material type to match.
-     * @return Weighted average velocity of same-material neighbors.
-     */
-    Vector2d calculateNeighborVelocityAverage(
-        const WorldData& data, uint32_t x, uint32_t y, MaterialType centerMaterial) const;
 };
 
 } // namespace DirtSim

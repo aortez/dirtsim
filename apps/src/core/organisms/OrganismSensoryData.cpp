@@ -7,6 +7,58 @@ namespace DirtSim {
 namespace SensoryUtils {
 
 template <int GridSize, int NumMaterials>
+bool matchesTemplate(
+    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row)
+{
+    constexpr double MATERIAL_THRESHOLD = 0.5;
+
+    // Check each cell in the template pattern.
+    for (int ty = 0; ty < template_pattern.height; ++ty) {
+        for (int tx = 0; tx < template_pattern.width; ++tx) {
+            int grid_row = start_row + ty;
+            int grid_col = start_col + tx;
+
+            // Bounds check.
+            if (grid_row < 0 || grid_row >= GridSize || grid_col < 0 || grid_col >= GridSize) {
+                return false;
+            }
+
+            int expected = template_pattern.pattern[ty][tx];
+
+            // Wildcard matches anything.
+            if (expected == static_cast<int>(TemplateMaterial::ANY)) {
+                continue;
+            }
+
+            // WALL_OR_OOB matches WALL material.
+            if (expected == static_cast<int>(TemplateMaterial::WALL_OR_OOB)) {
+                int wall_idx = static_cast<int>(MaterialType::WALL);
+                if (wall_idx < 0 || wall_idx >= NumMaterials) {
+                    return false;
+                }
+                if (histograms[grid_row][grid_col][wall_idx] < MATERIAL_THRESHOLD) {
+                    return false;
+                }
+                continue;
+            }
+
+            // Specific material type expected.
+            if (expected < 0 || expected >= NumMaterials) {
+                return false;
+            }
+            if (histograms[grid_row][grid_col][expected] < MATERIAL_THRESHOLD) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+template <int GridSize, int NumMaterials>
 void gatherMaterialHistograms(
     const World& world,
     Vector2i center,
@@ -146,6 +198,18 @@ template bool isEmpty<9, 10>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
     int gx,
     int gy);
+
+template bool matchesTemplate<15, 10>(
+    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row);
+
+template bool matchesTemplate<9, 10>(
+    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row);
 
 } // namespace SensoryUtils
 } // namespace DirtSim

@@ -7,6 +7,7 @@
 #include "core/World.h"
 #include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
+#include "core/WorldDiagramGeneratorEmoji.h"
 #include "core/organisms/Duck.h"
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"
@@ -880,6 +881,12 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double 
         DoorSide exit_side = (state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
         door_manager_.openDoor(state.exit_door_pos, exit_side, world);
         state.exit_door_open = true;
+
+        // Log world state when exit door opens.
+        spdlog::info("ClockScenario: Exit door opened at ({}, {})",
+            state.exit_door_pos.x, state.exit_door_pos.y);
+        std::string diagram = WorldDiagramGeneratorEmoji::generateEmojiDiagram(world);
+        spdlog::info("\n{}", diagram);
     }
 
     // Check if duck entered the exit door and passed the middle of the cell.

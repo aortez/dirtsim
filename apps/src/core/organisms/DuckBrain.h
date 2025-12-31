@@ -107,11 +107,14 @@ private:
 };
 
 /**
- * Dead-reckoning duck brain with exit-seeking behavior.
+ * Dead-reckoning duck brain with wall-bouncing and exit-seeking behavior.
  *
- * On first tick, scans the environment to determine which side has walls
- * (entry side) and heads toward the opposite side (exit). Jumps for fun
- * when in open space between walls.
+ * Behavior:
+ * 1. Knows it spawned on one side of the world (entry side).
+ * 2. Runs toward the opposite side until it finds a wall (exit wall).
+ * 3. Once exit wall is found, bounces between walls for fun.
+ * 4. Jumps in the middle of the world when running fast.
+ * 5. When exit door opens (gap in exit wall), overrides and runs to exit.
  *
  * Accumulates elapsed time and displacement internally from per-frame
  * sensory data (delta_time_seconds, velocity).
@@ -121,27 +124,39 @@ public:
     void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
 
 private:
-    enum class ExitDirection { LEFT, RIGHT, UNKNOWN };
+    enum class Side { LEFT, RIGHT, UNKNOWN };
+    enum class Phase { SEEKING_EXIT_WALL, BOUNCING, EXITING };
 
-    ExitDirection exit_direction_ = ExitDirection::UNKNOWN;
+    // Core state.
     bool initialized_ = false;
+    Phase phase_ = Phase::SEEKING_EXIT_WALL;
+    Side spawn_side_ = Side::UNKNOWN;
+    Side current_target_ = Side::UNKNOWN;
 
     // Accumulated state from per-frame sensory data.
     double elapsed_time_seconds_ = 0.0;
     Vector2d displacement_from_spawn_{ 0.0, 0.0 };
-    Vector2i spawn_position_{ 0, 0 };
+    int spawn_x_ = 0;
+
+    // Wall tracking (recorded x positions).
+    int entry_wall_x_ = -1;
+    int exit_wall_x_ = -1;
+    bool found_exit_wall_ = false;
 
     // Jump timing.
-    float time_since_last_jump_ = 0.0f;
-    static constexpr float JUMP_COOLDOWN = 1.5f;
+    static constexpr float JUMP_COOLDOWN = 3.0f;
+    static constexpr float MIN_SPEED_FOR_JUMP = 2.0f;
+    float jump_cooldown_seconds_ = 0.0f;
 
     // Debug logging throttle.
     int debug_frame_counter_ = 0;
 
     void initialize(const DuckSensoryData& sensory);
-    ExitDirection detectExitDirection(const DuckSensoryData& sensory) const;
-    bool isTouchingWall(const DuckSensoryData& sensory, ExitDirection side) const;
-    bool isInOpenSpace(const DuckSensoryData& sensory) const;
+    Side detectSpawnSide(const DuckSensoryData& sensory) const;
+    bool isTouchingWall(const DuckSensoryData& sensory, Side side) const;
+    bool detectsGapInExitWall(const DuckSensoryData& sensory) const;
+    bool isNearMiddle(const DuckSensoryData& sensory) const;
+    void setRunDirection(Duck& duck, Side target);
 };
 
 } // namespace DirtSim

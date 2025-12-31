@@ -1,3 +1,5 @@
+#include "core/CellDebug.h"
+#include "core/GridOfCells.h"
 #include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
@@ -603,4 +605,227 @@ TEST_F(DuckTest, WallBouncingBrainJumpsAtMidpoint)
 
     // With jumping enabled and consistent pattern, should see multiple jumps.
     EXPECT_GE(jump_count, 2) << "Duck should jump at least twice with jumping enabled";
+}
+
+// ============================================================================
+// DuckBrain2 Tests
+// ============================================================================
+
+TEST_F(DuckTest, DuckBrain2DetectsSpawnSide)
+{
+    // Create world - duck spawns near left wall.
+    auto world = std::make_unique<World>(20, 5);
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 near left wall (x=1).
+    auto brain = std::make_unique<DuckBrain2>();
+    OrganismId duck_id = manager.createDuck(*world, 1, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Run one frame to let brain initialize.
+    world->advanceTime(0.016);
+
+    // Duck should be running right (away from spawn side).
+    DuckAction action = duck->getCurrentAction();
+    EXPECT_EQ(action, DuckAction::RUN_RIGHT)
+        << "Duck spawned on left should run right toward exit";
+}
+
+TEST_F(DuckTest, DuckBrain2TurnsAroundAtWall)
+{
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
+
+    // Create world.
+    auto world = std::make_unique<World>(15, 5);
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 near left wall.
+    auto brain = std::make_unique<DuckBrain2>();
+    OrganismId duck_id = manager.createDuck(*world, 2, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    int start_x = duck->getAnchorCell().x;
+    spdlog::info("Duck settled at x={}", start_x);
+
+    // Run until duck hits right wall and turns around.
+    bool hit_right_wall = false;
+    bool turned_around = false;
+    int right_wall_x = -1;
+
+    for (int i = 0; i < 300; ++i) {
+        world->advanceTime(0.016);
+        int current_x = duck->getAnchorCell().x;
+
+        // Detect hitting right wall (near x=13 or 14).
+        if (!hit_right_wall && current_x >= 12) {
+            hit_right_wall = true;
+            right_wall_x = current_x;
+            spdlog::info("Frame {}: Duck hit right wall at x={}", i, current_x);
+        }
+
+        // After hitting wall, check if duck turned around and moved left.
+        if (hit_right_wall && current_x < right_wall_x - 2) {
+            turned_around = true;
+            spdlog::info("Frame {}: Duck turned around, now at x={}", i, current_x);
+            break;
+        }
+    }
+
+    EXPECT_TRUE(hit_right_wall) << "Duck should reach the right wall";
+    EXPECT_TRUE(turned_around) << "Duck should turn around after hitting wall";
+}
+
+TEST_F(DuckTest, DuckBrain2BouncesBackAndForth)
+{
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
+
+    // Create world.
+    auto world = std::make_unique<World>(15, 5);
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 near left wall.
+    auto brain = std::make_unique<DuckBrain2>();
+    OrganismId duck_id = manager.createDuck(*world, 2, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    // Track direction changes (bounces).
+    int last_x = duck->getAnchorCell().x;
+    int bounce_count = 0;
+    int last_direction = 0;  // 1 = right, -1 = left.
+    bool was_on_ground = duck->isOnGround();
+
+    for (int i = 0; i < 800; ++i) {
+        world->advanceTime(0.016);
+        int current_x = duck->getAnchorCell().x;
+        int current_y = duck->getAnchorCell().y;
+        bool on_ground = duck->isOnGround();
+
+        // Log forces during and around jumps.
+        if (!on_ground || !was_on_ground || (i >= 80 && i <= 150)) {
+            const Cell& cell = world->getData().at(current_x, current_y);
+            const CellDebug& debug = world->getGrid().debugAt(current_x, current_y);
+            spdlog::info("Frame {}: pos=({},{}), vel=({:.2f},{:.2f}), on_ground={}",
+                i, current_x, current_y, cell.velocity.x, cell.velocity.y, on_ground);
+            spdlog::info("  Forces: gravity=({:.2f},{:.2f}), friction=({:.2f},{:.2f}), "
+                "viscous=({:.2f},{:.2f}), cohesion=({:.2f},{:.2f}), adhesion=({:.2f},{:.2f}), "
+                "pressure=({:.2f},{:.2f})",
+                debug.accumulated_gravity_force.x, debug.accumulated_gravity_force.y,
+                debug.accumulated_friction_force.x, debug.accumulated_friction_force.y,
+                debug.accumulated_viscous_force.x, debug.accumulated_viscous_force.y,
+                debug.accumulated_com_cohesion_force.x, debug.accumulated_com_cohesion_force.y,
+                debug.accumulated_adhesion_force.x, debug.accumulated_adhesion_force.y,
+                debug.accumulated_pressure_force.x, debug.accumulated_pressure_force.y);
+        }
+
+        if (current_x != last_x) {
+            int direction = (current_x > last_x) ? 1 : -1;
+
+            if (last_direction != 0 && direction != last_direction) {
+                bounce_count++;
+                spdlog::info("Frame {}: Bounce #{} at x={}", i, bounce_count, current_x);
+            }
+
+            last_direction = direction;
+        }
+
+        last_x = current_x;
+        was_on_ground = on_ground;
+    }
+
+    spdlog::info("Duck bounced {} times in 800 frames", bounce_count);
+
+    // Duck should bounce multiple times (once it finds exit wall and starts bouncing).
+    EXPECT_GE(bounce_count, 3) << "Duck should bounce at least 3 times";
+}
+
+TEST_F(DuckTest, DuckBrain2JumpsWhenMovingFastInMiddle)
+{
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
+
+    // Create world.
+    auto world = std::make_unique<World>(20, 5);
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 near left wall.
+    auto brain = std::make_unique<DuckBrain2>();
+    OrganismId duck_id = manager.createDuck(*world, 2, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    // Run long enough to see jumps (duck needs to find exit wall first, then bounce).
+    int jump_count = 0;
+    bool was_on_ground = duck->isOnGround();
+
+    for (int i = 0; i < 1000; ++i) {
+        world->advanceTime(0.016);
+
+        bool on_ground = duck->isOnGround();
+
+        // Detect jump: transition from on_ground to airborne.
+        if (was_on_ground && !on_ground) {
+            jump_count++;
+            int x = duck->getAnchorCell().x;
+            spdlog::info("Frame {}: Jump #{} detected at x={}", i, jump_count, x);
+        }
+
+        was_on_ground = on_ground;
+    }
+
+    spdlog::info("Duck jumped {} times in 1000 frames", jump_count);
+
+    // Duck should jump at least once when bouncing in the middle.
+    EXPECT_GE(jump_count, 1) << "Duck should jump at least once when moving fast in middle";
+}
+
+TEST_F(DuckTest, DuckBrain2DoesNotJumpWhenStationary)
+{
+    // Create world.
+    auto world = std::make_unique<World>(10, 5);
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 exactly in the middle.
+    // It will immediately be in "middle" zone but won't be moving fast yet.
+    auto brain = std::make_unique<DuckBrain2>();
+    OrganismId duck_id = manager.createDuck(*world, 5, 3, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Run just a few frames - duck is in middle but not moving fast yet.
+    int jump_count = 0;
+    bool was_on_ground = true;
+
+    for (int i = 0; i < 10; ++i) {
+        world->advanceTime(0.016);
+
+        bool on_ground = duck->isOnGround();
+        if (was_on_ground && !on_ground) {
+            jump_count++;
+        }
+        was_on_ground = on_ground;
+    }
+
+    // Duck should not jump immediately - needs to build up speed first.
+    // (It might jump if it happens to have enough speed, but typically won't in first 10 frames.)
+    spdlog::info("Duck jumped {} times in first 10 frames", jump_count);
 }

@@ -19,6 +19,44 @@ class World;
 namespace SensoryUtils {
 
 /**
+ * Special material type for template matching.
+ */
+enum class TemplateMaterial : uint8_t {
+    ANY = 255,        // Wildcard - matches any material.
+    WALL_OR_OOB = 254 // Matches WALL or out-of-bounds.
+};
+
+/**
+ * Sensory template for pattern matching.
+ *
+ * 2D pattern of expected materials. Use actual MaterialType values
+ * or special TemplateMaterial values for wildcards.
+ */
+struct SensoryTemplate {
+    int width;
+    int height;
+    std::vector<std::vector<int>> pattern; // int to hold both MaterialType and TemplateMaterial.
+
+    SensoryTemplate(int w, int h) : width(w), height(h), pattern(h, std::vector<int>(w, static_cast<int>(TemplateMaterial::ANY))) {}
+};
+
+/**
+ * Match a template against the sensory grid at a specific position.
+ *
+ * @param histograms The sensory material histograms.
+ * @param template_pattern The pattern to match.
+ * @param start_col Starting column in sensory grid.
+ * @param start_row Starting row in sensory grid.
+ * @return True if pattern matches at this position.
+ */
+template <int GridSize, int NumMaterials>
+bool matchesTemplate(
+    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const SensoryTemplate& template_pattern,
+    int start_col,
+    int start_row);
+
+/**
  * Gather material histograms from the world centered on a position.
  *
  * Always centers on the organism - out-of-bounds cells are marked as WALL
