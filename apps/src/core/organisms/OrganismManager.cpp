@@ -75,8 +75,8 @@ OrganismId OrganismManager::createDuck(
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
     duck->setAnchorCell(pos);
 
-    // Place duck as WOOD cell in world.
-    world.addMaterialAtCell(x, y, MaterialType::WOOD, 1.0);
+    // Place duck as WOOD cell in world (replace whatever is there).
+    world.getData().at(x, y).replaceMaterial(MaterialType::WOOD, 1.0);
 
     // Track cell ownership.
     duck->getCells().insert(pos);
