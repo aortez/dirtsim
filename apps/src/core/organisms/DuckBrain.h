@@ -143,9 +143,25 @@ private:
     int exit_wall_x_ = -1;
     bool found_exit_wall_ = false;
 
+    // Max speed learning.
+    static constexpr double SPEED_CONVERGENCE_MARGIN = 1.0;
+    static constexpr double SPEED_CONVERGENCE_TIME = 1.0;
+    double last_speed_ = 0.0;
+    double steady_speed_time_ = 0.0;
+    double max_speed_ = 0.0;
+    bool max_speed_learned_ = false;
+
+    // Jump distance learning.
+    static constexpr float JUMP_DISTANCE_EMA_ALPHA = 0.3f;
+    int jump_start_x_ = -1;
+    bool in_jump_ = false;
+    double learned_jump_distance_ = 0.0;
+    bool jump_distance_learned_ = false;
+
     // Jump timing.
     static constexpr float JUMP_COOLDOWN = 3.0f;
     static constexpr float MIN_SPEED_FOR_JUMP = 2.0f;
+    static constexpr float MIN_SPEED_RATIO_FOR_JUMP = 0.9f;
     float jump_cooldown_seconds_ = 0.0f;
 
     // Debug logging throttle.
@@ -155,6 +171,7 @@ private:
     Side detectSpawnSide(const DuckSensoryData& sensory) const;
     bool isTouchingWall(const DuckSensoryData& sensory, Side side) const;
     bool detectsGapInExitWall(const DuckSensoryData& sensory) const;
+    bool detectsObstacleAhead(const DuckSensoryData& sensory) const;
     bool isNearMiddle(const DuckSensoryData& sensory) const;
     void setRunDirection(Duck& duck, Side target);
 };

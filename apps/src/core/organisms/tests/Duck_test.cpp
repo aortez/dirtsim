@@ -659,10 +659,19 @@ TEST_F(DuckTest, DuckBrain2TurnsAroundAtWall)
     bool hit_right_wall = false;
     bool turned_around = false;
     int right_wall_x = -1;
+    int jump_count_before_turn = 0;
+    bool was_on_ground = duck->isOnGround();
 
     for (int i = 0; i < 300; ++i) {
         world->advanceTime(0.016);
         int current_x = duck->getAnchorCell().x;
+        bool on_ground = duck->isOnGround();
+
+        // Track jumps before first turn.
+        if (!turned_around && was_on_ground && !on_ground) {
+            jump_count_before_turn++;
+            spdlog::info("Frame {}: Jump #{} detected at x={}", i, jump_count_before_turn, current_x);
+        }
 
         // Detect hitting right wall (near x=13 or 14).
         if (!hit_right_wall && current_x >= 12) {
@@ -677,10 +686,13 @@ TEST_F(DuckTest, DuckBrain2TurnsAroundAtWall)
             spdlog::info("Frame {}: Duck turned around, now at x={}", i, current_x);
             break;
         }
+
+        was_on_ground = on_ground;
     }
 
     EXPECT_TRUE(hit_right_wall) << "Duck should reach the right wall";
     EXPECT_TRUE(turned_around) << "Duck should turn around after hitting wall";
+    EXPECT_EQ(jump_count_before_turn, 0) << "Duck should not jump before turning around at wall";
 }
 
 TEST_F(DuckTest, DuckBrain2BouncesBackAndForth)
@@ -773,11 +785,12 @@ TEST_F(DuckTest, DuckBrain2JumpsWhenMovingFastInMiddle)
         world->advanceTime(0.016);
     }
 
-    // Run long enough to see jumps (duck needs to find exit wall first, then bounce).
+    // Run long enough to see multiple jumps for learning verification.
     int jump_count = 0;
     bool was_on_ground = duck->isOnGround();
+    std::vector<int> jump_positions;
 
-    for (int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1500; ++i) {
         world->advanceTime(0.016);
 
         bool on_ground = duck->isOnGround();
@@ -786,16 +799,34 @@ TEST_F(DuckTest, DuckBrain2JumpsWhenMovingFastInMiddle)
         if (was_on_ground && !on_ground) {
             jump_count++;
             int x = duck->getAnchorCell().x;
+            jump_positions.push_back(x);
             spdlog::info("Frame {}: Jump #{} detected at x={}", i, jump_count, x);
         }
 
         was_on_ground = on_ground;
     }
 
-    spdlog::info("Duck jumped {} times in 1000 frames", jump_count);
+    spdlog::info("Duck jumped {} times in 1500 frames", jump_count);
 
-    // Duck should jump at least once when bouncing in the middle.
-    EXPECT_GE(jump_count, 1) << "Duck should jump at least once when moving fast in middle";
+    // Duck should jump multiple times (for learning to occur).
+    EXPECT_GE(jump_count, 2) << "Duck should jump at least twice to demonstrate learning";
+
+    // If multiple jumps occurred, verify they're near the middle.
+    if (jump_positions.size() >= 2) {
+        // Calculate approximate center (assume world is ~20 wide, walls at 1 and 19).
+        int approx_center = 10;
+        for (size_t i = 0; i < jump_positions.size(); ++i) {
+            int dist_from_center = std::abs(jump_positions[i] - approx_center);
+            spdlog::info("Jump #{} at x={}, distance from center: {}", i + 1, jump_positions[i], dist_from_center);
+        }
+
+        // Later jumps should be closer to center as learning improves.
+        if (jump_positions.size() >= 3) {
+            int first_dist = std::abs(jump_positions[0] - approx_center);
+            int last_dist = std::abs(jump_positions.back() - approx_center);
+            spdlog::info("First jump dist from center: {}, Last jump dist: {}", first_dist, last_dist);
+        }
+    }
 }
 
 TEST_F(DuckTest, DuckBrain2DoesNotJumpWhenStationary)

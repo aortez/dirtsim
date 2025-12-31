@@ -7,6 +7,21 @@ namespace DirtSim {
 namespace SensoryUtils {
 
 template <int GridSize, int NumMaterials>
+TemplateMatch findTemplate(
+    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const SensoryTemplate& template_pattern)
+{
+    for (int row = 0; row <= GridSize - template_pattern.height; ++row) {
+        for (int col = 0; col <= GridSize - template_pattern.width; ++col) {
+            if (matchesTemplate<GridSize, NumMaterials>(histograms, template_pattern, col, row)) {
+                return TemplateMatch{ .found = true, .col = col, .row = row };
+            }
+        }
+    }
+    return TemplateMatch{ .found = false };
+}
+
+template <int GridSize, int NumMaterials>
 bool matchesTemplate(
     const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
     const SensoryTemplate& template_pattern,
@@ -14,6 +29,7 @@ bool matchesTemplate(
     int start_row)
 {
     constexpr double MATERIAL_THRESHOLD = 0.5;
+    constexpr double EMPTY_THRESHOLD = 0.1;
 
     // Check each cell in the template pattern.
     for (int ty = 0; ty < template_pattern.height; ++ty) {
@@ -26,31 +42,105 @@ bool matchesTemplate(
                 return false;
             }
 
-            int expected = template_pattern.pattern[ty][tx];
+            const CellPattern& cell_pattern = template_pattern.pattern[ty][tx];
+            const auto& cell_histogram = histograms[grid_row][grid_col];
 
-            // Wildcard matches anything.
-            if (expected == static_cast<int>(TemplateMaterial::ANY)) {
+            switch (cell_pattern.mode) {
+            case MatchMode::Any:
                 continue;
-            }
 
-            // WALL_OR_OOB matches WALL material.
-            if (expected == static_cast<int>(TemplateMaterial::WALL_OR_OOB)) {
-                int wall_idx = static_cast<int>(MaterialType::WALL);
-                if (wall_idx < 0 || wall_idx >= NumMaterials) {
+            case MatchMode::IsEmpty: {
+                double total_fill = 0.0;
+                for (int m = 0; m < NumMaterials; ++m) {
+                    total_fill += cell_histogram[m];
+                }
+                if (total_fill >= EMPTY_THRESHOLD) {
                     return false;
                 }
-                if (histograms[grid_row][grid_col][wall_idx] < MATERIAL_THRESHOLD) {
-                    return false;
-                }
-                continue;
+                break;
             }
 
-            // Specific material type expected.
-            if (expected < 0 || expected >= NumMaterials) {
-                return false;
+            case MatchMode::IsNotEmpty: {
+                double total_fill = 0.0;
+                for (int m = 0; m < NumMaterials; ++m) {
+                    total_fill += cell_histogram[m];
+                }
+                if (total_fill < EMPTY_THRESHOLD) {
+                    return false;
+                }
+                break;
             }
-            if (histograms[grid_row][grid_col][expected] < MATERIAL_THRESHOLD) {
-                return false;
+
+            case MatchMode::IsSolid: {
+                // Find dominant material and check if it's solid (not fluid).
+                MaterialType dominant = MaterialType::AIR;
+                double max_fill = 0.0;
+                for (int m = 0; m < NumMaterials; ++m) {
+                    if (cell_histogram[m] > max_fill) {
+                        max_fill = cell_histogram[m];
+                        dominant = static_cast<MaterialType>(m);
+                    }
+                }
+                if (max_fill < MATERIAL_THRESHOLD) {
+                    return false;
+                }
+                const MaterialProperties& props = getMaterialProperties(dominant);
+                if (props.is_fluid) {
+                    return false;
+                }
+                break;
+            }
+
+            case MatchMode::IsLiquid: {
+                // Find dominant material and check if it's fluid.
+                MaterialType dominant = MaterialType::AIR;
+                double max_fill = 0.0;
+                for (int m = 0; m < NumMaterials; ++m) {
+                    if (cell_histogram[m] > max_fill) {
+                        max_fill = cell_histogram[m];
+                        dominant = static_cast<MaterialType>(m);
+                    }
+                }
+                if (max_fill < MATERIAL_THRESHOLD) {
+                    return false;
+                }
+                const MaterialProperties& props = getMaterialProperties(dominant);
+                if (!props.is_fluid) {
+                    return false;
+                }
+                break;
+            }
+
+            case MatchMode::Is: {
+                // Must be one of the specified materials.
+                bool matched = false;
+                for (MaterialType mat : cell_pattern.materials) {
+                    int mat_idx = static_cast<int>(mat);
+                    if (mat_idx >= 0 && mat_idx < NumMaterials) {
+                        if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
+                            matched = true;
+                            break;
+                        }
+                    }
+                }
+                if (!matched) {
+                    return false;
+                }
+                break;
+            }
+
+            case MatchMode::IsNot: {
+                // Must NOT be any of the specified materials.
+                for (MaterialType mat : cell_pattern.materials) {
+                    int mat_idx = static_cast<int>(mat);
+                    if (mat_idx >= 0 && mat_idx < NumMaterials) {
+                        if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
+                            return false;
+                        }
+                    }
+                }
+                break;
+            }
             }
         }
     }
@@ -210,6 +300,14 @@ template bool matchesTemplate<9, 10>(
     const SensoryTemplate& template_pattern,
     int start_col,
     int start_row);
+
+template TemplateMatch findTemplate<15, 10>(
+    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
+    const SensoryTemplate& template_pattern);
+
+template TemplateMatch findTemplate<9, 10>(
+    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
+    const SensoryTemplate& template_pattern);
 
 } // namespace SensoryUtils
 } // namespace DirtSim

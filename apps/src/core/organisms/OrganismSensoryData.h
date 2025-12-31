@@ -19,26 +19,65 @@ class World;
 namespace SensoryUtils {
 
 /**
- * Special material type for template matching.
+ * Match mode for template cell patterns.
  */
-enum class TemplateMaterial : uint8_t {
-    ANY = 255,        // Wildcard - matches any material.
-    WALL_OR_OOB = 254 // Matches WALL or out-of-bounds.
+enum class MatchMode {
+    Is,         // Must be one of the specified materials.
+    IsNot,      // Must NOT be any of the specified materials.
+    Any,        // Wildcard - matches anything.
+    IsEmpty,    // Air or empty (low fill).
+    IsNotEmpty, // Has material.
+    IsSolid,    // Solid material (not fluid).
+    IsLiquid    // Fluid material (water, air).
+};
+
+/**
+ * Pattern constraint for a single cell.
+ */
+struct CellPattern {
+    MatchMode mode = MatchMode::Any;
+    std::vector<MaterialType> materials;
+
+    CellPattern() = default;
+    CellPattern(MatchMode m) : mode(m) {}
+    CellPattern(MatchMode m, std::vector<MaterialType> mats) : mode(m), materials(std::move(mats)) {}
 };
 
 /**
  * Sensory template for pattern matching.
  *
- * 2D pattern of expected materials. Use actual MaterialType values
- * or special TemplateMaterial values for wildcards.
+ * 2D pattern of cell constraints.
  */
 struct SensoryTemplate {
     int width;
     int height;
-    std::vector<std::vector<int>> pattern; // int to hold both MaterialType and TemplateMaterial.
+    std::vector<std::vector<CellPattern>> pattern;
 
-    SensoryTemplate(int w, int h) : width(w), height(h), pattern(h, std::vector<int>(w, static_cast<int>(TemplateMaterial::ANY))) {}
+    SensoryTemplate(int w, int h) : width(w), height(h), pattern(h, std::vector<CellPattern>(w)) {}
 };
+
+/**
+ * Result of a template search.
+ */
+struct TemplateMatch {
+    bool found = false;
+    int col = -1;
+    int row = -1;
+};
+
+/**
+ * Find a template in the sensory grid.
+ *
+ * Scans the entire sensory grid for the pattern and returns the first match.
+ *
+ * @param histograms The sensory material histograms.
+ * @param template_pattern The pattern to find.
+ * @return Match result with position (or found=false if not found).
+ */
+template <int GridSize, int NumMaterials>
+TemplateMatch findTemplate(
+    const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
+    const SensoryTemplate& template_pattern);
 
 /**
  * Match a template against the sensory grid at a specific position.
