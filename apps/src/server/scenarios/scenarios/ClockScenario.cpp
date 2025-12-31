@@ -29,7 +29,7 @@ namespace DirtSim {
 
 const std::map<ClockEventType, EventTypeConfig> ClockScenario::DEFAULT_EVENT_CONFIGS = {
     { ClockEventType::DUCK, { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
-    { ClockEventType::MELTDOWN, { .duration = 5.0, .chance_per_second = 0.02, .cooldown = 30.0 } },
+    { ClockEventType::MELTDOWN, { .duration = 20.0, .chance_per_second = 0.02, .cooldown = 30.0 } },
     { ClockEventType::RAIN, { .duration = 20.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
 };
 
@@ -625,13 +625,14 @@ void ClockScenario::drawTime(World& world)
     int minutes = time_info->tm_min;
     int seconds = time_info->tm_sec;
 
-    // Clear only the previously painted clock cells (preserves duck and other entities).
+    // Iterate over painted_cells_
     for (const auto& pos : painted_cells_) {
         if (pos.x >= 0 && pos.x < static_cast<int>(world.getData().width) &&
             pos.y >= 0 && pos.y < static_cast<int>(world.getData().height)) {
             world.getData().at(pos.x, pos.y) = Cell();
         }
     }
+
     painted_cells_.clear();
 
     // Get font dimensions.
@@ -819,7 +820,7 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
         if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
-            updateMeltdownEvent(world, state, deltaTime);
+            updateMeltdownEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, RainEventState>) {
             updateRainEvent(world, state, deltaTime);
         }
@@ -1062,6 +1063,10 @@ void ClockScenario::cancelAllEvents(World& world)
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             }
         }
+        else if (type == ClockEventType::MELTDOWN) {
+            // Clean up any stray metal from interrupted meltdown.
+            convertStrayMetalToWater(world);
+        }
     }
 
     // Clear config flags.
@@ -1079,13 +1084,15 @@ bool ClockScenario::isMeltdownActive() const
     return active_events_.contains(ClockEventType::MELTDOWN);
 }
 
-void ClockScenario::updateMeltdownEvent(World& world, MeltdownEventState& state, double /*deltaTime*/)
+void ClockScenario::updateMeltdownEvent(
+    World& world, MeltdownEventState& state, double& remaining_time, double /*deltaTime*/)
 {
     // Convert falling METAL to WATER when it crashes (velocity stops or reverses).
     WorldData& data = world.getData();
 
-    // Scan for crashed metal: below digit area and not falling (velocity.y <= 0).
-    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y) + 1; y < data.height - 1; ++y) {
+    // Scan for crashed metal: at or below digit area and not falling (velocity.y <= 0).
+    bool any_stray_metal = false;
+    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y); y < data.height - 1; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::METAL) {
@@ -1093,9 +1100,21 @@ void ClockScenario::updateMeltdownEvent(World& world, MeltdownEventState& state,
                 // +y is down, so <= 0 means stopped or bouncing upward.
                 if (cell.velocity.y <= 0.0) {
                     cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
+                } else {
+                    // Still falling - not done yet.
+                    any_stray_metal = true;
                 }
             }
         }
+    }
+
+    // End early if all stray metal below digits has been converted.
+    // But wait at least 3 seconds for metal to start falling first.
+    constexpr double MIN_MELTDOWN_TIME = 3.0;
+    double elapsed = DEFAULT_EVENT_CONFIGS.at(ClockEventType::MELTDOWN).duration - remaining_time;
+
+    if (!any_stray_metal && elapsed >= MIN_MELTDOWN_TIME) {
+        remaining_time = 0.0;
     }
 }
 
