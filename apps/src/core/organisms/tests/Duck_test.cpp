@@ -273,6 +273,164 @@ TEST_F(DuckTest, DuckWalksWhenOnGround)
     EXPECT_GE(distance_moved, 1) << "Duck should move at least 1 cell when walking for 100 frames";
 }
 
+TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
+{
+    // Compare walking speed on different surfaces.
+    // Track both distance and velocity to understand friction and air resistance effects.
+    // Also test with DuckBrain2 to see what max speed it learns.
+
+    struct SurfaceTestCase {
+        MaterialType material;
+        const char* name;
+    };
+
+    std::vector<SurfaceTestCase> test_cases = {
+        { MaterialType::WALL, "WALL" },
+        { MaterialType::DIRT, "DIRT" },
+        { MaterialType::SAND, "SAND" },
+    };
+
+    struct SurfaceResult {
+        const char* name;
+        int distance;
+        double velocity_at_frame_20;
+        double velocity_at_frame_80;
+        double max_velocity;
+    };
+
+    std::vector<SurfaceResult> results;
+
+    for (const auto& test_case : test_cases) {
+        auto world = std::make_unique<World>(100, 10);
+
+        // Clear interior to air.
+        for (uint32_t y = 1; y < 9; ++y) {
+            for (uint32_t x = 1; x < 99; ++x) {
+                world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
+            }
+        }
+
+        // Set floor material.
+        for (uint32_t x = 0; x < 100; ++x) {
+            world->getData().at(x, 9).replaceMaterial(test_case.material, 1.0);
+        }
+
+        OrganismManager& manager = world->getOrganismManager();
+
+        auto test_brain = std::make_unique<TestDuckBrain>();
+        TestDuckBrain* brain_ptr = test_brain.get();
+
+        int start_x = 5;
+        OrganismId duck_id = manager.createDuck(*world, start_x, 8, std::move(test_brain));
+        Duck* duck = manager.getDuck(duck_id);
+
+        // Let duck settle onto ground first.
+        brain_ptr->setAction(DuckAction::WAIT);
+        for (int i = 0; i < 20; ++i) {
+            world->advanceTime(0.016);
+        }
+
+        // Walk right for 100 frames, tracking velocity.
+        brain_ptr->setAction(DuckAction::RUN_RIGHT);
+
+        SurfaceResult result = { test_case.name, 0, 0.0, 0.0, 0.0 };
+
+        for (int frame = 0; frame < 100; ++frame) {
+            world->advanceTime(0.016);
+
+            Vector2i pos = duck->getAnchorCell();
+            if (pos.x >= 0 && pos.x < 100) {
+                const Cell& cell = world->getData().at(pos.x, pos.y);
+                double vel = cell.velocity.x;
+
+                if (vel > result.max_velocity) {
+                    result.max_velocity = vel;
+                }
+                if (frame == 20) {
+                    result.velocity_at_frame_20 = vel;
+                }
+                if (frame == 80) {
+                    result.velocity_at_frame_80 = vel;
+                }
+            }
+        }
+
+        result.distance = duck->getAnchorCell().x - start_x;
+        results.push_back(result);
+    }
+
+    // Report results.
+    spdlog::info("Walking test results (100 frames = 1.6 seconds):");
+    spdlog::info("{:8} {:>10} {:>12} {:>12} {:>12}", "Surface", "Distance", "Vel@20", "Vel@80", "MaxVel");
+    for (const auto& r : results) {
+        spdlog::info("{:8} {:>10} {:>12.1f} {:>12.1f} {:>12.1f}",
+            r.name, r.distance, r.velocity_at_frame_20, r.velocity_at_frame_80, r.max_velocity);
+    }
+
+    // Check if velocity plateaued (air resistance) or kept growing.
+    for (const auto& r : results) {
+        if (r.velocity_at_frame_20 > 0.1) {
+            double ratio = r.velocity_at_frame_80 / r.velocity_at_frame_20;
+            if (ratio > 2.0) {
+                spdlog::warn("{}: Velocity grew {}x - no terminal velocity", r.name, ratio);
+            } else {
+                spdlog::info("{}: Velocity ratio {:.2f}x - air resistance working", r.name, ratio);
+            }
+        }
+    }
+
+    // Verify duck moves on all surfaces.
+    for (const auto& r : results) {
+        EXPECT_GE(r.distance, 1) << "Duck should move on " << r.name;
+    }
+
+    // Now test with DuckBrain2 to see what max speed it learns.
+    // DuckBrain2 learns max_speed when velocity stabilizes for 1 second.
+    spdlog::info("--- Testing DuckBrain2 max speed learning ---");
+    {
+        auto world = std::make_unique<World>(100, 10);
+
+        // Clear interior to air.
+        for (uint32_t y = 1; y < 9; ++y) {
+            for (uint32_t x = 1; x < 99; ++x) {
+                world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
+            }
+        }
+
+        // WALL floor.
+        for (uint32_t x = 0; x < 100; ++x) {
+            world->getData().at(x, 9).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+
+        OrganismManager& manager = world->getOrganismManager();
+
+        // Create duck with DuckBrain2 near left wall.
+        auto brain = std::make_unique<DuckBrain2>();
+        OrganismId duck_id = manager.createDuck(*world, 2, 8, std::move(brain));
+        Duck* duck = manager.getDuck(duck_id);
+
+        // Run for 200 frames (~3.2 seconds) to let brain learn max speed.
+        // DuckBrain2 needs 1 second of steady velocity to learn.
+        for (int frame = 0; frame < 200; ++frame) {
+            world->advanceTime(0.016);
+
+            // Log velocity every 40 frames.
+            if (frame % 40 == 0) {
+                Vector2i pos = duck->getAnchorCell();
+                if (pos.x >= 0 && pos.x < 100) {
+                    const Cell& cell = world->getData().at(pos.x, pos.y);
+                    spdlog::info("DuckBrain2 frame {}: pos={}, velocity.x={:.1f}",
+                        frame, pos.x, cell.velocity.x);
+                }
+            }
+        }
+
+        // The "Learned max speed" log message from DuckBrain2 will appear in output.
+        // We expect it to be around 50 cells/sec based on our earlier findings.
+        spdlog::info("DuckBrain2 test complete. Check logs for 'Learned max speed' message.");
+    }
+}
+
 TEST_F(DuckTest, DuckJumps2CellsHigh)
 {
     // Create a taller world for jump testing.
