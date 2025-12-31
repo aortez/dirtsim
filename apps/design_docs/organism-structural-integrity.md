@@ -323,6 +323,171 @@ void growCell(Organism& org, Vector2i local_pos, MaterialType mat) {
 - **Stress-based fracture**: Track stress at bonds, break under load.
 - **Organism-organism collision**: Two-body impulse resolution.
 
+## Test Plan
+
+### Existing Tests - What To Do
+
+**Tests to Adapt** (in `src/tests/RigidBodyIntegration_test.cpp`):
+
+| Test | Current Behavior | New Behavior |
+|------|------------------|--------------|
+| `FloatingStructureFallsTogether` | Checks cells have unified velocity | Check organism.position falls, all projected cells move together |
+| `TreeStructureMovesAsUnit` | Checks seed/wood have same velocity | Check organism has single velocity, grid projection correct |
+| `MultipleStructuresMoveIndependently` | Checks two trees fall separately | Same concept, but check organism.position for each |
+
+**Tests to Remove**:
+
+| Test | Reason |
+|------|--------|
+| `DisconnectedFragmentGetsPruned` | We removed connectivity checks in Phase 1 |
+| All tests in `WorldRigidBodyCalculator_test.cpp` | Calculator class will be removed/replaced |
+
+**Tests to Keep Unchanged**:
+
+| Test File | Reason |
+|-----------|--------|
+| `TreeManager_test.cpp` | Tree creation/tracking still relevant |
+| `Duck_test.cpp` | Ducks are single-cell, work as-is |
+| `TreeSensory_test.cpp` | Sensory perception orthogonal to physics |
+| `OrganismSensoryData_test.cpp` | Sensory data orthogonal to physics |
+| `TreeGermination_test.cpp` (most tests) | Growth logic still relevant |
+
+**Failing Test to Fix**:
+
+| Test | Current Issue | Expected After New System |
+|------|---------------|---------------------------|
+| `TreeGerminationTest.ExtendedGrowthStability` | COM drift during movement | Should pass - organism position is continuous, no COM drift |
+
+### New Tests to Write
+
+**1. Organism Physics Tests** (`OrganismPhysics_test.cpp`):
+
+```cpp
+// Basic physics integration
+TEST(OrganismPhysicsTest, PositionUpdatesWithVelocity)
+// organism.position += organism.velocity * dt
+
+TEST(OrganismPhysicsTest, VelocityUpdatesWithForce)
+// organism.velocity += (total_force / organism.mass) * dt
+
+TEST(OrganismPhysicsTest, MassComputedFromLocalShape)
+// organism.mass = sum of material densities in local_shape
+
+TEST(OrganismPhysicsTest, COMComputedFromLocalShape)
+// organism.center_of_mass = weighted average of local cell positions
+
+TEST(OrganismPhysicsTest, GravityAcceleratesOrganism)
+// Unsupported organism accelerates downward
+```
+
+**2. Collision Detection Tests** (`OrganismCollision_test.cpp`):
+
+```cpp
+TEST(OrganismCollisionTest, DetectsWallCollision)
+// Target cell with WALL material → collision.blocked = true
+
+TEST(OrganismCollisionTest, DetectsOtherOrganismCollision)
+// Target cell with different organism_id → blocked
+
+TEST(OrganismCollisionTest, DetectsDenseSolidCollision)
+// Target cell with fill_ratio > 0.8 and solid material → blocked
+
+TEST(OrganismCollisionTest, NoCollisionWithEmptySpace)
+// Target cell is AIR → not blocked
+
+TEST(OrganismCollisionTest, NoCollisionWithOwnCells)
+// Target cell has same organism_id → not blocked
+
+TEST(OrganismCollisionTest, ContactNormalPointsAwayFromObstacle)
+// Normal computed correctly for collision response
+
+TEST(OrganismCollisionTest, DetectsWorldBoundaryCollision)
+// Target cell outside grid bounds → blocked
+```
+
+**3. Collision Response Tests** (`OrganismCollisionResponse_test.cpp`):
+
+```cpp
+TEST(OrganismCollisionResponseTest, ImpulseReversesNormalVelocity)
+// Velocity component into surface is reversed
+
+TEST(OrganismCollisionResponseTest, RestitutionZeroStopsMovement)
+// e=0 → velocity normal component becomes zero
+
+TEST(OrganismCollisionResponseTest, RestitutionOneFullBounce)
+// e=1 → velocity normal component fully reversed
+
+TEST(OrganismCollisionResponseTest, TangentialVelocityPreserved)
+// Velocity parallel to surface unchanged (before friction)
+
+TEST(OrganismCollisionResponseTest, ReactionForceAppliedToEnvironment)
+// Blocked cells receive equal-and-opposite force
+```
+
+**4. Grid Projection Tests** (`OrganismGridProjection_test.cpp`):
+
+```cpp
+TEST(OrganismGridProjectionTest, ClearsOldOccupiedCells)
+// Previous projection cleared before new one
+
+TEST(OrganismGridProjectionTest, ProjectsLocalShapeToGrid)
+// Each local cell appears at correct grid position
+
+TEST(OrganismGridProjectionTest, SetsOrganismIdOnProjectedCells)
+// Grid cells have correct organism_id
+
+TEST(OrganismGridProjectionTest, SetsMaterialTypeOnProjectedCells)
+// Grid cells have correct material from local_shape
+
+TEST(OrganismGridProjectionTest, SetsVelocityOnProjectedCells)
+// Grid cells have organism's velocity
+
+TEST(OrganismGridProjectionTest, ComputesSubCellCOMFromFractionalPosition)
+// cell.com reflects organism's sub-grid position
+```
+
+**5. Force Gathering Tests** (`OrganismForceGathering_test.cpp`):
+
+```cpp
+TEST(OrganismForceGatheringTest, GathersPendingForceFromOccupiedCells)
+// Sum of pending_force from all cells organism occupies
+
+TEST(OrganismForceGatheringTest, IncludesGravity)
+// Total force includes organism.mass * gravity
+
+TEST(OrganismForceGatheringTest, EmptyCellsContributeZeroForce)
+// Only non-empty cells contribute
+```
+
+**6. Growth Tests** (`OrganismGrowth_test.cpp`):
+
+```cpp
+TEST(OrganismGrowthTest, GrowCellAddsToLocalShape)
+// local_shape.size() increases by 1
+
+TEST(OrganismGrowthTest, GrowCellUpdatesMass)
+// organism.mass increases by new cell's mass
+
+TEST(OrganismGrowthTest, GrowCellUpdatesCOM)
+// organism.center_of_mass shifts toward new cell
+
+TEST(OrganismGrowthTest, AnchorPositionUnchanged)
+// organism.position stays fixed during growth
+```
+
+### Test-First Implementation Order
+
+We can write tests before implementation for clean TDD:
+
+1. **First**: Write `OrganismPhysics_test.cpp` tests → Implement Organism struct with position/velocity
+2. **Second**: Write `OrganismGridProjection_test.cpp` tests → Implement projectToGrid()
+3. **Third**: Write `OrganismForceGathering_test.cpp` tests → Implement gatherEnvironmentForces()
+4. **Fourth**: Write `OrganismCollision_test.cpp` tests → Implement detectCollisions()
+5. **Fifth**: Write `OrganismCollisionResponse_test.cpp` tests → Implement handleCollision_Impulse()
+6. **Sixth**: Write `OrganismGrowth_test.cpp` tests → Integrate with existing growth code
+
+This order builds up the system incrementally - each step depends on previous steps working.
+
 ## Implementation Status
 
 **Phase 1 - TODO:**
