@@ -298,6 +298,56 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     }
   }
 
+  // Deploy config files if .local overrides exist.
+  banner('Checking for config overrides...', consola);
+
+  const APPS_CONFIG_DIR = join(YOCTO_DIR, '../apps/config');
+  const configFiles = [];
+
+  for (const configName of ['server.json.local', 'ui.json.local']) {
+    const localPath = join(APPS_CONFIG_DIR, configName);
+    if (existsSync(localPath)) {
+      configFiles.push({
+        name: configName,
+        path: localPath,
+        remotePath: `/etc/dirtsim/${configName}`,
+      });
+    }
+  }
+
+  if (configFiles.length > 0) {
+    info(`Found ${configFiles.length} config override(s) to deploy`);
+    for (const cfg of configFiles) {
+      info(`  ${cfg.name}`);
+      if (!dryRun) {
+        try {
+          execSync(`scp -o BatchMode=yes "${cfg.path}" "${remoteTarget}:/tmp/${cfg.name}"`, { stdio: 'pipe' });
+          // Copy and set permissions so dirtsim user can read the config files.
+          execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo cp /tmp/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`, { stdio: 'pipe' });
+          success(`${cfg.name} deployed`);
+        } catch (err) {
+          error(`Failed to deploy ${cfg.name}`);
+          process.exit(1);
+        }
+      } else {
+        info(`Would scp ${cfg.path} to ${remoteTarget}:${cfg.remotePath}`);
+      }
+    }
+
+    // Run config setup service to fix all permissions (config files + home dirs).
+    if (!dryRun) {
+      try {
+        info('Running config setup to fix permissions...');
+        execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl restart dirtsim-config-setup.service"`, { stdio: 'pipe' });
+        success('Permissions fixed');
+      } catch (err) {
+        warn('Config setup service not available (needs full deployment)');
+      }
+    }
+  } else {
+    info('No .local config overrides found');
+  }
+
   // Stop services, copy binaries, start services.
   banner('Restarting services...', consola);
 

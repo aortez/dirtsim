@@ -57,6 +57,9 @@ struct StateMachine::Impl {
 
 StateMachine::StateMachine() : pImpl()
 {
+    // Initialize with default config (can be overwritten by loading from file).
+    serverConfig = std::make_unique<ServerConfig>();
+
     LOG_INFO(
         State,
         "Server::StateMachine initialized in headless mode in state: {}",

@@ -1,0 +1,12 @@
+[Unit]
+Description=DirtSim Configuration Setup
+DefaultDependencies=no
+Before=dirtsim-server.service dirtsim-ui.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/dirtsim-config-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

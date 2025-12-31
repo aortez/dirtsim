@@ -8,6 +8,7 @@
 #include "core/SystemMetrics.h"
 #include "core/Timers.h"
 #include "states/State.h"
+#include "ui/UiConfig.h"
 
 #include <memory>
 #include <string>
@@ -76,6 +77,15 @@ public:
     WebRtcStreamer* getWebRtcStreamer() { return webRtcStreamer_.get(); }
 
     Timers& getTimers() { return timers_; }
+
+    // UI configuration (loaded from ui.json).
+    std::unique_ptr<UiConfig> uiConfig;
+
+    const UiConfig& getUiConfig() const
+    {
+        static UiConfig defaultConfig;
+        return uiConfig ? *uiConfig : defaultConfig;
+    }
 
 private:
     SystemMetrics systemMetrics_;

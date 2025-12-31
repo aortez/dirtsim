@@ -6,7 +6,8 @@
 namespace DirtSim {
 
 struct ServerConfig {
-    ScenarioConfig startupConfig;
+    // Default to Sandbox scenario (not Benchmark which requires 200x200).
+    ScenarioConfig startupConfig = Config::Sandbox{};
 };
 
 inline void from_json(const nlohmann::json& j, ServerConfig& cfg)

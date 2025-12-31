@@ -1,6 +1,8 @@
 #include "state-machine/StateMachine.h"
 // TODO: Re-enable when integrating UI components:
 // #include "SimulatorUI.h"
+#include "UiConfig.h"
+#include "core/ConfigLoader.h"
 #include "core/LoggingChannels.h"
 #include "core/World.h"
 
@@ -183,6 +185,23 @@ int main(int argc, char** argv)
 
     // Create the UI state machine with display.
     auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default());
+
+    // Load UI configuration (optional - defaults apply if not found).
+    auto uiConfigJson = DirtSim::ConfigLoader::load("ui.json");
+    if (uiConfigJson.has_value()) {
+        try {
+            DirtSim::UiConfig uiConfig;
+            DirtSim::from_json(uiConfigJson.value(), uiConfig);
+            stateMachine->uiConfig = std::make_unique<DirtSim::UiConfig>(std::move(uiConfig));
+            SLOG_INFO("Loaded ui.json (autoRun={})", stateMachine->uiConfig->autoRun);
+        }
+        catch (const std::exception& e) {
+            SLOG_ERROR("Failed to parse ui.json: {}", e.what());
+        }
+    }
+    else {
+        SLOG_INFO("No ui.json found, using defaults (autoRun=false)");
+    }
 
     SLOG_INFO("UI state machine created, state: {}", stateMachine->getCurrentStateName());
 
