@@ -109,6 +109,10 @@ private:
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode.
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
 
+    // Auto-shrink timer (minimizes rail after inactivity).
+    lv_timer_t* autoShrinkTimer_ = nullptr;
+    static constexpr uint32_t AUTO_SHRINK_TIMEOUT_MS = 10000; // 10 seconds.
+
     // Colors.
     static constexpr uint32_t BG_COLOR = 0x303030;
     static constexpr uint32_t SELECTED_COLOR = 0x0066CC;
@@ -123,12 +127,15 @@ private:
 
     void createIcons(lv_obj_t* parent);
     void createModeButtons();
+    void createAutoShrinkTimer();
+    void resetAutoShrinkTimer();
     void applyMode();
     void updateButtonVisuals();
 
     // Static LVGL callbacks.
     static void onIconClicked(lv_event_t* e);
     static void onModeButtonClicked(lv_event_t* e);
+    static void onAutoShrinkTimer(lv_timer_t* timer);
 };
 
 } // namespace Ui

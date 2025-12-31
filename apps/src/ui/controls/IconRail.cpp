@@ -18,6 +18,7 @@ IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback
 
     createIcons(parent);
     createModeButtons();
+    createAutoShrinkTimer();
 
     // Tree icon starts hidden (only shown when tree exists).
     setTreeIconVisible(false);
@@ -30,6 +31,10 @@ IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback
 
 IconRail::~IconRail()
 {
+    if (autoShrinkTimer_) {
+        lv_timer_delete(autoShrinkTimer_);
+        autoShrinkTimer_ = nullptr;
+    }
     // LVGL handles cleanup of child objects when parent is deleted.
     LOG_INFO(Controls, "IconRail destroyed");
 }
@@ -110,6 +115,7 @@ void IconRail::onIconClicked(lv_event_t* e)
     }
 
     self->updateButtonVisuals();
+    self->resetAutoShrinkTimer();
 
     // Notify primary callback.
     if (self->onSelectCallback_) {
@@ -303,6 +309,8 @@ void IconRail::applyMode()
     }
 
     LOG_INFO(Controls, "IconRail mode set to: {}", minimized ? "Minimized" : "Normal");
+
+    resetAutoShrinkTimer();
 }
 
 void IconRail::setMode(RailMode mode)
@@ -333,12 +341,52 @@ void IconRail::onModeButtonClicked(lv_event_t* e)
 
     if (!self) return;
 
+    self->resetAutoShrinkTimer();
+
     if (isExpand) {
         self->setMode(RailMode::Normal);
     }
     else {
         self->setMode(RailMode::Minimized);
     }
+}
+
+void IconRail::createAutoShrinkTimer()
+{
+    autoShrinkTimer_ = lv_timer_create(onAutoShrinkTimer, AUTO_SHRINK_TIMEOUT_MS, this);
+    if (autoShrinkTimer_) {
+        // Pause initially - only active when rail is expanded with no selection.
+        lv_timer_pause(autoShrinkTimer_);
+        LOG_DEBUG(Controls, "Auto-shrink timer created ({}ms)", AUTO_SHRINK_TIMEOUT_MS);
+    }
+}
+
+void IconRail::resetAutoShrinkTimer()
+{
+    if (!autoShrinkTimer_) return;
+
+    // Only run timer when rail is expanded and no icon is selected.
+    if (mode_ == RailMode::Normal && selectedId_ == IconId::COUNT) {
+        lv_timer_reset(autoShrinkTimer_);
+        lv_timer_resume(autoShrinkTimer_);
+    }
+    else {
+        lv_timer_pause(autoShrinkTimer_);
+    }
+}
+
+void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
+{
+    IconRail* self = static_cast<IconRail*>(lv_timer_get_user_data(timer));
+    if (!self) return;
+
+    // Only shrink if no icon is selected.
+    if (self->selectedId_ == IconId::COUNT && self->mode_ == RailMode::Normal) {
+        LOG_INFO(Controls, "Auto-shrinking IconRail after inactivity");
+        self->setMode(RailMode::Minimized);
+    }
+
+    lv_timer_pause(timer);
 }
 
 } // namespace Ui
