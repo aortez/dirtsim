@@ -13,6 +13,11 @@ namespace Ui {
  */
 enum class IconId { CORE = 0, SCENARIO, PHYSICS, TREE, COUNT };
 
+enum class RailMode {
+    Normal,    // Full width with all icon buttons.
+    Minimized  // Narrow width with single expand button.
+};
+
 /**
  * @brief Configuration for a single icon in an IconRail.
  */
@@ -84,6 +89,11 @@ public:
      */
     void setSecondaryCallback(SelectCallback callback) { secondaryCallback_ = std::move(callback); }
 
+    RailMode getMode() const { return mode_; }
+    void setMode(RailMode mode);
+    void toggleMode();
+    bool isMinimized() const { return mode_ == RailMode::Minimized; }
+
 private:
     lv_obj_t* container_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
@@ -94,6 +104,11 @@ private:
     SelectCallback onSelectCallback_;
     SelectCallback secondaryCallback_;
 
+    // Mode support.
+    RailMode mode_ = RailMode::Normal;
+    lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode.
+    lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
+
     // Colors.
     static constexpr uint32_t BG_COLOR = 0x303030;
     static constexpr uint32_t SELECTED_COLOR = 0x0066CC;
@@ -102,14 +117,18 @@ private:
     // Dimensions optimized for HyperPixel 4.0 (480px height).
     // With 4 icons: 4×96 + 3×12 = 420px (fits nicely with room to spare).
     static constexpr int RAIL_WIDTH = 108;
+    static constexpr int MINIMIZED_RAIL_WIDTH = 40; // Half of ACTION_SIZE.
     static constexpr int ICON_SIZE = 96;
     static constexpr int GAP = 12;
 
     void createIcons(lv_obj_t* parent);
+    void createModeButtons();
+    void applyMode();
     void updateButtonVisuals();
 
-    // Static LVGL callback.
+    // Static LVGL callbacks.
     static void onIconClicked(lv_event_t* e);
+    static void onModeButtonClicked(lv_event_t* e);
 };
 
 } // namespace Ui

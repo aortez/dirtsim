@@ -17,9 +17,13 @@ IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback
     };
 
     createIcons(parent);
+    createModeButtons();
 
     // Tree icon starts hidden (only shown when tree exists).
     setTreeIconVisible(false);
+
+    // Start in normal mode (buttons already visible from createIcons).
+    applyMode();
 
     LOG_INFO(Controls, "IconRail created with {} icons", iconConfigs_.size());
 }
@@ -183,6 +187,157 @@ void IconRail::deselectAll()
 
     if (onSelectCallback_) {
         onSelectCallback_(selectedId_, previousId);
+    }
+}
+
+void IconRail::createModeButtons()
+{
+    if (!container_) return;
+
+    // Create expand button (shown in minimized mode).
+    // Narrow width to fit rail, but ACTION_SIZE height.
+    expandButton_ = LVGLBuilder::actionButton(container_)
+                        .icon(LV_SYMBOL_RIGHT)
+                        .mode(LVGLBuilder::ActionMode::Push)
+                        .size(MINIMIZED_RAIL_WIDTH - 4) // Start square, resize below.
+                        .glowColor(0x808080)
+                        .textColor(0xFFFFFF)
+                        .buildOrLog();
+
+    if (expandButton_) {
+        // Resize container (trough) to narrow width, 2× ACTION_SIZE height.
+        const int expandWidth = MINIMIZED_RAIL_WIDTH - 4;
+        const int expandHeight = LVGLBuilder::Style::ACTION_SIZE * 2;
+        lv_obj_set_size(expandButton_, expandWidth, expandHeight);
+
+        // Inner button fills the trough with proper padding.
+        lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
+        if (innerBtn) {
+            const int padding = LVGLBuilder::Style::TROUGH_PADDING;
+            lv_obj_set_size(innerBtn, expandWidth - padding * 2, expandHeight - padding * 2);
+            lv_obj_set_user_data(innerBtn, this);
+            lv_obj_add_event_cb(
+                innerBtn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(1));
+        }
+        // Start hidden (normal mode is default).
+        lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // Create collapse button (shown in normal mode, at bottom).
+    collapseButton_ = LVGLBuilder::actionButton(container_)
+                          .icon(LV_SYMBOL_LEFT)
+                          .mode(LVGLBuilder::ActionMode::Push)
+                          .size(ICON_SIZE)
+                          .glowColor(0x808080)
+                          .textColor(0xFFFFFF)
+                          .buildOrLog();
+
+    if (collapseButton_) {
+        lv_obj_t* btn = lv_obj_get_child(collapseButton_, 0);
+        if (btn) {
+            lv_obj_set_user_data(btn, this);
+            lv_obj_add_event_cb(btn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(0));
+        }
+    }
+
+    LOG_DEBUG(Controls, "Created mode buttons (expand/collapse)");
+}
+
+void IconRail::applyMode()
+{
+    if (!container_) return;
+
+    bool minimized = (mode_ == RailMode::Minimized);
+
+    // Resize container and adjust layout.
+    if (minimized) {
+        lv_obj_set_width(container_, MINIMIZED_RAIL_WIDTH);
+        lv_obj_set_style_pad_all(container_, 2, 0); // Small padding around button.
+        // Center the expand button vertically.
+        lv_obj_set_flex_align(
+            container_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    }
+    else {
+        lv_obj_set_width(container_, RAIL_WIDTH);
+        lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
+        // Icons start at top.
+        lv_obj_set_flex_align(
+            container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    }
+
+    // Show/hide icon buttons.
+    for (size_t i = 0; i < buttons_.size(); i++) {
+        if (buttons_[i]) {
+            if (minimized) {
+                lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+            }
+            else {
+                // Respect tree visibility when expanding.
+                if (iconConfigs_[i].id == IconId::TREE && !treeIconVisible_) {
+                    lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+                }
+                else {
+                    lv_obj_clear_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+                }
+            }
+        }
+    }
+
+    // Show/hide mode buttons.
+    if (expandButton_) {
+        if (minimized) {
+            lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (collapseButton_) {
+        if (minimized) {
+            lv_obj_add_flag(collapseButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_clear_flag(collapseButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    LOG_INFO(Controls, "IconRail mode set to: {}", minimized ? "Minimized" : "Normal");
+}
+
+void IconRail::setMode(RailMode mode)
+{
+    if (mode_ == mode) return;
+    mode_ = mode;
+
+    // When minimizing, deselect any selected icon to close the expandable panel.
+    if (mode == RailMode::Minimized && selectedId_ != IconId::COUNT) {
+        deselectAll();
+    }
+
+    applyMode();
+}
+
+void IconRail::toggleMode()
+{
+    setMode(mode_ == RailMode::Normal ? RailMode::Minimized : RailMode::Normal);
+}
+
+void IconRail::onModeButtonClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    IconRail* self = static_cast<IconRail*>(lv_obj_get_user_data(btn));
+    size_t isExpand = reinterpret_cast<size_t>(lv_event_get_user_data(e));
+
+    if (!self) return;
+
+    if (isExpand) {
+        self->setMode(RailMode::Normal);
+    }
+    else {
+        self->setMode(RailMode::Minimized);
     }
 }
 
