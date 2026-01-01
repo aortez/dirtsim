@@ -1,6 +1,8 @@
 #include "OrganismManager.h"
 #include "Duck.h"
 #include "DuckBrain.h"
+#include "Goose.h"
+#include "GooseBrain.h"
 #include "Tree.h"
 #include "brains/RuleBasedBrain.h"
 #include "core/Cell.h"
@@ -17,7 +19,16 @@ namespace DirtSim {
 void OrganismManager::update(World& world, double deltaTime)
 {
     for (auto& [id, organism] : organisms_) {
-        if (organism->isActive()) {
+        if (organism->isActive() && !organism->usesRigidBodyPhysics()) {
+            organism->update(world, deltaTime);
+        }
+    }
+}
+
+void OrganismManager::advanceTime(World& world, double deltaTime)
+{
+    for (auto& [id, organism] : organisms_) {
+        if (organism->isActive() && organism->usesRigidBodyPhysics()) {
             organism->update(world, deltaTime);
         }
     }
@@ -86,6 +97,34 @@ OrganismId OrganismManager::createDuck(
     spdlog::info("OrganismManager: Created duck {} at ({}, {})", id, x, y);
 
     organisms_.emplace(id, std::move(duck));
+
+    return id;
+}
+
+OrganismId OrganismManager::createGoose(
+    World& world,
+    uint32_t x,
+    uint32_t y,
+    std::unique_ptr<GooseBrain> brain)
+{
+    OrganismId id = next_id_++;
+
+    // Use default brain if none provided.
+    if (!brain) {
+        brain = std::make_unique<RandomGooseBrain>();
+    }
+
+    auto goose = std::make_unique<Goose>(id, std::move(brain));
+
+    // Set initial position (continuous, centered in cell).
+    goose->setAnchorCell(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
+
+    // Do initial projection to grid.
+    goose->projectToGrid(world);
+
+    spdlog::info("OrganismManager: Created goose {} at ({}, {})", id, x, y);
+
+    organisms_.emplace(id, std::move(goose));
 
     return id;
 }
@@ -180,6 +219,24 @@ const Duck* OrganismManager::getDuck(OrganismId id) const
     const auto* organism = getOrganism(id);
     if (organism && organism->getType() == OrganismType::DUCK) {
         return static_cast<const Duck*>(organism);
+    }
+    return nullptr;
+}
+
+Goose* OrganismManager::getGoose(OrganismId id)
+{
+    auto* organism = getOrganism(id);
+    if (organism && organism->getType() == OrganismType::GOOSE) {
+        return static_cast<Goose*>(organism);
+    }
+    return nullptr;
+}
+
+const Goose* OrganismManager::getGoose(OrganismId id) const
+{
+    const auto* organism = getOrganism(id);
+    if (organism && organism->getType() == OrganismType::GOOSE) {
+        return static_cast<const Goose*>(organism);
     }
     return nullptr;
 }

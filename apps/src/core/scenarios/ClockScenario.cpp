@@ -1144,8 +1144,8 @@ void ClockScenario::updateDrain(World& world)
 
     // Thresholds for drain opening size.
     constexpr double CLOSE_THRESHOLD = 1.0;   // Below this, drain is closed.
-    constexpr double FULL_OPEN_THRESHOLD = 100.0;  // At or above this, drain is fully open.
-    constexpr uint32_t MAX_DRAIN_SIZE = 5;    // Maximum drain opening width.
+    constexpr double FULL_OPEN_THRESHOLD = 150.0;  // At or above this, drain is fully open.
+    constexpr uint32_t MAX_DRAIN_SIZE = 7;    // Maximum drain opening width.
 
     // Calculate proportional drain size based on water level.
     uint32_t target_drain_size = 0;

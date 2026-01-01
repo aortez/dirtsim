@@ -100,6 +100,12 @@ void Goose::update(World& world, double deltaTime)
     if (!collision.blocked) {
         position = desired_position;
     } else {
+        // Debug: log why we're blocked.
+        if (frame_counter_ % 60 == 0) {
+            LOG_DEBUG(Brain, "Goose {}: BLOCKED at predicted ({}, {}), normal=({:.2f}, {:.2f})",
+                id_, predicted_cells[0].x, predicted_cells[0].y,
+                collision.contact_normal.x, collision.contact_normal.y);
+        }
         // Zero out velocity component going into the obstacle.
         Vector2d normal = collision.contact_normal;
         double v_into_surface = velocity.x * normal.x + velocity.y * normal.y;
@@ -151,13 +157,9 @@ void Goose::jump()
 
 void Goose::gatherForces(World& world)
 {
-    const PhysicsSettings& physics = world.getPhysicsSettings();
-
-    // Apply gravity.
-    double gravity = physics.gravity;
-    pending_force_.y += mass * gravity;
-
-    // Gather any pending forces from occupied grid cells.
+    // Gather forces from occupied grid cells.
+    // World has already applied gravity, air resistance, etc. to our cells,
+    // so we just sum up what was accumulated.
     const WorldData& data = world.getData();
     for (const auto& grid_pos : occupied_cells) {
         if (grid_pos.x < 0 || grid_pos.y < 0

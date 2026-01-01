@@ -34,7 +34,8 @@ void from_json(const nlohmann::json& j, SparkleParticle& s);
  */
 enum class EntityType : uint8_t {
     DUCK = 0,
-    SPARKLE = 1,  // Legacy standalone sparkle (may be removed).
+    GOOSE = 1,
+    SPARKLE = 2,  // Legacy standalone sparkle (may be removed).
     // Future: BUTTERFLY, BIRD, FISH, etc.
 };
 
@@ -42,6 +43,7 @@ NLOHMANN_JSON_SERIALIZE_ENUM(
     EntityType,
     {
         { EntityType::DUCK, "duck" },
+        { EntityType::GOOSE, "goose" },
         { EntityType::SPARKLE, "sparkle" },
     })
 

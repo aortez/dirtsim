@@ -40,6 +40,7 @@ public:
     Vector2i getAnchorCell() const override;
     void setAnchorCell(Vector2i pos) override;
     void update(World& world, double deltaTime) override;
+    bool usesRigidBodyPhysics() const override { return true; }
 
     // Goose-specific state.
     bool isOnGround() const { return on_ground_; }

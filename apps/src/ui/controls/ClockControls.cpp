@@ -1,6 +1,6 @@
 #include "ClockControls.h"
 #include "core/LoggingChannels.h"
-#include "server/scenarios/scenarios/ClockScenario.h"
+#include "core/scenarios/ClockScenario.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 

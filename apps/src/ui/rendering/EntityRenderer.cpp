@@ -1,5 +1,6 @@
 #include "EntityRenderer.h"
 #include "ui/controls/duck_img.h"
+#include "ui/controls/goose_img.h"
 #include <cmath>
 #include <spdlog/spdlog.h>
 
@@ -128,6 +129,72 @@ void renderEntities(
                     }
                     else {
                         // Alpha blend.
+                        uint32_t dstColor = pixels[destIdx];
+                        uint8_t invAlpha = 255 - a;
+
+                        uint8_t dstR = (dstColor >> 16) & 0xFF;
+                        uint8_t dstG = (dstColor >> 8) & 0xFF;
+                        uint8_t dstB = dstColor & 0xFF;
+
+                        uint8_t outR = (r * a + dstR * invAlpha) / 255;
+                        uint8_t outG = (g * a + dstG * invAlpha) / 255;
+                        uint8_t outB = (b * a + dstB * invAlpha) / 255;
+
+                        pixels[destIdx] = 0xFF000000 | (outR << 16) | (outG << 8) | outB;
+                    }
+                }
+            }
+        }
+        else if (entity.type == EntityType::GOOSE) {
+            // Goose is 1 cell in size.
+            int32_t goosePixelWidth = static_cast<int32_t>(scaledCellWidth);
+            int32_t goosePixelHeight = static_cast<int32_t>(scaledCellHeight);
+
+            // Scale factor from source image to cell size.
+            float scaleX = static_cast<float>(goosePixelWidth) / GOOSE_IMG_WIDTH;
+            float scaleY = static_cast<float>(goosePixelHeight) / GOOSE_IMG_HEIGHT;
+
+            // Center goose on its position.
+            int32_t gooseStartX = pixelX - goosePixelWidth / 2;
+            int32_t gooseStartY = pixelY - goosePixelHeight / 2;
+
+            // Draw goose sprite with scaling.
+            const uint8_t* gooseData = goose_img_data;
+
+            for (int32_t dy = 0; dy < goosePixelHeight; dy++) {
+                int32_t srcY = static_cast<int32_t>(dy / scaleY);
+                if (srcY >= GOOSE_IMG_HEIGHT) srcY = GOOSE_IMG_HEIGHT - 1;
+
+                int32_t destY = gooseStartY + dy;
+                if (destY < 0 || destY >= static_cast<int32_t>(canvasHeight)) continue;
+
+                for (int32_t dx = 0; dx < goosePixelWidth; dx++) {
+                    int32_t srcX = static_cast<int32_t>(dx / scaleX);
+                    if (srcX >= GOOSE_IMG_WIDTH) srcX = GOOSE_IMG_WIDTH - 1;
+
+                    // Flip horizontally if facing right (goose sprite faces left by default).
+                    if (entity.facing.x > 0) {
+                        srcX = GOOSE_IMG_WIDTH - 1 - srcX;
+                    }
+
+                    int32_t destX = gooseStartX + dx;
+                    if (destX < 0 || destX >= static_cast<int32_t>(canvasWidth)) continue;
+
+                    // Get source pixel (ARGB8888 format: B, G, R, A order in memory).
+                    size_t srcIdx = (srcY * GOOSE_IMG_WIDTH + srcX) * 4;
+                    uint8_t b = gooseData[srcIdx + 0];
+                    uint8_t g = gooseData[srcIdx + 1];
+                    uint8_t r = gooseData[srcIdx + 2];
+                    uint8_t a = gooseData[srcIdx + 3];
+
+                    if (a == 0) continue;
+
+                    uint32_t destIdx = destY * canvasWidth + destX;
+
+                    if (a == 255) {
+                        pixels[destIdx] = 0xFF000000 | (r << 16) | (g << 8) | b;
+                    }
+                    else {
                         uint32_t dstColor = pixels[destIdx];
                         uint8_t invAlpha = 255 - a;
 

@@ -463,7 +463,7 @@ void World::advanceTime(double deltaTimeSeconds)
     }
 
     // Update organisms before force accumulation so new cells participate in physics.
-    if (organism_manager_) {
+    {
         ScopeTimer organismTimer(pImpl->timers_, "organisms");
         organism_manager_->update(*this, scaledDeltaTime);
     }
@@ -471,7 +471,14 @@ void World::advanceTime(double deltaTimeSeconds)
     // Apply forces using the diffused pressure field.
     resolveForces(scaledDeltaTime, grid);
 
-    // Resolve rigid body physics for organism structures.
+    // Advance rigid body organisms (Goose, etc.) now that world forces are applied to cells.
+    // These organisms gather forces from their cells and integrate their own velocity.
+    {
+        ScopeTimer organismPhysicsTimer(pImpl->timers_, "organism_physics");
+        organism_manager_->advanceTime(*this, scaledDeltaTime);
+    }
+
+    // Resolve rigid body physics for organism structures (Tree, Duck).
     resolveRigidBodies(scaledDeltaTime);
 
     {
@@ -830,10 +837,8 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     }
 
     // Apply organism bone forces.
-    if (organism_manager_) {
-        ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-        organism_manager_->applyBoneForces(*this, deltaTime);
-    }
+    ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
+    organism_manager_->applyBoneForces(*this, deltaTime);
 
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {

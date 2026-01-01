@@ -115,8 +115,15 @@ public:
     // Age tracking.
     double getAge() const { return age_seconds_; }
 
-    // Main update - called each tick.
+    // Main update - called each tick for behavior/brain logic.
+    // For cell-based organisms (Duck), this also handles physics.
+    // For rigid body organisms (Goose), physics is handled in advanceTime().
     virtual void update(World& world, double deltaTime) = 0;
+
+    // Returns true if this organism uses rigid body physics.
+    // When true, the organism manages its own position/velocity and
+    // advanceTime() is called after world forces are applied to cells.
+    virtual bool usesRigidBodyPhysics() const { return false; }
 
     // Called when a cell transfers to a new position (physics movement).
     // Default implementation updates anchor if it moved.

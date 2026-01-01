@@ -8,8 +8,9 @@ namespace DirtSim {
  * Types of organisms in the simulation.
  */
 enum class OrganismType : uint8_t {
-    TREE = 0,
-    DUCK = 1,
+    DUCK = 0,
+    GOOSE = 1,
+    TREE = 2,
     // Future: BUTTERFLY, FISH, SLIME, etc.
 };
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DuckBrain.h"
+#include "GooseBrain.h"
 #include "Organism.h"
 #include "OrganismType.h"
 #include "TreeBrain.h"
@@ -11,8 +12,9 @@
 namespace DirtSim {
 
 // Forward declarations.
-class Tree;
 class Duck;
+class Goose;
+class Tree;
 class World;
 
 /**
@@ -40,8 +42,14 @@ class OrganismManager {
 public:
     OrganismManager() = default;
 
-    // Main update - calls update() on all organisms.
+    // Main update - calls update() on all organisms for behavior/brain logic.
+    // For rigid body organisms, this only handles behavior; physics is in advanceTime().
     void update(World& world, double deltaTime);
+
+    // Physics update for rigid body organisms.
+    // Called after world forces are applied to cells, so organisms can gather
+    // accumulated forces (gravity, air resistance, etc.) and integrate.
+    void advanceTime(World& world, double deltaTime);
 
     // Clear all organisms.
     void clear();
@@ -59,6 +67,12 @@ public:
         uint32_t y,
         std::unique_ptr<DuckBrain> brain = nullptr);
 
+    OrganismId createGoose(
+        World& world,
+        uint32_t x,
+        uint32_t y,
+        std::unique_ptr<GooseBrain> brain = nullptr);
+
     // Remove an organism and clean up its cells from the world.
     void removeOrganismFromWorld(World& world, OrganismId id);
 
@@ -71,6 +85,8 @@ public:
     const Tree* getTree(OrganismId id) const;
     Duck* getDuck(OrganismId id);
     const Duck* getDuck(OrganismId id) const;
+    Goose* getGoose(OrganismId id);
+    const Goose* getGoose(OrganismId id) const;
 
     // Cell-to-organism lookup.
     OrganismId getOrganismAtCell(const Vector2i& pos) const;
