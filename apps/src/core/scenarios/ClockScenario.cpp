@@ -1003,6 +1003,10 @@ void ClockScenario::cancelAllEvents(World& world)
         }
     }
 
+    // Clear ALL organisms (in case any lingered from ended events or resize).
+    // This prevents orphaned organisms when world is reset/resized.
+    world.getOrganismManager().clear();
+
     // Clear config flags.
     config_.rainEnabled = false;
     config_.duckEnabled = false;
@@ -1284,22 +1288,79 @@ void ClockScenario::materializeMaterial(World& world, int x, int y, MaterialType
         }
     }
 
+    // Expand search if no immediate neighbors available.
     if (best_dir.x == 0 && best_dir.y == 0) {
-        // No open cell available - just overwrite.
+        // Search in expanding radius (2, 3, 4 cells away).
+        for (int radius = 2; radius <= 4 && best_dir.x == 0 && best_dir.y == 0; ++radius) {
+            for (int dy = -radius; dy <= radius; ++dy) {
+                for (int dx = -radius; dx <= radius; ++dx) {
+                    // Skip if not on the perimeter of this radius.
+                    if (std::abs(dx) != radius && std::abs(dy) != radius) {
+                        continue;
+                    }
+
+                    int nx = x + dx;
+                    int ny = y + dy;
+
+                    if (nx < 0 || nx >= static_cast<int>(data.width) ||
+                        ny < 0 || ny >= static_cast<int>(data.height)) {
+                        continue;
+                    }
+
+                    const Cell& neighbor = data.at(nx, ny);
+                    if (!neighbor.isEmpty()) {
+                        continue;
+                    }
+
+                    // Score by alignment with COM (prefer direction material wants to go).
+                    double score = cell.com.x * dx + cell.com.y * dy;
+                    if (score > best_score) {
+                        best_score = score;
+                        best_dir = { dx, dy };
+                    }
+                }
+            }
+        }
+    }
+
+    if (best_dir.x == 0 && best_dir.y == 0) {
+        // Still no empty cell found even after expanding search.
+        // Don't overwrite organisms - let them handle themselves.
+        if (cell.organism_id != INVALID_ORGANISM_ID) {
+            spdlog::warn("ClockScenario: Cannot materialize {} at ({},{}) - organism {} trapped, no escape route!",
+                getMaterialName(material), x, y, cell.organism_id);
+            return;
+        }
+        // No organism - safe to overwrite (last resort).
         cell.replaceMaterial(material, 1.0);
         return;
     }
 
     // Material "arrives" from the open cell direction.
-    Cell& source = world.getData().at(x + best_dir.x, y + best_dir.y);
+    Vector2i source_pos{ x + best_dir.x, y + best_dir.y };
+    Vector2i target_pos{ x, y };
+
+    Cell& source = world.getData().at(source_pos.x, source_pos.y);
+
+    // Capture organism IDs BEFORE swap.
+    OrganismId source_organism = source.organism_id;
+    OrganismId target_organism = cell.organism_id;
+
+    // Log when displacing organisms.
+    if (target_organism != INVALID_ORGANISM_ID) {
+        spdlog::info("ClockScenario: materializeMaterial({},{},{}) displacing organism {} from ({},{}) to ({},{})",
+            x, y, getMaterialName(material), target_organism,
+            target_pos.x, target_pos.y, source_pos.x, source_pos.y);
+    }
+
     source.replaceMaterial(material, 1.0);
 
-    // Create MaterialMove for material moving into the cell.
+    // Create MaterialMove for physics-aware swap.
     MaterialMove move;
-    move.fromX = x + best_dir.x;
-    move.fromY = y + best_dir.y;
-    move.toX = x;
-    move.toY = y;
+    move.fromX = source_pos.x;
+    move.fromY = source_pos.y;
+    move.toX = target_pos.x;
+    move.toY = target_pos.y;
     move.material = material;
     move.momentum = Vector2d(-best_dir.x, -best_dir.y) * 2.0;
     move.collision_energy = 100.0;
@@ -1307,9 +1368,36 @@ void ClockScenario::materializeMaterial(World& world, int x, int y, MaterialType
     move.material_mass = 1000.0;
     move.target_mass = cell.fill_ratio * getMaterialDensity(cell.material_type);
 
-    // Execute swap: WALL moves in, displaced material moves out.
+    // Execute physics-aware swap.
+    // NOTE: This manually swaps cell contents (including organism_id).
     Vector2i swap_dir = { -best_dir.x, -best_dir.y };
     world.getCollisionCalculator().swapCounterMovingMaterials(source, cell, swap_dir, move);
+
+    // Notify OrganismManager of position changes (if organisms were involved).
+    // swapCounterMovingMaterials swapped: source_pos ↔ target_pos.
+    if (source_organism != INVALID_ORGANISM_ID || target_organism != INVALID_ORGANISM_ID) {
+        std::vector<OrganismTransfer> transfers;
+
+        if (source_organism != INVALID_ORGANISM_ID) {
+            transfers.push_back(OrganismTransfer{
+                source_pos,  // from
+                target_pos,  // to (organism moved here)
+                source_organism,
+                cell.fill_ratio  // Now at target_pos.
+            });
+        }
+
+        if (target_organism != INVALID_ORGANISM_ID) {
+            transfers.push_back(OrganismTransfer{
+                target_pos,  // from
+                source_pos,  // to (organism moved here)
+                target_organism,
+                source.fill_ratio  // Now at source_pos.
+            });
+        }
+
+        world.getOrganismManager().notifyTransfers(transfers);
+    }
 }
 
 void ClockScenario::redrawWalls(World& world)

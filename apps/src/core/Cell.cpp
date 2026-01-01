@@ -211,6 +211,10 @@ void Cell::replaceMaterial(MaterialType type, double fill_ratio)
     // Reset physics state when replacing material.
     velocity = Vector2d{ 0.0, 0.0 };
     com = Vector2d{ 0.0, 0.0 };
+
+    // Clear organism ownership when material changes.
+    // If an organism's WOOD becomes WALL/METAL/etc, the organism no longer owns this cell.
+    organism_id = INVALID_ORGANISM_ID;
 }
 
 void Cell::clear()

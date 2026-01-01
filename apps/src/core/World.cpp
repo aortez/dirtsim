@@ -545,6 +545,63 @@ void World::addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double 
 }
 
 // =================================================================.
+// BLESSED API - Cell Manipulation with Organism Tracking.
+// =================================================================.
+
+void World::swapCells(Vector2i pos1, Vector2i pos2)
+{
+    // Validate positions.
+    if (!isValidCell(pos1) || !isValidCell(pos2)) {
+        spdlog::warn("swapCells: Invalid positions ({}, {}) or ({}, {})",
+            pos1.x, pos1.y, pos2.x, pos2.y);
+        return;
+    }
+
+    WorldData& data = pImpl->data_;
+    Cell& cell1 = data.at(pos1.x, pos1.y);
+    Cell& cell2 = data.at(pos2.x, pos2.y);
+
+    // Capture organism IDs before swap.
+    OrganismId org1 = cell1.organism_id;
+    OrganismId org2 = cell2.organism_id;
+
+    // Perform the swap.
+    std::swap(cell1, cell2);
+
+    // Notify OrganismManager of position changes.
+    // After swap: cell1's contents are now at pos1 (came from pos2).
+    //            cell2's contents are now at pos2 (came from pos1).
+    if (org1 != INVALID_ORGANISM_ID || org2 != INVALID_ORGANISM_ID) {
+        std::vector<OrganismTransfer> transfers;
+
+        // Organism from pos1 moved to pos2.
+        if (org1 != INVALID_ORGANISM_ID) {
+            transfers.push_back(OrganismTransfer{
+                pos1,  // from
+                pos2,  // to
+                org1,
+                cell2.fill_ratio  // Now at pos2.
+            });
+        }
+
+        // Organism from pos2 moved to pos1.
+        if (org2 != INVALID_ORGANISM_ID) {
+            transfers.push_back(OrganismTransfer{
+                pos2,  // from
+                pos1,  // to
+                org2,
+                cell1.fill_ratio  // Now at pos1.
+            });
+        }
+
+        organism_manager_->notifyTransfers(transfers);
+
+        spdlog::debug("swapCells: ({}, {}) ↔ ({}, {}) - organisms: {} ↔ {}",
+            pos1.x, pos1.y, pos2.x, pos2.y, org1, org2);
+    }
+}
+
+// =================================================================.
 // GRID MANAGEMENT.
 // =================================================================.
 
@@ -613,6 +670,15 @@ void World::applyAirResistance()
             Cell& cell = data.at(x, y);
 
             if (!cell.isEmpty() && !cell.isWall()) {
+                // Skip rigid body organism cells - they compute their own air resistance
+                // to avoid one-frame velocity lag.
+                if (cell.organism_id != INVALID_ORGANISM_ID) {
+                    auto* organism = organism_manager_->getOrganism(cell.organism_id);
+                    if (organism && organism->usesRigidBodyPhysics()) {
+                        continue;
+                    }
+                }
+
                 Vector2d air_resistance_force = air_resistance_calculator.calculateAirResistance(
                     *this, x, y, air_resistance_strength_);
                 cell.addPendingForce(air_resistance_force);
@@ -1328,6 +1394,14 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                 continue;
             }
 
+            // Skip rigid body organism cells - they control their own position.
+            if (cell.organism_id != INVALID_ORGANISM_ID) {
+                auto* organism = organism_manager_->getOrganism(cell.organism_id);
+                if (organism && organism->usesRigidBodyPhysics()) {
+                    continue;
+                }
+            }
+
             // Debug: Check if cell has any velocity or interesting COM.
             Vector2d current_velocity = cell.velocity;
             Vector2d oldCOM = cell.com;
@@ -1552,6 +1626,8 @@ void World::processMaterialMoves()
                 // Notify OrganismManager of any organism cell movements.
                 // fromCell's organism moved from (fromX,fromY) to (toX,toY).
                 if (from_org_id != INVALID_ORGANISM_ID) {
+                    spdlog::info("SWAP tracking: organism {} moving ({},{}) → ({},{})",
+                        from_org_id, move.fromX, move.fromY, move.toX, move.toY);
                     organism_transfers.push_back(
                         { Vector2i{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) },
                           Vector2i{ static_cast<int>(move.toX), static_cast<int>(move.toY) },
@@ -1561,6 +1637,8 @@ void World::processMaterialMoves()
 
                 // toCell's organism moved from (toX,toY) to (fromX,fromY).
                 if (to_org_id != INVALID_ORGANISM_ID) {
+                    spdlog::info("SWAP tracking: organism {} DISPLACED ({},{}) → ({},{})",
+                        to_org_id, move.toX, move.toY, move.fromX, move.fromY);
                     organism_transfers.push_back(
                         { Vector2i{ static_cast<int>(move.toX), static_cast<int>(move.toY) },
                           Vector2i{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) },
@@ -1571,6 +1649,9 @@ void World::processMaterialMoves()
                 continue; // Skip normal collision handling.
             }
         }
+
+        // Track organism_id before transfer (in case source cell becomes empty).
+        OrganismId organism_id = fromCell.organism_id;
 
         // Handle collision during the move based on collision_type.
         if (move.collision_type != CollisionType::TRANSFER_ONLY) {
@@ -1584,9 +1665,6 @@ void World::processMaterialMoves()
                 move.toY,
                 static_cast<int>(move.collision_type));
         }
-
-        // Track organism_id before transfer (in case source cell becomes empty).
-        OrganismId organism_id = fromCell.organism_id;
 
         switch (move.collision_type) {
             case CollisionType::TRANSFER_ONLY:
@@ -1614,11 +1692,23 @@ void World::processMaterialMoves()
                 break;
         }
 
-        // Record organism transfer if material had organism ownership.
-        if (organism_id != INVALID_ORGANISM_ID && move.collision_type == CollisionType::TRANSFER_ONLY) {
-            // Transfer occurred - record it for OrganismManager update.
+        // Record organism transfer ONLY if material actually transferred.
+        // Check: organism owned the source AND source is now empty (transfer succeeded).
+        if (organism_id != INVALID_ORGANISM_ID &&
+            move.collision_type == CollisionType::TRANSFER_ONLY &&
+            fromCell.organism_id == INVALID_ORGANISM_ID) {
+            // Material fully transferred - organism moved to target cell.
+            spdlog::info("TRANSFER_ONLY tracking: organism {} moved ({},{}) → ({},{})",
+                organism_id, move.fromX, move.fromY, move.toX, move.toY);
             recordOrganismTransfer(
                 move.fromX, move.fromY, move.toX, move.toY, organism_id, move.amount);
+        }
+        else if (organism_id != INVALID_ORGANISM_ID &&
+                 move.collision_type == CollisionType::TRANSFER_ONLY &&
+                 fromCell.organism_id == organism_id) {
+            // Transfer FAILED - organism still at source cell!
+            spdlog::warn("TRANSFER_ONLY blocked: organism {} stayed at ({},{}), target ({},{}) was full",
+                organism_id, move.fromX, move.fromY, move.toX, move.toY);
         }
     }
 

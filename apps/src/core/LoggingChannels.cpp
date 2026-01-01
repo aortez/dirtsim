@@ -47,7 +47,7 @@ void LoggingChannels::initialize(
 
     // Physics channels.
     createLogger("physics", sharedSinks_, spdlog::level::trace);
-    createLogger("swap", sharedSinks_, spdlog::level::trace);
+    createLogger("swap", sharedSinks_, spdlog::level::warn);
     createLogger("cohesion", sharedSinks_, spdlog::level::trace);
     createLogger("pressure", sharedSinks_, spdlog::level::trace);
     createLogger("collision", sharedSinks_, spdlog::level::trace);
@@ -294,7 +294,7 @@ bool LoggingChannels::createDefaultConfigFile(const std::string& path)
             { "state", "debug" },
 #endif
             { "support", "info" },
-            { "swap", "info" },
+            { "swap", "warn" },
             { "ui", "info" },
             { "viscosity", "info" } } },
         { "runtime",

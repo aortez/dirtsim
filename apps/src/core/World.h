@@ -62,6 +62,28 @@ public:
     void applyPhysicsSettings(const PhysicsSettings& settings);
 
     // =================================================================
+    // BLESSED API - Cell Manipulation with Organism Tracking
+    // =================================================================
+    //
+    // DESIGN NOTE: Organism cells have dual representation:
+    //   - Cell.organism_id marks which organism owns this cell
+    //   - OrganismManager.cell_to_organism_ tracks organism positions
+    //
+    // These MUST stay in sync! Directly swapping cells breaks this invariant.
+    //
+    // USE THESE METHODS for any cell swaps/moves that might affect organisms:
+    //   - swapCells() - automatically notifies OrganismManager of position changes
+    //
+    // MIGRATION PATH:
+    //   - New code: Use swapCells() exclusively
+    //   - Old code: getData().at() still works, migrate incrementally
+    //   - Future: Consider making getData() const to enforce this API
+    //
+    // See discussion: "Duck getting stuck in walls" bug investigation.
+    //
+    void swapCells(Vector2i pos1, Vector2i pos2);
+
+    // =================================================================
     // MATERIAL ADDITION
     // =================================================================
 

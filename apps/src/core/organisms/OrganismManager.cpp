@@ -295,12 +295,15 @@ void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& trans
         return;
     }
 
-    spdlog::debug("OrganismManager::notifyTransfers called with {} transfers", transfers.size());
+    spdlog::info("OrganismManager::notifyTransfers: {} transfers", transfers.size());
 
     // Batch transfers by organism ID for efficient processing.
     std::unordered_map<OrganismId, std::vector<const OrganismTransfer*>> transfers_by_organism;
 
     for (const auto& transfer : transfers) {
+        spdlog::info("  Transfer: organism {} from ({},{}) to ({},{})",
+            transfer.organism_id, transfer.from_pos.x, transfer.from_pos.y,
+            transfer.to_pos.x, transfer.to_pos.y);
         transfers_by_organism[transfer.organism_id].push_back(&transfer);
     }
 
@@ -315,6 +318,8 @@ void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& trans
 
         // Skip rigid body organisms - they control their own position and cells.
         if (organism->usesRigidBodyPhysics()) {
+            spdlog::info("OrganismManager: Skipping rigid body organism {} (type={})",
+                organism_id, static_cast<int>(organism->getType()));
             continue;
         }
 

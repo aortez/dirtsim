@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/GridOfCells.h"
 #include "core/LoggingChannels.h"
@@ -243,6 +244,38 @@ void SimRunning::tick(StateMachine& dsm)
 
     // Update StateMachine's cached WorldData after all physics steps complete.
     dsm.getTimers().startTimer("cache_update");
+
+    // INVARIANT CHECK: Entities must match organisms before caching.
+    // Prevents stale entity sprites from being cached and served to clients.
+    const WorldData& data = world->getData();
+    size_t duck_organism_count = 0;
+    size_t goose_organism_count = 0;
+    world->getOrganismManager().forEachOrganism([&](const Organism& org) {
+        if (org.getType() == OrganismType::DUCK) duck_organism_count++;
+        if (org.getType() == OrganismType::GOOSE) goose_organism_count++;
+    });
+
+    size_t duck_entity_count = 0;
+    size_t goose_entity_count = 0;
+    for (const auto& ent : data.entities) {
+        if (ent.type == EntityType::DUCK) duck_entity_count++;
+        if (ent.type == EntityType::GOOSE) goose_entity_count++;
+    }
+
+    if (duck_organism_count != duck_entity_count) {
+        spdlog::critical("INVARIANT VIOLATION: {} duck organisms but {} duck entities!",
+            duck_organism_count, duck_entity_count);
+    }
+    DIRTSIM_ASSERT(duck_organism_count == duck_entity_count,
+        "Duck entities must match duck organisms before caching!");
+
+    if (goose_organism_count != goose_entity_count) {
+        spdlog::critical("INVARIANT VIOLATION: {} goose organisms but {} goose entities!",
+            goose_organism_count, goose_entity_count);
+    }
+    DIRTSIM_ASSERT(goose_organism_count == goose_entity_count,
+        "Goose entities must match goose organisms before caching!");
+
     dsm.updateCachedWorldData(world->getData());
     dsm.getTimers().stopTimer("cache_update");
 
@@ -716,17 +749,50 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
     // Return cached WorldData (fast - uses pre-cached copy, no World copy overhead!).
     auto cachedPtr = dsm.getCachedWorldData();
+    Api::StateGet::Okay responseData;
+
     if (cachedPtr) {
-        Api::StateGet::Okay responseData;
         responseData.worldData = *cachedPtr;
-        cwc.sendResponse(Response::okay(std::move(responseData)));
     }
     else {
         // Fallback: cache not ready yet, copy from world.
-        Api::StateGet::Okay responseData;
         responseData.worldData = world->getData();
-        cwc.sendResponse(Response::okay(std::move(responseData)));
     }
+
+    // Populate organism debug info (always fresh, not from cache).
+    world->getOrganismManager().forEachOrganism([&](const Organism& org) {
+        WorldData::OrganismDebugInfo debug{
+            .id = org.getId(),
+            .type = "",  // Set below based on type.
+            .anchor_cell = org.getAnchorCell(),
+            .material_at_anchor = "",  // Set below.
+            .organism_id_at_anchor = INVALID_ORGANISM_ID  // Set below.
+        };
+
+        // Get organism type name.
+        switch (org.getType()) {
+            case OrganismType::DUCK:  debug.type = "DUCK"; break;
+            case OrganismType::TREE:  debug.type = "TREE"; break;
+            case OrganismType::GOOSE: debug.type = "GOOSE"; break;
+        }
+
+        // Check what's actually at the anchor position.
+        const WorldData& data = world->getData();
+        if (debug.anchor_cell.x >= 0 && debug.anchor_cell.y >= 0 &&
+            static_cast<uint32_t>(debug.anchor_cell.x) < data.width &&
+            static_cast<uint32_t>(debug.anchor_cell.y) < data.height) {
+
+            const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
+            debug.material_at_anchor = getMaterialName(cell.material_type);
+            debug.organism_id_at_anchor = cell.organism_id;
+        } else {
+            debug.material_at_anchor = "OUT_OF_BOUNDS";
+        }
+
+        responseData.worldData.organism_debug.push_back(debug);
+    });
+
+    cwc.sendResponse(Response::okay(std::move(responseData)));
 
     // Log server processing time for state_get requests (includes serialization + send).
     auto requestEnd = std::chrono::steady_clock::now();

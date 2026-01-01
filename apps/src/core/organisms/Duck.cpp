@@ -1,11 +1,13 @@
 #include "Duck.h"
 #include "OrganismSensoryData.h"
+#include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/OrganismManager.h"
 #include <algorithm>
 
 namespace {
@@ -39,6 +41,56 @@ void Duck::update(World& world, double deltaTime)
 {
     age_seconds_ += deltaTime;
     frame_counter_++;
+
+    // INVARIANT CHECKS: Verify duck's anchor_cell_ matches world state.
+    const WorldData& data = world.getData();
+    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0 &&
+        static_cast<uint32_t>(anchor_cell_.x) < data.width &&
+        static_cast<uint32_t>(anchor_cell_.y) < data.height) {
+
+        const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
+
+        // Cell material must be WOOD.
+        if (our_cell.material_type != MaterialType::WOOD) {
+            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has {} instead of WOOD!",
+                id_, anchor_cell_.x, anchor_cell_.y, getMaterialName(our_cell.material_type));
+            spdlog::critical("  Duck: age={:.1f}s, on_ground={}, facing=({:.1f},{:.1f})",
+                age_seconds_, on_ground_, facing_.x, facing_.y);
+            spdlog::critical("  Cell at anchor: fill={:.2f}, vel=({:.1f},{:.1f}), organism_id={}",
+                our_cell.fill_ratio, our_cell.velocity.x, our_cell.velocity.y, our_cell.organism_id);
+
+            // Scan entire world to find where our WOOD actually is.
+            spdlog::critical("  Scanning world for duck's actual WOOD cell...");
+            for (uint32_t y = 0; y < data.height; ++y) {
+                for (uint32_t x = 0; x < data.width; ++x) {
+                    const Cell& cell = data.at(x, y);
+                    if (cell.organism_id == id_) {
+                        spdlog::critical("    Found organism_id={} at ({},{}): material={}, fill={:.2f}",
+                            id_, x, y, getMaterialName(cell.material_type), cell.fill_ratio);
+                    }
+                }
+            }
+        }
+        DIRTSIM_ASSERT(our_cell.material_type == MaterialType::WOOD,
+            "Duck anchor cell must be WOOD!");
+
+        // Cell's organism_id must match duck's id.
+        if (our_cell.organism_id != id_) {
+            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has organism_id {} instead of {}!",
+                id_, anchor_cell_.x, anchor_cell_.y, our_cell.organism_id, id_);
+        }
+        DIRTSIM_ASSERT(our_cell.organism_id == id_,
+            "Duck anchor cell organism_id must match!");
+
+        // OrganismManager must agree on our position.
+        OrganismId manager_says = world.getOrganismManager().getOrganismAtCell(anchor_cell_);
+        if (manager_says != id_) {
+            spdlog::critical("Duck {} VIOLATION: OrganismManager says organism {} at ({},{}), not us!",
+                id_, manager_says, anchor_cell_.x, anchor_cell_.y);
+        }
+        DIRTSIM_ASSERT(manager_says == id_,
+            "OrganismManager tracking must match duck anchor!");
+    }
 
     // Update ground detection first.
     updateGroundDetection(world);
