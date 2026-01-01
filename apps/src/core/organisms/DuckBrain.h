@@ -1,6 +1,8 @@
 #pragma once
 
 #include "DuckSensoryData.h"
+#include "core/input/GamepadState.h"
+#include <optional>
 #include <random>
 
 namespace DirtSim {
@@ -37,6 +39,16 @@ public:
      * @param deltaTime Time since last update in seconds.
      */
     virtual void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) = 0;
+
+    /**
+     * Set gamepad input for player-controlled brains.
+     *
+     * Called by SimRunning before think() for brains that respond to gamepad.
+     * Default implementation does nothing (AI brains ignore this).
+     *
+     * @param state Current gamepad state for this tick.
+     */
+    virtual void setGamepadInput(const GamepadState& /*state*/) {}
 
     // Current action state (for debugging/display).
     DuckAction getCurrentAction() const { return current_action_; }

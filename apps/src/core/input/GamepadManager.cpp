@@ -126,6 +126,16 @@ void GamepadManager::handleControllerAdded(int device_index)
     SDL_JoystickID joystick_id = SDL_JoystickInstanceID(joystick);
     const char* name = SDL_GameControllerName(controller);
 
+    // Check if we've already opened this controller (by joystick_id).
+    for (size_t i = 0; i < devices_.size(); ++i) {
+        if (devices_[i].joystick_id == joystick_id) {
+            spdlog::debug("[GamepadManager] Controller {} already open in slot {}, skipping duplicate.",
+                         name ? name : "Unknown", i);
+            SDL_GameControllerClose(controller);
+            return;
+        }
+    }
+
     // Find an empty slot or add a new one.
     size_t slot = devices_.size();
     for (size_t i = 0; i < devices_.size(); ++i) {
@@ -146,7 +156,8 @@ void GamepadManager::handleControllerAdded(int device_index)
 
     newly_connected_.push_back(slot);
 
-    spdlog::info("[GamepadManager] Gamepad {} connected: {}", slot, name ? name : "Unknown");
+    spdlog::info("[GamepadManager] Gamepad {} connected: {} (joystick_id={})",
+                 slot, name ? name : "Unknown", joystick_id);
 }
 
 void GamepadManager::handleControllerRemoved(SDL_JoystickID joystick_id)

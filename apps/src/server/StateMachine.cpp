@@ -467,7 +467,15 @@ void StateMachine::mainLoopRun()
                 int remainingMs = simRunning.frameLimit - static_cast<int>(elapsedMs);
                 if (remainingMs > 0) {
                     auto sleepStart = std::chrono::steady_clock::now();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(remainingMs));
+
+                    // Break sleep into 5ms chunks to allow quick exit on signal.
+                    constexpr int SLEEP_CHUNK_MS = 5;
+                    while (remainingMs > 0 && !shouldExit()) {
+                        int sleepNow = std::min(remainingMs, SLEEP_CHUNK_MS);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(sleepNow));
+                        remainingMs -= sleepNow;
+                    }
+
                     auto sleepEnd = std::chrono::steady_clock::now();
                     sleepMs =
                         std::chrono::duration<double, std::milli>(sleepEnd - sleepStart).count();

@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add gamepad support to directly control organisms (like a platformer). When a gamepad connects, spawn a player-controlled Goose that responds to D-pad/stick for movement and A button for jump.
+Add gamepad support to directly control organisms (like a platformer). When a gamepad connects, spawn a player-controlled Duck that responds to D-pad/stick for movement and buttons for jump.
 
 ## Requirements
 
@@ -14,11 +14,11 @@ Add gamepad support to directly control organisms (like a platformer). When a ga
 
 1. **Implement in server process** (not UI) - Organisms and brains live server-side, avoids WebSocket latency.
 2. **SDL2 GameController API** - See rationale below.
-3. **PlayerGooseBrain** - New brain that reads gamepad state instead of AI.
-4. **Gamepad spawns its own organism** - When connected, creates a dedicated Goose.
+3. **PlayerDuckBrain** - New brain that reads gamepad state instead of AI.
+4. **Gamepad spawns its own organism** - When button pressed, creates a dedicated Duck.
 5. **GamepadManager owned by Server::StateMachine** - Clean ownership, easy access from states.
 6. **Poll every physics tick (~60Hz)** - Simple, consistent, plenty fast for gamepad input.
-7. **Multi-gamepad support from the start** - Each gamepad spawns its own Goose.
+7. **Multi-gamepad support from the start** - Each gamepad spawns its own Duck.
 
 ## Why SDL2 GameController API
 
@@ -54,10 +54,10 @@ Server Process:
   GamepadManager (polls SDL2)
        |
        v
-  PlayerGooseBrain (receives gamepad state)
+  PlayerDuckBrain (receives gamepad state)
        |
        v
-  Goose (organism with PlayerGooseBrain)
+  Duck (organism with PlayerDuckBrain)
        |
        v
   OrganismManager.update() -> World.advanceTime()
@@ -160,7 +160,7 @@ Implementation:
 - D-pad/stick left → `DuckAction::RUN_LEFT`.
 - D-pad/stick right → `DuckAction::RUN_RIGHT`.
 - Neutral → `DuckAction::WAIT`.
-- B button (edge-detected, on ground) → `DuckAction::JUMP`.
+- A button (edge-detected, on ground) → `DuckAction::JUMP`.
 
 ### Phase 3: Server Integration
 
@@ -176,26 +176,44 @@ GamepadManager* getGamepadManager();
 **Modify SimRunning state:**
 ```cpp
 // In SimRunning
-std::map<size_t, OrganismId> gamepad_ducks_;  // gamepad_index → duck_id
+std::map<size_t, OrganismId> gamepad_to_duck_;  // gamepad_index → duck_id
+std::map<size_t, bool> prev_any_button_;        // For edge detection of spawn.
 
 void SimRunning::tick(StateMachine& dsm) {
     // Poll gamepad at start of each physics tick.
-    if (auto* gm = dsm.getGamepadManager()) {
-        gm->poll();
+    auto& gm = dsm.getGamepadManager();
+    gm.poll();
 
-        // Handle A button press → spawn duck for this gamepad.
-        for (size_t i = 0; i < gm->getDeviceCount(); i++) {
-            auto* state = gm->getGamepadState(i);
-            if (state && state->button_a && !gamepad_ducks_.count(i)) {
-                spawnPlayerDuck(i, *state);
-            }
+    // Handle disconnects → remove duck.
+    for (size_t idx : gm.getNewlyDisconnected()) {
+        if (gamepad_to_duck_.count(idx)) {
+            world->getOrganismManager().removeOrganismFromWorld(*world, gamepad_to_duck_[idx]);
+            gamepad_to_duck_.erase(idx);
         }
+        prev_any_button_.erase(idx);
+    }
 
-        // Handle disconnects → remove duck.
-        for (size_t idx : gm->getNewlyDisconnected()) {
-            if (gamepad_ducks_.count(idx)) {
-                world->getOrganismManager().removeOrganismFromWorld(*world, gamepad_ducks_[idx]);
-                gamepad_ducks_.erase(idx);
+    // Process each connected gamepad.
+    for (size_t i = 0; i < gm.getDeviceCount(); i++) {
+        auto* state = gm.getGamepadState(i);
+        if (!state || !state->connected) continue;
+
+        // Check for any button press (edge-detected) to spawn duck.
+        bool prev_any = prev_any_button_[i];
+        bool curr_any = state->button_a || state->button_b;
+        if (curr_any && !prev_any && !gamepad_to_duck_.count(i)) {
+            spawnPlayerDuck(i);
+        }
+        prev_any_button_[i] = curr_any;
+
+        // Pass gamepad input to existing duck's brain.
+        if (gamepad_to_duck_.count(i)) {
+            if (auto* duck = world->getOrganismManager().getDuck(gamepad_to_duck_[i])) {
+                if (auto* brain = duck->getBrain()) {
+                    brain->setGamepadInput(*state);
+                }
+            } else {
+                gamepad_to_duck_.erase(i);  // Duck died, clean up.
             }
         }
     }
@@ -203,21 +221,22 @@ void SimRunning::tick(StateMachine& dsm) {
     // ... existing physics ...
 }
 
-void SimRunning::spawnPlayerDuck(size_t gamepad_index, const GamepadState& state) {
+void SimRunning::spawnPlayerDuck(size_t gamepad_index) {
     // Spawn at center-top of world.
     uint32_t x = world->getData().width / 2;
     uint32_t y = 2;
 
-    auto brain = std::make_unique<PlayerDuckBrain>(&state);
+    auto brain = std::make_unique<PlayerDuckBrain>();
     OrganismId id = world->getOrganismManager().createDuck(*world, x, y, std::move(brain));
-    gamepad_ducks_[gamepad_index] = id;
+    gamepad_to_duck_[gamepad_index] = id;
 }
 ```
 
 **Behavior:**
-- One duck per gamepad (stored in `gamepad_ducks_` map).
-- A button spawns duck (if none exists for this gamepad).
-- Respawning: press A again after duck dies/is removed.
+- One duck per gamepad (stored in `gamepad_to_duck_` map).
+- Any button press spawns duck (if none exists for this gamepad).
+- After spawning, buttons control the duck (A for jump, D-pad/stick for movement).
+- Respawning: press any button again after duck dies/is removed.
 - Scenario switch clears organisms (including player ducks) - map should be cleared too.
 - Gamepad disconnect removes the duck.
 
@@ -235,28 +254,29 @@ Already complete from Phase 1:
 | `src/core/input/GamepadState.h` | Gamepad state struct. | ✅ Done |
 | `src/core/input/GamepadManager.h` | Manager header (owns SDL subsystem + devices). | ✅ Done |
 | `src/core/input/GamepadManager.cpp` | Manager implementation. | ✅ Done |
-| `src/core/organisms/PlayerDuckBrain.h` | Player brain header. | TODO |
-| `src/core/organisms/PlayerDuckBrain.cpp` | Player brain implementation. | TODO |
+| `src/core/organisms/PlayerDuckBrain.h` | Player brain header. | ✅ Done |
+| `src/core/organisms/PlayerDuckBrain.cpp` | Player brain implementation. | ✅ Done |
 
 ## Files to Modify
 
 | File | Changes | Status |
 |------|---------|--------|
-| `src/server/StateMachine.h` | Add GamepadManager member + accessor. | TODO |
-| `src/server/StateMachine.cpp` | Initialize GamepadManager in Impl. | TODO |
-| `src/server/states/SimRunning.h` | Add `gamepad_ducks_` map. | TODO |
-| `src/server/states/SimRunning.cpp` | Poll gamepad in tick(), spawn player duck on A. | TODO |
+| `src/server/StateMachine.h` | Add GamepadManager member + accessor. | ✅ Done |
+| `src/server/StateMachine.cpp` | Initialize GamepadManager in Impl. | ✅ Done |
+| `src/server/states/SimRunning.h` | Add `gamepad_to_duck_` and `prev_any_button_` maps. | ✅ Done |
+| `src/server/states/SimRunning.cpp` | Poll gamepad in tick(), spawn player duck on any button. | ✅ Done |
 | `src/cli/main.cpp` | Add `gamepad-test` command. | ✅ Done |
-| `CMakeLists.txt` | Add PlayerDuckBrain source files. | TODO |
+| `CMakeLists.txt` | Add PlayerDuckBrain source files. | ✅ Done |
 
 ## Control Mapping
 
 | Input | Action |
 |-------|--------|
-| D-pad Left / Left Stick Left | Run left. |
-| D-pad Right / Left Stick Right | Run right. |
-| A Button (South) | Spawn duck (if none exists for this gamepad). |
-| B Button (East) | Jump (when on ground). |
+| D-pad Left / Left Stick Left | Run left (when duck exists). |
+| D-pad Right / Left Stick Right | Run right (when duck exists). |
+| Any Button (first press) | Spawn duck (if none exists for this gamepad). |
+| A Button (South) | Jump (when on ground, after duck spawned). |
+| B Button (East) | Future use. |
 
 ## Known Issues
 
@@ -285,9 +305,11 @@ Gamepad test mode. Press Ctrl+C to exit.
 
 No unit tests planned - the code is straightforward signal passing.
 
-## Current Status (2024-12-31)
+## Current Status (2025-12-31)
 
-**Phase 1 Complete (Desktop + Pi):**
+**✅ All Phases Complete:**
+
+**Phase 1 - Gamepad Abstraction (Complete):**
 - `GamepadState.h` - State struct created.
 - `GamepadManager.h/.cpp` - SDL2 wrapper with hot-plug support working.
 - `cli gamepad-test` - Manual test utility working.
@@ -299,20 +321,28 @@ No unit tests planned - the code is straightforward signal passing.
 - `dirtsim` user added to `input` group for gamepad access without sudo.
 - Yocto build confirms: `SDL2 found - gamepad support enabled` (version 2.30.1).
 
-**Known Issue - Duplicate Gamepad:**
-Single controller appears as both Gamepad 0 and Gamepad 1 with identical values. Needs investigation - likely SDL2 enumeration quirk with how the controller exposes multiple interfaces.
+**Phase 2 - PlayerDuckBrain (Complete):**
+- `PlayerDuckBrain.h/.cpp` - Duck brain that responds to gamepad input.
+- D-pad/stick controls horizontal movement (RUN_LEFT/RUN_RIGHT/WAIT).
+- A button triggers jump (edge-detected, only when on ground).
+- Brain receives input via `setGamepadInput()` each tick.
 
-**Known Issue - Server SIGTERM Handling:**
-Server doesn't respond promptly to SIGTERM when SDL2 gamepad support is enabled. Causes slow service restarts (~60s timeout). Needs investigation - possibly SDL2 event loop blocking signals.
+**Phase 3 - Server Integration (Complete):**
+- GamepadManager owned by StateMachine, accessible to all states.
+- SimRunning polls gamepad each physics tick (~60Hz).
+- Any button press spawns player-controlled duck (if none exists for that gamepad).
+- After spawning, buttons control the duck (A for jump, D-pad/stick for movement).
+- Gamepad disconnect removes the associated duck.
+- Duck death allows respawn with another button press.
+- Multi-gamepad support: each gamepad spawns and controls its own duck.
 
-**Next Steps:**
-1. Phase 2: Implement PlayerGooseBrain to control organism with gamepad.
-2. Investigate duplicate gamepad issue.
-3. Fix server signal handling for clean shutdown.
+**Recent Fixes:**
+1. **Duplicate gamepad reporting** (FIXED 2025-12-31): Added joystick_id deduplication check in `handleControllerAdded()`. Controllers are now tracked by unique joystick_id to prevent opening the same physical device multiple times when device_index differs from instance_id.
+2. **Server SIGTERM handling** (FIXED 2025-12-31): Made frame rate limiter sleep interruptible by breaking it into 5ms chunks with `shouldExit()` checks. Server now responds to SIGTERM within 5ms instead of up to 60s.
 
 ## Future Extensions
 
-- Duck vs Goose selection via button or menu.
+- Organism selection via button or menu (Duck, Goose, etc.).
 - UI indicator showing gamepad connection status.
 - Analog stick provides proportional walk speed.
 - Rumble/haptic feedback on collisions.

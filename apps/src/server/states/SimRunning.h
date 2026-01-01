@@ -2,6 +2,7 @@
 
 #include "StateForward.h"
 #include "core/Vector2d.h"
+#include "core/organisms/OrganismType.h"
 #include "server/Event.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
@@ -9,6 +10,7 @@
 #include "core/scenarios/Scenario.h"
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <unordered_map>
 
@@ -53,6 +55,10 @@ struct SimRunning {
 
     // Finger interaction tracking (for touch/mouse pushing).
     std::unordered_map<uint32_t, FingerSession> fingerSessions;
+
+    // Gamepad-controlled duck tracking.
+    std::map<size_t, OrganismId> gamepad_to_duck_;
+    std::map<size_t, bool> prev_any_button_;  // For edge detection of spawn.
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);

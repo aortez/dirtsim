@@ -5,8 +5,11 @@
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
+#include "core/input/GamepadManager.h"
 #include "core/network/WebSocketService.h"
+#include "core/organisms/Duck.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/organisms/PlayerDuckBrain.h"
 #include "core/organisms/Tree.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -90,6 +93,63 @@ void SimRunning::tick(StateMachine& dsm)
 
     // Headless server: advance physics simulation with fixed timestep accumulator.
     assert(world && "World must exist in SimRunning state");
+
+    // Poll gamepad and manage player ducks.
+    auto& gm = dsm.getGamepadManager();
+    gm.poll();
+
+    // Handle gamepad disconnects - remove ducks.
+    for (size_t idx : gm.getNewlyDisconnected()) {
+        auto it = gamepad_to_duck_.find(idx);
+        if (it != gamepad_to_duck_.end()) {
+            spdlog::info("SimRunning: Gamepad {} disconnected, removing duck {}", idx, it->second);
+            world->getOrganismManager().removeOrganismFromWorld(*world, it->second);
+            gamepad_to_duck_.erase(it);
+        }
+        prev_any_button_.erase(idx);
+    }
+
+    // Process each connected gamepad.
+    for (size_t i = 0; i < gm.getDeviceCount(); i++) {
+        auto* state = gm.getGamepadState(i);
+        if (!state || !state->connected) {
+            continue;
+        }
+
+        // Check for any button press (edge-detected) to spawn duck.
+        bool prev_any = prev_any_button_[i];
+        bool curr_any = state->button_a || state->button_b;
+        if (curr_any && !prev_any && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
+            // Spawn a new player-controlled duck at center-top of world.
+            uint32_t spawn_x = world->getData().width / 2;
+            uint32_t spawn_y = 2;
+
+            auto brain = std::make_unique<PlayerDuckBrain>();
+            OrganismId duck_id = world->getOrganismManager().createDuck(
+                *world, spawn_x, spawn_y, std::move(brain));
+
+            gamepad_to_duck_[i] = duck_id;
+            spdlog::info("SimRunning: Gamepad {} spawned duck {} at ({}, {})",
+                i, duck_id, spawn_x, spawn_y);
+        }
+        prev_any_button_[i] = curr_any;
+
+        // Pass gamepad input to existing duck's brain.
+        auto it = gamepad_to_duck_.find(i);
+        if (it != gamepad_to_duck_.end()) {
+            if (auto* duck = world->getOrganismManager().getDuck(it->second)) {
+                if (auto* brain = duck->getBrain()) {
+                    brain->setGamepadInput(*state);
+                }
+            }
+            else {
+                // Duck no longer exists (died, removed, etc.) - clean up mapping.
+                spdlog::debug("SimRunning: Gamepad {} duck {} no longer exists, cleaning up",
+                    i, it->second);
+                gamepad_to_duck_.erase(it);
+            }
+        }
+    }
 
     // Measure real elapsed time since last physics update.
     const auto now = std::chrono::steady_clock::now();
@@ -449,6 +509,9 @@ State::Any SimRunning::onEvent(const Api::Reset::Cwc& cwc, StateMachine& /*dsm*/
         // Clear tree vision and organism bone data from WorldData.
         world->getData().tree_vision.reset();
         world->getData().bones.clear();
+
+        // Clear gamepad-controlled duck mappings (ducks are gone with reset).
+        gamepad_to_duck_.clear();
     }
 
     stepCount = 0;
@@ -515,6 +578,9 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
             world->getData().at(x, y) = Cell();
         }
     }
+
+    // Clear gamepad-controlled duck mappings (ducks are gone with the old world).
+    gamepad_to_duck_.clear();
 
     // Get scenario's default config and apply it.
     ScenarioConfig defaultConfig = newScenario->getConfig();

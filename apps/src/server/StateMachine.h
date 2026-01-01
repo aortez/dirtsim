@@ -15,6 +15,7 @@ class ScenarioRegistry;
 
 // Forward declarations (DirtSim namespace).
 namespace DirtSim {
+class GamepadManager;
 struct ServerConfig;
 struct WorldData;
 
@@ -76,6 +77,9 @@ public:
 
     PeerDiscovery& getPeerDiscovery();
     const PeerDiscovery& getPeerDiscovery() const;
+
+    GamepadManager& getGamepadManager();
+    const GamepadManager& getGamepadManager() const;
 
     /**
      * @brief Start advertising this server via mDNS/Avahi.

@@ -65,6 +65,9 @@ public:
     // Replace the brain (for testing).
     void setBrain(std::unique_ptr<DuckBrain> brain) { brain_ = std::move(brain); }
 
+    // Access the brain (for external input like gamepad).
+    DuckBrain* getBrain() { return brain_.get(); }
+
     // Sparkle access for rendering.
     const std::vector<DuckSparkle>& getSparkles() const { return sparkles_; }
 
