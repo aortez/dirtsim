@@ -12,6 +12,7 @@
 #include "core/Timers.h"
 #include "core/World.h" // Must be first for complete type in variant.
 #include "core/WorldData.h"
+#include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
@@ -40,6 +41,7 @@ struct SubscribedClient {
 
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
+    std::unique_ptr<GamepadManager> gamepadManager_;
     ScenarioRegistry scenarioRegistry_;
     SystemMetrics systemMetrics_;
     Timers timers_;
@@ -389,8 +391,30 @@ const PeerDiscovery& StateMachine::getPeerDiscovery() const
     return pImpl->peerDiscovery_;
 }
 
+GamepadManager& StateMachine::getGamepadManager()
+{
+    // Lazy initialization if not yet created.
+    if (!pImpl->gamepadManager_) {
+        pImpl->gamepadManager_ = std::make_unique<GamepadManager>();
+    }
+    return *pImpl->gamepadManager_;
+}
+
+const GamepadManager& StateMachine::getGamepadManager() const
+{
+    // Note: const version assumes already initialized.
+    assert(pImpl->gamepadManager_ && "GamepadManager accessed before initialization");
+    return *pImpl->gamepadManager_;
+}
+
 void StateMachine::mainLoopRun()
 {
+    // Initialize GamepadManager now that server is listening.
+    // This avoids 1.5s SDL initialization delay blocking server startup.
+    if (!pImpl->gamepadManager_) {
+        pImpl->gamepadManager_ = std::make_unique<GamepadManager>();
+    }
+
     spdlog::info("Starting main event loop");
 
     // Initialize by sending init complete event.
