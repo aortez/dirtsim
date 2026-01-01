@@ -1101,14 +1101,22 @@ void ClockScenario::updateDrain(World& world)
     constexpr double FULL_OPEN_THRESHOLD = 150.0;  // At or above this, drain is fully open.
     constexpr uint32_t MAX_DRAIN_SIZE = 7;    // Maximum drain opening width.
 
-    // Calculate proportional drain size based on water level.
+    // Calculate proportional drain size based on water level (odd numbers only: 1, 3, 5, 7).
     uint32_t target_drain_size = 0;
     if (water_amount >= FULL_OPEN_THRESHOLD) {
         target_drain_size = MAX_DRAIN_SIZE;
     } else if (water_amount >= CLOSE_THRESHOLD) {
-        // Linear interpolation from 1 to MAX_DRAIN_SIZE.
+        // Linear interpolation from 1 to MAX_DRAIN_SIZE, but quantized to odd numbers only.
         double t = (water_amount - CLOSE_THRESHOLD) / (FULL_OPEN_THRESHOLD - CLOSE_THRESHOLD);
-        target_drain_size = 1 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
+        uint32_t continuous_size = 1 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
+
+        // Round to nearest odd number (1, 3, 5, 7).
+        if (continuous_size % 2 == 0) {
+            // Even number - round down to next lower odd number.
+            target_drain_size = continuous_size - 1;
+        } else {
+            target_drain_size = continuous_size;
+        }
     }
     // else target_drain_size remains 0 (closed).
 
