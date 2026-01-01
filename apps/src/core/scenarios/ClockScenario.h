@@ -150,7 +150,6 @@ private:
     std::map<ClockEventType, ActiveEvent> active_events_;
     std::map<ClockEventType, double> event_cooldowns_;
     double time_since_last_trigger_check_ = 0.0;
-    uint32_t next_entity_id_ = 1;
 
     // Door management.
     DoorManager door_manager_;

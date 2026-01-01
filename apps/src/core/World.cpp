@@ -498,6 +498,9 @@ void World::advanceTime(double deltaTimeSeconds)
     // This ensures connectivity checks use current positions, not stale pre-transfer positions.
     pruneDisconnectedFragments();
 
+    // Sync organism render data to WorldData.entities for UI.
+    organism_manager_->syncEntitiesToWorldData(*this);
+
     pImpl->data_.timestep++;
 }
 

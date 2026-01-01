@@ -1,6 +1,5 @@
 #include "GooseTestScenario.h"
 #include "core/Cell.h"
-#include "core/Entity.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
@@ -70,48 +69,9 @@ void GooseTestScenario::reset(World& world)
     setup(world);
 }
 
-void GooseTestScenario::tick(World& world, double /*deltaTime*/)
+void GooseTestScenario::tick(World& /*world*/, double /*deltaTime*/)
 {
-    // Create entity for rendering the goose.
-    // Find the goose and update its entity representation.
-    Goose* goose = world.getOrganismManager().getGoose(goose_id_);
-    if (!goose) {
-        return;
-    }
-
-    // Clear old entities and recreate.
-    world.getData().entities.clear();
-
-    Entity goose_entity;
-    // FIXME: Entity::id should be EntityId (strong type), not uint32_t.
-    // OrganismId and EntityId may need a defined relationship.
-    goose_entity.id = goose_id_.get();
-    goose_entity.type = EntityType::GOOSE;
-    goose_entity.visible = true;
-
-    Vector2i anchor = goose->getAnchorCell();
-    goose_entity.position = Vector2<float>{
-        static_cast<float>(anchor.x),
-        static_cast<float>(anchor.y)
-    };
-
-    // Get COM offset from the continuous position.
-    double frac_x = goose->position.x - std::floor(goose->position.x);
-    double frac_y = goose->position.y - std::floor(goose->position.y);
-    goose_entity.com = Vector2<float>{
-        static_cast<float>(frac_x * 2.0 - 1.0),
-        static_cast<float>(frac_y * 2.0 - 1.0)
-    };
-
-    goose_entity.velocity = Vector2<float>{
-        static_cast<float>(goose->velocity.x),
-        static_cast<float>(goose->velocity.y)
-    };
-
-    goose_entity.facing = goose->getFacing();
-    goose_entity.mass = static_cast<float>(goose->mass);
-
-    world.getData().entities.push_back(goose_entity);
+    // Entity sync is handled automatically by OrganismManager::syncEntitiesToWorldData().
 }
 
 } // namespace DirtSim

@@ -116,6 +116,10 @@ public:
     void notifyTransfers(const std::vector<OrganismTransfer>& transfers);
     void applyBoneForces(World& world, double deltaTime);
 
+    // Sync organism render data to WorldData.entities.
+    // Called automatically by World::advanceTime() - scenarios don't need to manage this.
+    void syncEntitiesToWorldData(World& world);
+
     // Statistics.
     size_t getOrganismCount() const { return organisms_.size(); }
 

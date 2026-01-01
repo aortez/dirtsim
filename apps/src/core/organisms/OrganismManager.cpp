@@ -6,6 +6,7 @@
 #include "Tree.h"
 #include "brains/RuleBasedBrain.h"
 #include "core/Cell.h"
+#include "core/Entity.h"
 #include "core/GridOfCells.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
@@ -312,6 +313,11 @@ void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& trans
             continue;
         }
 
+        // Skip rigid body organisms - they control their own position and cells.
+        if (organism->usesRigidBodyPhysics()) {
+            continue;
+        }
+
         for (const OrganismTransfer* transfer : organism_transfers) {
             // Add destination to organism's cell set.
             organism->getCells().insert(transfer->to_pos);
@@ -431,6 +437,101 @@ void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
                     rot_damping_force;
             }
         }
+    }
+}
+
+void OrganismManager::syncEntitiesToWorldData(World& world)
+{
+    WorldData& data = world.getData();
+    data.entities.clear();
+
+    for (const auto& [id, organism] : organisms_) {
+        if (!organism->isActive()) {
+            continue;
+        }
+
+        if (organism->getType() == OrganismType::DUCK) {
+            const Duck* duck = static_cast<const Duck*>(organism.get());
+            Vector2i anchor = duck->getAnchorCell();
+
+            Entity entity;
+            entity.id = id.get();
+            entity.type = EntityType::DUCK;
+            entity.visible = true;
+
+            entity.position = Vector2<float>{
+                static_cast<float>(anchor.x),
+                static_cast<float>(anchor.y)
+            };
+
+            // Get COM from the duck's cell.
+            if (anchor.x >= 0 && anchor.y >= 0 &&
+                static_cast<uint32_t>(anchor.x) < data.width &&
+                static_cast<uint32_t>(anchor.y) < data.height) {
+                const Cell& cell = data.at(anchor.x, anchor.y);
+                // Clamp COM.y when grounded.
+                double com_y = cell.com.y;
+                if (duck->isOnGround() && com_y > 0.0) {
+                    com_y = 0.0;
+                }
+                entity.com = Vector2<float>{
+                    static_cast<float>(cell.com.x),
+                    static_cast<float>(com_y)
+                };
+                entity.velocity = Vector2<float>{
+                    static_cast<float>(cell.velocity.x),
+                    static_cast<float>(cell.velocity.y)
+                };
+            }
+
+            entity.facing = duck->getFacing();
+            entity.mass = 1.0f;
+
+            // Copy sparkles.
+            const auto& duck_sparkles = duck->getSparkles();
+            entity.sparkles.reserve(duck_sparkles.size());
+            for (const auto& ds : duck_sparkles) {
+                SparkleParticle sp;
+                sp.position = ds.position;
+                sp.opacity = ds.lifetime / ds.max_lifetime;
+                entity.sparkles.push_back(sp);
+            }
+
+            data.entities.push_back(std::move(entity));
+        }
+        else if (organism->getType() == OrganismType::GOOSE) {
+            const Goose* goose = static_cast<const Goose*>(organism.get());
+            Vector2i anchor = goose->getAnchorCell();
+
+            Entity entity;
+            entity.id = id.get();
+            entity.type = EntityType::GOOSE;
+            entity.visible = true;
+
+            entity.position = Vector2<float>{
+                static_cast<float>(anchor.x),
+                static_cast<float>(anchor.y)
+            };
+
+            // Get COM offset from the continuous position.
+            double frac_x = goose->position.x - std::floor(goose->position.x);
+            double frac_y = goose->position.y - std::floor(goose->position.y);
+            entity.com = Vector2<float>{
+                static_cast<float>(frac_x * 2.0 - 1.0),
+                static_cast<float>(frac_y * 2.0 - 1.0)
+            };
+
+            entity.velocity = Vector2<float>{
+                static_cast<float>(goose->velocity.x),
+                static_cast<float>(goose->velocity.y)
+            };
+
+            entity.facing = goose->getFacing();
+            entity.mass = static_cast<float>(goose->mass);
+
+            data.entities.push_back(std::move(entity));
+        }
+        // Trees render as cells (SEED, WOOD, LEAF, ROOT), not entities.
     }
 }
 

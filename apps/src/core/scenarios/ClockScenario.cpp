@@ -1,6 +1,5 @@
 #include "ClockScenario.h"
 #include "core/Cell.h"
-#include "core/Entity.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
@@ -855,18 +854,6 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
         state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
         duck_x, duck_y);
 
-    // Create Entity view for rendering.
-    Entity duck_entity;
-    duck_entity.id = next_entity_id_++;
-    duck_entity.type = EntityType::DUCK;
-    duck_entity.visible = true;
-    duck_entity.position = Vector2<float>(static_cast<float>(duck_x), static_cast<float>(duck_y));
-    duck_entity.com = Vector2<float>(0.0f, 0.0f);
-    duck_entity.velocity = Vector2<float>(0.0f, 0.0f);
-    duck_entity.facing = Vector2<float>(1.0f, 0.0f);
-    duck_entity.mass = 1.0f;
-    world.getData().entities.push_back(duck_entity);
-
     state.phase = DuckEventPhase::DUCK_ACTIVE;
 }
 
@@ -940,41 +927,11 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
             // Remove the duck immediately.
             world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             state.organism_id = INVALID_ORGANISM_ID;
-            world.getData().entities.clear();
 
             // Transition to door closing phase.
             state.phase = DuckEventPhase::DOOR_CLOSING;
             state.door_close_timer = 0.0;
             return;
-        }
-    }
-
-    // Clamp COM.y when grounded.
-    if (duck_organism->isOnGround() && duck_com.y > 0.0) {
-        duck_com.y = 0.0;
-    }
-
-    // Update duck entity to match organism position.
-    for (auto& entity : world.getData().entities) {
-        if (entity.type == EntityType::DUCK) {
-            entity.position = Vector2<float>(
-                static_cast<float>(duck_cell.x),
-                static_cast<float>(duck_cell.y));
-            entity.com = Vector2<float>(
-                static_cast<float>(duck_com.x),
-                static_cast<float>(duck_com.y));
-            entity.facing = duck_organism->getFacing();
-
-            const auto& duck_sparkles = duck_organism->getSparkles();
-            entity.sparkles.clear();
-            entity.sparkles.reserve(duck_sparkles.size());
-            for (const auto& ds : duck_sparkles) {
-                SparkleParticle sp;
-                sp.position = ds.position;
-                sp.opacity = ds.lifetime / ds.max_lifetime;
-                entity.sparkles.push_back(sp);
-            }
-            break;
         }
     }
 }
@@ -1019,8 +976,6 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         if (state.exit_door_open) {
             door_manager_.closeDoor(state.exit_door_pos, world);
         }
-
-        world.getData().entities.clear();
     }
 
     // Set cooldown for this event type.
@@ -1055,7 +1010,6 @@ void ClockScenario::cancelAllEvents(World& world)
     active_events_.clear();
     event_cooldowns_.clear();
     door_manager_.closeAllDoors(world);
-    world.getData().entities.clear();
 }
 
 bool ClockScenario::isMeltdownActive() const

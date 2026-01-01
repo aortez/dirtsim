@@ -16,6 +16,39 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
+void Disconnected::onEnter(StateMachine& sm)
+{
+    sm_ = &sm;
+    LOG_INFO(State, "Entered Disconnected state (retry_count={}, retry_pending={})",
+        retry_count_, retry_pending_);
+}
+
+void Disconnected::updateAnimations()
+{
+    if (!retry_pending_ || !sm_) {
+        return;
+    }
+
+    // Check if enough time has passed since last attempt.
+    auto now = std::chrono::steady_clock::now();
+    double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
+
+    if (elapsed >= RETRY_INTERVAL_SECONDS) {
+        if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
+            LOG_ERROR(State, "Connection failed after {} retry attempts, giving up",
+                MAX_RETRY_ATTEMPTS);
+            retry_pending_ = false;
+            return;
+        }
+
+        LOG_INFO(State, "Retrying connection to {}:{} (attempt {}/{})",
+            pending_host_, pending_port_, retry_count_ + 1, MAX_RETRY_ATTEMPTS);
+
+        // Queue a new connection attempt.
+        sm_->queueEvent(ConnectToServerCommand{ pending_host_, pending_port_ });
+    }
+}
+
 State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine& sm)
 {
     LOG_INFO(State, "Connect command received (host={}, port={})", cmd.host, cmd.port);
@@ -134,8 +167,25 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     auto connectResult = wsService.connect(url);
     if (connectResult.isError()) {
         LOG_ERROR(State, "WebSocketService connection failed: {}", connectResult.errorValue());
-        return Disconnected{};
+
+        // Track retry state - preserve current state but enable retries.
+        retry_count_++;
+        pending_host_ = cmd.host;
+        pending_port_ = cmd.port;
+        last_attempt_time_ = std::chrono::steady_clock::now();
+        retry_pending_ = true;
+
+        if (retry_count_ < MAX_RETRY_ATTEMPTS) {
+            LOG_INFO(State, "Will retry connection in {:.0f}s (attempt {}/{})",
+                RETRY_INTERVAL_SECONDS, retry_count_, MAX_RETRY_ATTEMPTS);
+        }
+
+        return std::move(*this);  // Stay in same state, preserving retry info.
     }
+
+    // Connection initiated successfully - clear retry state.
+    retry_pending_ = false;
+    retry_count_ = 0;
 
     LOG_INFO(State, "WebSocketService connecting to {}", url);
 
