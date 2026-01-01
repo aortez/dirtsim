@@ -140,83 +140,123 @@ void GamepadManager::poll() {
 }
 ```
 
-### Phase 2: PlayerGooseBrain
+### Phase 2: PlayerDuckBrain
 
-**New file: `src/core/organisms/PlayerGooseBrain.h/.cpp`**
+**New file: `src/core/organisms/PlayerDuckBrain.h/.cpp`**
 
 ```cpp
-class PlayerGooseBrain : public GooseBrain {
+class PlayerDuckBrain : public DuckBrain {
 public:
-    explicit PlayerGooseBrain(const GamepadState* state);
-    void think(Goose& goose, const GooseSensoryData& sensory, double deltaTime) override;
+    explicit PlayerDuckBrain(const GamepadState* state);
+    void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
 private:
     const GamepadState* gamepad_state_;
-    bool last_jump_pressed_ = false;  // Edge detection.
+    bool last_jump_pressed_ = false;  // Edge detection for B button.
 };
 ```
 
 Implementation:
 - Read `dpad_x` or `stick_x` for movement direction.
-- Call `goose.setWalkDirection(move)`.
-- On A button press (edge-detected), call `goose.jump()`.
+- D-pad/stick left → `DuckAction::RUN_LEFT`.
+- D-pad/stick right → `DuckAction::RUN_RIGHT`.
+- Neutral → `DuckAction::WAIT`.
+- B button (edge-detected, on ground) → `DuckAction::JUMP`.
 
 ### Phase 3: Server Integration
 
-**Modify: `src/server/Event.h`**
-- Add `GamepadConnectedEvent { int gamepad_index; }`
-- Add `GamepadDisconnectedEvent { int gamepad_index; }`
-- Add to Event::Variant.
+**Add GamepadManager to StateMachine:**
+```cpp
+// In StateMachine::Impl
+std::unique_ptr<GamepadManager> gamepadManager_;
 
-**Modify: `src/server/states/SimRunning.h/.cpp`**
-- Add `std::map<int, OrganismId> gamepad_organisms_`.
-- Handle `GamepadConnectedEvent`: Create Goose with `PlayerGooseBrain`.
-- Handle `GamepadDisconnectedEvent`: Optionally remove organism.
+// Accessor
+GamepadManager* getGamepadManager();
+```
 
-**Modify: `src/server/StateMachine.h/.cpp`**
-- Add `std::unique_ptr<GamepadManager> gamepadManager_`.
-- Initialize in constructor.
-- Add `pollGamepads()` method.
+**Modify SimRunning state:**
+```cpp
+// In SimRunning
+std::map<size_t, OrganismId> gamepad_ducks_;  // gamepad_index → duck_id
 
-**Modify: `src/server/main.cpp`**
-- Call `stateMachine.pollGamepads()` in main loop (after event processing).
+void SimRunning::tick(StateMachine& dsm) {
+    // Poll gamepad at start of each physics tick.
+    if (auto* gm = dsm.getGamepadManager()) {
+        gm->poll();
+
+        // Handle A button press → spawn duck for this gamepad.
+        for (size_t i = 0; i < gm->getDeviceCount(); i++) {
+            auto* state = gm->getGamepadState(i);
+            if (state && state->button_a && !gamepad_ducks_.count(i)) {
+                spawnPlayerDuck(i, *state);
+            }
+        }
+
+        // Handle disconnects → remove duck.
+        for (size_t idx : gm->getNewlyDisconnected()) {
+            if (gamepad_ducks_.count(idx)) {
+                world->getOrganismManager().removeOrganismFromWorld(*world, gamepad_ducks_[idx]);
+                gamepad_ducks_.erase(idx);
+            }
+        }
+    }
+
+    // ... existing physics ...
+}
+
+void SimRunning::spawnPlayerDuck(size_t gamepad_index, const GamepadState& state) {
+    // Spawn at center-top of world.
+    uint32_t x = world->getData().width / 2;
+    uint32_t y = 2;
+
+    auto brain = std::make_unique<PlayerDuckBrain>(&state);
+    OrganismId id = world->getOrganismManager().createDuck(*world, x, y, std::move(brain));
+    gamepad_ducks_[gamepad_index] = id;
+}
+```
+
+**Behavior:**
+- One duck per gamepad (stored in `gamepad_ducks_` map).
+- A button spawns duck (if none exists for this gamepad).
+- Respawning: press A again after duck dies/is removed.
+- Scenario switch clears organisms (including player ducks) - map should be cleared too.
+- Gamepad disconnect removes the duck.
 
 ### Phase 4: Build System
 
-**Modify: `CMakeLists.txt`**
-- Add new source files to `dirtsim-server-lib`.
-- SDL2 already conditionally linked via `LV_USE_SDL`.
-- Add compile definition for gamepad support.
+Already complete from Phase 1:
+- SDL2 conditionally linked to dirtsim-core.
+- `DIRTSIM_HAS_GAMEPAD` compile definition set when SDL2 found.
+- GamepadManager.cpp only compiled when SDL2 available.
 
 ## Files to Create
 
-| File | Purpose |
-|------|---------|
-| `src/core/input/GamepadState.h` | Gamepad state struct. |
-| `src/core/input/GamepadManager.h` | Manager header (owns SDL subsystem + devices). |
-| `src/core/input/GamepadManager.cpp` | Manager implementation. |
-| `src/core/organisms/PlayerGooseBrain.h` | Player brain header. |
-| `src/core/organisms/PlayerGooseBrain.cpp` | Player brain implementation. |
+| File | Purpose | Status |
+|------|---------|--------|
+| `src/core/input/GamepadState.h` | Gamepad state struct. | ✅ Done |
+| `src/core/input/GamepadManager.h` | Manager header (owns SDL subsystem + devices). | ✅ Done |
+| `src/core/input/GamepadManager.cpp` | Manager implementation. | ✅ Done |
+| `src/core/organisms/PlayerDuckBrain.h` | Player brain header. | TODO |
+| `src/core/organisms/PlayerDuckBrain.cpp` | Player brain implementation. | TODO |
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/server/Event.h` | Add GamepadConnected/Disconnected events. |
-| `src/server/states/SimRunning.h` | Add gamepad→organism mapping. |
-| `src/server/states/SimRunning.cpp` | Handle gamepad events, spawn player goose. |
-| `src/server/StateMachine.h` | Add GamepadManager member. |
-| `src/server/StateMachine.cpp` | Initialize GamepadManager. |
-| `src/server/main.cpp` | Poll gamepads in main loop. |
-| `src/cli/main.cpp` | Add `gamepad-test` command. |
-| `CMakeLists.txt` | Add new source files, link SDL2 to CLI. |
+| File | Changes | Status |
+|------|---------|--------|
+| `src/server/StateMachine.h` | Add GamepadManager member + accessor. | TODO |
+| `src/server/StateMachine.cpp` | Initialize GamepadManager in Impl. | TODO |
+| `src/server/states/SimRunning.h` | Add `gamepad_ducks_` map. | TODO |
+| `src/server/states/SimRunning.cpp` | Poll gamepad in tick(), spawn player duck on A. | TODO |
+| `src/cli/main.cpp` | Add `gamepad-test` command. | ✅ Done |
+| `CMakeLists.txt` | Add PlayerDuckBrain source files. | TODO |
 
 ## Control Mapping
 
 | Input | Action |
 |-------|--------|
-| D-pad Left / Left Stick Left | Walk left. |
-| D-pad Right / Left Stick Right | Walk right. |
-| A Button (South) | Jump. |
+| D-pad Left / Left Stick Left | Run left. |
+| D-pad Right / Left Stick Right | Run right. |
+| A Button (South) | Spawn duck (if none exists for this gamepad). |
+| B Button (East) | Jump (when on ground). |
 
 ## Known Issues
 
