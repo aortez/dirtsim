@@ -8,8 +8,7 @@ Type=simple
 User=dirtsim
 WorkingDirectory=/data/dirtsim
 ExecStart=/usr/bin/dirtsim-server -p 8080
-Restart=always
-RestartSec=5
+Restart=no
 
 [Install]
 WantedBy=multi-user.target

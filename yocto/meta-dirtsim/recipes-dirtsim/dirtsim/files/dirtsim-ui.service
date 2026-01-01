@@ -15,8 +15,7 @@ WorkingDirectory=/data/dirtsim
 ExecStartPre=+/bin/sh -c 'test -e /sys/class/vtconsole/vtcon1/bind && echo 0 > /sys/class/vtconsole/vtcon1/bind || true'
 
 ExecStart=/usr/bin/dirtsim-ui -b fbdev --connect localhost:8080
-Restart=always
-RestartSec=5
+Restart=no
 
 # Display rotation and touchscreen device are set per-device via EnvironmentFile.
 # The file is generated at first boot by dirtsim-detect-display.service.
