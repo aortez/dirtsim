@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/StrongType.h"
 #include <cstdint>
 
 namespace DirtSim {
@@ -14,7 +15,7 @@ enum class OrganismType : uint8_t {
     // Future: BUTTERFLY, FISH, SLIME, etc.
 };
 
-using OrganismId = uint32_t;
-constexpr OrganismId INVALID_ORGANISM_ID = 0;
+using OrganismId = StrongType<struct OrganismIdTag>;
+const OrganismId INVALID_ORGANISM_ID{};
 
 } // namespace DirtSim

@@ -43,7 +43,7 @@ protected:
     // Helper to create a simple single-cell organism.
     std::unique_ptr<TestOrganism> createSingleCellOrganism(Vector2d pos, MaterialType material)
     {
-        auto org = std::make_unique<TestOrganism>(1, OrganismType::TREE);
+        auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
         org->position = pos;
         org->velocity = { 0.0, 0.0 };
 
@@ -62,7 +62,7 @@ protected:
     // Helper to create a multi-cell organism (horizontal 3-cell beam).
     std::unique_ptr<TestOrganism> createHorizontalBeam(Vector2d pos)
     {
-        auto org = std::make_unique<TestOrganism>(2, OrganismType::TREE);
+        auto org = std::make_unique<TestOrganism>(OrganismId{2}, OrganismType::TREE);
         org->position = pos;
         org->velocity = { 0.0, 0.0 };
 
@@ -170,7 +170,7 @@ TEST_F(OrganismPhysicsTest, MassComputedFromMultipleCells)
 
 TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
 {
-    auto org = std::make_unique<TestOrganism>(1, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 
@@ -189,7 +189,7 @@ TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
 
 TEST_F(OrganismPhysicsTest, MassAccountsForDifferentMaterials)
 {
-    auto org = std::make_unique<TestOrganism>(1, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 
@@ -231,7 +231,7 @@ TEST_F(OrganismPhysicsTest, COMAtCenterOfSymmetricShape)
 
 TEST_F(OrganismPhysicsTest, COMShiftsTowardHeavierMaterial)
 {
-    auto org = std::make_unique<TestOrganism>(1, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 

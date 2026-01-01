@@ -40,7 +40,7 @@ public:
 
     struct PrevCellState {
         MaterialType material;
-        uint32_t org_id;
+        OrganismId org_id;
     };
 
     CellTracker(World& world, OrganismId organism_id, size_t history_size = 20)

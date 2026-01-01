@@ -172,7 +172,7 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
     EXPECT_EQ(world->getData().at(4, 2).organism_id, tree_id) << "Adjacent WOOD should remain connected";
 
     // Verify disconnected cell was pruned.
-    EXPECT_EQ(world->getData().at(6, 2).organism_id, 0u)
+    EXPECT_EQ(world->getData().at(6, 2).organism_id, INVALID_ORGANISM_ID)
         << "Disconnected WOOD should have organism_id=0 after pruning";
 
     // Verify tree's cell tracking was updated.

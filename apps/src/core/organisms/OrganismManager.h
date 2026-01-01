@@ -125,7 +125,7 @@ private:
 
     std::unordered_map<OrganismId, std::unique_ptr<Organism>> organisms_;
     std::unordered_map<Vector2i, OrganismId> cell_to_organism_;
-    OrganismId next_id_ = 1;
+    OrganismId next_id_{1};
 };
 
 } // namespace DirtSim

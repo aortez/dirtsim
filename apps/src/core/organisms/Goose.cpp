@@ -96,6 +96,19 @@ void Goose::update(World& world, double deltaTime)
 
     CollisionInfo collision = detectCollisions(predicted_cells, world);
 
+    // TEMP DEBUG: Log every frame to understand blocking.
+    if (std::abs(velocity.x) > 0.1 || std::abs(velocity.y) > 0.1) {
+        const Cell& pred_cell = world.getData().at(predicted_cells[0].x, predicted_cells[0].y);
+        LOG_INFO(Brain, "Goose {}: desired=({:.2f},{:.2f}) pred_cell=({},{}) blocked={} "
+            "cell: mat={} fill={:.2f} org_id={} our_id={}",
+            id_, desired_position.x, desired_position.y,
+            predicted_cells[0].x, predicted_cells[0].y,
+            collision.blocked,
+            getMaterialName(pred_cell.material_type),
+            pred_cell.fill_ratio,
+            pred_cell.organism_id, id_);
+    }
+
     // 7. Move if not blocked, otherwise apply collision response.
     if (!collision.blocked) {
         position = desired_position;
@@ -112,6 +125,21 @@ void Goose::update(World& world, double deltaTime)
         if (v_into_surface < 0) {
             velocity.x -= v_into_surface * normal.x;
             velocity.y -= v_into_surface * normal.y;
+        }
+
+        // Push position back to stay in current valid cell.
+        // This prevents the organism from getting "stuck" exactly at a cell boundary
+        // where any movement direction would predict into the blocked cell.
+        Vector2i current_cell = getAnchorCell();
+        double cell_center_x = static_cast<double>(current_cell.x) + 0.5;
+        double cell_center_y = static_cast<double>(current_cell.y) + 0.5;
+
+        // Gently push back toward cell center along blocked direction.
+        if (normal.x != 0.0) {
+            position.x = position.x * 0.9 + cell_center_x * 0.1;
+        }
+        if (normal.y != 0.0) {
+            position.y = position.y * 0.9 + cell_center_y * 0.1;
         }
     }
 
@@ -245,7 +273,7 @@ void Goose::clearOldProjection(World& world)
 
         Cell& cell = data.at(old_pos.x, old_pos.y);
         if (cell.organism_id == id_) {
-            cell.organism_id = 0;
+            cell.organism_id = INVALID_ORGANISM_ID;
             cell.material_type = MaterialType::AIR;
             cell.fill_ratio = 0.0;
             cell.velocity = { 0.0, 0.0 };

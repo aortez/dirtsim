@@ -238,7 +238,7 @@ CollisionInfo Organism::detectCollisions(
         }
 
         // Check for other organism.
-        if (cell.organism_id != 0 && cell.organism_id != id_) {
+        if (cell.organism_id != INVALID_ORGANISM_ID && cell.organism_id != id_) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             continue;

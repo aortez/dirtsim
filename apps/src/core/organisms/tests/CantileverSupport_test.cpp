@@ -49,8 +49,8 @@ TEST(CantileverSupportTest, DISABLED_HorizontalBeamStaysSupported)
     std::cout << "  (1,1): support from (0,1) to left  ← CANTILEVER!\n";
     std::cout << "  (2,1): support from (1,1) to left  ← CANTILEVER!\n\n";
 
-    // Create tracker (organism_id=0 since these aren't tree cells).
-    CellTracker tracker(*world, 0, 20);
+    // Create tracker (organism_id=INVALID_ORGANISM_ID since these aren't tree cells).
+    CellTracker tracker(*world, INVALID_ORGANISM_ID, 20);
 
     // Track all wood cells.
     tracker.trackCell(Vector2i{ 0, 2 }, MaterialType::WOOD, 0);

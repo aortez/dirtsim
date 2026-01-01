@@ -19,7 +19,7 @@ struct Vector2iHash {
 } // namespace
 
 RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
-    const World& world, Vector2i start, uint32_t organism_id) const
+    const World& world, Vector2i start, OrganismId organism_id) const
 {
     RigidStructure result;
     const auto& data = world.getData();
@@ -30,18 +30,19 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
 
     const Cell& start_cell = data.at(start.x, start.y);
 
-    // Structures are organism-only (organism_id != 0).
-    if (start_cell.organism_id == 0) {
+    // Structures are organism-only (organism_id != INVALID_ORGANISM_ID).
+    if (start_cell.organism_id == INVALID_ORGANISM_ID) {
         return result;
     }
 
     // If organism_id specified, start cell must match.
-    if (organism_id != 0 && start_cell.organism_id != organism_id) {
+    if (organism_id != INVALID_ORGANISM_ID && start_cell.organism_id != organism_id) {
         return result;
     }
 
     // Use start cell's organism_id.
-    uint32_t match_organism = organism_id != 0 ? organism_id : start_cell.organism_id;
+    OrganismId match_organism =
+        organism_id != INVALID_ORGANISM_ID ? organism_id : start_cell.organism_id;
 
     std::unordered_set<Vector2i, Vector2iHash> visited;
     std::queue<Vector2i> frontier;
@@ -108,7 +109,7 @@ std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(const Wo
             const Cell& cell = data.at(x, y);
 
             // Structures are organism-only.
-            if (cell.organism_id == 0) {
+            if (cell.organism_id == INVALID_ORGANISM_ID) {
                 continue;
             }
 

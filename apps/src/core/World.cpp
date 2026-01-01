@@ -789,7 +789,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     {
         ScopeTimer clearTimer(timers, "resolve_forces_clear_pending");
         for (auto& cell : cells) {
-            if (cell.organism_id == 0) {
+            if (cell.organism_id == INVALID_ORGANISM_ID) {
                 cell.clearPendingForce();
             }
         }
@@ -888,7 +888,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 Cell& cell = data.at(x, y);
 
                 // Skip organism cells - they're handled by resolveRigidBodies().
-                if (cell.organism_id != 0) {
+                if (cell.organism_id != INVALID_ORGANISM_ID) {
                     continue;
                 }
 
@@ -1055,7 +1055,7 @@ void World::resolveRigidBodies(double deltaTime)
 
     // Clear pending forces for all organism cells now that they've been applied.
     for (auto& cell : data.cells) {
-        if (cell.organism_id != 0) {
+        if (cell.organism_id != INVALID_ORGANISM_ID) {
             cell.clearPendingForce();
         }
     }
@@ -1171,7 +1171,7 @@ void World::pruneDisconnectedFragments()
 }
 
 Vector2d World::computeOrganismSupportForce(
-    const std::vector<Vector2i>& organism_cells, uint32_t organism_id) const
+    const std::vector<Vector2i>& organism_cells, OrganismId organism_id) const
 {
     const WorldData& data = pImpl->data_;
     const PhysicsSettings& settings = pImpl->physicsSettings_;
@@ -1612,7 +1612,7 @@ void World::processMaterialMoves()
         }
 
         // Record organism transfer if material had organism ownership.
-        if (organism_id != 0 && move.collision_type == CollisionType::TRANSFER_ONLY) {
+        if (organism_id != INVALID_ORGANISM_ID && move.collision_type == CollisionType::TRANSFER_ONLY) {
             // Transfer occurred - record it for OrganismManager update.
             recordOrganismTransfer(
                 move.fromX, move.fromY, move.toX, move.toY, organism_id, move.amount);
@@ -1642,7 +1642,7 @@ void World::processMaterialMoves()
 }
 
 void World::recordOrganismTransfer(
-    int fromX, int fromY, int toX, int toY, uint32_t organism_id, double amount)
+    int fromX, int fromY, int toX, int toY, OrganismId organism_id, double amount)
 {
     pImpl->organism_transfers_.push_back(
         OrganismTransfer{ Vector2i{ fromX, fromY }, Vector2i{ toX, toY }, organism_id, amount });

@@ -1015,7 +1015,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     }
 
     // Organism cells resist displacement (handled by rigid body physics).
-    if (toCell.organism_id != 0) {
+    if (toCell.organism_id != INVALID_ORGANISM_ID) {
         LOG_DEBUG(
             Swap,
             "Swap denied: cannot displace organism cell {} (organism_id={})",
@@ -1393,7 +1393,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // Swap material types and fill ratios (conserve mass).
     MaterialType temp_type = fromCell.material_type;
     double temp_fill = fromCell.fill_ratio;
-    uint32_t temp_organism = fromCell.organism_id;
+    OrganismId temp_organism = fromCell.organism_id;
 
     fromCell.material_type = toCell.material_type;
     fromCell.fill_ratio = toCell.fill_ratio;

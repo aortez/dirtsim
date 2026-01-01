@@ -119,12 +119,12 @@ inline std::vector<std::byte> packDebugCells(const WorldData& data)
  */
 inline std::vector<OrganismData> extractOrganisms(const WorldData& data)
 {
-    std::map<uint32_t, std::vector<uint16_t>> organism_map;
+    std::map<OrganismId, std::vector<uint16_t>> organism_map;
 
     // Group cells by organism ID.
     for (size_t i = 0; i < data.cells.size(); ++i) {
-        uint32_t org_id = data.cells[i].organism_id;
-        if (org_id != 0) {
+        OrganismId org_id = data.cells[i].organism_id;
+        if (org_id != INVALID_ORGANISM_ID) {
             organism_map[org_id].push_back(static_cast<uint16_t>(i));
         }
     }
@@ -135,7 +135,7 @@ inline std::vector<OrganismData> extractOrganisms(const WorldData& data)
 
     for (const auto& [id, indices] : organism_map) {
         OrganismData org;
-        org.organism_id = static_cast<uint8_t>(id);
+        org.organism_id = static_cast<uint8_t>(id.get());  // Wire format uses uint8_t.
         org.cell_indices = indices;
         result.push_back(std::move(org));
     }
@@ -250,15 +250,15 @@ inline UnpackedDebugCell unpackDebugCell(const DebugCell& src)
  *
  * Fills organism_ids array (same size as cells) based on sparse OrganismData.
  */
-inline std::vector<uint8_t> applyOrganismData(
+inline std::vector<OrganismId> applyOrganismData(
     const std::vector<OrganismData>& organisms, size_t num_cells)
 {
-    std::vector<uint8_t> organism_ids(num_cells, 0);
+    std::vector<OrganismId> organism_ids(num_cells);
 
     for (const auto& org : organisms) {
         for (uint16_t idx : org.cell_indices) {
             if (idx < num_cells) {
-                organism_ids[idx] = org.organism_id;
+                organism_ids[idx] = OrganismId{static_cast<int>(org.organism_id)};
             }
         }
     }

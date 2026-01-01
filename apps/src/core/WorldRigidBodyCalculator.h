@@ -4,6 +4,7 @@
 #include "Vector2d.h"
 #include "Vector2i.h"
 #include "WorldCalculatorBase.h"
+#include "organisms/OrganismType.h"
 #include <cstdint>
 #include <vector>
 
@@ -16,7 +17,7 @@ struct RigidStructure {
     Vector2d center_of_mass;
     double total_mass = 0.0;
     Vector2d velocity;
-    uint32_t organism_id = 0;
+    OrganismId organism_id{};
 
     bool empty() const { return cells.empty(); }
     size_t size() const { return cells.size(); }
@@ -27,7 +28,7 @@ public:
     WorldRigidBodyCalculator() = default;
 
     RigidStructure findConnectedStructure(
-        const World& world, Vector2i start, uint32_t organism_id = 0) const;
+        const World& world, Vector2i start, OrganismId organism_id = {}) const;
 
     std::vector<RigidStructure> findAllStructures(const World& world) const;
 

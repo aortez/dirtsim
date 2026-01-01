@@ -3,6 +3,7 @@
 #include "MaterialType.h"
 #include "Pimpl.h"
 #include "Vector2i.h"
+#include "organisms/OrganismType.h"
 
 #include <cstdint>
 #include <memory>
@@ -172,7 +173,7 @@ public:
      * Called during physics transfers to maintain organism ownership consistency.
      */
     void recordOrganismTransfer(
-        int fromX, int fromY, int toX, int toY, uint32_t organism_id, double amount);
+        int fromX, int fromY, int toX, int toY, OrganismId organism_id, double amount);
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // minimum matter to process.
 
@@ -264,7 +265,7 @@ private:
     void resolveRigidBodies(double deltaTime);
     void pruneDisconnectedFragments();
     Vector2d computeOrganismSupportForce(
-        const std::vector<Vector2i>& organism_cells, uint32_t organism_id) const;
+        const std::vector<Vector2i>& organism_cells, OrganismId organism_id) const;
     void updateTransfers(double deltaTime);
     void processVelocityLimiting(double deltaTime);
     void processMaterialMoves();

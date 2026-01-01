@@ -116,14 +116,10 @@ set(CMAKE_CXX_STANDARD 23) #C++23
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 
-# Find SDL2 for gamepad support (optional) and display backend.
+# Find SDL2 for gamepad support and display backend.
 find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL2 sdl2)
-if(SDL2_FOUND)
-    message(STATUS "SDL2 found - gamepad support enabled")
-else()
-    message(STATUS "SDL2 not found - gamepad support disabled")
-endif()
+pkg_check_modules(SDL2 REQUIRED sdl2)
+message(STATUS "SDL2 found - gamepad support enabled")
 
 # Configuration
 if (LV_USE_SDL)
@@ -241,23 +237,18 @@ set(DIRTSIM_CORE_SOURCES
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
-)
 
-# Gamepad support requires SDL2.
-if(SDL2_FOUND)
-    list(APPEND DIRTSIM_CORE_SOURCES src/core/input/GamepadManager.cpp)
-endif()
+    # Gamepad input.
+    src/core/input/GamepadManager.cpp
+)
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
 target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
 target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json msgpack-cxx spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
 
-# Link SDL2 for gamepad support if available.
-if(SDL2_FOUND)
-    target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})
-    target_link_libraries(dirtsim-core PUBLIC ${SDL2_LIBRARIES})
-    target_compile_definitions(dirtsim-core PUBLIC DIRTSIM_HAS_GAMEPAD)
-endif()
+# Link SDL2 for gamepad support.
+target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})
+target_link_libraries(dirtsim-core PUBLIC ${SDL2_LIBRARIES})
 
 # Define DIRTSIM_PRODUCTION_BUILD for Release builds to use production logging defaults.
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
@@ -345,6 +336,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/Organism.cpp
     src/core/organisms/OrganismManager.cpp
     src/core/organisms/OrganismSensoryData.cpp
+    src/core/organisms/PlayerDuckBrain.cpp
     src/core/organisms/Tree.cpp
     src/core/organisms/TreeCommandProcessor.cpp
     src/core/organisms/TreeSensoryData.cpp
@@ -504,6 +496,7 @@ add_executable(dirtsim-tests
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp
     src/tests/RigidBodyIntegration_test.cpp
+    src/tests/StrongType_test.cpp
     src/tests/TimersTest.cpp
     src/tests/Vector2d_test.cpp
     src/tests/Vector2i_test.cpp

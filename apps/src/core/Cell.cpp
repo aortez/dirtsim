@@ -189,13 +189,13 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
         removeMaterial(accepted);
 
         // Transfer organism ownership to target if material moved.
-        if (source_organism_id != 0) {
+        if (source_organism_id != INVALID_ORGANISM_ID) {
             // Target receives organism ownership.
             target.organism_id = source_organism_id;
 
             // If source is now empty, clear organism_id.
             if (isEmpty()) {
-                organism_id = 0;
+                organism_id = INVALID_ORGANISM_ID;
             }
         }
     }

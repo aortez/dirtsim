@@ -2,6 +2,7 @@
 
 #include "MaterialType.h"
 #include "Vector2d.h"
+#include "organisms/OrganismType.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -40,7 +41,7 @@ struct Cell {
     double fill_ratio = 0.0;
     Vector2d com = {};
     Vector2d velocity = {};
-    uint32_t organism_id = 0; // Tree organism ownership (0 = no organism).
+    OrganismId organism_id{}; // Tree organism ownership (default = no organism).
 
     // Unified pressure system.
     double pressure = 0.0;

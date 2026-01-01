@@ -26,13 +26,13 @@ TEST_F(RigidBodyCalculatorTest, SingleWoodCellFormsStructure)
 {
     auto world = createWorld(5, 5);
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
 
     EXPECT_EQ(structure.size(), 1u);
     EXPECT_EQ(structure.cells[0], (Vector2i{ 2, 2 }));
-    EXPECT_EQ(structure.organism_id, 1u);
+    EXPECT_EQ(structure.organism_id, OrganismId{1});
 }
 
 TEST_F(RigidBodyCalculatorTest, NonOrganismCellReturnsEmpty)
@@ -55,15 +55,15 @@ TEST_F(RigidBodyCalculatorTest, LShapedWoodConnects)
     //   W
     //   W W W
     world->getData().at(1, 0).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 0).organism_id = 1;
+    world->getData().at(1, 0).organism_id = OrganismId{1};
     world->getData().at(1, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 1).organism_id = 1;
+    world->getData().at(1, 1).organism_id = OrganismId{1};
     world->getData().at(1, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 2).organism_id = 1;
+    world->getData().at(1, 2).organism_id = OrganismId{1};
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).organism_id = OrganismId{1};
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 0 });
 
@@ -78,9 +78,9 @@ TEST_F(RigidBodyCalculatorTest, DiagonalDoesNotConnect)
     //   W .
     //   . W
     world->getData().at(1, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 1).organism_id = 1;
+    world->getData().at(1, 1).organism_id = OrganismId{1};
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 1 });
 
@@ -93,15 +93,15 @@ TEST_F(RigidBodyCalculatorTest, DifferentOrganismIdDoesNotConnect)
 
     // Two adjacent wood cells with different organism IDs.
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 2;
+    world->getData().at(3, 2).organism_id = OrganismId{2};
 
-    auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, 1);
+    auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, OrganismId{1});
 
     EXPECT_EQ(structure.size(), 1u);
-    EXPECT_EQ(structure.organism_id, 1u);
+    EXPECT_EQ(structure.organism_id, OrganismId{1});
 }
 
 TEST_F(RigidBodyCalculatorTest, SameOrganismIdConnects)
@@ -110,15 +110,15 @@ TEST_F(RigidBodyCalculatorTest, SameOrganismIdConnects)
 
     // Two adjacent wood cells with same organism ID.
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 42;
+    world->getData().at(2, 2).organism_id = OrganismId{42};
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 42;
+    world->getData().at(3, 2).organism_id = OrganismId{42};
 
-    auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, 42);
+    auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, OrganismId{42});
 
     EXPECT_EQ(structure.size(), 2u);
-    EXPECT_EQ(structure.organism_id, 42u);
+    EXPECT_EQ(structure.organism_id, OrganismId{42});
 }
 
 TEST_F(RigidBodyCalculatorTest, FindAllStructuresFindsMultiple)
@@ -128,15 +128,15 @@ TEST_F(RigidBodyCalculatorTest, FindAllStructuresFindsMultiple)
     // Two separate structures.
     // Structure 1: cells at (1,2), (2,2).
     world->getData().at(1, 2).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getData().at(1, 2).organism_id = 1;
+    world->getData().at(1, 2).organism_id = OrganismId{1};
     world->getData().at(2, 2).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
 
     // Structure 2: cells at (7,2), (8,2).
     world->getData().at(7, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(7, 2).organism_id = 2;
+    world->getData().at(7, 2).organism_id = OrganismId{2};
     world->getData().at(8, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(8, 2).organism_id = 2;
+    world->getData().at(8, 2).organism_id = OrganismId{2};
 
     auto structures = calculator.findAllStructures(*world);
 
@@ -149,9 +149,9 @@ TEST_F(RigidBodyCalculatorTest, CalculateMassIsSumOfCellMasses)
 
     // Two wood cells, full fill.
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).organism_id = OrganismId{1};
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
     double mass = calculator.calculateStructureMass(*world, structure);
@@ -166,9 +166,9 @@ TEST_F(RigidBodyCalculatorTest, CalculateCOMIsWeightedCenter)
 
     // Two equal cells at x=2 and x=3, COM should be at x=2.5.
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).organism_id = OrganismId{1};
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
     Vector2d com = calculator.calculateStructureCOM(*world, structure);
@@ -182,11 +182,11 @@ TEST_F(RigidBodyCalculatorTest, GatherForcesIsSumOfPendingForces)
     auto world = createWorld(5, 5);
 
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(2, 2).pending_force = { 1.0, 2.0 };
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).organism_id = OrganismId{1};
     world->getData().at(3, 2).pending_force = { 0.5, -1.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
@@ -202,15 +202,15 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocitySetsAllCellsToSameVelocity)
 
     // Create 3-cell structure with different pending forces.
     world->getData().at(1, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(1, 2).organism_id = 1;
+    world->getData().at(1, 2).organism_id = OrganismId{1};
     world->getData().at(1, 2).pending_force = { 1.0, -2.0 };
 
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(2, 2).pending_force = { 0.0, -1.0 };
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getData().at(3, 2).organism_id = 1;
+    world->getData().at(3, 2).organism_id = OrganismId{1};
     world->getData().at(3, 2).pending_force = { -1.0, -1.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 2 });
@@ -243,7 +243,7 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocityUpdatesStructureVelocity)
     auto world = createWorld(5, 5);
 
     world->getData().at(2, 2).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getData().at(2, 2).organism_id = 1;
+    world->getData().at(2, 2).organism_id = OrganismId{1};
     world->getData().at(2, 2).pending_force = { 10.0, -5.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });

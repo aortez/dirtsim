@@ -21,7 +21,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    OrganismId goose_id_ = 0;
+    OrganismId goose_id_{};
 };
 
 } // namespace DirtSim

@@ -611,9 +611,10 @@ void CellRenderer::renderWorldData(
 
         // Build set of organism IDs that have entities (sprite-based organisms).
         // Only these organisms should have their cells hidden.
-        std::unordered_set<uint32_t> sprite_organism_ids;
+        // FIXME: Entity::id should be EntityId. For now, we treat it as OrganismId.
+        std::unordered_set<OrganismId> sprite_organism_ids;
         for (const auto& entity : worldData.entities) {
-            sprite_organism_ids.insert(entity.id);
+            sprite_organism_ids.insert(OrganismId{static_cast<int>(entity.id)});
         }
 
         for (uint32_t y = 0; y < worldData.height; ++y) {

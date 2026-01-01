@@ -71,7 +71,7 @@ TEST_F(TreeGerminationTest, SeedGerminates)
 {
     scenario->setup(*world);
 
-    OrganismId id = 1;
+    OrganismId id{1};
     const Tree* tree = world->getOrganismManager().getTree(id);
     EXPECT_EQ(tree->getStage(), GrowthStage::SEED);
 
@@ -119,7 +119,7 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
 {
     scenario->setup(*world);
 
-    OrganismId id = 1;
+    OrganismId id{1};
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "Initial state (Seed at: " << tree->getAnchorCell().x << ", "
@@ -285,7 +285,7 @@ TEST_F(TreeGerminationTest, TreeStopsGrowingWhenOutOfEnergy)
 {
     scenario->setup(*world);
 
-    OrganismId id = 1;
+    OrganismId id{1};
     Tree* tree = world->getOrganismManager().getTree(id);
 
     const double initial_energy = 25.0;
@@ -311,7 +311,7 @@ TEST_F(TreeGerminationTest, WoodCellsStayStationary)
 {
     scenario->setup(*world);
 
-    OrganismId id = 1;
+    OrganismId id{1};
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "Initial state:\n"
@@ -623,7 +623,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 {
     scenario->setup(*world);
 
-    OrganismId id = 1;
+    OrganismId id{1};
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "=== DEEP DEBUG: Wood Cell Physics ===\n\n";
@@ -813,7 +813,7 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
 
     // Get the tree created by the scenario.
-    OrganismId tree_id = 1;
+    OrganismId tree_id{1};
     Tree* tree = world->getOrganismManager().getTree(tree_id);
     ASSERT_NE(tree, nullptr);
 

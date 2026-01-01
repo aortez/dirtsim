@@ -83,7 +83,9 @@ void GooseTestScenario::tick(World& world, double /*deltaTime*/)
     world.getData().entities.clear();
 
     Entity goose_entity;
-    goose_entity.id = goose_id_;
+    // FIXME: Entity::id should be EntityId (strong type), not uint32_t.
+    // OrganismId and EntityId may need a defined relationship.
+    goose_entity.id = goose_id_.get();
     goose_entity.type = EntityType::GOOSE;
     goose_entity.visible = true;
 
