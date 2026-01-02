@@ -1678,7 +1678,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         if (icon_label_) {
             lv_label_set_text(icon_label_, icon_.c_str());
             lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
-            lv_obj_set_style_text_font(icon_label_, &lv_font_montserrat_20, 0);
+            lv_obj_set_style_text_font(icon_label_, &lv_font_montserrat_40, 0);
         }
     }
 
