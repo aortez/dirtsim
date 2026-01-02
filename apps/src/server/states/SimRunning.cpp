@@ -288,7 +288,11 @@ void SimRunning::tick(StateMachine& dsm)
         auto broadcastStart = std::chrono::steady_clock::now();
         timers.startTimer("broadcast_render_message");
 
-        dsm.broadcastRenderMessage(world->getData(), scenario_id, scenario->getConfig());
+        dsm.broadcastRenderMessage(
+            world->getData(),
+            world->getOrganismManager().getGrid(),
+            scenario_id,
+            scenario->getConfig());
 
         timers.stopTimer("broadcast_render_message");
         auto broadcastEnd = std::chrono::steady_clock::now();
@@ -784,7 +788,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
             const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
             debug.material_at_anchor = getMaterialName(cell.material_type);
-            debug.organism_id_at_anchor = cell.organism_id;
+            debug.organism_id_at_anchor = world->getOrganismManager().at(debug.anchor_cell);
         } else {
             debug.material_at_anchor = "OUT_OF_BOUNDS";
         }

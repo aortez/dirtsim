@@ -193,7 +193,6 @@ private:
 
     bool isMeltdownActive() const;
     void convertStrayMetalToWater(World& world);
-    void materializeMaterial(World& world, int x, int y, MaterialType material);
     void redrawWalls(World& world);
 };
 

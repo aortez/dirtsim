@@ -61,6 +61,13 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
+    // Allow overflow so expand button can extend past the rail edge.
+    lv_obj_add_flag(container_, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
+
+    // Add gesture detection for swipe-to-expand.
+    lv_obj_set_user_data(container_, this);
+    lv_obj_add_event_cb(container_, onGesture, LV_EVENT_GESTURE, nullptr);
+
     // Create buttons for each icon using ActionButton.
     for (size_t i = 0; i < iconConfigs_.size(); i++) {
         const auto& config = iconConfigs_[i];
@@ -201,7 +208,7 @@ void IconRail::createModeButtons()
     if (!container_) return;
 
     // Create expand button (shown in minimized mode).
-    // Narrow width to fit rail, but ACTION_SIZE height.
+    // Button extends past the rail edge to be easier to see/tap.
     expandButton_ = LVGLBuilder::actionButton(container_)
                         .icon(LV_SYMBOL_RIGHT)
                         .mode(LVGLBuilder::ActionMode::Push)
@@ -211,10 +218,16 @@ void IconRail::createModeButtons()
                         .buildOrLog();
 
     if (expandButton_) {
-        // Resize container (trough) to narrow width, 2× ACTION_SIZE height.
-        const int expandWidth = MINIMIZED_RAIL_WIDTH - 4;
+        // Make the button extend past the right edge of the rail.
+        // Button is wider than the rail, positioned to stick out.
+        const int extensionAmount = 20; // How far the button extends past the rail.
+        const int expandWidth = MINIMIZED_RAIL_WIDTH - 4 + extensionAmount;
         const int expandHeight = LVGLBuilder::Style::ACTION_SIZE * 2;
         lv_obj_set_size(expandButton_, expandWidth, expandHeight);
+
+        // Offset the button to the right so it extends past the container edge.
+        // Use translate to offset without affecting flex layout calculations.
+        lv_obj_set_style_translate_x(expandButton_, extensionAmount / 2, 0);
 
         // Inner button fills the trough with proper padding.
         lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
@@ -392,6 +405,28 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     }
 
     lv_timer_pause(timer);
+}
+
+void IconRail::onGesture(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_GESTURE) return;
+
+    lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    IconRail* self = static_cast<IconRail*>(lv_obj_get_user_data(obj));
+    if (!self) return;
+
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+
+    // Swipe right to expand when minimized.
+    if (dir == LV_DIR_RIGHT && self->mode_ == RailMode::Minimized) {
+        LOG_INFO(Controls, "Swipe right detected - expanding IconRail");
+        self->setMode(RailMode::Normal);
+    }
+    // Swipe left to minimize when expanded.
+    else if (dir == LV_DIR_LEFT && self->mode_ == RailMode::Normal) {
+        LOG_INFO(Controls, "Swipe left detected - minimizing IconRail");
+        self->setMode(RailMode::Minimized);
+    }
 }
 
 } // namespace Ui

@@ -1,8 +1,11 @@
 #include "SubprocessManager.h"
+#include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/StatusGet.h"
 #include <chrono>
 #include <fcntl.h>
 #include <filesystem>
+#include <nlohmann/json.hpp>
 #include <signal.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -29,13 +32,13 @@ bool SubprocessManager::launchServer(const std::string& serverPath, const std::s
     serverPid_ = fork();
 
     if (serverPid_ < 0) {
-        spdlog::error("SubprocessManager: Failed to fork process");
+        SLOG_ERROR("SubprocessManager: Failed to fork process");
         return false;
     }
 
     if (serverPid_ == 0) {
         // Child process - exec server.
-        spdlog::debug("SubprocessManager: Launching server: {} {}", serverPath, args);
+        SLOG_DEBUG("SubprocessManager: Launching server: {} {}", serverPath, args);
 
         // No need to redirect stdout - benchmark logging config disables console output.
         // Stderr is kept for crash reporting (terminate/abort messages).
@@ -63,38 +66,75 @@ bool SubprocessManager::launchServer(const std::string& serverPath, const std::s
         execv(serverPath.c_str(), execArgs.data());
 
         // If exec fails, exit child process.
-        spdlog::error("SubprocessManager: exec failed");
+        SLOG_ERROR("SubprocessManager: exec failed");
         exit(1);
     }
 
     // Parent process.
-    spdlog::info("SubprocessManager: Launched server (PID: {})", serverPid_);
+    SLOG_INFO("SubprocessManager: Launched server (PID: {})", serverPid_);
     return true;
 }
 
 bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSec)
 {
-    spdlog::info("SubprocessManager: Waiting for server to be ready at {}", url);
+    std::cerr << "DEBUG: waitForServerReady() called, url=" << url << ", serverPid_=" << serverPid_ << std::endl;
+    SLOG_INFO("SubprocessManager: Waiting for server to be ready at {}", url);
 
     auto startTime = std::chrono::steady_clock::now();
 
     while (true) {
+        std::cerr << "DEBUG: Inside while loop" << std::endl;
+        // Log startTime.
+        SLOG_INFO("SubprocessManager: Waiting for server to be ready");
+
         // Check if server process is still alive.
         if (!isServerRunning()) {
-            spdlog::error("SubprocessManager: Server process died");
+            SLOG_ERROR("SubprocessManager: Server process died");
             return false;
         }
 
-        // Try connecting.
-        if (tryConnect(url)) {
-            spdlog::info("SubprocessManager: Server is ready");
-            return true;
+        // Try connecting and check server state.
+        try {
+            Network::WebSocketService client;
+            auto connectResult = client.connect(url, 1000);
+
+            if (connectResult.isValue()) {
+                // Connected - now check if server is in a ready state (not Startup).
+                Api::StatusGet::Command statusCmd;
+                nlohmann::json cmdJson = statusCmd.toJson();
+                cmdJson["command"] = Api::StatusGet::Command::name();
+
+                auto statusResult = client.sendJsonAndReceive(cmdJson.dump(), 1000);
+                client.disconnect();
+
+                if (statusResult.isValue()) {
+                    nlohmann::json response = nlohmann::json::parse(statusResult.value());
+                    if (response.contains("value") && response["value"].contains("state")) {
+                        std::string state = response["value"]["state"].get<std::string>();
+                        if (state == "Idle" || state == "SimRunning") {
+                            SLOG_INFO("SubprocessManager: Server is ready (state: {})", state);
+                            return true;
+                        }
+                        // Server in Startup or other state - keep waiting.
+                        SLOG_DEBUG("SubprocessManager: Server not ready yet (state: {})", state);
+                    }
+                    else if (response.contains("error")) {
+                        // Server returned error (e.g., command not supported in Startup).
+                        SLOG_DEBUG("SubprocessManager: Server error: {}",
+                            response["error"].get<std::string>());
+                    }
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            // Connection failed - server still starting up.
+            SLOG_DEBUG("SubprocessManager: Connection failed: {}", e.what());
         }
 
         // Check timeout.
         auto elapsed = std::chrono::steady_clock::now() - startTime;
         if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= timeoutSec) {
-            spdlog::error("SubprocessManager: Timeout waiting for server");
+            SLOG_ERROR("SubprocessManager: Timeout waiting for server");
             return false;
         }
 
@@ -106,7 +146,7 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
 void SubprocessManager::killServer()
 {
     if (serverPid_ > 0) {
-        spdlog::info("SubprocessManager: Killing server (PID: {})", serverPid_);
+        SLOG_INFO("SubprocessManager: Killing server (PID: {})", serverPid_);
 
         // Send SIGTERM for graceful shutdown.
         kill(serverPid_, SIGTERM);
@@ -122,7 +162,7 @@ void SubprocessManager::killServer()
 
             if (waitResult == 0) {
                 // Still running, force kill.
-                spdlog::warn(
+                SLOG_WARN(
                     "SubprocessManager: Server didn't respond to SIGTERM, sending SIGKILL");
                 kill(serverPid_, SIGKILL);
                 waitpid(serverPid_, &status, 0);
@@ -130,7 +170,7 @@ void SubprocessManager::killServer()
         }
 
         serverPid_ = -1;
-        spdlog::info("SubprocessManager: Server killed");
+        SLOG_INFO("SubprocessManager: Server killed");
     }
 }
 
@@ -147,7 +187,7 @@ bool SubprocessManager::isServerRunning() const
 
     if (result == serverPid_) {
         // Process has exited (reaps zombie).
-        spdlog::info("SubprocessManager: Server process {} has exited", serverPid_);
+        SLOG_INFO("SubprocessManager: Server process {} has exited", serverPid_);
         return false;
     }
     else if (result == 0) {
@@ -172,7 +212,7 @@ bool SubprocessManager::tryConnect(const std::string& url)
         return true;
     }
     catch (const std::exception& e) {
-        spdlog::debug("SubprocessManager: tryConnect exception: {}", e.what());
+        SLOG_DEBUG("SubprocessManager: tryConnect exception: {}", e.what());
         return false;
     }
 }
@@ -183,13 +223,13 @@ bool SubprocessManager::launchUI(const std::string& uiPath, const std::string& a
     uiPid_ = fork();
 
     if (uiPid_ < 0) {
-        spdlog::error("SubprocessManager: Failed to fork UI process");
+        SLOG_ERROR("SubprocessManager: Failed to fork UI process");
         return false;
     }
 
     if (uiPid_ == 0) {
         // Child process - exec UI.
-        spdlog::debug("SubprocessManager: Launching UI: {} {}", uiPath, args);
+        SLOG_DEBUG("SubprocessManager: Launching UI: {} {}", uiPath, args);
 
         // Parse arguments into vector.
         std::vector<std::string> argVec;
@@ -214,38 +254,38 @@ bool SubprocessManager::launchUI(const std::string& uiPath, const std::string& a
         execv(uiPath.c_str(), execArgs.data());
 
         // If exec fails, exit child process.
-        spdlog::error("SubprocessManager: execv failed for UI");
+        SLOG_ERROR("SubprocessManager: execv failed for UI");
         exit(1);
     }
 
     // Parent process.
-    spdlog::info("SubprocessManager: Launched UI (PID: {})", uiPid_);
+    SLOG_INFO("SubprocessManager: Launched UI (PID: {})", uiPid_);
     return true;
 }
 
 bool SubprocessManager::waitForUIReady(const std::string& url, int timeoutSec)
 {
-    spdlog::info("SubprocessManager: Waiting for UI to be ready at {}", url);
+    SLOG_INFO("SubprocessManager: Waiting for UI to be ready at {}", url);
 
     auto startTime = std::chrono::steady_clock::now();
 
     while (true) {
         // Check if UI process is still alive.
         if (!isUIRunning()) {
-            spdlog::error("SubprocessManager: UI process died");
+            SLOG_ERROR("SubprocessManager: UI process died");
             return false;
         }
 
         // Try connecting.
         if (tryConnect(url)) {
-            spdlog::info("SubprocessManager: UI is ready");
+            SLOG_INFO("SubprocessManager: UI is ready");
             return true;
         }
 
         // Check timeout.
         auto elapsed = std::chrono::steady_clock::now() - startTime;
         if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= timeoutSec) {
-            spdlog::error("SubprocessManager: Timeout waiting for UI");
+            SLOG_ERROR("SubprocessManager: Timeout waiting for UI");
             return false;
         }
 
@@ -257,7 +297,7 @@ bool SubprocessManager::waitForUIReady(const std::string& url, int timeoutSec)
 void SubprocessManager::killUI()
 {
     if (uiPid_ > 0) {
-        spdlog::info("SubprocessManager: Killing UI (PID: {})", uiPid_);
+        SLOG_INFO("SubprocessManager: Killing UI (PID: {})", uiPid_);
 
         // Send SIGTERM for graceful shutdown.
         kill(uiPid_, SIGTERM);
@@ -273,14 +313,14 @@ void SubprocessManager::killUI()
 
             if (waitResult == 0) {
                 // Still running, force kill.
-                spdlog::warn("SubprocessManager: UI didn't respond to SIGTERM, sending SIGKILL");
+                SLOG_WARN("SubprocessManager: UI didn't respond to SIGTERM, sending SIGKILL");
                 kill(uiPid_, SIGKILL);
                 waitpid(uiPid_, &status, 0);
             }
         }
 
         uiPid_ = -1;
-        spdlog::info("SubprocessManager: UI killed");
+        SLOG_INFO("SubprocessManager: UI killed");
     }
 }
 
@@ -297,7 +337,7 @@ bool SubprocessManager::isUIRunning() const
 
     if (result == uiPid_) {
         // Process has exited (reaps zombie).
-        spdlog::info("SubprocessManager: UI process {} has exited", uiPid_);
+        SLOG_INFO("SubprocessManager: UI process {} has exited", uiPid_);
         return false;
     }
     else if (result == 0) {

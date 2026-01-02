@@ -1,4 +1,5 @@
 #include "Tree.h"
+#include "OrganismManager.h"
 #include "TreeCommandProcessor.h"
 #include "core/Cell.h"
 #include "core/MaterialType.h"
@@ -104,7 +105,8 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
 
     for (uint32_t y = 0; y < world.getData().height; y++) {
         for (uint32_t x = 0; x < world.getData().width; x++) {
-            if (world.getData().at(x, y).organism_id == id_) {
+            Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+            if (world.getOrganismManager().at(pos) == id_) {
                 min_x = std::min(min_x, static_cast<int>(x));
                 min_y = std::min(min_y, static_cast<int>(y));
                 max_x = std::max(max_x, static_cast<int>(x));

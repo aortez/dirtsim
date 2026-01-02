@@ -6,6 +6,7 @@
 #include "ReflectSerializer.h"
 #include "RenderMessage.h"
 #include "Vector2.h"
+#include "organisms/OrganismType.h"
 #include "organisms/TreeSensoryData.h"
 
 #include <cstdint>
@@ -23,6 +24,7 @@ struct WorldData {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<Cell> cells; // Flat array: cells[y * width + x]
+    std::vector<OrganismId> organism_ids; // Parallel to cells: organism_ids[y * width + x]
 
     // Simulation state.
     uint32_t timestep = 0;

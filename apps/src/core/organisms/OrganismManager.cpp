@@ -5,6 +5,7 @@
 #include "GooseBrain.h"
 #include "Tree.h"
 #include "brains/RuleBasedBrain.h"
+#include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/Entity.h"
 #include "core/GridOfCells.h"
@@ -16,6 +17,48 @@
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
+
+OrganismId OrganismManager::at(Vector2i pos) const
+{
+    if (pos.x < 0 || pos.y < 0 ||
+        static_cast<uint32_t>(pos.x) >= width_ ||
+        static_cast<uint32_t>(pos.y) >= height_) {
+        return INVALID_ORGANISM_ID;
+    }
+    return grid_[pos.y * width_ + pos.x];
+}
+
+bool OrganismManager::hasOrganism(Vector2i pos) const
+{
+    return at(pos) != INVALID_ORGANISM_ID;
+}
+
+const std::vector<OrganismId>& OrganismManager::getGrid() const
+{
+    return grid_;
+}
+
+void OrganismManager::resizeGrid(uint32_t width, uint32_t height)
+{
+    width_ = width;
+    height_ = height;
+    grid_.assign(width * height, INVALID_ORGANISM_ID);
+}
+
+void OrganismManager::setOrganismAt(Vector2i pos, OrganismId id)
+{
+    if (pos.x < 0 || pos.y < 0 ||
+        static_cast<uint32_t>(pos.x) >= width_ ||
+        static_cast<uint32_t>(pos.y) >= height_) {
+        return;
+    }
+    grid_[pos.y * width_ + pos.x] = id;
+}
+
+void OrganismManager::clearOrganismAt(Vector2i pos)
+{
+    setOrganismAt(pos, INVALID_ORGANISM_ID);
+}
 
 void OrganismManager::update(World& world, double deltaTime)
 {
@@ -59,8 +102,7 @@ OrganismId OrganismManager::createTree(
 
     // Track cell ownership.
     tree->getCells().insert(pos);
-    cell_to_organism_[pos] = id;
-    world.getData().at(x, y).organism_id = id;
+    setOrganismAt(pos, id);
 
     LOG_INFO(Tree, "OrganismManager: Planted tree {} at ({}, {})", id, x, y);
 
@@ -92,8 +134,7 @@ OrganismId OrganismManager::createDuck(
 
     // Track cell ownership.
     duck->getCells().insert(pos);
-    cell_to_organism_[pos] = id;
-    world.getData().at(x, y).organism_id = id;
+    setOrganismAt(pos, id);
 
     spdlog::info("OrganismManager: Created duck {} at ({}, {})", id, x, y);
 
@@ -161,9 +202,8 @@ void OrganismManager::removeOrganism(OrganismId id)
     auto it = organisms_.find(id);
     assert(it != organisms_.end() && "removeOrganism called with non-existent organism ID");
 
-    // Remove cell ownership tracking.
     for (const auto& pos : it->second->getCells()) {
-        cell_to_organism_.erase(pos);
+        clearOrganismAt(pos);
     }
 
     organisms_.erase(it);
@@ -173,7 +213,7 @@ void OrganismManager::clear()
 {
     spdlog::info("OrganismManager: Clearing all organisms (count={})", organisms_.size());
     organisms_.clear();
-    cell_to_organism_.clear();
+    std::fill(grid_.begin(), grid_.end(), INVALID_ORGANISM_ID);
 }
 
 Organism* OrganismManager::getOrganism(OrganismId id)
@@ -242,13 +282,7 @@ const Goose* OrganismManager::getGoose(OrganismId id) const
     return nullptr;
 }
 
-OrganismId OrganismManager::getOrganismAtCell(const Vector2i& pos) const
-{
-    auto it = cell_to_organism_.find(pos);
-    return it != cell_to_organism_.end() ? it->second : INVALID_ORGANISM_ID;
-}
-
-void OrganismManager::addCellToOrganism(World& world, OrganismId id, Vector2i pos)
+void OrganismManager::addCellToOrganism(OrganismId id, Vector2i pos)
 {
     auto* organism = getOrganism(id);
     if (!organism) {
@@ -257,8 +291,7 @@ void OrganismManager::addCellToOrganism(World& world, OrganismId id, Vector2i po
     }
 
     organism->getCells().insert(pos);
-    cell_to_organism_[pos] = id;
-    world.getData().at(pos.x, pos.y).organism_id = id;
+    setOrganismAt(pos, id);
 
     spdlog::debug(
         "OrganismManager: Added cell ({},{}) to organism {} (now {} cells tracked)",
@@ -279,7 +312,7 @@ void OrganismManager::removeCellsFromOrganism(OrganismId id, const std::vector<V
 
     for (const auto& pos : positions) {
         organism->getCells().erase(pos);
-        cell_to_organism_.erase(pos);
+        clearOrganismAt(pos);
     }
 
     spdlog::debug(
@@ -287,6 +320,50 @@ void OrganismManager::removeCellsFromOrganism(OrganismId id, const std::vector<V
         positions.size(),
         id,
         organism->getCells().size());
+}
+
+void OrganismManager::swapOrganisms(Vector2i pos1, Vector2i pos2)
+{
+    OrganismId org1 = at(pos1);
+    OrganismId org2 = at(pos2);
+
+    // Detect stale tracking bug.
+    if (org1 == org2 && org1 != INVALID_ORGANISM_ID) {
+        spdlog::critical("swapOrganisms: INVARIANT VIOLATION - Same organism {} at both positions!",
+            org1);
+        spdlog::critical("  pos1=({},{}), pos2=({},{})", pos1.x, pos1.y, pos2.x, pos2.y);
+
+        auto* organism = getOrganism(org1);
+        if (organism) {
+            spdlog::critical("  Organism type={}, anchor=({},{}), cells.size()={}",
+                static_cast<int>(organism->getType()),
+                organism->getAnchorCell().x, organism->getAnchorCell().y,
+                organism->getCells().size());
+        }
+
+        DIRTSIM_ASSERT(false, "swapOrganisms: Same organism cannot be at both swap positions");
+    }
+
+    // Swap grid entries.
+    setOrganismAt(pos1, org2);
+    setOrganismAt(pos2, org1);
+
+    // Update organism cell sets.
+    if (org1 != INVALID_ORGANISM_ID) {
+        auto* organism = getOrganism(org1);
+        DIRTSIM_ASSERT(organism != nullptr, "Organism in grid must exist in organisms_ map");
+        organism->getCells().erase(pos1);
+        organism->getCells().insert(pos2);
+        organism->onCellTransfer(pos1, pos2);
+    }
+
+    if (org2 != INVALID_ORGANISM_ID) {
+        auto* organism = getOrganism(org2);
+        DIRTSIM_ASSERT(organism != nullptr, "Organism in grid must exist in organisms_ map");
+        organism->getCells().erase(pos2);
+        organism->getCells().insert(pos1);
+        organism->onCellTransfer(pos2, pos1);
+    }
 }
 
 void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& transfers)
@@ -324,15 +401,12 @@ void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& trans
         }
 
         for (const OrganismTransfer* transfer : organism_transfers) {
-            // Add destination to organism's cell set.
+            organism->getCells().erase(transfer->from_pos);
             organism->getCells().insert(transfer->to_pos);
-            cell_to_organism_[transfer->to_pos] = organism_id;
+            clearOrganismAt(transfer->from_pos);
+            setOrganismAt(transfer->to_pos, organism_id);
 
-            // Let organism handle anchor updates and bone endpoint updates.
             organism->onCellTransfer(transfer->from_pos, transfer->to_pos);
-
-            // Note: We don't remove from_pos yet - source cell might still have material.
-            // The cleanup will happen in a separate pass or when cell becomes fully empty.
         }
 
         spdlog::trace(
@@ -374,7 +448,7 @@ void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
             Cell& cell_b = data.at(bone.cell_b.x, bone.cell_b.y);
 
             // Skip if either cell no longer belongs to this organism.
-            if (cell_a.organism_id != organism_id || cell_b.organism_id != organism_id) {
+            if (at(bone.cell_a) != organism_id || at(bone.cell_b) != organism_id) {
                 continue;
             }
 

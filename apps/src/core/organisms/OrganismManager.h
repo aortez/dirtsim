@@ -42,8 +42,11 @@ class OrganismManager {
 public:
     OrganismManager() = default;
 
-    // Main update - calls update() on all organisms for behavior/brain logic.
-    // For rigid body organisms, this only handles behavior; physics is in advanceTime().
+    OrganismId at(Vector2i pos) const;
+    bool hasOrganism(Vector2i pos) const;
+    const std::vector<OrganismId>& getGrid() const;
+    void resizeGrid(uint32_t width, uint32_t height);
+
     void update(World& world, double deltaTime);
 
     // Physics update for rigid body organisms.
@@ -88,9 +91,6 @@ public:
     Goose* getGoose(OrganismId id);
     const Goose* getGoose(OrganismId id) const;
 
-    // Cell-to-organism lookup.
-    OrganismId getOrganismAtCell(const Vector2i& pos) const;
-
     // Iteration over all organisms.
     template <typename Func>
     void forEachOrganism(Func&& func)
@@ -108,9 +108,9 @@ public:
         }
     }
 
-    // Cell tracking helpers.
-    void addCellToOrganism(World& world, OrganismId id, Vector2i pos);
+    void addCellToOrganism(OrganismId id, Vector2i pos);
     void removeCellsFromOrganism(OrganismId id, const std::vector<Vector2i>& positions);
+    void swapOrganisms(Vector2i pos1, Vector2i pos2);
 
     // Physics integration.
     void notifyTransfers(const std::vector<OrganismTransfer>& transfers);
@@ -124,12 +124,16 @@ public:
     size_t getOrganismCount() const { return organisms_.size(); }
 
 private:
-    // Internal removal - only clears tracking, not world cells.
     void removeOrganism(OrganismId id);
+    void setOrganismAt(Vector2i pos, OrganismId id);
+    void clearOrganismAt(Vector2i pos);
 
     std::unordered_map<OrganismId, std::unique_ptr<Organism>> organisms_;
-    std::unordered_map<Vector2i, OrganismId> cell_to_organism_;
     OrganismId next_id_{1};
+
+    std::vector<OrganismId> grid_;
+    uint32_t width_ = 0;
+    uint32_t height_ = 0;
 };
 
 } // namespace DirtSim

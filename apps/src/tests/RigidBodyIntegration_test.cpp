@@ -33,11 +33,11 @@ TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
 
     // Build 2x2 structure by adding adjacent WOOD cells.
     world->getData().at(5, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 5, 3 });
+    organism_manager.addCellToOrganism(tree_id, { 5, 3 });
     world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 4, 4 });
+    organism_manager.addCellToOrganism(tree_id, { 4, 4 });
     world->getData().at(5, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 5, 4 });
+    organism_manager.addCellToOrganism(tree_id, { 5, 4 });
 
     // Run physics for several frames.
     for (int frame = 0; frame < 20; ++frame) {
@@ -74,13 +74,13 @@ TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
     // Simple tree floating in air: SEED-WOOD horizontal.
     OrganismId tree_id = organism_manager.createTree(*world, 1, 1);
     world->getData().at(2, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 2, 1 });
+    organism_manager.addCellToOrganism(tree_id, { 2, 1 });
 
     // Verify setup.
     EXPECT_EQ(world->getData().at(1, 1).material_type, MaterialType::SEED);
-    EXPECT_EQ(world->getData().at(1, 1).organism_id, tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{1, 1}), tree_id);
     EXPECT_EQ(world->getData().at(2, 1).material_type, MaterialType::WOOD);
-    EXPECT_EQ(world->getData().at(2, 1).organism_id, tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{2, 1}), tree_id);
 
     // Run several physics frames.
     for (int frame = 0; frame < 10; ++frame) {
@@ -106,12 +106,12 @@ TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
     // Structure 1: seed + WOOD at y=3.
     OrganismId tree1 = organism_manager.createTree(*world, 2, 3);
     world->getData().at(3, 3).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree1, { 3, 3 });
+    organism_manager.addCellToOrganism(tree1, { 3, 3 });
 
     // Structure 2: seed + WOOD at y=6.
     OrganismId tree2 = organism_manager.createTree(*world, 6, 6);
     world->getData().at(7, 6).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree2, { 7, 6 });
+    organism_manager.addCellToOrganism(tree2, { 7, 6 });
 
     // Run physics.
     for (int frame = 0; frame < 10; ++frame) {
@@ -148,31 +148,31 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
 
     // Add connected WOOD cells.
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 3, 2 });
+    organism_manager.addCellToOrganism(tree_id, { 3, 2 });
 
     world->getData().at(4, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 4, 2 });
+    organism_manager.addCellToOrganism(tree_id, { 4, 2 });
 
     // Add disconnected WOOD cell (gap at x=5).
     world->getData().at(6, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    organism_manager.addCellToOrganism(*world, tree_id, { 6, 2 });
+    organism_manager.addCellToOrganism(tree_id, { 6, 2 });
 
     // Verify initial state.
-    EXPECT_EQ(world->getData().at(2, 2).organism_id, tree_id); // SEED.
-    EXPECT_EQ(world->getData().at(3, 2).organism_id, tree_id); // Connected WOOD.
-    EXPECT_EQ(world->getData().at(4, 2).organism_id, tree_id); // Connected WOOD.
-    EXPECT_EQ(world->getData().at(6, 2).organism_id, tree_id); // Disconnected WOOD.
+    EXPECT_EQ(organism_manager.at(Vector2i{2, 2}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{3, 2}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{4, 2}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{6, 2}), tree_id);
 
     // Run one physics frame.
     world->advanceTime(0.016);
 
     // Verify connected cells still belong to organism.
-    EXPECT_EQ(world->getData().at(2, 2).organism_id, tree_id) << "SEED should remain connected";
-    EXPECT_EQ(world->getData().at(3, 2).organism_id, tree_id) << "Adjacent WOOD should remain connected";
-    EXPECT_EQ(world->getData().at(4, 2).organism_id, tree_id) << "Adjacent WOOD should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{2, 2}), tree_id) << "SEED should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{3, 2}), tree_id) << "Adjacent WOOD should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{4, 2}), tree_id) << "Adjacent WOOD should remain connected";
 
     // Verify disconnected cell was pruned.
-    EXPECT_EQ(world->getData().at(6, 2).organism_id, INVALID_ORGANISM_ID)
+    EXPECT_EQ(organism_manager.at(Vector2i{6, 2}), INVALID_ORGANISM_ID)
         << "Disconnected WOOD should have organism_id=0 after pruning";
 
     // Verify tree's cell tracking was updated.

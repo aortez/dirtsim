@@ -65,23 +65,11 @@ public:
     // BLESSED API - Cell Manipulation with Organism Tracking
     // =================================================================
     //
-    // DESIGN NOTE: Organism cells have dual representation:
-    //   - Cell.organism_id marks which organism owns this cell
-    //   - OrganismManager.cell_to_organism_ tracks organism positions
-    //
-    // These MUST stay in sync! Directly swapping cells breaks this invariant.
-    //
-    // USE THESE METHODS for any cell swaps/moves that might affect organisms:
-    //   - swapCells() - automatically notifies OrganismManager of position changes
-    //
-    // MIGRATION PATH:
-    //   - New code: Use swapCells() exclusively
-    //   - Old code: getData().at() still works, migrate incrementally
-    //   - Future: Consider making getData() const to enforce this API
-    //
-    // See discussion: "Duck getting stuck in walls" bug investigation.
+    // Organism tracking is owned by OrganismManager (single source of truth).
+    // These methods maintain the invariant between cells and organism tracking.
     //
     void swapCells(Vector2i pos1, Vector2i pos2);
+    void replaceMaterialAtCell(int x, int y, MaterialType material);
 
     // =================================================================
     // MATERIAL ADDITION

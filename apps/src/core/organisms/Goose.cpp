@@ -1,4 +1,5 @@
 #include "Goose.h"
+#include "OrganismManager.h"
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
@@ -51,10 +52,10 @@ void Goose::update(World& world, double deltaTime)
     age_seconds_ += deltaTime;
     frame_counter_++;
 
-    // 1. Update ground detection based on current position.
+    // Update ground detection based on current position.
     updateGroundDetection(world);
 
-    // 2. Let brain decide what to do.
+    // Let brain decide what to do.
     if (brain_) {
         GooseSensoryData sensory;
         sensory.position = getAnchorCell();
@@ -66,17 +67,22 @@ void Goose::update(World& world, double deltaTime)
         brain_->think(*this, sensory, deltaTime);
     }
 
-    // 3. Apply movement forces (walking, jumping).
+    // Apply movement forces (walking, jumping).
     applyMovementForces(world, deltaTime);
 
-    // 4. Gather forces from environment (gravity, pending forces on cells).
+    // Gather forces from environment (gravity, pressure, etc. from cells).
     gatherForces(world);
 
-    // 5. Apply accumulated forces to rigid body.
+    // Apply air resistance based on current velocity.
+    // Rigid body organisms compute their own drag to avoid one-frame velocity lag
+    // that would occur if relying on world physics (which uses previous frame's velocity).
+    applyAirResistance(world);
+
+    // Apply accumulated forces to rigid body.
     applyForce(pending_force_, deltaTime);
     pending_force_ = { 0.0, 0.0 };
 
-    // 6. Predict position and check for collisions.
+    // Predict position and check for collisions.
     Vector2d desired_position{
         position.x + velocity.x * deltaTime,
         position.y + velocity.y * deltaTime
@@ -96,29 +102,10 @@ void Goose::update(World& world, double deltaTime)
 
     CollisionInfo collision = detectCollisions(predicted_cells, world);
 
-    // TEMP DEBUG: Log every frame to understand blocking.
-    if (std::abs(velocity.x) > 0.1 || std::abs(velocity.y) > 0.1) {
-        const Cell& pred_cell = world.getData().at(predicted_cells[0].x, predicted_cells[0].y);
-        LOG_INFO(Brain, "Goose {}: desired=({:.2f},{:.2f}) pred_cell=({},{}) blocked={} "
-            "cell: mat={} fill={:.2f} org_id={} our_id={}",
-            id_, desired_position.x, desired_position.y,
-            predicted_cells[0].x, predicted_cells[0].y,
-            collision.blocked,
-            getMaterialName(pred_cell.material_type),
-            pred_cell.fill_ratio,
-            pred_cell.organism_id, id_);
-    }
-
-    // 7. Move if not blocked, otherwise apply collision response.
+    // Move if not blocked, otherwise apply collision response.
     if (!collision.blocked) {
         position = desired_position;
     } else {
-        // Debug: log why we're blocked.
-        if (frame_counter_ % 60 == 0) {
-            LOG_DEBUG(Brain, "Goose {}: BLOCKED at predicted ({}, {}), normal=({:.2f}, {:.2f})",
-                id_, predicted_cells[0].x, predicted_cells[0].y,
-                collision.contact_normal.x, collision.contact_normal.y);
-        }
         // Zero out velocity component going into the obstacle.
         Vector2d normal = collision.contact_normal;
         double v_into_surface = velocity.x * normal.x + velocity.y * normal.y;
@@ -127,23 +114,25 @@ void Goose::update(World& world, double deltaTime)
             velocity.y -= v_into_surface * normal.y;
         }
 
-        // Push position back to stay in current valid cell.
-        // This prevents the organism from getting "stuck" exactly at a cell boundary
-        // where any movement direction would predict into the blocked cell.
+        // Clamp position to stay within current cell to prevent creeping into obstacles.
+        // Only clamp the component that was actually blocked (non-zero normal).
         Vector2i current_cell = getAnchorCell();
-        double cell_center_x = static_cast<double>(current_cell.x) + 0.5;
-        double cell_center_y = static_cast<double>(current_cell.y) + 0.5;
+        constexpr double margin = 0.01;
 
-        // Gently push back toward cell center along blocked direction.
         if (normal.x != 0.0) {
-            position.x = position.x * 0.9 + cell_center_x * 0.1;
+            double cell_min_x = static_cast<double>(current_cell.x) + margin;
+            double cell_max_x = static_cast<double>(current_cell.x + 1) - margin;
+            position.x = std::clamp(position.x, cell_min_x, cell_max_x);
         }
+
         if (normal.y != 0.0) {
-            position.y = position.y * 0.9 + cell_center_y * 0.1;
+            double cell_min_y = static_cast<double>(current_cell.y) + margin;
+            double cell_max_y = static_cast<double>(current_cell.y + 1) - margin;
+            position.y = std::clamp(position.y, cell_min_y, cell_max_y);
         }
     }
 
-    // 8. Project organism onto grid.
+    // Project organism onto grid.
     projectToGrid(world);
 
     // Debug logging.
@@ -185,11 +174,26 @@ void Goose::jump()
 
 void Goose::gatherForces(World& world)
 {
-    // Gather forces from occupied grid cells.
-    // World has already applied gravity, air resistance, etc. to our cells,
-    // so we just sum up what was accumulated.
+    // Gather forces from cells at CURRENT position (not occupied_cells which is stale).
+    // occupied_cells is updated at the END of each frame by projectToGrid(), but forces
+    // are applied to cells at the BEGINNING of the frame based on where the organism currently is.
     const WorldData& data = world.getData();
-    for (const auto& grid_pos : occupied_cells) {
+
+    // Compute current grid positions from current position.
+    std::vector<Vector2i> current_cells;
+    for (const auto& local : local_shape) {
+        Vector2d world_pos{
+            position.x + static_cast<double>(local.local_pos.x),
+            position.y + static_cast<double>(local.local_pos.y)
+        };
+        Vector2i grid_pos{
+            static_cast<int>(std::floor(world_pos.x)),
+            static_cast<int>(std::floor(world_pos.y))
+        };
+        current_cells.push_back(grid_pos);
+    }
+
+    for (const auto& grid_pos : current_cells) {
         if (grid_pos.x < 0 || grid_pos.y < 0
             || static_cast<uint32_t>(grid_pos.x) >= data.width
             || static_cast<uint32_t>(grid_pos.y) >= data.height) {
@@ -200,6 +204,30 @@ void Goose::gatherForces(World& world)
         pending_force_.x += cell.pending_force.x;
         pending_force_.y += cell.pending_force.y;
     }
+}
+
+void Goose::applyAirResistance(const World& world)
+{
+    // Compute air resistance based on current velocity to avoid one-frame lag.
+    // F_drag = -k * v² * v̂
+    double v_mag = std::sqrt(velocity.x * velocity.x + velocity.y * velocity.y);
+
+    if (v_mag < 0.01) {
+        return; // No drag if not moving.
+    }
+
+    const MaterialProperties& props = getMaterialProperties(MaterialType::WOOD);
+    double strength = world.getAirResistanceStrength();
+    double drag_magnitude = strength * props.air_resistance * v_mag * v_mag;
+
+    // Force opposes motion.
+    Vector2d drag_force{
+        -velocity.x / v_mag * drag_magnitude,
+        -velocity.y / v_mag * drag_magnitude
+    };
+
+    pending_force_.x += drag_force.x;
+    pending_force_.y += drag_force.y;
 }
 
 void Goose::projectToGrid(World& world)
@@ -235,7 +263,7 @@ void Goose::projectToGrid(World& world)
         Cell& cell = data.at(grid_pos.x, grid_pos.y);
 
         // Project cell.
-        cell.organism_id = id_;
+        world.getOrganismManager().addCellToOrganism(id_, grid_pos);
         cell.material_type = local.material;
         cell.fill_ratio = local.fill_ratio;
         cell.velocity = velocity;
@@ -272,8 +300,8 @@ void Goose::clearOldProjection(World& world)
         }
 
         Cell& cell = data.at(old_pos.x, old_pos.y);
-        if (cell.organism_id == id_) {
-            cell.organism_id = INVALID_ORGANISM_ID;
+        if (world.getOrganismManager().at(old_pos) == id_) {
+            world.getOrganismManager().removeCellsFromOrganism(id_, {old_pos});
             cell.material_type = MaterialType::AIR;
             cell.fill_ratio = 0.0;
             cell.velocity = { 0.0, 0.0 };

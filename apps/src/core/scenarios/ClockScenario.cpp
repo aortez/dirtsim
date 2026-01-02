@@ -59,9 +59,8 @@ bool DoorManager::openDoor(Vector2i pos, DoorSide side, World& world)
     // Clear the door cell (make it passable).
     world.getData().at(pos.x, pos.y) = Cell();
 
-    // Place wall at roof position.
-    Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
-    roof_cell.replaceMaterial(MaterialType::WALL, 1.0);
+    // Place wall at roof position (displace any organisms).
+    world.replaceMaterialAtCell(state.roof_pos.x, state.roof_pos.y, MaterialType::WALL);
 
     doors_[pos] = state;
 
@@ -80,9 +79,8 @@ void DoorManager::closeDoor(Vector2i pos, World& world)
 
     const DoorState& state = it->second;
 
-    // Restore wall at door position.
-    Cell& door_cell = world.getData().at(pos.x, pos.y);
-    door_cell.replaceMaterial(MaterialType::WALL, 1.0);
+    // Restore wall at door position (push any organisms out of the way).
+    world.replaceMaterialAtCell(pos.x, pos.y, MaterialType::WALL);
 
     // Clear roof cell (it will be restored by normal wall drawing if needed).
     Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
@@ -447,14 +445,14 @@ void ClockScenario::setup(World& world)
 
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
-        materializeMaterial(world, x, 0, MaterialType::WALL);
-        materializeMaterial(world, x, height - 1, MaterialType::WALL);
+        world.replaceMaterialAtCell(x, 0, MaterialType::WALL);
+        world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
     }
 
     // Left and right borders.
     for (uint32_t y = 0; y < height; ++y) {
-        materializeMaterial(world, 0, y, MaterialType::WALL);
-        materializeMaterial(world, width - 1, y, MaterialType::WALL);
+        world.replaceMaterialAtCell(0, y, MaterialType::WALL);
+        world.replaceMaterialAtCell(width - 1, y, MaterialType::WALL);
     }
 
     // Draw current time.
@@ -549,7 +547,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                materializeMaterial(world, x, y, MaterialType::METAL);
+                world.replaceMaterialAtCell(x, y, MaterialType::METAL);
             }
         }
     }
@@ -579,10 +577,10 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
-                materializeMaterial(world, x, y1, MaterialType::METAL);
+                world.replaceMaterialAtCell(x, y1, MaterialType::METAL);
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
-                materializeMaterial(world, x, y2, MaterialType::METAL);
+                world.replaceMaterialAtCell(x, y2, MaterialType::METAL);
             }
         }
     }
@@ -1151,7 +1149,7 @@ void ClockScenario::updateDrain(World& world)
             for (uint32_t x = old_start_x; x <= old_end_x; ++x) {
                 bool still_open = drain_open_ && x >= new_start_x && x <= new_end_x;
                 if (!still_open) {
-                    data.at(x, drain_y).replaceMaterial(MaterialType::WALL, 1.0);
+                    world.replaceMaterialAtCell(x, drain_y, MaterialType::WALL);
                 }
             }
         }
@@ -1242,164 +1240,6 @@ void ClockScenario::updateDrain(World& world)
     }
 }
 
-void ClockScenario::materializeMaterial(World& world, int x, int y, MaterialType material)
-{
-    const WorldData& data = world.getData();
-
-    if (x < 0 || x >= static_cast<int>(data.width) ||
-        y < 0 || y >= static_cast<int>(data.height)) {
-        return;
-    }
-
-    Cell& cell = world.getData().at(x, y);
-
-    if (cell.isEmpty() || cell.material_type == material) {
-        cell.replaceMaterial(material, 1.0);
-        return;
-    }
-
-    // Find open adjacent cell closest to COM direction.
-    Vector2i best_dir{ 0, 0 };
-    double best_score = -999.0;
-
-    static constexpr std::array<std::pair<int, int>, 4> directions = {
-        { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
-    };
-
-    for (auto [dx, dy] : directions) {
-        int nx = x + dx;
-        int ny = y + dy;
-
-        if (nx < 0 || nx >= static_cast<int>(data.width) ||
-            ny < 0 || ny >= static_cast<int>(data.height)) {
-            continue;
-        }
-
-        const Cell& neighbor = data.at(nx, ny);
-        if (!neighbor.isEmpty()) {
-            continue;
-        }
-
-        // Score by alignment with COM.
-        double score = cell.com.x * dx + cell.com.y * dy;
-        if (score > best_score) {
-            best_score = score;
-            best_dir = { dx, dy };
-        }
-    }
-
-    // Expand search if no immediate neighbors available.
-    if (best_dir.x == 0 && best_dir.y == 0) {
-        // Search in expanding radius (2, 3, 4 cells away).
-        for (int radius = 2; radius <= 4 && best_dir.x == 0 && best_dir.y == 0; ++radius) {
-            for (int dy = -radius; dy <= radius; ++dy) {
-                for (int dx = -radius; dx <= radius; ++dx) {
-                    // Skip if not on the perimeter of this radius.
-                    if (std::abs(dx) != radius && std::abs(dy) != radius) {
-                        continue;
-                    }
-
-                    int nx = x + dx;
-                    int ny = y + dy;
-
-                    if (nx < 0 || nx >= static_cast<int>(data.width) ||
-                        ny < 0 || ny >= static_cast<int>(data.height)) {
-                        continue;
-                    }
-
-                    const Cell& neighbor = data.at(nx, ny);
-                    if (!neighbor.isEmpty()) {
-                        continue;
-                    }
-
-                    // Score by alignment with COM (prefer direction material wants to go).
-                    double score = cell.com.x * dx + cell.com.y * dy;
-                    if (score > best_score) {
-                        best_score = score;
-                        best_dir = { dx, dy };
-                    }
-                }
-            }
-        }
-    }
-
-    if (best_dir.x == 0 && best_dir.y == 0) {
-        // Still no empty cell found even after expanding search.
-        // Don't overwrite organisms - let them handle themselves.
-        if (cell.organism_id != INVALID_ORGANISM_ID) {
-            spdlog::warn("ClockScenario: Cannot materialize {} at ({},{}) - organism {} trapped, no escape route!",
-                getMaterialName(material), x, y, cell.organism_id);
-            return;
-        }
-        // No organism - safe to overwrite (last resort).
-        cell.replaceMaterial(material, 1.0);
-        return;
-    }
-
-    // Material "arrives" from the open cell direction.
-    Vector2i source_pos{ x + best_dir.x, y + best_dir.y };
-    Vector2i target_pos{ x, y };
-
-    Cell& source = world.getData().at(source_pos.x, source_pos.y);
-
-    // Capture organism IDs BEFORE swap.
-    OrganismId source_organism = source.organism_id;
-    OrganismId target_organism = cell.organism_id;
-
-    // Log when displacing organisms.
-    if (target_organism != INVALID_ORGANISM_ID) {
-        spdlog::info("ClockScenario: materializeMaterial({},{},{}) displacing organism {} from ({},{}) to ({},{})",
-            x, y, getMaterialName(material), target_organism,
-            target_pos.x, target_pos.y, source_pos.x, source_pos.y);
-    }
-
-    source.replaceMaterial(material, 1.0);
-
-    // Create MaterialMove for physics-aware swap.
-    MaterialMove move;
-    move.fromX = source_pos.x;
-    move.fromY = source_pos.y;
-    move.toX = target_pos.x;
-    move.toY = target_pos.y;
-    move.material = material;
-    move.momentum = Vector2d(-best_dir.x, -best_dir.y) * 2.0;
-    move.collision_energy = 100.0;
-    move.boundary_normal = Vector2d(-best_dir.x, -best_dir.y);
-    move.material_mass = 1000.0;
-    move.target_mass = cell.fill_ratio * getMaterialDensity(cell.material_type);
-
-    // Execute physics-aware swap.
-    // NOTE: This manually swaps cell contents (including organism_id).
-    Vector2i swap_dir = { -best_dir.x, -best_dir.y };
-    world.getCollisionCalculator().swapCounterMovingMaterials(source, cell, swap_dir, move);
-
-    // Notify OrganismManager of position changes (if organisms were involved).
-    // swapCounterMovingMaterials swapped: source_pos ↔ target_pos.
-    if (source_organism != INVALID_ORGANISM_ID || target_organism != INVALID_ORGANISM_ID) {
-        std::vector<OrganismTransfer> transfers;
-
-        if (source_organism != INVALID_ORGANISM_ID) {
-            transfers.push_back(OrganismTransfer{
-                source_pos,  // from
-                target_pos,  // to (organism moved here)
-                source_organism,
-                cell.fill_ratio  // Now at target_pos.
-            });
-        }
-
-        if (target_organism != INVALID_ORGANISM_ID) {
-            transfers.push_back(OrganismTransfer{
-                target_pos,  // from
-                source_pos,  // to (organism moved here)
-                target_organism,
-                source.fill_ratio  // Now at source_pos.
-            });
-        }
-
-        world.getOrganismManager().notifyTransfers(transfers);
-    }
-}
-
 void ClockScenario::redrawWalls(World& world)
 {
     uint32_t width = world.getData().width;
@@ -1411,13 +1251,13 @@ void ClockScenario::redrawWalls(World& world)
         Vector2i bottom_pos{ static_cast<int>(x), static_cast<int>(height - 1) };
 
         if (!door_manager_.isOpenDoor(top_pos)) {
-            materializeMaterial(world, x, 0, MaterialType::WALL);
+            world.replaceMaterialAtCell(x, 0, MaterialType::WALL);
         }
 
         // Skip drain cells in bottom wall when drain is open.
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
         if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell) {
-            materializeMaterial(world, x, height - 1, MaterialType::WALL);
+            world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
         }
     }
 
@@ -1427,16 +1267,16 @@ void ClockScenario::redrawWalls(World& world)
         Vector2i right_pos{ static_cast<int>(width - 1), static_cast<int>(y) };
 
         if (!door_manager_.isOpenDoor(left_pos)) {
-            materializeMaterial(world, 0, y, MaterialType::WALL);
+            world.replaceMaterialAtCell(0, y, MaterialType::WALL);
         }
         if (!door_manager_.isOpenDoor(right_pos)) {
-            materializeMaterial(world, width - 1, y, MaterialType::WALL);
+            world.replaceMaterialAtCell(width - 1, y, MaterialType::WALL);
         }
     }
 
     // Ensure roof cells are walls.
     for (const auto& roof_pos : door_manager_.getRoofPositions()) {
-        materializeMaterial(world, roof_pos.x, roof_pos.y, MaterialType::WALL);
+        world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
 }
 

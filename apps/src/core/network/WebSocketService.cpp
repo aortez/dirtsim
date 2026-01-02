@@ -442,7 +442,8 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
     }
 }
 
-void WebSocketService::broadcastRenderMessage(const WorldData& data)
+void WebSocketService::broadcastRenderMessage(
+    const WorldData& data, const std::vector<OrganismId>& organism_grid)
 {
     if (clientRenderFormats_.empty()) {
         LOG_INFO(Network, "broadcastRenderMessage called but clientRenderFormats_ is EMPTY");
@@ -458,7 +459,8 @@ void WebSocketService::broadcastRenderMessage(const WorldData& data)
     for (const auto& [ws, format] : clientRenderFormats_) {
         if (ws && ws->isOpen()) {
             try {
-                RenderMessage msg = RenderMessageUtils::packRenderMessage(data, format);
+                RenderMessage msg =
+                    RenderMessageUtils::packRenderMessage(data, format, organism_grid);
 
                 std::vector<std::byte> msgData;
                 zpp::bits::out out(msgData);

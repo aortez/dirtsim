@@ -1,5 +1,6 @@
 #include "CellTrackerUtil.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
+#include "core/organisms/OrganismManager.h"
 #include <iomanip>
 
 namespace DirtSim {
@@ -40,7 +41,8 @@ void CellTracker::recordFrame(int /*frame*/)
     prev_frame_cells_.clear();
     for (const auto& [pos, tracked] : tracked_cells_) {
         const Cell& cell = world_.getData().at(pos.x, pos.y);
-        prev_frame_cells_[pos] = PrevCellState{ cell.material_type, cell.organism_id };
+        OrganismId org_id = world_.getOrganismManager().at(pos);
+        prev_frame_cells_[pos] = PrevCellState{ cell.material_type, org_id };
     }
 }
 
@@ -51,8 +53,9 @@ bool CellTracker::checkForDisplacements(int frame)
 
     for (const auto& [pos, tracked] : tracked_cells_) {
         const Cell& cell = world_.getData().at(pos.x, pos.y);
+        OrganismId current_org = world_.getOrganismManager().at(pos);
 
-        bool cell_moved = (cell.organism_id != organism_id_)
+        bool cell_moved = (current_org != organism_id_)
             || (cell.material_type != tracked.material) || (cell.fill_ratio < 0.5);
 
         if (cell_moved) {

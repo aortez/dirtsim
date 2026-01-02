@@ -113,8 +113,9 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
 
                     const Cell& cellB = data.at(nx, ny);
 
-                    // Skip if neighbor is empty, wall, or fluid.
-                    if (cellB.isEmpty() || cellB.isWall() || isMaterialFluid(cellB.material_type)) {
+                    // Skip if neighbor is empty or fluid.
+                    // Walls can provide friction - their friction coefficients control the amount.
+                    if (cellB.isEmpty() || isMaterialFluid(cellB.material_type)) {
                         continue;
                     }
 
@@ -228,8 +229,9 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
 
                     const Cell& cellB = getCellAt(world, nx, ny);
 
-                    // Skip if neighbor is empty, wall, or fluid.
-                    if (cellB.isEmpty() || cellB.isWall() || isMaterialFluid(cellB.material_type)) {
+                    // Skip if neighbor is empty or fluid.
+                    // Walls can provide friction - their friction coefficients control the amount.
+                    if (cellB.isEmpty() || isMaterialFluid(cellB.material_type)) {
                         continue;
                     }
 

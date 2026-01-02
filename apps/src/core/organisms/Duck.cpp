@@ -56,15 +56,17 @@ void Duck::update(World& world, double deltaTime)
                 id_, anchor_cell_.x, anchor_cell_.y, getMaterialName(our_cell.material_type));
             spdlog::critical("  Duck: age={:.1f}s, on_ground={}, facing=({:.1f},{:.1f})",
                 age_seconds_, on_ground_, facing_.x, facing_.y);
+            OrganismId anchor_org = world.getOrganismManager().at(anchor_cell_);
             spdlog::critical("  Cell at anchor: fill={:.2f}, vel=({:.1f},{:.1f}), organism_id={}",
-                our_cell.fill_ratio, our_cell.velocity.x, our_cell.velocity.y, our_cell.organism_id);
+                our_cell.fill_ratio, our_cell.velocity.x, our_cell.velocity.y, anchor_org);
 
-            // Scan entire world to find where our WOOD actually is.
-            spdlog::critical("  Scanning world for duck's actual WOOD cell...");
+            // Scan entire world to find where our organism actually is.
+            spdlog::critical("  Scanning world for duck's actual cells...");
             for (uint32_t y = 0; y < data.height; ++y) {
                 for (uint32_t x = 0; x < data.width; ++x) {
-                    const Cell& cell = data.at(x, y);
-                    if (cell.organism_id == id_) {
+                    Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+                    if (world.getOrganismManager().at(pos) == id_) {
+                        const Cell& cell = data.at(x, y);
                         spdlog::critical("    Found organism_id={} at ({},{}): material={}, fill={:.2f}",
                             id_, x, y, getMaterialName(cell.material_type), cell.fill_ratio);
                     }
@@ -74,22 +76,14 @@ void Duck::update(World& world, double deltaTime)
         DIRTSIM_ASSERT(our_cell.material_type == MaterialType::WOOD,
             "Duck anchor cell must be WOOD!");
 
-        // Cell's organism_id must match duck's id.
-        if (our_cell.organism_id != id_) {
-            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has organism_id {} instead of {}!",
-                id_, anchor_cell_.x, anchor_cell_.y, our_cell.organism_id, id_);
-        }
-        DIRTSIM_ASSERT(our_cell.organism_id == id_,
-            "Duck anchor cell organism_id must match!");
-
-        // OrganismManager must agree on our position.
-        OrganismId manager_says = world.getOrganismManager().getOrganismAtCell(anchor_cell_);
+        // OrganismManager must say we own our anchor.
+        OrganismId manager_says = world.getOrganismManager().at(anchor_cell_);
         if (manager_says != id_) {
-            spdlog::critical("Duck {} VIOLATION: OrganismManager says organism {} at ({},{}), not us!",
-                id_, manager_says, anchor_cell_.x, anchor_cell_.y);
+            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has organism_id {} instead of {}!",
+                id_, anchor_cell_.x, anchor_cell_.y, manager_says, id_);
         }
         DIRTSIM_ASSERT(manager_says == id_,
-            "OrganismManager tracking must match duck anchor!");
+            "Duck anchor cell organism_id must match!");
     }
 
     // Update ground detection first.

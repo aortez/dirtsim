@@ -145,6 +145,7 @@ private:
     static void onIconClicked(lv_event_t* e);
     static void onModeButtonClicked(lv_event_t* e);
     static void onAutoShrinkTimer(lv_timer_t* timer);
+    static void onGesture(lv_event_t* e);
 };
 
 } // namespace Ui

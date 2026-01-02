@@ -18,6 +18,10 @@ void Cell::setFillRatio(double ratio)
 
     // If fill ratio becomes effectively zero, convert to empty AIR.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
+        if (material_type == MaterialType::WOOD) {
+            spdlog::info("Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)",
+                fill_ratio);
+        }
         material_type = MaterialType::AIR;
         fill_ratio = 0.0;
         velocity = Vector2d{ 0.0, 0.0 };
@@ -94,9 +98,7 @@ double Cell::addMaterialWithPhysics(
 
         // Calculate realistic landing position based on boundary crossing.
         com = calculateTrajectoryLanding(source_com, newVel, boundary_normal);
-        velocity = newVel; // Preserve velocity through transfer.
-
-        // Note: organism_id is transferred separately in transferToWithPhysics().
+        velocity = newVel;
 
         return added;
     }
@@ -144,6 +146,10 @@ double Cell::removeMaterial(double amount)
 
     // Check if we became empty.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
+        if (material_type == MaterialType::WOOD) {
+            spdlog::info("Cell::removeMaterial - clearing WOOD cell (fill {:.3f} -> 0.0)",
+                fill_ratio + removed);
+        }
         clear();
     }
 
@@ -177,27 +183,19 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
     // Calculate how much we can actually transfer.
     const double available = std::min(amount, fill_ratio);
 
-    // Save organism_id before transfer (in case source becomes empty).
-    OrganismId source_organism_id = organism_id;
-
     // Use physics-aware method with current COM and velocity.
+    // Note: organism tracking is handled by OrganismManager, not Cell.
     const double accepted =
         target.addMaterialWithPhysics(material_type, available, com, velocity, boundary_normal);
 
-    // Remove the accepted amount from this cell.
     if (accepted > 0.0) {
-        removeMaterial(accepted);
-
-        // Transfer organism ownership to target if material moved.
-        if (source_organism_id != INVALID_ORGANISM_ID) {
-            // Target receives organism ownership.
-            target.organism_id = source_organism_id;
-
-            // If source is now empty, clear organism_id.
-            if (isEmpty()) {
-                organism_id = INVALID_ORGANISM_ID;
-            }
+        if (material_type == MaterialType::WOOD) {
+            spdlog::info("Cell::transferToWithPhysics - removing {:.3f} WOOD (accepted by target)",
+                accepted);
         }
+        removeMaterial(accepted);
+    } else if (material_type == MaterialType::WOOD && available > 0.0) {
+        spdlog::info("Cell::transferToWithPhysics - WOOD transfer REJECTED (target couldn't accept)");
     }
 
     return accepted;
@@ -211,22 +209,11 @@ void Cell::replaceMaterial(MaterialType type, double fill_ratio)
     // Reset physics state when replacing material.
     velocity = Vector2d{ 0.0, 0.0 };
     com = Vector2d{ 0.0, 0.0 };
-
-    // Clear organism ownership when material changes.
-    // If an organism's WOOD becomes WALL/METAL/etc, the organism no longer owns this cell.
-    organism_id = INVALID_ORGANISM_ID;
 }
 
 void Cell::clear()
 {
-    material_type = MaterialType::AIR;
-    fill_ratio = 0.0;
-    velocity = Vector2d{ 0.0, 0.0 };
-    com = Vector2d{ 0.0, 0.0 };
-
-    // Clear all pressure values when cell becomes empty.
-    pressure = 0.0;
-    pressure_gradient = Vector2d{ 0.0, 0.0 };
+    *this = Cell{};
 }
 
 void Cell::clampCOM()

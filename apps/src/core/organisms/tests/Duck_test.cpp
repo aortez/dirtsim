@@ -119,7 +119,7 @@ TEST_F(DuckTest, CreateDuckPlacesWoodCell)
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(2, 2);
     EXPECT_EQ(cell.material_type, MaterialType::WOOD);
-    EXPECT_EQ(cell.organism_id, duck_id);
+    EXPECT_EQ(manager.at(Vector2i{2, 2}), duck_id);
 
     // Check duck's anchor cell.
     EXPECT_EQ(duck->getAnchorCell(), Vector2i(2, 2));
@@ -219,21 +219,21 @@ TEST_F(DuckTest, DuckAnchorCellTracksPhysics)
 TEST_F(DuckTest, DuckWalksWhenOnGround)
 {
     // Create a wider world for movement testing.
-    // Layout (20x5):
+    // Layout (100x5):
     //   Row 0: WALL border
     //   Row 1-3: AIR
     //   Row 4: WALL floor
-    auto world = std::make_unique<World>(20, 5);
+    auto world = std::make_unique<World>(100, 5);
 
     // Clear interior to air.
     for (uint32_t y = 1; y < 4; ++y) {
-        for (uint32_t x = 1; x < 19; ++x) {
+        for (uint32_t x = 1; x < 99; ++x) {
             world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
         }
     }
 
     // Ensure floor.
-    for (uint32_t x = 0; x < 20; ++x) {
+    for (uint32_t x = 0; x < 100; ++x) {
         world->getData().at(x, 4).replaceMaterial(MaterialType::WALL, 1.0);
     }
 

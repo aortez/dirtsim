@@ -8,6 +8,7 @@
 #include "WorldCohesionCalculator.h"
 #include "WorldData.h"
 #include "WorldPressureCalculator.h"
+#include "organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
 #include <algorithm>
 #include <cmath>
@@ -62,15 +63,15 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     move.material = fromCell.material_type;
 
     // Calculate how much wants to transfer vs what can transfer.
-    double wants_to_transfer = fromCell.fill_ratio; // Cell wants to follow its COM.
+    double wants_to_transfer = fromCell.fill_ratio;
     double capacity = toCell.getCapacity();
 
     // Queue only what will actually succeed.
     move.amount = std::min(wants_to_transfer, capacity);
 
-    // Store pressure generation info in the move for later application.
+    // Calculate excess that won't fit (for pressure generation).
     double excess = wants_to_transfer - move.amount;
-    move.pressure_from_excess = 0.0; // Initialize.
+    move.pressure_from_excess = 0.0;
 
     if (excess > MIN_MATTER_THRESHOLD && world.getPhysicsSettings().pressure_dynamic_strength > 0) {
         double blocked_mass = excess * getMaterialDensity(fromCell.material_type);
@@ -107,6 +108,17 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     // Determine collision type based on materials and energy.
     move.collision_type =
         determineCollisionType(fromCell.material_type, toCell.material_type, move.collision_energy);
+
+    // Single-cell organisms must not fragment via partial TRANSFER_ONLY.
+    // Only allow full transfers into completely empty cells.
+    OrganismId org_id = world.getOrganismManager().at(fromPos);
+    if (org_id != INVALID_ORGANISM_ID &&
+        move.collision_type == CollisionType::TRANSFER_ONLY &&
+        !toCell.isEmpty()) {
+        move.collision_type = CollisionType::ELASTIC_REFLECTION;
+        spdlog::debug("Organism at ({},{}) - target not empty (fill={:.2f}), forcing collision",
+            fromPos.x, fromPos.y, toCell.fill_ratio);
+    }
 
     // Set material-specific restitution coefficient.
     const auto& fromProps = fromCell.material();
@@ -1015,12 +1027,14 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     }
 
     // Organism cells resist displacement (handled by rigid body physics).
-    if (toCell.organism_id != INVALID_ORGANISM_ID) {
+    Vector2i toPos{static_cast<int>(fromX + direction.x), static_cast<int>(fromY + direction.y)};
+    OrganismId toOrgId = world.getOrganismManager().at(toPos);
+    if (toOrgId != INVALID_ORGANISM_ID) {
         LOG_DEBUG(
             Swap,
             "Swap denied: cannot displace organism cell {} (organism_id={})",
             getMaterialName(toCell.material_type),
-            toCell.organism_id);
+            toOrgId);
         return false;
     }
 
@@ -1391,17 +1405,15 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     }
 
     // Swap material types and fill ratios (conserve mass).
+    // Note: organism tracking is handled by OrganismManager, not Cell.
     MaterialType temp_type = fromCell.material_type;
     double temp_fill = fromCell.fill_ratio;
-    OrganismId temp_organism = fromCell.organism_id;
 
     fromCell.material_type = toCell.material_type;
     fromCell.fill_ratio = toCell.fill_ratio;
-    fromCell.organism_id = toCell.organism_id;
 
     toCell.material_type = temp_type;
     toCell.fill_ratio = temp_fill;
-    toCell.organism_id = temp_organism;
 
     // Moving material (now in toCell) continues trajectory with reduced velocity.
     // Calculate landing position based on boundary crossing trajectory.

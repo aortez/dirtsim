@@ -1,13 +1,33 @@
 # Rigid Body Design for Grid-Based Physics
 
-## The Problem
+## Overview
 
-Currently, rigid materials (WOOD, METAL) are represented as individual particles with cohesion forces. This causes issues:
-- Horizontal structures fall apart (each cell moves independently)
-- High cohesion creates COM drift and pressure waves
+Rigid body organisms (Goose) store position in continuous space and project onto the grid each frame. This prevents multi-cell organisms from tearing apart when cells cross boundaries at different times.
+
+**Core principle:** Rigid bodies control their own position. World physics provides forces, not movement.
+
+## Critical Isolation Requirements
+
+Rigid body organisms MUST be skipped in these systems:
+
+1. **`computeMaterialMoves()`** - Don't generate transfers for their cells (world shouldn't move them)
+2. **`notifyTransfers()`** - Don't update their cell tracking (they track their own position)
+3. **`applyAirResistance()` in World** - They compute their own drag (avoids one-frame velocity lag)
+
+Additionally, rigid bodies must:
+4. **Compute own air resistance** in their update() using current velocity
+5. **Gather forces from current position** not occupied_cells (which is stale)
+
+**Bug if any are missing:** Intermittent force loss, position reset to cell center, velocity overshoot, or cells moving independently.
+
+## The Problem (Historical Context)
+
+Cell-based rigid materials (WOOD, METAL) represented as individual particles with cohesion forces caused issues:
+- Horizontal structures fell apart (each cell moved independently)
+- High cohesion created COM drift and pressure waves
 - No concept of structural integrity
 
-**Goal:** Enable organism structures (trees) to move as rigid units while still participating in grid-based physics.
+**Goal:** Enable organism structures to move as rigid units while still participating in grid-based physics.
 
 ## Design Decisions
 
@@ -479,37 +499,52 @@ SEED at (4,5), WOOD at (4,3), but (4,4) is AIR
 - Fracture mechanics (structures breaking under stress)
 - Non-organism rigid bodies (welded metal structures)
 
-### 📊 Current Physics Loop
+### 📊 Current Physics Loop (Updated for Goose)
 
 ```
 advanceTime(deltaTime)
 ├── Pressure phases (injection, diffusion, decay)
-├── organism_manager->update()           [✓ Moved earlier]
-├── resolveForces(deltaTime, grid)       [✓ Skips organism cells]
-│   ├── Clear pending_force (non-organism cells only)
-│   ├── Apply gravity
-│   ├── Apply air resistance
+│
+├── organism_manager->update()                    // Cell-based organisms (Duck, Tree)
+│   └── Duck adds walk force to cell              // Brain decides actions
+│
+├── resolveForces(deltaTime, grid)                // Apply physics forces to cells
+│   ├── Clear pending_force (non-organism only)
+│   ├── Apply gravity (all non-empty cells)
+│   ├── Apply air resistance (skip rigid body)    ← Goose skipped
 │   ├── Apply pressure forces
-│   ├── Apply cohesion forces
-│   ├── Apply friction forces
-│   └── Apply bone forces (no-op, bones disabled)
-├── resolveRigidBodies(deltaTime)        [✓ NEW]
-│   ├── For each organism:
-│   │   ├── Flood fill from anchor → connected cells
-│   │   ├── Gather total force (gravity + support + brain actions)
-│   │   ├── computeOrganismSupportForce() → add ground reaction
-│   │   ├── F=ma → unified acceleration
-│   │   └── Set all cells to unified velocity
-│   └── Clear organism cell pending_force
+│   ├── Apply cohesion/adhesion
+│   ├── Apply friction (includes walls now)
+│   ├── Apply viscosity
+│   └── Integrate F=ma (skip organism cells)      ← Organisms handled separately
+│
+├── organism_manager->advanceTime()               // Rigid body organisms (Goose)
+│   └── Goose::update():
+│       ├── Brain decides walk direction
+│       ├── Add walk force to pending_force_
+│       ├── gatherForces() from CURRENT cells     ← Not occupied_cells!
+│       ├── Compute own air resistance            ← Based on current velocity
+│       ├── applyForce() → F=ma integration
+│       ├── Collision detection
+│       └── projectToGrid() → stamp cells
+│
+├── resolveRigidBodies(deltaTime)                 // Cell-based organism integration
+│   ├── Duck: F=ma on cell.pending_force
+│   ├── Tree: flood-fill structure, unified velocity, ground support
+│   └── Clear organism pending_force
+│
 ├── Velocity limiting
-├── updateTransfers() → compute material moves
-├── processMaterialMoves() → execute swaps/transfers
-├── pruneDisconnectedFragments()         [✓ NEW]
-│   ├── Clean up empty cells (stale positions)
-│   ├── Clean up transferred cells (ownership changes)
-│   └── [Disabled] Structural disconnection check
-└── timestep++
+│
+├── updateTransfers()
+│   ├── computeMaterialMoves()                    ← Skip rigid body cells
+│   └── processMaterialMoves()
+│
+├── notifyTransfers()                             ← Skip rigid body organisms
+│
+└── pruneDisconnectedFragments()
 ```
+
+**Key insight:** Rigid body cells are skipped in multiple places because they're NOT moved by world physics - they only GATHER forces from it.
 
 ### 🎯 Next Steps
 

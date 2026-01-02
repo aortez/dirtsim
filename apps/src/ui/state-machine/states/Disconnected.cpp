@@ -130,10 +130,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             }
 
             // Apply sparse organism data.
-            auto organismIds = RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
-            for (size_t i = 0; i < numCells; ++i) {
-                worldData.cells[i].organism_id = organismIds[i];
-            }
+            worldData.organism_ids = RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
 
             // Copy bone data for structural visualization.
             worldData.bones = renderMsg.bones;

@@ -693,7 +693,10 @@ State::Any StateMachine::onEvent(const GetSimStatsCommand& /*cmd.*/)
 }
 
 void StateMachine::broadcastRenderMessage(
-    const WorldData& data, const std::string& scenario_id, const ScenarioConfig& scenario_config)
+    const WorldData& data,
+    const std::vector<OrganismId>& organism_grid,
+    const std::string& scenario_id,
+    const ScenarioConfig& scenario_config)
 {
     if (pImpl->subscribedClients_.empty()) {
         spdlog::debug("StateMachine: broadcastRenderMessage called but no subscribed clients");
@@ -706,8 +709,8 @@ void StateMachine::broadcastRenderMessage(
         data.timestep);
 
     for (const auto& client : pImpl->subscribedClients_) {
-        // Pack render message.
-        RenderMessage msg = RenderMessageUtils::packRenderMessage(data, client.renderFormat);
+        RenderMessage msg =
+            RenderMessageUtils::packRenderMessage(data, client.renderFormat, organism_grid);
 
         // Bundle with scenario metadata for transport.
         RenderMessageFull fullMsg;

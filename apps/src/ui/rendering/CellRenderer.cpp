@@ -638,9 +638,11 @@ void CellRenderer::renderWorldData(
 
                 // Only hide cells for sprite-based organisms (those with entities).
                 // Material-based organisms (trees) should show their cells.
+                OrganismId org_id = (idx < worldData.organism_ids.size())
+                    ? worldData.organism_ids[idx]
+                    : INVALID_ORGANISM_ID;
                 bool is_sprite_organism =
-                    (cell.organism_id != INVALID_ORGANISM_ID)
-                    && (sprite_organism_ids.count(cell.organism_id) > 0);
+                    (org_id != INVALID_ORGANISM_ID) && (sprite_organism_ids.count(org_id) > 0);
 
                 if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_sprite_organism) {
                     lv_color_t matColor = getMaterialColor(cell.material_type);

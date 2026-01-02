@@ -70,6 +70,7 @@ private:
 
     void updateGroundDetection(const World& world);
     void applyMovementForces(const World& world, double deltaTime);
+    void applyAirResistance(const World& world);
     void clearOldProjection(World& world);
     bool isSolidCell(const World& world, int x, int y) const;
 };

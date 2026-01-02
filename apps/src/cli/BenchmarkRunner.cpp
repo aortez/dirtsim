@@ -2,6 +2,11 @@
 #include "core/ReflectSerializer.h"
 #include "core/WorldData.h"
 #include "server/api/Exit.h"
+#include "server/api/PerfStatsGet.h"
+#include "server/api/SimRun.h"
+#include "server/api/StatusGet.h"
+#include "server/api/TimerStatsGet.h"
+#include "server/api/WorldResize.h"
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -12,6 +17,24 @@
 
 namespace DirtSim {
 namespace Client {
+
+namespace {
+
+/**
+ * @brief Wraps a C++ API command with its name for JSON transport.
+ *
+ * This ensures command names are derived from the type system, preventing
+ * typos like "sim_run" vs "SimRun".
+ */
+template <typename CommandType>
+nlohmann::json wrapCommand(const CommandType& cmd)
+{
+    nlohmann::json json = cmd.toJson();
+    json["command"] = CommandType::name();
+    return json;
+}
+
+} // namespace
 
 BenchmarkRunner::BenchmarkRunner()
 {}
@@ -48,11 +71,10 @@ BenchmarkResults BenchmarkRunner::run(
     // Start simulation.
     auto benchmarkStart = std::chrono::steady_clock::now();
 
-    nlohmann::json simRunCmd = { { "command", "sim_run" },
-                                 { "timestep", 0.016 },
-                                 { "max_steps", steps },
-                                 { "scenario_id", scenario } };
-    auto simRunResult = client_.sendJsonAndReceive(simRunCmd.dump(), 5000);
+    Api::SimRun::Command simRunCmd;
+    simRunCmd.timestep = 0.016;
+    simRunCmd.max_steps = static_cast<int>(steps);
+    auto simRunResult = client_.sendJsonAndReceive(wrapCommand(simRunCmd).dump(), 5000);
     if (simRunResult.isError()) {
         spdlog::error("BenchmarkRunner: SimRun failed: {}", simRunResult.errorValue().message);
         return results;
@@ -73,13 +95,13 @@ BenchmarkResults BenchmarkRunner::run(
 
     spdlog::info("BenchmarkRunner: Started simulation ({} steps, scenario: {})", steps, scenario);
 
-    // Resize world if size specified (must be done after sim_run, when in SimRunning state).
+    // Resize world if size specified (must be done after SimRun, when in SimRunning state).
     if (worldSize > 0) {
         spdlog::info("BenchmarkRunner: Resizing world to {}x{}", worldSize, worldSize);
-        nlohmann::json resizeCmd = { { "command", "world_resize" },
-                                     { "width", worldSize },
-                                     { "height", worldSize } };
-        auto resizeResult = client_.sendJsonAndReceive(resizeCmd.dump(), 5000);
+        Api::WorldResize::Command resizeCmd;
+        resizeCmd.width = static_cast<uint32_t>(worldSize);
+        resizeCmd.height = static_cast<uint32_t>(worldSize);
+        auto resizeResult = client_.sendJsonAndReceive(wrapCommand(resizeCmd).dump(), 5000);
         if (resizeResult.isError()) {
             spdlog::error(
                 "BenchmarkRunner: World resize failed: {}", resizeResult.errorValue().message);
@@ -101,7 +123,7 @@ BenchmarkResults BenchmarkRunner::run(
         }
     }
 
-    // Poll state_get until simulation completes.
+    // Poll StatusGet until simulation completes.
     int timeoutSec = (steps * 50) / 1000 + 10;
     bool benchmarkComplete = false;
 
@@ -115,9 +137,9 @@ BenchmarkResults BenchmarkRunner::run(
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-        // Poll current step using lightweight status_get (not state_get).
-        nlohmann::json statusGetCmd = { { "command", "status_get" } };
-        auto statusResult = client_.sendJsonAndReceive(statusGetCmd.dump(), 1000);
+        // Poll current step using lightweight StatusGet (not StateGet).
+        Api::StatusGet::Command statusGetCmd;
+        auto statusResult = client_.sendJsonAndReceive(wrapCommand(statusGetCmd).dump(), 1000);
         if (statusResult.isError()) {
             continue; // Retry on error.
         }
@@ -156,7 +178,7 @@ BenchmarkResults BenchmarkRunner::run(
             }
         }
         catch (const std::exception& e) {
-            spdlog::debug("BenchmarkRunner: Failed to parse status_get response: {}", e.what());
+            spdlog::warn("BenchmarkRunner: Failed to parse StatusGet response: {}", e.what());
             // Continue polling.
         }
 
@@ -178,9 +200,9 @@ BenchmarkResults BenchmarkRunner::run(
     }
 
     // Query performance stats.
-    spdlog::info("BenchmarkRunner: Requesting perf_stats from server");
-    nlohmann::json perfStatsCmd = { { "command", "perf_stats_get" } };
-    auto perfResult = client_.sendJsonAndReceive(perfStatsCmd.dump(), 2000);
+    spdlog::info("BenchmarkRunner: Requesting PerfStats from server");
+    Api::PerfStatsGet::Command perfStatsCmd;
+    auto perfResult = client_.sendJsonAndReceive(wrapCommand(perfStatsCmd).dump(), 2000);
     if (perfResult.isError()) {
         spdlog::warn("Failed to get perf stats: {}", perfResult.errorValue().message);
         return results;
@@ -222,9 +244,9 @@ BenchmarkResults BenchmarkRunner::run(
     }
 
     // Query detailed timer statistics.
-    spdlog::info("BenchmarkRunner: Requesting timer_stats from server");
-    nlohmann::json timerStatsCmd = { { "command", "timer_stats_get" } };
-    auto timerResult = client_.sendJsonAndReceive(timerStatsCmd.dump(), 2000);
+    spdlog::info("BenchmarkRunner: Requesting TimerStats from server");
+    Api::TimerStatsGet::Command timerStatsCmd;
+    auto timerResult = client_.sendJsonAndReceive(wrapCommand(timerStatsCmd).dump(), 2000);
     if (timerResult.isError()) {
         spdlog::warn("Failed to get timer stats: {}", timerResult.errorValue().message);
         return results;
@@ -243,12 +265,12 @@ BenchmarkResults BenchmarkRunner::run(
     }
 
     // Send exit command to cleanly shut down server.
-    spdlog::info("BenchmarkRunner: Sending exit command to server");
-    nlohmann::json exitCmd = { { "command", "Exit" } };
+    spdlog::info("BenchmarkRunner: Sending Exit command to server");
+    Api::Exit::Command exitCmd;
 
     try {
         // Use sendAndReceive with short timeout since server may close connection.
-        client_.sendJsonAndReceive(exitCmd.dump(), 1000);
+        client_.sendJsonAndReceive(wrapCommand(exitCmd).dump(), 1000);
     }
     catch (const std::exception& e) {
         // Expected: server closes connection after receiving exit command.
@@ -299,11 +321,10 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     // Start simulation.
     auto benchmarkStart = std::chrono::steady_clock::now();
 
-    nlohmann::json simRunCmd = { { "command", "sim_run" },
-                                 { "timestep", 0.016 },
-                                 { "max_steps", steps },
-                                 { "scenario_id", scenario } };
-    auto simRunResult = client_.sendJsonAndReceive(simRunCmd.dump(), 5000);
+    Api::SimRun::Command simRunCmd2;
+    simRunCmd2.timestep = 0.016;
+    simRunCmd2.max_steps = static_cast<int>(steps);
+    auto simRunResult = client_.sendJsonAndReceive(wrapCommand(simRunCmd2).dump(), 5000);
     if (simRunResult.isError()) {
         spdlog::error("BenchmarkRunner: SimRun failed: {}", simRunResult.errorValue().message);
         return results;
@@ -322,13 +343,13 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         return results;
     }
 
-    // Resize world if size specified (must be done after sim_run, when in SimRunning state).
+    // Resize world if size specified (must be done after SimRun, when in SimRunning state).
     if (worldSize > 0) {
         spdlog::info("BenchmarkRunner: Resizing world to {}x{}", worldSize, worldSize);
-        nlohmann::json resizeCmd = { { "command", "world_resize" },
-                                     { "width", worldSize },
-                                     { "height", worldSize } };
-        auto resizeResult = client_.sendJsonAndReceive(resizeCmd.dump(), 5000);
+        Api::WorldResize::Command resizeCmd2;
+        resizeCmd2.width = static_cast<uint32_t>(worldSize);
+        resizeCmd2.height = static_cast<uint32_t>(worldSize);
+        auto resizeResult = client_.sendJsonAndReceive(wrapCommand(resizeCmd2).dump(), 5000);
         if (resizeResult.isError()) {
             spdlog::error(
                 "BenchmarkRunner: World resize failed: {}", resizeResult.errorValue().message);
@@ -362,8 +383,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
         std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
-        nlohmann::json statusCmd = { { "command", "status_get" } };
-        auto statusResult = client_.sendJsonAndReceive(statusCmd.dump(), 1000);
+        Api::StatusGet::Command statusCmd2;
+        auto statusResult = client_.sendJsonAndReceive(wrapCommand(statusCmd2).dump(), 1000);
         if (statusResult.isError()) {
             continue; // Retry on error.
         }
@@ -422,8 +443,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     }
 
     // Query timer stats for detailed breakdown.
-    nlohmann::json timerStatsCmd = { { "command", "timer_stats_get" } };
-    auto timerResult2 = client_.sendJsonAndReceive(timerStatsCmd.dump(), 2000);
+    Api::TimerStatsGet::Command timerStatsCmd2;
+    auto timerResult2 = client_.sendJsonAndReceive(wrapCommand(timerStatsCmd2).dump(), 2000);
     if (timerResult2.isError()) {
         spdlog::warn("Failed to get timer stats: {}", timerResult2.errorValue().message);
         return results;
@@ -441,8 +462,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     }
 
     // Send exit and disconnect.
-    nlohmann::json exitCmd = { { "command", "exit" } };
-    auto exitResult = client_.sendJsonAndReceive(exitCmd.dump(), 1000);
+    Api::Exit::Command exitCmd2;
+    auto exitResult = client_.sendJsonAndReceive(wrapCommand(exitCmd2).dump(), 1000);
     if (exitResult.isError()) {
         spdlog::debug("BenchmarkRunner: Exit failed: {}", exitResult.errorValue().message);
     }
@@ -454,8 +475,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
 nlohmann::json BenchmarkRunner::queryPerfStats()
 {
-    nlohmann::json cmd = { { "command", "perf_stats_get" } };
-    auto perfResult = client_.sendJsonAndReceive(cmd.dump());
+    Api::PerfStatsGet::Command cmd;
+    auto perfResult = client_.sendJsonAndReceive(wrapCommand(cmd).dump());
     if (perfResult.isError()) {
         spdlog::warn("Failed to query perf stats: {}", perfResult.errorValue().message);
         return nlohmann::json::object();

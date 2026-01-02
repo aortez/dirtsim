@@ -1,4 +1,5 @@
 #include "Organism.h"
+#include "OrganismManager.h"
 #include "core/Cell.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -106,11 +107,10 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
                 continue;
             }
 
+            Vector2i neighbor_pos{nx, ny};
+            if (world.getOrganismManager().at(neighbor_pos) != id_) continue;
+
             const Cell& neighbor = data.at(nx, ny);
-
-            if (neighbor.organism_id != id_) continue;
-
-            Vector2i neighbor_pos{ nx, ny };
             double rest_dist = 1.0; // Cardinal neighbors are always distance 1.
             double stiffness = getBoneStiffness(material, neighbor.material_type);
 
@@ -234,7 +234,8 @@ CollisionInfo Organism::detectCollisions(
         }
 
         // Check for other organism.
-        if (cell.organism_id != INVALID_ORGANISM_ID && cell.organism_id != id_) {
+        OrganismId cell_org = world.getOrganismManager().at(cell_pos);
+        if (cell_org != INVALID_ORGANISM_ID && cell_org != id_) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             continue;
@@ -246,7 +247,7 @@ CollisionInfo Organism::detectCollisions(
             || cell.material_type == MaterialType::WOOD
             || cell.material_type == MaterialType::METAL
             || cell.material_type == MaterialType::ROOT;
-        if (is_solid && cell.fill_ratio > 0.8 && cell.organism_id != id_) {
+        if (is_solid && cell.fill_ratio > 0.8 && cell_org != id_) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             continue;

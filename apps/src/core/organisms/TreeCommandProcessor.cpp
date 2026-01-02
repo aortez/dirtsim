@@ -1,4 +1,5 @@
 #include "TreeCommandProcessor.h"
+#include "OrganismManager.h"
 #include "Tree.h"
 #include "core/Cell.h"
 #include "core/MaterialType.h"
@@ -42,12 +43,13 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
-                        const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.getId()
-                            && (neighbor.material_type == MaterialType::WOOD
-                                || neighbor.material_type == MaterialType::SEED)) {
-                            has_structural_neighbor = true;
-                            break;
+                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
+                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            if (neighbor.material_type == MaterialType::WOOD
+                                || neighbor.material_type == MaterialType::SEED) {
+                                has_structural_neighbor = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -59,9 +61,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 Cell& new_cell = world.getData().at(command.target_pos.x, command.target_pos.y);
                 new_cell.replaceMaterial(MaterialType::WOOD, 1.0);
-                new_cell.organism_id = tree.getId();
 
-                tree.getCells().insert(command.target_pos);
+                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::WOOD, world);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_WOOD);
 
@@ -98,11 +99,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
-                        const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.getId()
-                            && neighbor.material_type == MaterialType::WOOD) {
-                            has_wood_neighbor = true;
-                            break;
+                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
+                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            if (neighbor.material_type == MaterialType::WOOD) {
+                                has_wood_neighbor = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -115,10 +117,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 world.getData()
                     .at(command.target_pos.x, command.target_pos.y)
                     .replaceMaterial(MaterialType::LEAF, 1.0);
-                world.getData().at(command.target_pos.x, command.target_pos.y).organism_id =
-                    tree.getId();
 
-                tree.getCells().insert(command.target_pos);
+                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::LEAF, world);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_LEAF);
 
@@ -150,12 +150,13 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
-                        const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                        if (neighbor.organism_id == tree.getId()
-                            && (neighbor.material_type == MaterialType::ROOT
-                                || neighbor.material_type == MaterialType::SEED)) {
-                            has_root_neighbor = true;
-                            break;
+                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
+                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            if (neighbor.material_type == MaterialType::ROOT
+                                || neighbor.material_type == MaterialType::SEED) {
+                                has_root_neighbor = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -168,10 +169,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 world.getData()
                     .at(command.target_pos.x, command.target_pos.y)
                     .replaceMaterial(MaterialType::ROOT, 1.0);
-                world.getData().at(command.target_pos.x, command.target_pos.y).organism_id =
-                    tree.getId();
 
-                tree.getCells().insert(command.target_pos);
+                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
                 tree.createBonesForCell(command.target_pos, MaterialType::ROOT, world);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_ROOT);
 

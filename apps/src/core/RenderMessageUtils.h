@@ -113,29 +113,25 @@ inline std::vector<std::byte> packDebugCells(const WorldData& data)
 }
 
 /**
- * @brief Extract sparse organism data from WorldData.
- *
- * Groups cells by organism_id and returns sparse representation.
+ * @brief Extract sparse organism data from OrganismManager grid.
  */
-inline std::vector<OrganismData> extractOrganisms(const WorldData& data)
+inline std::vector<OrganismData> extractOrganisms(const std::vector<OrganismId>& grid)
 {
     std::map<OrganismId, std::vector<uint16_t>> organism_map;
 
-    // Group cells by organism ID.
-    for (size_t i = 0; i < data.cells.size(); ++i) {
-        OrganismId org_id = data.cells[i].organism_id;
+    for (size_t i = 0; i < grid.size(); ++i) {
+        OrganismId org_id = grid[i];
         if (org_id != INVALID_ORGANISM_ID) {
             organism_map[org_id].push_back(static_cast<uint16_t>(i));
         }
     }
 
-    // Convert to OrganismData vector.
     std::vector<OrganismData> result;
     result.reserve(organism_map.size());
 
     for (const auto& [id, indices] : organism_map) {
         OrganismData org;
-        org.organism_id = static_cast<uint8_t>(id.get());  // Wire format uses uint8_t.
+        org.organism_id = static_cast<uint8_t>(id.get());
         org.cell_indices = indices;
         result.push_back(std::move(org));
     }
@@ -160,7 +156,10 @@ inline std::vector<BoneData> extractBones(const WorldData& data)
 /**
  * @brief Pack WorldData into RenderMessage with specified format.
  */
-inline RenderMessage packRenderMessage(const WorldData& data, RenderFormat format)
+inline RenderMessage packRenderMessage(
+    const WorldData& data,
+    RenderFormat format,
+    const std::vector<OrganismId>& organism_grid)
 {
     RenderMessage msg;
     msg.format = format;
@@ -178,14 +177,8 @@ inline RenderMessage packRenderMessage(const WorldData& data, RenderFormat forma
         msg.payload = packDebugCells(data);
     }
 
-    // Extract sparse organism data.
-    msg.organisms = extractOrganisms(data);
-
-    // Bones are extracted from World in server-side code.
-    // (Empty here - populated by server when World is available).
+    msg.organisms = extractOrganisms(organism_grid);
     msg.bones = {};
-
-    // Copy entities.
     msg.entities = data.entities;
 
     return msg;

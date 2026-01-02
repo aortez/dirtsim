@@ -2,6 +2,7 @@
 #include "Cell.h"
 #include "World.h"
 #include "WorldData.h"
+#include "organisms/OrganismManager.h"
 #include <queue>
 #include <unordered_set>
 
@@ -22,27 +23,23 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
     const World& world, Vector2i start, OrganismId organism_id) const
 {
     RigidStructure result;
-    const auto& data = world.getData();
 
     if (!isValidCell(world, start.x, start.y)) {
         return result;
     }
 
-    const Cell& start_cell = data.at(start.x, start.y);
-
-    // Structures are organism-only (organism_id != INVALID_ORGANISM_ID).
-    if (start_cell.organism_id == INVALID_ORGANISM_ID) {
+    // Structures are organism-only.
+    OrganismId start_org = world.getOrganismManager().at(start);
+    if (start_org == INVALID_ORGANISM_ID) {
         return result;
     }
 
     // If organism_id specified, start cell must match.
-    if (organism_id != INVALID_ORGANISM_ID && start_cell.organism_id != organism_id) {
+    if (organism_id != INVALID_ORGANISM_ID && start_org != organism_id) {
         return result;
     }
 
-    // Use start cell's organism_id.
-    OrganismId match_organism =
-        organism_id != INVALID_ORGANISM_ID ? organism_id : start_cell.organism_id;
+    OrganismId match_organism = organism_id != INVALID_ORGANISM_ID ? organism_id : start_org;
 
     std::unordered_set<Vector2i, Vector2iHash> visited;
     std::queue<Vector2i> frontier;
@@ -67,10 +64,8 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
                 continue;
             }
 
-            const Cell& neighbor_cell = data.at(neighbor.x, neighbor.y);
-
             // Only connect cells with same organism_id.
-            if (neighbor_cell.organism_id != match_organism) {
+            if (world.getOrganismManager().at(neighbor) != match_organism) {
                 continue;
             }
 
@@ -106,14 +101,13 @@ std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(const Wo
                 continue;
             }
 
-            const Cell& cell = data.at(x, y);
-
             // Structures are organism-only.
-            if (cell.organism_id == INVALID_ORGANISM_ID) {
+            OrganismId org_id = world.getOrganismManager().at(pos);
+            if (org_id == INVALID_ORGANISM_ID) {
                 continue;
             }
 
-            RigidStructure structure = findConnectedStructure(world, pos, cell.organism_id);
+            RigidStructure structure = findConnectedStructure(world, pos, org_id);
             if (!structure.empty()) {
                 for (const auto& cell_pos : structure.cells) {
                     processed.insert(cell_pos);

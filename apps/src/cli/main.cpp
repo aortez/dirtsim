@@ -6,9 +6,7 @@
 #include "RunAllRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
-#ifdef DIRTSIM_HAS_GAMEPAD
 #include "core/input/GamepadManager.h"
-#endif
 #include "core/network/WebSocketService.h"
 #include "server/api/StatusGet.h"
 #include <args.hxx>
@@ -365,7 +363,6 @@ int main(int argc, char** argv)
 
     // Handle gamepad-test command (prints gamepad state to console).
     if (targetName == "gamepad-test") {
-#ifdef DIRTSIM_HAS_GAMEPAD
         std::cout << "Gamepad test mode. Press Ctrl+C to exit.\n" << std::endl;
 
         GamepadManager manager;
@@ -436,11 +433,6 @@ int main(int argc, char** argv)
         }
 
         return 0;
-#else
-        std::cerr << "Error: Gamepad support not available (SDL2 not found at build time)."
-                  << std::endl;
-        return 1;
-#endif
     }
 
     // Handle integration_test command (auto-launches server and UI).

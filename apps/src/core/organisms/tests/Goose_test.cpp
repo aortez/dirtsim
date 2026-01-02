@@ -117,7 +117,7 @@ TEST_F(GooseTest, CreateGoosePlacesWoodCell)
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(10, 8);
     EXPECT_EQ(cell.material_type, MaterialType::WOOD);
-    EXPECT_EQ(cell.organism_id, goose_id);
+    EXPECT_EQ(manager.at(Vector2i{10, 8}), goose_id);
 
     // Check goose's anchor cell.
     EXPECT_EQ(goose->getAnchorCell(), Vector2i(10, 8));
