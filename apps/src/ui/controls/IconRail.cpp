@@ -35,6 +35,17 @@ IconRail::~IconRail()
         lv_timer_delete(autoShrinkTimer_);
         autoShrinkTimer_ = nullptr;
     }
+
+    // Delete overlay objects (they're children of the screen, not the container).
+    if (expandButton_) {
+        lv_obj_delete(expandButton_);
+        expandButton_ = nullptr;
+    }
+    if (swipeZone_) {
+        lv_obj_delete(swipeZone_);
+        swipeZone_ = nullptr;
+    }
+
     // LVGL handles cleanup of child objects when parent is deleted.
     LOG_INFO(Controls, "IconRail destroyed");
 }
@@ -60,9 +71,6 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Allow overflow so expand button can extend past the rail edge.
-    lv_obj_add_flag(container_, LV_OBJ_FLAG_OVERFLOW_VISIBLE);
 
     // Add gesture detection for swipe-to-expand.
     lv_obj_set_user_data(container_, this);
@@ -207,29 +215,38 @@ void IconRail::createModeButtons()
 {
     if (!container_) return;
 
-    // Create expand button (shown in minimized mode).
-    // Button extends past the rail edge to be easier to see/tap.
-    expandButton_ = LVGLBuilder::actionButton(container_)
+    // Get the screen (go up from container -> simMainRow -> screen).
+    // This allows the expand button to float on top of everything.
+    lv_obj_t* parent = lv_obj_get_parent(container_);
+    lv_obj_t* screen = parent ? lv_obj_get_parent(parent) : nullptr;
+    if (!screen) {
+        screen = container_; // Fallback to container if we can't find screen.
+    }
+
+    // Create expand button as an OVERLAY on the screen.
+    // This lets it extend past the rail and float on top of everything.
+    expandButton_ = LVGLBuilder::actionButton(screen)
                         .icon(LV_SYMBOL_RIGHT)
                         .mode(LVGLBuilder::ActionMode::Push)
-                        .size(MINIMIZED_RAIL_WIDTH - 4) // Start square, resize below.
+                        .size(MINIMIZED_RAIL_WIDTH - 4)
                         .glowColor(0x808080)
                         .textColor(0xFFFFFF)
                         .buildOrLog();
 
     if (expandButton_) {
-        // Make the button extend past the right edge of the rail.
-        // Button is wider than the rail, positioned to stick out.
-        const int extensionAmount = 20; // How far the button extends past the rail.
-        const int expandWidth = MINIMIZED_RAIL_WIDTH - 4 + extensionAmount;
+        // Size: extends past the rail edge for visibility.
+        const int extensionAmount = 24;
+        const int expandWidth = MINIMIZED_RAIL_WIDTH + extensionAmount;
         const int expandHeight = LVGLBuilder::Style::ACTION_SIZE * 2;
         lv_obj_set_size(expandButton_, expandWidth, expandHeight);
 
-        // Offset the button to the right so it extends past the container edge.
-        // Use translate to offset without affecting flex layout calculations.
-        lv_obj_set_style_translate_x(expandButton_, extensionAmount / 2, 0);
+        // Remove from any layout - position absolutely.
+        lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_FLOATING);
 
-        // Inner button fills the trough with proper padding.
+        // Position: left edge, vertically centered.
+        lv_obj_align(expandButton_, LV_ALIGN_LEFT_MID, 0, 0);
+
+        // Inner button fills the trough.
         lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
         if (innerBtn) {
             const int padding = LVGLBuilder::Style::TROUGH_PADDING;
@@ -238,6 +255,7 @@ void IconRail::createModeButtons()
             lv_obj_add_event_cb(
                 innerBtn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(1));
         }
+
         // Start hidden (normal mode is default).
         lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
     }
@@ -256,6 +274,32 @@ void IconRail::createModeButtons()
         if (btn) {
             lv_obj_set_user_data(btn, this);
             lv_obj_add_event_cb(btn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(0));
+        }
+    }
+
+    // Create invisible swipe zone on right half of screen for gesture detection.
+    // Placed on right side to avoid blocking expand button and other controls.
+    if (screen) {
+        swipeZone_ = lv_obj_create(screen);
+        if (swipeZone_) {
+            // Right half of screen, full height.
+            lv_obj_set_size(swipeZone_, LV_PCT(50), LV_PCT(100));
+            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_FLOATING);
+            lv_obj_align(swipeZone_, LV_ALIGN_RIGHT_MID, 0, 0);
+
+            // Make it invisible but still receive touch events.
+            lv_obj_set_style_bg_opa(swipeZone_, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(swipeZone_, 0, 0);
+            lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_SCROLLABLE);
+
+            // Add gesture detection.
+            lv_obj_set_user_data(swipeZone_, this);
+            lv_obj_add_event_cb(swipeZone_, onGesture, LV_EVENT_GESTURE, nullptr);
+
+            // Start hidden (normal mode is default).
+            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
+
+            LOG_DEBUG(Controls, "Created swipe zone on right half of screen");
         }
     }
 
@@ -302,13 +346,22 @@ void IconRail::applyMode()
         }
     }
 
-    // Show/hide mode buttons.
+    // Show/hide mode buttons and swipe zone.
     if (expandButton_) {
         if (minimized) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
             lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (swipeZone_) {
+        if (minimized) {
+            lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
         }
     }
 
@@ -416,6 +469,14 @@ void IconRail::onGesture(lv_event_t* e)
     if (!self) return;
 
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
+
+    // Log all gesture events for debugging.
+    const char* dirName = (dir == LV_DIR_LEFT)    ? "LEFT"
+                          : (dir == LV_DIR_RIGHT) ? "RIGHT"
+                          : (dir == LV_DIR_TOP)   ? "UP"
+                          : (dir == LV_DIR_BOTTOM) ? "DOWN"
+                                                   : "NONE";
+    LOG_INFO(Controls, "Gesture detected: {} (mode={})", dirName, self->mode_ == RailMode::Minimized ? "minimized" : "normal");
 
     // Swipe right to expand when minimized.
     if (dir == LV_DIR_RIGHT && self->mode_ == RailMode::Minimized) {

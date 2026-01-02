@@ -115,8 +115,9 @@ private:
 
     // Mode support.
     RailMode mode_ = RailMode::Normal;
-    lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode.
+    lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
+    lv_obj_t* swipeZone_ = nullptr;      // Invisible swipe detection area (overlay on screen).
 
     // Auto-shrink timer (minimizes rail after inactivity).
     lv_timer_t* autoShrinkTimer_ = nullptr;
@@ -133,6 +134,7 @@ private:
     static constexpr int MINIMIZED_RAIL_WIDTH = 40; // Half of ACTION_SIZE.
     static constexpr int ICON_SIZE = 96;
     static constexpr int GAP = 12;
+    static constexpr int SWIPE_ZONE_WIDTH = 80; // Width of invisible swipe detection area.
 
     void createIcons(lv_obj_t* parent);
     void createModeButtons();
