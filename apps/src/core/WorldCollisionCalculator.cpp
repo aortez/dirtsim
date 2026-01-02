@@ -300,6 +300,19 @@ bool WorldCollisionCalculator::checkFloatingParticleCollision(
 void WorldCollisionCalculator::handleTransferMove(
     World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move)
 {
+    // Single-cell organisms must not fragment.
+    // Re-check target is empty at execution time (moves are shuffled).
+    Vector2i from_pos{static_cast<int>(move.fromX), static_cast<int>(move.fromY)};
+    OrganismId org_id = world.getOrganismManager().at(from_pos);
+    if (org_id != INVALID_ORGANISM_ID && !toCell.isEmpty()) {
+        spdlog::info("handleTransferMove: Organism at ({},{}) - target became non-empty (fill={:.2f}), aborting transfer",
+            move.fromX, move.fromY, toCell.fill_ratio);
+        // Apply bounce instead.
+        Vector2i direction(move.toX - move.fromX, move.toY - move.fromY);
+        handleElasticCollision(fromCell, toCell, move);
+        return;
+    }
+
     // Log pre-transfer state.
     spdlog::debug(
         "TRANSFER: Before - From({},{}) vel=({:.3f},{:.3f}) fill={:.3f}, To({},{}) "

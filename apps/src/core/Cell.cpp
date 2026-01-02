@@ -92,6 +92,10 @@ double Cell::addMaterialWithPhysics(
 
     // If we're empty, accept any material type with trajectory-based COM.
     if (isEmpty()) {
+        if (material_type == MaterialType::WOOD && type != MaterialType::WOOD) {
+            spdlog::info("Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell (old_fill={:.3f})",
+                getMaterialName(type), fill_ratio);
+        }
         material_type = type;
         const double added = std::min(amount, 1.0);
         fill_ratio = added;
