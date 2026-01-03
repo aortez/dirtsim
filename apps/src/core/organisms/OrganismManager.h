@@ -18,17 +18,6 @@ class Tree;
 class World;
 
 /**
- * Transfer notification from physics system.
- * Records when organism cells move due to physics.
- */
-struct OrganismTransfer {
-    Vector2i from_pos;
-    Vector2i to_pos;
-    OrganismId organism_id;
-    double amount;
-};
-
-/**
  * Manages all organisms in the world.
  *
  * Responsibilities:
@@ -111,9 +100,9 @@ public:
     void addCellToOrganism(OrganismId id, Vector2i pos);
     void removeCellsFromOrganism(OrganismId id, const std::vector<Vector2i>& positions);
     void swapOrganisms(Vector2i pos1, Vector2i pos2);
+    void moveOrganismCell(Vector2i from, Vector2i to, OrganismId organism_id);
 
     // Physics integration.
-    void notifyTransfers(const std::vector<OrganismTransfer>& transfers);
     void applyBoneForces(World& world, double deltaTime);
 
     // Sync organism render data to WorldData.entities.

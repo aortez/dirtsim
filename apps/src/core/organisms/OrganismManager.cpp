@@ -366,55 +366,41 @@ void OrganismManager::swapOrganisms(Vector2i pos1, Vector2i pos2)
     }
 }
 
-void OrganismManager::notifyTransfers(const std::vector<OrganismTransfer>& transfers)
+void OrganismManager::moveOrganismCell(Vector2i from, Vector2i to, OrganismId organism_id)
 {
-    if (transfers.empty()) {
+    auto* organism = getOrganism(organism_id);
+    if (!organism) {
+        spdlog::warn("moveOrganismCell: organism {} not found", organism_id);
         return;
     }
 
-    spdlog::info("OrganismManager::notifyTransfers: {} transfers", transfers.size());
-
-    // Batch transfers by organism ID for efficient processing.
-    std::unordered_map<OrganismId, std::vector<const OrganismTransfer*>> transfers_by_organism;
-
-    for (const auto& transfer : transfers) {
-        spdlog::info("  Transfer: organism {} from ({},{}) to ({},{})",
-            transfer.organism_id, transfer.from_pos.x, transfer.from_pos.y,
-            transfer.to_pos.x, transfer.to_pos.y);
-        transfers_by_organism[transfer.organism_id].push_back(&transfer);
+    // Skip rigid body organisms - they control their own position.
+    if (organism->usesRigidBodyPhysics()) {
+        spdlog::warn("moveOrganismCell: skipping rigid body organism {}", organism_id);
+        return;
     }
 
-    // Update each affected organism's cell tracking.
-    for (const auto& [organism_id, organism_transfers] : transfers_by_organism) {
-        auto* organism = getOrganism(organism_id);
-        if (!organism) {
-            spdlog::warn(
-                "OrganismManager: Received transfers for non-existent organism {}", organism_id);
-            continue;
-        }
-
-        // Skip rigid body organisms - they control their own position and cells.
-        if (organism->usesRigidBodyPhysics()) {
-            spdlog::info("OrganismManager: Skipping rigid body organism {} (type={})",
-                organism_id, static_cast<int>(organism->getType()));
-            continue;
-        }
-
-        for (const OrganismTransfer* transfer : organism_transfers) {
-            organism->getCells().erase(transfer->from_pos);
-            organism->getCells().insert(transfer->to_pos);
-            clearOrganismAt(transfer->from_pos);
-            setOrganismAt(transfer->to_pos, organism_id);
-
-            organism->onCellTransfer(transfer->from_pos, transfer->to_pos);
-        }
-
-        spdlog::trace(
-            "OrganismManager: Processed {} transfers for organism {} (now {} cells tracked)",
-            organism_transfers.size(),
+    // Poka-yoke: Verify the source cell actually has this organism.
+    OrganismId current_at_from = at(from);
+    if (current_at_from != organism_id) {
+        spdlog::critical(
+            "moveOrganismCell: INVARIANT VIOLATION - Expected organism {} at ({},{}) but found {}",
             organism_id,
-            organism->getCells().size());
+            from.x,
+            from.y,
+            current_at_from);
+        DIRTSIM_ASSERT(
+            false, "moveOrganismCell: Source cell doesn't have expected organism");
     }
+
+    // Update grid.
+    clearOrganismAt(from);
+    setOrganismAt(to, organism_id);
+
+    // Update organism's cell tracking.
+    organism->getCells().erase(from);
+    organism->getCells().insert(to);
+    organism->onCellTransfer(from, to);
 }
 
 void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)

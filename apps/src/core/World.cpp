@@ -71,9 +71,6 @@ struct World::Impl {
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
 
-    // Organism transfer tracking (for efficient OrganismManager updates).
-    std::vector<OrganismTransfer> organism_transfers_;
-
     // Performance timing.
     mutable Timers timers_;
 
@@ -1689,7 +1686,6 @@ void World::processMaterialMoves()
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
     std::vector<MaterialMove>& pending_moves = pImpl->pending_moves_;
-    std::vector<OrganismTransfer>& organism_transfers = pImpl->organism_transfers_;
 
     ScopeTimer timer(timers, "process_moves");
 
@@ -1810,17 +1806,16 @@ void World::processMaterialMoves()
                 break;
         }
 
-        // Record organism transfer ONLY if material actually transferred.
+        // Update organism tracking if material actually transferred.
         // Check: organism owned the source AND source is now empty (transfer succeeded).
         if (organism_id != INVALID_ORGANISM_ID &&
             move.collision_type == CollisionType::TRANSFER_ONLY &&
             fromCell.isEmpty()) {
-            // Material fully transferred - organism moved to target cell.
+            // Material fully transferred - update organism tracking.
             Vector2i to_pos{static_cast<int>(move.toX), static_cast<int>(move.toY)};
             spdlog::info("TRANSFER_ONLY tracking: organism {} moved ({},{}) → ({},{})",
                 organism_id, from_pos.x, from_pos.y, to_pos.x, to_pos.y);
-            recordOrganismTransfer(
-                move.fromX, move.fromY, move.toX, move.toY, organism_id, move.amount);
+            organism_manager_->moveOrganismCell(from_pos, to_pos, organism_id);
         }
         else if (organism_id != INVALID_ORGANISM_ID &&
                  move.collision_type == CollisionType::TRANSFER_ONLY &&
@@ -1845,19 +1840,6 @@ void World::processMaterialMoves()
         num_inelastic);
 
     pImpl->pending_moves_.clear();
-
-    // Notify OrganismManager of all organism transfers for efficient tracking updates.
-    if (!organism_transfers.empty() && organism_manager_) {
-        organism_manager_->notifyTransfers(organism_transfers);
-        organism_transfers.clear();
-    }
-}
-
-void World::recordOrganismTransfer(
-    int fromX, int fromY, int toX, int toY, OrganismId organism_id, double amount)
-{
-    pImpl->organism_transfers_.push_back(
-        OrganismTransfer{ Vector2i{ fromX, fromY }, Vector2i{ toX, toY }, organism_id, amount });
 }
 
 void World::setupBoundaryWalls()

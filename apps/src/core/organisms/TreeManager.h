@@ -7,13 +7,6 @@
 
 namespace DirtSim {
 
-struct OrganismTransfer {
-    Vector2i from_pos;
-    Vector2i to_pos;
-    TreeId organism_id;
-    double amount;
-};
-
 class World;
 
 class TreeManager {
@@ -30,8 +23,6 @@ public:
     TreeId getTreeAtCell(const Vector2i& pos) const;
 
     const std::unordered_map<TreeId, Tree>& getTrees() const { return trees_; }
-
-    void notifyTransfers(const std::vector<OrganismTransfer>& transfers);
 
     void applyBoneForces(World& world, double deltaTime);
 

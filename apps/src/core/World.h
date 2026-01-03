@@ -31,7 +31,6 @@ namespace DirtSim {
 
 class OrganismManager;
 class Scenario;
-struct OrganismTransfer;
 
 class World {
 public:
@@ -178,14 +177,7 @@ public:
     // Add material at specific cell coordinates.
     void addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double amount = 1.0);
 
-    /**
-     * Record an organism material transfer for efficient OrganismManager tracking.
-     * Called during physics transfers to maintain organism ownership consistency.
-     */
-    void recordOrganismTransfer(
-        int fromX, int fromY, int toX, int toY, OrganismId organism_id, double amount);
-
-    static constexpr double MIN_MATTER_THRESHOLD = 0.001; // minimum matter to process.
+    static constexpr double MIN_MATTER_THRESHOLD = 0.001; // Minimum matter to process.
 
     // Mass-based COM cohesion constants
     static constexpr double COM_COHESION_INNER_THRESHOLD =
