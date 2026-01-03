@@ -1,6 +1,7 @@
 #include "WorldCollisionCalculator.h"
 #include "Cell.h"
 #include "LoggingChannels.h"
+#include "MaterialFragmentationParams.h"
 #include "MaterialMove.h"
 #include "MaterialType.h"
 #include "PhysicsSettings.h"
@@ -638,24 +639,35 @@ double WorldCollisionCalculator::fragmentSingleCell(
     uint32_t sourceY,
     uint32_t avoidX,
     uint32_t avoidY,
-    const Vector2d& reflection_direction,
-    double frag_speed,
+    const Vector2d& spray_direction,
+    double base_frag_speed,
     int num_frags,
+    double arc_width,
+    const FragmentationParams& frag_params,
     const PhysicsSettings& settings)
 {
-    // Calculate frag angles in 90-degree arc centered on reflection direction.
-    // 2 frags: ±45° from center
-    // 3 frags: -30°, 0°, +30° from center
+    // Calculate frag angles spread evenly across the arc, centered on spray direction.
+    // Fragments are distributed from -half_arc to +half_arc.
     std::vector<double> frag_angles;
+    double half_arc = arc_width / 2.0;
     if (num_frags == 2) {
-        frag_angles = { -M_PI / 4.0, M_PI / 4.0 }; // ±45°
+        // Two fragments at the edges of the arc.
+        frag_angles = { -half_arc, half_arc };
     }
     else {
-        frag_angles = { -M_PI / 6.0, 0.0, M_PI / 6.0 }; // -30°, 0°, +30°
+        // 3+ fragments: distribute evenly across the arc.
+        // E.g., 3 frags: -half, 0, +half
+        //       4 frags: -half, -half/3, +half/3, +half
+        //       5 frags: -half, -half/2, 0, +half/2, +half
+        for (int i = 0; i < num_frags; i++) {
+            double t = static_cast<double>(i) / (num_frags - 1); // 0.0 to 1.0
+            double angle = -half_arc + t * arc_width;
+            frag_angles.push_back(angle);
+        }
     }
 
-    // Calculate base angle of reflection direction.
-    double base_angle = std::atan2(reflection_direction.y, reflection_direction.x);
+    // Calculate base angle of spray direction.
+    double base_angle = std::atan2(spray_direction.y, spray_direction.x);
 
     std::vector<FragTarget> frag_targets;
     double frag_amount_each =
@@ -666,6 +678,12 @@ double WorldCollisionCalculator::fragmentSingleCell(
 
         // Convert angle to unit vector.
         Vector2d frag_dir(std::cos(frag_angle), std::sin(frag_angle));
+
+        // Calculate speed: edge fragments are faster to avoid self-collision.
+        // Speed scales from 1.0 at center to edge_speed_factor at edges.
+        double edge_factor = std::abs(angle_offset) / half_arc; // 0.0 at center, 1.0 at edges.
+        double speed_multiplier = 1.0 + (frag_params.edge_speed_factor - 1.0) * edge_factor;
+        double frag_speed = base_frag_speed * speed_multiplier;
 
         // Map to nearest of 8 neighbor directions.
         // Neighbors are at angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees.
@@ -826,13 +844,21 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         return false; // No fragmentation this time.
     }
 
-    // Determine number of fragments (1, 2, or 3) based on energy.
-    // Higher energy = more fragments.
+    // Determine number of fragments (2-5) based on energy.
+    // Higher energy = more fragments to fill the arc.
     int num_frags = 1;
-    if (move.collision_energy > settings.fragmentation_full_threshold * 1.5) {
+    double energy = move.collision_energy;
+    double full = settings.fragmentation_full_threshold;
+    if (energy > full * 2.0) {
+        num_frags = 5; // Extreme energy: full hemisphere coverage.
+    }
+    else if (energy > full * 1.5) {
+        num_frags = 4;
+    }
+    else if (energy > full) {
         num_frags = 3;
     }
-    else if (move.collision_energy > settings.fragmentation_full_threshold) {
+    else if (energy > settings.fragmentation_threshold) {
         num_frags = 2;
     }
 
@@ -841,23 +867,71 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         return false;
     }
 
-    // Calculate reflection directions for both cells.
+    // Get fragmentation params for each cell's material type.
+    FragmentationParams from_params = getMaterialFragmentationParams(fromCell.material_type);
+    FragmentationParams to_params = getMaterialFragmentationParams(toCell.material_type);
+
+    // =================================================================
+    // Calculate spray directions for both cells.
+    // Blend between radial (explosion-like) and reflection (momentum-preserving).
+    // =================================================================
+
     Vector2d surface_normal = move.boundary_normal.normalize();
-    auto v_comp = decomposeVelocity(move.momentum, surface_normal);
 
-    // FROM cell reflects away from TO cell (negate normal).
-    Vector2d from_reflection_dir = (v_comp.tangential - v_comp.normal).normalize();
-    if (from_reflection_dir.magnitude() < 0.01) {
-        from_reflection_dir = surface_normal * -1.0;
+    // Radial directions: simply away from collision partner.
+    Vector2d from_radial_dir = surface_normal * -1.0; // FROM sprays away from TO.
+    Vector2d to_radial_dir = surface_normal;          // TO sprays away from FROM.
+
+    // Reflection direction for FROM cell (using FROM's momentum).
+    auto from_v_comp = decomposeVelocity(move.momentum, surface_normal);
+    Vector2d from_reflect_dir = (from_v_comp.tangential - from_v_comp.normal).normalize();
+    if (from_reflect_dir.magnitude() < 0.01) {
+        from_reflect_dir = from_radial_dir;
     }
 
-    // TO cell reflects away from FROM cell (use normal as-is).
-    Vector2d to_reflection_dir = (v_comp.tangential + v_comp.normal).normalize();
-    if (to_reflection_dir.magnitude() < 0.01) {
-        to_reflection_dir = surface_normal;
+    // Reflection direction for TO cell (using TO's own velocity for correctness).
+    auto to_v_comp = decomposeVelocity(toCell.velocity, surface_normal);
+    Vector2d to_reflect_dir = (to_v_comp.tangential + to_v_comp.normal).normalize();
+    if (to_reflect_dir.magnitude() < 0.01) {
+        to_reflect_dir = to_radial_dir;
     }
 
-    double frag_speed = move.momentum.magnitude() * 0.7; // Fragments get 70% of original speed.
+    // Blend radial and reflection directions using each cell's params.
+    Vector2d from_spray_dir =
+        (from_radial_dir * from_params.radial_bias
+            + from_reflect_dir * (1.0 - from_params.radial_bias))
+            .normalize();
+    Vector2d to_spray_dir =
+        (to_radial_dir * to_params.radial_bias + to_reflect_dir * (1.0 - to_params.radial_bias))
+            .normalize();
+
+    // Fallback if blending produces zero vector.
+    if (from_spray_dir.magnitude() < 0.01) {
+        from_spray_dir = from_radial_dir;
+    }
+    if (to_spray_dir.magnitude() < 0.01) {
+        to_spray_dir = to_radial_dir;
+    }
+
+    // =================================================================
+    // Calculate arc width based on collision energy for each cell.
+    // Scales from min_arc at threshold to max_arc at high energy.
+    // =================================================================
+
+    double energy_ratio = (move.collision_energy - settings.fragmentation_threshold)
+        / (settings.fragmentation_full_threshold - settings.fragmentation_threshold);
+    energy_ratio = std::clamp(energy_ratio, 0.0, 2.0); // Allow overshoot for very high energy.
+
+    double from_arc_width =
+        from_params.min_arc + (from_params.max_arc - from_params.min_arc) * energy_ratio;
+    from_arc_width = std::min(from_arc_width, from_params.max_arc);
+
+    double to_arc_width =
+        to_params.min_arc + (to_params.max_arc - to_params.min_arc) * energy_ratio;
+    to_arc_width = std::min(to_arc_width, to_params.max_arc);
+
+    double from_base_speed = move.momentum.magnitude() * from_params.base_speed_factor;
+    double to_base_speed = move.momentum.magnitude() * to_params.base_speed_factor;
 
     // Fragment FROM cell if it's water.
     double from_sprayed = 0.0;
@@ -869,9 +943,11 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
             move.fromY,
             move.toX,
             move.toY,
-            from_reflection_dir,
-            frag_speed,
+            from_spray_dir,
+            from_base_speed,
             num_frags,
+            from_arc_width,
+            from_params,
             settings);
     }
 
@@ -885,9 +961,11 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
             move.toY,
             move.fromX,
             move.fromY,
-            to_reflection_dir,
-            frag_speed,
+            to_spray_dir,
+            to_base_speed,
             num_frags,
+            to_arc_width,
+            to_params,
             settings);
     }
 
@@ -900,8 +978,8 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     double inelastic_restitution = move.restitution_coefficient * INELASTIC_RESTITUTION_FACTOR;
 
     if (from_is_water && fromCell.fill_ratio > MIN_MATTER_THRESHOLD) {
-        Vector2d v_normal_reflected = v_comp.normal * (-inelastic_restitution);
-        fromCell.velocity = v_comp.tangential + v_normal_reflected;
+        Vector2d v_normal_reflected = from_v_comp.normal * (-inelastic_restitution);
+        fromCell.velocity = from_v_comp.tangential + v_normal_reflected;
     }
     else if (from_is_water) {
         fromCell.clear();
@@ -910,7 +988,7 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     // Transfer momentum between cells.
     if (move.target_mass > 0.0 && !toCell.isEmpty() && from_is_water) {
         Vector2d momentum_transferred =
-            v_comp.normal * (1.0 + inelastic_restitution) * move.material_mass;
+            from_v_comp.normal * (1.0 + inelastic_restitution) * move.material_mass;
         Vector2d target_velocity_change = momentum_transferred / move.target_mass;
         toCell.velocity = toCell.velocity + target_velocity_change;
     }

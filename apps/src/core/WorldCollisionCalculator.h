@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FragmentationParams.h"
 #include "MaterialMove.h"
 #include "MaterialType.h"
 #include "Vector2d.h"
@@ -158,8 +159,8 @@ public:
     /**
      * @brief Generate and place fragments from a single cell.
      *
-     * Helper function that creates fragments in a 90-degree arc around the reflection
-     * direction and places them in neighboring cells. Used by handleWaterFragmentation
+     * Helper function that creates fragments in an arc around the spray direction
+     * and places them in neighboring cells. Used by handleWaterFragmentation
      * to fragment both cells in a collision.
      *
      * @param world World providing access to grid and settings.
@@ -168,9 +169,11 @@ public:
      * @param sourceY Source cell Y coordinate.
      * @param avoidX X coordinate of cell to avoid (collision partner).
      * @param avoidY Y coordinate of cell to avoid (collision partner).
-     * @param reflection_direction Direction to spray fragments.
-     * @param frag_speed Speed of fragment particles.
-     * @param num_frags Number of fragments to create (2 or 3).
+     * @param spray_direction Direction to spray fragments (center of arc).
+     * @param base_frag_speed Base speed of fragment particles (computed from momentum).
+     * @param num_frags Number of fragments to create (2-5).
+     * @param arc_width Total arc width in radians (computed from energy).
+     * @param frag_params Fragmentation parameters (for edge_speed_factor).
      * @param settings Physics settings.
      * @return Total amount of material successfully sprayed out.
      */
@@ -181,17 +184,21 @@ public:
         uint32_t sourceY,
         uint32_t avoidX,
         uint32_t avoidY,
-        const Vector2d& reflection_direction,
-        double frag_speed,
+        const Vector2d& spray_direction,
+        double base_frag_speed,
         int num_frags,
+        double arc_width,
+        const FragmentationParams& frag_params,
         const PhysicsSettings& settings);
 
     /**
      * @brief Handle water fragmentation (splash) on high-energy impact.
      *
-     * When water collides with high enough energy, both cells fragment into 1-3 pieces
-     * that spray outward in a 90-degree arc centered on their reflection directions.
-     * This creates realistic mutual splash behavior when water hits water.
+     * When water collides with high enough energy, both cells fragment into pieces
+     * that spray outward in an arc. The spray direction blends between radial
+     * (explosion-like, away from collision partner) and reflection-based (preserving
+     * momentum direction). Arc width and fragment count scale with collision energy.
+     * Edge fragments move faster than center fragments to avoid self-collision.
      *
      * @param world World providing access to grid, cells, and settings.
      * @param fromCell Source cell (may be water).

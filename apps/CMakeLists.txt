@@ -217,6 +217,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
     src/core/LoggingChannels.cpp
+    src/core/MaterialFragmentationParams.cpp
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
     src/core/StateMachineBase.cpp
