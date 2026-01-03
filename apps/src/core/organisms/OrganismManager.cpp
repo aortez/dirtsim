@@ -161,12 +161,14 @@ OrganismId OrganismManager::createGoose(
     // Set initial position (continuous, centered in cell).
     goose->setAnchorCell(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
 
+    // Register organism BEFORE projectToGrid so addCellToOrganism can find it.
+    Goose* goose_ptr = goose.get();
+    organisms_.emplace(id, std::move(goose));
+
     // Do initial projection to grid.
-    goose->projectToGrid(world);
+    goose_ptr->projectToGrid(world);
 
     spdlog::info("OrganismManager: Created goose {} at ({}, {})", id, x, y);
-
-    organisms_.emplace(id, std::move(goose));
 
     return id;
 }
@@ -285,6 +287,8 @@ const Goose* OrganismManager::getGoose(OrganismId id) const
 void OrganismManager::addCellToOrganism(OrganismId id, Vector2i pos)
 {
     auto* organism = getOrganism(id);
+    DIRTSIM_ASSERT(organism != nullptr,
+        "addCellToOrganism called with non-existent organism - register organism first!");
     if (!organism) {
         spdlog::warn("OrganismManager: Attempted to add cell to non-existent organism {}", id);
         return;

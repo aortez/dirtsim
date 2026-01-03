@@ -1823,21 +1823,16 @@ void World::processMaterialMoves()
 
         // Update organism tracking if material actually transferred.
         // Check: organism owned the source AND source is now empty (transfer succeeded).
-        if (organism_id != INVALID_ORGANISM_ID &&
-            move.collision_type == CollisionType::TRANSFER_ONLY &&
-            fromCell.isEmpty()) {
+        // Note: This applies to ALL collision types that can transfer material, not just
+        // TRANSFER_ONLY. INELASTIC_COLLISION, FRAGMENTATION, and ABSORPTION can all empty
+        // an organism's cell via transferToWithPhysics.
+        if (organism_id != INVALID_ORGANISM_ID && fromCell.isEmpty()) {
             // Material fully transferred - update organism tracking.
             Vector2i to_pos{static_cast<int>(move.toX), static_cast<int>(move.toY)};
-            spdlog::info("TRANSFER_ONLY tracking: organism {} moved ({},{}) → ({},{})",
-                organism_id, from_pos.x, from_pos.y, to_pos.x, to_pos.y);
+            spdlog::info("Organism tracking: organism {} moved ({},{}) → ({},{}) via {}",
+                organism_id, from_pos.x, from_pos.y, to_pos.x, to_pos.y,
+                static_cast<int>(move.collision_type));
             organism_manager_->moveOrganismCell(from_pos, to_pos, organism_id);
-        }
-        else if (organism_id != INVALID_ORGANISM_ID &&
-                 move.collision_type == CollisionType::TRANSFER_ONLY &&
-                 !fromCell.isEmpty()) {
-            // Transfer FAILED - organism still at source cell!
-            spdlog::warn("TRANSFER_ONLY blocked: organism {} stayed at ({},{}), target ({},{}) was full",
-                organism_id, from_pos.x, from_pos.y, move.toX, move.toY);
         }
     }
 
