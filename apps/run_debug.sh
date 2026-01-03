@@ -33,16 +33,17 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check if server or UI are already running.
-if pgrep -f "dirtsim-server" > /dev/null; then
-    echo "Error: dirtsim-server is already running"
-    echo "Kill it with: pkill -f dirtsim-server"
+# Check if our debug binaries are already running.
+# Use full path to avoid matching release builds or other processes.
+if pgrep -f "build-debug/bin/dirtsim-server" > /dev/null; then
+    echo "Error: dirtsim-server (debug) is already running"
+    echo "Kill it with: pkill -f 'build-debug/bin/dirtsim-server'"
     exit 1
 fi
 
-if pgrep -f "dirtsim-ui" > /dev/null; then
-    echo "Error: dirtsim-ui is already running"
-    echo "Kill it with: pkill -f dirtsim-ui"
+if pgrep -f "build-debug/bin/dirtsim-ui" > /dev/null; then
+    echo "Error: dirtsim-ui (debug) is already running"
+    echo "Kill it with: pkill -f 'build-debug/bin/dirtsim-ui'"
     exit 1
 fi
 
@@ -68,9 +69,9 @@ cleanup() {
     echo ""
     echo "Shutting down..."
     # Kill UI first (it's usually in foreground).
-    pkill -f "dirtsim-ui" 2>/dev/null || true
+    pkill -f "build-debug/bin/dirtsim-ui" 2>/dev/null || true
     # Kill server.
-    pkill -f "dirtsim-server" 2>/dev/null || true
+    pkill -f "build-debug/bin/dirtsim-server" 2>/dev/null || true
     echo "Cleanup complete"
 }
 

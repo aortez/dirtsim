@@ -21,7 +21,9 @@
 
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
-import { existsSync } from 'fs';
+import { execSync } from 'child_process';
+import { existsSync, mkdtempSync, rmdirSync, readdirSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
 
 // Import shared utilities from pi-base.
 import {
@@ -36,7 +38,7 @@ import {
   loadConfig,
   saveConfig,
   configureSSHKey,
-  injectSSHKey,
+  readSshKey,
   hasDataPartition,
   backupDataPartition,
   restoreDataPartition,
@@ -59,6 +61,7 @@ const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim')
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const WIFI_CREDS_FILE = join(YOCTO_DIR, 'wifi-creds.local');
 const DEFAULT_HOSTNAME = 'dirtsim';
+const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 const IMAGE_SUFFIX = '.wic.gz';
 const PREFERRED_IMAGES = [
   'dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz',
@@ -87,7 +90,94 @@ async function ensureSSHKeyConfig(forceReconfigure = false) {
   return await configureSSHKey(CONFIG_FILE);
 }
 
+/**
+ * Get available profiles from the profiles directory.
+ * @returns {string[]} Array of profile names.
+ */
+function getAvailableProfiles() {
+  if (!existsSync(PROFILES_DIR)) {
+    return [];
+  }
+  try {
+    return readdirSync(PROFILES_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Inject SSH key and apply profile to rootfs in a single mount operation.
+ * @param {string} device - The device (e.g., /dev/sdb).
+ * @param {string} sshKeyPath - Path to the SSH public key.
+ * @param {string} profileName - Profile name to apply (or null for none).
+ * @param {boolean} dryRun - If true, only show what would happen.
+ */
+async function injectRootfsConfig(device, sshKeyPath, profileName, dryRun = false) {
+  const rootfsPartition = `${device}2`;
+  const sshKey = readSshKey(sshKeyPath);
+
+  if (!sshKey) {
+    throw new Error('Failed to read SSH key');
+  }
+
+  log('');
+  info('Configuring rootfs...');
+
+  if (dryRun) {
+    log(`  Would mount ${rootfsPartition}`);
+    log(`  Would write SSH key to /home/${SSH_USERNAME}/.ssh/authorized_keys`);
+    if (profileName) {
+      log(`  Would apply profile: ${profileName}`);
+    }
+    log(`  Would unmount`);
+    return;
+  }
+
+  // Create temporary mount point.
+  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-rootfs-'));
+
+  try {
+    // Mount the rootfs partition.
+    info(`Mounting ${rootfsPartition}...`);
+    execSync(`sudo mount ${rootfsPartition} ${mountPoint}`, { stdio: 'pipe' });
+
+    // Inject SSH key.
+    const authorizedKeysPath = join(mountPoint, `home/${SSH_USERNAME}/.ssh/authorized_keys`);
+    info('Injecting SSH key...');
+    execSync(`echo '${sshKey}' | sudo tee ${authorizedKeysPath} > /dev/null`, { stdio: 'pipe' });
+    execSync(`sudo chmod 600 ${authorizedKeysPath}`, { stdio: 'pipe' });
+    execSync(`sudo chown ${SSH_UID}:${SSH_UID} ${authorizedKeysPath}`, { stdio: 'pipe' });
+    success('SSH key injected!');
+
+    // Apply profile if specified.
+    if (profileName) {
+      const profileDir = join(PROFILES_DIR, profileName);
+      if (!existsSync(profileDir)) {
+        throw new Error(`Profile not found: ${profileName}`);
+      }
+      info(`Applying profile: ${profileName}...`);
+      execSync(`sudo rsync -a "${profileDir}/" "${mountPoint}/"`, { stdio: 'pipe' });
+      success(`Profile applied: ${profileName}`);
+    }
+
+  } finally {
+    // Always try to unmount and clean up.
+    try {
+      info('Unmounting...');
+      execSync(`sudo umount ${mountPoint}`, { stdio: 'pipe' });
+      rmdirSync(mountPoint);
+    } catch (err) {
+      warn(`Cleanup warning: ${err.message}`);
+    }
+  }
+}
+
 function showHelp() {
+  const profiles = getAvailableProfiles();
+  const profileList = profiles.length > 0 ? profiles.join(', ') : '(none)';
+
   console.log(`
 DirtSim Yocto Flash Tool
 
@@ -97,25 +187,30 @@ Usage:
   npm run flash [options]
 
 Options:
-  --device <dev>   Flash directly to device (still confirms)
-  --interactive    Force interactive prompts (ignore config file)
-  --list           List available devices and exit
-  --dry-run        Show what would happen without flashing
-  --reconfigure    Re-select SSH key
-  -h, --help       Show this help
+  --device <dev>     Flash directly to device (still confirms)
+  --profile <name>   Apply a configuration profile (e.g., production)
+  --interactive      Force interactive prompts (ignore config file)
+  --list             List available devices and exit
+  --dry-run          Show what would happen without flashing
+  --reconfigure      Re-select SSH key
+  -h, --help         Show this help
+
+Available profiles: ${profileList}
 
 Examples:
-  npm run flash                       # Use config file or interactive
-  npm run flash -- --interactive      # Force interactive mode
-  npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
-  npm run flash -- --list             # Just list devices
-  npm run flash -- --dry-run          # Preview without flashing
+  npm run flash                              # Use config file or interactive
+  npm run flash -- --profile production      # Flash with production profile
+  npm run flash -- --interactive             # Force interactive mode
+  npm run flash -- --device /dev/sdb         # Direct flash (still confirms)
+  npm run flash -- --list                    # Just list devices
+  npm run flash -- --dry-run                 # Preview without flashing
 
 Configuration:
   Defaults can be set in .flash-config.json:
     - device: Auto-select device (e.g., "/dev/sda")
     - device_serial: Stored serial number for device identity verification
     - hostname: Pre-set hostname
+    - profile: Default profile to apply (e.g., "production")
     - backup_data: Auto-backup data partition (true/false)
     - skip_confirmation: Skip final confirmation (true/false)
 
@@ -125,6 +220,11 @@ Safety Features:
   - Device identity: The serial number is saved after first flash. If a different
     device appears at the same path, you must type "YES" to confirm.
   - Large device warning: Devices larger than 200GB require typing "YES" to flash.
+
+Profiles:
+  Profiles are directories in yocto/profiles/ containing files to overlay onto the
+  rootfs. For example, profiles/production/ might contain systemd drop-in files
+  that enable auto-restart on crash.
 `);
 }
 
@@ -144,6 +244,8 @@ async function main() {
   const interactive = args.includes('--interactive');
   const deviceIndex = args.indexOf('--device');
   const specifiedDevice = deviceIndex !== -1 ? args[deviceIndex + 1] : null;
+  const profileIndex = args.indexOf('--profile');
+  const specifiedProfile = profileIndex !== -1 ? args[profileIndex + 1] : null;
 
   log('');
   log(`${colors.bold}${colors.cyan}DirtSim Yocto Flash Tool${colors.reset}`);
@@ -362,6 +464,18 @@ async function main() {
     wifiCredentials = await getWifiCredentials(WIFI_CREDS_FILE);
   }
 
+  // Resolve profile (CLI flag > config file > none).
+  let profile = specifiedProfile || (!interactive && config.profile) || null;
+  if (profile) {
+    const availableProfiles = getAvailableProfiles();
+    if (!availableProfiles.includes(profile)) {
+      error(`Unknown profile: ${profile}`);
+      info(`Available profiles: ${availableProfiles.join(', ') || '(none)'}`);
+      process.exit(1);
+    }
+    info(`Profile: ${profile}`);
+  }
+
   // Flash!
   try {
     await flashImage(image.path, targetDevice, {
@@ -370,8 +484,8 @@ async function main() {
       skipConfirm: (!interactive && config.skip_confirmation) || false,
     });
 
-    // Inject SSH key after flashing.
-    await injectSSHKey(targetDevice, config.ssh_key_path, SSH_USERNAME, SSH_UID, dryRun);
+    // Inject SSH key and apply profile after flashing.
+    await injectRootfsConfig(targetDevice, config.ssh_key_path, profile, dryRun);
 
     // Set hostname.
     await setHostname(targetDevice, hostname, dryRun);
@@ -412,6 +526,9 @@ async function main() {
 
       log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       success('Flash complete!');
+      if (profile) {
+        success(`Profile: ${profile}`);
+      }
       if (backupDir) {
         success('/data restored - WiFi credentials preserved!');
       } else if (wifiCredentials) {
@@ -422,6 +539,9 @@ async function main() {
       info('You can now eject the drive and boot your Raspberry Pi.');
       info(`Login: ssh ${SSH_USERNAME}@${hostname}.local`);
       info(`SSH key: ${basename(config.ssh_key_path)}`);
+      if (profile) {
+        info(`Profile: ${profile}`);
+      }
     }
   } catch (err) {
     // Clean up backup on failure.

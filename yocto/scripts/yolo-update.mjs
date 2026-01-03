@@ -58,6 +58,7 @@ const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
+const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 
 // Remote target configuration (defaults).
 const DEFAULT_HOST = 'dirtsim.local';
@@ -134,6 +135,133 @@ function findLatestRootfs() {
     .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
 
   return files[0] || null;
+}
+
+// ============================================================================
+// Profile Support
+// ============================================================================
+
+/**
+ * Get available profiles from the profiles directory.
+ * @returns {string[]} Array of profile names.
+ */
+function getAvailableProfiles() {
+  if (!existsSync(PROFILES_DIR)) {
+    return [];
+  }
+  try {
+    return readdirSync(PROFILES_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Recursively get all files in a directory with their relative paths.
+ * @param {string} dir - Directory to scan.
+ * @param {string} base - Base path for relative paths.
+ * @returns {Array<{localPath: string, remotePath: string}>}
+ */
+function getProfileFiles(dir, base = '') {
+  const results = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const localPath = join(dir, entry.name);
+    const remotePath = base ? `${base}/${entry.name}` : entry.name;
+
+    if (entry.isDirectory()) {
+      results.push(...getProfileFiles(localPath, remotePath));
+    } else {
+      results.push({ localPath, remotePath: `/${remotePath}` });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Apply a profile to an ext4 rootfs image using e2tools (no sudo required).
+ * @param {string} rootfsPath - Path to the .ext4.gz file.
+ * @param {string} profileName - Name of the profile to apply.
+ * @returns {string} Path to the modified .ext4.gz file (in temp directory).
+ */
+function applyProfileToRootfs(rootfsPath, profileName) {
+  const profileDir = join(PROFILES_DIR, profileName);
+  if (!existsSync(profileDir)) {
+    throw new Error(`Profile not found: ${profileName}`);
+  }
+
+  // Create temp directory for work.
+  const workDir = join(tmpdir(), `dirtsim-profile-${Date.now()}`);
+  execSync(`mkdir -p "${workDir}"`, { stdio: 'pipe' });
+
+  const ext4Path = join(workDir, 'rootfs.ext4');
+  const outputPath = join(workDir, 'rootfs.ext4.gz');
+
+  try {
+    // Decompress.
+    info('Decompressing rootfs for profile overlay...');
+    execSync(`gunzip -c "${rootfsPath}" > "${ext4Path}"`, { stdio: 'pipe' });
+
+    // Get all files from the profile.
+    const files = getProfileFiles(profileDir);
+
+    if (files.length === 0) {
+      warn(`Profile ${profileName} has no files to apply`);
+    } else {
+      info(`Applying ${files.length} file(s) from profile: ${profileName}`);
+
+      // Create directories and copy files using e2tools.
+      const dirsCreated = new Set();
+
+      for (const file of files) {
+        // Ensure parent directories exist.
+        const parentDir = dirname(file.remotePath);
+        if (parentDir !== '/' && !dirsCreated.has(parentDir)) {
+          // e2mkdir needs each level created, so create the full path.
+          const parts = parentDir.split('/').filter(p => p);
+          let currentPath = '';
+          for (const part of parts) {
+            currentPath += `/${part}`;
+            if (!dirsCreated.has(currentPath)) {
+              try {
+                execSync(`e2mkdir "${ext4Path}:${currentPath}"`, { stdio: 'pipe' });
+              } catch {
+                // Directory might already exist, that's fine.
+              }
+              dirsCreated.add(currentPath);
+            }
+          }
+        }
+
+        // Copy file.
+        execSync(`e2cp "${file.localPath}" "${ext4Path}:${file.remotePath}"`, { stdio: 'pipe' });
+        success(`  ${file.remotePath}`);
+      }
+    }
+
+    // Recompress.
+    info('Recompressing rootfs...');
+    execSync(`gzip -c "${ext4Path}" > "${outputPath}"`, { stdio: 'pipe' });
+
+    // Clean up uncompressed file.
+    unlinkSync(ext4Path);
+
+    success(`Profile ${profileName} applied!`);
+    return outputPath;
+
+  } catch (err) {
+    // Clean up on error.
+    try {
+      execSync(`rm -rf "${workDir}"`, { stdio: 'pipe' });
+    } catch {
+      // Ignore cleanup errors.
+    }
+    throw err;
+  }
 }
 
 // ============================================================================
@@ -424,22 +552,32 @@ async function main() {
   const remoteHost = (targetIdx !== -1 && args[targetIdx + 1]) ? args[targetIdx + 1] : DEFAULT_HOST;
   const remoteTarget = `${REMOTE_USER}@${remoteHost}`;
 
+  // Parse --profile <name> argument.
+  const profileIdx = args.indexOf('--profile');
+  const specifiedProfile = (profileIdx !== -1 && args[profileIdx + 1]) ? args[profileIdx + 1] : null;
+
   if (args.includes('-h') || args.includes('--help')) {
+    const profiles = getAvailableProfiles();
+    const profileList = profiles.length > 0 ? profiles.join(', ') : '(none)';
+
     log('Usage: npm run yolo [options]');
     log('');
     log('Push a Yocto image to the Pi over the network and flash it live.');
     log('No local sudo required - all privileged operations happen on the Pi.');
     log('');
     log('Options:');
-    log('  --target <host>  Target hostname or IP (default: dirtsim.local)');
-    log('  --skip-build     Skip kas build, use existing image');
-    log('  --fast           Fast dev deploy: ninja build + scp binaries + restart');
-    log('                   Skips rootfs/image creation (~10s vs ~2min)');
-    log('  --clean          Force rebuild by cleaning image sstate first');
-    log('  --clean-all      Force full rebuild (cleans server + image sstate)');
-    log('  --dry-run        Show what would happen without doing it');
-    log('  --hold-my-mead   Skip confirmation prompt (for scripts)');
-    log('  -h, --help       Show this help');
+    log('  --target <host>    Target hostname or IP (default: dirtsim.local)');
+    log('  --profile <name>   Apply a configuration profile (e.g., production)');
+    log('  --skip-build       Skip kas build, use existing image');
+    log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
+    log('                     Skips rootfs/image creation (~10s vs ~2min)');
+    log('  --clean            Force rebuild by cleaning image sstate first');
+    log('  --clean-all        Force full rebuild (cleans server + image sstate)');
+    log('  --dry-run          Show what would happen without doing it');
+    log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
+    log('  -h, --help         Show this help');
+    log('');
+    log(`Available profiles: ${profileList}`);
     log('');
     log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
@@ -489,6 +627,31 @@ async function main() {
   info(`Size: ${formatBytes(rootfs.stat.size)}`);
   info(`Built: ${rootfs.stat.mtime.toLocaleString()}`);
 
+  // Apply profile if specified.
+  let rootfsToUse = rootfs.path;
+  let profileWorkDir = null;
+
+  if (specifiedProfile) {
+    const availableProfiles = getAvailableProfiles();
+    if (!availableProfiles.includes(specifiedProfile)) {
+      error(`Unknown profile: ${specifiedProfile}`);
+      info(`Available profiles: ${availableProfiles.join(', ') || '(none)'}`);
+      process.exit(1);
+    }
+
+    if (!dryRun) {
+      banner(`Applying profile: ${specifiedProfile}`, consola);
+      rootfsToUse = applyProfileToRootfs(rootfs.path, specifiedProfile);
+      profileWorkDir = dirname(rootfsToUse);
+
+      // Update size info.
+      const modifiedStat = statSync(rootfsToUse);
+      info(`Modified rootfs size: ${formatBytes(modifiedStat.size)}`);
+    } else {
+      info(`Would apply profile: ${specifiedProfile}`);
+    }
+  }
+
   // Load SSH key config for remote injection.
   const config = loadConfig(CONFIG_FILE);
   let sshKeyPath = null;
@@ -521,13 +684,13 @@ async function main() {
 
   // Calculate checksum.
   info('Calculating checksum...');
-  const checksum = await calculateChecksum(rootfs.path);
+  const checksum = await calculateChecksum(rootfsToUse);
   success(`Checksum: ${checksum.substring(0, 16)}...`);
 
   // Transfer rootfs.
   banner('Transferring rootfs to Pi...', consola);
   const { remoteImagePath, remoteChecksumPath } = await transferImage(
-    rootfs.path, checksum, remoteTarget, REMOTE_TMP, dryRun
+    rootfsToUse, checksum, remoteTarget, REMOTE_TMP, dryRun
   );
 
   // Verify (skip in dry-run since we didn't actually transfer).
@@ -584,6 +747,9 @@ async function main() {
     if (online) {
       log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
       success('YOLO update complete!');
+      if (specifiedProfile) {
+        success(`Profile: ${specifiedProfile}`);
+      }
       info(`Connect with: ssh ${remoteTarget}`);
       log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
     } else {
@@ -598,6 +764,15 @@ async function main() {
     success('Dry run complete!');
     info('Run without --dry-run to actually flash.');
     log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  }
+
+  // Clean up profile work directory.
+  if (profileWorkDir) {
+    try {
+      execSync(`rm -rf "${profileWorkDir}"`, { stdio: 'pipe' });
+    } catch {
+      // Ignore cleanup errors.
+    }
   }
 
   log('');
