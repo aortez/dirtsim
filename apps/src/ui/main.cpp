@@ -163,8 +163,18 @@ int main(int argc, char** argv)
         }
     }
     else {
-        // No backend specified, use wayland as default.
-        selected_backend = "wayland";
+        // Auto-detect display backend from environment.
+        const char* session_type = getenv("XDG_SESSION_TYPE");
+        if (session_type && strcmp(session_type, "wayland") == 0) {
+            selected_backend = "wayland";
+        }
+        else if (getenv("WAYLAND_DISPLAY")) {
+            selected_backend = "wayland";
+        }
+        else {
+            selected_backend = "x11";
+        }
+        SLOG_INFO("Auto-detected display backend: {}", selected_backend);
     }
 
     // Apply settings from command line arguments.

@@ -96,7 +96,7 @@ echo "Server is ready"
 echo ""
 
 # Launch UI in foreground (so Ctrl-C works naturally).
-echo "Launching UI (Wayland backend)..."
+echo "Launching UI (auto-detecting display backend)..."
 echo ""
 echo "=== Both server and UI are running ==="
 echo "Server: ws://localhost:8080"
@@ -104,4 +104,7 @@ echo "UI:     ws://localhost:7070"
 echo ""
 
 # Run UI in foreground - when it exits, cleanup will run.
-./build-debug/bin/dirtsim-ui $LOG_ARGS -b wayland --connect localhost:8080
+# Backend is auto-detected from XDG_SESSION_TYPE / WAYLAND_DISPLAY.
+# Use -b to override if needed (e.g., -b x11 or -b wayland).
+./build-debug/bin/dirtsim-ui $LOG_ARGS --connect localhost:8080
+
