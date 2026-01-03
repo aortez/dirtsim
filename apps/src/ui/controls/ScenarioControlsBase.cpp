@@ -53,14 +53,6 @@ void ScenarioControlsBase::sendConfigUpdate(const ScenarioConfig& config)
 
     if (elapsed < 1000) { // Within 1 second.
         updateCount++;
-        if (updateCount > 5) {
-            spdlog::error(
-                "ScenarioControlsBase: LOOP DETECTED! {} config updates in {}ms",
-                updateCount,
-                elapsed);
-            // Don't send if we're in a loop.
-            return;
-        }
     }
     else {
         updateCount = 1;

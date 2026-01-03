@@ -2049,16 +2049,82 @@ LVGLBuilder::ActionDropdownBuilder LVGLBuilder::actionDropdown(lv_obj_t* parent)
 // ActionStepperBuilder Implementation
 // ============================================================================
 
-// State structure for stepper (stored in container's user_data).
 struct ActionStepperState {
     lv_obj_t* valueLabel;
+    lv_obj_t* container;
     int32_t value;
     int32_t min;
     int32_t max;
     int32_t step;
     double scale;
     std::string format;
+
+    lv_timer_t* repeatTimer;
+    bool isIncrementing;
+    bool initialDelayPassed;
+
+    static constexpr uint32_t INITIAL_DELAY_MS = 400;
+    static constexpr uint32_t REPEAT_INTERVAL_MS = 80;
 };
+
+static void stepperApplyDelta(ActionStepperState* state, int32_t delta)
+{
+    int32_t oldValue = state->value;
+    state->value = std::clamp(state->value + delta, state->min, state->max);
+
+    if (state->value == oldValue) {
+        return;
+    }
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
+    lv_label_set_text(state->valueLabel, buf);
+
+    if (state->container) {
+        lv_obj_send_event(state->container, LV_EVENT_VALUE_CHANGED, nullptr);
+    }
+}
+
+static void stepperRepeatTimerCallback(lv_timer_t* timer)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_timer_get_user_data(timer));
+    if (!state) return;
+
+    int32_t delta = state->isIncrementing ? state->step : -state->step;
+    stepperApplyDelta(state, delta);
+
+    if (!state->initialDelayPassed) {
+        state->initialDelayPassed = true;
+        lv_timer_set_period(timer, ActionStepperState::REPEAT_INTERVAL_MS);
+    }
+}
+
+static void stepperStopRepeat(ActionStepperState* state)
+{
+    if (state->repeatTimer) {
+        lv_timer_delete(state->repeatTimer);
+        state->repeatTimer = nullptr;
+    }
+}
+
+static void onStepperPressed(lv_event_t* e, bool increment)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
+    if (!state) return;
+
+    stepperStopRepeat(state);
+    state->isIncrementing = increment;
+    state->initialDelayPassed = false;
+    state->repeatTimer = lv_timer_create(
+        stepperRepeatTimerCallback, ActionStepperState::INITIAL_DELAY_MS, state);
+}
+
+static void onStepperReleased(lv_event_t* e)
+{
+    auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
+    if (!state) return;
+    stepperStopRepeat(state);
+}
 
 LVGLBuilder::ActionStepperBuilder::ActionStepperBuilder(lv_obj_t* parent)
     : parent_(parent), container_(nullptr), minusBtn_(nullptr), plusBtn_(nullptr),
@@ -2209,7 +2275,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
 
     // Create state structure.
     auto* state = new ActionStepperState{
-        nullptr, value_, min_, max_, step_, value_scale_, value_format_
+        nullptr, container_, value_, min_, max_, step_, value_scale_, value_format_,
+        nullptr, false, false
     };
 
     // --- Minus button ---
@@ -2229,6 +2296,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_center(minusLabel);
 
     lv_obj_add_event_cb(minusBtn_, onMinusClicked, LV_EVENT_CLICKED, state);
+    lv_obj_add_event_cb(minusBtn_, [](lv_event_t* e) { onStepperPressed(e, false); },
+        LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
+    lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
 
     // --- Center section (label + value) ---
     lv_obj_t* centerSection = lv_obj_create(container_);
@@ -2281,6 +2352,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_center(plusLabel);
 
     lv_obj_add_event_cb(plusBtn_, onPlusClicked, LV_EVENT_CLICKED, state);
+    lv_obj_add_event_cb(plusBtn_, [](lv_event_t* e) { onStepperPressed(e, true); },
+        LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
+    lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
 
     // Store state in container.
     lv_obj_set_user_data(container_, state);
@@ -2295,6 +2370,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
         if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
         lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
         auto* st = static_cast<ActionStepperState*>(lv_obj_get_user_data(obj));
+        if (st->repeatTimer) {
+            lv_timer_delete(st->repeatTimer);
+        }
         delete st;
     }, LV_EVENT_DELETE, nullptr);
 
@@ -2305,52 +2383,16 @@ void LVGLBuilder::ActionStepperBuilder::onMinusClicked(lv_event_t* e)
 {
     auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
     if (!state) return;
-
-    // Decrement value.
-    state->value -= state->step;
-    if (state->value < state->min) {
-        state->value = state->min;
-    }
-
-    spdlog::info("ActionStepper: Decremented to {}", state->value);
-
-    // Update display.
-    char buf[32];
-    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
-    lv_label_set_text(state->valueLabel, buf);
-
-    // Trigger VALUE_CHANGED event on container.
-    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    lv_obj_t* container = lv_obj_get_parent(btn); // btn is direct child of container.
-    if (container) {
-        lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
-    }
+    if (state->initialDelayPassed) return;
+    stepperApplyDelta(state, -state->step);
 }
 
 void LVGLBuilder::ActionStepperBuilder::onPlusClicked(lv_event_t* e)
 {
     auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
     if (!state) return;
-
-    // Increment value.
-    state->value += state->step;
-    if (state->value > state->max) {
-        state->value = state->max;
-    }
-
-    spdlog::info("ActionStepper: Incremented to {}", state->value);
-
-    // Update display.
-    char buf[32];
-    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
-    lv_label_set_text(state->valueLabel, buf);
-
-    // Trigger VALUE_CHANGED event on container.
-    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    lv_obj_t* container = lv_obj_get_parent(btn); // btn is direct child of container.
-    if (container) {
-        lv_obj_send_event(container, LV_EVENT_VALUE_CHANGED, nullptr);
-    }
+    if (state->initialDelayPassed) return;
+    stepperApplyDelta(state, state->step);
 }
 
 int32_t LVGLBuilder::ActionStepperBuilder::getValue(lv_obj_t* container)
