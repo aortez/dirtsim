@@ -1027,7 +1027,7 @@ void ClockScenario::updateMeltdownEvent(
 
     // Scan for crashed metal: at or below digit area and not falling (velocity.y <= 0).
     bool any_stray_metal = false;
-    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y); y < data.height - 1; ++y) {
+    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y); y < data.height; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::METAL) {
@@ -1058,7 +1058,7 @@ void ClockScenario::convertStrayMetalToWater(World& world)
     WorldData& data = world.getData();
 
     // Convert all metal to water, then redraw fresh digits.
-    for (uint32_t y = 1; y < data.height - 1; ++y) {
+    for (uint32_t y = 1; y < data.height; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::METAL) {
@@ -1100,7 +1100,7 @@ void ClockScenario::updateDrain(World& world)
 
     // Thresholds for drain opening size.
     constexpr double CLOSE_THRESHOLD = 1.0;   // Below this, drain is closed.
-    constexpr double FULL_OPEN_THRESHOLD = 150.0;  // At or above this, drain is fully open.
+    constexpr double FULL_OPEN_THRESHOLD = 100.0;  // At or above this, drain is fully open.
     constexpr uint32_t MAX_DRAIN_SIZE = 7;    // Maximum drain opening width.
 
     // Calculate proportional drain size based on water level (odd numbers only: 1, 3, 5, 7).
