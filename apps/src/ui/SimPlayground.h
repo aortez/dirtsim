@@ -2,6 +2,7 @@
 
 #include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
+#include "ui/controls/CoreControls.h"
 #include "ui/controls/IconRail.h"
 #include "ui/rendering/RenderMode.h"
 
@@ -69,7 +70,7 @@ public:
 
     void setRenderMode(RenderMode mode);
 
-    RenderMode getRenderMode() const { return renderMode_; }
+    RenderMode getRenderMode() const { return coreControlsState_.renderMode; }
 
     void renderNeuralGrid(const WorldData& data);
 
@@ -89,9 +90,11 @@ public:
 
 private:
     UiComponentManager* uiManager_;
-    RenderMode renderMode_ = RenderMode::ADAPTIVE;
     Network::WebSocketService* wsService_;
     EventSink& eventSink_;
+
+    // State for CoreControls that persists across panel switches.
+    CoreControlsState coreControlsState_;
 
     // Renderers (always active).
     std::unique_ptr<CellRenderer> renderer_;

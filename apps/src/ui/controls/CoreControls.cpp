@@ -21,11 +21,11 @@ CoreControls::CoreControls(
     lv_obj_t* container,
     Network::WebSocketService* wsService,
     EventSink& eventSink,
-    RenderMode initialMode)
+    const CoreControlsState& initialState)
     : container_(container),
       wsService_(wsService),
       eventSink_(eventSink),
-      currentRenderMode_(initialMode)
+      state_(initialState)
 {
     // Create view controller.
     viewController_ = std::make_unique<PanelViewController>(container_);
@@ -80,7 +80,7 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .text("Debug Draw")
                        .mode(LVGLBuilder::ActionMode::Toggle)
                        .size(80)
-                       .checked(false)
+                       .checked(state_.debugDrawEnabled)
                        .glowColor(0x00CC00)
                        .callback(onDebugToggled, this)
                        .buildOrLog();
@@ -97,7 +97,7 @@ void CoreControls::createMainView(lv_obj_t* view)
     lv_obj_set_style_text_color(statsLabelUI_, lv_color_white(), 0);
 
     // Render Mode button - uses ActionButton with horizontal layout.
-    std::string renderModeText = "Render Mode: " + renderModeToString(currentRenderMode_);
+    std::string renderModeText = "Render Mode: " + renderModeToString(state_.renderMode);
     renderModeButton_ = LVGLBuilder::actionButton(view)
                             .text(renderModeText.c_str())
                             .icon(LV_SYMBOL_RIGHT)
@@ -114,7 +114,7 @@ void CoreControls::createMainView(lv_obj_t* view)
             .label("Render Scale")
             .range(1, 200)
             .step(5)
-            .value(40)
+            .value(static_cast<int32_t>(state_.scaleFactor * 100))
             .valueFormat("%.2f")
             .valueScale(0.01)
             .width(LV_PCT(95))
@@ -127,7 +127,7 @@ void CoreControls::createMainView(lv_obj_t* view)
             .label("World Size")
             .range(1, 400)
             .step(1)
-            .value(28)
+            .value(state_.worldSize)
             .valueFormat("%.0f")
             .valueScale(1.0)
             .width(LV_PCT(95))
@@ -200,21 +200,46 @@ void CoreControls::updateStats(double serverFPS, double uiFPS)
     }
 }
 
-void CoreControls::setRenderMode(RenderMode mode)
+void CoreControls::updateFromState(const CoreControlsState& state)
 {
-    currentRenderMode_ = mode;
-    if (!renderModeButton_) return;
+    // Debug draw toggle.
+    if (state.debugDrawEnabled != state_.debugDrawEnabled) {
+        state_.debugDrawEnabled = state.debugDrawEnabled;
+        if (debugSwitch_) {
+            LVGLBuilder::ActionButtonBuilder::setChecked(debugSwitch_, state_.debugDrawEnabled);
+        }
+    }
 
-    // ActionButton stores the container - need to get the inner button and then its label.
-    // The button is the first child of the container.
-    lv_obj_t* button = lv_obj_get_child(renderModeButton_, 0);
-    if (!button) return;
+    // Render mode button text.
+    if (state.renderMode != state_.renderMode) {
+        state_.renderMode = state.renderMode;
+        if (renderModeButton_) {
+            lv_obj_t* button = lv_obj_get_child(renderModeButton_, 0);
+            if (button) {
+                lv_obj_t* label = lv_obj_get_child(button, 1);
+                if (label) {
+                    std::string text = "Render Mode: " + renderModeToString(state_.renderMode);
+                    lv_label_set_text(label, text.c_str());
+                }
+            }
+        }
+    }
 
-    // In row layout: first child is icon, second is text label.
-    lv_obj_t* label = lv_obj_get_child(button, 1);
-    if (label) {
-        std::string renderModeText = "Render Mode: " + renderModeToString(mode);
-        lv_label_set_text(label, renderModeText.c_str());
+    // Scale factor stepper.
+    if (state.scaleFactor != state_.scaleFactor) {
+        state_.scaleFactor = state.scaleFactor;
+        if (scaleFactorStepper_) {
+            LVGLBuilder::ActionStepperBuilder::setValue(
+                scaleFactorStepper_, static_cast<int32_t>(state_.scaleFactor * 100));
+        }
+    }
+
+    // World size stepper.
+    if (state.worldSize != state_.worldSize) {
+        state_.worldSize = state.worldSize;
+        if (worldSizeStepper_) {
+            LVGLBuilder::ActionStepperBuilder::setValue(worldSizeStepper_, state_.worldSize);
+        }
     }
 }
 
@@ -316,9 +341,18 @@ void CoreControls::onRenderModeSelected(lv_event_t* e)
 
     spdlog::info("CoreControls: Render mode changed to {}", renderModeToString(mode));
 
-    // Update button text and track current mode.
-    self->currentRenderMode_ = mode;
-    self->setRenderMode(mode);
+    // Update local state and button text.
+    self->state_.renderMode = mode;
+    if (self->renderModeButton_) {
+        lv_obj_t* button = lv_obj_get_child(self->renderModeButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                std::string text = "Render Mode: " + renderModeToString(mode);
+                lv_label_set_text(label, text.c_str());
+            }
+        }
+    }
 
     // Return to main view.
     if (self->viewController_) {
@@ -385,10 +419,9 @@ void CoreControls::onScaleFactorChanged(lv_event_t* e)
     setSharpScaleFactor(scaleFactor);
 
     // Trigger renderer reinitialization by sending RenderModeSelect event.
-    // Preserve the current mode (don't force SHARP).
     UiApi::RenderModeSelect::Cwc cwc;
-    cwc.command.mode = self->currentRenderMode_;
-    cwc.callback = [](auto&&) {}; // No response needed.
+    cwc.command.mode = self->state_.renderMode;
+    cwc.callback = [](auto&&) {};
     self->eventSink_.queueEvent(cwc);
 }
 

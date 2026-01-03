@@ -18,6 +18,13 @@ namespace Ui {
 // Forward declaration.
 class EventSink;
 
+struct CoreControlsState {
+    bool debugDrawEnabled = false;
+    RenderMode renderMode = RenderMode::ADAPTIVE;
+    double scaleFactor = 0.4;
+    int worldSize = 28;
+};
+
 /**
  * @brief Core controls always present in simulation view.
  *
@@ -29,25 +36,17 @@ public:
         lv_obj_t* container,
         Network::WebSocketService* wsService,
         EventSink& eventSink,
-        RenderMode initialMode = RenderMode::ADAPTIVE);
+        const CoreControlsState& initialState);
     ~CoreControls();
 
-    /**
-     * @brief Update stats display with FPS values.
-     */
+    void updateFromState(const CoreControlsState& state);
     void updateStats(double serverFPS, double uiFPS);
-
-    /**
-     * @brief Set render mode dropdown to match current mode.
-     * Used to sync UI after mode changes or scenario switches.
-     */
-    void setRenderMode(RenderMode mode);
 
 private:
     lv_obj_t* container_;
     Network::WebSocketService* wsService_;
     EventSink& eventSink_;
-    RenderMode currentRenderMode_; // Track current mode to preserve it.
+    CoreControlsState state_;
 
     // View controller for modal navigation.
     std::unique_ptr<PanelViewController> viewController_;

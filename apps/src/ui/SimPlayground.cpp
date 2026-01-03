@@ -149,7 +149,7 @@ void SimPlayground::createCorePanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Core panel");
 
     coreControls_ =
-        std::make_unique<CoreControls>(container, wsService_, eventSink_, renderMode_);
+        std::make_unique<CoreControls>(container, wsService_, eventSink_, coreControlsState_);
 }
 
 void SimPlayground::createScenarioPanel(lv_obj_t* container)
@@ -214,9 +214,13 @@ void SimPlayground::updateFromWorldData(
     const ScenarioConfig& scenario_config,
     double uiFPS)
 {
-    // Update stats display if core panel is active.
+    // Capture world size from server.
+    coreControlsState_.worldSize = static_cast<int>(data.width);
+
+    // Sync core controls if panel is active.
     if (coreControls_) {
         coreControls_->updateStats(data.fps_server, uiFPS);
+        coreControls_->updateFromState(coreControlsState_);
     }
 
     // Track tree existence for icon visibility.
@@ -244,19 +248,22 @@ void SimPlayground::updateFromWorldData(
 
 void SimPlayground::render(const WorldData& data, bool debugDraw)
 {
+    // Capture debug draw state from server.
+    coreControlsState_.debugDrawEnabled = debugDraw;
+
     lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
 
     // Render world state (CellRenderer handles initialization/resize internally).
-    renderer_->renderWorldData(data, worldContainer, debugDraw, renderMode_);
+    renderer_->renderWorldData(data, worldContainer, debugDraw, coreControlsState_.renderMode);
 }
 
 void SimPlayground::setRenderMode(RenderMode mode)
 {
-    renderMode_ = mode;
+    coreControlsState_.renderMode = mode;
 
-    // Sync dropdown to match.
+    // Sync controls if panel is active.
     if (coreControls_) {
-        coreControls_->setRenderMode(mode);
+        coreControls_->updateFromState(coreControlsState_);
     }
 
     LOG_INFO(Controls, "Render mode set to {}", renderModeToString(mode));
