@@ -1,4 +1,5 @@
 #include "ClockScenario.h"
+#include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
@@ -482,6 +483,23 @@ void ClockScenario::tick(World& world, double deltaTime)
 
     // Update event system.
     updateEvents(world, deltaTime);
+
+    // Debug check: verify all WOOD cells have an associated organism.
+    // WOOD cells only come from ducks in this scenario, so orphaned WOOD is a bug.
+    const WorldData& data = world.getData();
+    const auto& org_grid = world.getOrganismManager().getGrid();
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            size_t idx = y * data.width + x;
+            if (data.cells[idx].material_type == MaterialType::WOOD) {
+                if (org_grid[idx] == INVALID_ORGANISM_ID) {
+                    spdlog::error("ClockScenario: Orphaned WOOD cell at ({}, {}) with no organism!",
+                        x, y);
+                    DIRTSIM_ASSERT(false, "Orphaned WOOD cell found - see log for details");
+                }
+            }
+        }
+    }
 }
 
 int ClockScenario::calculateTotalWidth() const
@@ -1110,7 +1128,7 @@ void ClockScenario::updateDrain(World& world)
     } else if (water_amount >= CLOSE_THRESHOLD) {
         // Linear interpolation from 1 to MAX_DRAIN_SIZE, but quantized to odd numbers only.
         double t = (water_amount - CLOSE_THRESHOLD) / (FULL_OPEN_THRESHOLD - CLOSE_THRESHOLD);
-        uint32_t continuous_size = 1 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
+        uint32_t continuous_size = 3 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
 
         // Round to nearest odd number (1, 3, 5, 7).
         if (continuous_size % 2 == 0) {
@@ -1235,7 +1253,11 @@ void ClockScenario::updateDrain(World& world)
                 direction = 0.0;  // Already at drain.
             }
 
-            cell.addPendingForce(Vector2d{ direction * force_magnitude, 0.0 });
+            // Pull water down when directly over the drain opening.
+            bool over_drain = (x >= drain_start_x_ && x <= drain_end_x_);
+            double downward_force = over_drain ? MAX_FORCE : 0.0;
+
+            cell.addPendingForce(Vector2d{ direction * force_magnitude, downward_force });
         }
     }
 }

@@ -584,6 +584,14 @@ async function main() {
   }
 
   // Fast mode: ninja build + scp + restart (skip rootfs/image/flash).
+  // Profiles require rootfs modification, which fast mode skips.
+  if (fastMode && specifiedProfile) {
+    error('Cannot use --fast with --profile');
+    error('--fast only copies binaries (no rootfs modification)');
+    error('--profile requires rootfs overlay (use full update instead)');
+    process.exit(1);
+  }
+
   if (fastMode) {
     await fastDeploy(remoteHost, remoteTarget, dryRun);
     return;
