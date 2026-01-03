@@ -628,6 +628,12 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
             continue;
         }
 
+        // Never displace into cells that belong to an organism.
+        Vector2i neighbor_pos{nx, ny};
+        if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
+            continue;
+        }
+
         const Cell& neighbor = data.at(nx, ny);
         double com_score = cell.com.x * dx + cell.com.y * dy;
 
@@ -662,6 +668,12 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
                     int ny = y + dy;
 
                     if (!isValidCell(nx, ny)) {
+                        continue;
+                    }
+
+                    // Never displace into cells that belong to an organism.
+                    Vector2i neighbor_pos{nx, ny};
+                    if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
                         continue;
                     }
 
@@ -700,6 +712,9 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     // Displace existing material to empty neighbor.
     Vector2i empty_pos{x + best_dir.x, y + best_dir.y};
     Vector2i target_pos{x, y};
+
+    DIRTSIM_ASSERT(organism_manager_->at(empty_pos) == INVALID_ORGANISM_ID,
+        "replaceMaterialAtCell: Cannot displace into organism cell");
 
     OrganismId displaced_org = organism_manager_->at(target_pos);
     if (displaced_org != INVALID_ORGANISM_ID) {
