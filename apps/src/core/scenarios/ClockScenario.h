@@ -185,7 +185,7 @@ private:
     void endEvent(World& world, ClockEventType type, ActiveEvent& event);
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
-    void updateDrain(World& world);
+    void updateDrain(World& world, double deltaTime);
 
     // Event-specific update handlers (called via visitor).
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);

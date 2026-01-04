@@ -480,7 +480,7 @@ void ClockScenario::tick(World& world, double deltaTime)
     }
 
     // Manage floor drain based on water level.
-    updateDrain(world);
+    updateDrain(world, deltaTime);
 
     // Update event system.
     updateEvents(world, deltaTime);
@@ -1109,7 +1109,7 @@ double ClockScenario::countWaterInBottomThird(const World& world) const
     return total_water;
 }
 
-void ClockScenario::updateDrain(World& world)
+void ClockScenario::updateDrain(World& world, double deltaTime)
 {
     WorldData& data = world.getData();
     if (data.height < 3 || data.width < 5) return;
@@ -1220,52 +1220,60 @@ void ClockScenario::updateDrain(World& world)
         }
     }
 
-    // If drain is open, fragment and remove water that falls into the drain cells.
+    // If drain is open, handle water in drain cells.
     if (drain_open_) {
-        // Drain spray parameters: dramatic upward spray effect.
-        static const FragmentationParams drain_frag_params{
-            .radial_bias = 0.0,        // Pure reflection-based (upward).
-            .min_arc = M_PI / 3.0,     // 60 degrees.
-            .max_arc = M_PI / 2.0,     // 90 degrees max.
-            .edge_speed_factor = 1.2,  // Slight spread.
-            .base_speed = 10.0,        // Strong upward spray.
-            .spray_fraction = 0.8,     // Spray 80% of water for visible effect.
-        };
+        uint32_t center_x = (drain_start_x_ + drain_end_x_) / 2;
 
         for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
             Cell& cell = data.at(x, drain_y);
-            if (cell.material_type == MaterialType::WATER) {
-                // Only spray when COM is below midline (visible in drain opening).
-                bool com_below_midline = cell.com.y > 0.0;
+            if (cell.material_type != MaterialType::WATER) {
+                continue;
+            }
 
-                if (cell.fill_ratio > 0.05 && com_below_midline) {
-                    Vector2d spray_direction(0.0, -1.0);  // Upward.
-                    constexpr int NUM_FRAGS = 2;
-                    constexpr double ARC_WIDTH = M_PI / 2.0;  // 90 degrees.
+            const bool com_below_midline = cell.com.y > 0.0;
+            if (!com_below_midline) {
+                continue;
+            }
 
-                    // Log target cell capacity (cell above drain).
-                    uint32_t target_y = drain_y - 1;
-                    Cell& above = data.at(x, target_y);
-                    spdlog::info("Drain: x={} fill={:.2f} com.y={:.2f}, above: type={} fill={:.2f} cap={:.2f}",
-                        x, cell.fill_ratio, cell.com.y,
-                        static_cast<int>(above.material_type), above.fill_ratio, above.getCapacity());
+            const bool is_center = (x == center_x);
 
-                    double sprayed = world.getCollisionCalculator().fragmentSingleCell(
+            // Center cell: chance to spray dramatically.
+            if (is_center && cell.fill_ratio > 0.5) {
+                if (uniform_dist_(rng_) < 0.7) {
+                    static const FragmentationParams drain_frag_params{
+                        .radial_bias = 0.2,
+                        .min_arc = M_PI / 3.0,
+                        .max_arc = M_PI / 2.0,
+                        .edge_speed_factor = 1.2,
+                        .base_speed = 50.0,
+                        .spray_fraction = 1.0,
+                    };
+
+                    Vector2d spray_direction(0.0, -1.0);
+                    constexpr int NUM_FRAGS = 5;
+                    constexpr double ARC_WIDTH = M_PI / 2.0;
+
+                    world.getCollisionCalculator().fragmentSingleCell(
                         world,
                         cell,
                         x,
                         drain_y,
-                        x,              // Avoid spraying back into drain.
-                        drain_y + 1,    // Avoid cell below (out of bounds anyway).
+                        x,
+                        drain_y,
                         spray_direction,
                         NUM_FRAGS,
                         ARC_WIDTH,
                         drain_frag_params);
-                    spdlog::info("Drain: sprayed {:.3f} from x={}", sprayed, x);
 
-                    // Delete remaining water after spraying.
                     cell = Cell();
+                    continue;
                 }
+            }
+
+            // All drain cells dissipate: full to empty in 1/4 second.
+            cell.fill_ratio -= (deltaTime * 4);
+            if (cell.fill_ratio <= 0.0) {
+                cell = Cell();
             }
         }
 
