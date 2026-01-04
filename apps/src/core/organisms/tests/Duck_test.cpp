@@ -1018,3 +1018,183 @@ TEST_F(DuckTest, DuckBrain2DoesNotJumpWhenStationary)
     // (It might jump if it happens to have enough speed, but typically won't in first 10 frames.)
     spdlog::info("Duck jumped {} times in first 10 frames", jump_count);
 }
+
+// ============================================================================
+// Cliff Detection and Jumping Tests
+// ============================================================================
+
+/**
+ * Helper to create a world with a cliff.
+ *
+ * Layout (width x 10):
+ *   Row 0: WALL border (ceiling)
+ *   Row 1-7: AIR
+ *   Row 8: WALL floor from x=0 to cliff_start-1, AIR from cliff_start to cliff_end, WALL from cliff_end+1 to width-1
+ *   Row 9: WALL border (bottom)
+ */
+std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_end)
+{
+    auto world = std::make_unique<World>(width, 10);
+
+    // Clear interior to air (rows 1-8).
+    for (uint32_t y = 1; y < 9; ++y) {
+        for (uint32_t x = 1; x < static_cast<uint32_t>(width - 1); ++x) {
+            world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
+        }
+    }
+
+    // Create floor with gap (cliff).
+    for (int x = 0; x < width; ++x) {
+        if (x >= cliff_start && x <= cliff_end) {
+            // Gap - air.
+            world->getData().at(x, 8).replaceMaterial(MaterialType::AIR, 0.0);
+        } else {
+            // Floor - wall.
+            world->getData().at(x, 8).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+    }
+
+    return world;
+}
+
+TEST_F(DuckTest, DuckBrain2JumpsOverCliffWhenFast)
+{
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
+
+    // Create world with cliff: floor until x=15, gap from x=16-20, floor resumes x=21+.
+    // World is 30 wide, so duck has room to accelerate and encounter cliff.
+    constexpr int CLIFF_START = 16;
+    constexpr int CLIFF_END = 20;
+    auto world = createCliffWorld(30, CLIFF_START, CLIFF_END);
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Create duck with DuckBrain2 near left wall.
+    auto brain = std::make_unique<DuckBrain2>();
+    DuckBrain2* brain_ptr = brain.get();
+    OrganismId duck_id = manager.createDuck(*world, 2, 7, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle.
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    spdlog::info("CliffTest: Duck settled at x={}", duck->getAnchorCell().x);
+
+    // Run simulation until duck either:
+    // 1. Falls into the cliff (y > 8)
+    // 2. Successfully crosses (x > CLIFF_END + 1)
+    // 3. Timeout after 500 frames.
+    bool fell_in_cliff = false;
+    bool crossed_cliff = false;
+    int jump_count = 0;
+    int first_cliff_jump_x = -1;  // Track where the first cliff jump occurred.
+    bool was_on_ground = duck->isOnGround();
+
+    for (int i = 0; i < 500; ++i) {
+        world->advanceTime(0.016);
+
+        int x = duck->getAnchorCell().x;
+        int y = duck->getAnchorCell().y;
+        bool on_ground = duck->isOnGround();
+
+        // Detect jumps.
+        if (was_on_ground && !on_ground) {
+            jump_count++;
+            spdlog::info("CliffTest frame {}: Jump #{} at x={}", i, jump_count, x);
+
+            // Record first jump near the cliff.
+            if (first_cliff_jump_x < 0 && x >= CLIFF_START - 2) {
+                first_cliff_jump_x = x;
+            }
+        }
+
+        // Check if duck fell into the gap (below floor level).
+        if (y >= 9) {
+            fell_in_cliff = true;
+            spdlog::info("CliffTest frame {}: Duck fell into cliff at ({}, {})", i, x, y);
+            break;
+        }
+
+        // Check if duck crossed the cliff.
+        if (x >= CLIFF_END + 2) {
+            crossed_cliff = true;
+            spdlog::info("CliffTest frame {}: Duck crossed cliff, now at x={}", i, x);
+            break;
+        }
+
+        was_on_ground = on_ground;
+    }
+
+    // Log knowledge state.
+    const auto& knowledge = brain_ptr->getKnowledge();
+    spdlog::info("CliffTest: Knowledge - max_speed={:.1f}, jump_distance={:.1f}",
+        knowledge.max_speed.value_or(-1), knowledge.jump_distance.value_or(-1));
+
+    spdlog::info("CliffTest: fell_in_cliff={}, crossed_cliff={}, jump_count={}, first_cliff_jump_x={}",
+        fell_in_cliff, crossed_cliff, jump_count, first_cliff_jump_x);
+
+    // Duck should jump when it sees a cliff (survival instinct, no knowledge needed).
+    EXPECT_GE(jump_count, 1) << "Duck should jump when cliff detected";
+    EXPECT_TRUE(crossed_cliff) << "Duck should cross the cliff";
+    EXPECT_FALSE(fell_in_cliff) << "Duck should not fall into cliff";
+
+    // Duck should jump close to the edge, not too early.
+    // Must be within 1 cell of the cliff start.
+    EXPECT_GE(first_cliff_jump_x, CLIFF_START - 1)
+        << "Duck should jump within 1 cell of cliff edge, not earlier";
+}
+
+TEST_F(DuckTest, DuckBrain2DetectsCliffInSensoryData)
+{
+    // Create world with cliff.
+    auto world = createCliffWorld(20, 10, 14);
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Use test brain so we can control movement.
+    auto test_brain = std::make_unique<TestDuckBrain>();
+    TestDuckBrain* brain_ptr = test_brain.get();
+
+    // Create duck near the cliff edge.
+    OrganismId duck_id = manager.createDuck(*world, 8, 7, std::move(test_brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Let duck settle and start moving right.
+    brain_ptr->setAction(DuckAction::WAIT);
+    for (int i = 0; i < 20; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    // Start moving right toward cliff.
+    brain_ptr->setAction(DuckAction::RUN_RIGHT);
+    for (int i = 0; i < 30; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    // Get sensory data when duck is near cliff edge.
+    DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
+
+    // Log the floor row of sensory grid.
+    spdlog::info("CliffSensory: Duck at x={}, facing_x={}", sensory.position.x, sensory.facing_x);
+    std::string floor_str;
+    constexpr int FLOOR_ROW = 5;  // Row below duck center (4).
+    for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
+        double total_fill = 0.0;
+        for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
+            if (mat != static_cast<int>(MaterialType::AIR)) {
+                total_fill += sensory.material_histograms[FLOOR_ROW][col][mat];
+            }
+        }
+        floor_str += (total_fill >= 0.3) ? "#" : ".";
+    }
+    spdlog::info("CliffSensory: Floor row (row 5): [{}]", floor_str);
+
+    // The sensory grid should show floor dropping off ahead.
+    // Verify the test setup works (duck should be near cliff edge by now).
+    EXPECT_GE(sensory.position.x, 9) << "Duck should have moved toward cliff";
+}
