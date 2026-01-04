@@ -3,6 +3,7 @@
 #include "DuckSensoryData.h"
 #include "core/LoggingChannels.h"
 #include "core/organisms/OrganismSensoryData.h"
+#include "core/ReflectSerializer.h"
 #include <cmath>
 
 namespace DirtSim {
@@ -260,6 +261,14 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
 
     // Assess current situation.
     DuckSituation situation = assessSituation(sensory);
+
+    // Debug: log situation and sensory data every frame.
+    LOG_DEBUG(Brain, "Duck {}: situation={}", duck.getId(),
+        ReflectSerializer::to_json(situation).dump());
+    LOG_DEBUG(Brain, "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), facing_x={:.1f}, on_ground={}, cooldown={:.2f}",
+        duck.getId(), sensory.position.x, sensory.position.y,
+        sensory.velocity.x, sensory.velocity.y, sensory.facing_x,
+        sensory.on_ground, jump_cooldown_seconds_);
 
     // Determine exit side from knowledge.
     Side exit_side = knowledge_.exitSide();

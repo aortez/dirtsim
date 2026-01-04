@@ -1198,3 +1198,219 @@ TEST_F(DuckTest, DuckBrain2DetectsCliffInSensoryData)
     // Verify the test setup works (duck should be near cliff edge by now).
     EXPECT_GE(sensory.position.x, 9) << "Duck should have moved toward cliff";
 }
+
+// ============================================================================
+// Obstacle Jumping Tests
+// ============================================================================
+
+struct ObstacleTestCase {
+    int obstacle_x;
+    int obstacle_height;
+    const char* name;
+};
+
+class DuckObstacleJumpTest : public ::testing::TestWithParam<ObstacleTestCase> {
+protected:
+    void SetUp() override
+    {
+        LoggingChannels::initialize();
+        LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::debug);
+    }
+
+    /**
+     * Create a 20x10 world with outer walls and an obstacle.
+     *
+     * Layout:
+     *   Row 0: WALL border (ceiling)
+     *   Row 1-8: AIR (interior)
+     *   Row 9: WALL border (floor)
+     *
+     * Obstacle is placed at the specified x position, rising from the floor.
+     */
+    std::unique_ptr<World> createObstacleWorld(int obstacle_x, int obstacle_height)
+    {
+        constexpr int WIDTH = 20;
+        constexpr int HEIGHT = 10;
+
+        auto world = std::make_unique<World>(WIDTH, HEIGHT);
+
+        // Clear everything to air first.
+        for (uint32_t y = 0; y < HEIGHT; ++y) {
+            for (uint32_t x = 0; x < WIDTH; ++x) {
+                world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
+            }
+        }
+
+        // Add outer walls manually.
+        // Top and bottom rows.
+        for (uint32_t x = 0; x < WIDTH; ++x) {
+            world->getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+            world->getData().at(x, HEIGHT - 1).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+        // Left and right columns.
+        for (uint32_t y = 0; y < HEIGHT; ++y) {
+            world->getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
+            world->getData().at(WIDTH - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+
+        // Place obstacle: WALL blocks rising from the floor.
+        // Floor is at row HEIGHT-1, so obstacle occupies rows above it.
+        for (int h = 0; h < obstacle_height; ++h) {
+            int y = HEIGHT - 2 - h;  // Start one above floor, go up.
+            if (y >= 1) {
+                world->getData().at(obstacle_x, y).replaceMaterial(MaterialType::WALL, 1.0);
+            }
+        }
+
+        return world;
+    }
+
+    void printWorld(const World& world, const std::string& label)
+    {
+        spdlog::info("=== {} ===", label);
+        const WorldData& data = world.getData();
+        for (uint32_t y = 0; y < data.height; ++y) {
+            std::string row;
+            for (uint32_t x = 0; x < data.width; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL) {
+                    row += "W";
+                }
+                else if (cell.material_type == MaterialType::WOOD) {
+                    row += "D";
+                }
+                else if (cell.material_type == MaterialType::AIR || cell.isEmpty()) {
+                    row += ".";
+                }
+                else {
+                    row += "?";
+                }
+            }
+            spdlog::info("  {}", row);
+        }
+    }
+};
+
+TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
+{
+    const auto& params = GetParam();
+    spdlog::info("ObstacleJumpTest: obstacle_x={}, height={}, name={}",
+        params.obstacle_x, params.obstacle_height, params.name);
+
+    auto world = createObstacleWorld(params.obstacle_x, params.obstacle_height);
+    printWorld(*world, "Initial world with obstacle");
+
+    OrganismManager& manager = world->getOrganismManager();
+
+    // Duck spawns one cell from left wall, one cell up from floor.
+    // In a 20x10 world: x=1, y=7 (floor is row 9, so row 8 is just above floor).
+    constexpr int SPAWN_X = 1;
+    constexpr int SPAWN_Y = 7;  // One cell up in the air to let it settle.
+
+    auto brain = std::make_unique<DuckBrain2>();
+    DuckBrain2* brain_ptr = brain.get();
+    OrganismId duck_id = manager.createDuck(*world, SPAWN_X, SPAWN_Y, std::move(brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    printWorld(*world, "After duck spawn");
+
+    // Let duck settle onto ground.
+    for (int i = 0; i < 30; ++i) {
+        world->advanceTime(0.016);
+    }
+
+    int settled_x = duck->getAnchorCell().x;
+    spdlog::info("Duck settled at x={}", settled_x);
+
+    // Track that duck is moving right by frame 10.
+    bool moving_right_by_frame_10 = false;
+
+    // Track jump timing relative to obstacle.
+    bool jumped = false;
+    int jump_x = -1;
+    bool was_on_ground = duck->isOnGround();
+
+    // Track if duck cleared the obstacle.
+    bool cleared_obstacle = false;
+    int max_x_reached = settled_x;
+
+    // Run simulation.
+    constexpr int MAX_FRAMES = 300;
+    for (int frame = 0; frame < MAX_FRAMES; ++frame) {
+        world->advanceTime(0.016);
+
+        int current_x = duck->getAnchorCell().x;
+        bool on_ground = duck->isOnGround();
+
+        // Check movement by frame 10.
+        if (frame == 10) {
+            moving_right_by_frame_10 = (current_x > settled_x);
+            spdlog::info("Frame 10: x={}, settled_x={}, moving_right={}",
+                current_x, settled_x, moving_right_by_frame_10);
+        }
+
+        // Detect jump.
+        if (was_on_ground && !on_ground && !jumped) {
+            jumped = true;
+            jump_x = current_x;
+            spdlog::info("Frame {}: Jump detected at x={}", frame, current_x);
+        }
+
+        // Track max x reached.
+        if (current_x > max_x_reached) {
+            max_x_reached = current_x;
+        }
+
+        // Check if cleared obstacle.
+        if (current_x > params.obstacle_x + 1) {
+            cleared_obstacle = true;
+            spdlog::info("Frame {}: Cleared obstacle, now at x={}", frame, current_x);
+            break;
+        }
+
+        was_on_ground = on_ground;
+    }
+
+    // Log final state.
+    const auto& knowledge = brain_ptr->getKnowledge();
+    spdlog::info("Final state: jumped={}, jump_x={}, max_x={}, cleared={}",
+        jumped, jump_x, max_x_reached, cleared_obstacle);
+    spdlog::info("Knowledge: max_speed={:.1f}, jump_distance={:.1f}",
+        knowledge.max_speed.value_or(-1), knowledge.jump_distance.value_or(-1));
+
+    printWorld(*world, "Final world state");
+
+    // Assertions.
+    EXPECT_TRUE(moving_right_by_frame_10)
+        << "Duck should be moving right by frame 10";
+
+    EXPECT_TRUE(jumped)
+        << "Duck should jump when approaching obstacle";
+
+    if (jumped) {
+        EXPECT_LT(jump_x, params.obstacle_x)
+            << "Duck should jump BEFORE reaching the obstacle (jump_x=" << jump_x
+            << ", obstacle_x=" << params.obstacle_x << ")";
+    }
+
+    EXPECT_TRUE(cleared_obstacle)
+        << "Duck should clear the obstacle (max_x=" << max_x_reached
+        << ", obstacle_x=" << params.obstacle_x << ")";
+}
+
+// Start with just one test case: obstacle in the middle.
+INSTANTIATE_TEST_SUITE_P(
+    ObstacleLocations,
+    DuckObstacleJumpTest,
+    ::testing::Values(
+        ObstacleTestCase{10, 1, "middle_1h"}
+        // Future test cases:
+        // ObstacleTestCase{5, 1, "near_spawn_1h"},
+        // ObstacleTestCase{15, 1, "far_1h"},
+        // ObstacleTestCase{10, 2, "middle_2h"}
+    ),
+    [](const ::testing::TestParamInfo<ObstacleTestCase>& info) {
+        return info.param.name;
+    }
+);
