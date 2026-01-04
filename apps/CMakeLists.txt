@@ -512,6 +512,9 @@ add_executable(dirtsim-tests
     src/core/bitmaps/tests/MaterialNeighborhood_test.cpp
     src/core/bitmaps/tests/Neighborhood3x3_test.cpp
 
+    # World resize tests.
+    src/core/tests/WorldResize_test.cpp
+
     # Organism tests.
     src/core/organisms/tests/CantileverSupport_test.cpp
     src/core/organisms/tests/CellTrackerUtil.cpp

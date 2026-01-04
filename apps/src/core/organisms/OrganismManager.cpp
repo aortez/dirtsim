@@ -14,6 +14,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include <cassert>
+#include <cmath>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -38,11 +39,94 @@ const std::vector<OrganismId>& OrganismManager::getGrid() const
     return grid_;
 }
 
-void OrganismManager::resizeGrid(uint32_t width, uint32_t height)
+void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 {
-    width_ = width;
-    height_ = height;
-    grid_.assign(width * height, INVALID_ORGANISM_ID);
+    // Early return if no resize needed.
+    if (width_ == newWidth && height_ == newHeight) {
+        return;
+    }
+
+    uint32_t oldWidth = width_;
+    uint32_t oldHeight = height_;
+
+    spdlog::info("OrganismManager::resizeGrid: {}x{} -> {}x{}, repositioning {} organisms",
+                 oldWidth, oldHeight, newWidth, newHeight, organisms_.size());
+
+    // For each organism, scale its continuous position.
+    // organism->position was set by World::resizeGrid() to preserve sub-cell precision.
+    for (auto& [id, organism] : organisms_) {
+        Vector2i oldAnchor = organism->getAnchorCell();
+
+        // Scale the continuous position.
+        double scaleX = static_cast<double>(newWidth) / static_cast<double>(oldWidth);
+        double scaleY = static_cast<double>(newHeight) / static_cast<double>(oldHeight);
+
+        Vector2d newPosition{
+            organism->position.x * scaleX,
+            organism->position.y * scaleY
+        };
+
+        // Split continuous position into anchor + COM.
+        Vector2i newAnchor{
+            static_cast<int>(std::floor(newPosition.x)),
+            static_cast<int>(std::floor(newPosition.y))
+        };
+
+        // Clamp anchor to valid range.
+        newAnchor.x = std::max(0, std::min(newAnchor.x, static_cast<int>(newWidth) - 1));
+        newAnchor.y = std::max(0, std::min(newAnchor.y, static_cast<int>(newHeight) - 1));
+
+        // Calculate COM from fractional part.
+        double fracX = newPosition.x - std::floor(newPosition.x);
+        double fracY = newPosition.y - std::floor(newPosition.y);
+        Vector2d newCom{
+            fracX * 2.0 - 1.0,
+            fracY * 2.0 - 1.0
+        };
+
+        // Update organism position (for both cell-based and rigid body organisms).
+        organism->position = newPosition;
+
+        // Calculate offset for all cells.
+        Vector2i offset = newAnchor - oldAnchor;
+
+        // Update organism anchor.
+        organism->setAnchorCell(newAnchor);
+
+        // Move all cells by offset.
+        std::unordered_set<Vector2i> newCells;
+        for (const auto& oldPos : organism->getCells()) {
+            Vector2i newPos = oldPos + offset;
+
+            // Bounds check - clip cells outside new world.
+            if (newPos.x >= 0 && newPos.y >= 0 &&
+                static_cast<uint32_t>(newPos.x) < newWidth &&
+                static_cast<uint32_t>(newPos.y) < newHeight) {
+                newCells.insert(newPos);
+            }
+        }
+
+        organism->getCells() = std::move(newCells);
+
+        // Store new COM temporarily for World to write back to grid.
+        // TODO: Find cleaner way to pass this back.
+        organism->center_of_mass = newCom;
+
+        spdlog::debug("OrganismManager::resizeGrid: Organism {} moved from ({},{}) to ({},{})",
+                      id, oldAnchor.x, oldAnchor.y, newAnchor.x, newAnchor.y);
+    }
+
+    // Resize the organism grid.
+    width_ = newWidth;
+    height_ = newHeight;
+    grid_.assign(newWidth * newHeight, INVALID_ORGANISM_ID);
+
+    // Reproject all organisms to the new grid.
+    for (auto& [id, organism] : organisms_) {
+        for (const auto& pos : organism->getCells()) {
+            setOrganismAt(pos, id);
+        }
+    }
 }
 
 void OrganismManager::setOrganismAt(Vector2i pos, OrganismId id)

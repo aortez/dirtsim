@@ -740,20 +740,70 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 
     onPreResize(newWidth, newHeight);
 
-    // Phase 1: Generate interpolated cells using the interpolation tool.
+    // Capture continuous positions (anchor + COM) before clearing cells.
+    // This preserves sub-cell precision across resize operations.
+    if (organism_manager_) {
+        organism_manager_->forEachOrganism([this](Organism& organism) {
+            Vector2i anchor = organism.getAnchorCell();
+
+            // Read COM from world cell to get full continuous position.
+            Vector2d com{0.0, 0.0};
+            if (anchor.x >= 0 && anchor.y >= 0 &&
+                static_cast<uint32_t>(anchor.x) < pImpl->data_.width &&
+                static_cast<uint32_t>(anchor.y) < pImpl->data_.height) {
+                const Cell& cell = pImpl->data_.at(anchor.x, anchor.y);
+                com = cell.com;
+            }
+
+            // Convert anchor + COM to continuous position.
+            organism.position = Vector2d{
+                static_cast<double>(anchor.x) + (com.x + 1.0) / 2.0,
+                static_cast<double>(anchor.y) + (com.y + 1.0) / 2.0
+            };
+        });
+
+        // Now clear organism cells from world grid before interpolation.
+        organism_manager_->forEachOrganism([this](Organism& organism) {
+            for (const auto& pos : organism.getCells()) {
+                if (pos.x >= 0 && pos.y >= 0 &&
+                    static_cast<uint32_t>(pos.x) < pImpl->data_.width &&
+                    static_cast<uint32_t>(pos.y) < pImpl->data_.height) {
+                    pImpl->data_.at(pos.x, pos.y) = Cell();  // Clear to AIR.
+                }
+            }
+        });
+    }
+
+    // Generate interpolated cells using the interpolation tool.
     std::vector<Cell> interpolatedCells = WorldInterpolationTool::generateInterpolatedCellsB(
         pImpl->data_.cells, pImpl->data_.width, pImpl->data_.height, newWidth, newHeight);
 
-    // Phase 2: Update world state with the new interpolated cells.
+    // Update world state with the new interpolated cells.
     pImpl->data_.width = newWidth;
     pImpl->data_.height = newHeight;
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
 
-    // Resize organism grid and clear organisms (positions become invalid after resize).
+    // Resize organism grid and reposition organisms at new proportional positions.
+    // OrganismManager::resizeGrid() handles all repositioning internally.
     if (organism_manager_) {
-        organism_manager_->clear();
         organism_manager_->resizeGrid(newWidth, newHeight);
+
+        // Reproject organism cells onto the new world grid.
+        organism_manager_->forEachOrganism([this](Organism& organism) {
+            Vector2i anchor = organism.getAnchorCell();
+
+            for (const auto& pos : organism.getCells()) {
+                // TODO: Preserve original material type. For now, use WOOD.
+                Cell& cell = pImpl->data_.at(pos.x, pos.y);
+                cell.replaceMaterial(MaterialType::WOOD, 1.0);
+
+                // Write COM to anchor cell (sub-cell position).
+                if (pos == anchor) {
+                    cell.com = organism.center_of_mass;
+                }
+            }
+        });
     }
 
     spdlog::info("World bilinear resize complete");
@@ -1782,8 +1832,23 @@ void World::processMaterialMoves()
         Vector2i from_pos{static_cast<int>(move.fromX), static_cast<int>(move.fromY)};
         OrganismId organism_id = organism_manager_->at(from_pos);
 
+        // Determine effective collision type (may be overridden for organism cells).
+        CollisionType effective_collision_type = move.collision_type;
+
+        // Organism cells are all-or-nothing - no partial transfers allowed.
+        // This prevents orphaned organism material from "leaking" into adjacent cells.
+        // Guard 1: Move must be for the full cell (generation-time should enforce this too).
+        // Guard 2: Target must still have room (might have filled since move was scheduled).
+        if (organism_id != INVALID_ORGANISM_ID) {
+            bool move_is_partial = move.amount < fromCell.fill_ratio - 0.001;
+            bool target_cant_fit = toCell.getCapacity() < fromCell.fill_ratio;
+            if (move_is_partial || target_cant_fit) {
+                effective_collision_type = CollisionType::ELASTIC_REFLECTION;
+            }
+        }
+
         // Handle collision during the move based on collision_type.
-        if (move.collision_type != CollisionType::TRANSFER_ONLY) {
+        if (effective_collision_type != CollisionType::TRANSFER_ONLY) {
             spdlog::debug(
                 "Processing collision: {} vs {} at ({},{}) -> ({},{}) - Type: {}",
                 getMaterialName(move.material),
@@ -1792,10 +1857,10 @@ void World::processMaterialMoves()
                 move.fromY,
                 move.toX,
                 move.toY,
-                static_cast<int>(move.collision_type));
+                static_cast<int>(effective_collision_type));
         }
 
-        switch (move.collision_type) {
+        switch (effective_collision_type) {
             case CollisionType::TRANSFER_ONLY:
                 num_transfers++;
                 collision_calc.handleTransferMove(*this, fromCell, toCell, move);
