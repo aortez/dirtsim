@@ -26,7 +26,7 @@ constexpr double SCALE_BASELINE_DEBUG = 1.3;  // 30% larger baseline for debug f
 
 // Global user-adjustable scale multiplier (affects all modes except PIXEL_PERFECT).
 // Range: 0.1 (very smooth/blurry) to 2.0 (very sharp).
-static double g_scaleFactorMultiplier = 0.4;
+static double g_scaleFactorMultiplier = 0.5;
 
 // 4x4 Bayer matrix for ordered dithering (values 0-15).
 // Used to create stable, pattern-based transparency instead of alpha blending.
@@ -316,6 +316,11 @@ void CellRenderer::calculateScaling(uint32_t worldWidth, uint32_t worldHeight)
         scaleX_);
 }
 
+void CellRenderer::setCanvasCreatedCallback(CanvasCreatedCallback callback)
+{
+    canvasCreatedCallback_ = std::move(callback);
+}
+
 void CellRenderer::initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)
 {
     // Force LVGL to calculate actual layout dimensions before measuring.
@@ -427,6 +432,7 @@ void CellRenderer::initializeWithPixelSize(
     double scaleX = (double)containerWidth / canvasWidth_;
     double scaleY = (double)containerHeight / canvasHeight_;
     double scale = std::min(scaleX, scaleY); // Preserve aspect ratio.
+    displayScale_ = scale; // Store for coordinate transformation in pixelToCell.
 
     int lvglScaleX = (int)(scale * 256);
     int lvglScaleY = (int)(scale * 256);
@@ -456,6 +462,11 @@ void CellRenderer::initializeWithPixelSize(
         scale,
         offsetX,
         offsetY);
+
+    // Notify listener that canvas was (re)created.
+    if (canvasCreatedCallback_) {
+        canvasCreatedCallback_(worldCanvas_);
+    }
 }
 
 void CellRenderer::resize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)
@@ -951,6 +962,46 @@ void CellRenderer::renderWorldData(
 
         lv_canvas_finish_layer(worldCanvas_, &layer);
     }
+}
+
+std::optional<Vector2i> CellRenderer::pixelToCell(int pixelX, int pixelY) const
+{
+    if (scaledCellWidth_ == 0 || scaledCellHeight_ == 0 || width_ == 0 || height_ == 0) {
+        spdlog::warn(
+            "pixelToCell: Not initialized (scaledCell={}x{}, world={}x{})",
+            scaledCellWidth_,
+            scaledCellHeight_,
+            width_,
+            height_);
+        return std::nullopt;
+    }
+
+    // Transform visual (screen) coordinates to canvas buffer coordinates.
+    // The canvas is displayed with a transform scale applied.
+    int bufferX = static_cast<int>(pixelX / displayScale_);
+    int bufferY = static_cast<int>(pixelY / displayScale_);
+
+    int cellX = bufferX / static_cast<int>(scaledCellWidth_);
+    int cellY = bufferY / static_cast<int>(scaledCellHeight_);
+
+    if (cellX < 0 || cellX >= static_cast<int>(width_) || cellY < 0
+        || cellY >= static_cast<int>(height_)) {
+        spdlog::info(
+            "pixelToCell: visual ({}, {}) -> buffer ({}, {}) -> cell ({}, {}) out of bounds "
+            "(world={}x{}, scale={:.2f})",
+            pixelX,
+            pixelY,
+            bufferX,
+            bufferY,
+            cellX,
+            cellY,
+            width_,
+            height_,
+            displayScale_);
+        return std::nullopt;
+    }
+
+    return Vector2i{ cellX, cellY };
 }
 
 void CellRenderer::cleanup()

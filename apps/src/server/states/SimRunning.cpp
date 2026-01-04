@@ -410,14 +410,8 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
         return std::move(*this);
     }
 
-    // Validate fill ratio.
-    if (cwc.command.fill < 0.0 || cwc.command.fill > 1.0) {
-        cwc.sendResponse(Response::error(ApiError("Fill must be between 0.0 and 1.0")));
-        return std::move(*this);
-    }
-
-    // Place material.
-    world->addMaterialAtCell(cwc.command.x, cwc.command.y, cwc.command.material, cwc.command.fill);
+    // Replace material (organism-aware). AIR clears the cell.
+    world->replaceMaterialAtCell(cwc.command.x, cwc.command.y, cwc.command.material);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);

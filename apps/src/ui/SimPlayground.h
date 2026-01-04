@@ -1,7 +1,9 @@
 #pragma once
 
 #include "core/ScenarioConfig.h"
+#include "core/Vector2i.h"
 #include "core/WorldData.h"
+#include "ui/InteractionMode.h"
 #include "ui/controls/CoreControls.h"
 #include "ui/controls/IconRail.h"
 #include "ui/rendering/RenderMode.h"
@@ -72,6 +74,9 @@ public:
 
     RenderMode getRenderMode() const { return coreControlsState_.renderMode; }
 
+    InteractionMode getInteractionMode() const;
+    std::optional<Vector2i> pixelToCell(int pixelX, int pixelY) const;
+
     void renderNeuralGrid(const WorldData& data);
 
     void updatePhysicsPanels(const PhysicsSettings& settings);
@@ -120,6 +125,9 @@ private:
     // Track if tree exists (for icon visibility).
     bool treeExists_ = false;
 
+    // Track last painted cell for deduplication.
+    Vector2i lastPaintedCell_{ -1, -1 };
+
     void clearPanelContent();
 
     /**
@@ -139,6 +147,9 @@ private:
     void showPanelContent(IconId panelId);
 
     void onIconSelected(IconId selectedId, IconId previousId);
+
+    void setupCanvasEventHandlers(lv_obj_t* canvas);
+    static void onCanvasClicked(lv_event_t* e);
 };
 
 } // namespace Ui

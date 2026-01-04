@@ -69,6 +69,7 @@ public:
     //
     void swapCells(Vector2i pos1, Vector2i pos2);
     void replaceMaterialAtCell(int x, int y, MaterialType material);
+    void clearCellAtPosition(int x, int y);
 
     // =================================================================
     // MATERIAL ADDITION

@@ -2,6 +2,7 @@
 
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
+#include "ui/InteractionMode.h"
 #include "ui/rendering/RenderMode.h"
 #include "ui/PanelViewController.h"
 #include <memory>
@@ -17,9 +18,11 @@ namespace Ui {
 
 // Forward declaration.
 class EventSink;
+class UiComponentManager;
 
 struct CoreControlsState {
     bool debugDrawEnabled = false;
+    InteractionMode interactionMode = InteractionMode::NONE;
     RenderMode renderMode = RenderMode::ADAPTIVE;
     double scaleFactor = 0.4;
     int worldSize = 28;
@@ -36,17 +39,19 @@ public:
         lv_obj_t* container,
         Network::WebSocketService* wsService,
         EventSink& eventSink,
-        const CoreControlsState& initialState);
+        CoreControlsState& sharedState,
+        UiComponentManager* uiManager);
     ~CoreControls();
 
-    void updateFromState(const CoreControlsState& state);
+    void updateFromState();
     void updateStats(double serverFPS, double uiFPS);
 
 private:
     lv_obj_t* container_;
     Network::WebSocketService* wsService_;
     EventSink& eventSink_;
-    CoreControlsState state_;
+    CoreControlsState& state_;
+    UiComponentManager* uiManager_;
 
     // View controller for modal navigation.
     std::unique_ptr<PanelViewController> viewController_;
@@ -57,21 +62,27 @@ private:
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
-    lv_obj_t* renderModeButton_ = nullptr; // Button to open render mode modal.
+    lv_obj_t* interactionModeButton_ = nullptr;
+    lv_obj_t* renderModeButton_ = nullptr;
     lv_obj_t* worldSizeStepper_ = nullptr;
     lv_obj_t* scaleFactorStepper_ = nullptr;
 
-    // Render mode button to index mapping.
+    // Button to index mappings for modal selections.
     std::unordered_map<lv_obj_t*, int> buttonToRenderMode_;
+    std::unordered_map<lv_obj_t*, int> buttonToInteractionMode_;
 
     // View creation helpers.
     void createMainView(lv_obj_t* view);
     void createRenderModeView(lv_obj_t* view);
+    void createInteractionModeView(lv_obj_t* view);
 
     // Event handlers.
     static void onQuitClicked(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
+    static void onInteractionModeButtonClicked(lv_event_t* e);
+    static void onInteractionModeSelected(lv_event_t* e);
+    static void onInteractionModeBackClicked(lv_event_t* e);
     static void onRenderModeButtonClicked(lv_event_t* e);
     static void onRenderModeSelected(lv_event_t* e);
     static void onRenderModeBackClicked(lv_event_t* e);

@@ -5,10 +5,13 @@
 #include "controls/ExpandablePanel.h"
 #include "controls/PhysicsPanel.h"
 #include "controls/ScenarioPanel.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/CellSet.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
 #include "state-machine/EventSink.h"
@@ -26,6 +29,14 @@ SimPlayground::SimPlayground(
 {
     renderer_ = std::make_unique<CellRenderer>();
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
+
+    // Register callback to set up event handlers whenever canvas is (re)created.
+    renderer_->setCanvasCreatedCallback([this](lv_obj_t* canvas) {
+        setupCanvasEventHandlers(canvas);
+    });
+
+    lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
+    renderer_->initialize(worldContainer, 10, 10);
 
     LOG_INFO(Controls, "Initialized");
 }
@@ -149,7 +160,7 @@ void SimPlayground::createCorePanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Core panel");
 
     coreControls_ =
-        std::make_unique<CoreControls>(container, wsService_, eventSink_, coreControlsState_);
+        std::make_unique<CoreControls>(container, wsService_, eventSink_, coreControlsState_, uiManager_);
 }
 
 void SimPlayground::createScenarioPanel(lv_obj_t* container)
@@ -220,7 +231,7 @@ void SimPlayground::updateFromWorldData(
     // Sync core controls if panel is active.
     if (coreControls_) {
         coreControls_->updateStats(data.fps_server, uiFPS);
-        coreControls_->updateFromState(coreControlsState_);
+        coreControls_->updateFromState();
     }
 
     // Track tree existence for icon visibility.
@@ -263,10 +274,21 @@ void SimPlayground::setRenderMode(RenderMode mode)
 
     // Sync controls if panel is active.
     if (coreControls_) {
-        coreControls_->updateFromState(coreControlsState_);
+        coreControls_->updateFromState();
     }
 
     LOG_INFO(Controls, "Render mode set to {}", renderModeToString(mode));
+}
+
+InteractionMode SimPlayground::getInteractionMode() const
+{
+    return coreControlsState_.interactionMode;
+}
+
+std::optional<Vector2i> SimPlayground::pixelToCell(int pixelX, int pixelY) const
+{
+    DIRTSIM_ASSERT(renderer_, "renderer_ must be set");
+    return renderer_->pixelToCell(pixelX, pixelY);
 }
 
 void SimPlayground::renderNeuralGrid(const WorldData& data)
@@ -383,6 +405,75 @@ void SimPlayground::sendDisplayResizeUpdate()
     if (result.isError()) {
         LOG_ERROR(Controls, "Failed to send display resize update: {}", result.errorValue());
     }
+}
+
+void SimPlayground::setupCanvasEventHandlers(lv_obj_t* canvas)
+{
+    DIRTSIM_ASSERT(canvas, "Canvas must be initialized before setting up event handlers");
+
+    lv_obj_add_flag(canvas, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    lv_obj_add_event_cb(canvas, onCanvasClicked, LV_EVENT_CLICKED, this);
+    lv_obj_add_event_cb(canvas, onCanvasClicked, LV_EVENT_PRESSING, this);
+
+    LOG_INFO(Controls, "Canvas event handlers installed");
+}
+
+void SimPlayground::onCanvasClicked(lv_event_t* e)
+{
+    SimPlayground* self = static_cast<SimPlayground*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    InteractionMode mode = self->coreControlsState_.interactionMode;
+
+    // Only process events in DRAW or ERASE mode.
+    if (mode != InteractionMode::DRAW && mode != InteractionMode::ERASE) {
+        return;
+    }
+
+    lv_indev_t* indev = lv_event_get_indev(e);
+    if (!indev) return;
+
+    lv_point_t screenPoint;
+    lv_indev_get_point(indev, &screenPoint);
+
+    lv_obj_t* canvas = self->renderer_->getCanvas();
+    DIRTSIM_ASSERT(canvas, "Canvas must exist when event fires");
+
+    lv_area_t canvasArea;
+    lv_obj_get_coords(canvas, &canvasArea);
+
+    lv_point_t canvasPoint;
+    canvasPoint.x = screenPoint.x - canvasArea.x1;
+    canvasPoint.y = screenPoint.y - canvasArea.y1;
+
+    auto cell = self->renderer_->pixelToCell(canvasPoint.x, canvasPoint.y);
+    if (!cell) {
+        self->lastPaintedCell_ = Vector2i{ -1, -1 };
+        return;
+    }
+
+    if (cell->x == self->lastPaintedCell_.x && cell->y == self->lastPaintedCell_.y) {
+        return;
+    }
+    self->lastPaintedCell_ = *cell;
+
+    // DRAW mode places WALL, ERASE mode places AIR.
+    MaterialType material = (mode == InteractionMode::ERASE) ? MaterialType::AIR : MaterialType::WALL;
+    double fillRatio = (mode == InteractionMode::ERASE) ? 0.0 : 1.0;
+
+    static std::atomic<uint64_t> nextId{ 1 };
+    Api::CellSet::Command cmd{ cell->x, cell->y, material, fillRatio };
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    self->wsService_->sendBinary(Network::serialize_envelope(envelope));
+
+    LOG_INFO(
+        Controls,
+        "{} ({}, {}) -> {}",
+        (mode == InteractionMode::ERASE) ? "Erase" : "Draw",
+        cell->x,
+        cell->y,
+        getMaterialName(material));
 }
 
 } // namespace Ui

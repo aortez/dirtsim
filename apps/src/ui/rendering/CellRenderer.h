@@ -2,9 +2,12 @@
 
 #include "RenderMode.h"
 #include "core/Cell.h"
+#include "core/Vector2i.h"
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <vector>
 
 namespace DirtSim {
@@ -12,8 +15,19 @@ namespace Ui {
 
 class CellRenderer {
 public:
+    // Callback invoked whenever the canvas is (re)created.
+    using CanvasCreatedCallback = std::function<void(lv_obj_t* canvas)>;
+
     CellRenderer() = default;
     ~CellRenderer();
+
+    /**
+     * @brief Set callback to be invoked when canvas is created or recreated.
+     *
+     * The canvas may be recreated when render mode or container size changes.
+     * Use this to re-attach event handlers after recreation.
+     */
+    void setCanvasCreatedCallback(CanvasCreatedCallback callback);
 
     void initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight);
     void resize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight);
@@ -30,14 +44,17 @@ public:
      */
     const uint8_t* getCanvasBuffer() const { return canvasBuffer_.data(); }
 
-    /**
-     * @brief Get canvas dimensions.
-     */
     uint32_t getCanvasWidth() const { return canvasWidth_; }
     uint32_t getCanvasHeight() const { return canvasHeight_; }
 
+    std::optional<Vector2i> pixelToCell(int pixelX, int pixelY) const;
+    lv_obj_t* getCanvas() const { return worldCanvas_; }
+
 private:
-    // Single canvas for entire world grid
+    // Callback for canvas creation notifications.
+    CanvasCreatedCallback canvasCreatedCallback_;
+
+    // Single canvas for entire world grid.
     lv_obj_t* worldCanvas_ = nullptr;
     std::vector<uint8_t> canvasBuffer_;
 
@@ -62,6 +79,9 @@ private:
 
     // Track current render mode to detect changes requiring reinitialization.
     RenderMode currentMode_ = RenderMode::SHARP;
+
+    // Display scale factor (visual size / buffer size) for coordinate transformation.
+    double displayScale_ = 1.0;
 
     void calculateScaling(uint32_t worldWidth, uint32_t worldHeight);
     void initializeWithPixelSize(

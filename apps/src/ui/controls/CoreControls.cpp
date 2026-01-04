@@ -3,6 +3,8 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/Reset.h"
 #include "server/api/WorldResize.h"
+#include "ui/UiComponentManager.h"
+#include "ui/controls/IconRail.h"
 #include "ui/rendering/CellRenderer.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
@@ -21,11 +23,13 @@ CoreControls::CoreControls(
     lv_obj_t* container,
     Network::WebSocketService* wsService,
     EventSink& eventSink,
-    const CoreControlsState& initialState)
+    CoreControlsState& sharedState,
+    UiComponentManager* uiManager)
     : container_(container),
       wsService_(wsService),
       eventSink_(eventSink),
-      state_(initialState)
+      state_(sharedState),
+      uiManager_(uiManager)
 {
     // Create view controller.
     viewController_ = std::make_unique<PanelViewController>(container_);
@@ -33,6 +37,10 @@ CoreControls::CoreControls(
     // Create main view.
     lv_obj_t* mainView = viewController_->createView("main");
     createMainView(mainView);
+
+    // Create interaction mode modal view.
+    lv_obj_t* interactionModeView = viewController_->createView("interaction_mode");
+    createInteractionModeView(interactionModeView);
 
     // Create render mode modal view.
     lv_obj_t* renderModeView = viewController_->createView("render_mode");
@@ -84,6 +92,18 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .glowColor(0x00CC00)
                        .callback(onDebugToggled, this)
                        .buildOrLog();
+
+    // Interaction mode button - navigates to modal for selection.
+    std::string interactionModeText = "Interaction: " + interactionModeToString(state_.interactionMode);
+    interactionModeButton_ = LVGLBuilder::actionButton(view)
+                                 .text(interactionModeText.c_str())
+                                 .icon(LV_SYMBOL_RIGHT)
+                                 .width(LV_PCT(95))
+                                 .height(LVGLBuilder::Style::ACTION_SIZE)
+                                 .layoutRow()
+                                 .alignLeft()
+                                 .callback(onInteractionModeButtonClicked, this)
+                                 .buildOrLog();
 
     // Stats display.
     statsLabel_ = lv_label_create(view);
@@ -179,6 +199,50 @@ void CoreControls::createRenderModeView(lv_obj_t* view)
     }
 }
 
+void CoreControls::createInteractionModeView(lv_obj_t* view)
+{
+    // Back button.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onInteractionModeBackClicked, this)
+        .buildOrLog();
+
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Interaction Mode");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Interaction mode option buttons.
+    buttonToInteractionMode_.clear();
+    const char* modes[] = {"None", "Draw", "Erase"};
+    for (int i = 0; i < 3; i++) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(modes[i])
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (container) {
+            // Get the inner button (first child of container).
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                // Store button->mode mapping.
+                buttonToInteractionMode_[button] = i;
+                lv_obj_add_event_cb(button, onInteractionModeSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
+}
+
 CoreControls::~CoreControls()
 {
     // No manual cleanup needed - LVGL automatically destroys callbacks when widgets are destroyed.
@@ -200,46 +264,41 @@ void CoreControls::updateStats(double serverFPS, double uiFPS)
     }
 }
 
-void CoreControls::updateFromState(const CoreControlsState& state)
+void CoreControls::updateFromState()
 {
-    // Debug draw toggle.
-    if (state.debugDrawEnabled != state_.debugDrawEnabled) {
-        state_.debugDrawEnabled = state.debugDrawEnabled;
-        if (debugSwitch_) {
-            LVGLBuilder::ActionButtonBuilder::setChecked(debugSwitch_, state_.debugDrawEnabled);
-        }
+    if (debugSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(debugSwitch_, state_.debugDrawEnabled);
     }
 
-    // Render mode button text.
-    if (state.renderMode != state_.renderMode) {
-        state_.renderMode = state.renderMode;
-        if (renderModeButton_) {
-            lv_obj_t* button = lv_obj_get_child(renderModeButton_, 0);
-            if (button) {
-                lv_obj_t* label = lv_obj_get_child(button, 1);
-                if (label) {
-                    std::string text = "Render Mode: " + renderModeToString(state_.renderMode);
-                    lv_label_set_text(label, text.c_str());
-                }
+    if (interactionModeButton_) {
+        lv_obj_t* button = lv_obj_get_child(interactionModeButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                std::string text = "Interaction: " + interactionModeToString(state_.interactionMode);
+                lv_label_set_text(label, text.c_str());
             }
         }
     }
 
-    // Scale factor stepper.
-    if (state.scaleFactor != state_.scaleFactor) {
-        state_.scaleFactor = state.scaleFactor;
-        if (scaleFactorStepper_) {
-            LVGLBuilder::ActionStepperBuilder::setValue(
-                scaleFactorStepper_, static_cast<int32_t>(state_.scaleFactor * 100));
+    if (renderModeButton_) {
+        lv_obj_t* button = lv_obj_get_child(renderModeButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                std::string text = "Render Mode: " + renderModeToString(state_.renderMode);
+                lv_label_set_text(label, text.c_str());
+            }
         }
     }
 
-    // World size stepper.
-    if (state.worldSize != state_.worldSize) {
-        state_.worldSize = state.worldSize;
-        if (worldSizeStepper_) {
-            LVGLBuilder::ActionStepperBuilder::setValue(worldSizeStepper_, state_.worldSize);
-        }
+    if (scaleFactorStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            scaleFactorStepper_, static_cast<int32_t>(state_.scaleFactor * 100));
+    }
+
+    if (worldSizeStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(worldSizeStepper_, state_.worldSize);
     }
 }
 
@@ -288,6 +347,62 @@ void CoreControls::onDebugToggled(lv_event_t* e)
     cwc.command.enabled = enabled;
     cwc.callback = [](auto&&) {}; // No response needed.
     self->eventSink_.queueEvent(cwc);
+}
+
+void CoreControls::onInteractionModeButtonClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    spdlog::debug("CoreControls: Interaction mode button clicked");
+    self->viewController_->showView("interaction_mode");
+}
+
+void CoreControls::onInteractionModeSelected(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Look up mode index from button mapping.
+    auto it = self->buttonToInteractionMode_.find(btn);
+    if (it == self->buttonToInteractionMode_.end()) {
+        spdlog::error("CoreControls: Unknown interaction mode button clicked");
+        return;
+    }
+
+    int modeIndex = it->second;
+
+    // Map index to InteractionMode.
+    // Order: "None", "Draw", "Erase".
+    InteractionMode mode;
+    switch (modeIndex) {
+        case 0: mode = InteractionMode::NONE; break;
+        case 1: mode = InteractionMode::DRAW; break;
+        case 2: mode = InteractionMode::ERASE; break;
+        default: mode = InteractionMode::NONE; break;
+    }
+
+    spdlog::info("CoreControls: Interaction mode changed to {}", interactionModeToString(mode));
+
+    self->state_.interactionMode = mode;
+
+    // Disable swipe zone when in draw/erase mode to prevent accidental panel open.
+    bool swipeEnabled = (mode == InteractionMode::NONE);
+    self->uiManager_->getIconRail()->setSwipeZoneEnabled(swipeEnabled);
+
+    // Update button text and go back to main view.
+    self->updateFromState();
+    self->viewController_->showView("main");
+}
+
+void CoreControls::onInteractionModeBackClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    self->viewController_->showView("main");
 }
 
 void CoreControls::onRenderModeButtonClicked(lv_event_t* e)

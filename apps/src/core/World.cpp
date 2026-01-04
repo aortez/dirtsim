@@ -584,6 +584,12 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
         return;
     }
 
+    // AIR means "clear this cell" - delegate to clearCellAtPosition.
+    if (material == MaterialType::AIR) {
+        clearCellAtPosition(x, y);
+        return;
+    }
+
     Cell& cell = pImpl->data_.at(x, y);
 
     if (cell.isEmpty() || cell.material_type == material) {
@@ -726,6 +732,21 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
 
     // Now target is empty (displaced material moved to empty_pos). Place new material.
     pImpl->data_.at(target_pos.x, target_pos.y) = Cell{material, 1.0};
+}
+
+void World::clearCellAtPosition(int x, int y)
+{
+    if (!isValidCell(x, y)) {
+        return;
+    }
+
+    // Skip cells that belong to an organism.
+    Vector2i pos{x, y};
+    if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
+        return;
+    }
+
+    pImpl->data_.at(x, y).clear();
 }
 
 // =================================================================.
