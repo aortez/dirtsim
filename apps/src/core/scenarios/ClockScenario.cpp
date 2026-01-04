@@ -515,11 +515,12 @@ void ClockScenario::tick(World& world, double deltaTime)
         drawTime(world);
     }
 
-    // Manage floor drain based on water level.
-    updateDrain(world, deltaTime);
-
-    // Update event system.
+    // Update event system (may clear floor obstacles).
     updateEvents(world, deltaTime);
+
+    // Manage floor drain based on water level.
+    // Runs after events so drain clearing catches any floor restored by obstacle clearing.
+    updateDrain(world, deltaTime);
 
     // Debug check: verify all WOOD cells have an associated organism.
     // WOOD cells only come from ducks in this scenario, so orphaned WOOD is a bug.
@@ -953,6 +954,24 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
 
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
+    // Floor obstacles: spawn when drain is closed.
+    if (!drain_open_) {
+        // Periodically spawn new obstacles.
+        constexpr double SPAWN_INTERVAL = 3.0;  // Try to spawn every 3 seconds.
+        constexpr size_t MAX_OBSTACLES = 3;     // Maximum concurrent obstacles.
+
+        state.obstacle_spawn_timer += deltaTime;
+        if (state.obstacle_spawn_timer >= SPAWN_INTERVAL && state.floor_obstacles.size() < MAX_OBSTACLES) {
+            state.obstacle_spawn_timer = 0.0;
+            spawnFloorObstacle(world, state);
+        }
+    } else {
+        // Drain is open, clear any obstacles.
+        if (!state.floor_obstacles.empty()) {
+            clearFloorObstacles(world, state);
+        }
+    }
+
     // Get duck's cell COM for sub-cell positioning.
     const WorldData& data = world.getData();
     Vector2d duck_com{ 0.0, 0.0 };
@@ -1033,6 +1052,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
             world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
         }
 
+        // Clear any floor obstacles.
+        clearFloorObstacles(world, state);
+
         // Close any open doors.
         if (state.entrance_door_open) {
             door_manager_.closeDoor(state.entrance_door_pos, world);
@@ -1060,6 +1082,8 @@ void ClockScenario::cancelAllEvents(World& world)
             if (state.organism_id != INVALID_ORGANISM_ID) {
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             }
+            // Clear any floor obstacles.
+            clearFloorObstacles(world, state);
         }
         else if (type == ClockEventType::MELTDOWN) {
             // Clean up any stray metal from interrupted meltdown.
@@ -1307,12 +1331,13 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             }
         }
 
-        // Open new drain cells.
+        // Ensure drain cells are clear (always, not just when newly opened).
+        // This handles cases where obstacle clearing may have restored floor over drain.
         if (drain_open_) {
             for (uint32_t x = new_start_x; x <= new_end_x; ++x) {
-                bool was_open = drain_was_open && x >= old_start_x && x <= old_end_x;
-                if (!was_open) {
-                    data.at(x, drain_y) = Cell();
+                Cell& cell = data.at(x, drain_y);
+                if (cell.material_type == MaterialType::WALL) {
+                    cell = Cell();
                 }
             }
         }
@@ -1463,6 +1488,42 @@ void ClockScenario::redrawWalls(World& world)
     uint32_t width = world.getData().width;
     uint32_t height = world.getData().height;
 
+    // Get floor obstacles from active duck event (if any).
+    const std::vector<FloorObstacle>* floor_obstacles = nullptr;
+    auto duck_it = active_events_.find(ClockEventType::DUCK);
+    if (duck_it != active_events_.end()) {
+        const auto& duck_state = std::get<DuckEventState>(duck_it->second.state);
+        floor_obstacles = &duck_state.floor_obstacles;
+    }
+
+    // Helper to check if X position is a pit.
+    auto is_pit_at = [&](uint32_t x) -> bool {
+        if (!floor_obstacles) return false;
+        for (const auto& obs : *floor_obstacles) {
+            if (obs.type == FloorObstacleType::PIT) {
+                if (static_cast<int>(x) >= obs.start_x &&
+                    static_cast<int>(x) < obs.start_x + obs.width) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
+    // Helper to check if X position is a hurdle.
+    auto is_hurdle_at = [&](uint32_t x) -> bool {
+        if (!floor_obstacles) return false;
+        for (const auto& obs : *floor_obstacles) {
+            if (obs.type == FloorObstacleType::HURDLE) {
+                if (static_cast<int>(x) >= obs.start_x &&
+                    static_cast<int>(x) < obs.start_x + obs.width) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
+
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
         Vector2i top_pos{ static_cast<int>(x), 0 };
@@ -1474,8 +1535,22 @@ void ClockScenario::redrawWalls(World& world)
 
         // Skip drain cells in bottom wall when drain is open.
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
-        if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell) {
+        // Skip pit cells (floor removed).
+        bool is_pit_cell = is_pit_at(x);
+
+        if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell && !is_pit_cell) {
             world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
+        } else if (is_pit_cell && !is_drain_cell) {
+            // Ensure pit cells are cleared.
+            Cell& cell = world.getData().at(x, height - 1);
+            if (cell.material_type == MaterialType::WALL) {
+                cell = Cell();
+            }
+        }
+
+        // Hurdle cells (one row above floor).
+        if (height > 2 && is_hurdle_at(x)) {
+            world.replaceMaterialAtCell(x, height - 2, MaterialType::WALL);
         }
     }
 
@@ -1496,6 +1571,104 @@ void ClockScenario::redrawWalls(World& world)
     for (const auto& roof_pos : door_manager_.getRoofPositions()) {
         world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
+}
+
+// ============================================================================
+// Floor Obstacle System for Duck Event
+// ============================================================================
+
+void ClockScenario::spawnFloorObstacle(World& world, DuckEventState& state)
+{
+    const WorldData& data = world.getData();
+
+    // Require minimum world size: 5 cells from each wall means we need at least 11 cells wide.
+    constexpr int MARGIN = 5;
+    int min_x = MARGIN;
+    int max_x = static_cast<int>(data.width) - MARGIN - 1;
+
+    // Not enough horizontal space for obstacles.
+    if (max_x <= min_x) {
+        spdlog::info("ClockScenario: World too narrow for floor obstacles (width={})", data.width);
+        return;
+    }
+
+    // Choose how many contiguous cells (1-3).
+    std::uniform_int_distribution<int> width_dist(1, 3);
+    int obstacle_width = width_dist(rng_);
+
+    // Adjust max_x to account for obstacle width.
+    int spawn_max_x = max_x - (obstacle_width - 1);
+    if (spawn_max_x < min_x) {
+        return;  // Not enough space.
+    }
+
+    // Pick starting X position.
+    std::uniform_int_distribution<int> x_dist(min_x, spawn_max_x);
+    int start_x = x_dist(rng_);
+
+    // Choose type: hurdle (up) or pit (down).
+    FloorObstacleType type = (uniform_dist_(rng_) < 0.5)
+        ? FloorObstacleType::HURDLE
+        : FloorObstacleType::PIT;
+
+    // Check for overlap with existing obstacles.
+    for (const auto& existing : state.floor_obstacles) {
+        int existing_end = existing.start_x + existing.width;
+        int new_end = start_x + obstacle_width;
+        // Check if ranges overlap.
+        if (start_x < existing_end && new_end > existing.start_x) {
+            spdlog::debug("ClockScenario: Floor obstacle spawn skipped - overlaps existing");
+            return;
+        }
+    }
+
+    // Create the obstacle.
+    FloorObstacle obstacle;
+    obstacle.start_x = start_x;
+    obstacle.width = obstacle_width;
+    obstacle.type = type;
+
+    state.floor_obstacles.push_back(obstacle);
+
+    spdlog::info("ClockScenario: Spawned floor {} at x={}, width={}",
+        type == FloorObstacleType::HURDLE ? "HURDLE" : "PIT",
+        start_x, obstacle_width);
+}
+
+void ClockScenario::clearFloorObstacles(World& world, DuckEventState& state)
+{
+    if (state.floor_obstacles.empty()) {
+        return;
+    }
+
+    WorldData& data = world.getData();
+    uint32_t height = data.height;
+
+    spdlog::info("ClockScenario: Clearing {} floor obstacles", state.floor_obstacles.size());
+
+    for (const auto& obs : state.floor_obstacles) {
+        for (int i = 0; i < obs.width; ++i) {
+            int x = obs.start_x + i;
+            if (x < 0 || x >= static_cast<int>(data.width)) {
+                continue;
+            }
+
+            if (obs.type == FloorObstacleType::HURDLE) {
+                // Clear hurdle wall at height-2.
+                if (height > 2) {
+                    Cell& cell = data.at(x, height - 2);
+                    if (cell.material_type == MaterialType::WALL) {
+                        cell = Cell();
+                    }
+                }
+            } else {
+                // Restore floor at height-1 for pit.
+                world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
+            }
+        }
+    }
+
+    state.floor_obstacles.clear();
 }
 
 } // namespace DirtSim

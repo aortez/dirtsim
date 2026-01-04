@@ -52,6 +52,15 @@ enum class DuckEventPhase {
     DOOR_CLOSING   // Duck exited, waiting briefly before closing door.
 };
 
+// Floor modification that challenges the duck.
+enum class FloorObstacleType { HURDLE, PIT };
+
+struct FloorObstacle {
+    int start_x = 0;              // Starting X position.
+    int width = 1;                // Number of contiguous cells (1-3).
+    FloorObstacleType type = FloorObstacleType::HURDLE;
+};
+
 struct DuckEventState {
     OrganismId organism_id = INVALID_ORGANISM_ID;
     DoorSide entrance_side = DoorSide::LEFT;
@@ -62,6 +71,10 @@ struct DuckEventState {
     DuckEventPhase phase = DuckEventPhase::DOOR_OPENING;
     double door_open_timer = 0.0;   // Time door has been open before duck spawns.
     double door_close_timer = 0.0;  // Time since duck exited, before closing door.
+
+    // Floor obstacles to challenge the duck (hurdles and pits).
+    std::vector<FloorObstacle> floor_obstacles;
+    double obstacle_spawn_timer = 0.0;  // Time until next obstacle spawn attempt.
 };
 
 using EventState = std::variant<DuckEventState, MeltdownEventState, RainEventState>;
@@ -198,6 +211,10 @@ private:
     void spawnDuck(World& world, DuckEventState& state);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
+
+    // Floor obstacle helpers for duck event.
+    void spawnFloorObstacle(World& world, DuckEventState& state);
+    void clearFloorObstacles(World& world, DuckEventState& state);
 
     bool isMeltdownActive() const;
     void convertStrayMetalToWater(World& world);
