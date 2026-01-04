@@ -24,6 +24,7 @@ class World;
 // ============================================================================
 
 enum class ClockEventType {
+    COLOR_CYCLE,
     DUCK,
     MELTDOWN,
     RAIN
@@ -48,6 +49,10 @@ struct RainEventConfig {
     EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
 };
 
+struct ColorCycleEventConfig {
+    EventTimingConfig timing = { .duration = 5.0, .chance_per_second = 0.02, .cooldown = 15.0 };
+};
+
 struct MeltdownEventState {
     // Meltdown lets digits fall, converts to water on impact.
     int digit_bottom_y = 0;         // Scanned at event start: lowest Y with digit material.
@@ -56,6 +61,22 @@ struct MeltdownEventState {
 
 struct RainEventState {
     // Rain-specific state (could add intensity, pattern, etc.).
+};
+
+struct ColorCycleEventState {
+    // Array of materials to cycle through for digit display.
+    static constexpr std::array<MaterialType, 7> CYCLE_MATERIALS = {
+        MaterialType::DIRT,
+        MaterialType::LEAF,
+        MaterialType::METAL,
+        MaterialType::ROOT,
+        MaterialType::SAND,
+        MaterialType::WATER,
+        MaterialType::WOOD,
+    };
+    size_t current_index = 0;      // Current position in cycle.
+    double time_per_color = 0.0;   // Calculated at start: duration / num_materials.
+    double time_in_current = 0.0;  // Time spent on current color.
 };
 
 enum class DoorSide { LEFT, RIGHT };
@@ -91,7 +112,7 @@ struct DuckEventState {
     double obstacle_spawn_timer = 0.0;  // Time until next obstacle spawn attempt.
 };
 
-using EventState = std::variant<DuckEventState, MeltdownEventState, RainEventState>;
+using EventState = std::variant<ColorCycleEventState, DuckEventState, MeltdownEventState, RainEventState>;
 
 struct ActiveEvent {
     EventState state;
@@ -130,6 +151,7 @@ private:
 // ============================================================================
 
 struct ClockEventConfigs {
+    ColorCycleEventConfig color_cycle;
     DuckEventConfig duck;
     MeltdownEventConfig meltdown;
     RainEventConfig rain;
@@ -228,6 +250,7 @@ private:
     void sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_t y);
 
     // Event-specific update handlers (called via visitor).
+    void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);

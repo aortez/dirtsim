@@ -5,6 +5,7 @@
 #include "core/scenarios/ClockScenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <gtest/gtest.h>
+#include <map>
 
 using namespace DirtSim;
 
@@ -14,6 +15,7 @@ protected:
     {
         // Create scenario with default event configs but random triggering disabled.
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
+            .color_cycle = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .duck = {
                 .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
@@ -96,6 +98,7 @@ TEST_F(ClockScenarioTest, Setup_HasMinimumDigitBlocks)
 TEST_F(ClockScenarioTest, Setup_NoActiveEvents)
 {
     // After setup, no events should be active.
+    EXPECT_FALSE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE));
     EXPECT_FALSE(scenario_->isEventActive(ClockEventType::DUCK));
     EXPECT_FALSE(scenario_->isEventActive(ClockEventType::MELTDOWN));
     EXPECT_FALSE(scenario_->isEventActive(ClockEventType::RAIN));
@@ -126,6 +129,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     // Note: chance_per_second = 0.0 prevents random triggering; we don't set
     // eventFrequency = 0.0 because that would skip updateEvents() entirely.
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
+        .color_cycle = {},
         .duck = {
             .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
@@ -196,6 +200,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     // Exit door opens at remaining_time <= 7.0, so need duration > 7.0.
     // Door open delay is 2.0s, door close delay is 1.0s.
     auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
+        .color_cycle = {},
         .duck = {
             .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
@@ -383,4 +388,78 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 
     // Verify event completed.
     EXPECT_FALSE(test_scenario->isEventActive(ClockEventType::DUCK));
+}
+
+// =============================================================================
+// Color Cycle Event Tests
+// =============================================================================
+
+TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
+{
+    // Track material counts for digit cells across all frames.
+    std::map<MaterialType, int> material_counts;
+
+    // Start color cycle event via config toggle.
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.colorCycleEnabled = true;
+    scenario_->setConfig(config, *world_);
+
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE));
+
+    // Get event timing.
+    const double event_duration = scenario_->getEventTiming(ClockEventType::COLOR_CYCLE).duration;
+    const size_t num_materials = 7;  // ColorCycleEventState::CYCLE_MATERIALS.size()
+    const double time_per_color = event_duration / static_cast<double>(num_materials);
+
+    std::cout << "Event duration: " << event_duration << "s, time per color: " << time_per_color << "s\n";
+
+    // Run through the event, sampling materials at regular intervals.
+    double elapsed = 0.0;
+    const double sample_dt = 0.1;
+
+    while (scenario_->isEventActive(ClockEventType::COLOR_CYCLE) && elapsed < event_duration + 1.0) {
+        // Sample current material from digit cells.
+        const WorldData& data = world_->getData();
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    MaterialType render_material = static_cast<MaterialType>(cell.render_as);
+                    material_counts[render_material]++;
+                    goto sampled;  // Sample one cell per tick.
+                }
+            }
+        }
+        sampled:
+
+        scenario_->tick(*world_, sample_dt);
+        world_->advanceTime(sample_dt);
+        elapsed += sample_dt;
+    }
+
+    std::cout << "Event ran for " << elapsed << "s\n";
+
+    // Print material counts.
+    std::cout << "\n=== Material Counts ===\n";
+    int total_samples = 0;
+    for (const auto& [mat, count] : material_counts) {
+        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples\n";
+        total_samples += count;
+    }
+    std::cout << "Total samples: " << total_samples << "\n";
+
+    // Verify we saw multiple different materials (at least 3 of the 7).
+    EXPECT_GE(material_counts.size(), 3u)
+        << "Should have seen at least 3 different materials during color cycling";
+
+    // Verify no single material dominates (none should have > 60% of samples).
+    for (const auto& [mat, count] : material_counts) {
+        EXPECT_GE(count, 1) << getMaterialName(mat) << " should have at least 1 sample";
+        EXPECT_LE(count, total_samples * 0.6)
+            << getMaterialName(mat) << " should not dominate (have more than 60% of samples)";
+    }
+
+    // Verify event ended.
+    EXPECT_FALSE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE))
+        << "Color cycle event should have ended after duration";
 }

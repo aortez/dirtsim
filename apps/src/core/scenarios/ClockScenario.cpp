@@ -162,6 +162,8 @@ size_t ClockScenario::getActiveEventCount() const
 const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) const
 {
     switch (type) {
+    case ClockEventType::COLOR_CYCLE:
+        return event_configs_.color_cycle.timing;
     case ClockEventType::DUCK:
         return event_configs_.duck.timing;
     case ClockEventType::MELTDOWN:
@@ -362,8 +364,9 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                                   (incoming.marginPixels != config_.marginPixels);
 
         // Track event toggle changes before updating config_.
-        bool rain_was_enabled = config_.rainEnabled;
+        bool color_cycle_was_enabled = config_.colorCycleEnabled;
         bool duck_was_enabled = config_.duckEnabled;
+        bool rain_was_enabled = config_.rainEnabled;
 
         config_ = incoming;
 
@@ -421,6 +424,26 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         }
 
         // Handle manual event toggling.
+        // Color cycle event toggle.
+        if (config_.colorCycleEnabled && !color_cycle_was_enabled) {
+            // User enabled color cycle - start it if not already active.
+            if (!active_events_.contains(ClockEventType::COLOR_CYCLE)) {
+                event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::COLOR_CYCLE);
+                spdlog::info("ClockScenario: Color cycle manually enabled");
+            }
+        }
+        else if (!config_.colorCycleEnabled && color_cycle_was_enabled) {
+            // User disabled color cycle - stop it if active.
+            auto it = active_events_.find(ClockEventType::COLOR_CYCLE);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::COLOR_CYCLE, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Color cycle manually disabled");
+            }
+        }
+
         // Rain event toggle.
         if (config_.rainEnabled && !rain_was_enabled) {
             // User enabled rain - start it if not already active.
@@ -524,7 +547,7 @@ void ClockScenario::tick(World& world, double deltaTime)
 {
     redrawWalls(world);
 
-    if (!isMeltdownActive()) {
+    if (!isMeltdownActive() && !isEventActive(ClockEventType::COLOR_CYCLE)) {
         drawTime(world);
     }
 
@@ -844,7 +867,8 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerEvents(World& world)
 {
-    static constexpr std::array<ClockEventType, 3> ALL_EVENT_TYPES = {
+    static constexpr std::array<ClockEventType, 4> ALL_EVENT_TYPES = {
+        ClockEventType::COLOR_CYCLE,
         ClockEventType::DUCK,
         ClockEventType::MELTDOWN,
         ClockEventType::RAIN,
@@ -879,7 +903,30 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     ActiveEvent event;
     event.remaining_time = eventTiming.duration;
 
-    if (type == ClockEventType::MELTDOWN) {
+    if (type == ClockEventType::COLOR_CYCLE) {
+        ColorCycleEventState state;
+        // Calculate time per color based on duration and number of materials.
+        state.time_per_color = eventTiming.duration / static_cast<double>(ColorCycleEventState::CYCLE_MATERIALS.size());
+        state.current_index = 0;
+        state.time_in_current = 0.0;
+
+        // Apply the first color immediately.
+        MaterialType first_material = ColorCycleEventState::CYCLE_MATERIALS[0];
+        WorldData& data = world.getData();
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    cell.render_as = static_cast<int8_t>(first_material);
+                }
+            }
+        }
+
+        event.state = state;
+        spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, time_per_color: {:.2f}s)",
+            eventTiming.duration, state.time_per_color);
+    }
+    else if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
         melt_state.digit_material = config_.digitMaterial;
         WorldData& data = world.getData();
@@ -947,7 +994,9 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
 {
     std::visit([&](auto& state) {
         using T = std::decay_t<decltype(state)>;
-        if constexpr (std::is_same_v<T, DuckEventState>) {
+        if constexpr (std::is_same_v<T, ColorCycleEventState>) {
+            updateColorCycleEvent(world, state, deltaTime);
+        } else if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
             updateMeltdownEvent(world, state, event.remaining_time, deltaTime);
@@ -955,6 +1004,34 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
             updateRainEvent(world, state, deltaTime);
         }
     }, event.state);
+}
+
+void ClockScenario::updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime)
+{
+    state.time_in_current += deltaTime;
+
+    // Check if it's time to advance to the next color.
+    if (state.time_in_current >= state.time_per_color) {
+        state.time_in_current -= state.time_per_color;
+        state.current_index = (state.current_index + 1) % ColorCycleEventState::CYCLE_MATERIALS.size();
+
+        MaterialType new_material = ColorCycleEventState::CYCLE_MATERIALS[state.current_index];
+
+        // Update all digit cells to the new color.
+        WorldData& data = world.getData();
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                Cell& cell = data.at(x, y);
+                // Digit cells are WALL with render_as override set.
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    cell.render_as = static_cast<int8_t>(new_material);
+                }
+            }
+        }
+
+        spdlog::debug("ClockScenario: COLOR_CYCLE advanced to {} (index {})",
+            getMaterialName(new_material), state.current_index);
+    }
 }
 
 void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, double deltaTime)
@@ -1091,6 +1168,7 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
 static const char* eventTypeName(ClockEventType type)
 {
     switch (type) {
+        case ClockEventType::COLOR_CYCLE: return "COLOR_CYCLE";
         case ClockEventType::DUCK: return "DUCK";
         case ClockEventType::MELTDOWN: return "MELTDOWN";
         case ClockEventType::RAIN: return "RAIN";
@@ -1103,14 +1181,29 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     spdlog::info("ClockScenario: Ending {} event", eventTypeName(type));
 
     // Sync config flags.
-    if (type == ClockEventType::RAIN) {
-        config_.rainEnabled = false;
+    if (type == ClockEventType::COLOR_CYCLE) {
+        config_.colorCycleEnabled = false;
     }
     else if (type == ClockEventType::DUCK) {
         config_.duckEnabled = false;
     }
+    else if (type == ClockEventType::RAIN) {
+        config_.rainEnabled = false;
+    }
 
-    if (type == ClockEventType::MELTDOWN) {
+    if (type == ClockEventType::COLOR_CYCLE) {
+        // Restore original digit material color.
+        WorldData& data = world.getData();
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    cell.render_as = static_cast<int8_t>(config_.digitMaterial);
+                }
+            }
+        }
+    }
+    else if (type == ClockEventType::MELTDOWN) {
         // Convert any stray digit material (fallen digits) to water.
         auto& melt_state = std::get<MeltdownEventState>(event.state);
         convertStrayDigitMaterialToWater(world, melt_state.digit_material);
@@ -1147,7 +1240,19 @@ void ClockScenario::cancelAllEvents(World& world)
     spdlog::info("ClockScenario: Canceling all events");
 
     for (auto& [type, event] : active_events_) {
-        if (type == ClockEventType::DUCK) {
+        if (type == ClockEventType::COLOR_CYCLE) {
+            // Restore original digit material color.
+            WorldData& data = world.getData();
+            for (uint32_t y = 1; y < data.height - 1; ++y) {
+                for (uint32_t x = 1; x < data.width - 1; ++x) {
+                    Cell& cell = data.at(x, y);
+                    if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                        cell.render_as = static_cast<int8_t>(config_.digitMaterial);
+                    }
+                }
+            }
+        }
+        else if (type == ClockEventType::DUCK) {
             auto& state = std::get<DuckEventState>(event.state);
             if (state.organism_id != INVALID_ORGANISM_ID) {
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
@@ -1167,8 +1272,9 @@ void ClockScenario::cancelAllEvents(World& world)
     world.getOrganismManager().clear();
 
     // Clear config flags.
-    config_.rainEnabled = false;
+    config_.colorCycleEnabled = false;
     config_.duckEnabled = false;
+    config_.rainEnabled = false;
 
     active_events_.clear();
     event_cooldowns_.clear();
