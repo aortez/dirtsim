@@ -336,13 +336,15 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
     if (std::holds_alternative<Config::Clock>(newConfig)) {
         const Config::Clock& incoming = std::get<Config::Clock>(newConfig);
 
-        // Check if any dimension-affecting settings changed.
-        bool needs_resize = (incoming.showSeconds != config_.showSeconds) ||
-                            (incoming.font != config_.font) ||
-                            (incoming.autoScale != config_.autoScale) ||
-                            (incoming.targetDisplayWidth != config_.targetDisplayWidth) ||
-                            (incoming.targetDisplayHeight != config_.targetDisplayHeight) ||
-                            (incoming.marginPixels != config_.marginPixels);
+        // Check if layout changed (requires full reset - digit appearance changes).
+        bool layout_changed = (incoming.showSeconds != config_.showSeconds) ||
+                              (incoming.font != config_.font);
+
+        // Check if only dimensions changed (can handle incrementally).
+        bool dimensions_changed = (incoming.autoScale != config_.autoScale) ||
+                                  (incoming.targetDisplayWidth != config_.targetDisplayWidth) ||
+                                  (incoming.targetDisplayHeight != config_.targetDisplayHeight) ||
+                                  (incoming.marginPixels != config_.marginPixels);
 
         // Track event toggle changes before updating config_.
         bool rain_was_enabled = config_.rainEnabled;
@@ -350,24 +352,57 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
         config_ = incoming;
 
-        // Recalculate and reset if dimensions changed (including font).
-        if (needs_resize) {
+        if (layout_changed) {
+            // Layout changes require full reset (digit sizes change).
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Resetting world to {}x{} (font={}, showSeconds={}, display={}x{})",
+                "ClockScenario: Layout changed, full reset to {}x{} (font={}, showSeconds={})",
                 metadata_.requiredWidth,
                 metadata_.requiredHeight,
                 static_cast<int>(config_.font),
-                config_.showSeconds,
+                config_.showSeconds);
+
+            cancelAllEvents(world);
+            world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
+            reset(world);
+        }
+        else if (dimensions_changed) {
+            // Dimension-only changes can be handled incrementally.
+            // Keep events running - duck can keep walking.
+            recalculateDimensions();
+
+            spdlog::info(
+                "ClockScenario: Dimensions changed, incremental resize to {}x{} (display={}x{})",
+                metadata_.requiredWidth,
+                metadata_.requiredHeight,
                 config_.targetDisplayWidth,
                 config_.targetDisplayHeight);
 
-            // Cancel any active events before resizing.
-            cancelAllEvents(world);
+            // Before resize: Clear digits (they'll be repositioned after resize).
+            clearDigits(world);
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
-            reset(world);  // Clear and redraw everything.
+
+            // After resize: Reset drain state (positions may be invalid now).
+            drain_open_ = false;
+            drain_start_x_ = 0;
+            drain_end_x_ = 0;
+            current_drain_size_ = 0;
+
+            // Clear stray WALL cells from interior (old boundaries may now be inside).
+            WorldData& data = world.getData();
+            for (uint32_t y = 1; y < data.height - 1; ++y) {
+                for (uint32_t x = 1; x < data.width - 1; ++x) {
+                    if (data.at(x, y).material_type == MaterialType::WALL) {
+                        data.at(x, y) = Cell();
+                    }
+                }
+            }
+
+            // Redraw walls at new boundaries and digits at new centered positions.
+            redrawWalls(world);
+            drawTime(world);
         }
 
         // Handle manual event toggling.
@@ -522,6 +557,21 @@ int ClockScenario::calculateTotalWidth() const
     }
 }
 
+void ClockScenario::clearDigits(World& world)
+{
+    WorldData& data = world.getData();
+    for (const auto& pos : digit_cells_) {
+        if (pos.x >= 0 && pos.x < static_cast<int>(data.width) &&
+            pos.y >= 0 && pos.y < static_cast<int>(data.height)) {
+            Cell& cell = data.at(pos.x, pos.y);
+            if (cell.material_type == MaterialType::METAL) {
+                cell = Cell();
+            }
+        }
+    }
+    digit_cells_.clear();
+}
+
 void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
 {
     if (digit < 0 || digit > 9) {
@@ -567,6 +617,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
 
             if (pixel) {
                 world.replaceMaterialAtCell(x, y, MaterialType::METAL);
+                digit_cells_.push_back(Vector2i{ x, y });
             }
         }
     }
@@ -597,9 +648,11 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
                 world.replaceMaterialAtCell(x, y1, MaterialType::METAL);
+                digit_cells_.push_back(Vector2i{ x, y1 });
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
                 world.replaceMaterialAtCell(x, y2, MaterialType::METAL);
+                digit_cells_.push_back(Vector2i{ x, y2 });
             }
         }
     }
@@ -637,15 +690,8 @@ void ClockScenario::drawTime(World& world)
     int minutes = time_info->tm_min;
     int seconds = time_info->tm_sec;
 
-    // Clear all metal from the world before drawing fresh digits.
-    WorldData& data = world.getData();
-    for (uint32_t y = 1; y < data.height - 1; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, y).material_type == MaterialType::METAL) {
-                data.at(x, y) = Cell();
-            }
-        }
-    }
+    // Clear previous digits using tracked positions.
+    clearDigits(world);
 
     // Get font dimensions.
     int dw = getDigitWidth();

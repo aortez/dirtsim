@@ -164,6 +164,9 @@ private:
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
 
+    // Tracked digit cells (populated each time we draw, used to clear before redraw/resize).
+    std::vector<Vector2i> digit_cells_;
+
     // Font dimension helpers.
     int getDigitWidth() const;
     int getDigitHeight() const;
@@ -173,6 +176,7 @@ private:
 
     int calculateTotalWidth() const;
     void recalculateDimensions();
+    void clearDigits(World& world);
     void drawDigit(World& world, int digit, int start_x, int start_y);
     void drawColon(World& world, int x, int start_y);
     void drawTime(World& world);
