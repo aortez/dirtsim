@@ -182,6 +182,17 @@ void ClockControls::createMainView(lv_obj_t* view)
                             .glowColor(0xFF00FF)  // Magenta glow for color cycling.
                             .callback(onColorCycleToggled, this)
                             .buildOrLog();
+
+    // Color showcase event toggle.
+    colorShowcaseSwitch_ = LVGLBuilder::actionButton(cycleRow)
+                               .text("Showcase")
+                               .mode(LVGLBuilder::ActionMode::Toggle)
+                               .size(80)
+                               .checked(false)
+                               .textColor(0x00FFFF)  // Cyan text.
+                               .glowColor(0x00FFFF)  // Cyan glow for showcase.
+                               .callback(onColorShowcaseToggled, this)
+                               .buildOrLog();
 }
 
 void ClockControls::createFontSelectionView(lv_obj_t* view)
@@ -392,6 +403,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated color cycle button to {}", config.colorCycleEnabled);
     }
 
+    // Update color showcase button.
+    if (colorShowcaseSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(colorShowcaseSwitch_, config.colorShowcaseEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated color showcase button to {}", config.colorShowcaseEnabled);
+    }
+
     // Update rain button.
     if (rainSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(rainSwitch_, config.rainEnabled);
@@ -452,6 +469,11 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Get color cycle enabled from button.
     if (colorCycleSwitch_) {
         config.colorCycleEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(colorCycleSwitch_);
+    }
+
+    // Get color showcase enabled from button.
+    if (colorShowcaseSwitch_) {
+        config.colorShowcaseEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(colorShowcaseSwitch_);
     }
 
     // Get rain enabled from button.
@@ -728,6 +750,30 @@ void ClockControls::onColorCycleToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorCycleSwitch_);
 
     spdlog::info("ClockControls: Color cycle toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onColorShowcaseToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onColorShowcaseToggled called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring color showcase toggle during initialization");
+        return;
+    }
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorShowcaseSwitch_);
+
+    spdlog::info("ClockControls: Color showcase toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();

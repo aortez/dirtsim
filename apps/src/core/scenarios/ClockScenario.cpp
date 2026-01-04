@@ -367,6 +367,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
         // Track event toggle changes before updating config_.
         bool color_cycle_was_enabled = config_.colorCycleEnabled;
+        bool color_showcase_was_enabled = config_.colorShowcaseEnabled;
         bool duck_was_enabled = config_.duckEnabled;
         bool rain_was_enabled = config_.rainEnabled;
 
@@ -443,6 +444,26 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                 active_events_.erase(it);
                 event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0;  // No cooldown for manual stop.
                 spdlog::info("ClockScenario: Color cycle manually disabled");
+            }
+        }
+
+        // Color showcase event toggle.
+        if (config_.colorShowcaseEnabled && !color_showcase_was_enabled) {
+            // User enabled color showcase - start it if not already active.
+            if (!active_events_.contains(ClockEventType::COLOR_SHOWCASE)) {
+                event_cooldowns_[ClockEventType::COLOR_SHOWCASE] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::COLOR_SHOWCASE);
+                spdlog::info("ClockScenario: Color showcase manually enabled");
+            }
+        }
+        else if (!config_.colorShowcaseEnabled && color_showcase_was_enabled) {
+            // User disabled color showcase - stop it if active.
+            auto it = active_events_.find(ClockEventType::COLOR_SHOWCASE);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::COLOR_SHOWCASE, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::COLOR_SHOWCASE] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Color showcase manually disabled");
             }
         }
 
@@ -962,6 +983,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         }
 
         event.state = state;
+        config_.colorCycleEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
             eventTiming.duration, config_.colorsPerSecond);
     }
@@ -1012,6 +1034,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         }
 
         event.state = state;
+        config_.colorShowcaseEnabled = true;  // Sync config flag.
     }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
@@ -1260,6 +1283,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     if (type == ClockEventType::COLOR_CYCLE) {
         config_.colorCycleEnabled = false;
     }
+    else if (type == ClockEventType::COLOR_SHOWCASE) {
+        config_.colorShowcaseEnabled = false;
+    }
     else if (type == ClockEventType::DUCK) {
         config_.duckEnabled = false;
     }
@@ -1354,6 +1380,7 @@ void ClockScenario::cancelAllEvents(World& world)
 
     // Clear config flags.
     config_.colorCycleEnabled = false;
+    config_.colorShowcaseEnabled = false;
     config_.duckEnabled = false;
     config_.rainEnabled = false;
 
