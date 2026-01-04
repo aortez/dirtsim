@@ -239,6 +239,7 @@ private:
     void clearDigits(World& world);
     void drawDigit(World& world, int digit, int start_x, int start_y);
     void drawColon(World& world, int x, int start_y);
+    void drawTimeString(World& world, const std::string& time_str);
     void drawTime(World& world);
     std::string getCurrentTimeString() const;
 

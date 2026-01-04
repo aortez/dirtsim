@@ -601,20 +601,22 @@ void ClockScenario::tick(World& world, double deltaTime)
 
 int ClockScenario::calculateTotalWidth() const
 {
+    // Calculate width based on the time string format.
+    // Format: "H H : M M" or "H H : M M : S S"
+    // - Digits contribute digit width.
+    // - Colons contribute colon width.
+    // - Spaces contribute digit gap.
     int dw = getDigitWidth();
     int dg = getDigitGap();
     int cw = getColonWidth();
-    int cp = getColonPadding();
 
     if (config_.showSeconds) {
-        // HH : MM : SS (6 digits, 2 colons).
-        // Layout: D gap D pad colon pad D gap D pad colon pad D gap D.
-        return 6 * dw + 4 * dg + 2 * (cw + 2 * cp);
+        // "H H : M M : S S" = 6 digits, 2 colons, 7 spaces.
+        return 6 * dw + 2 * cw + 7 * dg;
     }
     else {
-        // HH : MM (4 digits, 1 colon).
-        // Layout: D gap D pad colon pad D gap D.
-        return 4 * dw + 2 * dg + (cw + 2 * cp);
+        // "H H : M M" = 4 digits, 1 colon, 4 spaces.
+        return 4 * dw + 1 * cw + 4 * dg;
     }
 }
 
@@ -761,39 +763,9 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
     }
 }
 
-void ClockScenario::drawTime(World& world)
+void ClockScenario::drawTimeString(World& world, const std::string& time_str)
 {
-    // Get current time.
-    auto now = std::chrono::system_clock::now();
-    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
-
-    std::tm* time_info;
-    if (config_.timezoneIndex == 0) {
-        // Local system time.
-        time_info = std::localtime(&now_time);
-    }
-    else {
-        // UTC time with offset.
-        time_info = std::gmtime(&now_time);
-        const auto& tz = TIMEZONES[config_.timezoneIndex];
-
-        // Apply timezone offset (hours).
-        time_info->tm_hour += tz.offset_hours;
-
-        // Normalize hours (handle wraparound).
-        if (time_info->tm_hour < 0) {
-            time_info->tm_hour += 24;
-        }
-        else if (time_info->tm_hour >= 24) {
-            time_info->tm_hour -= 24;
-        }
-    }
-
-    int hours = time_info->tm_hour;
-    int minutes = time_info->tm_min;
-    int seconds = time_info->tm_sec;
-
-    // Clear previous digits using tracked positions.
+    // Clear previous digits.
     clearDigits(world);
 
     // Get font dimensions.
@@ -801,47 +773,49 @@ void ClockScenario::drawTime(World& world)
     int dh = getDigitHeight();
     int dg = getDigitGap();
     int cw = getColonWidth();
-    int cp = getColonPadding();
+
+    // Calculate total width by counting characters in the string.
+    int total_width = 0;
+    for (char c : time_str) {
+        if (c >= '0' && c <= '9') {
+            total_width += dw;
+        }
+        else if (c == ':') {
+            total_width += cw;
+        }
+        else if (c == ' ') {
+            total_width += dg;
+        }
+    }
 
     // Calculate centered position.
-    int total_width = calculateTotalWidth();
     int start_x = (static_cast<int>(world.getData().width) - total_width) / 2;
     int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
 
     int cursor_x = start_x;
 
-    // Draw hours (tens, ones).
-    drawDigit(world, hours / 10, cursor_x, start_y);
-    cursor_x += dw + dg;
-    drawDigit(world, hours % 10, cursor_x, start_y);
-    cursor_x += dw;
-
-    // Draw first colon.
-    cursor_x += cp;
-    drawColon(world, cursor_x, start_y);
-    cursor_x += cw + cp;
-
-    // Draw minutes (tens, ones).
-    drawDigit(world, minutes / 10, cursor_x, start_y);
-    cursor_x += dw + dg;
-    drawDigit(world, minutes % 10, cursor_x, start_y);
-    cursor_x += dw;
-
-    // Draw seconds if enabled.
-    if (config_.showSeconds) {
-        // Draw second colon.
-        cursor_x += cp;
-        drawColon(world, cursor_x, start_y);
-        cursor_x += cw + cp;
-
-        // Draw seconds (tens, ones).
-        drawDigit(world, seconds / 10, cursor_x, start_y);
-        cursor_x += dw + dg;
-        drawDigit(world, seconds % 10, cursor_x, start_y);
+    // Draw each character in the string.
+    for (char c : time_str) {
+        if (c >= '0' && c <= '9') {
+            drawDigit(world, c - '0', cursor_x, start_y);
+            cursor_x += dw;
+        }
+        else if (c == ':') {
+            drawColon(world, cursor_x, start_y);
+            cursor_x += cw;
+        }
+        else if (c == ' ') {
+            // Space advances cursor by digit gap (no drawing).
+            cursor_x += dg;
+        }
     }
+}
 
-    // Update last drawn time for change detection.
-    last_drawn_time_ = getCurrentTimeString();
+void ClockScenario::drawTime(World& world)
+{
+    std::string time_str = getCurrentTimeString();
+    drawTimeString(world, time_str);
+    last_drawn_time_ = time_str;
 }
 
 std::string ClockScenario::getCurrentTimeString() const
@@ -865,14 +839,19 @@ std::string ClockScenario::getCurrentTimeString() const
         }
     }
 
-    char buffer[16];
+    // Format: "H H : M M : S S" - spaces control all gaps.
+    // Each space advances cursor by digit gap width.
+    char buffer[48];
     if (config_.showSeconds) {
-        std::snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d",
-            time_info->tm_hour, time_info->tm_min, time_info->tm_sec);
+        std::snprintf(buffer, sizeof(buffer), "%d %d : %d %d : %d %d",
+            time_info->tm_hour / 10, time_info->tm_hour % 10,
+            time_info->tm_min / 10, time_info->tm_min % 10,
+            time_info->tm_sec / 10, time_info->tm_sec % 10);
     }
     else {
-        std::snprintf(buffer, sizeof(buffer), "%02d:%02d",
-            time_info->tm_hour, time_info->tm_min);
+        std::snprintf(buffer, sizeof(buffer), "%d %d : %d %d",
+            time_info->tm_hour / 10, time_info->tm_hour % 10,
+            time_info->tm_min / 10, time_info->tm_min % 10);
     }
     return std::string(buffer);
 }
@@ -960,7 +939,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 {
     const auto& eventTiming = getEventTiming(type);
 
-    ActiveEvent event;
+    ActiveEvent event{};
     event.remaining_time = eventTiming.duration;
 
     if (type == ClockEventType::COLOR_CYCLE) {
