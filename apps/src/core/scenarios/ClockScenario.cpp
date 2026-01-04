@@ -1023,14 +1023,15 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         ColorShowcaseEventState state;
-        state.current_index = 0;
 
-        // Apply the first showcase color immediately.
+        // Start on a random color each time.
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
         if (!showcase_materials.empty()) {
-            config_.digitMaterial = showcase_materials[0];
-            spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, first color: {})",
-                eventTiming.duration, getMaterialName(showcase_materials[0]));
+            std::uniform_int_distribution<size_t> color_dist(0, showcase_materials.size() - 1);
+            state.current_index = color_dist(rng_);
+            config_.digitMaterial = showcase_materials[state.current_index];
+            spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at index {})",
+                eventTiming.duration, getMaterialName(showcase_materials[state.current_index]), state.current_index);
         }
 
         event.state = state;

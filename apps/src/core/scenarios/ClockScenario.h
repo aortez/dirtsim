@@ -57,7 +57,7 @@ struct ColorCycleEventConfig {
 struct ColorShowcaseEventConfig {
     EventTimingConfig timing = { .duration = 120.0, .chance_per_second = 0.1, .cooldown = 60.0 };
     std::vector<MaterialType> showcase_materials = {
-        MaterialType::LEAF, MaterialType::WATER, MaterialType::SEED, MaterialType::DIRT
+        MaterialType::LEAF, MaterialType::WATER, MaterialType::SEED, MaterialType::WOOD
     };
 };
 
