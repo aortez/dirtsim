@@ -1,6 +1,7 @@
 #pragma once
 
-#include <nlohmann/json.hpp>
+#include "../ReflectEnumJson.h"
+
 #include <zpp_bits.h>
 
 namespace DirtSim::Config {
@@ -13,17 +14,6 @@ enum class ClockFont : uint8_t {
     Segment7Large = 4,
     Segment7Tall = 5,
 };
-
-NLOHMANN_JSON_SERIALIZE_ENUM(
-    ClockFont,
-    {
-        {ClockFont::DotMatrix, "DotMatrix"},
-        {ClockFont::Segment7, "Segment7"},
-        {ClockFont::Segment7ExtraTall, "Segment7ExtraTall"},
-        {ClockFont::Segment7Jumbo, "Segment7Jumbo"},
-        {ClockFont::Segment7Large, "Segment7Large"},
-        {ClockFont::Segment7Tall, "Segment7Tall"},
-    })
 
 struct Clock {
     using serialize = zpp::bits::members<13>;
