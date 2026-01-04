@@ -753,7 +753,10 @@ function setupMouseForwarding(videoElement) {
         return { x: offsetX, y: offsetY, width: renderWidth, height: renderHeight };
     }
 
-    function sendMouseEvent(eventType, elementX, elementY) {
+    var buttonNames = ['LEFT', 'MIDDLE', 'RIGHT'];
+    var lastSentPixel = { x: -1, y: -1 };
+
+    function sendMouseEvent(eventType, elementX, elementY, button) {
         if (!uiConn.isConnected()) return;
 
         var renderRect = getVideoRenderRect(videoElement);
@@ -779,23 +782,35 @@ function setupMouseForwarding(videoElement) {
         lvglX = Math.max(0, Math.min(lvglX, videoElement.videoWidth - 1));
         lvglY = Math.max(0, Math.min(lvglY, videoElement.videoHeight - 1));
 
+        // Deduplicate drag events.
+        if (eventType === 'MouseMove' && lvglX === lastSentPixel.x && lvglY === lastSentPixel.y) {
+            return;
+        }
+        lastSentPixel = { x: lvglX, y: lvglY };
+
         // Debug logging for coordinate mapping.
         if (eventType === 'MouseDown') {
             logDebug('Mouse: element(' + Math.round(elementX) + ',' + Math.round(elementY) + ') ' +
                      'video(' + videoElement.videoWidth + 'x' + videoElement.videoHeight + ') ' +
                      'client(' + videoElement.clientWidth + 'x' + videoElement.clientHeight + ') ' +
                      'render(' + Math.round(renderRect.width) + 'x' + Math.round(renderRect.height) + ' @' + Math.round(renderRect.x) + ',' + Math.round(renderRect.y) + ') ' +
-                     '-> lvgl(' + lvglX + ',' + lvglY + ')');
+                     '-> lvgl(' + lvglX + ',' + lvglY + ') button=' + button);
         }
 
-        uiConn.send(eventType, { pixelX: lvglX, pixelY: lvglY });
+        var payload = { pixelX: lvglX, pixelY: lvglY };
+        if (button !== undefined && button !== null) {
+            payload.button = buttonNames[button] || 'LEFT';
+        }
+        uiConn.send(eventType, payload);
     }
 
     var mousedownHandler = function(e) {
+        e.preventDefault();
+        lastSentPixel = { x: -1, y: -1 };
         var rect = videoElement.getBoundingClientRect();
         var x = e.clientX - rect.left;
         var y = e.clientY - rect.top;
-        sendMouseEvent('MouseDown', x, y);
+        sendMouseEvent('MouseDown', x, y, e.button);
     };
 
     var mousemoveHandler = function(e) {
@@ -812,16 +827,22 @@ function setupMouseForwarding(videoElement) {
         sendMouseEvent('MouseUp', x, y);
     };
 
+    var contextmenuHandler = function(e) {
+        e.preventDefault();
+    };
+
     videoElement.addEventListener('mousedown', mousedownHandler);
     videoElement.addEventListener('mousemove', mousemoveHandler);
     videoElement.addEventListener('mouseup', mouseupHandler);
+    videoElement.addEventListener('contextmenu', contextmenuHandler);
 
     // Store references so we can remove them later.
     activeMouseListeners = {
         video: videoElement,
         mousedown: mousedownHandler,
         mousemove: mousemoveHandler,
-        mouseup: mouseupHandler
+        mouseup: mouseupHandler,
+        contextmenu: contextmenuHandler
     };
 
     logDebug('Mouse forwarding enabled for focus video');
@@ -833,6 +854,7 @@ function removeMouseForwarding() {
     activeMouseListeners.video.removeEventListener('mousedown', activeMouseListeners.mousedown);
     activeMouseListeners.video.removeEventListener('mousemove', activeMouseListeners.mousemove);
     activeMouseListeners.video.removeEventListener('mouseup', activeMouseListeners.mouseup);
+    activeMouseListeners.video.removeEventListener('contextmenu', activeMouseListeners.contextmenu);
 
     activeMouseListeners = null;
     logDebug('Mouse forwarding disabled');

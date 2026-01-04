@@ -1,8 +1,12 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/MaterialType.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/CellSet.h"
 #include "server/api/RenderFormatSet.h"
+#include "ui/InteractionMode.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
@@ -133,12 +137,43 @@ State::Any SimRunning::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/
 
 State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
-    LOG_DEBUG(State, "Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
+    LOG_INFO(
+        State,
+        "Mouse down at ({}, {}) button={}",
+        cwc.command.pixelX,
+        cwc.command.pixelY,
+        static_cast<int>(cwc.command.button));
 
-    // Update remote input device state (enables LVGL widget interaction).
+    activeMouseButton = cwc.command.button;
+
     if (sm.getRemoteInputDevice()) {
         sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
         sm.getRemoteInputDevice()->updatePressed(true);
+    }
+
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    if (playground_->getInteractionMode() == InteractionMode::DRAW) {
+        LOG_INFO(State, "Draw mode active");
+        auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
+        if (cell) {
+            MaterialType material =
+                (cwc.command.button == UiApi::MouseButton::LEFT) ? MaterialType::WALL : MaterialType::AIR;
+
+            static std::atomic<uint64_t> nextId{ 1 };
+            Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
+            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+
+            LOG_INFO(
+                State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, getMaterialName(material));
+        }
+        else {
+            LOG_WARN(
+                State,
+                "Draw mode active but pixel ({}, {}) is outside world",
+                cwc.command.pixelX,
+                cwc.command.pixelY);
+        }
     }
 
     cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
@@ -149,9 +184,22 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
 {
     LOG_DEBUG(State, "Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
-    // Update remote input device position (enables LVGL widget interaction).
     if (sm.getRemoteInputDevice()) {
         sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
+
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    if (activeMouseButton.has_value() && playground_->getInteractionMode() == InteractionMode::DRAW) {
+        auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
+        if (cell) {
+            MaterialType material =
+                (*activeMouseButton == UiApi::MouseButton::LEFT) ? MaterialType::WALL : MaterialType::AIR;
+
+            static std::atomic<uint64_t> nextId{ 1 };
+            Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
+            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+        }
     }
 
     cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
@@ -162,7 +210,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 {
     LOG_DEBUG(State, "Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
 
-    // Update remote input device state (enables LVGL widget interaction).
+    activeMouseButton = std::nullopt;
+
     if (sm.getRemoteInputDevice()) {
         sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
         sm.getRemoteInputDevice()->updatePressed(false);

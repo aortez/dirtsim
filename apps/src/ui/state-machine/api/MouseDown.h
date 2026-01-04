@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MouseButton.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 #include "server/api/ApiError.h"
@@ -17,6 +18,7 @@ DEFINE_API_NAME(MouseDown);
 struct Command {
     int pixelX;
     int pixelY;
+    MouseButton button = MouseButton::LEFT;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

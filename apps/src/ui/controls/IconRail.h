@@ -102,6 +102,8 @@ public:
     void toggleMode();
     bool isMinimized() const { return mode_ == RailMode::Minimized; }
 
+    void setSwipeZoneEnabled(bool enabled);
+
 private:
     lv_obj_t* container_ = nullptr;
     std::vector<lv_obj_t*> buttons_;

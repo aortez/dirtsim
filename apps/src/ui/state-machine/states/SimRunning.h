@@ -22,8 +22,8 @@ struct SimRunning {
     std::unique_ptr<WorldData> worldData;       // Local copy of world data for rendering.
     std::unique_ptr<SimPlayground> playground_; // Coordinates all UI components.
 
-    // UI-local draw mode toggles.
     bool debugDrawEnabled = false;
+    std::optional<UiApi::MouseButton> activeMouseButton;
 
     // UI FPS tracking.
     std::chrono::steady_clock::time_point lastFrameTime;

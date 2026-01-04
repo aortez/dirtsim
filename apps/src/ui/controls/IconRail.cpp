@@ -1,4 +1,5 @@
 #include "IconRail.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
@@ -487,6 +488,17 @@ void IconRail::onGesture(lv_event_t* e)
     else if (dir == LV_DIR_LEFT && self->mode_ == RailMode::Normal) {
         LOG_INFO(Controls, "Swipe left detected - minimizing IconRail");
         self->setMode(RailMode::Minimized);
+    }
+}
+
+void IconRail::setSwipeZoneEnabled(bool enabled)
+{
+    if (enabled) {
+        DIRTSIM_ASSERT(swipeZone_, "Cannot enable swipe zone - not created");
+        lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
+    }
+    else if (swipeZone_) {
+        lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
