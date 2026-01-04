@@ -47,18 +47,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Add msgpack-c for binary serialization (7.0.0 fixes CMake deprecation warnings).
-FetchContent_Declare(
-    msgpack
-    GIT_REPOSITORY https://github.com/msgpack/msgpack-c.git
-    GIT_TAG cpp-7.0.0
-)
-set(MSGPACK_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(MSGPACK_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-set(MSGPACK_USE_BOOST ON CACHE BOOL "" FORCE)
-FetchContent_MakeAvailable(msgpack)
-
-# Find Boost for msgpack variant support.
+# Find Boost.
 find_package(Boost REQUIRED)
 
 # Find Avahi for mDNS peer discovery.
@@ -205,7 +194,7 @@ add_subdirectory(./external/args ${CMAKE_BINARY_DIR}/args)
 
 add_library(lvgl_linux STATIC ${LV_LINUX_SRC} ${LV_LINUX_BACKEND_SRC})
 target_include_directories(lvgl_linux PRIVATE ${LV_LINUX_INC} ${PROJECT_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR}/src/ui/lib ${zpp_bits_SOURCE_DIR} ${PKG_CONFIG_INC})
-target_link_libraries(lvgl_linux PUBLIC msgpack-cxx nlohmann_json::nlohmann_json spdlog::spdlog ${PKG_CONFIG_LIB})
+target_link_libraries(lvgl_linux PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog ${PKG_CONFIG_LIB})
 
 # ============================================================================
 # Component Libraries
@@ -246,7 +235,7 @@ set(DIRTSIM_CORE_SOURCES
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
 target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
-target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json msgpack-cxx spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
+target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
 
 # Link SDL2 for gamepad support.
 target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})
