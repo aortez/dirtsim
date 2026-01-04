@@ -12,8 +12,8 @@
 
 namespace {
   // Physics constants.
-  static constexpr float WALK_FORCE = 50.0f;   // Force applied each frame when walking.
-  static constexpr float JUMP_FORCE = 600.0f;  // Impulse force applied once when jumping.
+  static constexpr float WALK_FORCE = 20.0f;   // Force applied each frame when walking.
+  static constexpr float JUMP_FORCE = 300.0f;  // Impulse force applied once when jumping.
 
   // Sparkle constants.
   static constexpr int MIN_SPARKLES = 0;           // Sparkles when at rest.
@@ -41,6 +41,11 @@ void Duck::update(World& world, double deltaTime)
 {
     age_seconds_ += deltaTime;
     frame_counter_++;
+
+    // Update jump cooldown.
+    if (jump_cooldown_ > 0.0f) {
+        jump_cooldown_ -= static_cast<float>(deltaTime);
+    }
 
     // INVARIANT CHECKS: Verify duck's anchor_cell_ matches world state.
     const WorldData& data = world.getData();
@@ -120,7 +125,11 @@ void Duck::setWalkDirection(float dir)
 void Duck::jump()
 {
     if (!on_ground_) {
-        return; // Can only jump when on ground.
+        return;  // Can only jump when on ground.
+    }
+
+    if (jump_cooldown_ > 0.0f) {
+        return;  // Still in cooldown from previous jump.
     }
 
     jump_requested_ = true;
@@ -192,7 +201,8 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
 
         jump_requested_ = false;
         on_ground_ = false;
-        LOG_DEBUG(Brain, "Duck {}: Applied jump force {}", id_, jump_force.y);
+        jump_cooldown_ = JUMP_COOLDOWN;
+        LOG_DEBUG(Brain, "Duck {}: Applied jump force {}, cooldown={:.2f}s", id_, jump_force.y, jump_cooldown_);
     }
 
     // Update facing direction based on walk direction or velocity.
@@ -475,7 +485,7 @@ void Duck::spawnSparkle(const Vector2d& duck_velocity)
     sparkle.velocity.x = static_cast<float>(duck_velocity.x * 0.5) + burst_x;
     sparkle.velocity.y = static_cast<float>(duck_velocity.y * 0.5) + burst_y;
 
-    LOG_INFO(Brain, "Sparkle spawn: duck_vel=({:.1f},{:.1f}), burst=({:.1f},{:.1f}), final=({:.1f},{:.1f})",
+    LOG_DEBUG(Brain, "Sparkle spawn: duck_vel=({:.1f},{:.1f}), burst=({:.1f},{:.1f}), final=({:.1f},{:.1f})",
         duck_velocity.x, duck_velocity.y, burst_x, burst_y, sparkle.velocity.x, sparkle.velocity.y);
 
     // Randomize lifetime a bit.

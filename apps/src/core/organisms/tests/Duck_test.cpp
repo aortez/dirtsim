@@ -472,27 +472,59 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
 
     ASSERT_TRUE(duck->isOnGround()) << "Duck should be on ground before jump test";
     int settled_y = duck->getAnchorCell().y;
-    spdlog::info("Duck settled at y={}", settled_y);
+
+    // Log state before jump.
+    {
+        Vector2i pos = duck->getAnchorCell();
+        const Cell& cell = world->getData().at(pos.x, pos.y);
+        spdlog::info("Duck settled at y={}, COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
+            settled_y, cell.com.x, cell.com.y, cell.velocity.x, cell.velocity.y, duck->isOnGround());
+    }
 
     // Trigger jump.
     brain_ptr->setAction(DuckAction::JUMP);
     world->advanceTime(0.016);  // One frame to initiate jump.
+
+    // Log state immediately after jump frame.
+    {
+        Vector2i pos = duck->getAnchorCell();
+        const Cell& cell = world->getData().at(pos.x, pos.y);
+        spdlog::info("After jump frame: pos=({},{}), COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
+            pos.x, pos.y, cell.com.x, cell.com.y, cell.velocity.x, cell.velocity.y, duck->isOnGround());
+    }
 
     // Switch to wait so we don't keep trying to jump.
     brain_ptr->setAction(DuckAction::WAIT);
 
     // Track the highest point (minimum Y since Y increases downward).
     int min_y = settled_y;
+    double min_com_y = 1.0;  // Track minimum COM.y (most upward position within cell).
 
     // Run physics for enough frames to complete the jump arc.
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
 
-        int current_y = duck->getAnchorCell().y;
+        Vector2i pos = duck->getAnchorCell();
+        const Cell& cell = world->getData().at(pos.x, pos.y);
+
+        // Log first 30 frames to see jump dynamics.
+        if (frame < 30) {
+            spdlog::info("Frame {:3d}: pos=({},{}), COM.y={:+.3f}, vel.y={:+.2f}, on_ground={}",
+                frame, pos.x, pos.y, cell.com.y, cell.velocity.y, duck->isOnGround());
+        }
+
+        int current_y = pos.y;
         if (current_y < min_y) {
             min_y = current_y;
+            spdlog::info("  -> NEW MIN Y: {}", min_y);
+        }
+
+        if (cell.com.y < min_com_y) {
+            min_com_y = cell.com.y;
         }
     }
+
+    spdlog::info("Min COM.y reached: {:.3f} (negative = upward from center)", min_com_y);
 
     int jump_height = settled_y - min_y;
     spdlog::info("Duck jumped from y={} to min y={}, height={} cells", settled_y, min_y, jump_height);
@@ -1302,9 +1334,9 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
 
     OrganismManager& manager = world->getOrganismManager();
 
-    // Duck spawns one cell from left wall, one cell up from floor.
-    // In a 20x10 world: x=1, y=7 (floor is row 9, so row 8 is just above floor).
-    constexpr int SPAWN_X = 1;
+    // Duck spawns with one cell gap from left wall, one cell up from floor.
+    // In a 20x10 world: wall at x=0, gap at x=1, duck at x=2.
+    constexpr int SPAWN_X = 2;
     constexpr int SPAWN_Y = 7;  // One cell up in the air to let it settle.
 
     auto brain = std::make_unique<DuckBrain2>();
