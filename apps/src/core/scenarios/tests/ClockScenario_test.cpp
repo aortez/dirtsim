@@ -14,9 +14,12 @@ protected:
     {
         // Create scenario with default event configs but random triggering disabled.
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
-            .duck = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
-            .meltdown = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
-            .rain = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
+            .duck = {
+                .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
+                .floor_obstacles_enabled = false,
+            },
+            .meltdown = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
+            .rain = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
         });
 
         // Get required dimensions from scenario metadata.
@@ -123,7 +126,12 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     // Note: chance_per_second = 0.0 prevents random triggering; we don't set
     // eventFrequency = 0.0 because that would skip updateEvents() entirely.
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
-        .duck = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
+        .duck = {
+            .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
+            .floor_obstacles_enabled = false,
+        },
+        .meltdown = {},
+        .rain = {},
     });
     const auto& metadata = short_scenario->getMetadata();
     auto short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
@@ -137,7 +145,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     ASSERT_TRUE(short_scenario->isEventActive(ClockEventType::DUCK));
 
     // Get the configured duration.
-    double duration = short_scenario->getEventConfig(ClockEventType::DUCK).duration;
+    double duration = short_scenario->getEventTiming(ClockEventType::DUCK).duration;
     std::cout << "Duck event duration: " << duration << "s\n";
 
     // Advance time past the event duration.
@@ -182,38 +190,197 @@ TEST_F(ClockScenarioTest, DuckEvent_DoesNotTriggerRandomlyWhenDisabled)
 // Event Config Tests
 // =============================================================================
 
-TEST_F(ClockScenarioTest, EventConfig_CustomDurationIsRespected)
+TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 {
-    // Create scenario with very short duck duration.
-    auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
-        .duck = { .duration = 1.0, .chance_per_second = 0.0, .cooldown = 0.0 },
+    // Create scenario with duration long enough to observe full door cycle.
+    // Exit door opens at remaining_time <= 7.0, so need duration > 7.0.
+    // Door open delay is 2.0s, door close delay is 1.0s.
+    auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
+        .duck = {
+            .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
+            .floor_obstacles_enabled = false,
+        },
+        .meltdown = {},
+        .rain = {},
     });
 
-    const auto& metadata = short_scenario->getMetadata();
-    auto short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
-    short_scenario->setup(*short_world);
+    const auto& metadata = test_scenario->getMetadata();
+    auto test_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
+    test_scenario->setup(*test_world);
 
-    // Verify config is correct.
-    EXPECT_DOUBLE_EQ(short_scenario->getEventConfig(ClockEventType::DUCK).duration, 1.0);
+    const WorldData& data = test_world->getData();
+    const uint32_t world_width = data.width;
+    const uint32_t world_height = data.height;
+
+    // Expected door Y position: one above the floor.
+    const int expected_door_y = static_cast<int>(world_height - 2);
+
+    std::cout << "World size: " << world_width << "x" << world_height << "\n";
+    std::cout << "Expected door Y: " << expected_door_y << " (one above floor at "
+              << world_height - 1 << ")\n";
+
+    // Track door events across all frames.
+    struct DoorEvent {
+        double time;
+        std::string description;
+        int door_x;
+        int door_y;
+    };
+    std::vector<DoorEvent> door_events;
+
+    // Track door states.
+    bool entrance_door_opened = false;
+    bool entrance_door_closed = false;
+    bool exit_door_opened = false;
+    bool exit_door_closed = false;
+    int entrance_door_x = -1;
+    int exit_door_x = -1;
 
     // Start duck event.
-    auto config = std::get<Config::Clock>(short_scenario->getConfig());
+    auto config = std::get<Config::Clock>(test_scenario->getConfig());
     config.duckEnabled = true;
-    short_scenario->setConfig(config, *short_world);
+    test_scenario->setConfig(config, *test_world);
 
-    ASSERT_TRUE(short_scenario->isEventActive(ClockEventType::DUCK));
+    ASSERT_TRUE(test_scenario->isEventActive(ClockEventType::DUCK));
 
-    // Advance time past 1 second.
+    // Helper to check if a position is an open door (AIR at wall position).
+    auto is_door_open = [&](int x, int y) -> bool {
+        if (x < 0 || x >= static_cast<int>(world_width) ||
+            y < 0 || y >= static_cast<int>(world_height)) {
+            return false;
+        }
+        const Cell& cell = data.at(x, y);
+        // Door is open if the wall cell has been cleared to AIR.
+        return cell.material_type == MaterialType::AIR;
+    };
+
+    // Run simulation and track all frames.
     double elapsed = 0.0;
-    while (short_scenario->isEventActive(ClockEventType::DUCK) && elapsed < 3.0) {
-        short_scenario->tick(*short_world, 0.1);
-        short_world->advanceTime(0.1);
-        elapsed += 0.1;
+    const double dt = 0.05;  // Small timesteps for accuracy.
+    const double max_time = 25.0;  // Safety limit.
+
+    while (test_scenario->isEventActive(ClockEventType::DUCK) && elapsed < max_time) {
+        // Check left door (x=0).
+        bool left_door_open = is_door_open(0, expected_door_y);
+
+        // Check right door (x=width-1).
+        bool right_door_open = is_door_open(world_width - 1, expected_door_y);
+
+        // Track entrance door opening.
+        if (!entrance_door_opened && (left_door_open || right_door_open)) {
+            entrance_door_opened = true;
+            entrance_door_x = left_door_open ? 0 : static_cast<int>(world_width - 1);
+            door_events.push_back({
+                elapsed,
+                "ENTRANCE_DOOR_OPENED",
+                entrance_door_x,
+                expected_door_y
+            });
+            std::cout << "t=" << elapsed << "s: Entrance door opened at ("
+                      << entrance_door_x << ", " << expected_door_y << ")\n";
+        }
+
+        // Track entrance door closing.
+        if (entrance_door_opened && !entrance_door_closed) {
+            bool entrance_still_open = (entrance_door_x == 0)
+                ? left_door_open
+                : right_door_open;
+            if (!entrance_still_open) {
+                entrance_door_closed = true;
+                door_events.push_back({
+                    elapsed,
+                    "ENTRANCE_DOOR_CLOSED",
+                    entrance_door_x,
+                    expected_door_y
+                });
+                std::cout << "t=" << elapsed << "s: Entrance door closed at ("
+                          << entrance_door_x << ", " << expected_door_y << ")\n";
+            }
+        }
+
+        // Track exit door opening (opposite side from entrance).
+        if (entrance_door_opened && !exit_door_opened) {
+            int potential_exit_x = (entrance_door_x == 0)
+                ? static_cast<int>(world_width - 1)
+                : 0;
+            bool exit_open = (potential_exit_x == 0)
+                ? left_door_open
+                : right_door_open;
+            if (exit_open) {
+                exit_door_opened = true;
+                exit_door_x = potential_exit_x;
+                door_events.push_back({
+                    elapsed,
+                    "EXIT_DOOR_OPENED",
+                    exit_door_x,
+                    expected_door_y
+                });
+                std::cout << "t=" << elapsed << "s: Exit door opened at ("
+                          << exit_door_x << ", " << expected_door_y << ")\n";
+            }
+        }
+
+        // Advance simulation.
+        test_scenario->tick(*test_world, dt);
+        test_world->advanceTime(dt);
+        elapsed += dt;
     }
 
-    std::cout << "Short event ended after " << elapsed << "s\n";
+    // After event ends, check if exit door closed.
+    if (exit_door_opened && !exit_door_closed) {
+        bool exit_still_open = (exit_door_x == 0)
+            ? is_door_open(0, expected_door_y)
+            : is_door_open(world_width - 1, expected_door_y);
+        if (!exit_still_open) {
+            exit_door_closed = true;
+            door_events.push_back({
+                elapsed,
+                "EXIT_DOOR_CLOSED",
+                exit_door_x,
+                expected_door_y
+            });
+            std::cout << "t=" << elapsed << "s: Exit door closed at ("
+                      << exit_door_x << ", " << expected_door_y << ")\n";
+        }
+    }
 
-    // Should have ended around 1 second (plus door closing delay).
-    EXPECT_FALSE(short_scenario->isEventActive(ClockEventType::DUCK));
-    EXPECT_LT(elapsed, 3.0) << "Event should end well before 3 seconds";
+    // Print summary.
+    std::cout << "\n=== Door Event Summary ===\n";
+    for (const auto& event : door_events) {
+        std::cout << "  t=" << event.time << "s: " << event.description
+                  << " at (" << event.door_x << ", " << event.door_y << ")\n";
+    }
+    std::cout << "Event ended after " << elapsed << "s\n";
+
+    // Verify all door events occurred.
+    EXPECT_TRUE(entrance_door_opened) << "Entrance door should have opened";
+    EXPECT_TRUE(entrance_door_closed) << "Entrance door should have closed";
+    EXPECT_TRUE(exit_door_opened) << "Exit door should have opened";
+    EXPECT_TRUE(exit_door_closed) << "Exit door should have closed";
+
+    // Verify door positions are at the edges.
+    if (entrance_door_opened) {
+        EXPECT_TRUE(entrance_door_x == 0 || entrance_door_x == static_cast<int>(world_width - 1))
+            << "Entrance door should be at world edge, got x=" << entrance_door_x;
+    }
+    if (exit_door_opened) {
+        EXPECT_TRUE(exit_door_x == 0 || exit_door_x == static_cast<int>(world_width - 1))
+            << "Exit door should be at world edge, got x=" << exit_door_x;
+    }
+
+    // Verify entrance and exit are on opposite sides.
+    if (entrance_door_opened && exit_door_opened) {
+        EXPECT_NE(entrance_door_x, exit_door_x)
+            << "Entrance and exit doors should be on opposite sides";
+    }
+
+    // Verify all doors were at the correct Y position (one above floor).
+    for (const auto& event : door_events) {
+        EXPECT_EQ(event.door_y, expected_door_y)
+            << "Door at event '" << event.description
+            << "' should be at y=" << expected_door_y << " (one above floor)";
+    }
+
+    // Verify event completed.
+    EXPECT_FALSE(test_scenario->isEventActive(ClockEventType::DUCK));
 }

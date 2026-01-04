@@ -159,18 +159,18 @@ size_t ClockScenario::getActiveEventCount() const
     return active_events_.size();
 }
 
-const EventTypeConfig& ClockScenario::getEventConfig(ClockEventType type) const
+const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) const
 {
     switch (type) {
     case ClockEventType::DUCK:
-        return event_configs_.duck;
+        return event_configs_.duck.timing;
     case ClockEventType::MELTDOWN:
-        return event_configs_.meltdown;
+        return event_configs_.meltdown.timing;
     case ClockEventType::RAIN:
-        return event_configs_.rain;
+        return event_configs_.rain.timing;
     }
     // Unreachable, but satisfy compiler.
-    return event_configs_.duck;
+    return event_configs_.duck.timing;
 }
 
 int ClockScenario::getDigitWidth() const
@@ -863,8 +863,8 @@ void ClockScenario::tryTriggerEvents(World& world)
         }
 
         // Scale chance by eventFrequency config.
-        const auto& config = getEventConfig(type);
-        double effective_chance = config.chance_per_second * config_.eventFrequency;
+        const auto& timing = getEventTiming(type);
+        double effective_chance = timing.chance_per_second * config_.eventFrequency;
 
         if (uniform_dist_(rng_) < effective_chance) {
             startEvent(world, type);
@@ -874,10 +874,10 @@ void ClockScenario::tryTriggerEvents(World& world)
 
 void ClockScenario::startEvent(World& world, ClockEventType type)
 {
-    const auto& eventConfig = getEventConfig(type);
+    const auto& eventTiming = getEventTiming(type);
 
     ActiveEvent event;
-    event.remaining_time = eventConfig.duration;
+    event.remaining_time = eventTiming.duration;
 
     if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
@@ -903,12 +903,12 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
         event.state = melt_state;
         spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s, digit_bottom_y: {})",
-            eventConfig.duration, melt_state.digit_bottom_y);
+            eventTiming.duration, melt_state.digit_bottom_y);
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
         config_.rainEnabled = true;  // Sync config flag.
-        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventConfig.duration);
+        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventTiming.duration);
     }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
@@ -936,7 +936,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
         event.state = duck_state;
         config_.duckEnabled = true;  // Sync config flag.
-        spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventConfig.duration);
+        spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventTiming.duration);
     }
 
     active_events_[type] = std::move(event);
@@ -1023,9 +1023,8 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
 
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
-    // Floor obstacles: spawn when drain is closed.
-    if (!drain_open_) {
-        // Periodically spawn new obstacles.
+    // Floor obstacles: spawn when drain is closed and obstacles are enabled.
+    if (!drain_open_ && event_configs_.duck.floor_obstacles_enabled) {
         constexpr double SPAWN_INTERVAL = 3.0;  // Try to spawn every 3 seconds.
         constexpr size_t MAX_OBSTACLES = 3;     // Maximum concurrent obstacles.
 
@@ -1034,7 +1033,7 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
             state.obstacle_spawn_timer = 0.0;
             spawnFloorObstacle(world, state);
         }
-    } else {
+    } else if (drain_open_) {
         // Drain is open, clear any obstacles.
         if (!state.floor_obstacles.empty()) {
             clearFloorObstacles(world, state);
@@ -1134,11 +1133,11 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
 
     // Set cooldown for this event type.
-    const auto& config = getEventConfig(type);
-    event_cooldowns_[type] = config.cooldown;
+    const auto& timing = getEventTiming(type);
+    event_cooldowns_[type] = timing.cooldown;
 
     spdlog::info("ClockScenario: Event {} on cooldown for {:.1f}s",
-        eventTypeName(type), config.cooldown);
+        eventTypeName(type), timing.cooldown);
 }
 
 void ClockScenario::cancelAllEvents(World& world)
@@ -1264,7 +1263,7 @@ void ClockScenario::updateMeltdownEvent(
     // End early if all metal has reached the bottom.
     // But wait at least 3 seconds for metal to start falling first.
     constexpr double MIN_MELTDOWN_TIME = 3.0;
-    double elapsed = getEventConfig(ClockEventType::MELTDOWN).duration - remaining_time;
+    double elapsed = getEventTiming(ClockEventType::MELTDOWN).duration - remaining_time;
 
     if (!any_metal_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
         remaining_time = 0.0;

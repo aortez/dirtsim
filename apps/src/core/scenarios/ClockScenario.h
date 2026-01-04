@@ -29,10 +29,23 @@ enum class ClockEventType {
     RAIN
 };
 
-struct EventTypeConfig {
+struct EventTimingConfig {
     double duration;
     double chance_per_second;
     double cooldown;
+};
+
+struct DuckEventConfig {
+    EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
+    bool floor_obstacles_enabled = true;
+};
+
+struct MeltdownEventConfig {
+    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+};
+
+struct RainEventConfig {
+    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
 };
 
 struct MeltdownEventState {
@@ -115,12 +128,10 @@ private:
 // Clock Scenario
 // ============================================================================
 
-// Aggregate config for all event types. Passed to ClockScenario constructor.
-// Use designated initializers to override specific values; others get defaults.
 struct ClockEventConfigs {
-    EventTypeConfig duck = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
-    EventTypeConfig meltdown = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
-    EventTypeConfig rain = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+    DuckEventConfig duck;
+    MeltdownEventConfig meltdown;
+    RainEventConfig rain;
 };
 
 /**
@@ -164,7 +175,7 @@ public:
     // Event state accessors.
     bool isEventActive(ClockEventType type) const;
     size_t getActiveEventCount() const;
-    const EventTypeConfig& getEventConfig(ClockEventType type) const;
+    const EventTimingConfig& getEventTiming(ClockEventType type) const;
 
 private:
     ScenarioMetadata metadata_;
