@@ -2,6 +2,7 @@
 
 #include "ClockConfig.h"
 #include "ClockFontPatterns.h"
+#include "core/Cell.h"
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
@@ -190,6 +191,7 @@ private:
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
     void updateDrain(World& world, double deltaTime);
+    void sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_t y);
 
     // Event-specific update handlers (called via visitor).
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
