@@ -170,11 +170,9 @@ public:
      * @param avoidX X coordinate of cell to avoid (collision partner).
      * @param avoidY Y coordinate of cell to avoid (collision partner).
      * @param spray_direction Direction to spray fragments (center of arc).
-     * @param base_frag_speed Base speed of fragment particles (computed from momentum).
      * @param num_frags Number of fragments to create (2-5).
      * @param arc_width Total arc width in radians (computed from energy).
-     * @param frag_params Fragmentation parameters (for edge_speed_factor).
-     * @param settings Physics settings.
+     * @param frag_params Fragmentation parameters (base_speed, edge_speed_factor, spray_fraction).
      * @return Total amount of material successfully sprayed out.
      */
     double fragmentSingleCell(
@@ -185,11 +183,9 @@ public:
         uint32_t avoidX,
         uint32_t avoidY,
         const Vector2d& spray_direction,
-        double base_frag_speed,
         int num_frags,
         double arc_width,
-        const FragmentationParams& frag_params,
-        const PhysicsSettings& settings);
+        const FragmentationParams& frag_params);
 
     /**
      * @brief Handle water fragmentation (splash) on high-energy impact.

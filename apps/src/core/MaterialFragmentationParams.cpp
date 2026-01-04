@@ -13,7 +13,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.min_arc = M_PI / 3.0;
             params.max_arc = M_PI;
             params.edge_speed_factor = 0.1;
-            params.base_speed_factor = 0.5;
+            params.base_speed = 0.5;
             break;
 
         case MaterialType::SAND:
@@ -22,7 +22,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.min_arc = M_PI / 4.0;
             params.max_arc = M_PI / 2.0;
             params.edge_speed_factor = 1.0;
-            params.base_speed_factor = 0.6;
+            params.base_speed = 0.6;
             break;
 
         case MaterialType::DIRT:
@@ -31,7 +31,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.min_arc = M_PI / 4.0;
             params.max_arc = M_PI / 2.0;
             params.edge_speed_factor = 0.8;
-            params.base_speed_factor = 0.5;
+            params.base_speed = 0.5;
             break;
 
         case MaterialType::METAL:
@@ -40,7 +40,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.min_arc = M_PI / 2.0;
             params.max_arc = M_PI;
             params.edge_speed_factor = 1.3;
-            params.base_speed_factor = 0.8;
+            params.base_speed = 0.8;
             break;
 
         default:

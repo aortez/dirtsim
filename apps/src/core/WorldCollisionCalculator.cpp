@@ -640,11 +640,9 @@ double WorldCollisionCalculator::fragmentSingleCell(
     uint32_t avoidX,
     uint32_t avoidY,
     const Vector2d& spray_direction,
-    double base_frag_speed,
     int num_frags,
     double arc_width,
-    const FragmentationParams& frag_params,
-    const PhysicsSettings& settings)
+    const FragmentationParams& frag_params)
 {
     // Calculate frag angles spread evenly across the arc, centered on spray direction.
     // Fragments are distributed from -half_arc to +half_arc.
@@ -671,7 +669,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
 
     std::vector<FragTarget> frag_targets;
     double frag_amount_each =
-        (sourceCell.fill_ratio * settings.fragmentation_spray_fraction) / num_frags;
+        (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
 
     for (double angle_offset : frag_angles) {
         double frag_angle = base_angle + angle_offset;
@@ -683,7 +681,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
         // Speed scales from 1.0 at center to edge_speed_factor at edges.
         double edge_factor = std::abs(angle_offset) / half_arc; // 0.0 at center, 1.0 at edges.
         double speed_multiplier = 1.0 + (frag_params.edge_speed_factor - 1.0) * edge_factor;
-        double frag_speed = base_frag_speed * speed_multiplier;
+        double frag_speed = frag_params.base_speed * speed_multiplier;
 
         // Map to nearest of 8 neighbor directions.
         // Neighbors are at angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees.
@@ -796,7 +794,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
         sourceCell.fill_ratio -= to_transfer;
         total_sprayed += to_transfer;
 
-        spdlog::debug(
+        spdlog::info(
             "Fragment spray: {:.3f} from ({},{}) to ({},{}) with velocity ({:.2f},{:.2f})",
             to_transfer,
             sourceX,
@@ -930,12 +928,14 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         to_params.min_arc + (to_params.max_arc - to_params.min_arc) * energy_ratio;
     to_arc_width = std::min(to_arc_width, to_params.max_arc);
 
-    double from_base_speed = move.momentum.magnitude() * from_params.base_speed_factor;
-    double to_base_speed = move.momentum.magnitude() * to_params.base_speed_factor;
+    // Compute base speeds from collision momentum.
+    double momentum_magnitude = move.momentum.magnitude();
 
     // Fragment FROM cell if it's water.
     double from_sprayed = 0.0;
     if (from_is_water) {
+        FragmentationParams params = from_params;
+        params.base_speed = momentum_magnitude * from_params.base_speed;
         from_sprayed = fragmentSingleCell(
             world,
             fromCell,
@@ -944,16 +944,16 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
             move.toX,
             move.toY,
             from_spray_dir,
-            from_base_speed,
             num_frags,
             from_arc_width,
-            from_params,
-            settings);
+            params);
     }
 
     // Fragment TO cell if it's water (mutual fragmentation!).
     double to_sprayed = 0.0;
     if (to_is_water) {
+        FragmentationParams params = to_params;
+        params.base_speed = momentum_magnitude * to_params.base_speed;
         to_sprayed = fragmentSingleCell(
             world,
             toCell,
@@ -962,11 +962,9 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
             move.fromX,
             move.fromY,
             to_spray_dir,
-            to_base_speed,
             num_frags,
             to_arc_width,
-            to_params,
-            settings);
+            params);
     }
 
     // If nothing sprayed from either cell, fragmentation failed.

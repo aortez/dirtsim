@@ -1,6 +1,7 @@
 #include "ClockScenario.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
+#include "core/FragmentationParams.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
@@ -1121,16 +1122,17 @@ void ClockScenario::updateDrain(World& world)
     constexpr double FULL_OPEN_THRESHOLD = 100.0;  // At or above this, drain is fully open.
     constexpr uint32_t MAX_DRAIN_SIZE = 7;    // Maximum drain opening width.
 
-    // Calculate proportional drain size based on water level (odd numbers only: 1, 3, 5, 7).
+    // Calculate target drain size based on water level (odd numbers only: 3, 5, 7).
+    // Size 1 is only used as an animation transition step, not a sustained state.
     uint32_t target_drain_size = 0;
     if (water_amount >= FULL_OPEN_THRESHOLD) {
         target_drain_size = MAX_DRAIN_SIZE;
     } else if (water_amount >= CLOSE_THRESHOLD) {
-        // Linear interpolation from 1 to MAX_DRAIN_SIZE, but quantized to odd numbers only.
+        // Linear interpolation from 3 to MAX_DRAIN_SIZE, quantized to odd numbers.
         double t = (water_amount - CLOSE_THRESHOLD) / (FULL_OPEN_THRESHOLD - CLOSE_THRESHOLD);
-        uint32_t continuous_size = 3 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 1));
+        uint32_t continuous_size = 3 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 3));
 
-        // Round to nearest odd number (1, 3, 5, 7).
+        // Round to nearest odd number (3, 5, 7).
         if (continuous_size % 2 == 0) {
             // Even number - round down to next lower odd number.
             target_drain_size = continuous_size - 1;
@@ -1140,13 +1142,40 @@ void ClockScenario::updateDrain(World& world)
     }
     // else target_drain_size remains 0 (closed).
 
+    // Hysteresis: only change drain size one step per second.
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        now - last_drain_size_change_).count();
+
+    uint32_t actual_drain_size = current_drain_size_;
+    if (target_drain_size != current_drain_size_ && elapsed >= 1000) {
+        // Step one size at a time (0 <-> 1 <-> 3 <-> 5 <-> 7).
+        if (target_drain_size > current_drain_size_) {
+            // Opening: step up.
+            if (current_drain_size_ == 0) {
+                actual_drain_size = 1;
+            } else {
+                actual_drain_size = current_drain_size_ + 2;
+            }
+        } else {
+            // Closing: step down.
+            if (current_drain_size_ == 1) {
+                actual_drain_size = 0;
+            } else {
+                actual_drain_size = current_drain_size_ - 2;
+            }
+        }
+        current_drain_size_ = actual_drain_size;
+        last_drain_size_change_ = now;
+    }
+
     uint32_t center_x = data.width / 2;
     uint32_t drain_y = data.height - 1;  // Bottom wall row.
 
-    // Calculate new drain bounds based on target size (centered).
-    uint32_t half_drain = target_drain_size / 2;
-    uint32_t new_start_x = (target_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
-    uint32_t new_end_x = (target_drain_size > 0) ? std::min(new_start_x + target_drain_size - 1, data.width - 2) : 0;
+    // Calculate new drain bounds based on actual size (centered).
+    uint32_t half_drain = actual_drain_size / 2;
+    uint32_t new_start_x = (actual_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
+    uint32_t new_end_x = (actual_drain_size > 0) ? std::min(new_start_x + actual_drain_size - 1, data.width - 2) : 0;
 
     // Ensure start doesn't go below 1 (keep wall border).
     if (new_start_x < 1) new_start_x = 1;
@@ -1156,7 +1185,7 @@ void ClockScenario::updateDrain(World& world)
     uint32_t old_start_x = drain_start_x_;
     uint32_t old_end_x = drain_end_x_;
 
-    drain_open_ = (target_drain_size > 0);
+    drain_open_ = (actual_drain_size > 0);
     drain_start_x_ = new_start_x;
     drain_end_x_ = new_end_x;
 
@@ -1185,18 +1214,58 @@ void ClockScenario::updateDrain(World& world)
         // Log significant changes.
         if (!drain_was_open && drain_open_) {
             spdlog::info("ClockScenario: Drain opened (size: {}, water: {:.1f})",
-                target_drain_size, water_amount);
+                actual_drain_size, water_amount);
         } else if (drain_was_open && !drain_open_) {
             spdlog::info("ClockScenario: Drain closed (water: {:.1f})", water_amount);
         }
     }
 
-    // If drain is open, remove any water that falls into the drain cells.
+    // If drain is open, fragment and remove water that falls into the drain cells.
     if (drain_open_) {
+        // Drain spray parameters: dramatic upward spray effect.
+        static const FragmentationParams drain_frag_params{
+            .radial_bias = 0.0,        // Pure reflection-based (upward).
+            .min_arc = M_PI / 3.0,     // 60 degrees.
+            .max_arc = M_PI / 2.0,     // 90 degrees max.
+            .edge_speed_factor = 1.2,  // Slight spread.
+            .base_speed = 10.0,        // Strong upward spray.
+            .spray_fraction = 0.8,     // Spray 80% of water for visible effect.
+        };
+
         for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
             Cell& cell = data.at(x, drain_y);
             if (cell.material_type == MaterialType::WATER) {
-                cell = Cell();  // Water drains away.
+                // Only spray when COM is below midline (visible in drain opening).
+                bool com_below_midline = cell.com.y > 0.0;
+
+                if (cell.fill_ratio > 0.05 && com_below_midline) {
+                    Vector2d spray_direction(0.0, -1.0);  // Upward.
+                    constexpr int NUM_FRAGS = 2;
+                    constexpr double ARC_WIDTH = M_PI / 2.0;  // 90 degrees.
+
+                    // Log target cell capacity (cell above drain).
+                    uint32_t target_y = drain_y - 1;
+                    Cell& above = data.at(x, target_y);
+                    spdlog::info("Drain: x={} fill={:.2f} com.y={:.2f}, above: type={} fill={:.2f} cap={:.2f}",
+                        x, cell.fill_ratio, cell.com.y,
+                        static_cast<int>(above.material_type), above.fill_ratio, above.getCapacity());
+
+                    double sprayed = world.getCollisionCalculator().fragmentSingleCell(
+                        world,
+                        cell,
+                        x,
+                        drain_y,
+                        x,              // Avoid spraying back into drain.
+                        drain_y + 1,    // Avoid cell below (out of bounds anyway).
+                        spray_direction,
+                        NUM_FRAGS,
+                        ARC_WIDTH,
+                        drain_frag_params);
+                    spdlog::info("Drain: sprayed {:.3f} from x={}", sprayed, x);
+
+                    // Delete remaining water after spraying.
+                    cell = Cell();
+                }
             }
         }
 

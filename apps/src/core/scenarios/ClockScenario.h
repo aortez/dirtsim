@@ -158,6 +158,8 @@ private:
     bool drain_open_ = false;
     uint32_t drain_start_x_ = 0;
     uint32_t drain_end_x_ = 0;
+    uint32_t current_drain_size_ = 0;  // Current drain size (0, 1, 3, 5, or 7).
+    std::chrono::steady_clock::time_point last_drain_size_change_;
 
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };

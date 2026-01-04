@@ -22,8 +22,11 @@ struct FragmentationParams {
     // Edge fragments move faster than center to avoid collision. >1.0 = faster edges.
     double edge_speed_factor = 1.0;
 
-    // Base fragment speed as fraction of original momentum. Lower = gentler drift apart.
-    double base_speed_factor = 0.7;
+    // Base speed for fragment particles. Caller sets this based on context (e.g., momentum).
+    double base_speed = 1.0;
+
+    // Fraction of source cell's fill_ratio to spray out (0.0 to 1.0).
+    double spray_fraction = 0.4;
 };
 
 } // namespace DirtSim
