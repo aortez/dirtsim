@@ -501,6 +501,7 @@ void ClockScenario::setup(World& world)
 void ClockScenario::reset(World& world)
 {
     spdlog::info("ClockScenario::reset");
+    cancelAllEvents(world);
     setup(world);
 }
 
