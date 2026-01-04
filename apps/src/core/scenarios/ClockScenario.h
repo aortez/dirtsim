@@ -25,6 +25,7 @@ class World;
 
 enum class ClockEventType {
     COLOR_CYCLE,
+    COLOR_SHOWCASE,
     DUCK,
     MELTDOWN,
     RAIN
@@ -53,6 +54,13 @@ struct ColorCycleEventConfig {
     EventTimingConfig timing = { .duration = 10.0, .chance_per_second = 0.04, .cooldown = 15.0 };
 };
 
+struct ColorShowcaseEventConfig {
+    EventTimingConfig timing = { .duration = 120.0, .chance_per_second = 0.1, .cooldown = 60.0 };
+    std::vector<MaterialType> showcase_materials = {
+        MaterialType::LEAF, MaterialType::WATER, MaterialType::SEED, MaterialType::DIRT
+    };
+};
+
 struct MeltdownEventState {
     // Meltdown lets digits fall, converts to water on impact.
     int digit_bottom_y = 0;         // Scanned at event start: lowest Y with digit material.
@@ -67,6 +75,10 @@ struct ColorCycleEventState {
     size_t current_index = 0;      // Current position in cycle.
     double time_per_color = 0.0;   // Calculated at start: duration / num_materials.
     double time_in_current = 0.0;  // Time spent on current color.
+};
+
+struct ColorShowcaseEventState {
+    size_t current_index = 0;  // Current position in showcase materials list.
 };
 
 enum class DoorSide { LEFT, RIGHT };
@@ -102,7 +114,7 @@ struct DuckEventState {
     double obstacle_spawn_timer = 0.0;  // Time until next obstacle spawn attempt.
 };
 
-using EventState = std::variant<ColorCycleEventState, DuckEventState, MeltdownEventState, RainEventState>;
+using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DuckEventState, MeltdownEventState, RainEventState>;
 
 struct ActiveEvent {
     EventState state;
@@ -142,6 +154,7 @@ private:
 
 struct ClockEventConfigs {
     ColorCycleEventConfig color_cycle;
+    ColorShowcaseEventConfig color_showcase;
     DuckEventConfig duck;
     MeltdownEventConfig meltdown;
     RainEventConfig rain;
@@ -194,7 +207,7 @@ private:
     ScenarioMetadata metadata_;
     Config::Clock config_;
     ClockEventConfigs event_configs_;
-    int last_second_ = -1;
+    std::string last_drawn_time_;
 
     // Event system.
     std::map<ClockEventType, ActiveEvent> active_events_;
@@ -227,6 +240,7 @@ private:
     void drawDigit(World& world, int digit, int start_x, int start_y);
     void drawColon(World& world, int x, int start_y);
     void drawTime(World& world);
+    std::string getCurrentTimeString() const;
 
     // Event system helpers.
     void updateEvents(World& world, double deltaTime);
@@ -241,6 +255,7 @@ private:
 
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
+    void updateColorShowcaseEvent(World& world, ColorShowcaseEventState& state, double deltaTime);
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);

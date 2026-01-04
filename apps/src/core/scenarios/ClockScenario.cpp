@@ -164,6 +164,8 @@ const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) cons
     switch (type) {
     case ClockEventType::COLOR_CYCLE:
         return event_configs_.color_cycle.timing;
+    case ClockEventType::COLOR_SHOWCASE:
+        return event_configs_.color_showcase.timing;
     case ClockEventType::DUCK:
         return event_configs_.duck.timing;
     case ClockEventType::MELTDOWN:
@@ -816,6 +818,42 @@ void ClockScenario::drawTime(World& world)
         cursor_x += dw + dg;
         drawDigit(world, seconds % 10, cursor_x, start_y);
     }
+
+    // Update last drawn time for change detection.
+    last_drawn_time_ = getCurrentTimeString();
+}
+
+std::string ClockScenario::getCurrentTimeString() const
+{
+    auto now = std::chrono::system_clock::now();
+    std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+
+    std::tm* time_info;
+    if (config_.timezoneIndex == 0) {
+        time_info = std::localtime(&now_time);
+    }
+    else {
+        time_info = std::gmtime(&now_time);
+        const auto& tz = TIMEZONES[config_.timezoneIndex];
+        time_info->tm_hour += tz.offset_hours;
+        if (time_info->tm_hour < 0) {
+            time_info->tm_hour += 24;
+        }
+        else if (time_info->tm_hour >= 24) {
+            time_info->tm_hour -= 24;
+        }
+    }
+
+    char buffer[16];
+    if (config_.showSeconds) {
+        std::snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d",
+            time_info->tm_hour, time_info->tm_min, time_info->tm_sec);
+    }
+    else {
+        std::snprintf(buffer, sizeof(buffer), "%02d:%02d",
+            time_info->tm_hour, time_info->tm_min);
+    }
+    return std::string(buffer);
 }
 
 // ============================================================================
@@ -867,8 +905,9 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerEvents(World& world)
 {
-    static constexpr std::array<ClockEventType, 4> ALL_EVENT_TYPES = {
+    static constexpr std::array<ClockEventType, 5> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE,
+        ClockEventType::COLOR_SHOWCASE,
         ClockEventType::DUCK,
         ClockEventType::MELTDOWN,
         ClockEventType::RAIN,
@@ -958,6 +997,20 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         config_.rainEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventTiming.duration);
     }
+    else if (type == ClockEventType::COLOR_SHOWCASE) {
+        ColorShowcaseEventState state;
+        state.current_index = 0;
+
+        // Apply the first showcase color immediately.
+        const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
+        if (!showcase_materials.empty()) {
+            config_.digitMaterial = showcase_materials[0];
+            spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, first color: {})",
+                eventTiming.duration, getMaterialName(showcase_materials[0]));
+        }
+
+        event.state = state;
+    }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
 
@@ -996,6 +1049,8 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
         using T = std::decay_t<decltype(state)>;
         if constexpr (std::is_same_v<T, ColorCycleEventState>) {
             updateColorCycleEvent(world, state, deltaTime);
+        } else if constexpr (std::is_same_v<T, ColorShowcaseEventState>) {
+            updateColorShowcaseEvent(world, state, deltaTime);
         } else if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
@@ -1031,6 +1086,24 @@ void ClockScenario::updateColorCycleEvent(World& world, ColorCycleEventState& st
 
         spdlog::debug("ClockScenario: COLOR_CYCLE advanced to {} (index {})",
             getMaterialName(new_material), state.current_index);
+    }
+}
+
+void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
+{
+    // Check if time string changed (digits will be redrawn).
+    std::string current_time = getCurrentTimeString();
+    if (current_time != last_drawn_time_) {
+        // Advance to next showcase color.
+        const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
+        if (!showcase_materials.empty()) {
+            state.current_index = (state.current_index + 1) % showcase_materials.size();
+            MaterialType new_material = showcase_materials[state.current_index];
+            config_.digitMaterial = new_material;
+
+            spdlog::info("ClockScenario: COLOR_SHOWCASE changed to {} (time changed to {})",
+                getMaterialName(new_material), current_time);
+        }
     }
 }
 
@@ -1169,6 +1242,7 @@ static const char* eventTypeName(ClockEventType type)
 {
     switch (type) {
         case ClockEventType::COLOR_CYCLE: return "COLOR_CYCLE";
+        case ClockEventType::COLOR_SHOWCASE: return "COLOR_SHOWCASE";
         case ClockEventType::DUCK: return "DUCK";
         case ClockEventType::MELTDOWN: return "MELTDOWN";
         case ClockEventType::RAIN: return "RAIN";
@@ -1225,6 +1299,11 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         if (state.exit_door_open) {
             door_manager_.closeDoor(state.exit_door_pos, world);
         }
+    }
+    else if (type == ClockEventType::COLOR_SHOWCASE) {
+        // Restore default digit material (METAL).
+        config_.digitMaterial = MaterialType::METAL;
+        spdlog::info("ClockScenario: COLOR_SHOWCASE ended, restored digit material to METAL");
     }
 
     // Set cooldown for this event type.

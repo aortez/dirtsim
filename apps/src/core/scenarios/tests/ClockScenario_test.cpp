@@ -16,6 +16,7 @@ protected:
         // Create scenario with default event configs but random triggering disabled.
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
             .color_cycle = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
+            .color_showcase = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .duck = {
                 .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
@@ -130,6 +131,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     // eventFrequency = 0.0 because that would skip updateEvents() entirely.
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
+        .color_showcase = {},
         .duck = {
             .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
@@ -201,6 +203,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     // Door open delay is 2.0s, door close delay is 1.0s.
     auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
+        .color_showcase = {},
         .duck = {
             .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
