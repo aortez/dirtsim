@@ -1085,35 +1085,94 @@ bool ClockScenario::isMeltdownActive() const
 }
 
 void ClockScenario::updateMeltdownEvent(
-    World& world, MeltdownEventState& state, double& remaining_time, double /*deltaTime*/)
+    World& world, MeltdownEventState& /*state*/, double& remaining_time, double /*deltaTime*/)
 {
-    // Convert falling METAL to WATER when it crashes (velocity stops or reverses).
     WorldData& data = world.getData();
+    if (data.height < 3) return;
 
-    // Scan for crashed metal: at or below digit area and not falling (velocity.y <= 0).
-    bool any_stray_metal = false;
-    for (uint32_t y = static_cast<uint32_t>(state.digit_bottom_y); y < data.height; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
-            Cell& cell = data.at(x, y);
-            if (cell.material_type == MaterialType::METAL) {
-                // Convert if velocity is zero or going up (crashed/bounced).
-                // +y is down, so <= 0 means stopped or bouncing upward.
-                if (cell.velocity.y <= 0.0) {
-                    cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
-                } else {
-                    // Still falling - not done yet.
-                    any_stray_metal = true;
-                }
+    uint32_t bottom_wall_y = data.height - 1;
+    uint32_t above_bottom_y = data.height - 2;
+
+    // Fragmentation params for metal spraying up from drain.
+    static const FragmentationParams melt_frag_params{
+        .radial_bias = 0.3,
+        .min_arc = M_PI / 4.0,
+        .max_arc = M_PI / 3.0,
+        .edge_speed_factor = 1.0,
+        .base_speed = 40.0,
+        .spray_fraction = 1.0,
+    };
+
+    // Scan for METAL that has reached the bottom or fallen into drain.
+    bool any_metal_above_bottom = false;
+
+    Vector2d spray_direction(0.0, -1.0);
+    constexpr int NUM_FRAGS = 4;
+    constexpr double ARC_WIDTH = M_PI / 2.0;
+
+    for (uint32_t x = 1; x < data.width - 1; ++x) {
+        // Check cells in drain hole (bottom wall row, if drain is open).
+        if (drain_open_ && x >= drain_start_x_ && x <= drain_end_x_) {
+            Cell& drain_cell = data.at(x, bottom_wall_y);
+            if (drain_cell.material_type == MaterialType::METAL) {
+                // Convert to water and spray upward.
+                drain_cell.replaceMaterial(MaterialType::WATER, drain_cell.fill_ratio);
+
+                world.getCollisionCalculator().fragmentSingleCell(
+                    world,
+                    drain_cell,
+                    x,
+                    bottom_wall_y,
+                    x,
+                    bottom_wall_y,
+                    spray_direction,
+                    NUM_FRAGS,
+                    ARC_WIDTH,
+                    melt_frag_params);
+
+                drain_cell = Cell();
             }
+        }
+
+        // Check cells adjacent to bottom wall (row above it).
+        Cell& bottom_cell = data.at(x, above_bottom_y);
+        if (bottom_cell.material_type == MaterialType::METAL) {
+            // Convert to water and splash upward.
+            bottom_cell.replaceMaterial(MaterialType::WATER, bottom_cell.fill_ratio);
+
+            world.getCollisionCalculator().fragmentSingleCell(
+                world,
+                bottom_cell,
+                x,
+                above_bottom_y,
+                x,
+                above_bottom_y,
+                spray_direction,
+                NUM_FRAGS,
+                ARC_WIDTH,
+                melt_frag_params);
+
+            bottom_cell = Cell();
         }
     }
 
-    // End early if all stray metal below digits has been converted.
+    // Check if any metal still exists above the bottom row (still falling).
+    for (uint32_t y = 1; y < above_bottom_y; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            if (data.at(x, y).material_type == MaterialType::METAL) {
+                any_metal_above_bottom = true;
+                break;
+            }
+        }
+        if (any_metal_above_bottom) break;
+    }
+
+    // End early if all metal has reached the bottom.
     // But wait at least 3 seconds for metal to start falling first.
     constexpr double MIN_MELTDOWN_TIME = 3.0;
     double elapsed = DEFAULT_EVENT_CONFIGS.at(ClockEventType::MELTDOWN).duration - remaining_time;
 
-    if (!any_stray_metal && elapsed >= MIN_MELTDOWN_TIME) {
+    if (!any_metal_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
         remaining_time = 0.0;
     }
 }
@@ -1266,12 +1325,20 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         }
     }
 
-    // If drain is open, handle water in drain cells.
+    // If drain is open, handle material in drain cells.
     if (drain_open_) {
         uint32_t center_x = (drain_start_x_ + drain_end_x_) / 2;
 
         for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
             Cell& cell = data.at(x, drain_y);
+
+            // Metal falls through the drain - convert to water and spray.
+            if (cell.material_type == MaterialType::METAL && cell.com.y > 0.0) {
+                cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
+                sprayDrainCell(world, cell, x, drain_y);
+                continue;
+            }
+
             if (cell.material_type != MaterialType::WATER) {
                 continue;
             }
@@ -1286,32 +1353,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             // Center cell: chance to spray dramatically.
             if (is_center && cell.fill_ratio > 0.5) {
                 if (uniform_dist_(rng_) < 0.7) {
-                    static const FragmentationParams drain_frag_params{
-                        .radial_bias = 0.2,
-                        .min_arc = M_PI / 3.0,
-                        .max_arc = M_PI / 2.0,
-                        .edge_speed_factor = 1.2,
-                        .base_speed = 50.0,
-                        .spray_fraction = 1.0,
-                    };
-
-                    Vector2d spray_direction(0.0, -1.0);
-                    constexpr int NUM_FRAGS = 5;
-                    constexpr double ARC_WIDTH = M_PI / 2.0;
-
-                    world.getCollisionCalculator().fragmentSingleCell(
-                        world,
-                        cell,
-                        x,
-                        drain_y,
-                        x,
-                        drain_y,
-                        spray_direction,
-                        NUM_FRAGS,
-                        ARC_WIDTH,
-                        drain_frag_params);
-
-                    cell = Cell();
+                    sprayDrainCell(world, cell, x, drain_y);
                     continue;
                 }
             }
@@ -1383,6 +1425,36 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             cell.addPendingForce(Vector2d{ direction * force_magnitude, downward_force });
         }
     }
+}
+
+void ClockScenario::sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_t y)
+{
+    static const FragmentationParams drain_frag_params{
+        .radial_bias = 0.2,
+        .min_arc = M_PI / 3.0,
+        .max_arc = M_PI / 2.0,
+        .edge_speed_factor = 1.2,
+        .base_speed = 50.0,
+        .spray_fraction = 1.0,
+    };
+
+    Vector2d spray_direction(0.0, -1.0);
+    constexpr int NUM_FRAGS = 5;
+    constexpr double ARC_WIDTH = M_PI / 2.0;
+
+    world.getCollisionCalculator().fragmentSingleCell(
+        world,
+        cell,
+        x,
+        y,
+        x,
+        y,
+        spray_direction,
+        NUM_FRAGS,
+        ARC_WIDTH,
+        drain_frag_params);
+
+    cell = Cell();
 }
 
 void ClockScenario::redrawWalls(World& world)
