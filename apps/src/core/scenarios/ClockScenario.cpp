@@ -905,13 +905,13 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
     if (type == ClockEventType::COLOR_CYCLE) {
         ColorCycleEventState state;
-        // Calculate time per color based on duration and number of materials.
-        state.time_per_color = eventTiming.duration / static_cast<double>(ColorCycleEventState::CYCLE_MATERIALS.size());
+        // Use config's colorsPerSecond rate.
+        state.time_per_color = 1.0 / config_.colorsPerSecond;
         state.current_index = 0;
         state.time_in_current = 0.0;
 
         // Apply the first color immediately.
-        MaterialType first_material = ColorCycleEventState::CYCLE_MATERIALS[0];
+        MaterialType first_material = getAllMaterialTypes()[0];
         WorldData& data = world.getData();
         for (uint32_t y = 1; y < data.height - 1; ++y) {
             for (uint32_t x = 1; x < data.width - 1; ++x) {
@@ -923,8 +923,8 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         }
 
         event.state = state;
-        spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, time_per_color: {:.2f}s)",
-            eventTiming.duration, state.time_per_color);
+        spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
+            eventTiming.duration, config_.colorsPerSecond);
     }
     else if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
@@ -1013,9 +1013,9 @@ void ClockScenario::updateColorCycleEvent(World& world, ColorCycleEventState& st
     // Check if it's time to advance to the next color.
     if (state.time_in_current >= state.time_per_color) {
         state.time_in_current -= state.time_per_color;
-        state.current_index = (state.current_index + 1) % ColorCycleEventState::CYCLE_MATERIALS.size();
+        state.current_index = (state.current_index + 1) % getAllMaterialTypes().size();
 
-        MaterialType new_material = ColorCycleEventState::CYCLE_MATERIALS[state.current_index];
+        MaterialType new_material = getAllMaterialTypes()[state.current_index];
 
         // Update all digit cells to the new color.
         WorldData& data = world.getData();

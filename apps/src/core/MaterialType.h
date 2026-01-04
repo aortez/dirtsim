@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <msgpack.hpp>
 #include <nlohmann/json.hpp>
+#include <vector>
 
 namespace DirtSim {
 
@@ -31,7 +32,7 @@ enum class MaterialType : uint8_t {
 struct MaterialProperties {
     double density;                      // Mass per unit volume (affects gravity response).
     double elasticity;                   // Bounce factor for collisions [0.0-1.0].
-    double cohesion;                     // Internal binding strength (affects flow).
+    double cohesion;                     // Internal binding strength.
     double adhesion;                     // Binding strength to other materials.
     double air_resistance;               // Air drag coefficient [0.0-1.0].
     double hydrostatic_weight;           // Hydrostatic pressure response [0.0-1.0].
@@ -47,30 +48,16 @@ struct MaterialProperties {
     bool is_fluid;                    // True for materials that flow freely.
 };
 
-/**
- * Get material properties for a given material type.
- */
 const MaterialProperties& getMaterialProperties(MaterialType type);
 
-/**
- * Get the density of a material type.
- */
 double getMaterialDensity(MaterialType type);
 
-/**
- * Check if a material is a fluid.
- */
-bool isMaterialFluid(MaterialType type);
-
-/**
- * Get a human-readable name for a material type.
- */
 const char* getMaterialName(MaterialType type);
 
-/**
- * Set the cohesion value for a specific material type.
- * This allows dynamic modification of material properties.
- */
+const std::vector<MaterialType>& getAllMaterialTypes();
+
+bool isMaterialFluid(MaterialType type);
+
 void setMaterialCohesion(MaterialType type, double cohesion);
 
 /**
@@ -79,9 +66,6 @@ void setMaterialCohesion(MaterialType type, double cohesion);
  */
 double getFrictionCoefficient(double velocity_magnitude, const MaterialProperties& props);
 
-/**
- * JSON serialization support for MaterialType (ADL convention for nlohmann::json).
- */
 void to_json(nlohmann::json& j, MaterialType type);
 void from_json(const nlohmann::json& j, MaterialType& type);
 

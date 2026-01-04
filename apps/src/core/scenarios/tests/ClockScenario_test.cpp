@@ -406,12 +406,12 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE));
 
-    // Get event timing.
+    // Color cycle uses colorsPerSecond from config.
     const double event_duration = scenario_->getEventTiming(ClockEventType::COLOR_CYCLE).duration;
-    const size_t num_materials = 7;  // ColorCycleEventState::CYCLE_MATERIALS.size()
-    const double time_per_color = event_duration / static_cast<double>(num_materials);
+    const double time_per_color = 1.0 / config.colorsPerSecond;
 
-    std::cout << "Event duration: " << event_duration << "s, time per color: " << time_per_color << "s\n";
+    std::cout << "Duration: " << event_duration << "s, rate: " << config.colorsPerSecond
+              << " colors/sec, time per color: " << time_per_color << "s\n";
 
     // Run through the event, sampling materials at regular intervals.
     double elapsed = 0.0;

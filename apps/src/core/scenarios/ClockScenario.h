@@ -50,7 +50,7 @@ struct RainEventConfig {
 };
 
 struct ColorCycleEventConfig {
-    EventTimingConfig timing = { .duration = 5.0, .chance_per_second = 0.02, .cooldown = 15.0 };
+    EventTimingConfig timing = { .duration = 10.0, .chance_per_second = 0.04, .cooldown = 15.0 };
 };
 
 struct MeltdownEventState {
@@ -64,16 +64,6 @@ struct RainEventState {
 };
 
 struct ColorCycleEventState {
-    // Array of materials to cycle through for digit display.
-    static constexpr std::array<MaterialType, 7> CYCLE_MATERIALS = {
-        MaterialType::DIRT,
-        MaterialType::LEAF,
-        MaterialType::METAL,
-        MaterialType::ROOT,
-        MaterialType::SAND,
-        MaterialType::WATER,
-        MaterialType::WOOD,
-    };
     size_t current_index = 0;      // Current position in cycle.
     double time_per_color = 0.0;   // Calculated at start: duration / num_materials.
     double time_in_current = 0.0;  // Time spent on current color.

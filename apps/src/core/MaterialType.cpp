@@ -1,4 +1,5 @@
 #include "MaterialType.h"
+#include "reflect.h"
 
 #include <array>
 #include <cassert>
@@ -171,7 +172,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .elasticity = 0.6,
         .cohesion = 0.7,
         .adhesion = 0.3,
-        .air_resistance = 0.2,
+        .air_resistance = 0.05,
         .hydrostatic_weight = 0.0,
         .pressure_injection_weight = 1.0, // But contributes weight to pressure field.
         .dynamic_weight = 0.5,
@@ -211,6 +212,19 @@ const char* getMaterialName(MaterialType type)
     const auto index = static_cast<size_t>(type);
     assert(index < MATERIAL_NAMES.size());
     return MATERIAL_NAMES[index];
+}
+
+const std::vector<MaterialType>& getAllMaterialTypes()
+{
+    // Build list once using reflection - automatically includes all MaterialType values.
+    static std::vector<MaterialType> materials = []() {
+        std::vector<MaterialType> result;
+        for (const auto& [value, name] : reflect::enumerators<MaterialType>) {
+            result.push_back(static_cast<MaterialType>(value));
+        }
+        return result;
+    }();
+    return materials;
 }
 
 void to_json(nlohmann::json& j, MaterialType type)
