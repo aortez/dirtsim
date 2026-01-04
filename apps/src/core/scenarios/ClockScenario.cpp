@@ -967,10 +967,12 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     }
     else if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
-        melt_state.digit_material = config_.digitMaterial;
+        // Use METAL for falling digits - dense, falls through water nicely.
+        // The UI digitMaterial setting only affects render color, not physics.
+        melt_state.digit_material = MaterialType::METAL;
         WorldData& data = world.getData();
 
-        // Convert interior WALL cells (digit display cells) to the digit material so they can fall.
+        // Convert interior WALL cells (digit display cells) to METAL so they can fall.
         // These are WALL cells with render_as set (indicating they are digit cells).
         int max_digit_y = 0;
         for (uint32_t y = 1; y < data.height - 1; ++y) {
