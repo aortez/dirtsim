@@ -220,6 +220,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/MaterialFragmentationParams.cpp
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
+    src/core/RenderMessage.cpp
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
     src/core/Timers.cpp
@@ -514,6 +515,9 @@ add_executable(dirtsim-tests
 
     # World resize tests.
     src/core/tests/WorldResize_test.cpp
+
+    # Scenario tests.
+    src/core/scenarios/tests/ClockScenario_test.cpp
 
     # Organism tests.
     src/core/organisms/tests/CantileverSupport_test.cpp

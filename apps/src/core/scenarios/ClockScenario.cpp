@@ -24,16 +24,6 @@
 namespace DirtSim {
 
 // ============================================================================
-// Default Event Configurations
-// ============================================================================
-
-const std::map<ClockEventType, EventTypeConfig> ClockScenario::DEFAULT_EVENT_CONFIGS = {
-    { ClockEventType::DUCK, { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
-    { ClockEventType::MELTDOWN, { .duration = 20.0, .chance_per_second = 0.02, .cooldown = 30.0 } },
-    { ClockEventType::RAIN, { .duration = 20.0, .chance_per_second = 0.05, .cooldown = 10.0 } },
-};
-
-// ============================================================================
 // DoorManager Implementation
 // ============================================================================
 
@@ -149,13 +139,38 @@ void DoorManager::closeAllDoors(World& world)
 // ClockScenario Implementation
 // ============================================================================
 
-ClockScenario::ClockScenario()
+ClockScenario::ClockScenario(ClockEventConfigs event_configs)
+    : event_configs_(std::move(event_configs))
 {
     metadata_.name = "Clock";
     metadata_.description = "Digital clock displaying system time (HH:MM:SS)";
     metadata_.category = "demo";
 
     recalculateDimensions();
+}
+
+bool ClockScenario::isEventActive(ClockEventType type) const
+{
+    return active_events_.contains(type);
+}
+
+size_t ClockScenario::getActiveEventCount() const
+{
+    return active_events_.size();
+}
+
+const EventTypeConfig& ClockScenario::getEventConfig(ClockEventType type) const
+{
+    switch (type) {
+    case ClockEventType::DUCK:
+        return event_configs_.duck;
+    case ClockEventType::MELTDOWN:
+        return event_configs_.meltdown;
+    case ClockEventType::RAIN:
+        return event_configs_.rain;
+    }
+    // Unreachable, but satisfy compiler.
+    return event_configs_.duck;
 }
 
 int ClockScenario::getDigitWidth() const
@@ -507,10 +522,8 @@ void ClockScenario::reset(World& world)
 
 void ClockScenario::tick(World& world, double deltaTime)
 {
-    // Redraw walls every frame (respects door state).
     redrawWalls(world);
 
-    // Redraw digits every frame to keep METAL in place (unless meltdown is active).
     if (!isMeltdownActive()) {
         drawTime(world);
     }
@@ -562,16 +575,55 @@ int ClockScenario::calculateTotalWidth() const
 void ClockScenario::clearDigits(World& world)
 {
     WorldData& data = world.getData();
-    for (const auto& pos : digit_cells_) {
-        if (pos.x >= 0 && pos.x < static_cast<int>(data.width) &&
-            pos.y >= 0 && pos.y < static_cast<int>(data.height)) {
-            Cell& cell = data.at(pos.x, pos.y);
-            if (cell.material_type == MaterialType::METAL) {
-                cell = Cell();
+
+    // Get floor obstacles from active duck event (if any).
+    const std::vector<FloorObstacle>* floor_obstacles = nullptr;
+    auto duck_it = active_events_.find(ClockEventType::DUCK);
+    if (duck_it != active_events_.end()) {
+        const auto& duck_state = std::get<DuckEventState>(duck_it->second.state);
+        floor_obstacles = &duck_state.floor_obstacles;
+    }
+
+    // Helper to check if X position is a hurdle (one row above floor).
+    auto is_hurdle_at = [&](uint32_t x, uint32_t y) -> bool {
+        if (!floor_obstacles || y != data.height - 2) return false;
+        for (const auto& obs : *floor_obstacles) {
+            if (obs.type == FloorObstacleType::HURDLE) {
+                if (static_cast<int>(x) >= obs.start_x &&
+                    static_cast<int>(x) < obs.start_x + obs.width) {
+                    return true;
+                }
             }
         }
+        return false;
+    };
+
+    // Clear interior WALL cells (digit cells) but NOT:
+    // - Boundary cells (x=0, x=width-1, y=0, y=height-1)
+    // - Door roof cells
+    // - Hurdle obstacle cells
+    for (uint32_t y = 1; y < data.height - 1; ++y) {
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            Cell& cell = data.at(x, y);
+            if (cell.material_type != MaterialType::WALL) {
+                continue;
+            }
+
+            // Skip door roof cells.
+            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
+            if (door_manager_.isRoofCell(pos)) {
+                continue;
+            }
+
+            // Skip hurdle obstacle cells.
+            if (is_hurdle_at(x, y)) {
+                continue;
+            }
+
+            // This is a digit cell - clear it.
+            cell = Cell();
+        }
     }
-    digit_cells_.clear();
 }
 
 void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
@@ -618,8 +670,9 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                world.replaceMaterialAtCell(x, y, MaterialType::METAL);
-                digit_cells_.push_back(Vector2i{ x, y });
+                // Use WALL (immobile) but render as METAL (silver color).
+                world.replaceMaterialAtCell(x, y, MaterialType::WALL);
+                world.getData().at(x, y).render_as = static_cast<int8_t>(MaterialType::METAL);
             }
         }
     }
@@ -649,12 +702,14 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
-                world.replaceMaterialAtCell(x, y1, MaterialType::METAL);
-                digit_cells_.push_back(Vector2i{ x, y1 });
+                // Use WALL (immobile) but render as METAL (silver color).
+                world.replaceMaterialAtCell(x, y1, MaterialType::WALL);
+                world.getData().at(x, y1).render_as = static_cast<int8_t>(MaterialType::METAL);
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
-                world.replaceMaterialAtCell(x, y2, MaterialType::METAL);
-                digit_cells_.push_back(Vector2i{ x, y2 });
+                // Use WALL (immobile) but render as METAL (silver color).
+                world.replaceMaterialAtCell(x, y2, MaterialType::WALL);
+                world.getData().at(x, y2).render_as = static_cast<int8_t>(MaterialType::METAL);
             }
         }
     }
@@ -789,8 +844,14 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerEvents(World& world)
 {
+    static constexpr std::array<ClockEventType, 3> ALL_EVENT_TYPES = {
+        ClockEventType::DUCK,
+        ClockEventType::MELTDOWN,
+        ClockEventType::RAIN,
+    };
+
     // Check each event type for triggering.
-    for (const auto& [type, config] : DEFAULT_EVENT_CONFIGS) {
+    for (ClockEventType type : ALL_EVENT_TYPES) {
         // Skip if already active.
         if (active_events_.contains(type)) {
             continue;
@@ -802,6 +863,7 @@ void ClockScenario::tryTriggerEvents(World& world)
         }
 
         // Scale chance by eventFrequency config.
+        const auto& config = getEventConfig(type);
         double effective_chance = config.chance_per_second * config_.eventFrequency;
 
         if (uniform_dist_(rng_) < effective_chance) {
@@ -812,20 +874,27 @@ void ClockScenario::tryTriggerEvents(World& world)
 
 void ClockScenario::startEvent(World& world, ClockEventType type)
 {
-    const auto& eventConfig = DEFAULT_EVENT_CONFIGS.at(type);
+    const auto& eventConfig = getEventConfig(type);
 
     ActiveEvent event;
     event.remaining_time = eventConfig.duration;
 
     if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
+        WorldData& data = world.getData();
 
-        // Scan world to find the bottom edge of the digits (max Y with METAL).
-        const WorldData& data = world.getData();
+        // Convert interior WALL cells (digit display cells) to METAL so they can fall.
+        // These are WALL cells with render_as set (indicating they are digit cells).
         int max_metal_y = 0;
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
-                if (data.at(x, y).material_type == MaterialType::METAL) {
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                Cell& cell = data.at(x, y);
+
+                // Only convert WALL cells with render_as override (digit cells).
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    // Convert to the render_as material (METAL) so it can fall.
+                    cell.material_type = static_cast<MaterialType>(cell.render_as);
+                    cell.render_as = -1;  // Clear override - now it's real METAL.
                     max_metal_y = std::max(max_metal_y, static_cast<int>(y));
                 }
             }
@@ -1065,7 +1134,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
 
     // Set cooldown for this event type.
-    const auto& config = DEFAULT_EVENT_CONFIGS.at(type);
+    const auto& config = getEventConfig(type);
     event_cooldowns_[type] = config.cooldown;
 
     spdlog::info("ClockScenario: Event {} on cooldown for {:.1f}s",
@@ -1195,7 +1264,7 @@ void ClockScenario::updateMeltdownEvent(
     // End early if all metal has reached the bottom.
     // But wait at least 3 seconds for metal to start falling first.
     constexpr double MIN_MELTDOWN_TIME = 3.0;
-    double elapsed = DEFAULT_EVENT_CONFIGS.at(ClockEventType::MELTDOWN).duration - remaining_time;
+    double elapsed = getEventConfig(ClockEventType::MELTDOWN).duration - remaining_time;
 
     if (!any_metal_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
         remaining_time = 0.0;

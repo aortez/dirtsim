@@ -115,6 +115,14 @@ private:
 // Clock Scenario
 // ============================================================================
 
+// Aggregate config for all event types. Passed to ClockScenario constructor.
+// Use designated initializers to override specific values; others get defaults.
+struct ClockEventConfigs {
+    EventTypeConfig duck = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
+    EventTypeConfig meltdown = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+    EventTypeConfig rain = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+};
+
 /**
  * Clock scenario - displays system time as a digital clock.
  *
@@ -144,9 +152,7 @@ public:
         {"AEST", "Sydney (AEST)", +10},
     }};
 
-    static const std::map<ClockEventType, EventTypeConfig> DEFAULT_EVENT_CONFIGS;
-
-    ClockScenario();
+    explicit ClockScenario(ClockEventConfigs event_configs = {});
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -155,9 +161,15 @@ public:
     void reset(World& world) override;
     void tick(World& world, double deltaTime) override;
 
+    // Event state accessors.
+    bool isEventActive(ClockEventType type) const;
+    size_t getActiveEventCount() const;
+    const EventTypeConfig& getEventConfig(ClockEventType type) const;
+
 private:
     ScenarioMetadata metadata_;
     Config::Clock config_;
+    ClockEventConfigs event_configs_;
     int last_second_ = -1;
 
     // Event system.
@@ -177,9 +189,6 @@ private:
 
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
-
-    // Tracked digit cells (populated each time we draw, used to clear before redraw/resize).
-    std::vector<Vector2i> digit_cells_;
 
     // Font dimension helpers.
     int getDigitWidth() const;
