@@ -25,16 +25,17 @@ enum class RenderFormat : uint8_t {
 };
 
 /**
- * @brief Basic cell data for rendering (2 bytes).
+ * @brief Basic cell data for rendering (3 bytes).
  *
- * Contains only material type and fill ratio - sufficient for basic visualization.
+ * Contains material type, fill ratio, and optional render-as override.
  * Fill ratio is quantized to 8-bit precision (256 levels).
  */
 struct BasicCell {
     uint8_t material_type; // MaterialType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
+    int8_t render_as;      // Render override: -1 = use material_type, 0+ = MaterialType value.
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<3>;
 };
 
 /**
@@ -46,6 +47,7 @@ struct BasicCell {
 struct DebugCell {
     uint8_t material_type; // MaterialType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
+    int8_t render_as;      // Render override: -1 = use material_type, 0+ = MaterialType value.
 
     int16_t com_x;      // Center of mass X: [-1.0, 1.0] → [-32767, 32767].
     int16_t com_y;      // Center of mass Y: [-1.0, 1.0] → [-32767, 32767].
@@ -57,7 +59,7 @@ struct DebugCell {
 
     Vector2<float> pressure_gradient; // Pressure gradient vector.
 
-    using serialize = zpp::bits::members<9>;
+    using serialize = zpp::bits::members<10>;
 };
 
 /**
@@ -147,54 +149,11 @@ inline void from_json(const nlohmann::json& j, RenderFormat& format)
     format = static_cast<RenderFormat>(j.get<uint8_t>());
 }
 
-inline void to_json(nlohmann::json& j, const BasicCell& cell)
-{
-    j = nlohmann::json{ { "material_type", cell.material_type },
-                        { "fill_ratio", cell.fill_ratio } };
-}
-
-inline void from_json(const nlohmann::json& j, BasicCell& cell)
-{
-    cell.material_type = j.at("material_type").get<uint8_t>();
-    cell.fill_ratio = j.at("fill_ratio").get<uint8_t>();
-}
-
-inline void to_json(nlohmann::json& j, const DebugCell& cell)
-{
-    j = nlohmann::json{ { "material_type", cell.material_type },
-                        { "fill_ratio", cell.fill_ratio },
-                        { "com_x", cell.com_x },
-                        { "com_y", cell.com_y },
-                        { "velocity_x", cell.velocity_x },
-                        { "velocity_y", cell.velocity_y },
-                        { "pressure_hydro", cell.pressure_hydro },
-                        { "pressure_dynamic", cell.pressure_dynamic } };
-}
-
-inline void from_json(const nlohmann::json& j, DebugCell& cell)
-{
-    cell.material_type = j.at("material_type").get<uint8_t>();
-    cell.fill_ratio = j.at("fill_ratio").get<uint8_t>();
-    cell.com_x = j.at("com_x").get<int16_t>();
-    cell.com_y = j.at("com_y").get<int16_t>();
-    cell.velocity_x = j.at("velocity_x").get<int16_t>();
-    cell.velocity_y = j.at("velocity_y").get<int16_t>();
-    cell.pressure_hydro = j.at("pressure_hydro").get<uint16_t>();
-    cell.pressure_dynamic = j.at("pressure_dynamic").get<uint16_t>();
-}
-
-inline void to_json(nlohmann::json& j, const OrganismData& org)
-{
-    j = nlohmann::json{ { "organism_id", org.organism_id }, { "cell_indices", org.cell_indices } };
-}
-
-inline void from_json(const nlohmann::json& j, OrganismData& org)
-{
-    org.organism_id = j.at("organism_id").get<uint8_t>();
-    org.cell_indices = j.at("cell_indices").get<std::vector<uint16_t>>();
-}
-
-// Note: RenderMessage is only serialized via zpp_bits (binary), not JSON.
-// JSON serialization is not needed since it's sent as binary frames.
+void to_json(nlohmann::json& j, const BasicCell& cell);
+void from_json(const nlohmann::json& j, BasicCell& cell);
+void to_json(nlohmann::json& j, const DebugCell& cell);
+void from_json(const nlohmann::json& j, DebugCell& cell);
+void to_json(nlohmann::json& j, const OrganismData& org);
+void from_json(const nlohmann::json& j, OrganismData& org);
 
 } // namespace DirtSim

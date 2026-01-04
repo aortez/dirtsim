@@ -106,6 +106,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     auto unpacked = RenderMessageUtils::unpackDebugCell(debugCells[i]);
                     worldData.cells[i].material_type = unpacked.material_type;
                     worldData.cells[i].fill_ratio = unpacked.fill_ratio;
+                    worldData.cells[i].render_as = unpacked.render_as;
                     worldData.cells[i].com = unpacked.com;
                     worldData.cells[i].velocity = unpacked.velocity;
                     worldData.cells[i].pressure = unpacked.pressure_hydro;
@@ -123,9 +124,11 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 for (size_t i = 0; i < numCells; ++i) {
                     MaterialType material;
                     double fill_ratio;
-                    RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio);
+                    int8_t render_as;
+                    RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio, render_as);
                     worldData.cells[i].material_type = material;
                     worldData.cells[i].fill_ratio = fill_ratio;
+                    worldData.cells[i].render_as = render_as;
                 }
             }
 

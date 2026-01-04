@@ -656,7 +656,7 @@ void CellRenderer::renderWorldData(
                     (org_id != INVALID_ORGANISM_ID) && (sprite_organism_ids.count(org_id) > 0);
 
                 if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_sprite_organism) {
-                    lv_color_t matColor = getMaterialColor(cell.material_type);
+                    lv_color_t matColor = getMaterialColor(cell.getRenderMaterial());
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).
                     // Normal mode: 0.85 opacity (subtle/faint border).
@@ -1056,9 +1056,9 @@ void CellRenderer::renderCellLVGL(
                             static_cast<int32_t>(cellY + scaledCellHeight_ - 1) };
     lv_draw_rect(&layer, &bg_rect_dsc, &bg_coords);
 
-    // Render material if not empty
+    // Render material if not empty.
     if (!cell.isEmpty() && cell.material_type != MaterialType::AIR) {
-        lv_color_t material_color = getMaterialColor(cell.material_type);
+        lv_color_t material_color = getMaterialColor(cell.getRenderMaterial());
         lv_opa_t opacity =
             static_cast<lv_opa_t>(cell.fill_ratio * static_cast<double>(LV_OPA_COVER));
 

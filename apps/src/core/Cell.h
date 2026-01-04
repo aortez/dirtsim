@@ -48,6 +48,10 @@ struct Cell {
     // Physics force accumulation.
     Vector2d pending_force = {};
 
+    // Rendering override: -1 = use material_type, 0+ = MaterialType to render as.
+    // Allows cells to behave as one material but display as another.
+    int8_t render_as = -1;
+
     // =================================================================
     // MATERIAL PROPERTIES
     // =================================================================
@@ -70,6 +74,9 @@ struct Cell {
     bool isFull() const;
     bool isAir() const;
     bool isWall() const;
+
+    // Get the material type to use for rendering (respects render_as override).
+    MaterialType getRenderMaterial() const;
 
     // =================================================================
     // PHYSICS PROPERTIES

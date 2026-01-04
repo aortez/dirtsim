@@ -31,6 +31,7 @@ inline BasicCell packBasicCell(const Cell& cell)
     BasicCell result;
     result.material_type = static_cast<uint8_t>(cell.material_type);
     result.fill_ratio = static_cast<uint8_t>(std::clamp(cell.fill_ratio * 255.0, 0.0, 255.0));
+    result.render_as = cell.render_as;
     return result;
 }
 
@@ -47,6 +48,7 @@ inline DebugCell packDebugCell(const Cell& cell)
     DebugCell result;
     result.material_type = static_cast<uint8_t>(cell.material_type);
     result.fill_ratio = static_cast<uint8_t>(std::clamp(cell.fill_ratio * 255.0, 0.0, 255.0));
+    result.render_as = cell.render_as;
 
     // COM: [-1.0, 1.0] → [-32767, 32767].
     result.com_x = static_cast<int16_t>(std::clamp(cell.com.x * 32767.0, -32767.0, 32767.0));
@@ -189,12 +191,23 @@ inline RenderMessage packRenderMessage(
 // =============================================================================
 
 /**
- * @brief Unpack BasicCell to get material type and fill ratio.
+ * @brief Unpack BasicCell to get material type, fill ratio, and render_as.
  */
-inline void unpackBasicCell(const BasicCell& src, MaterialType& material, double& fill_ratio)
+inline void unpackBasicCell(
+    const BasicCell& src, MaterialType& material, double& fill_ratio, int8_t& render_as)
 {
     material = static_cast<MaterialType>(src.material_type);
     fill_ratio = src.fill_ratio / 255.0;
+    render_as = src.render_as;
+}
+
+/**
+ * @brief Unpack BasicCell to get material type and fill ratio (legacy overload).
+ */
+inline void unpackBasicCell(const BasicCell& src, MaterialType& material, double& fill_ratio)
+{
+    int8_t render_as;
+    unpackBasicCell(src, material, fill_ratio, render_as);
 }
 
 /**
@@ -203,6 +216,7 @@ inline void unpackBasicCell(const BasicCell& src, MaterialType& material, double
 struct UnpackedDebugCell {
     MaterialType material_type;
     double fill_ratio;
+    int8_t render_as;
     Vector2d com;
     Vector2d velocity;
     double pressure_hydro;
@@ -216,6 +230,7 @@ inline UnpackedDebugCell unpackDebugCell(const DebugCell& src)
 
     result.material_type = static_cast<MaterialType>(src.material_type);
     result.fill_ratio = src.fill_ratio / 255.0;
+    result.render_as = src.render_as;
 
     // COM: [-32767, 32767] → [-1.0, 1.0].
     result.com.x = src.com_x / 32767.0;

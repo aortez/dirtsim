@@ -205,14 +205,13 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
     return accepted;
 }
 
-void Cell::replaceMaterial(MaterialType type, double fill_ratio)
+void Cell::replaceMaterial(MaterialType type, double new_fill_ratio)
 {
+    // Reset to default state, then set the new material.
+    // This ensures all fields (render_as, pressure, pending_force, etc.) are cleared.
+    *this = Cell{};
     material_type = type;
-    setFillRatio(fill_ratio);
-
-    // Reset physics state when replacing material.
-    velocity = Vector2d{ 0.0, 0.0 };
-    com = Vector2d{ 0.0, 0.0 };
+    setFillRatio(new_fill_ratio);
 }
 
 void Cell::clear()
@@ -471,6 +470,14 @@ bool Cell::isAir() const
 bool Cell::isWall() const
 {
     return material_type == MaterialType::WALL;
+}
+
+MaterialType Cell::getRenderMaterial() const
+{
+    if (render_as >= 0) {
+        return static_cast<MaterialType>(render_as);
+    }
+    return material_type;
 }
 
 void Cell::setCOM(double x, double y)
