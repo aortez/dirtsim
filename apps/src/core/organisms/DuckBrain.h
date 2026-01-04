@@ -1,5 +1,6 @@
 #pragma once
 
+#include "DuckInput.h"
 #include "DuckSensoryData.h"
 #include "core/input/GamepadState.h"
 #include <optional>
@@ -53,7 +54,7 @@ struct DuckSituation {
 
     // Spatial awareness (what's ahead).
     bool wall_ahead = false;
-    bool obstacle_ahead = false;
+    int obstacle_distance = -1;  // Distance to obstacle in cells, -1 if none detected.
     bool cliff_ahead = false;
     bool gap_in_exit_wall = false;
 
@@ -61,6 +62,9 @@ struct DuckSituation {
     bool near_middle = false;
     bool at_full_speed = false;  // True if current_speed >= 90% of known max_speed.
     bool can_clear_cliff = false;  // True if jump_distance would clear detected cliff.
+
+    // Convenience accessor.
+    bool obstacle_ahead() const { return obstacle_distance >= 0; }
 };
 
 /**
@@ -169,7 +173,7 @@ private:
     void pickFurthestWall(const DuckSensoryData& sensory);
     bool isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const;
     void onWallTouch(float run_time);
-    void updateJumpTimer(Duck& duck, float deltaTime);
+    bool updateJumpTimer(Duck& duck, float deltaTime);
 };
 
 /**
@@ -237,7 +241,7 @@ private:
     DuckSituation assessSituation(const DuckSensoryData& sensory) const;
     bool isTouchingWall(const DuckSensoryData& sensory, Side side) const;
     bool detectsGapInExitWall(const DuckSensoryData& sensory) const;
-    bool detectsObstacleAhead(const DuckSensoryData& sensory) const;
+    int findObstacleDistance(const DuckSensoryData& sensory) const;
     bool detectsCliffAhead(const DuckSensoryData& sensory) const;
     bool isNearMiddle(const DuckSensoryData& sensory) const;
 
@@ -246,7 +250,7 @@ private:
     void updateJumpDistanceLearning(const DuckSensoryData& sensory);
 
     // Actions.
-    void setRunDirection(Duck& duck, Side target);
+    DuckMovement movementForSide(Side side) const;
 };
 
 } // namespace DirtSim

@@ -117,23 +117,9 @@ DuckAction Duck::getCurrentAction() const
     return brain_ ? brain_->getCurrentAction() : DuckAction::WAIT;
 }
 
-void Duck::setWalkDirection(float dir)
+void Duck::setInput(DuckInput input)
 {
-    walk_direction_ = dir;
-}
-
-void Duck::jump()
-{
-    if (!on_ground_) {
-        return;  // Can only jump when on ground.
-    }
-
-    if (jump_cooldown_ > 0.0f) {
-        return;  // Still in cooldown from previous jump.
-    }
-
-    jump_requested_ = true;
-    LOG_DEBUG(Brain, "Duck {}: Jump requested", id_);
+    current_input_ = input;
 }
 
 void Duck::updateGroundDetection(const World& world)
@@ -185,36 +171,49 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
 
     Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
 
+    // Process jump input (independent of movement).
+    if (current_input_.jump) {
+        if (!on_ground_) {
+            LOG_WARN(Brain, "Duck {}: Jump requested but not on ground.", id_);
+        } else if (jump_cooldown_ > 0.0f) {
+            LOG_WARN(Brain, "Duck {}: Jump requested but in cooldown ({:.2f}s).", id_, jump_cooldown_);
+        } else {
+            double gravity = world.getPhysicsSettings().gravity;
+            double jump_direction = (gravity >= 0) ? -1.0 : 1.0;
+            Vector2d jump_force(0.0, jump_direction * JUMP_FORCE);
+            cell.addPendingForce(jump_force);
+            on_ground_ = false;
+            jump_cooldown_ = JUMP_COOLDOWN;
+            LOG_INFO(Brain, "Duck {}: Jump applied, force={:.1f}.", id_, jump_force.y);
+        }
+    }
+
+    // Process movement input (independent of jump).
+    float walk_direction = 0.0f;
+    switch (current_input_.movement) {
+    case DuckMovement::NONE:
+        break;
+    case DuckMovement::LEFT:
+        walk_direction = -1.0f;
+        break;
+    case DuckMovement::RIGHT:
+        walk_direction = 1.0f;
+        break;
+    }
+
     // Apply walking force (only when on ground).
-    if (on_ground_ && std::abs(walk_direction_) > 0.01f) {
-        Vector2d walk_force(walk_direction_ * WALK_FORCE, 0.0);
+    if (on_ground_ && std::abs(walk_direction) > 0.01f) {
+        Vector2d walk_force(walk_direction * WALK_FORCE, 0.0);
         cell.addPendingForce(walk_force);
     }
 
-    // Apply jump force (once, when requested).
-    if (jump_requested_ && on_ground_) {
-        // Negative Y is up (gravity pulls positive Y).
-        double gravity = world.getPhysicsSettings().gravity;
-        double jump_direction = (gravity >= 0) ? -1.0 : 1.0;
-        Vector2d jump_force(0.0, jump_direction * JUMP_FORCE);
-        cell.addPendingForce(jump_force);
-
-        jump_requested_ = false;
-        on_ground_ = false;
-        jump_cooldown_ = JUMP_COOLDOWN;
-        LOG_DEBUG(Brain, "Duck {}: Applied jump force {}, cooldown={:.2f}s", id_, jump_force.y, jump_cooldown_);
-    }
-
     // Update facing direction based on walk direction or velocity.
-    if (std::abs(walk_direction_) > 0.01f) {
-        facing_.x = (walk_direction_ > 0) ? 1.0f : -1.0f;
+    if (std::abs(walk_direction) > 0.01f) {
+        facing_.x = (walk_direction > 0) ? 1.0f : -1.0f;
         facing_.y = 0.0f;
-        LOG_DEBUG(Brain, "Duck {}: walk_dir={:.2f} -> facing={:.2f}", id_, walk_direction_, facing_.x);
-    }
-    else if (std::abs(cell.velocity.x) > 0.1) {
+    } else if (std::abs(cell.velocity.x) > 0.1) {
         facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
         facing_.y = 0.0f;
-        LOG_DEBUG(Brain, "Duck {}: velocity={:.2f} -> facing={:.2f}", id_, cell.velocity.x, facing_.x);
     }
 }
 

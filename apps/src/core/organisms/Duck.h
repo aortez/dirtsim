@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DuckBrain.h"
+#include "DuckInput.h"
 #include "DuckSensoryData.h"
 #include "Organism.h"
 #include <memory>
@@ -58,9 +59,7 @@ public:
     bool isOnGround() const { return on_ground_; }
     DuckAction getCurrentAction() const;
 
-    // Movement control (called by brain).
-    void setWalkDirection(float dir);  // -1 = left, 0 = stop, +1 = right.
-    void jump();
+    void setInput(DuckInput input);
 
     // Replace the brain (for testing).
     void setBrain(std::unique_ptr<DuckBrain> brain) { brain_ = std::move(brain); }
@@ -77,9 +76,11 @@ public:
 private:
     Vector2i anchor_cell_{ 0, 0 };
     bool on_ground_ = false;
-    float walk_direction_ = 0.0f;  // -1 = left, 0 = stop, +1 = right.
-    bool jump_requested_ = false;  // Set by jump(), cleared after force applied.
+    DuckInput current_input_{};
+    float jump_cooldown_ = 0.0f;
     uint32_t frame_counter_ = 0;
+
+    static constexpr float JUMP_COOLDOWN = 0.5f;  // Minimum time between jumps.
 
     std::unique_ptr<DuckBrain> brain_;
 
