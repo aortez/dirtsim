@@ -49,6 +49,10 @@ void ClockControls::createWidgets()
     lv_obj_t* timezoneView = viewController_->createView("timezone");
     createTimezoneSelectionView(timezoneView);
 
+    // Create digit material selection view.
+    lv_obj_t* digitMaterialView = viewController_->createView("digit_material");
+    createDigitMaterialSelectionView(digitMaterialView);
+
     // Show main view initially.
     viewController_->showView("main");
 }
@@ -83,6 +87,20 @@ void ClockControls::createMainView(lv_obj_t* view)
                           .alignLeft()
                           .callback(onTimezoneButtonClicked, this)
                           .buildOrLog();
+
+    // Digit material selector button.
+    std::string materialText = std::string("Digit Color: ") +
+                               getMaterialName(static_cast<MaterialType>(currentMaterialIndex_));
+
+    digitMaterialButton_ = LVGLBuilder::actionButton(view)
+                               .text(materialText.c_str())
+                               .icon(LV_SYMBOL_RIGHT)
+                               .width(LV_PCT(95))
+                               .height(LVGLBuilder::Style::ACTION_SIZE)
+                               .layoutRow()
+                               .alignLeft()
+                               .callback(onDigitMaterialButtonClicked, this)
+                               .buildOrLog();
 
     // Row for Show Seconds and Melt buttons.
     lv_obj_t* secondsRow = lv_obj_create(view);
@@ -232,6 +250,62 @@ void ClockControls::createTimezoneSelectionView(lv_obj_t* view)
     }
 }
 
+void ClockControls::createDigitMaterialSelectionView(lv_obj_t* view)
+{
+    // Back button.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onDigitMaterialBackClicked, this)
+        .buildOrLog();
+
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Digit Color");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Material option buttons (all material types).
+    buttonToMaterialIndex_.clear();
+
+    // All material types in enum order.
+    static const MaterialType materials[] = {
+        MaterialType::AIR,
+        MaterialType::DIRT,
+        MaterialType::LEAF,
+        MaterialType::METAL,
+        MaterialType::ROOT,
+        MaterialType::SAND,
+        MaterialType::SEED,
+        MaterialType::WALL,
+        MaterialType::WATER,
+        MaterialType::WOOD
+    };
+
+    for (MaterialType mat : materials) {
+        lv_obj_t* container = LVGLBuilder::actionButton(view)
+                                  .text(getMaterialName(mat))
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+
+        if (container) {
+            lv_obj_t* button = lv_obj_get_child(container, 0);
+            if (button) {
+                buttonToMaterialIndex_[button] = static_cast<int>(mat);
+                lv_obj_add_event_cb(button, onDigitMaterialSelected, LV_EVENT_CLICKED, this);
+            }
+        }
+    }
+}
+
 void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 {
     // Extract Config::Clock from variant.
@@ -303,6 +377,23 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated duck button to {}", config.duckEnabled);
     }
 
+    // Update digit material selection and button text.
+    currentMaterialIndex_ = static_cast<int>(config.digitMaterial);
+    if (digitMaterialButton_) {
+        std::string materialText = std::string("Digit Color: ") +
+                                   getMaterialName(config.digitMaterial);
+
+        lv_obj_t* button = lv_obj_get_child(digitMaterialButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);  // Second child is text.
+            if (label) {
+                lv_label_set_text(label, materialText.c_str());
+            }
+        }
+        LOG_DEBUG(Controls, "ClockControls: Updated digit material to {}",
+                  getMaterialName(config.digitMaterial));
+    }
+
     // Cache current config.
     currentConfig_ = config;
 
@@ -322,6 +413,9 @@ Config::Clock ClockControls::getCurrentConfig() const
 
     // Get timezone index from current selection.
     config.timezoneIndex = static_cast<uint8_t>(currentTimezoneIndex_);
+
+    // Get digit material from current selection.
+    config.digitMaterial = static_cast<MaterialType>(currentMaterialIndex_);
 
     // Get showSeconds from button.
     if (secondsSwitch_) {
@@ -473,6 +567,68 @@ void ClockControls::onTimezoneBackClicked(lv_event_t* e)
     if (!self || !self->viewController_) return;
 
     LOG_DEBUG(Controls, "ClockControls: Timezone back button clicked");
+    self->viewController_->showView("main");
+}
+
+void ClockControls::onDigitMaterialButtonClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    LOG_DEBUG(Controls, "ClockControls: Digit material button clicked");
+    self->viewController_->showView("digit_material");
+}
+
+void ClockControls::onDigitMaterialSelected(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Look up material index from button mapping.
+    auto it = self->buttonToMaterialIndex_.find(btn);
+    if (it == self->buttonToMaterialIndex_.end()) {
+        LOG_ERROR(Controls, "ClockControls: Unknown digit material button clicked");
+        return;
+    }
+
+    int materialIndex = it->second;
+    MaterialType material = static_cast<MaterialType>(materialIndex);
+    LOG_INFO(Controls,
+             "ClockControls: Digit material changed to {} ({})",
+             materialIndex,
+             getMaterialName(material));
+
+    // Update selection and button text.
+    self->currentMaterialIndex_ = materialIndex;
+    if (self->digitMaterialButton_) {
+        std::string materialText = std::string("Digit Color: ") + getMaterialName(material);
+        lv_obj_t* button = lv_obj_get_child(self->digitMaterialButton_, 0);
+        if (button) {
+            lv_obj_t* label = lv_obj_get_child(button, 1);
+            if (label) {
+                lv_label_set_text(label, materialText.c_str());
+            }
+        }
+    }
+
+    // Return to main view.
+    if (self->viewController_) {
+        self->viewController_->showView("main");
+    }
+
+    // Send config update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onDigitMaterialBackClicked(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    LOG_DEBUG(Controls, "ClockControls: Digit material back button clicked");
     self->viewController_->showView("main");
 }
 

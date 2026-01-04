@@ -670,9 +670,9 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                // Use WALL (immobile) but render as METAL (silver color).
+                // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y, MaterialType::WALL);
-                world.getData().at(x, y).render_as = static_cast<int8_t>(MaterialType::METAL);
+                world.getData().at(x, y).render_as = static_cast<int8_t>(config_.digitMaterial);
             }
         }
     }
@@ -702,14 +702,14 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
-                // Use WALL (immobile) but render as METAL (silver color).
+                // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y1, MaterialType::WALL);
-                world.getData().at(x, y1).render_as = static_cast<int8_t>(MaterialType::METAL);
+                world.getData().at(x, y1).render_as = static_cast<int8_t>(config_.digitMaterial);
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
-                // Use WALL (immobile) but render as METAL (silver color).
+                // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y2, MaterialType::WALL);
-                world.getData().at(x, y2).render_as = static_cast<int8_t>(MaterialType::METAL);
+                world.getData().at(x, y2).render_as = static_cast<int8_t>(config_.digitMaterial);
             }
         }
     }
@@ -881,29 +881,30 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
     if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
+        melt_state.digit_material = config_.digitMaterial;
         WorldData& data = world.getData();
 
-        // Convert interior WALL cells (digit display cells) to METAL so they can fall.
+        // Convert interior WALL cells (digit display cells) to the digit material so they can fall.
         // These are WALL cells with render_as set (indicating they are digit cells).
-        int max_metal_y = 0;
+        int max_digit_y = 0;
         for (uint32_t y = 1; y < data.height - 1; ++y) {
             for (uint32_t x = 1; x < data.width - 1; ++x) {
                 Cell& cell = data.at(x, y);
 
                 // Only convert WALL cells with render_as override (digit cells).
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    // Convert to the render_as material (METAL) so it can fall.
-                    cell.material_type = static_cast<MaterialType>(cell.render_as);
-                    cell.render_as = -1;  // Clear override - now it's real METAL.
-                    max_metal_y = std::max(max_metal_y, static_cast<int>(y));
+                    // Convert to the digit material so it can fall.
+                    cell.material_type = melt_state.digit_material;
+                    cell.render_as = -1;  // Clear override - now it's the real material.
+                    max_digit_y = std::max(max_digit_y, static_cast<int>(y));
                 }
             }
         }
-        melt_state.digit_bottom_y = max_metal_y;
+        melt_state.digit_bottom_y = max_digit_y;
 
         event.state = melt_state;
-        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s, digit_bottom_y: {})",
-            eventTiming.duration, melt_state.digit_bottom_y);
+        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s, digit_bottom_y: {}, material: {})",
+            eventTiming.duration, melt_state.digit_bottom_y, getMaterialName(melt_state.digit_material));
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
@@ -1110,8 +1111,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
 
     if (type == ClockEventType::MELTDOWN) {
-        // Convert any stray metal (fallen digits) to water.
-        convertStrayMetalToWater(world);
+        // Convert any stray digit material (fallen digits) to water.
+        auto& melt_state = std::get<MeltdownEventState>(event.state);
+        convertStrayDigitMaterialToWater(world, melt_state.digit_material);
     }
     else if (type == ClockEventType::DUCK) {
         auto& state = std::get<DuckEventState>(event.state);
@@ -1154,8 +1156,9 @@ void ClockScenario::cancelAllEvents(World& world)
             clearFloorObstacles(world, state);
         }
         else if (type == ClockEventType::MELTDOWN) {
-            // Clean up any stray metal from interrupted meltdown.
-            convertStrayMetalToWater(world);
+            // Clean up any stray digit material from interrupted meltdown.
+            auto& melt_state = std::get<MeltdownEventState>(event.state);
+            convertStrayDigitMaterialToWater(world, melt_state.digit_material);
         }
     }
 
@@ -1178,15 +1181,16 @@ bool ClockScenario::isMeltdownActive() const
 }
 
 void ClockScenario::updateMeltdownEvent(
-    World& world, MeltdownEventState& /*state*/, double& remaining_time, double /*deltaTime*/)
+    World& world, MeltdownEventState& state, double& remaining_time, double /*deltaTime*/)
 {
     WorldData& data = world.getData();
     if (data.height < 3) return;
 
     uint32_t bottom_wall_y = data.height - 1;
     uint32_t above_bottom_y = data.height - 2;
+    MaterialType digit_mat = state.digit_material;
 
-    // Fragmentation params for metal spraying up from drain.
+    // Fragmentation params for digit material spraying up from drain.
     static const FragmentationParams melt_frag_params{
         .radial_bias = 0.3,
         .min_arc = M_PI / 4.0,
@@ -1196,8 +1200,8 @@ void ClockScenario::updateMeltdownEvent(
         .spray_fraction = 1.0,
     };
 
-    // Scan for METAL that has reached the bottom or fallen into drain.
-    bool any_metal_above_bottom = false;
+    // Scan for digit material that has reached the bottom or fallen into drain.
+    bool any_digit_material_above_bottom = false;
 
     Vector2d spray_direction(0.0, -1.0);
     constexpr int NUM_FRAGS = 4;
@@ -1207,7 +1211,7 @@ void ClockScenario::updateMeltdownEvent(
         // Check cells in drain hole (bottom wall row, if drain is open).
         if (drain_open_ && x >= drain_start_x_ && x <= drain_end_x_) {
             Cell& drain_cell = data.at(x, bottom_wall_y);
-            if (drain_cell.material_type == MaterialType::METAL) {
+            if (drain_cell.material_type == digit_mat) {
                 // Convert to water and spray upward.
                 drain_cell.replaceMaterial(MaterialType::WATER, drain_cell.fill_ratio);
 
@@ -1229,7 +1233,7 @@ void ClockScenario::updateMeltdownEvent(
 
         // Check cells adjacent to bottom wall (row above it).
         Cell& bottom_cell = data.at(x, above_bottom_y);
-        if (bottom_cell.material_type == MaterialType::METAL) {
+        if (bottom_cell.material_type == digit_mat) {
             // Convert to water and splash upward.
             bottom_cell.replaceMaterial(MaterialType::WATER, bottom_cell.fill_ratio);
 
@@ -1249,36 +1253,36 @@ void ClockScenario::updateMeltdownEvent(
         }
     }
 
-    // Check if any metal still exists above the bottom row (still falling).
+    // Check if any digit material still exists above the bottom row (still falling).
     for (uint32_t y = 1; y < above_bottom_y; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, y).material_type == MaterialType::METAL) {
-                any_metal_above_bottom = true;
+            if (data.at(x, y).material_type == digit_mat) {
+                any_digit_material_above_bottom = true;
                 break;
             }
         }
-        if (any_metal_above_bottom) break;
+        if (any_digit_material_above_bottom) break;
     }
 
-    // End early if all metal has reached the bottom.
-    // But wait at least 3 seconds for metal to start falling first.
+    // End early if all digit material has reached the bottom.
+    // But wait at least 3 seconds for material to start falling first.
     constexpr double MIN_MELTDOWN_TIME = 3.0;
     double elapsed = getEventTiming(ClockEventType::MELTDOWN).duration - remaining_time;
 
-    if (!any_metal_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
+    if (!any_digit_material_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
         remaining_time = 0.0;
     }
 }
 
-void ClockScenario::convertStrayMetalToWater(World& world)
+void ClockScenario::convertStrayDigitMaterialToWater(World& world, MaterialType digit_material)
 {
     WorldData& data = world.getData();
 
-    // Convert all metal to water, then redraw fresh digits.
+    // Convert all digit material to water, then redraw fresh digits.
     for (uint32_t y = 1; y < data.height; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
-            if (cell.material_type == MaterialType::METAL) {
+            if (cell.material_type == digit_material) {
                 cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
             }
         }
@@ -1423,11 +1427,20 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     if (drain_open_) {
         uint32_t center_x = (drain_start_x_ + drain_end_x_) / 2;
 
+        // Get the digit material if a meltdown is active.
+        MaterialType melt_digit_material = MaterialType::AIR;  // Default (won't match anything).
+        if (isMeltdownActive()) {
+            auto it = active_events_.find(ClockEventType::MELTDOWN);
+            if (it != active_events_.end()) {
+                melt_digit_material = std::get<MeltdownEventState>(it->second.state).digit_material;
+            }
+        }
+
         for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
             Cell& cell = data.at(x, drain_y);
 
-            // Metal falls through the drain - convert to water and spray.
-            if (cell.material_type == MaterialType::METAL && cell.com.y > 0.0) {
+            // Digit material falls through the drain during meltdown - convert to water and spray.
+            if (cell.material_type == melt_digit_material && cell.com.y > 0.0) {
                 cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
                 sprayDrainCell(world, cell, x, drain_y);
                 continue;

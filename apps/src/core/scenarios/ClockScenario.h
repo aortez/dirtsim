@@ -49,8 +49,9 @@ struct RainEventConfig {
 };
 
 struct MeltdownEventState {
-    // Meltdown lets digits fall, converts metal to water on impact.
-    int digit_bottom_y = 0;  // Scanned at event start: lowest Y with METAL.
+    // Meltdown lets digits fall, converts to water on impact.
+    int digit_bottom_y = 0;         // Scanned at event start: lowest Y with digit material.
+    MaterialType digit_material{};  // Material type digits become when melting.
 };
 
 struct RainEventState {
@@ -237,7 +238,7 @@ private:
     void clearFloorObstacles(World& world, DuckEventState& state);
 
     bool isMeltdownActive() const;
-    void convertStrayMetalToWater(World& world);
+    void convertStrayDigitMaterialToWater(World& world, MaterialType digit_material);
     void redrawWalls(World& world);
 };
 

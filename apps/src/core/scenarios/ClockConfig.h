@@ -1,5 +1,6 @@
 #pragma once
 
+#include "../MaterialType.h"
 #include "../ReflectEnumJson.h"
 
 #include <zpp_bits.h>
@@ -16,7 +17,7 @@ enum class ClockFont : uint8_t {
 };
 
 struct Clock {
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
@@ -31,6 +32,7 @@ struct Clock {
     bool duckEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
+    MaterialType digitMaterial = MaterialType::METAL;  // Render color for clock digits.
 };
 
 } // namespace DirtSim::Config

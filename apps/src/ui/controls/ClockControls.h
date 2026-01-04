@@ -61,6 +61,7 @@ private:
     // Widgets.
     lv_obj_t* fontButton_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
+    lv_obj_t* digitMaterialButton_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
     lv_obj_t* meltButton_ = nullptr;
     lv_obj_t* rainSwitch_ = nullptr;
@@ -69,10 +70,12 @@ private:
     // Button to option index mappings.
     std::unordered_map<lv_obj_t*, int> buttonToFontIndex_;
     std::unordered_map<lv_obj_t*, int> buttonToTimezoneIndex_;
+    std::unordered_map<lv_obj_t*, int> buttonToMaterialIndex_;
 
     // Current selections.
     int currentFontIndex_ = 0;
     int currentTimezoneIndex_ = 0;
+    int currentMaterialIndex_ = static_cast<int>(MaterialType::METAL);
 
     // Current config (cached from last updateFromConfig call).
     Config::Clock currentConfig_;
@@ -84,6 +87,7 @@ private:
     void createMainView(lv_obj_t* view);
     void createFontSelectionView(lv_obj_t* view);
     void createTimezoneSelectionView(lv_obj_t* view);
+    void createDigitMaterialSelectionView(lv_obj_t* view);
 
     // Static LVGL callbacks.
     static void onFontButtonClicked(lv_event_t* e);
@@ -92,6 +96,9 @@ private:
     static void onTimezoneButtonClicked(lv_event_t* e);
     static void onTimezoneSelected(lv_event_t* e);
     static void onTimezoneBackClicked(lv_event_t* e);
+    static void onDigitMaterialButtonClicked(lv_event_t* e);
+    static void onDigitMaterialSelected(lv_event_t* e);
+    static void onDigitMaterialBackClicked(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
     static void onMeltClicked(lv_event_t* e);
     static void onRainToggled(lv_event_t* e);
