@@ -60,6 +60,7 @@ struct SimRunning {
     std::map<size_t, OrganismId> gamepad_to_duck_;
     std::map<size_t, bool> prev_start_button_;  // For edge detection of spawn.
     std::map<size_t, bool> prev_back_button_;   // For edge detection of reset.
+    std::map<size_t, bool> prev_y_button_;      // For edge detection of debug toggle.
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);

@@ -99,6 +99,14 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                             binaryCallback_(envelope.payload);
                         }
                     }
+                    else if (envelope.id == 0 && serverCommandCallback_) {
+                        // Server-pushed command (no correlation ID).
+                        LOG_DEBUG(
+                            Network,
+                            "WebSocketService CLIENT: Received server command '{}'",
+                            envelope.message_type);
+                        serverCommandCallback_(envelope.message_type, envelope.payload);
+                    }
                     else if (envelope.id > 0) {
                         // Command response - route to pending request by correlation ID.
                         std::lock_guard<std::mutex> lock(pendingMutex_);

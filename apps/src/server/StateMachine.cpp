@@ -740,5 +740,32 @@ void StateMachine::broadcastRenderMessage(
     }
 }
 
+void StateMachine::broadcastCommand(const std::string& messageType)
+{
+    if (pImpl->subscribedClients_.empty()) {
+        return;
+    }
+
+    spdlog::debug("StateMachine: Broadcasting command '{}' to {} clients",
+        messageType, pImpl->subscribedClients_.size());
+
+    // Create envelope with no payload.
+    Network::MessageEnvelope envelope{
+        .id = 0,
+        .message_type = messageType,
+        .payload = {}
+    };
+
+    std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
+
+    for (const auto& client : pImpl->subscribedClients_) {
+        auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
+        if (result.isError()) {
+            spdlog::error("StateMachine: Failed to send '{}' to '{}': {}",
+                messageType, client.connectionId, result.errorValue());
+        }
+    }
+}
+
 } // namespace Server
 } // namespace DirtSim

@@ -96,6 +96,12 @@ public:
         const std::string& scenario_id,
         const ScenarioConfig& scenario_config);
 
+    /**
+     * @brief Broadcast a command to all subscribed clients.
+     * @param messageType The message type (e.g., "DrawDebugToggle").
+     */
+    void broadcastCommand(const std::string& messageType);
+
     // Default world dimensions optimized for HyperPixel 4.0 (800x480) with icon rail (76px).
     // Available space: 724x480 when panel closed, 474x480 when panel open.
     // 45x30 cells gives ~1.5:1 aspect ratio matching the display area.

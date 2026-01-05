@@ -109,6 +109,7 @@ void SimRunning::tick(StateMachine& dsm)
         }
         prev_start_button_.erase(idx);
         prev_back_button_.erase(idx);
+        prev_y_button_.erase(idx);
     }
 
     // Process each connected gamepad.
@@ -148,6 +149,14 @@ void SimRunning::tick(StateMachine& dsm)
             }
         }
         prev_back_button_[i] = state->button_back;
+
+        // Check for Y button press (edge-detected) to toggle debug rendering.
+        bool prev_y = prev_y_button_[i];
+        if (state->button_y && !prev_y) {
+            spdlog::info("SimRunning: Gamepad {} pressed Y, broadcasting DrawDebugToggle", i);
+            dsm.broadcastCommand("DrawDebugToggle");
+        }
+        prev_y_button_[i] = state->button_y;
 
         // Pass gamepad input to existing duck's brain.
         auto it = gamepad_to_duck_.find(i);

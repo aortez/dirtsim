@@ -72,7 +72,13 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
 {
     using Response = UiApi::DrawDebugToggle::Response;
 
-    debugDrawEnabled = cwc.command.enabled;
+    // If no callback (server-pushed command), toggle. Otherwise use explicit value.
+    if (!cwc.callback) {
+        debugDrawEnabled = !debugDrawEnabled;
+    }
+    else {
+        debugDrawEnabled = cwc.command.enabled;
+    }
     LOG_INFO(State, "Debug draw mode {}", debugDrawEnabled ? "enabled" : "disabled");
 
     // Auto-switch render format based on debug mode (synchronous call).

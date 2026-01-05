@@ -7,6 +7,7 @@
 #include "core/WorldData.h"
 #include "core/api/UiUpdateEvent.h"
 #include "core/network/WebSocketService.h"
+#include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
 #include <nlohmann/json.hpp>
@@ -70,6 +71,19 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         LOG_ERROR(Network, "Connection error: {}", error);
         sm.queueEvent(ServerDisconnectedEvent{ error });
     });
+
+    // Setup callback for server-pushed commands (e.g., DrawDebugToggle from gamepad).
+    wsService.onServerCommand(
+        [&sm](const std::string& messageType, const std::vector<std::byte>& /*payload*/) {
+            if (messageType == "DrawDebugToggle") {
+                LOG_INFO(Network, "Received DrawDebugToggle command from server");
+                UiApi::DrawDebugToggle::Cwc cwc;
+                sm.queueEvent(std::move(cwc));
+            }
+            else {
+                LOG_WARN(Network, "Unknown server command: {}", messageType);
+            }
+        });
 
     // Setup binary callback for RenderMessage pushes from server.
     // Note: Command responses are routed via WebSocketService's pendingRequests_ map,
