@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/MaterialType.h"
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
 #include "ui/InteractionMode.h"
@@ -22,6 +23,7 @@ class UiComponentManager;
 
 struct CoreControlsState {
     bool debugDrawEnabled = false;
+    MaterialType drawMaterial = MaterialType::WALL;
     InteractionMode interactionMode = InteractionMode::NONE;
     RenderMode renderMode = RenderMode::ADAPTIVE;
     double scaleFactor = 0.4;
@@ -70,11 +72,13 @@ private:
     // Button to index mappings for modal selections.
     std::unordered_map<lv_obj_t*, int> buttonToRenderMode_;
     std::unordered_map<lv_obj_t*, int> buttonToInteractionMode_;
+    std::unordered_map<lv_obj_t*, MaterialType> buttonToDrawMaterial_;
 
     // View creation helpers.
     void createMainView(lv_obj_t* view);
     void createRenderModeView(lv_obj_t* view);
     void createInteractionModeView(lv_obj_t* view);
+    void createDrawMaterialView(lv_obj_t* view);
 
     // Event handlers.
     static void onQuitClicked(lv_event_t* e);
@@ -83,6 +87,8 @@ private:
     static void onInteractionModeButtonClicked(lv_event_t* e);
     static void onInteractionModeSelected(lv_event_t* e);
     static void onInteractionModeBackClicked(lv_event_t* e);
+    static void onDrawMaterialSelected(lv_event_t* e);
+    static void onDrawMaterialBackClicked(lv_event_t* e);
     static void onRenderModeButtonClicked(lv_event_t* e);
     static void onRenderModeSelected(lv_event_t* e);
     static void onRenderModeBackClicked(lv_event_t* e);

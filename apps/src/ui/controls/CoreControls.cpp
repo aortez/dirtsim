@@ -42,6 +42,10 @@ CoreControls::CoreControls(
     lv_obj_t* interactionModeView = viewController_->createView("interaction_mode");
     createInteractionModeView(interactionModeView);
 
+    // Create draw material modal view (nested under interaction mode).
+    lv_obj_t* drawMaterialView = viewController_->createView("draw_material");
+    createDrawMaterialView(drawMaterialView);
+
     // Create render mode modal view.
     lv_obj_t* renderModeView = viewController_->createView("render_mode");
     createRenderModeView(renderModeView);
@@ -221,23 +225,106 @@ void CoreControls::createInteractionModeView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
     // Interaction mode option buttons.
+    // "None" and "Erase" are direct selections.
+    // "Draw" navigates to material selection submenu.
     buttonToInteractionMode_.clear();
-    const char* modes[] = {"None", "Draw", "Erase"};
-    for (int i = 0; i < 3; i++) {
+
+    // None button - direct selection.
+    lv_obj_t* noneContainer = LVGLBuilder::actionButton(view)
+                                  .text("None")
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutColumn()
+                                  .buildOrLog();
+    if (noneContainer) {
+        lv_obj_t* button = lv_obj_get_child(noneContainer, 0);
+        if (button) {
+            buttonToInteractionMode_[button] = 0; // NONE.
+            lv_obj_add_event_cb(button, onInteractionModeSelected, LV_EVENT_CLICKED, this);
+        }
+    }
+
+    // Draw button - navigates to material selection.
+    lv_obj_t* drawContainer = LVGLBuilder::actionButton(view)
+                                  .text("Draw...")
+                                  .icon(LV_SYMBOL_RIGHT)
+                                  .width(LV_PCT(95))
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .buildOrLog();
+    if (drawContainer) {
+        lv_obj_t* button = lv_obj_get_child(drawContainer, 0);
+        if (button) {
+            buttonToInteractionMode_[button] = 1; // DRAW - but navigates to submenu.
+            lv_obj_add_event_cb(button, onInteractionModeSelected, LV_EVENT_CLICKED, this);
+        }
+    }
+
+    // Erase button - direct selection.
+    lv_obj_t* eraseContainer = LVGLBuilder::actionButton(view)
+                                   .text("Erase")
+                                   .width(LV_PCT(95))
+                                   .height(LVGLBuilder::Style::ACTION_SIZE)
+                                   .layoutColumn()
+                                   .buildOrLog();
+    if (eraseContainer) {
+        lv_obj_t* button = lv_obj_get_child(eraseContainer, 0);
+        if (button) {
+            buttonToInteractionMode_[button] = 2; // ERASE.
+            lv_obj_add_event_cb(button, onInteractionModeSelected, LV_EVENT_CLICKED, this);
+        }
+    }
+}
+
+void CoreControls::createDrawMaterialView(lv_obj_t* view)
+{
+    // Back button - returns to interaction mode view.
+    LVGLBuilder::actionButton(view)
+        .text("Back")
+        .icon(LV_SYMBOL_LEFT)
+        .width(LV_PCT(95))
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .layoutRow()
+        .alignLeft()
+        .callback(onDrawMaterialBackClicked, this)
+        .buildOrLog();
+
+    // Title.
+    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_label_set_text(titleLabel, "Draw Material");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
+
+    // Material option buttons (excluding AIR since that's for erasing).
+    buttonToDrawMaterial_.clear();
+    const std::vector<MaterialType> drawableMaterials = {
+        MaterialType::DIRT,
+        MaterialType::LEAF,
+        MaterialType::METAL,
+        MaterialType::ROOT,
+        MaterialType::SAND,
+        MaterialType::SEED,
+        MaterialType::WALL,
+        MaterialType::WATER,
+        MaterialType::WOOD
+    };
+
+    for (MaterialType material : drawableMaterials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(modes[i])
+                                  .text(getMaterialName(material))
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
                                   .buildOrLog();
 
         if (container) {
-            // Get the inner button (first child of container).
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                // Store button->mode mapping.
-                buttonToInteractionMode_[button] = i;
-                lv_obj_add_event_cb(button, onInteractionModeSelected, LV_EVENT_CLICKED, this);
+                buttonToDrawMaterial_[button] = material;
+                lv_obj_add_event_cb(button, onDrawMaterialSelected, LV_EVENT_CLICKED, this);
             }
         }
     }
@@ -275,7 +362,14 @@ void CoreControls::updateFromState()
         if (button) {
             lv_obj_t* label = lv_obj_get_child(button, 1);
             if (label) {
-                std::string text = "Interaction: " + interactionModeToString(state_.interactionMode);
+                std::string text;
+                if (state_.interactionMode == InteractionMode::DRAW) {
+                    // Show material name when in draw mode.
+                    text = std::string("Draw: ") + getMaterialName(state_.drawMaterial);
+                }
+                else {
+                    text = "Interaction: " + interactionModeToString(state_.interactionMode);
+                }
                 lv_label_set_text(label, text.c_str());
             }
         }
@@ -374,12 +468,18 @@ void CoreControls::onInteractionModeSelected(lv_event_t* e)
 
     int modeIndex = it->second;
 
+    // Handle "Draw" specially - navigate to material selection submenu.
+    if (modeIndex == 1) {
+        spdlog::debug("CoreControls: Draw selected, showing material menu");
+        self->viewController_->showView("draw_material");
+        return;
+    }
+
     // Map index to InteractionMode.
-    // Order: "None", "Draw", "Erase".
+    // Order: "None" (0), "Erase" (2).
     InteractionMode mode;
     switch (modeIndex) {
         case 0: mode = InteractionMode::NONE; break;
-        case 1: mode = InteractionMode::DRAW; break;
         case 2: mode = InteractionMode::ERASE; break;
         default: mode = InteractionMode::NONE; break;
     }
@@ -403,6 +503,46 @@ void CoreControls::onInteractionModeBackClicked(lv_event_t* e)
     if (!self || !self->viewController_) return;
 
     self->viewController_->showView("main");
+}
+
+void CoreControls::onDrawMaterialSelected(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    lv_obj_t* btn = static_cast<lv_obj_t*>(lv_event_get_target(e));
+
+    // Look up material from button mapping.
+    auto it = self->buttonToDrawMaterial_.find(btn);
+    if (it == self->buttonToDrawMaterial_.end()) {
+        spdlog::error("CoreControls: Unknown draw material button clicked");
+        return;
+    }
+
+    MaterialType material = it->second;
+
+    spdlog::info(
+        "CoreControls: Draw mode enabled with material {}", getMaterialName(material));
+
+    // Set both the interaction mode and the draw material.
+    self->state_.interactionMode = InteractionMode::DRAW;
+    self->state_.drawMaterial = material;
+
+    // Disable swipe zone to prevent accidental panel open while drawing.
+    self->uiManager_->getIconRail()->setSwipeZoneEnabled(false);
+
+    // Update button text and go back to main view.
+    self->updateFromState();
+    self->viewController_->showView("main");
+}
+
+void CoreControls::onDrawMaterialBackClicked(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self || !self->viewController_) return;
+
+    // Go back to interaction mode view (not main).
+    self->viewController_->showView("interaction_mode");
 }
 
 void CoreControls::onRenderModeButtonClicked(lv_event_t* e)

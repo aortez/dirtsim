@@ -458,8 +458,9 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
     }
     self->lastPaintedCell_ = *cell;
 
-    // DRAW mode places WALL, ERASE mode places AIR.
-    MaterialType material = (mode == InteractionMode::ERASE) ? MaterialType::AIR : MaterialType::WALL;
+    // DRAW mode places the selected material, ERASE mode places AIR.
+    MaterialType material =
+        (mode == InteractionMode::ERASE) ? MaterialType::AIR : self->coreControlsState_.drawMaterial;
     double fillRatio = (mode == InteractionMode::ERASE) ? 0.0 : 1.0;
 
     static std::atomic<uint64_t> nextId{ 1 };
