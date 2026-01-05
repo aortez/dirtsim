@@ -12,8 +12,9 @@
 
 namespace {
   // Physics constants.
-  static constexpr float WALK_FORCE = 20.0f;   // Force applied each frame when walking.
-  static constexpr float JUMP_FORCE = 300.0f;  // Impulse force applied once when jumping.
+  static constexpr float WALK_FORCE = 20.0f;          // Force applied each frame when walking.
+  static constexpr float JUMP_FORCE = 300.0f;         // Impulse force applied once when jumping.
+  static constexpr float AIR_CONTROL_PERCENT = 0.2f;  // Movement force multiplier when airborne.
 
   // Sparkle constants.
   static constexpr int MIN_SPARKLES = 0;           // Sparkles when at rest.
@@ -188,21 +189,25 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
         }
     }
 
-    // Apply walking force (only when on ground).
+    // Apply movement force (reduced when airborne for SMB1-style air steering).
     // Brain provides continuous input [-1,1], we scale by WALK_FORCE.
     float move_x = current_input_.move.x;
-    if (on_ground_ && std::abs(move_x) > 0.01f) {
-        Vector2d walk_force(move_x * WALK_FORCE, 0.0);
+    if (std::abs(move_x) > 0.01f) {
+        float multiplier = on_ground_ ? 1.0f : AIR_CONTROL_PERCENT;
+        Vector2d walk_force(move_x * WALK_FORCE * multiplier, 0.0);
         cell.addPendingForce(walk_force);
     }
 
     // Update facing direction based on move input or velocity.
-    if (std::abs(move_x) > 0.01f) {
-        facing_.x = (move_x > 0) ? 1.0f : -1.0f;
-        facing_.y = 0.0f;
-    } else if (std::abs(cell.velocity.x) > 0.1) {
-        facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
-        facing_.y = 0.0f;
+    // Only update while on ground - facing is locked during jumps (SMB1-style).
+    if (on_ground_) {
+        if (std::abs(move_x) > 0.01f) {
+            facing_.x = (move_x > 0) ? 1.0f : -1.0f;
+            facing_.y = 0.0f;
+        } else if (std::abs(cell.velocity.x) > 0.1) {
+            facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
+            facing_.y = 0.0f;
+        }
     }
 }
 

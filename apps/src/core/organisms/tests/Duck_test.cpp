@@ -1767,6 +1767,174 @@ TEST_F(DuckTest, AirSteeringBackwardDecelsFasterThanForward)
 }
 
 /**
+ * Test: Facing direction should be locked while airborne (SMB1-style).
+ *
+ * In SMB1, Mario's facing direction is set at jump time and doesn't change
+ * until landing. This enables the backwards jump trick - you can steer
+ * opposite to your facing direction for bonus acceleration.
+ *
+ * This test verifies that steering input while airborne does NOT change facing.
+ */
+TEST_F(DuckTest, FacingLockedWhileAirborne)
+{
+    auto setup = DuckTestSetup::create(50, 15, 5, 13);
+    ASSERT_NE(setup.duck, nullptr);
+    ASSERT_TRUE(setup.duck->isOnGround());
+
+    int start_y = setup.duck->getAnchorCell().y;
+
+    // Build rightward velocity - facing should become RIGHT.
+    setup.brain->setDirectInput({1.0f, 0.0f}, false);
+    setup.advanceFrames(30);
+    ASSERT_GT(setup.duck->getFacing().x, 0.0f) << "Should be facing right after moving right";
+
+    // Jump while holding right.
+    setup.brain->setDirectInput({1.0f, 0.0f}, true);
+    setup.advance();
+
+    // Wait until airborne (position-based detection like other tests).
+    int airborne_frame = -1;
+    for (int i = 0; i < 20; ++i) {
+        setup.advance();
+        if (setup.duck->getAnchorCell().y < start_y) {
+            airborne_frame = i;
+            break;
+        }
+    }
+    ASSERT_GE(airborne_frame, 0) << "Duck should become airborne after jump";
+
+    float facing_at_jump = setup.duck->getFacing().x;
+    spdlog::info("FacingLocked: Airborne at frame {}, facing.x = {:.1f}",
+        airborne_frame, facing_at_jump);
+    ASSERT_GT(facing_at_jump, 0.0f) << "Should be facing right at jump time";
+
+    // Now steer LEFT while airborne for several frames.
+    setup.brain->setMove({-1.0f, 0.0f});
+    int frames_checked = 0;
+    for (int frame = 0; frame < 50; ++frame) {
+        setup.advance();
+        int y = setup.duck->getAnchorCell().y;
+
+        // Only check while still above ground level.
+        if (y < start_y) {
+            frames_checked++;
+            float current_facing = setup.duck->getFacing().x;
+            EXPECT_GT(current_facing, 0.0f)
+                << "Facing should remain RIGHT while airborne, but at frame " << frame
+                << " facing.x = " << current_facing
+                << ". Facing should be locked at jump time.";
+        }
+
+        // Stop once we land.
+        if (y >= start_y && frame > airborne_frame + 5) {
+            spdlog::info("FacingLocked: Landed at frame {}, checked {} airborne frames",
+                frame, frames_checked);
+            break;
+        }
+    }
+
+    ASSERT_GT(frames_checked, 5) << "Should have checked facing for at least 5 airborne frames";
+}
+
+/**
+ * Test: Backwards jump trick - jumping while facing opposite to movement direction
+ * should provide better air acceleration (SMB1-style asymmetric acceleration).
+ *
+ * Setup:
+ * - Build rightward velocity on ground.
+ * - Normal jump: Jump while holding right (facing right).
+ * - Backwards jump: Tap left on jump frame (face left), then steer right.
+ *
+ * Expected: Backwards jump should accelerate faster because input opposes jump_facing_.
+ */
+TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
+{
+    // Helper to run a jump scenario and measure velocity change.
+    // jump_facing_left: if true, tap left on jump frame to face left before jumping.
+    auto runJumpScenario = [](bool jump_facing_left, const char* label) -> double {
+        auto setup = DuckTestSetup::create(50, 15, 5, 13);
+        if (!setup.duck || !setup.duck->isOnGround()) {
+            return 0.0;
+        }
+
+        int start_y = setup.duck->getAnchorCell().y;
+
+        // Phase 1: Build up rightward velocity on ground.
+        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.advanceFrames(30);
+
+        double vel_before_jump = setup.getVelocity().x;
+        spdlog::info("{}: Before jump vel.x={:.2f}", label, vel_before_jump);
+
+        // Phase 2: Jump frame - optionally face left by tapping left.
+        if (jump_facing_left) {
+            // Tap left on jump frame to set facing left, but still jump.
+            setup.brain->setDirectInput({-1.0f, 0.0f}, true);
+        } else {
+            // Normal: jump while holding right.
+            setup.brain->setDirectInput({1.0f, 0.0f}, true);
+        }
+        setup.advance();  // Execute jump.
+
+        // Phase 3: Track jump arc, steer RIGHT once airborne.
+        int min_y = start_y;
+        int airborne_start_frame = -1;
+        int peak_frame = -1;
+        double vel_at_airborne_start = 0.0;
+        double vel_at_land = 0.0;
+
+        for (int frame = 0; frame < 150; ++frame) {
+            setup.advance();
+            int y = setup.duck->getAnchorCell().y;
+            double vel_x = setup.getVelocity().x;
+
+            // Detect airborne and switch to steering right.
+            if (airborne_start_frame < 0 && y < start_y) {
+                airborne_start_frame = frame;
+                vel_at_airborne_start = vel_x;
+                // Both scenarios steer RIGHT in the air.
+                setup.brain->setMove({1.0f, 0.0f});
+                spdlog::info("{}: Airborne at frame {}, vel.x={:.2f}", label, frame, vel_x);
+            }
+
+            // Track peak.
+            if (airborne_start_frame >= 0 && y < min_y) {
+                min_y = y;
+                peak_frame = frame;
+            }
+
+            // Detect landing.
+            if (peak_frame >= 0 && y >= start_y) {
+                vel_at_land = vel_x;
+                spdlog::info("{}: Landed at frame {}, vel.x={:.2f}", label, frame, vel_x);
+                break;
+            }
+        }
+
+        double vel_change = vel_at_land - vel_at_airborne_start;
+        spdlog::info("{}: Velocity change during air: {:.2f}", label, vel_change);
+        return vel_change;
+    };
+
+    // Run both scenarios.
+    double vel_change_normal = runJumpScenario(false, "NormalJump");
+    double vel_change_backwards = runJumpScenario(true, "BackwardsJump");
+
+    spdlog::info("=== Backwards Jump Trick Comparison ===");
+    spdlog::info("Normal jump (face right, steer right):    vel_change = {:.2f}", vel_change_normal);
+    spdlog::info("Backwards jump (face left, steer right):  vel_change = {:.2f}", vel_change_backwards);
+    spdlog::info("Difference: {:.2f}", vel_change_backwards - vel_change_normal);
+
+    // KEY ASSERTION: Backwards jump should result in better acceleration (less deceleration
+    // or more acceleration) because steering opposite to facing direction gives a bonus.
+    constexpr double MIN_DIFFERENCE = 1.0;
+    EXPECT_GT(vel_change_backwards, vel_change_normal + MIN_DIFFERENCE)
+        << "Backwards jump trick should provide better acceleration than normal jump. "
+        << "Normal: " << vel_change_normal << ", Backwards: " << vel_change_backwards
+        << ". This test requires asymmetric air steering to be implemented.";
+}
+
+/**
  * @brief Test that duck (single-cell organism) can float in water via buoyancy.
  *
  * This tests the fix for the bug where organism cells were blocked from
@@ -1807,7 +1975,11 @@ TEST_F(DuckTest, DuckFloatsInWater)
     }
 
     // Create duck at (1, 3) - submerged in water.
-    OrganismId duck_id = world->getOrganismManager().createDuck(*world, 1, 3);
+    // Use TestDuckBrain so the duck just waits (no random movement affecting buoyancy).
+    auto test_brain = std::make_unique<TestDuckBrain>();
+    test_brain->setAction(DuckAction::WAIT);
+    OrganismId duck_id =
+        world->getOrganismManager().createDuck(*world, 1, 3, std::move(test_brain));
     ASSERT_NE(duck_id, INVALID_ORGANISM_ID);
 
     Duck* duck = world->getOrganismManager().getDuck(duck_id);
@@ -1860,4 +2032,13 @@ TEST_F(DuckTest, DuckFloatsInWater)
         << "Duck (WOOD, density 0.3) should float upward through water (density 1.0)";
     EXPECT_GE(swap_count, 1)
         << "Duck should participate in buoyancy swaps (not blocked by organism check)";
+
+    // Check that duck doesn't rise too fast (max 0.5 cells per step).
+    // Distance traveled = initial_y - final_y (positive when rising).
+    int distance_traveled = initial_y - final_y;
+    double rise_rate = static_cast<double>(distance_traveled) / static_cast<double>(swap_count);
+    spdlog::info("Rise rate: {:.2f} cells/swap ({} cells in {} swaps)",
+        rise_rate, distance_traveled, swap_count);
+    EXPECT_LE(rise_rate, 0.5)
+        << "Duck should not rise faster than 0.5 cells per swap (was " << rise_rate << ")";
 }
