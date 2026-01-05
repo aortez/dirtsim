@@ -107,7 +107,8 @@ void SimRunning::tick(StateMachine& dsm)
             world->getOrganismManager().removeOrganismFromWorld(*world, it->second);
             gamepad_to_duck_.erase(it);
         }
-        prev_any_button_.erase(idx);
+        prev_start_button_.erase(idx);
+        prev_back_button_.erase(idx);
     }
 
     // Process each connected gamepad.
@@ -117,10 +118,9 @@ void SimRunning::tick(StateMachine& dsm)
             continue;
         }
 
-        // Check for any button press (edge-detected) to spawn duck.
-        bool prev_any = prev_any_button_[i];
-        bool curr_any = state->button_a || state->button_b;
-        if (curr_any && !prev_any && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
+        // Check for Start button press (edge-detected) to spawn duck.
+        bool prev_start = prev_start_button_[i];
+        if (state->button_start && !prev_start && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
             // Spawn a new player-controlled duck at center-top of world.
             uint32_t spawn_x = world->getData().width / 2;
             uint32_t spawn_y = 2;
@@ -133,7 +133,21 @@ void SimRunning::tick(StateMachine& dsm)
             spdlog::info("SimRunning: Gamepad {} spawned duck {} at ({}, {})",
                 i, duck_id, spawn_x, spawn_y);
         }
-        prev_any_button_[i] = curr_any;
+        prev_start_button_[i] = state->button_start;
+
+        // Check for Back/Select button press (edge-detected) to reset scenario.
+        bool prev_back = prev_back_button_[i];
+        if (state->button_back && !prev_back) {
+            spdlog::info("SimRunning: Gamepad {} pressed Back, resetting scenario", i);
+            if (scenario) {
+                scenario->reset(*world);
+                world->getData().tree_vision.reset();
+                world->getData().bones.clear();
+                gamepad_to_duck_.clear();
+                stepCount = 0;
+            }
+        }
+        prev_back_button_[i] = state->button_back;
 
         // Pass gamepad input to existing duck's brain.
         auto it = gamepad_to_duck_.find(i);

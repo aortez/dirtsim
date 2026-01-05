@@ -58,7 +58,8 @@ struct SimRunning {
 
     // Gamepad-controlled duck tracking.
     std::map<size_t, OrganismId> gamepad_to_duck_;
-    std::map<size_t, bool> prev_any_button_;  // For edge detection of spawn.
+    std::map<size_t, bool> prev_start_button_;  // For edge detection of spawn.
+    std::map<size_t, bool> prev_back_button_;   // For edge detection of reset.
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);

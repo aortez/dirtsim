@@ -201,6 +201,10 @@ void GamepadManager::updateDeviceState(Device& device)
     // Buttons.
     state.button_a = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_A);
     state.button_b = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_B);
+    state.button_x = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_X);
+    state.button_y = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_Y);
+    state.button_back = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_BACK);
+    state.button_start = SDL_GameControllerGetButton(c, SDL_CONTROLLER_BUTTON_START);
 }
 
 } // namespace DirtSim
