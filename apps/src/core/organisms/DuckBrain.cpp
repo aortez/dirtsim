@@ -13,43 +13,51 @@ void RandomDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double d
     // Decrement action timer.
     action_timer_ -= static_cast<float>(deltaTime);
 
-    // Check if current action is complete.
-    bool action_complete = false;
-
+    // Check if current action is complete and pick next action if so.
     switch (current_action_) {
     case DuckAction::WAIT:
-        action_complete = (action_timer_ <= 0.0f);
-        duck.setInput({.movement = DuckMovement::NONE, .jump = false});
+        if (action_timer_ <= 0.0f) {
+            pickNextAction(duck, sensory);
+        }
         break;
 
     case DuckAction::RUN_LEFT:
     case DuckAction::RUN_RIGHT: {
         float current_x = static_cast<float>(sensory.position.x);
         float distance_traveled = std::abs(current_x - run_start_x_);
-
         if (distance_traveled >= run_target_cells_ || action_timer_ <= 0.0f) {
-            action_complete = true;
-            duck.setInput({.movement = DuckMovement::NONE, .jump = false});
-        }
-        else {
-            DuckMovement movement = (current_action_ == DuckAction::RUN_LEFT)
-                ? DuckMovement::LEFT : DuckMovement::RIGHT;
-            duck.setInput({.movement = movement, .jump = false});
+            pickNextAction(duck, sensory);
         }
         break;
     }
 
     case DuckAction::JUMP:
         // Jump action completes immediately after initiating.
-        action_complete = true;
-        duck.setInput({.movement = DuckMovement::NONE, .jump = false});
+        pickNextAction(duck, sensory);
         break;
     }
 
-    // Pick next action if current one is complete.
-    if (action_complete) {
-        pickNextAction(duck, sensory);
+    // Build input from current action state.
+    bool should_jump = false;
+    DuckMovement movement = DuckMovement::NONE;
+
+    switch (current_action_) {
+    case DuckAction::WAIT:
+        movement = DuckMovement::NONE;
+        break;
+    case DuckAction::RUN_LEFT:
+        movement = DuckMovement::LEFT;
+        break;
+    case DuckAction::RUN_RIGHT:
+        movement = DuckMovement::RIGHT;
+        break;
+    case DuckAction::JUMP:
+        should_jump = true;
+        break;
     }
+
+    // Apply input once at the end.
+    duck.setInput({.movement = movement, .jump = should_jump});
 }
 
 void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
@@ -63,7 +71,6 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         current_action_ = DuckAction::WAIT;
         std::uniform_real_distribution<float> wait_dist(0.5f, 2.0f);
         action_timer_ = wait_dist(rng_);
-        duck.setInput({.movement = DuckMovement::NONE, .jump = false});
         LOG_INFO(Brain, "Duck {}: WAIT for {:.1f}s at ({}, {}).",
             duck.getId(), action_timer_, sensory.position.x, sensory.position.y);
     }
@@ -74,7 +81,6 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         run_target_cells_ = dist_dist(rng_);
         run_start_x_ = static_cast<float>(sensory.position.x);
         action_timer_ = 5.0f;
-        duck.setInput({.movement = DuckMovement::LEFT, .jump = false});
         LOG_INFO(Brain, "Duck {}: RUN_LEFT {} cells from ({}, {}).",
             duck.getId(), run_target_cells_, sensory.position.x, sensory.position.y);
     }
@@ -85,7 +91,6 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         run_target_cells_ = dist_dist(rng_);
         run_start_x_ = static_cast<float>(sensory.position.x);
         action_timer_ = 5.0f;
-        duck.setInput({.movement = DuckMovement::RIGHT, .jump = false});
         LOG_INFO(Brain, "Duck {}: RUN_RIGHT {} cells from ({}, {}).",
             duck.getId(), run_target_cells_, sensory.position.x, sensory.position.y);
     }
@@ -93,7 +98,6 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         // 10% chance: Jump (only if on ground).
         if (sensory.on_ground) {
             current_action_ = DuckAction::JUMP;
-            duck.setInput({.movement = DuckMovement::NONE, .jump = true});
             LOG_INFO(Brain, "Duck {}: JUMP at ({}, {}).",
                 duck.getId(), sensory.position.x, sensory.position.y);
         }
@@ -152,9 +156,9 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
             current_run_time_, average_run_time_);
     }
 
-    // Update jump timer and check if jump should be executed.
+    // Check if jump timer has expired.
     if (enable_jumping_) {
-        should_jump = updateJumpTimer(duck, dt);
+        should_jump = shouldJump(dt);
     }
 
     // Set movement toward target wall.
@@ -230,15 +234,15 @@ void WallBouncingBrain::onWallTouch(float run_time)
     }
 }
 
-bool WallBouncingBrain::updateJumpTimer(Duck& duck, float deltaTime)
+bool WallBouncingBrain::shouldJump(float deltaTime)
 {
     if (jump_timer_ > 0.0f) {
         jump_timer_ -= deltaTime;
 
-        // Execute jump when timer expires.
+        // Jump when timer expires.
         if (jump_timer_ <= 0.0f) {
             current_action_ = DuckAction::JUMP;
-            LOG_INFO(Brain, "Duck {}: Midpoint jump executed.", duck.getId());
+            LOG_INFO(Brain, "WallBouncingBrain: Midpoint jump triggered.");
             jump_timer_ = -1.0f;
             return true;
         }

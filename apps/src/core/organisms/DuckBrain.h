@@ -173,7 +173,7 @@ private:
     void pickFurthestWall(const DuckSensoryData& sensory);
     bool isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const;
     void onWallTouch(float run_time);
-    bool updateJumpTimer(Duck& duck, float deltaTime);
+    bool shouldJump(float deltaTime);
 };
 
 /**
