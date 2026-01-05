@@ -1,5 +1,6 @@
 #include "WorldCollisionCalculator.h"
 #include "Cell.h"
+#include "GridOfCells.h"
 #include "LoggingChannels.h"
 #include "MaterialFragmentationParams.h"
 #include "MaterialMove.h"
@@ -793,16 +794,6 @@ double WorldCollisionCalculator::fragmentSingleCell(
         // Remove from source.
         sourceCell.fill_ratio -= to_transfer;
         total_sprayed += to_transfer;
-
-        spdlog::info(
-            "Fragment spray: {:.3f} from ({},{}) to ({},{}) with velocity ({:.2f},{:.2f})",
-            to_transfer,
-            sourceX,
-            sourceY,
-            target_x,
-            target_y,
-            frag.velocity.x,
-            frag.velocity.y);
     }
 
     return total_sprayed;
@@ -1115,16 +1106,20 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         return false;
     }
 
-    // Organism cells resist displacement (handled by rigid body physics).
+    // Rigid body organisms resist displacement (they manage their own physics).
+    // Single-cell organisms (like Duck) participate in normal cell physics including swaps.
     Vector2i toPos{static_cast<int>(fromX + direction.x), static_cast<int>(fromY + direction.y)};
     OrganismId toOrgId = world.getOrganismManager().at(toPos);
     if (toOrgId != INVALID_ORGANISM_ID) {
-        LOG_DEBUG(
-            Swap,
-            "Swap denied: cannot displace organism cell {} (organism_id={})",
-            getMaterialName(toCell.material_type),
-            toOrgId);
-        return false;
+        const Organism* organism = world.getOrganismManager().getOrganism(toOrgId);
+        if (organism && organism->usesRigidBodyPhysics()) {
+            LOG_DEBUG(
+                Swap,
+                "Swap denied: cannot displace rigid body organism cell {} (organism_id={})",
+                getMaterialName(toCell.material_type),
+                toOrgId);
+            return false;
+        }
     }
 
     const MaterialProperties& to_props = getMaterialProperties(toCell.material_type);
@@ -1201,13 +1196,42 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         // TO: resistance to being displaced.
         double to_mass = to_props.density * toCell.fill_ratio;
 
-        // Cohesion makes materials stick together (dirt > sand).
-        double cohesion_resistance = 1.0 + to_props.cohesion;
+        // Use cached neighbor-based cohesion (computed during applyCohesionForces).
+        uint32_t toX = fromX + direction.x;
+        uint32_t toY = fromY + direction.y;
+        double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
+
+        // Opposing momentum: target velocity against swap direction increases resistance.
+        Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
+        double opposing_momentum =
+            std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         // Fluids are easier to displace than solids.
         double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
 
-        double to_resistance = to_mass * cohesion_resistance * fluid_factor;
+        double to_resistance = (to_mass + cohesion_strength + opposing_momentum) * fluid_factor;
+
+        // COM distance factor: swaps are harder when COMs are far from shared boundary.
+        double com_distance = 0.0;
+        if (direction.x > 0) {
+            // Moving right: from exits at x=+1, to is entered at x=-1.
+            double from_dist = 1.0 - fromCell.com.x;  // 0 at boundary, 2 at far edge.
+            double to_dist = toCell.com.x + 1.0;      // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+        } else {
+            // Moving left: from exits at x=-1, to is entered at x=+1.
+            double from_dist = fromCell.com.x + 1.0;  // 0 at boundary, 2 at far edge.
+            double to_dist = 1.0 - toCell.com.x;      // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+        }
+
+        // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
+        // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
+        double com_resistance_multiplier = 1.0;
+        if (com_distance > 0.3) {
+            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0;  // 1x at 0.3, ~11x at 1.0
+        }
+        to_resistance *= com_resistance_multiplier;
 
         // Swap if momentum overcomes resistance.
         const double threshold = settings.horizontal_flow_resistance_factor;
@@ -1266,8 +1290,42 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         // TO: resistance to being displaced.
         // For vertical swaps, no fluid_factor - must move the mass regardless of fluidity.
         double to_mass = to_props.density * toCell.fill_ratio;
-        double cohesion_resistance = 1.0 + to_props.cohesion;
-        double to_resistance = to_mass * cohesion_resistance;
+
+        // Use cached neighbor-based cohesion (computed during applyCohesionForces).
+        uint32_t toX = fromX + direction.x;
+        uint32_t toY = fromY + direction.y;
+        double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
+
+        // Opposing momentum: target velocity against swap direction increases resistance.
+        Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
+        double opposing_momentum =
+            std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
+
+        double to_resistance = to_mass + cohesion_strength + opposing_momentum;
+
+        // COM distance factor: swaps are harder when COMs are far from shared boundary.
+        // This prevents cascading swaps where freshly-displaced material hasn't
+        // "arrived" at the boundary yet.
+        double com_distance = 0.0;
+        if (direction.y > 0) {
+            // Moving down: from exits at y=+1, to is entered at y=-1.
+            double from_dist = 1.0 - fromCell.com.y;  // 0 at boundary, 2 at far edge.
+            double to_dist = toCell.com.y + 1.0;      // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+        } else {
+            // Moving up: from exits at y=-1, to is entered at y=+1.
+            double from_dist = fromCell.com.y + 1.0;  // 0 at boundary, 2 at far edge.
+            double to_dist = 1.0 - toCell.com.y;      // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+        }
+
+        // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
+        // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
+        double com_resistance_multiplier = 1.0;
+        if (com_distance > 0.3) {
+            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0;  // 1x at 0.3, ~11x at 1.0
+        }
+        to_resistance *= com_resistance_multiplier;
 
         // Swap if effective momentum overcomes resistance.
         const double threshold = world.getPhysicsSettings().horizontal_flow_resistance_factor;
@@ -1277,22 +1335,25 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             LOG_INFO(
                 Swap,
                 "Vertical swap DENIED: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
-                "{:.3f}, "
-                "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
-                "{:.3f}) | threshold: {:.3f} | dir.y: {} ({})",
+                "{:.3f}, vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, "
+                "cohesion: {:.3f}, opposing: {:.3f}, com_dist: {:.2f}, com_mult: {:.1f}) | "
+                "threshold: {:.3f} | dir.y: {} ({})",
                 getMaterialName(fromCell.material_type),
                 getMaterialName(toCell.material_type),
                 fromX,
                 fromY,
-                fromX + direction.x,
-                fromY + direction.y,
+                toX,
+                toY,
                 effective_momentum,
                 from_mass,
                 from_velocity,
                 buoyancy_boost,
                 to_resistance,
                 to_mass,
-                to_props.cohesion,
+                cohesion_strength,
+                opposing_momentum,
+                com_distance,
+                com_resistance_multiplier,
                 to_resistance * threshold,
                 direction.y,
                 direction.y > 0 ? "DOWN" : "UP");
@@ -1303,22 +1364,25 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             LOG_INFO(
                 Swap,
                 "Vertical swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
-                "{:.3f}, "
-                "vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: "
-                "{:.3f}) | threshold: {:.3f} | dir.y: {} ({})",
+                "{:.3f}, vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, "
+                "cohesion: {:.3f}, opposing: {:.3f}, com_dist: {:.2f}, com_mult: {:.1f}) | "
+                "threshold: {:.3f} | dir.y: {} ({})",
                 getMaterialName(fromCell.material_type),
                 getMaterialName(toCell.material_type),
                 fromX,
                 fromY,
-                fromX + direction.x,
-                fromY + direction.y,
+                toX,
+                toY,
                 effective_momentum,
                 from_mass,
                 from_velocity,
                 buoyancy_boost,
                 to_resistance,
                 to_mass,
-                to_props.cohesion,
+                cohesion_strength,
+                opposing_momentum,
+                com_distance,
+                com_resistance_multiplier,
                 to_resistance * threshold,
                 direction.y,
                 direction.y > 0 ? "DOWN" : "UP");
@@ -1511,9 +1575,28 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     toCell.setCOM(landing_com);
     toCell.velocity = new_velocity;
 
-    // Displaced material (now in fromCell) placed at center with zero velocity.
-    fromCell.setCOM(Vector2d(0.0, 0.0));
-    fromCell.velocity = Vector2d(0.0, 0.0);
+    // Displaced material (now in fromCell) receives opposing velocity from buoyancy.
+    // Lighter materials pushed up by heavier materials get upward momentum.
+    // Place COM at the entering edge - displaced material crossed from the swap direction.
+    // This ensures COM distance factor blocks immediate re-swaps.
+    constexpr double BOUNDARY_OFFSET = 0.95;
+    Vector2d displaced_com(
+        direction.x != 0 ? direction.x * BOUNDARY_OFFSET : 0.0,
+        direction.y != 0 ? direction.y * BOUNDARY_OFFSET : 0.0);
+    fromCell.setCOM(displaced_com);
+
+    const MaterialProperties& displaced_props = getMaterialProperties(to_type);
+    const MaterialProperties& pusher_props = getMaterialProperties(from_type);
+    double density_diff = std::abs(pusher_props.density - displaced_props.density);
+
+    // Buoyancy gives the displaced material velocity opposing the swap direction.
+    // Use density difference directly as a simple buoyancy model.
+    // Scale tuned so displaced material resists cascading swaps.
+    constexpr double BUOYANCY_VELOCITY_SCALE = 10.0;
+    double buoyancy_velocity = density_diff * BUOYANCY_VELOCITY_SCALE;
+    Vector2d opposing_dir(
+        static_cast<double>(-direction.x), static_cast<double>(-direction.y));
+    fromCell.velocity = opposing_dir * buoyancy_velocity;
 
     // Log with full details, INFO for non-air swaps, DEBUG for air swaps.
     const char* direction_str =
