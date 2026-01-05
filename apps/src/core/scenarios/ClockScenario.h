@@ -2,163 +2,23 @@
 
 #include "ClockConfig.h"
 #include "ClockFontPatterns.h"
+#include "clock_scenario/ClockEventTypes.h"
+#include "clock_scenario/ColorCycleEvent.h"
+#include "clock_scenario/ColorShowcaseEvent.h"
+#include "clock_scenario/DoorManager.h"
+#include "clock_scenario/MeltdownEvent.h"
+#include "clock_scenario/ObstacleManager.h"
+#include "clock_scenario/RainEvent.h"
 #include "core/Cell.h"
-#include "core/MaterialType.h"
-#include "core/Vector2.h"
-#include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
 #include <array>
 #include <map>
 #include <memory>
 #include <random>
-#include <unordered_map>
-#include <variant>
-#include <vector>
 
 namespace DirtSim {
 
 class World;
-
-// ============================================================================
-// Event System Types
-// ============================================================================
-
-enum class ClockEventType {
-    COLOR_CYCLE,
-    COLOR_SHOWCASE,
-    DUCK,
-    MELTDOWN,
-    RAIN
-};
-
-struct EventTimingConfig {
-    double duration;
-    double chance_per_second;
-    double cooldown;
-};
-
-struct DuckEventConfig {
-    EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
-    bool floor_obstacles_enabled = true;
-};
-
-struct MeltdownEventConfig {
-    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
-};
-
-struct RainEventConfig {
-    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
-};
-
-struct ColorCycleEventConfig {
-    EventTimingConfig timing = { .duration = 10.0, .chance_per_second = 0.04, .cooldown = 15.0 };
-};
-
-struct ColorShowcaseEventConfig {
-    EventTimingConfig timing = { .duration = 120.0, .chance_per_second = 0.1, .cooldown = 60.0 };
-    std::vector<MaterialType> showcase_materials = {
-        MaterialType::LEAF, MaterialType::WATER, MaterialType::SEED, MaterialType::WOOD
-    };
-};
-
-struct MeltdownEventState {
-    // Meltdown lets digits fall, converts to water on impact.
-    int digit_bottom_y = 0;         // Scanned at event start: lowest Y with digit material.
-    MaterialType digit_material{};  // Material type digits become when melting.
-};
-
-struct RainEventState {
-    // Rain-specific state (could add intensity, pattern, etc.).
-};
-
-struct ColorCycleEventState {
-    size_t current_index = 0;      // Current position in cycle.
-    double time_per_color = 0.0;   // Calculated at start: duration / num_materials.
-    double time_in_current = 0.0;  // Time spent on current color.
-};
-
-struct ColorShowcaseEventState {
-    size_t current_index = 0;  // Current position in showcase materials list.
-};
-
-enum class DoorSide { LEFT, RIGHT };
-
-enum class DuckEventPhase {
-    DOOR_OPENING,  // Door open, waiting before spawning duck.
-    DUCK_ACTIVE,   // Duck spawned and walking.
-    DOOR_CLOSING   // Duck exited, waiting briefly before closing door.
-};
-
-// Floor modification that challenges the duck.
-enum class FloorObstacleType { HURDLE, PIT };
-
-struct FloorObstacle {
-    int start_x = 0;              // Starting X position.
-    int width = 1;                // Number of contiguous cells (1-3).
-    FloorObstacleType type = FloorObstacleType::HURDLE;
-};
-
-struct DuckEventState {
-    OrganismId organism_id = INVALID_ORGANISM_ID;
-    DoorSide entrance_side = DoorSide::LEFT;
-    Vector2i entrance_door_pos{ -1, -1 };
-    Vector2i exit_door_pos{ -1, -1 };
-    bool entrance_door_open = false;
-    bool exit_door_open = false;
-    DuckEventPhase phase = DuckEventPhase::DOOR_OPENING;
-    double door_open_timer = 0.0;   // Time door has been open before duck spawns.
-    double door_close_timer = 0.0;  // Time since duck exited, before closing door.
-
-    // Floor obstacles to challenge the duck (hurdles and pits).
-    std::vector<FloorObstacle> floor_obstacles;
-    double obstacle_spawn_timer = 0.0;  // Time until next obstacle spawn attempt.
-};
-
-using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DuckEventState, MeltdownEventState, RainEventState>;
-
-struct ActiveEvent {
-    EventState state;
-    double remaining_time;
-};
-
-// ============================================================================
-// Door Manager
-// ============================================================================
-
-class DoorManager {
-public:
-    struct DoorState {
-        bool is_open = false;
-        DoorSide side = DoorSide::LEFT;
-        Vector2i door_pos{ -1, -1 };
-        Vector2i roof_pos{ -1, -1 };
-    };
-
-    bool openDoor(Vector2i pos, DoorSide side, World& world);
-    void closeDoor(Vector2i pos, World& world);
-    bool isOpenDoor(Vector2i pos) const;
-    bool isRoofCell(Vector2i pos) const;
-    std::vector<Vector2i> getOpenDoorPositions() const;
-    std::vector<Vector2i> getRoofPositions() const;
-    void closeAllDoors(World& world);
-
-private:
-    std::unordered_map<Vector2i, DoorState> doors_;
-
-    static Vector2i calculateRoofPos(Vector2i door_pos, DoorSide side);
-};
-
-// ============================================================================
-// Clock Scenario
-// ============================================================================
-
-struct ClockEventConfigs {
-    ColorCycleEventConfig color_cycle;
-    ColorShowcaseEventConfig color_showcase;
-    DuckEventConfig duck;
-    MeltdownEventConfig meltdown;
-    RainEventConfig rain;
-};
 
 /**
  * Clock scenario - displays system time as a digital clock.
@@ -214,8 +74,9 @@ private:
     std::map<ClockEventType, double> event_cooldowns_;
     double time_since_last_trigger_check_ = 0.0;
 
-    // Door management.
+    // Door and obstacle management.
     DoorManager door_manager_;
+    ObstacleManager obstacle_manager_;
 
     // Floor drain state.
     bool drain_open_ = false;
@@ -261,10 +122,6 @@ private:
     void spawnDuck(World& world, DuckEventState& state);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
-
-    // Floor obstacle helpers for duck event.
-    void spawnFloorObstacle(World& world, DuckEventState& state);
-    void clearFloorObstacles(World& world, DuckEventState& state);
 
     bool isMeltdownActive() const;
     void convertStrayDigitMaterialToWater(World& world, MaterialType digit_material);

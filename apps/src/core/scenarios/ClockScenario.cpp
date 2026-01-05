@@ -24,118 +24,6 @@
 namespace DirtSim {
 
 // ============================================================================
-// DoorManager Implementation
-// ============================================================================
-
-Vector2i DoorManager::calculateRoofPos(Vector2i door_pos, DoorSide side)
-{
-    // Roof goes up one and inward one.
-    // Left door: inward = +1 x. Right door: inward = -1 x.
-    int dx = (side == DoorSide::LEFT) ? 1 : -1;
-    return Vector2i{ door_pos.x + dx, door_pos.y - 1 };
-}
-
-bool DoorManager::openDoor(Vector2i pos, DoorSide side, World& world)
-{
-    // Check if already open.
-    if (doors_.contains(pos) && doors_[pos].is_open) {
-        return false;
-    }
-
-    DoorState state;
-    state.is_open = true;
-    state.side = side;
-    state.door_pos = pos;
-    state.roof_pos = calculateRoofPos(pos, side);
-
-    // Clear the door cell (make it passable).
-    world.getData().at(pos.x, pos.y) = Cell();
-
-    // Place wall at roof position (displace any organisms).
-    world.replaceMaterialAtCell(state.roof_pos.x, state.roof_pos.y, MaterialType::WALL);
-
-    doors_[pos] = state;
-
-    spdlog::info("DoorManager: Opened door at ({}, {}), roof at ({}, {})",
-        pos.x, pos.y, state.roof_pos.x, state.roof_pos.y);
-
-    return true;
-}
-
-void DoorManager::closeDoor(Vector2i pos, World& world)
-{
-    auto it = doors_.find(pos);
-    if (it == doors_.end() || !it->second.is_open) {
-        return;
-    }
-
-    const DoorState& state = it->second;
-
-    // Restore wall at door position (push any organisms out of the way).
-    world.replaceMaterialAtCell(pos.x, pos.y, MaterialType::WALL);
-
-    // Clear roof cell (it will be restored by normal wall drawing if needed).
-    Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
-    roof_cell = Cell();
-
-    spdlog::info("DoorManager: Closed door at ({}, {})", pos.x, pos.y);
-
-    doors_.erase(it);
-}
-
-bool DoorManager::isOpenDoor(Vector2i pos) const
-{
-    auto it = doors_.find(pos);
-    return it != doors_.end() && it->second.is_open;
-}
-
-bool DoorManager::isRoofCell(Vector2i pos) const
-{
-    for (const auto& [door_pos, state] : doors_) {
-        if (state.is_open && state.roof_pos == pos) {
-            return true;
-        }
-    }
-    return false;
-}
-
-std::vector<Vector2i> DoorManager::getOpenDoorPositions() const
-{
-    std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(pos);
-        }
-    }
-    return positions;
-}
-
-std::vector<Vector2i> DoorManager::getRoofPositions() const
-{
-    std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(state.roof_pos);
-        }
-    }
-    return positions;
-}
-
-void DoorManager::closeAllDoors(World& world)
-{
-    // Collect positions first to avoid iterator invalidation.
-    std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(pos);
-        }
-    }
-    for (const auto& pos : positions) {
-        closeDoor(pos, world);
-    }
-}
-
-// ============================================================================
 // ClockScenario Implementation
 // ============================================================================
 
@@ -624,32 +512,10 @@ void ClockScenario::clearDigits(World& world)
 {
     WorldData& data = world.getData();
 
-    // Get floor obstacles from active duck event (if any).
-    const std::vector<FloorObstacle>* floor_obstacles = nullptr;
-    auto duck_it = active_events_.find(ClockEventType::DUCK);
-    if (duck_it != active_events_.end()) {
-        const auto& duck_state = std::get<DuckEventState>(duck_it->second.state);
-        floor_obstacles = &duck_state.floor_obstacles;
-    }
-
-    // Helper to check if X position is a hurdle (one row above floor).
-    auto is_hurdle_at = [&](uint32_t x, uint32_t y) -> bool {
-        if (!floor_obstacles || y != data.height - 2) return false;
-        for (const auto& obs : *floor_obstacles) {
-            if (obs.type == FloorObstacleType::HURDLE) {
-                if (static_cast<int>(x) >= obs.start_x &&
-                    static_cast<int>(x) < obs.start_x + obs.width) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    };
-
     // Clear interior WALL cells (digit cells) but NOT:
-    // - Boundary cells (x=0, x=width-1, y=0, y=height-1)
-    // - Door roof cells
-    // - Hurdle obstacle cells
+    // - Boundary cells (x=0, x=width-1, y=0, y=height-1).
+    // - Door roof cells.
+    // - Hurdle obstacle cells.
     for (uint32_t y = 1; y < data.height - 1; ++y) {
         for (uint32_t x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
@@ -663,8 +529,8 @@ void ClockScenario::clearDigits(World& world)
                 continue;
             }
 
-            // Skip hurdle obstacle cells.
-            if (is_hurdle_at(x, y)) {
+            // Skip hurdle obstacle cells (one row above floor).
+            if (y == data.height - 2 && obstacle_manager_.isHurdleAt(x)) {
                 continue;
             }
 
@@ -944,23 +810,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
     if (type == ClockEventType::COLOR_CYCLE) {
         ColorCycleEventState state;
-        // Use config's colorsPerSecond rate.
-        state.time_per_color = 1.0 / config_.colorsPerSecond;
-        state.current_index = 0;
-        state.time_in_current = 0.0;
-
-        // Apply the first color immediately.
-        MaterialType first_material = getAllMaterialTypes()[0];
-        WorldData& data = world.getData();
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
-                Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    cell.render_as = static_cast<int8_t>(first_material);
-                }
-            }
-        }
-
+        ClockEvents::startColorCycle(state, world, config_.colorsPerSecond);
         event.state = state;
         config_.colorCycleEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
@@ -968,32 +818,10 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     }
     else if (type == ClockEventType::MELTDOWN) {
         MeltdownEventState melt_state;
-        // Use METAL for falling digits - dense, falls through water nicely.
-        // The UI digitMaterial setting only affects render color, not physics.
-        melt_state.digit_material = MaterialType::METAL;
-        WorldData& data = world.getData();
-
-        // Convert interior WALL cells (digit display cells) to METAL so they can fall.
-        // These are WALL cells with render_as set (indicating they are digit cells).
-        int max_digit_y = 0;
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
-                Cell& cell = data.at(x, y);
-
-                // Only convert WALL cells with render_as override (digit cells).
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    // Convert to the digit material so it can fall.
-                    cell.material_type = melt_state.digit_material;
-                    cell.render_as = -1;  // Clear override - now it's the real material.
-                    max_digit_y = std::max(max_digit_y, static_cast<int>(y));
-                }
-            }
-        }
-        melt_state.digit_bottom_y = max_digit_y;
-
+        ClockEvents::startMeltdown(melt_state, world);
         event.state = melt_state;
-        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s, digit_bottom_y: {}, material: {})",
-            eventTiming.duration, melt_state.digit_bottom_y, getMaterialName(melt_state.digit_material));
+        spdlog::info("ClockScenario: Starting MELTDOWN event (duration: {}s)",
+            eventTiming.duration);
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
@@ -1002,19 +830,13 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         ColorShowcaseEventState state;
-
-        // Start on a random color each time.
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-        if (!showcase_materials.empty()) {
-            std::uniform_int_distribution<size_t> color_dist(0, showcase_materials.size() - 1);
-            state.current_index = color_dist(rng_);
-            config_.digitMaterial = showcase_materials[state.current_index];
-            spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at index {})",
-                eventTiming.duration, getMaterialName(showcase_materials[state.current_index]), state.current_index);
-        }
-
+        MaterialType starting_material = ClockEvents::startColorShowcase(state, showcase_materials, rng_);
+        config_.digitMaterial = starting_material;
         event.state = state;
         config_.colorShowcaseEnabled = true;  // Sync config flag.
+        spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at index {})",
+            eventTiming.duration, getMaterialName(starting_material), state.current_index);
     }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
@@ -1068,65 +890,22 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
 
 void ClockScenario::updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime)
 {
-    state.time_in_current += deltaTime;
-
-    // Check if it's time to advance to the next color.
-    if (state.time_in_current >= state.time_per_color) {
-        state.time_in_current -= state.time_per_color;
-        state.current_index = (state.current_index + 1) % getAllMaterialTypes().size();
-
-        MaterialType new_material = getAllMaterialTypes()[state.current_index];
-
-        // Update all digit cells to the new color.
-        WorldData& data = world.getData();
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
-                Cell& cell = data.at(x, y);
-                // Digit cells are WALL with render_as override set.
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    cell.render_as = static_cast<int8_t>(new_material);
-                }
-            }
-        }
-
-        spdlog::debug("ClockScenario: COLOR_CYCLE advanced to {} (index {})",
-            getMaterialName(new_material), state.current_index);
-    }
+    ClockEvents::updateColorCycle(state, world, deltaTime);
 }
 
 void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
 {
-    // Check if time string changed (digits will be redrawn).
+    const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
     std::string current_time = getCurrentTimeString();
-    if (current_time != last_drawn_time_) {
-        // Advance to next showcase color.
-        const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-        if (!showcase_materials.empty()) {
-            state.current_index = (state.current_index + 1) % showcase_materials.size();
-            MaterialType new_material = showcase_materials[state.current_index];
-            config_.digitMaterial = new_material;
-
-            spdlog::info("ClockScenario: COLOR_SHOWCASE changed to {} (time changed to {})",
-                getMaterialName(new_material), current_time);
-        }
+    auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, current_time, last_drawn_time_);
+    if (new_material) {
+        config_.digitMaterial = *new_material;
     }
 }
 
 void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, double deltaTime)
 {
-    // Spawn water drops at random X positions near the top.
-    constexpr double DROPS_PER_SECOND = 10.0;
-    double drop_probability = DROPS_PER_SECOND * deltaTime;
-
-    if (uniform_dist_(rng_) < drop_probability) {
-        std::uniform_int_distribution<uint32_t> x_dist(2, world.getData().width - 3);
-        uint32_t x = x_dist(rng_);
-        uint32_t y = 2;
-
-        world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
-    }
-
-    // Water drainage is handled by updateDrain() in tick().
+    ClockEvents::updateRain(world, deltaTime, rng_, uniform_dist_);
 }
 
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
@@ -1181,19 +960,16 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
 
     // Floor obstacles: spawn when drain is closed and obstacles are enabled.
     if (!drain_open_ && event_configs_.duck.floor_obstacles_enabled) {
-        constexpr double SPAWN_INTERVAL = 3.0;  // Try to spawn every 3 seconds.
-        constexpr size_t MAX_OBSTACLES = 3;     // Maximum concurrent obstacles.
+        constexpr double SPAWN_INTERVAL = 3.0;
 
         state.obstacle_spawn_timer += deltaTime;
-        if (state.obstacle_spawn_timer >= SPAWN_INTERVAL && state.floor_obstacles.size() < MAX_OBSTACLES) {
+        if (state.obstacle_spawn_timer >= SPAWN_INTERVAL) {
             state.obstacle_spawn_timer = 0.0;
-            spawnFloorObstacle(world, state);
+            obstacle_manager_.spawnObstacle(world, rng_, uniform_dist_);
         }
-    } else if (drain_open_) {
+    } else if (drain_open_ && !obstacle_manager_.getObstacles().empty()) {
         // Drain is open, clear any obstacles.
-        if (!state.floor_obstacles.empty()) {
-            clearFloorObstacles(world, state);
-        }
+        obstacle_manager_.clearAll(world);
     }
 
     // Get duck's cell COM for sub-cell positioning.
@@ -1274,16 +1050,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
 
     if (type == ClockEventType::COLOR_CYCLE) {
-        // Restore original digit material color.
-        WorldData& data = world.getData();
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
-                Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    cell.render_as = static_cast<int8_t>(config_.digitMaterial);
-                }
-            }
-        }
+        ClockEvents::endColorCycle(world, config_.digitMaterial);
     }
     else if (type == ClockEventType::MELTDOWN) {
         // Convert any stray digit material (fallen digits) to water.
@@ -1298,7 +1065,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         }
 
         // Clear any floor obstacles.
-        clearFloorObstacles(world, state);
+        obstacle_manager_.clearAll(world);
 
         // Close any open doors.
         if (state.entrance_door_open) {
@@ -1328,24 +1095,13 @@ void ClockScenario::cancelAllEvents(World& world)
 
     for (auto& [type, event] : active_events_) {
         if (type == ClockEventType::COLOR_CYCLE) {
-            // Restore original digit material color.
-            WorldData& data = world.getData();
-            for (uint32_t y = 1; y < data.height - 1; ++y) {
-                for (uint32_t x = 1; x < data.width - 1; ++x) {
-                    Cell& cell = data.at(x, y);
-                    if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                        cell.render_as = static_cast<int8_t>(config_.digitMaterial);
-                    }
-                }
-            }
+            ClockEvents::endColorCycle(world, config_.digitMaterial);
         }
         else if (type == ClockEventType::DUCK) {
             auto& state = std::get<DuckEventState>(event.state);
             if (state.organism_id != INVALID_ORGANISM_ID) {
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             }
-            // Clear any floor obstacles.
-            clearFloorObstacles(world, state);
         }
         else if (type == ClockEventType::MELTDOWN) {
             // Clean up any stray digit material from interrupted meltdown.
@@ -1367,6 +1123,7 @@ void ClockScenario::cancelAllEvents(World& world)
     active_events_.clear();
     event_cooldowns_.clear();
     door_manager_.closeAllDoors(world);
+    obstacle_manager_.clearAll(world);
 }
 
 bool ClockScenario::isMeltdownActive() const
@@ -1377,111 +1134,14 @@ bool ClockScenario::isMeltdownActive() const
 void ClockScenario::updateMeltdownEvent(
     World& world, MeltdownEventState& state, double& remaining_time, double /*deltaTime*/)
 {
-    WorldData& data = world.getData();
-    if (data.height < 3) return;
-
-    uint32_t bottom_wall_y = data.height - 1;
-    uint32_t above_bottom_y = data.height - 2;
-    MaterialType digit_mat = state.digit_material;
-
-    // Fragmentation params for digit material spraying up from drain.
-    static const FragmentationParams melt_frag_params{
-        .radial_bias = 0.3,
-        .min_arc = M_PI / 4.0,
-        .max_arc = M_PI / 3.0,
-        .edge_speed_factor = 1.0,
-        .base_speed = 40.0,
-        .spray_fraction = 1.0,
-    };
-
-    // Scan for digit material that has reached the bottom or fallen into drain.
-    bool any_digit_material_above_bottom = false;
-
-    Vector2d spray_direction(0.0, -1.0);
-    constexpr int NUM_FRAGS = 4;
-    constexpr double ARC_WIDTH = M_PI / 2.0;
-
-    for (uint32_t x = 1; x < data.width - 1; ++x) {
-        // Check cells in drain hole (bottom wall row, if drain is open).
-        if (drain_open_ && x >= drain_start_x_ && x <= drain_end_x_) {
-            Cell& drain_cell = data.at(x, bottom_wall_y);
-            if (drain_cell.material_type == digit_mat) {
-                // Convert to water and spray upward.
-                drain_cell.replaceMaterial(MaterialType::WATER, drain_cell.fill_ratio);
-
-                world.getCollisionCalculator().fragmentSingleCell(
-                    world,
-                    drain_cell,
-                    x,
-                    bottom_wall_y,
-                    x,
-                    bottom_wall_y,
-                    spray_direction,
-                    NUM_FRAGS,
-                    ARC_WIDTH,
-                    melt_frag_params);
-
-                drain_cell = Cell();
-            }
-        }
-
-        // Check cells adjacent to bottom wall (row above it).
-        Cell& bottom_cell = data.at(x, above_bottom_y);
-        if (bottom_cell.material_type == digit_mat) {
-            // Convert to water and splash upward.
-            bottom_cell.replaceMaterial(MaterialType::WATER, bottom_cell.fill_ratio);
-
-            world.getCollisionCalculator().fragmentSingleCell(
-                world,
-                bottom_cell,
-                x,
-                above_bottom_y,
-                x,
-                above_bottom_y,
-                spray_direction,
-                NUM_FRAGS,
-                ARC_WIDTH,
-                melt_frag_params);
-
-            bottom_cell = Cell();
-        }
-    }
-
-    // Check if any digit material still exists above the bottom row (still falling).
-    for (uint32_t y = 1; y < above_bottom_y; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, y).material_type == digit_mat) {
-                any_digit_material_above_bottom = true;
-                break;
-            }
-        }
-        if (any_digit_material_above_bottom) break;
-    }
-
-    // End early if all digit material has reached the bottom.
-    // But wait at least 3 seconds for material to start falling first.
-    constexpr double MIN_MELTDOWN_TIME = 3.0;
-    double elapsed = getEventTiming(ClockEventType::MELTDOWN).duration - remaining_time;
-
-    if (!any_digit_material_above_bottom && elapsed >= MIN_MELTDOWN_TIME) {
-        remaining_time = 0.0;
-    }
+    double event_duration = getEventTiming(ClockEventType::MELTDOWN).duration;
+    ClockEvents::updateMeltdown(state, world, remaining_time, event_duration,
+        drain_open_, drain_start_x_, drain_end_x_);
 }
 
 void ClockScenario::convertStrayDigitMaterialToWater(World& world, MaterialType digit_material)
 {
-    WorldData& data = world.getData();
-
-    // Convert all digit material to water, then redraw fresh digits.
-    for (uint32_t y = 1; y < data.height; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
-            Cell& cell = data.at(x, y);
-            if (cell.material_type == digit_material) {
-                cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
-            }
-        }
-    }
-
+    ClockEvents::endMeltdown(world, digit_material);
     drawTime(world);
 }
 
@@ -1763,42 +1423,6 @@ void ClockScenario::redrawWalls(World& world)
     uint32_t width = world.getData().width;
     uint32_t height = world.getData().height;
 
-    // Get floor obstacles from active duck event (if any).
-    const std::vector<FloorObstacle>* floor_obstacles = nullptr;
-    auto duck_it = active_events_.find(ClockEventType::DUCK);
-    if (duck_it != active_events_.end()) {
-        const auto& duck_state = std::get<DuckEventState>(duck_it->second.state);
-        floor_obstacles = &duck_state.floor_obstacles;
-    }
-
-    // Helper to check if X position is a pit.
-    auto is_pit_at = [&](uint32_t x) -> bool {
-        if (!floor_obstacles) return false;
-        for (const auto& obs : *floor_obstacles) {
-            if (obs.type == FloorObstacleType::PIT) {
-                if (static_cast<int>(x) >= obs.start_x &&
-                    static_cast<int>(x) < obs.start_x + obs.width) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    };
-
-    // Helper to check if X position is a hurdle.
-    auto is_hurdle_at = [&](uint32_t x) -> bool {
-        if (!floor_obstacles) return false;
-        for (const auto& obs : *floor_obstacles) {
-            if (obs.type == FloorObstacleType::HURDLE) {
-                if (static_cast<int>(x) >= obs.start_x &&
-                    static_cast<int>(x) < obs.start_x + obs.width) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    };
-
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
         Vector2i top_pos{ static_cast<int>(x), 0 };
@@ -1811,7 +1435,7 @@ void ClockScenario::redrawWalls(World& world)
         // Skip drain cells in bottom wall when drain is open.
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
         // Skip pit cells (floor removed).
-        bool is_pit_cell = is_pit_at(x);
+        bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
         if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell && !is_pit_cell) {
             world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
@@ -1824,7 +1448,7 @@ void ClockScenario::redrawWalls(World& world)
         }
 
         // Hurdle cells (one row above floor).
-        if (height > 2 && is_hurdle_at(x)) {
+        if (height > 2 && obstacle_manager_.isHurdleAt(x)) {
             world.replaceMaterialAtCell(x, height - 2, MaterialType::WALL);
         }
     }
@@ -1846,104 +1470,6 @@ void ClockScenario::redrawWalls(World& world)
     for (const auto& roof_pos : door_manager_.getRoofPositions()) {
         world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
-}
-
-// ============================================================================
-// Floor Obstacle System for Duck Event
-// ============================================================================
-
-void ClockScenario::spawnFloorObstacle(World& world, DuckEventState& state)
-{
-    const WorldData& data = world.getData();
-
-    // Require minimum world size: 5 cells from each wall means we need at least 11 cells wide.
-    constexpr int MARGIN = 5;
-    int min_x = MARGIN;
-    int max_x = static_cast<int>(data.width) - MARGIN - 1;
-
-    // Not enough horizontal space for obstacles.
-    if (max_x <= min_x) {
-        spdlog::info("ClockScenario: World too narrow for floor obstacles (width={})", data.width);
-        return;
-    }
-
-    // Choose how many contiguous cells (1-3).
-    std::uniform_int_distribution<int> width_dist(1, 3);
-    int obstacle_width = width_dist(rng_);
-
-    // Adjust max_x to account for obstacle width.
-    int spawn_max_x = max_x - (obstacle_width - 1);
-    if (spawn_max_x < min_x) {
-        return;  // Not enough space.
-    }
-
-    // Pick starting X position.
-    std::uniform_int_distribution<int> x_dist(min_x, spawn_max_x);
-    int start_x = x_dist(rng_);
-
-    // Choose type: hurdle (up) or pit (down).
-    FloorObstacleType type = (uniform_dist_(rng_) < 0.5)
-        ? FloorObstacleType::HURDLE
-        : FloorObstacleType::PIT;
-
-    // Check for overlap with existing obstacles.
-    for (const auto& existing : state.floor_obstacles) {
-        int existing_end = existing.start_x + existing.width;
-        int new_end = start_x + obstacle_width;
-        // Check if ranges overlap.
-        if (start_x < existing_end && new_end > existing.start_x) {
-            spdlog::debug("ClockScenario: Floor obstacle spawn skipped - overlaps existing");
-            return;
-        }
-    }
-
-    // Create the obstacle.
-    FloorObstacle obstacle;
-    obstacle.start_x = start_x;
-    obstacle.width = obstacle_width;
-    obstacle.type = type;
-
-    state.floor_obstacles.push_back(obstacle);
-
-    spdlog::info("ClockScenario: Spawned floor {} at x={}, width={}",
-        type == FloorObstacleType::HURDLE ? "HURDLE" : "PIT",
-        start_x, obstacle_width);
-}
-
-void ClockScenario::clearFloorObstacles(World& world, DuckEventState& state)
-{
-    if (state.floor_obstacles.empty()) {
-        return;
-    }
-
-    WorldData& data = world.getData();
-    uint32_t height = data.height;
-
-    spdlog::info("ClockScenario: Clearing {} floor obstacles", state.floor_obstacles.size());
-
-    for (const auto& obs : state.floor_obstacles) {
-        for (int i = 0; i < obs.width; ++i) {
-            int x = obs.start_x + i;
-            if (x < 0 || x >= static_cast<int>(data.width)) {
-                continue;
-            }
-
-            if (obs.type == FloorObstacleType::HURDLE) {
-                // Clear hurdle wall at height-2.
-                if (height > 2) {
-                    Cell& cell = data.at(x, height - 2);
-                    if (cell.material_type == MaterialType::WALL) {
-                        cell = Cell();
-                    }
-                }
-            } else {
-                // Restore floor at height-1 for pit.
-                world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
-            }
-        }
-    }
-
-    state.floor_obstacles.clear();
 }
 
 } // namespace DirtSim

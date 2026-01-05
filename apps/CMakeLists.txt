@@ -294,6 +294,12 @@ add_library(dirtsim-server-lib STATIC
     src/server/scenarios/ScenarioRegistry.cpp
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
+    src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
+    src/core/scenarios/clock_scenario/DoorManager.cpp
+    src/core/scenarios/clock_scenario/MeltdownEvent.cpp
+    src/core/scenarios/clock_scenario/ObstacleManager.cpp
+    src/core/scenarios/clock_scenario/RainEvent.cpp
     src/core/scenarios/DamBreakScenario.cpp
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/FallingDirtScenario.cpp
