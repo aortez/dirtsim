@@ -14,7 +14,11 @@ namespace {
   // Physics constants.
   static constexpr float WALK_FORCE = 20.0f;          // Force applied each frame when walking.
   static constexpr float JUMP_FORCE = 300.0f;         // Impulse force applied once when jumping.
-  static constexpr float AIR_CONTROL_PERCENT = 0.2f;  // Movement force multiplier when airborne.
+
+  // SMB1-style asymmetric air steering: you accelerate faster in the direction
+  // you are NOT facing. This enables the "backwards jump trick".
+  static constexpr float AIR_CONTROL_SAME = 0.15f;      // Steering same direction as facing.
+  static constexpr float AIR_CONTROL_OPPOSING = 0.30f;  // Steering opposite to facing (2x bonus).
 
   // Sparkle constants.
   static constexpr int MIN_SPARKLES = 0;           // Sparkles when at rest.
@@ -193,7 +197,15 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
     // Brain provides continuous input [-1,1], we scale by WALK_FORCE.
     float move_x = current_input_.move.x;
     if (std::abs(move_x) > 0.01f) {
-        float multiplier = on_ground_ ? 1.0f : AIR_CONTROL_PERCENT;
+        float multiplier;
+        if (on_ground_) {
+            multiplier = 1.0f;
+        } else {
+            // SMB1-style asymmetric air control: steering opposite to facing gives bonus.
+            bool steering_opposes_facing = (move_x > 0 && facing_.x < 0) ||
+                                           (move_x < 0 && facing_.x > 0);
+            multiplier = steering_opposes_facing ? AIR_CONTROL_OPPOSING : AIR_CONTROL_SAME;
+        }
         Vector2d walk_force(move_x * WALK_FORCE * multiplier, 0.0);
         cell.addPendingForce(walk_force);
     }

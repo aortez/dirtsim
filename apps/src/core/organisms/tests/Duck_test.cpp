@@ -1935,6 +1935,99 @@ TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
 }
 
 /**
+ * Test: Asymmetric air steering - steering opposite to facing should give higher force.
+ *
+ * SMB1 mechanic: "You accelerate faster in the direction you are NOT facing."
+ *
+ * This test isolates the asymmetric multiplier by comparing:
+ * - Face RIGHT, steer RIGHT → lower multiplier (same direction)
+ * - Face LEFT, steer RIGHT  → higher multiplier (opposing direction)
+ *
+ * Both scenarios steer RIGHT, but with different facing directions. The one where
+ * input opposes facing should experience MORE force (better acceleration).
+ */
+TEST_F(DuckTest, AsymmetricAirSteeringOpposingGivesHigherForce)
+{
+    // Helper to run a scenario. face_left_at_jump controls facing direction.
+    auto runScenario = [](bool face_left_at_jump, const char* label) -> double {
+        auto setup = DuckTestSetup::create(50, 15, 5, 13);
+        if (!setup.duck || !setup.duck->isOnGround()) {
+            return 0.0;
+        }
+
+        int start_y = setup.duck->getAnchorCell().y;
+
+        // Build rightward velocity.
+        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.advanceFrames(30);
+
+        double vel_before = setup.getVelocity().x;
+
+        // Jump - optionally tap left to face left.
+        if (face_left_at_jump) {
+            setup.brain->setDirectInput({-1.0f, 0.0f}, true);
+        } else {
+            setup.brain->setDirectInput({1.0f, 0.0f}, true);
+        }
+        setup.advance();
+
+        float facing_at_jump = setup.duck->getFacing().x;
+        spdlog::info("{}: Before jump vel.x={:.2f}, facing at jump={:.1f}",
+            label, vel_before, facing_at_jump);
+
+        // Track until airborne, then steer RIGHT.
+        double vel_at_airborne = 0.0;
+        for (int i = 0; i < 20; ++i) {
+            setup.advance();
+            if (setup.duck->getAnchorCell().y < start_y) {
+                vel_at_airborne = setup.getVelocity().x;
+                // Both scenarios steer RIGHT.
+                setup.brain->setMove({1.0f, 0.0f});
+                spdlog::info("{}: Airborne, vel.x={:.2f}, facing={:.1f}, steering RIGHT",
+                    label, vel_at_airborne, setup.duck->getFacing().x);
+                break;
+            }
+        }
+
+        // Track for fixed number of airborne frames.
+        constexpr int AIR_FRAMES = 30;
+        for (int i = 0; i < AIR_FRAMES; ++i) {
+            setup.advance();
+        }
+
+        double vel_after = setup.getVelocity().x;
+        double vel_change = vel_after - vel_at_airborne;
+        spdlog::info("{}: After {} air frames, vel.x={:.2f}, change={:.2f}",
+            label, AIR_FRAMES, vel_after, vel_change);
+        return vel_change;
+    };
+
+    // Both scenarios steer RIGHT, but with different facing.
+    double vel_change_face_right = runScenario(false, "FaceRight");  // Same as steer.
+    double vel_change_face_left = runScenario(true, "FaceLeft");     // Opposing steer.
+
+    spdlog::info("=== Asymmetric Air Steering Test ===");
+    spdlog::info("Face RIGHT, steer RIGHT (same):     vel_change = {:.2f}", vel_change_face_right);
+    spdlog::info("Face LEFT, steer RIGHT (opposing):  vel_change = {:.2f}", vel_change_face_left);
+
+    // Both steer RIGHT. With asymmetric multiplier:
+    // - Face RIGHT, steer RIGHT → 15% force (same direction)
+    // - Face LEFT, steer RIGHT → 30% force (opposing direction)
+    //
+    // The opposing scenario should accelerate MORE (or decelerate less).
+    // This is the backwards jump trick - facing away gives better acceleration.
+    double accel_difference = vel_change_face_left - vel_change_face_right;
+    spdlog::info("Acceleration difference: {:.2f} (positive = opposing accelerates more)",
+        accel_difference);
+
+    constexpr double MIN_ASYMMETRY = 10.0;
+    EXPECT_GT(accel_difference, MIN_ASYMMETRY)
+        << "Backwards jump should give significantly better acceleration. "
+        << "FaceRight: " << vel_change_face_right << ", FaceLeft: " << vel_change_face_left
+        << ". Expected difference > " << MIN_ASYMMETRY << ", got " << accel_difference;
+}
+
+/**
  * @brief Test that duck (single-cell organism) can float in water via buoyancy.
  *
  * This tests the fix for the bug where organism cells were blocked from
@@ -1995,27 +2088,44 @@ TEST_F(DuckTest, DuckFloatsInWater)
     int final_y = initial_y;
     int swap_count = 0;
 
+    // Output formatted table header.
+    // Format: step | duck_y | duck_com_y | duck_vel_y | above_mat | above_com_y | above_vel_y | swap
+    std::cout << "\n=== BUOYANCY DATA TABLE ===\n";
+    std::cout << "step\tduck_y\tcom_y\tvel_y\tabove_mat\tabove_com\tabove_vel\tswap\n";
+    std::cout << "----\t------\t-----\t-----\t---------\t---------\t---------\t----\n";
+
     for (int step = 0; step < max_steps; ++step) {
         int y_before = duck->getAnchorCell().y;
-
-        // Log water cell states before swap happens (around step 25-30).
-        if (step >= 25 && step <= 32) {
-            spdlog::info("  === Step {} (before advanceTime) ===", step);
-            for (int y = 0; y < 6; ++y) {
-                const Cell& c = world->getData().at(1, y);
-                spdlog::info("    y={}: {} COM=({:.2f},{:.2f}) vel=({:.2f},{:.2f})",
-                    y, getMaterialName(c.material_type),
-                    c.com.x, c.com.y, c.velocity.x, c.velocity.y);
-            }
-        }
 
         world->advanceTime(deltaTime);
 
         int y_after = duck->getAnchorCell().y;
-        if (y_after != y_before) {
+        bool swapped = (y_after != y_before);
+        if (swapped) {
             swap_count++;
-            spdlog::info("  Step {}: Duck moved y={} -> y={}", step, y_before, y_after);
             final_y = y_after;
+        }
+
+        // Output data every 5 steps, or on swap events, or near interesting times.
+        bool should_log = (step % 5 == 0) || swapped || (step >= 25 && step <= 35);
+        if (should_log) {
+            const Cell& duck_cell = world->getData().at(1, y_after);
+
+            // Get info about cell above the duck (if exists).
+            std::string above_mat = "-";
+            std::string above_com = "-";
+            std::string above_vel = "-";
+            if (y_after > 0) {
+                const Cell& above = world->getData().at(1, y_after - 1);
+                above_mat = getMaterialName(above.material_type);
+                above_com = fmt::format("{:.2f}", above.com.y);
+                above_vel = fmt::format("{:.2f}", above.velocity.y);
+            }
+
+            std::cout << fmt::format("{}\t{}\t{:.2f}\t{:.2f}\t{}\t{}\t{}\t{}\n",
+                step, y_after, duck_cell.com.y, duck_cell.velocity.y,
+                above_mat, above_com, above_vel,
+                swapped ? "SWAP" : "");
         }
 
         // Stop early if duck reached the surface.
@@ -2024,6 +2134,7 @@ TEST_F(DuckTest, DuckFloatsInWater)
             break;
         }
     }
+    std::cout << "=== END TABLE ===\n\n";
 
     spdlog::info("Duck final position: y={} (started at y={}), {} swaps", final_y, initial_y, swap_count);
 
