@@ -618,29 +618,11 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
         return std::move(*this);
     }
 
-    // Check if world resize is needed.
+    // Create fresh world for new scenario.
     const auto& metadata = newScenario->getMetadata();
-    if (metadata.requiredWidth > 0 && metadata.requiredHeight > 0) {
-        if (world->getData().width != metadata.requiredWidth ||
-            world->getData().height != metadata.requiredHeight) {
-            LOG_INFO(
-                State,
-                "Resizing world from {}x{} to {}x{} for scenario '{}'",
-                world->getData().width,
-                world->getData().height,
-                metadata.requiredWidth,
-                metadata.requiredHeight,
-                newScenarioId);
-            world->resizeGrid(metadata.requiredWidth, metadata.requiredHeight);
-        }
-    }
-
-    // Clear world for new scenario.
-    for (uint32_t y = 0; y < world->getData().height; ++y) {
-        for (uint32_t x = 0; x < world->getData().width; ++x) {
-            world->getData().at(x, y) = Cell();
-        }
-    }
+    uint32_t newWidth = (metadata.requiredWidth > 0) ? metadata.requiredWidth : world->getData().width;
+    uint32_t newHeight = (metadata.requiredHeight > 0) ? metadata.requiredHeight : world->getData().height;
+    world = std::make_unique<World>(newWidth, newHeight);
 
     // Clear gamepad-controlled duck mappings (ducks are gone with the old world).
     gamepad_to_duck_.clear();

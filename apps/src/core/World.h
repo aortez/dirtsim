@@ -56,7 +56,6 @@ public:
     // =================================================================
 
     void advanceTime(double deltaTimeSeconds);
-    void reset();
     void setup();
     void applyPhysicsSettings(const PhysicsSettings& settings);
 

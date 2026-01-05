@@ -1,6 +1,7 @@
 #include "core/Cell.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
+#include "core/organisms/OrganismManager.h"
 #include "server/StateMachine.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include "server/states/Idle.h"
@@ -591,4 +592,46 @@ TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked for resize";
     EXPECT_EQ(simRunning.world->getData().width, 100) << "World width should be resized to 100";
     EXPECT_EQ(simRunning.world->getData().height, 100) << "World height should be resized to 100";
+}
+
+/**
+ * @brief Test that ScenarioSwitch clears organisms from previous scenario.
+ */
+TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
+{
+    // Setup: Create initialized SimRunning with Sandbox scenario.
+    SimRunning simRunning = createSimRunningWithWorld();
+    applyCleanScenario(simRunning);
+
+    // Add a duck organism.
+    const uint32_t duckX = 10;
+    const uint32_t duckY = 10;
+    OrganismId duckId = simRunning.world->getOrganismManager().createDuck(
+        *simRunning.world, duckX, duckY);
+
+    // Verify duck exists.
+    ASSERT_NE(duckId, INVALID_ORGANISM_ID);
+    EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 1u);
+    EXPECT_EQ(simRunning.world->getData().at(duckX, duckY).material_type, MaterialType::WOOD);
+
+    // Execute: Switch to Benchmark scenario.
+    bool callbackInvoked = false;
+    Api::ScenarioSwitch::Command cmd;
+    cmd.scenario_id = "Benchmark";
+    Api::ScenarioSwitch::Cwc cwc(cmd, [&](Api::ScenarioSwitch::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+
+    // Verify: Still in SimRunning.
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+
+    // Verify: Callback invoked and organisms cleared.
+    ASSERT_TRUE(callbackInvoked);
+    EXPECT_EQ(simRunning.scenario_id, "Benchmark");
+    EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 0u)
+        << "Organisms should be cleared on scenario switch";
 }

@@ -505,22 +505,6 @@ void World::advanceTime(double deltaTimeSeconds)
     pImpl->data_.timestep++;
 }
 
-void World::reset()
-{
-    spdlog::info("Resetting World to empty state");
-
-    pImpl->data_.timestep = 0;
-    pImpl->data_.removed_mass = 0.0;
-    pImpl->pending_moves_.clear();
-
-    // Clear all cells to air.
-    for (auto& cell : pImpl->data_.cells) {
-        cell.clear();
-    }
-
-    spdlog::info("World reset complete - world is now empty");
-}
-
 // DEPRECATED: World setup now handled by Scenario::setup().
 void World::setup()
 {
