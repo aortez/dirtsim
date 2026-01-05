@@ -25,17 +25,17 @@ public:
 
         switch (current_action_) {
             case DuckAction::RUN_LEFT:
-                duck.setInput({.movement = DuckMovement::LEFT, .jump = false});
+                duck.setInput({.move = {-1.0f, 0.0f}, .jump = false});
                 break;
             case DuckAction::RUN_RIGHT:
-                duck.setInput({.movement = DuckMovement::RIGHT, .jump = false});
+                duck.setInput({.move = {1.0f, 0.0f}, .jump = false});
                 break;
             case DuckAction::JUMP:
-                duck.setInput({.movement = DuckMovement::NONE, .jump = true});
+                duck.setInput({.move = {}, .jump = true});
                 break;
             case DuckAction::WAIT:
             default:
-                duck.setInput({.movement = DuckMovement::NONE, .jump = false});
+                duck.setInput({.move = {}, .jump = false});
                 break;
         }
     }

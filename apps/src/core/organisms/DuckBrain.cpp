@@ -39,17 +39,16 @@ void RandomDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double d
 
     // Build input from current action state.
     bool should_jump = false;
-    DuckMovement movement = DuckMovement::NONE;
+    float move_x = 0.0f;
 
     switch (current_action_) {
     case DuckAction::WAIT:
-        movement = DuckMovement::NONE;
         break;
     case DuckAction::RUN_LEFT:
-        movement = DuckMovement::LEFT;
+        move_x = -1.0f;
         break;
     case DuckAction::RUN_RIGHT:
-        movement = DuckMovement::RIGHT;
+        move_x = 1.0f;
         break;
     case DuckAction::JUMP:
         should_jump = true;
@@ -57,7 +56,7 @@ void RandomDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double d
     }
 
     // Apply input once at the end.
-    duck.setInput({.movement = movement, .jump = should_jump});
+    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
 }
 
 void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
@@ -117,7 +116,7 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
 
     // Build up input state - will be sent once at the end.
     bool should_jump = false;
-    DuckMovement movement = DuckMovement::NONE;
+    float move_x = 0.0f;
 
     // Initialize on first run - pick furthest wall.
     if (!initialized_) {
@@ -164,14 +163,14 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
     // Set movement toward target wall.
     if (target_wall_ == TargetWall::LEFT) {
         current_action_ = DuckAction::RUN_LEFT;
-        movement = DuckMovement::LEFT;
+        move_x = -1.0f;
     } else {
         current_action_ = DuckAction::RUN_RIGHT;
-        movement = DuckMovement::RIGHT;
+        move_x = 1.0f;
     }
 
     // Apply accumulated input state once at the end.
-    duck.setInput({.movement = movement, .jump = should_jump});
+    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
 }
 
 void WallBouncingBrain::pickFurthestWall(const DuckSensoryData& sensory)
@@ -287,7 +286,7 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
 
     // Build up input state - will be sent once at the end.
     bool should_jump = false;
-    DuckMovement movement = DuckMovement::NONE;
+    float move_x = 0.0f;
 
     // Priority: Check if exit door is visible - override everything.
     if (knowledge_.knowsExitWall() && phase_ == Phase::BOUNCING) {
@@ -342,7 +341,7 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
     switch (phase_) {
     case Phase::SEEKING_EXIT_WALL: {
         // Run toward exit side until we find the wall boundary pattern.
-        movement = movementForSide(exit_side);
+        move_x = moveForSide(exit_side);
         current_action_ = (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
 
         // Debug: log sensory grid every 60 frames during seeking.
@@ -396,7 +395,7 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
 
     case Phase::BOUNCING: {
         // Bounce between walls, jumping when appropriate.
-        movement = movementForSide(current_target_);
+        move_x = moveForSide(current_target_);
         current_action_ = (current_target_ == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
 
         // Check if we hit a wall and need to turn around.
@@ -431,13 +430,13 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
 
     case Phase::EXITING:
         // Run toward exit as fast as possible.
-        movement = movementForSide(exit_side);
+        move_x = moveForSide(exit_side);
         current_action_ = (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
         break;
     }
 
     // Apply accumulated input state once at the end.
-    duck.setInput({.movement = movement, .jump = should_jump});
+    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
 
     // Debug logging every 60 frames.
     if (debug_frame_counter_++ % 60 == 0) {
@@ -635,15 +634,15 @@ bool DuckBrain2::isNearMiddle(const DuckSensoryData& sensory) const
     return std::abs(signed_dist_to_center) <= trigger_distance;
 }
 
-DuckMovement DuckBrain2::movementForSide(Side side) const
+float DuckBrain2::moveForSide(Side side) const
 {
     if (side == Side::LEFT) {
-        return DuckMovement::LEFT;
+        return -1.0f;
     }
     else if (side == Side::RIGHT) {
-        return DuckMovement::RIGHT;
+        return 1.0f;
     }
-    return DuckMovement::NONE;
+    return 0.0f;
 }
 
 DuckSituation DuckBrain2::assessSituation(const DuckSensoryData& sensory) const

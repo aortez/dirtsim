@@ -250,7 +250,7 @@ private:
     void updateJumpDistanceLearning(const DuckSensoryData& sensory);
 
     // Actions.
-    DuckMovement movementForSide(Side side) const;
+    float moveForSide(Side side) const;
 };
 
 } // namespace DirtSim

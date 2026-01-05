@@ -188,28 +188,17 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
         }
     }
 
-    // Process movement input (independent of jump).
-    float walk_direction = 0.0f;
-    switch (current_input_.movement) {
-    case DuckMovement::NONE:
-        break;
-    case DuckMovement::LEFT:
-        walk_direction = -1.0f;
-        break;
-    case DuckMovement::RIGHT:
-        walk_direction = 1.0f;
-        break;
-    }
-
     // Apply walking force (only when on ground).
-    if (on_ground_ && std::abs(walk_direction) > 0.01f) {
-        Vector2d walk_force(walk_direction * WALK_FORCE, 0.0);
+    // Brain provides continuous input [-1,1], we scale by WALK_FORCE.
+    float move_x = current_input_.move.x;
+    if (on_ground_ && std::abs(move_x) > 0.01f) {
+        Vector2d walk_force(move_x * WALK_FORCE, 0.0);
         cell.addPendingForce(walk_force);
     }
 
-    // Update facing direction based on walk direction or velocity.
-    if (std::abs(walk_direction) > 0.01f) {
-        facing_.x = (walk_direction > 0) ? 1.0f : -1.0f;
+    // Update facing direction based on move input or velocity.
+    if (std::abs(move_x) > 0.01f) {
+        facing_.x = (move_x > 0) ? 1.0f : -1.0f;
         facing_.y = 0.0f;
     } else if (std::abs(cell.velocity.x) > 0.1) {
         facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;

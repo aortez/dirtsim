@@ -1,15 +1,8 @@
 #pragma once
 
-namespace DirtSim {
+#include "core/Vector2.h"
 
-/**
- * Movement direction for the duck.
- */
-enum class DuckMovement {
-    NONE,  // No movement input (stand still).
-    LEFT,  // Walk left.
-    RIGHT  // Walk right.
-};
+namespace DirtSim {
 
 /**
  * Per-frame input that the brain sends to the duck.
@@ -21,8 +14,8 @@ enum class DuckMovement {
  * both simultaneously (e.g., jump while running right).
  */
 struct DuckInput {
-    DuckMovement movement = DuckMovement::NONE;  // Horizontal movement direction.
-    bool jump = false;                            // Request jump this frame.
+    Vector2f move{};  // Movement force: x [-1,1] left/right, y [-1,1] up/down.
+    bool jump = false;  // Request jump this frame.
 };
 
 } // namespace DirtSim
