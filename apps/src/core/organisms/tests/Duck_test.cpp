@@ -15,6 +15,7 @@ using namespace DirtSim;
 
 /**
  * Test brain that allows explicit control of duck actions.
+ * Supports independent control of movement and jump for air steering tests.
  */
 class TestDuckBrain : public DuckBrain {
 public:
@@ -23,6 +24,15 @@ public:
         (void)sensory;
         (void)deltaTime;
 
+        // If using direct input mode, apply it directly.
+        if (use_direct_input_) {
+            duck.setInput(direct_input_);
+            // Clear jump after one frame (edge-triggered).
+            direct_input_.jump = false;
+            return;
+        }
+
+        // Legacy action-based mode.
         switch (current_action_) {
             case DuckAction::RUN_LEFT:
                 duck.setInput({.move = {-1.0f, 0.0f}, .jump = false});
@@ -41,6 +51,35 @@ public:
     }
 
     void setAction(DuckAction action) { current_action_ = action; }
+
+    // Direct input control for combined movement + jump.
+    void setDirectInput(Vector2f move, bool jump)
+    {
+        use_direct_input_ = true;
+        direct_input_ = {.move = move, .jump = jump};
+    }
+
+    void setMove(Vector2f move)
+    {
+        use_direct_input_ = true;
+        direct_input_.move = move;
+    }
+
+    void triggerJump()
+    {
+        use_direct_input_ = true;
+        direct_input_.jump = true;
+    }
+
+    void clearDirectInput()
+    {
+        use_direct_input_ = false;
+        direct_input_ = {.move = {}, .jump = false};
+    }
+
+private:
+    bool use_direct_input_ = false;
+    DuckInput direct_input_ = {.move = {}, .jump = false};
 };
 
 class DuckTest : public ::testing::Test {
@@ -101,6 +140,84 @@ protected:
             spdlog::info("  {}", row);
         }
     }
+
+    /**
+     * Helper struct for common duck test setup.
+     * Creates a flat world with floor, spawns duck, and settles it.
+     */
+    struct DuckTestSetup {
+        std::unique_ptr<World> world;
+        Duck* duck = nullptr;
+        TestDuckBrain* brain = nullptr;
+        OrganismId duck_id = INVALID_ORGANISM_ID;
+
+        /**
+         * Create a flat world with walls and floor, spawn duck, and let it settle.
+         *
+         * @param width World width.
+         * @param height World height (floor at height-1).
+         * @param duck_x Duck spawn X position.
+         * @param duck_y Duck spawn Y position (typically height-2 for floor level).
+         * @param settle_frames Frames to run for settling (default 20).
+         */
+        static DuckTestSetup create(int width, int height, int duck_x, int duck_y, int settle_frames = 20)
+        {
+            DuckTestSetup setup;
+
+            // Create world.
+            setup.world = std::make_unique<World>(width, height);
+
+            // Clear interior to air.
+            for (int y = 1; y < height - 1; ++y) {
+                for (int x = 1; x < width - 1; ++x) {
+                    setup.world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
+                }
+            }
+
+            // Ensure floor (bottom row).
+            for (int x = 0; x < width; ++x) {
+                setup.world->getData().at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
+            }
+
+            // Create duck with test brain.
+            auto brain_ptr = std::make_unique<TestDuckBrain>();
+            setup.brain = brain_ptr.get();
+
+            OrganismManager& manager = setup.world->getOrganismManager();
+            setup.duck_id = manager.createDuck(*setup.world, duck_x, duck_y, std::move(brain_ptr));
+            setup.duck = manager.getDuck(setup.duck_id);
+
+            // Let duck settle.
+            setup.brain->setAction(DuckAction::WAIT);
+            for (int i = 0; i < settle_frames; ++i) {
+                setup.world->advanceTime(0.016);
+            }
+
+            return setup;
+        }
+
+        // Get duck's current velocity from its cell.
+        Vector2d getVelocity() const
+        {
+            Vector2i pos = duck->getAnchorCell();
+            const Cell& cell = world->getData().at(pos.x, pos.y);
+            return cell.velocity;
+        }
+
+        // Advance simulation by one frame.
+        void advance(double dt = 0.016)
+        {
+            world->advanceTime(dt);
+        }
+
+        // Advance simulation by N frames.
+        void advanceFrames(int frames, double dt = 0.016)
+        {
+            for (int i = 0; i < frames; ++i) {
+                world->advanceTime(dt);
+            }
+        }
+    };
 };
 
 TEST_F(DuckTest, CreateDuckPlacesWoodCell)
@@ -1446,3 +1563,301 @@ INSTANTIATE_TEST_SUITE_P(
         return info.param.name;
     }
 );
+
+// ============================================================================
+// Air Steering Tests (SMB1-style limited air control)
+// ============================================================================
+
+/**
+ * Test: Jumping while moving right and holding right (forward).
+ *
+ * Expected SMB1-style behavior:
+ * - Holding forward while already moving forward should have minimal effect.
+ * - The duck is already near max speed, so additional acceleration is limited.
+ * - Should mostly maintain momentum through the jump arc.
+ */
+TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
+{
+    // Create a taller world for jump testing.
+    // Need height for the duck to actually become airborne.
+    auto setup = DuckTestSetup::create(50, 15, 5, 13);
+    ASSERT_NE(setup.duck, nullptr);
+    ASSERT_TRUE(setup.duck->isOnGround()) << "Duck should be on ground after settling";
+
+    int start_x = setup.duck->getAnchorCell().x;
+    int start_y = setup.duck->getAnchorCell().y;
+    spdlog::info("AirSteeringForward: Duck settled at ({}, {})", start_x, start_y);
+
+    // Phase 1: Build up rightward velocity on ground.
+    setup.brain->setDirectInput({1.0f, 0.0f}, false);
+    setup.advanceFrames(30);
+
+    double vel_before_jump = setup.getVelocity().x;
+    int x_before_jump = setup.duck->getAnchorCell().x;
+    spdlog::info("AirSteeringForward: Before jump - x={}, vel.x={:.2f}", x_before_jump, vel_before_jump);
+
+    ASSERT_GT(vel_before_jump, 1.0) << "Duck should have built up rightward velocity";
+    ASSERT_TRUE(setup.duck->isOnGround()) << "Duck should still be on ground";
+
+    // Phase 2: Jump while holding right.
+    setup.brain->setDirectInput({1.0f, 0.0f}, true);
+    setup.advance();  // Jump frame.
+
+    // Phase 3: Track jump arc using Y position only (ground detection is unreliable).
+    int min_y = start_y;  // Track highest point (lowest Y).
+    int airborne_start_frame = -1;
+    int peak_frame = -1;
+    int landed_frame = -1;
+    double vel_at_airborne_start = 0.0;
+    std::vector<double> air_velocities;
+
+    for (int frame = 0; frame < 150; ++frame) {
+        setup.advance();
+        int y = setup.duck->getAnchorCell().y;
+        double vel_x = setup.getVelocity().x;
+        double vel_y = setup.getVelocity().y;
+
+        // Detect when we actually become airborne (y decreases from start).
+        if (airborne_start_frame < 0 && y < start_y) {
+            airborne_start_frame = frame;
+            vel_at_airborne_start = vel_x;
+            spdlog::info("AirSteeringForward: Became airborne at frame {}, y={}, vel.x={:.2f}",
+                frame, y, vel_x);
+        }
+
+        // Track peak of jump (minimum y).
+        if (airborne_start_frame >= 0) {
+            air_velocities.push_back(vel_x);
+            if (y < min_y) {
+                min_y = y;
+                peak_frame = frame;
+            }
+        }
+
+        // Log key frames.
+        if (frame % 10 == 0) {
+            spdlog::info("  Frame {}: pos=({},{}), vel=({:.2f},{:.2f})",
+                frame, setup.duck->getAnchorCell().x, y, vel_x, vel_y);
+        }
+
+        // Detect landing: after reaching peak, Y returns to start_y or higher.
+        if (peak_frame >= 0 && y >= start_y) {
+            landed_frame = frame;
+            spdlog::info("AirSteeringForward: Landed at frame {}, y={}", frame, y);
+            break;
+        }
+    }
+
+    // Verify we actually had a proper jump arc.
+    ASSERT_GE(airborne_start_frame, 0) << "Duck should have become airborne";
+    ASSERT_GE(peak_frame, airborne_start_frame) << "Duck should have reached a peak";
+    ASSERT_LT(min_y, start_y) << "Duck should have jumped above starting Y";
+    ASSERT_GE(landed_frame, peak_frame) << "Duck should have landed after peak";
+
+    int x_after_jump = setup.duck->getAnchorCell().x;
+    double vel_after_land = setup.getVelocity().x;
+    int air_frames = landed_frame - airborne_start_frame;
+
+    spdlog::info("AirSteeringForward: After landing - x={}, vel.x={:.2f}", x_after_jump, vel_after_land);
+    spdlog::info("AirSteeringForward: Air phase: {} frames, peak at y={}", air_frames, min_y);
+
+    // Assertions for SMB1-style behavior:
+    // 1. Duck should have moved forward during jump.
+    EXPECT_GT(x_after_jump, x_before_jump) << "Duck should move forward during jump";
+
+    // 2. For forward input while moving forward, velocity should be roughly maintained.
+    double vel_change_during_air = vel_after_land - vel_at_airborne_start;
+    spdlog::info("AirSteeringForward: Velocity change during air phase: {:.2f}", vel_change_during_air);
+}
+
+/**
+ * Test: Air steering should cause different deceleration based on input direction.
+ *
+ * This test compares two identical jumps:
+ * 1. Jump while holding FORWARD (right) - should maintain/gain speed
+ * 2. Jump while holding BACKWARD (left) - should lose speed faster
+ *
+ * Expected SMB1-style behavior:
+ * - Backward input mid-air should cause MORE deceleration than forward input.
+ * - This test FAILS until air steering is implemented (currently both show same decel).
+ */
+TEST_F(DuckTest, AirSteeringBackwardDecelsFasterThanForward)
+{
+    // Helper lambda to run a jump scenario and return velocity change.
+    auto runJumpScenario = [](float air_input_x, const char* label) -> double {
+        auto setup = DuckTestSetup::create(50, 15, 5, 13);
+        if (!setup.duck || !setup.duck->isOnGround()) {
+            return 0.0;  // Setup failed.
+        }
+
+        int start_y = setup.duck->getAnchorCell().y;
+
+        // Build up rightward velocity on ground.
+        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.advanceFrames(30);
+
+        double vel_before_jump = setup.getVelocity().x;
+        spdlog::info("{}: Before jump vel.x={:.2f}", label, vel_before_jump);
+
+        // Jump.
+        setup.brain->setDirectInput({1.0f, 0.0f}, true);
+        setup.advance();
+
+        // Track jump arc, apply air input when airborne.
+        int min_y = start_y;
+        int airborne_start_frame = -1;
+        int peak_frame = -1;
+        double vel_at_airborne_start = 0.0;
+        double vel_at_land = 0.0;
+
+        for (int frame = 0; frame < 150; ++frame) {
+            setup.advance();
+            int y = setup.duck->getAnchorCell().y;
+            double vel_x = setup.getVelocity().x;
+
+            // Detect airborne and apply air input.
+            if (airborne_start_frame < 0 && y < start_y) {
+                airborne_start_frame = frame;
+                vel_at_airborne_start = vel_x;
+                setup.brain->setMove({air_input_x, 0.0f});
+                spdlog::info("{}: Airborne at frame {}, vel.x={:.2f}, input={:.1f}",
+                    label, frame, vel_x, air_input_x);
+            }
+
+            // Track peak.
+            if (airborne_start_frame >= 0 && y < min_y) {
+                min_y = y;
+                peak_frame = frame;
+            }
+
+            // Detect landing.
+            if (peak_frame >= 0 && y >= start_y) {
+                vel_at_land = vel_x;
+                spdlog::info("{}: Landed at frame {}, vel.x={:.2f}", label, frame, vel_x);
+                break;
+            }
+        }
+
+        double vel_change = vel_at_land - vel_at_airborne_start;
+        spdlog::info("{}: Velocity change during air: {:.2f}", label, vel_change);
+        return vel_change;
+    };
+
+    // Run both scenarios.
+    double vel_change_forward = runJumpScenario(1.0f, "Forward");
+    double vel_change_backward = runJumpScenario(-1.0f, "Backward");
+
+    spdlog::info("=== Air Steering Comparison ===");
+    spdlog::info("Forward input:  vel_change = {:.2f}", vel_change_forward);
+    spdlog::info("Backward input: vel_change = {:.2f}", vel_change_backward);
+    spdlog::info("Difference: {:.2f}", vel_change_backward - vel_change_forward);
+
+    // KEY ASSERTION: Backward input should cause MORE deceleration than forward.
+    // (More negative = more deceleration.)
+    // This will FAIL until air steering is implemented.
+    constexpr double MIN_DIFFERENCE = 2.0;  // Backward should decel at least 2 units more.
+    EXPECT_LT(vel_change_backward, vel_change_forward - MIN_DIFFERENCE)
+        << "Backward air input should cause more deceleration than forward input. "
+        << "Forward: " << vel_change_forward << ", Backward: " << vel_change_backward
+        << ". This test requires air steering to be implemented.";
+
+    // Both should still show some deceleration (from air resistance at minimum).
+    EXPECT_LT(vel_change_forward, 0.0) << "Forward should still decelerate from air resistance";
+    EXPECT_LT(vel_change_backward, 0.0) << "Backward should decelerate";
+}
+
+/**
+ * @brief Test that duck (single-cell organism) can float in water via buoyancy.
+ *
+ * This tests the fix for the bug where organism cells were blocked from
+ * participating in buoyancy swaps. Single-cell organisms like Duck should
+ * use normal cell physics (including swaps), while rigid body organisms
+ * like Goose should resist displacement.
+ */
+TEST_F(DuckTest, DuckFloatsInWater)
+{
+    // Enable swap logging to verify the swap mechanism.
+    LoggingChannels::initialize();
+    LoggingChannels::setChannelLevel(LogChannel::Swap, spdlog::level::info);
+
+    spdlog::info("=== DuckFloatsInWater ===");
+
+    // Create a 3x6 world (narrow column of water with duck submerged).
+    auto world = std::make_unique<World>(3, 6);
+    world->setWallsEnabled(false);
+
+    // Configure physics for buoyancy testing.
+    world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
+    world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
+    world->getPhysicsSettings().swap_enabled = true;
+    world->getPhysicsSettings().gravity = 9.81;
+
+    // Fill the middle column with water, duck submerged at bottom.
+    // Layout: [W=water, D=duck, .=air]
+    //   . W .   y=0
+    //   . W .   y=1
+    //   . W .   y=2
+    //   . D .   y=3 (duck starts here, submerged)
+    //   . W .   y=4
+    //   . W .   y=5
+    for (int y = 0; y < 6; ++y) {
+        if (y != 3) {
+            world->addMaterialAtCell(1, y, MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Create duck at (1, 3) - submerged in water.
+    OrganismId duck_id = world->getOrganismManager().createDuck(*world, 1, 3);
+    ASSERT_NE(duck_id, INVALID_ORGANISM_ID);
+
+    Duck* duck = world->getOrganismManager().getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    int initial_y = duck->getAnchorCell().y;
+    spdlog::info("Duck starts at y={}", initial_y);
+    EXPECT_EQ(initial_y, 3);
+
+    // Run simulation - duck should float upward.
+    const double deltaTime = 0.016;
+    const int max_steps = 500;
+    int final_y = initial_y;
+    int swap_count = 0;
+
+    for (int step = 0; step < max_steps; ++step) {
+        int y_before = duck->getAnchorCell().y;
+
+        // Log water cell states before swap happens (around step 25-30).
+        if (step >= 25 && step <= 32) {
+            spdlog::info("  === Step {} (before advanceTime) ===", step);
+            for (int y = 0; y < 6; ++y) {
+                const Cell& c = world->getData().at(1, y);
+                spdlog::info("    y={}: {} COM=({:.2f},{:.2f}) vel=({:.2f},{:.2f})",
+                    y, getMaterialName(c.material_type),
+                    c.com.x, c.com.y, c.velocity.x, c.velocity.y);
+            }
+        }
+
+        world->advanceTime(deltaTime);
+
+        int y_after = duck->getAnchorCell().y;
+        if (y_after != y_before) {
+            swap_count++;
+            spdlog::info("  Step {}: Duck moved y={} -> y={}", step, y_before, y_after);
+            final_y = y_after;
+        }
+
+        // Stop early if duck reached the surface.
+        if (y_after == 0) {
+            spdlog::info("  Duck reached surface at step {}", step);
+            break;
+        }
+    }
+
+    spdlog::info("Duck final position: y={} (started at y={}), {} swaps", final_y, initial_y, swap_count);
+
+    // Duck should have floated upward (y decreased).
+    EXPECT_LT(final_y, initial_y)
+        << "Duck (WOOD, density 0.3) should float upward through water (density 1.0)";
+    EXPECT_GE(swap_count, 1)
+        << "Duck should participate in buoyancy swaps (not blocked by organism check)";
+}
