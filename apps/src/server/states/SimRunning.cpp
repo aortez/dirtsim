@@ -126,6 +126,15 @@ void SimRunning::tick(StateMachine& dsm)
             uint32_t spawn_x = world->getData().width / 2;
             uint32_t spawn_y = 2;
 
+            // Check if spawn location is occupied.
+            Vector2i spawn_pos{ static_cast<int>(spawn_x), static_cast<int>(spawn_y) };
+            OrganismId blocking = world->getOrganismManager().at(spawn_pos);
+            if (blocking != INVALID_ORGANISM_ID) {
+                spdlog::warn("SimRunning: Gamepad {} spawn blocked by organism {} at ({}, {})",
+                    i, blocking, spawn_x, spawn_y);
+                continue;
+            }
+
             auto brain = std::make_unique<PlayerDuckBrain>();
             OrganismId duck_id = world->getOrganismManager().createDuck(
                 *world, spawn_x, spawn_y, std::move(brain));

@@ -13,6 +13,7 @@
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
@@ -910,12 +911,63 @@ void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, dou
 
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
 {
-    // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
-    std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
-
     // Spawn duck in the door opening.
     uint32_t duck_x = static_cast<uint32_t>(state.entrance_door_pos.x);
     uint32_t duck_y = static_cast<uint32_t>(state.entrance_door_pos.y);
+    Vector2i spawn_pos{ static_cast<int>(duck_x), static_cast<int>(duck_y) };
+
+    // Check if spawn location is blocked by another organism.
+    OrganismId blocking = world.getOrganismManager().at(spawn_pos);
+    if (blocking != INVALID_ORGANISM_ID) {
+        // Try to displace the blocking organism to an adjacent empty cell.
+        static constexpr std::array<std::pair<int, int>, 4> directions = {
+            {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+        };
+
+        Vector2i best_neighbor{-1, -1};
+        for (auto [dx, dy] : directions) {
+            int nx = spawn_pos.x + dx;
+            int ny = spawn_pos.y + dy;
+
+            if (nx < 0 || ny < 0 ||
+                static_cast<uint32_t>(nx) >= world.getData().width ||
+                static_cast<uint32_t>(ny) >= world.getData().height) {
+                continue;
+            }
+
+            Vector2i neighbor_pos{nx, ny};
+
+            // Skip if occupied by another organism.
+            if (world.getOrganismManager().at(neighbor_pos) != INVALID_ORGANISM_ID) {
+                continue;
+            }
+
+            // Skip walls.
+            const Cell& neighbor = world.getData().at(nx, ny);
+            if (neighbor.material_type == MaterialType::WALL) {
+                continue;
+            }
+
+            best_neighbor = neighbor_pos;
+            break;
+        }
+
+        if (best_neighbor.x < 0) {
+            // Can't displace - skip spawn for this frame.
+            spdlog::info("ClockScenario: Cannot displace organism {} from spawn location ({}, {}), waiting...",
+                blocking, duck_x, duck_y);
+            return;
+        }
+
+        // Displace the blocking organism by swapping cells.
+        spdlog::info("ClockScenario: Displacing organism {} from ({},{}) to ({},{}) for duck spawn",
+            blocking, spawn_pos.x, spawn_pos.y, best_neighbor.x, best_neighbor.y);
+        world.swapCells(spawn_pos, best_neighbor);
+    }
+
+    // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
+    std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
+
     state.organism_id = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
 
     spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",

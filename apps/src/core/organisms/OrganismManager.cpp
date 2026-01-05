@@ -201,6 +201,16 @@ OrganismId OrganismManager::createDuck(
     uint32_t y,
     std::unique_ptr<DuckBrain> brain)
 {
+    Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
+
+    // Check if spawn location is already occupied by another organism.
+    OrganismId existing = at(pos);
+    if (existing != INVALID_ORGANISM_ID) {
+        spdlog::warn("OrganismManager::createDuck: Spawn location ({}, {}) already occupied by organism {}",
+            x, y, existing);
+        DIRTSIM_ASSERT(false, "createDuck: Spawn location already occupied by another organism");
+    }
+
     OrganismId id = next_id_++;
 
     // Use default brain if none provided.
@@ -210,7 +220,6 @@ OrganismId OrganismManager::createDuck(
 
     auto duck = std::make_unique<Duck>(id, std::move(brain));
 
-    Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
     duck->setAnchorCell(pos);
 
     // Place duck as WOOD cell in world (replace whatever is there).
