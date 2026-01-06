@@ -297,6 +297,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
+    src/core/scenarios/clock_scenario/MarqueeTypes.cpp
     src/core/scenarios/clock_scenario/MeltdownEvent.cpp
     src/core/scenarios/clock_scenario/ObstacleManager.cpp
     src/core/scenarios/clock_scenario/RainEvent.cpp
@@ -512,6 +513,7 @@ add_executable(dirtsim-tests
     src/core/tests/WorldResize_test.cpp
 
     # Scenario tests.
+    src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
 
     # Organism tests.

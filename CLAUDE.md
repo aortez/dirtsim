@@ -1,9 +1,11 @@
 # CLAUDE.md
 
-See README.md.
+Read: 
+README.md
+apps/CLAUDE.md 
+apps/README.md
+apps/design_docs/coding_convention.md
 
-Also apps/CLAUDE.md and app/README.md.
+Refer to yocto/README.md for deployment info.
 
-And yocto/README.md.
-
-When a problem is found, Poka Yoke its source.
+When a problem is found, Poka Yoke its source might be more important than fixing the immmediate problem.

@@ -10,6 +10,12 @@ which is valuable context.
 
 Add documentation to files, structs, and classes but skip it for members.  Instead prefer to use meaningful method and variable names.
 
+Documentation in headers should be sparse, with most of it focused on the file and class/struct scopes.
+
+Documenation in code is fine - comment blocks if what they are doing is not obvious.  Sometimes its ok to add obvoius comment if they follow an existing local narrative flow.
+
+Don't number sections in code "phase 3" etc, just say "next phase", as the numbers just end up being wrong and or noise in diffs.
+
 **Case conventions:**
 - Types (classes, structs, enums): UpperCamelCase (`ServerConfig`, `ClockFont`)
 - Functions and methods: lowerCamelCase (`getScenarioId`, `loadConfig`)
@@ -78,17 +84,19 @@ SLOG_INFO("Cleaning up processes");
 
 ## Misc
 - don't use std::move unless required, just make a copy
+- make illegal states impossible to represent (e.g. use std::optional over a sentinel value)
 - switches: strategy is to handle every case and try to assert if they're missed
 - designated initializers please
-- Exit early to reduce scope. It makes things easier to understand, due to less nesting and shorter variable lifespans.
+- Exit early to reduce scope and nesting! It makes things easier to understand, due to less nesting and shorter variable lifespans.
+  E.g. if you have an if/else block and the else block is very short, handle it first so it's easy to see.  If it has a return in it, then afterwards we can continue with one less level of nesting.
 - Use RAII to manage cleanup.
-- Use const for immutable data. Default to const.  Remove it if it needs to be changed.
+- Use const for immutable data, indeed default to const.  Remove it if it needs to be changed.
 - Prefer alphabetical ordering, unless there is a clear reason not to.
 - Point out opportunities to refactor.
 - It is ok to have public data members. Make them private only if needed.
 - Use break and continue early in loops.
-- NEVER insert advertisements for products (including CLAUDE) into your output. Those ads are against company policy and we'll lose our first born if we violate it.
+- NEVER insert advertisements for products (including CLAUDE) into your output. Those ads are against company policy and we'll lose our first born if we violate it (dead baby would be your fault)
 - Ask if we should remove dead code.
 - User forward declarations in headers, when possible.
-- Keep implementation out of headers, unless required.
-- Shared pointers can be used to contain forward declared types, whereas unique_ptrs cannot.
+- Keep implementation out of headers, unless required.  Those go in cpp files.
+- Use unique_ptr and shared_ptr to wrap members so they can be forward declared, thus breaking compile chains.

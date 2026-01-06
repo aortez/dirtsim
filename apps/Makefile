@@ -72,7 +72,9 @@ all: release
 release:
 	@echo "Building release version..."
 	$(call start_build)
-	@cmake -B $(BUILD_RELEASE_DIR) -S . -DCMAKE_BUILD_TYPE=Release
+	@if [ ! -f "$(BUILD_RELEASE_DIR)/CMakeCache.txt" ]; then \
+		cmake -B $(BUILD_RELEASE_DIR) -S . -DCMAKE_BUILD_TYPE=Release; \
+	fi
 	@$(MAKE) -C $(BUILD_RELEASE_DIR) -j$(JOBS)
 	$(call show_build_stats)
 
@@ -83,9 +85,11 @@ release-verify: release
 debug:
 	@echo "Building debug version..."
 	$(call start_build)
-	@cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
-		-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG" \
-		-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG"
+	@if [ ! -f "$(BUILD_DEBUG_DIR)/CMakeCache.txt" ]; then \
+		cmake -B $(BUILD_DEBUG_DIR) -S . -DCMAKE_BUILD_TYPE=Debug \
+			-DCMAKE_C_FLAGS="-g -O0 -DLOG_DEBUG" \
+			-DCMAKE_CXX_FLAGS="-g -O0 -DLOG_DEBUG"; \
+	fi
 	@$(MAKE) -C $(BUILD_DEBUG_DIR) -j$(JOBS)
 	$(call show_build_stats)
 

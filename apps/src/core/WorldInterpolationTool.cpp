@@ -59,6 +59,23 @@ std::vector<Cell> WorldInterpolationTool::generateInterpolatedCellsB(
             double srcX = (static_cast<double>(newX) + 0.5) * scaleX - 0.5;
             double srcY = (static_cast<double>(newY) + 0.5) * scaleY - 0.5;
 
+            // Edge preservation: NEW edge cells sample only from OLD edge cells.
+            // This ensures walls/boundaries scale proportionally without dilution.
+            // When shrinking, without this fix, edge cells would blend with interior
+            // and walls could disappear due to nearest-neighbor material selection.
+            if (newX == 0) {
+                srcX = std::min(srcX, 0.49);  // Force nearest-neighbor to pick left edge.
+            }
+            if (newX == newWidth - 1) {
+                srcX = std::max(srcX, static_cast<double>(oldWidth - 1) + 0.01);
+            }
+            if (newY == 0) {
+                srcY = std::min(srcY, 0.49);  // Force nearest-neighbor to pick top edge.
+            }
+            if (newY == newHeight - 1) {
+                srcY = std::max(srcY, static_cast<double>(oldHeight - 1) + 0.01);
+            }
+
             // Get integer source coordinates and fractional parts.
             int srcX0 = static_cast<int>(std::floor(srcX));
             int srcY0 = static_cast<int>(std::floor(srcY));
