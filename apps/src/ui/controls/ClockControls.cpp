@@ -204,6 +204,17 @@ void ClockControls::createMainView(lv_obj_t* view)
     lv_obj_set_style_border_width(marqueeRow, 0, 0);
     lv_obj_clear_flag(marqueeRow, LV_OBJ_FLAG_SCROLLABLE);
 
+    // Digit slide event toggle.
+    digitSlideSwitch_ = LVGLBuilder::actionButton(marqueeRow)
+                            .text("Slide")
+                            .mode(LVGLBuilder::ActionMode::Toggle)
+                            .size(80)
+                            .checked(false)
+                            .textColor(0xFFAA00)  // Orange text.
+                            .glowColor(0xFFAA00)  // Orange glow for slide effect.
+                            .callback(onDigitSlideToggled, this)
+                            .buildOrLog();
+
     // Marquee event toggle.
     marqueeSwitch_ = LVGLBuilder::actionButton(marqueeRow)
                          .text("Marquee")
@@ -442,6 +453,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated duck button to {}", config.duckEnabled);
     }
 
+    // Update digit slide button.
+    if (digitSlideSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(digitSlideSwitch_, config.digitSlideEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated digit slide button to {}", config.digitSlideEnabled);
+    }
+
     // Update marquee button.
     if (marqueeSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(marqueeSwitch_, config.marqueeEnabled);
@@ -511,6 +528,11 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Get duck enabled from button.
     if (duckSwitch_) {
         config.duckEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(duckSwitch_);
+    }
+
+    // Get digit slide enabled from button.
+    if (digitSlideSwitch_) {
+        config.digitSlideEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(digitSlideSwitch_);
     }
 
     // Get marquee enabled from button.
@@ -806,6 +828,30 @@ void ClockControls::onColorShowcaseToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorShowcaseSwitch_);
 
     spdlog::info("ClockControls: Color showcase toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onDigitSlideToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onDigitSlideToggled called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring digit slide toggle during initialization");
+        return;
+    }
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->digitSlideSwitch_);
+
+    spdlog::info("ClockControls: Digit slide toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();

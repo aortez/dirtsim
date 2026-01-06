@@ -14,6 +14,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <optional>
 #include <random>
 
 namespace DirtSim {
@@ -63,11 +64,16 @@ public:
     size_t getActiveEventCount() const;
     const EventTimingConfig& getEventTiming(ClockEventType type) const;
 
+    // Time override for testing.
+    void setTimeOverride(const std::string& time_str);
+    void clearTimeOverride();
+
 private:
     ScenarioMetadata metadata_;
     Config::Clock config_;
     ClockEventConfigs event_configs_;
     std::string last_drawn_time_;
+    std::optional<std::string> time_override_;  // For testing.
 
     // Event system.
     std::map<ClockEventType, ActiveEvent> active_events_;

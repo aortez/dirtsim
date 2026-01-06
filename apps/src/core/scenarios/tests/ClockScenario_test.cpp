@@ -474,6 +474,76 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
 }
 
 // =============================================================================
+// Digit Slide Event Tests
+// =============================================================================
+
+TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
+{
+    // Helper to find digit Y positions.
+    auto getDigitYPositions = [](const WorldData& data) {
+        std::vector<int> y_positions;
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    y_positions.push_back(static_cast<int>(y));
+                }
+            }
+        }
+        return y_positions;
+    };
+
+    // Set initial time and enable digit slide.
+    scenario_->setTimeOverride("1 2 : 3 4");
+
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.digitSlideEnabled = true;
+    config.eventFrequency = 1.0;  // Enable events.
+    scenario_->setConfig(config, *world_);
+
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DIGIT_SLIDE));
+
+    // Run a few ticks to establish the initial state.
+    for (int i = 0; i < 5; ++i) {
+        scenario_->tick(*world_, 0.016);
+    }
+
+    // Record initial Y positions.
+    auto initial_positions = getDigitYPositions(world_->getData());
+    ASSERT_FALSE(initial_positions.empty()) << "Should have digit cells";
+
+    // Find the min/max Y to understand the digit bounds.
+    int min_y = *std::min_element(initial_positions.begin(), initial_positions.end());
+    int max_y = *std::max_element(initial_positions.begin(), initial_positions.end());
+    std::cout << "Initial digit Y range: " << min_y << " to " << max_y << "\n";
+
+    // Change the time (last digit changes from 4 to 5).
+    scenario_->setTimeOverride("1 2 : 3 5");
+
+    // Tick once to trigger the animation.
+    scenario_->tick(*world_, 0.016);
+
+    // Now tick partway through the animation (animation takes 0.5s at speed 2.0).
+    scenario_->tick(*world_, 0.2);
+
+    // Get positions mid-animation.
+    auto mid_positions = getDigitYPositions(world_->getData());
+
+    // During animation, we should see digits at different Y positions than before.
+    // The old digit slides down (Y increases) and new digit slides in from above.
+    int mid_min_y = mid_positions.empty() ? min_y : *std::min_element(mid_positions.begin(), mid_positions.end());
+    int mid_max_y = mid_positions.empty() ? max_y : *std::max_element(mid_positions.begin(), mid_positions.end());
+
+    std::cout << "Mid-animation digit Y range: " << mid_min_y << " to " << mid_max_y << "\n";
+
+    // The animation should have expanded the Y range (new digit coming from above,
+    // old digit sliding down).
+    bool animation_visible = (mid_min_y < min_y) || (mid_max_y > max_y);
+    EXPECT_TRUE(animation_visible)
+        << "Animation should show digits at different Y positions than static display";
+}
+
+// =============================================================================
 // Marquee Event Tests
 // =============================================================================
 
@@ -542,4 +612,173 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
 
     EXPECT_EQ(sorted_initial, sorted_final)
         << "Digits should be at their default positions when marquee ends";
+}
+
+// =============================================================================
+// Combined Event Tests
+// =============================================================================
+
+TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
+{
+    // This test verifies that when both COLOR_SHOWCASE and DIGIT_SLIDE events are
+    // active, all digit cells maintain a consistent material during animation.
+    // Bug: Without proper time tracking, showcase would cycle colors every frame
+    // during slide animation, causing visible flashing.
+
+    // Helper to get all digit cell materials.
+    auto getDigitMaterials = [](const WorldData& data) {
+        std::vector<MaterialType> materials;
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    materials.push_back(static_cast<MaterialType>(cell.render_as));
+                }
+            }
+        }
+        return materials;
+    };
+
+    // Set initial time.
+    scenario_->setTimeOverride("1 2 : 3 4");
+
+    // Enable both showcase and slide events.
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.colorShowcaseEnabled = true;
+    config.digitSlideEnabled = true;
+    config.eventFrequency = 1.0;  // Enable events.
+    scenario_->setConfig(config, *world_);
+
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_SHOWCASE));
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DIGIT_SLIDE));
+
+    // Run a few ticks to establish initial state.
+    for (int i = 0; i < 5; ++i) {
+        scenario_->tick(*world_, 0.016);
+    }
+
+    // Record the initial showcase material.
+    auto initial_materials = getDigitMaterials(world_->getData());
+    ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
+
+    MaterialType initial_showcase = initial_materials[0];
+    std::cout << "Initial showcase material: " << getMaterialName(initial_showcase) << "\n";
+
+    // Change the time to trigger slide animation.
+    // Showcase will change color once (expected), then stay consistent.
+    scenario_->setTimeOverride("1 2 : 3 5");
+
+    // Tick once to detect the time change and start animation.
+    scenario_->tick(*world_, 0.016);
+
+    // Sample materials during the slide animation (should take ~0.5s at speed 2.0).
+    // We sample multiple times during the animation to catch any flashing.
+    std::map<MaterialType, int> material_counts;
+    int num_samples = 0;
+
+    for (int frame = 0; frame < 30; ++frame) {  // ~0.5s of animation at 60fps.
+        scenario_->tick(*world_, 0.016);
+
+        auto frame_materials = getDigitMaterials(world_->getData());
+        for (const auto& mat : frame_materials) {
+            material_counts[mat]++;
+            num_samples++;
+        }
+    }
+
+    // Print material distribution.
+    std::cout << "\n=== Material Distribution During Animation ===\n";
+    for (const auto& [mat, count] : material_counts) {
+        double pct = 100.0 * count / num_samples;
+        std::cout << "  " << getMaterialName(mat) << ": " << count
+                  << " samples (" << pct << "%)\n";
+    }
+
+    // METAL should NOT appear during showcase+slide (that indicates showcase reset bug).
+    auto metal_it = material_counts.find(MaterialType::METAL);
+    EXPECT_TRUE(metal_it == material_counts.end())
+        << "Found METAL material during animation. METAL appeared "
+        << (metal_it != material_counts.end() ? metal_it->second : 0)
+        << " times. This indicates the showcase event incorrectly reset to METAL.";
+
+    // All frames should use the same material (no rapid cycling through all colors).
+    // Showcase changes once when time changes, then stays consistent.
+    EXPECT_EQ(material_counts.size(), 1u)
+        << "Should see exactly 1 material during animation (no rapid cycling). "
+        << "Found " << material_counts.size() << " different materials.";
+}
+
+TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
+{
+    // Similar test for showcase + marquee combination.
+
+    auto getDigitMaterials = [](const WorldData& data) {
+        std::vector<MaterialType> materials;
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    materials.push_back(static_cast<MaterialType>(cell.render_as));
+                }
+            }
+        }
+        return materials;
+    };
+
+    // Enable both showcase and marquee events.
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.colorShowcaseEnabled = true;
+    config.marqueeEnabled = true;
+    config.eventFrequency = 1.0;
+    scenario_->setConfig(config, *world_);
+
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_SHOWCASE));
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::MARQUEE));
+
+    // Run a few ticks and get the showcase material.
+    for (int i = 0; i < 5; ++i) {
+        scenario_->tick(*world_, 0.016);
+    }
+
+    auto initial_materials = getDigitMaterials(world_->getData());
+    ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
+
+    MaterialType showcase_material = initial_materials[0];
+    std::cout << "Showcase material: " << getMaterialName(showcase_material) << "\n";
+
+    // Sample materials during marquee animation.
+    std::map<MaterialType, int> material_counts;
+    int num_samples = 0;
+
+    for (int frame = 0; frame < 60; ++frame) {  // ~1s of animation.
+        scenario_->tick(*world_, 0.016);
+        world_->advanceTime(0.016);
+
+        auto frame_materials = getDigitMaterials(world_->getData());
+        for (const auto& mat : frame_materials) {
+            material_counts[mat]++;
+            num_samples++;
+        }
+    }
+
+    // Print material distribution.
+    std::cout << "\n=== Material Distribution During Marquee ===\n";
+    for (const auto& [mat, count] : material_counts) {
+        double pct = 100.0 * count / num_samples;
+        std::cout << "  " << getMaterialName(mat) << ": " << count
+                  << " samples (" << pct << "%)\n";
+    }
+
+    // METAL should NOT appear during showcase+marquee.
+    auto metal_it = material_counts.find(MaterialType::METAL);
+    if (metal_it != material_counts.end() && showcase_material != MaterialType::METAL) {
+        FAIL() << "Found METAL material during marquee when showcase material was "
+               << getMaterialName(showcase_material)
+               << ". METAL appeared " << metal_it->second << " times out of "
+               << num_samples << " samples.";
+    }
+
+    // Should see at most 2 materials (no rapid cycling).
+    EXPECT_LE(material_counts.size(), 2u)
+        << "Should see at most 2 different materials during marquee (no rapid cycling)";
 }

@@ -66,6 +66,7 @@ private:
     lv_obj_t* meltButton_ = nullptr;
     lv_obj_t* colorCycleSwitch_ = nullptr;
     lv_obj_t* colorShowcaseSwitch_ = nullptr;
+    lv_obj_t* digitSlideSwitch_ = nullptr;
     lv_obj_t* marqueeSwitch_ = nullptr;
     lv_obj_t* rainSwitch_ = nullptr;
     lv_obj_t* duckSwitch_ = nullptr;
@@ -106,6 +107,7 @@ private:
     static void onMeltClicked(lv_event_t* e);
     static void onColorCycleToggled(lv_event_t* e);
     static void onColorShowcaseToggled(lv_event_t* e);
+    static void onDigitSlideToggled(lv_event_t* e);
     static void onMarqueeToggled(lv_event_t* e);
     static void onRainToggled(lv_event_t* e);
     static void onDuckToggled(lv_event_t* e);
