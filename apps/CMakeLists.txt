@@ -391,6 +391,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/SimPlayground.cpp
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
+    src/ui/rendering/FontSampler.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
@@ -527,6 +528,9 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
+
+    # UI tests.
+    src/ui/tests/FontSampler_test.cpp
 )
 target_link_libraries(dirtsim-tests
     PRIVATE
