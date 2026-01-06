@@ -1,4 +1,5 @@
 #include "core/scenarios/clock_scenario/MarqueeTypes.h"
+#include <cmath>
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
@@ -247,4 +248,178 @@ TEST(MarqueeTypesTest, HorizontalScroll_ClampsToZeroOnFinish)
     EXPECT_DOUBLE_EQ(state.viewport_x, 0.0);
     EXPECT_DOUBLE_EQ(frame.viewportX, 0.0);
     EXPECT_TRUE(frame.finished);
+}
+
+// =============================================================================
+// VerticalSlide Tests
+// =============================================================================
+
+TEST(MarqueeTypesTest, VerticalSlide_InitializesState)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    EXPECT_DOUBLE_EQ(state.speed, 2.0);
+    EXPECT_EQ(state.digit_width, 10);
+    EXPECT_EQ(state.digit_gap, 2);
+    EXPECT_EQ(state.digit_height, 15);
+    EXPECT_EQ(state.colon_width, 5);
+    EXPECT_FALSE(state.active);
+    EXPECT_TRUE(state.changing_digits.empty());
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_NoChangeDoesNotStartAnimation)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 4");
+
+    EXPECT_FALSE(started);
+    EXPECT_FALSE(state.active);
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_ChangeStartsAnimation)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
+
+    EXPECT_TRUE(started);
+    EXPECT_TRUE(state.active);
+    EXPECT_EQ(state.changing_digits.size(), 1u);  // Only the last digit changed.
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_TracksCorrectChangingDigits)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    // Change from "1 2 : 3 4" to "1 2 : 4 5" (two digits change).
+    bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 4 5");
+
+    EXPECT_TRUE(started);
+    EXPECT_EQ(state.changing_digits.size(), 2u);
+
+    // Find the changed digits.
+    bool found_3_to_4 = false;
+    bool found_4_to_5 = false;
+    for (const auto& slide : state.changing_digits) {
+        if (slide.old_char == '3' && slide.new_char == '4') {
+            found_3_to_4 = true;
+        }
+        if (slide.old_char == '4' && slide.new_char == '5') {
+            found_4_to_5 = true;
+        }
+    }
+    EXPECT_TRUE(found_3_to_4);
+    EXPECT_TRUE(found_4_to_5);
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_UpdateAdvancesProgress)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
+    ASSERT_TRUE(state.active);
+    ASSERT_EQ(state.changing_digits.size(), 1u);
+    EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 0.0);
+
+    // Update with 0.25s at speed 2.0 = 0.5 progress.
+    auto frame = updateVerticalSlide(state, 0.25);
+
+    EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 0.5);
+    EXPECT_FALSE(frame.finished);
+    EXPECT_TRUE(state.active);
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_CompletesWhenProgressReachesOne)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
+
+    // Update with 0.6s at speed 2.0 = 1.2 progress (clamped to 1.0).
+    auto frame = updateVerticalSlide(state, 0.6);
+
+    EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 1.0);
+    EXPECT_TRUE(frame.finished);
+    EXPECT_FALSE(state.active);
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_DoesNotInterruptOngoingAnimation)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    // Start first animation.
+    bool started1 = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
+    EXPECT_TRUE(started1);
+
+    // Try to start another animation while first is active.
+    bool started2 = checkAndStartSlide(state, "1 2 : 3 5", "1 2 : 3 6");
+    EXPECT_FALSE(started2);  // Should be rejected.
+
+    // Original animation state should be unchanged.
+    EXPECT_EQ(state.changing_digits.size(), 1u);
+    EXPECT_EQ(state.changing_digits[0].old_char, '4');
+    EXPECT_EQ(state.changing_digits[0].new_char, '5');
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_FrameContainsStaticAndAnimatingDigits)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    // "1 2" -> "1 3" (only second digit changes).
+    checkAndStartSlide(state, "1 2", "1 3");
+
+    auto frame = updateVerticalSlide(state, 0.0);
+
+    // Should contain: static '1', animating '2' (old) and '3' (new).
+    // Total: 3 placements.
+    EXPECT_GE(frame.digits.size(), 2u);  // At least static '1' and new '3'.
+
+    // Find the static digit.
+    bool found_static_1 = false;
+    for (const auto& p : frame.digits) {
+        if (p.c == '1' && p.y == 0.0) {
+            found_static_1 = true;
+        }
+    }
+    EXPECT_TRUE(found_static_1);
+}
+
+TEST(MarqueeTypesTest, VerticalSlide_AnimatingDigitsHaveOffsetY)
+{
+    VerticalSlideState state;
+    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+
+    checkAndStartSlide(state, "1 2", "1 3");
+
+    // At progress 0.5, old digit should be halfway down, new digit halfway in.
+    updateVerticalSlide(state, 0.25);  // 0.5 progress.
+
+    auto frame = updateVerticalSlide(state, 0.0);  // Don't advance, just get frame.
+
+    // Look for the animating digits.
+    bool found_old_at_offset = false;
+    bool found_new_at_offset = false;
+    double digit_height = 15.0;
+    double expected_old_y = 0.5 * digit_height;  // 7.5
+    double expected_new_y = -digit_height + 0.5 * digit_height;  // -7.5
+
+    for (const auto& p : frame.digits) {
+        if (p.c == '2' && std::abs(p.y - expected_old_y) < 0.01) {
+            found_old_at_offset = true;
+        }
+        if (p.c == '3' && std::abs(p.y - expected_new_y) < 0.01) {
+            found_new_at_offset = true;
+        }
+    }
+    EXPECT_TRUE(found_old_at_offset) << "Old digit '2' should be at y=" << expected_old_y;
+    EXPECT_TRUE(found_new_at_offset) << "New digit '3' should be at y=" << expected_new_y;
 }

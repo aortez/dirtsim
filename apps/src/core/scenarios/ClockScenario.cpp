@@ -55,6 +55,8 @@ const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) cons
         return event_configs_.color_cycle.timing;
     case ClockEventType::COLOR_SHOWCASE:
         return event_configs_.color_showcase.timing;
+    case ClockEventType::DIGIT_SLIDE:
+        return event_configs_.digit_slide.timing;
     case ClockEventType::DUCK:
         return event_configs_.duck.timing;
     case ClockEventType::MARQUEE:
@@ -259,6 +261,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         // Track event toggle changes before updating config_.
         bool color_cycle_was_enabled = config_.colorCycleEnabled;
         bool color_showcase_was_enabled = config_.colorShowcaseEnabled;
+        bool digit_slide_was_enabled = config_.digitSlideEnabled;
         bool duck_was_enabled = config_.duckEnabled;
         bool marquee_was_enabled = config_.marqueeEnabled;
         bool rain_was_enabled = config_.rainEnabled;
@@ -379,6 +382,26 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             }
         }
 
+        // Digit slide event toggle.
+        if (config_.digitSlideEnabled && !digit_slide_was_enabled) {
+            // User enabled digit slide - start it if not already active.
+            if (!active_events_.contains(ClockEventType::DIGIT_SLIDE)) {
+                event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::DIGIT_SLIDE);
+                spdlog::info("ClockScenario: Digit slide manually enabled");
+            }
+        }
+        else if (!config_.digitSlideEnabled && digit_slide_was_enabled) {
+            // User disabled digit slide - stop it if active.
+            auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::DIGIT_SLIDE, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Digit slide manually disabled");
+            }
+        }
+
         // Duck event toggle.
         if (config_.duckEnabled && !duck_was_enabled) {
             // User enabled duck - start it if not already active.
@@ -482,7 +505,17 @@ void ClockScenario::tick(World& world, double deltaTime)
 {
     redrawWalls(world);
 
-    if (!isMeltdownActive() && !isEventActive(ClockEventType::MARQUEE)) {
+    // Check if digit slide is animating (takes over rendering like marquee).
+    bool digit_slide_animating = false;
+    if (isEventActive(ClockEventType::DIGIT_SLIDE)) {
+        auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
+        if (it != active_events_.end()) {
+            const auto& state = std::get<DigitSlideEventState>(it->second.state);
+            digit_slide_animating = state.slide_state.active;
+        }
+    }
+
+    if (!isMeltdownActive() && !isEventActive(ClockEventType::MARQUEE) && !digit_slide_animating) {
         drawTime(world);
     }
 
@@ -795,9 +828,10 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerEvents(World& world)
 {
-    static constexpr std::array<ClockEventType, 6> ALL_EVENT_TYPES = {
+    static constexpr std::array<ClockEventType, 7> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE,
         ClockEventType::COLOR_SHOWCASE,
+        ClockEventType::DIGIT_SLIDE,
         ClockEventType::DUCK,
         ClockEventType::MARQUEE,
         ClockEventType::MELTDOWN,
@@ -864,6 +898,22 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at index {})",
             eventTiming.duration, getMaterialName(starting_material), state.current_index);
     }
+    else if (type == ClockEventType::DIGIT_SLIDE) {
+        DigitSlideEventState slide_event_state;
+        initVerticalSlide(
+            slide_event_state.slide_state,
+            event_configs_.digit_slide.animation_speed,
+            getDigitWidth(),
+            getDigitGap(),
+            getDigitHeight(),
+            getColonWidth());
+        // Initialize with current time so the next change triggers animation.
+        slide_event_state.slide_state.new_time_str = getCurrentTimeString();
+        event.state = slide_event_state;
+        config_.digitSlideEnabled = true;  // Sync config flag.
+        spdlog::info("ClockScenario: Starting DIGIT_SLIDE event (speed: {})",
+            event_configs_.digit_slide.animation_speed);
+    }
     else if (type == ClockEventType::MARQUEE) {
         MarqueeEventState marquee_state;
         std::string time_str = getCurrentTimeString();
@@ -921,6 +971,8 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
             updateColorCycleEvent(world, state, deltaTime);
         } else if constexpr (std::is_same_v<T, ColorShowcaseEventState>) {
             updateColorShowcaseEvent(world, state, deltaTime);
+        } else if constexpr (std::is_same_v<T, DigitSlideEventState>) {
+            updateDigitSlideEvent(world, state, deltaTime);
         } else if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MarqueeEventState>) {
@@ -948,6 +1000,60 @@ void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEven
     auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, current_time, last_drawn_time_);
     if (new_material) {
         config_.digitMaterial = *new_material;
+    }
+}
+
+void ClockScenario::updateDigitSlideEvent(World& world, DigitSlideEventState& state, double deltaTime)
+{
+    std::string current_time = getCurrentTimeString();
+
+    // Check if time changed and start a new slide animation if needed.
+    checkAndStartSlide(state.slide_state, last_drawn_time_, current_time);
+
+    // Update animation and render if active.
+    if (state.slide_state.active) {
+        MarqueeFrame frame = updateVerticalSlide(state.slide_state, deltaTime);
+
+        // Clear previous digits.
+        clearDigits(world);
+
+        // Get font dimensions.
+        int dw = getDigitWidth();
+        int dh = getDigitHeight();
+
+        // Calculate centering (same as drawTimeString).
+        int content_width = calculateStringWidth(
+            current_time, dw, getDigitGap(), getColonWidth());
+        int start_x = (static_cast<int>(world.getData().width) - content_width) / 2;
+        int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
+
+        // Draw each digit from the frame.
+        for (const auto& placement : frame.digits) {
+            // Apply centering.
+            int x = start_x + static_cast<int>(placement.x);
+            int y = start_y + static_cast<int>(placement.y);
+
+            // Skip if off-screen (clipping).
+            if (y + dh < 0 || y >= static_cast<int>(world.getData().height)) {
+                continue;
+            }
+            if (x + dw < 0 || x >= static_cast<int>(world.getData().width)) {
+                continue;
+            }
+
+            if (placement.c >= '0' && placement.c <= '9') {
+                drawDigit(world, placement.c - '0', x, y);
+            } else if (placement.c == ':') {
+                drawColon(world, x, y);
+            }
+        }
+    }
+
+    // Keep track of last drawn time for next comparison.
+    // Note: last_drawn_time_ is updated by drawTime() normally, but we need to track it here too.
+    if (!state.slide_state.active) {
+        // Animation finished, update time string for next change detection.
+        state.slide_state.new_time_str = current_time;
     }
 }
 
@@ -1166,6 +1272,7 @@ static const char* eventTypeName(ClockEventType type)
     switch (type) {
         case ClockEventType::COLOR_CYCLE: return "COLOR_CYCLE";
         case ClockEventType::COLOR_SHOWCASE: return "COLOR_SHOWCASE";
+        case ClockEventType::DIGIT_SLIDE: return "DIGIT_SLIDE";
         case ClockEventType::DUCK: return "DUCK";
         case ClockEventType::MARQUEE: return "MARQUEE";
         case ClockEventType::MELTDOWN: return "MELTDOWN";
@@ -1184,6 +1291,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         config_.colorShowcaseEnabled = false;
+    }
+    else if (type == ClockEventType::DIGIT_SLIDE) {
+        config_.digitSlideEnabled = false;
     }
     else if (type == ClockEventType::DUCK) {
         config_.duckEnabled = false;
@@ -1266,6 +1376,7 @@ void ClockScenario::cancelAllEvents(World& world)
     // Clear config flags.
     config_.colorCycleEnabled = false;
     config_.colorShowcaseEnabled = false;
+    config_.digitSlideEnabled = false;
     config_.duckEnabled = false;
     config_.marqueeEnabled = false;
     config_.rainEnabled = false;

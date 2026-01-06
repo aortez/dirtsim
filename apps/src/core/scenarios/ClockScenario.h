@@ -118,6 +118,7 @@ private:
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
     void updateColorShowcaseEvent(World& world, ColorShowcaseEventState& state, double deltaTime);
+    void updateDigitSlideEvent(World& world, DigitSlideEventState& state, double deltaTime);
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
     void updateMarqueeEvent(World& world, MarqueeEventState& state, double& remaining_time, double deltaTime);

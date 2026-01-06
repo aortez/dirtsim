@@ -17,6 +17,7 @@ protected:
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
             .color_cycle = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .color_showcase = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
+            .digit_slide = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .duck = {
                 .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
@@ -133,6 +134,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
+        .digit_slide = {},
         .duck = {
             .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
@@ -206,6 +208,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
+        .digit_slide = {},
         .duck = {
             .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,

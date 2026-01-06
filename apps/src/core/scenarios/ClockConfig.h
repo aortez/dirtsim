@@ -17,7 +17,7 @@ enum class ClockFont : uint8_t {
 };
 
 struct Clock {
-    using serialize = zpp::bits::members<18>;
+    using serialize = zpp::bits::members<19>;
 
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
@@ -32,6 +32,7 @@ struct Clock {
     double colorsPerSecond = 4.0;  // Color cycle rate when colorCycleEnabled is true.
     bool colorCycleEnabled = false;
     bool colorShowcaseEnabled = false;
+    bool digitSlideEnabled = false;
     bool duckEnabled = false;
     bool marqueeEnabled = false;
     bool meltdownEnabled = false;

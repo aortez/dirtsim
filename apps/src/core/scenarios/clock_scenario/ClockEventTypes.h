@@ -16,6 +16,7 @@ namespace DirtSim {
 enum class ClockEventType {
     COLOR_CYCLE,
     COLOR_SHOWCASE,
+    DIGIT_SLIDE,
     DUCK,
     MARQUEE,
     MELTDOWN,
@@ -35,8 +36,14 @@ struct ColorCycleEventConfig {
 struct ColorShowcaseEventConfig {
     EventTimingConfig timing = { .duration = 120.0, .chance_per_second = 0.1, .cooldown = 60.0 };
     std::vector<MaterialType> showcase_materials = {
-        MaterialType::LEAF, MaterialType::WATER, MaterialType::SEED, MaterialType::WOOD
+        MaterialType::LEAF, MaterialType::WATER, MaterialType::WOOD
     };
+};
+
+struct DigitSlideEventConfig {
+    // Runs indefinitely when enabled - duration is just a fallback.
+    EventTimingConfig timing = { .duration = 3600.0, .chance_per_second = 0.0, .cooldown = 0.0 };
+    double animation_speed = 2.0;  // Progress per second (1.0 = 1 second to complete slide).
 };
 
 struct DuckEventConfig {
@@ -70,6 +77,10 @@ struct ColorCycleEventState {
 
 struct ColorShowcaseEventState {
     size_t current_index = 0;  // Current position in showcase materials list.
+};
+
+struct DigitSlideEventState {
+    VerticalSlideState slide_state;
 };
 
 struct MeltdownEventState {
@@ -107,7 +118,7 @@ struct DuckEventState {
     double obstacle_spawn_timer = 0.0;
 };
 
-using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DuckEventState, MarqueeEventState, MeltdownEventState, RainEventState>;
+using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DigitSlideEventState, DuckEventState, MarqueeEventState, MeltdownEventState, RainEventState>;
 
 struct ActiveEvent {
     EventState state;
@@ -121,6 +132,7 @@ struct ActiveEvent {
 struct ClockEventConfigs {
     ColorCycleEventConfig color_cycle;
     ColorShowcaseEventConfig color_showcase;
+    DigitSlideEventConfig digit_slide;
     DuckEventConfig duck;
     MarqueeEventConfig marquee;
     MeltdownEventConfig meltdown;
