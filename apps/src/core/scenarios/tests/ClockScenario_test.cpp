@@ -469,3 +469,74 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
     EXPECT_FALSE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE))
         << "Color cycle event should have ended after duration";
 }
+
+// =============================================================================
+// Marquee Event Tests
+// =============================================================================
+
+TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
+{
+    // Helper to find digit cell positions (WALL cells with render_as set).
+    auto getDigitPositions = [](const WorldData& data) {
+        std::vector<std::pair<uint32_t, uint32_t>> positions;
+        for (uint32_t y = 1; y < data.height - 1; ++y) {
+            for (uint32_t x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                    positions.emplace_back(x, y);
+                }
+            }
+        }
+        return positions;
+    };
+
+    // Record default digit positions before starting marquee.
+    auto initial_positions = getDigitPositions(world_->getData());
+    ASSERT_FALSE(initial_positions.empty()) << "Should have digit cells before marquee";
+
+    std::cout << "Initial digit cells: " << initial_positions.size() << "\n";
+
+    // Start marquee event.
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.marqueeEnabled = true;
+    scenario_->setConfig(config, *world_);
+
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::MARQUEE));
+
+    // Run until the event finishes.
+    double elapsed = 0.0;
+    const double dt = 0.02;  // Small timesteps.
+    const double max_time = 30.0;  // Safety limit.
+
+    while (scenario_->isEventActive(ClockEventType::MARQUEE) && elapsed < max_time) {
+        scenario_->tick(*world_, dt);
+        world_->advanceTime(dt);
+        elapsed += dt;
+    }
+
+    std::cout << "Marquee event ended after " << elapsed << "s\n";
+
+    // Verify event ended (not just timed out).
+    ASSERT_FALSE(scenario_->isEventActive(ClockEventType::MARQUEE))
+        << "Marquee event should have ended";
+    ASSERT_LT(elapsed, max_time) << "Event should finish before safety timeout";
+
+    // Verify digits are back at default positions.
+    auto final_positions = getDigitPositions(world_->getData());
+
+    std::cout << "Final digit cells: " << final_positions.size() << "\n";
+
+    // Digit count should match (same time string).
+    EXPECT_EQ(initial_positions.size(), final_positions.size())
+        << "Should have same number of digit cells after marquee ends";
+
+    // Digit positions should match the initial positions (viewport_x = 0).
+    // Sort both vectors to compare.
+    auto sorted_initial = initial_positions;
+    auto sorted_final = final_positions;
+    std::sort(sorted_initial.begin(), sorted_initial.end());
+    std::sort(sorted_final.begin(), sorted_final.end());
+
+    EXPECT_EQ(sorted_initial, sorted_final)
+        << "Digits should be at their default positions when marquee ends";
+}

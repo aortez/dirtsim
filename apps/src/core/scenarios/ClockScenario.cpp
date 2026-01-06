@@ -482,8 +482,7 @@ void ClockScenario::tick(World& world, double deltaTime)
 {
     redrawWalls(world);
 
-    if (!isMeltdownActive() && !isEventActive(ClockEventType::COLOR_CYCLE) &&
-        !isEventActive(ClockEventType::MARQUEE)) {
+    if (!isMeltdownActive() && !isEventActive(ClockEventType::MARQUEE)) {
         drawTime(world);
     }
 
@@ -836,7 +835,8 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
     if (type == ClockEventType::COLOR_CYCLE) {
         ColorCycleEventState state;
-        ClockEvents::startColorCycle(state, world, config_.colorsPerSecond);
+        MaterialType starting_material = ClockEvents::startColorCycle(state, config_.colorsPerSecond);
+        config_.digitMaterial = starting_material;
         event.state = state;
         config_.colorCycleEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
@@ -933,9 +933,12 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
     }, event.state);
 }
 
-void ClockScenario::updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime)
+void ClockScenario::updateColorCycleEvent(World& /*world*/, ColorCycleEventState& state, double deltaTime)
 {
-    ClockEvents::updateColorCycle(state, world, deltaTime);
+    auto new_material = ClockEvents::updateColorCycle(state, deltaTime);
+    if (new_material) {
+        config_.digitMaterial = *new_material;
+    }
 }
 
 void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
@@ -959,11 +962,6 @@ void ClockScenario::updateMarqueeEvent(
     std::string time_str = getCurrentTimeString();
     MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime);
 
-    if (frame.finished) {
-        remaining_time = 0.0;
-        return;
-    }
-
     // Clear previous digits.
     clearDigits(world);
 
@@ -971,13 +969,15 @@ void ClockScenario::updateMarqueeEvent(
     int dw = getDigitWidth();
     int dh = getDigitHeight();
 
-    // Calculate vertical centering (same as drawTimeString).
+    // Calculate centering (same as drawTimeString).
+    int content_width = static_cast<int>(state.scroll_state.content_width);
+    int start_x = (static_cast<int>(world.getData().width) - content_width) / 2;
     int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
 
-    // Draw each digit from the frame, offset by viewport.
+    // Draw each digit from the frame, offset by viewport and centering.
     for (const auto& placement : frame.digits) {
-        // Apply viewport offset.
-        double screen_x = placement.x - frame.viewportX;
+        // Apply centering and viewport offset.
+        double screen_x = start_x + placement.x - frame.viewportX;
 
         // Skip if off-screen.
         if (screen_x + dw < 0 || screen_x >= static_cast<double>(world.getData().width)) {
@@ -991,6 +991,11 @@ void ClockScenario::updateMarqueeEvent(
         } else if (placement.c == ':') {
             drawColon(world, x, start_y);
         }
+    }
+
+    // Signal event completion after drawing the final frame.
+    if (frame.finished) {
+        remaining_time = 0.0;
     }
 }
 
@@ -1191,7 +1196,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
 
     if (type == ClockEventType::COLOR_CYCLE) {
-        ClockEvents::endColorCycle(world, config_.digitMaterial);
+        // Restore default digit material.
+        config_.digitMaterial = MaterialType::METAL;
+        spdlog::info("ClockScenario: COLOR_CYCLE ended, restored digit material to METAL");
     }
     else if (type == ClockEventType::MELTDOWN) {
         // Convert any stray digit material (fallen digits) to water.
@@ -1236,7 +1243,8 @@ void ClockScenario::cancelAllEvents(World& world)
 
     for (auto& [type, event] : active_events_) {
         if (type == ClockEventType::COLOR_CYCLE) {
-            ClockEvents::endColorCycle(world, config_.digitMaterial);
+            // Restore default digit material.
+            config_.digitMaterial = MaterialType::METAL;
         }
         else if (type == ClockEventType::DUCK) {
             auto& state = std::get<DuckEventState>(event.state);
