@@ -4,7 +4,6 @@
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
-namespace Ui {
 
 FontSampler::FontSampler(
     const lv_font_t* font,
@@ -140,8 +139,10 @@ std::vector<std::vector<bool>> FontSampler::sampleCharacter(char c, float thresh
     char text[2] = {c, '\0'};
     dsc.text = text;
 
-    // Draw at origin, covering full canvas.
-    lv_area_t coords = {0, 0, targetWidth_ - 1, targetHeight_ - 1};
+    // Draw with margin so we can detect clipping.
+    // If filled pixels appear at canvas edge (outside margin), glyph is clipped.
+    constexpr int MARGIN = 2;
+    lv_area_t coords = {MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN};
     lv_draw_label(&layer, &dsc, &coords);
 
     // Finalize drawing.
@@ -174,8 +175,9 @@ std::vector<std::vector<bool>> FontSampler::sampleUtf8Character(const std::strin
     dsc.opa = LV_OPA_COVER;
     dsc.text = utf8Char.c_str();
 
-    // Draw at origin, covering full canvas.
-    lv_area_t coords = {0, 0, targetWidth_ - 1, targetHeight_ - 1};
+    // Draw with margin so we can detect clipping.
+    constexpr int MARGIN = 2;
+    lv_area_t coords = {MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN};
     lv_draw_label(&layer, &dsc, &coords);
 
     // Finalize drawing.
@@ -227,6 +229,7 @@ const std::vector<std::vector<bool>>& FontSampler::getCachedPattern(char c)
 void FontSampler::clearCache()
 {
     cache_.clear();
+    trimmedCache_.clear();
 }
 
 void FontSampler::precacheAscii()
@@ -237,5 +240,160 @@ void FontSampler::precacheAscii()
     }
 }
 
-} // namespace Ui
+void FontSampler::resizeCanvas(int newWidth, int newHeight)
+{
+    if (newWidth == targetWidth_ && newHeight == targetHeight_) {
+        return;
+    }
+
+    destroyCanvas();
+    targetWidth_ = newWidth;
+    targetHeight_ = newHeight;
+    initCanvas();
+
+    // Clear caches since canvas size changed.
+    cache_.clear();
+    trimmedCache_.clear();
+}
+
+std::vector<std::vector<bool>> FontSampler::sampleCharacterTrimmed(char c)
+{
+    return sampleCharacterTrimmed(c, threshold_);
+}
+
+std::vector<std::vector<bool>> FontSampler::sampleCharacterTrimmed(char c, float threshold)
+{
+    constexpr int MAX_RESIZE_ATTEMPTS = 3;
+    int attempts = 0;
+
+    while (attempts < MAX_RESIZE_ATTEMPTS) {
+        auto pattern = sampleCharacter(c, threshold);
+
+        if (pattern.empty()) {
+            return {};
+        }
+
+        if (hasClipping(pattern)) {
+            int newWidth = targetWidth_ * 2;
+            int newHeight = targetHeight_ * 2;
+            spdlog::warn(
+                "FontSampler: Clipping detected for '{}' at {}x{}, resizing to {}x{}",
+                c,
+                targetWidth_,
+                targetHeight_,
+                newWidth,
+                newHeight);
+            resizeCanvas(newWidth, newHeight);
+            attempts++;
+        }
+        else {
+            return trimPattern(pattern);
+        }
+    }
+
+    spdlog::error(
+        "FontSampler: Still clipping after {} resize attempts for '{}', returning trimmed anyway",
+        MAX_RESIZE_ATTEMPTS,
+        c);
+    return trimPattern(sampleCharacter(c, threshold));
+}
+
+const std::vector<std::vector<bool>>& FontSampler::getCachedPatternTrimmed(char c)
+{
+    auto it = trimmedCache_.find(c);
+    if (it != trimmedCache_.end()) {
+        return it->second;
+    }
+
+    // Sample, trim, and cache.
+    trimmedCache_[c] = sampleCharacterTrimmed(c);
+    return trimmedCache_[c];
+}
+
+bool FontSampler::hasClipping(const std::vector<std::vector<bool>>& pattern)
+{
+    if (pattern.empty() || pattern[0].empty()) {
+        return false;
+    }
+
+    int height = static_cast<int>(pattern.size());
+    int width = static_cast<int>(pattern[0].size());
+
+    // Check top row.
+    for (int x = 0; x < width; ++x) {
+        if (pattern[0][x]) {
+            return true;
+        }
+    }
+
+    // Check bottom row.
+    for (int x = 0; x < width; ++x) {
+        if (pattern[height - 1][x]) {
+            return true;
+        }
+    }
+
+    // Check left column.
+    for (int y = 0; y < height; ++y) {
+        if (pattern[y][0]) {
+            return true;
+        }
+    }
+
+    // Check right column.
+    for (int y = 0; y < height; ++y) {
+        if (pattern[y][width - 1]) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+std::vector<std::vector<bool>> FontSampler::trimPattern(const std::vector<std::vector<bool>>& pattern)
+{
+    if (pattern.empty() || pattern[0].empty()) {
+        return {};
+    }
+
+    int height = static_cast<int>(pattern.size());
+    int width = static_cast<int>(pattern[0].size());
+
+    // Find bounding box of filled pixels.
+    int minX = width;
+    int maxX = -1;
+    int minY = height;
+    int maxY = -1;
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (pattern[y][x]) {
+                minX = std::min(minX, x);
+                maxX = std::max(maxX, x);
+                minY = std::min(minY, y);
+                maxY = std::max(maxY, y);
+            }
+        }
+    }
+
+    // No filled pixels found.
+    if (maxX < 0) {
+        return {};
+    }
+
+    // Extract trimmed region.
+    int trimmedWidth = maxX - minX + 1;
+    int trimmedHeight = maxY - minY + 1;
+
+    std::vector<std::vector<bool>> result(trimmedHeight);
+    for (int y = 0; y < trimmedHeight; ++y) {
+        result[y].resize(trimmedWidth);
+        for (int x = 0; x < trimmedWidth; ++x) {
+            result[y][x] = pattern[minY + y][minX + x];
+        }
+    }
+
+    return result;
+}
+
 } // namespace DirtSim

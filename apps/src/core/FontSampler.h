@@ -10,7 +10,6 @@ struct _lv_font_t;
 typedef struct _lv_font_t lv_font_t;
 
 namespace DirtSim {
-namespace Ui {
 
 /**
  * Samples characters from LVGL fonts into boolean grid patterns.
@@ -48,9 +47,22 @@ public:
     std::vector<std::vector<bool>> sampleCharacter(char c, float threshold);
     std::vector<std::vector<bool>> sampleUtf8Character(const std::string& utf8Char);
 
+    // Samples character, auto-resizes canvas if clipping detected, and trims whitespace.
+    // Returns a tight-fitting pattern with the font's natural aspect ratio.
+    std::vector<std::vector<bool>> sampleCharacterTrimmed(char c);
+    std::vector<std::vector<bool>> sampleCharacterTrimmed(char c, float threshold);
+
     const std::vector<std::vector<bool>>& getCachedPattern(char c);
+    const std::vector<std::vector<bool>>& getCachedPatternTrimmed(char c);
     void clearCache();
     void precacheAscii();
+
+    // Resize the internal canvas. Clears the cache since patterns may change.
+    void resizeCanvas(int newWidth, int newHeight);
+
+    // Pattern utility functions.
+    static std::vector<std::vector<bool>> trimPattern(const std::vector<std::vector<bool>>& pattern);
+    static bool hasClipping(const std::vector<std::vector<bool>>& pattern);
 
     int getWidth() const { return targetWidth_; }
     int getHeight() const { return targetHeight_; }
@@ -72,7 +84,7 @@ private:
     void* drawBuf_ = nullptr;
 
     std::unordered_map<char, std::vector<std::vector<bool>>> cache_;
+    std::unordered_map<char, std::vector<std::vector<bool>>> trimmedCache_;
 };
 
-} // namespace Ui
 } // namespace DirtSim

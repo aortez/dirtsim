@@ -310,6 +310,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/TreeGerminationScenario.cpp
     src/core/scenarios/WaterEqualizationScenario.cpp
 
+    # Font sampling for cell-based text rendering.
+    src/core/FontSampler.cpp
+
     # Physics engine.
     src/core/World.cpp
     src/core/WorldAdhesionCalculator.cpp
@@ -341,7 +344,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/RuleBasedBrain.cpp
 )
 target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
-target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static ${AVAHI_LIBRARIES})
+target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${AVAHI_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
 target_compile_options(dirtsim-server-lib PRIVATE -Wall -Wextra -Werror)
 
@@ -391,7 +394,6 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/SimPlayground.cpp
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
-    src/ui/rendering/FontSampler.cpp
     src/ui/rendering/FramebufferCapture.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
@@ -529,8 +531,8 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
 
-    # UI tests.
-    src/ui/tests/FontSampler_test.cpp
+    # Core tests.
+    src/core/tests/FontSampler_test.cpp
 )
 target_link_libraries(dirtsim-tests
     PRIVATE
