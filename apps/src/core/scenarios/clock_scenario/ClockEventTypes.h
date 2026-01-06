@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MarqueeTypes.h"
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
@@ -16,6 +17,7 @@ enum class ClockEventType {
     COLOR_CYCLE,
     COLOR_SHOWCASE,
     DUCK,
+    MARQUEE,
     MELTDOWN,
     RAIN
 };
@@ -40,6 +42,12 @@ struct ColorShowcaseEventConfig {
 struct DuckEventConfig {
     EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
     bool floor_obstacles_enabled = true;
+};
+
+struct MarqueeEventConfig {
+    // High chance so it triggers frequently during development.
+    EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 1.0, .cooldown = 5.0 };
+    double scroll_speed = 100.0;  // Units per second.
 };
 
 struct MeltdownEventConfig {
@@ -74,6 +82,10 @@ struct RainEventState {
     // Rain-specific state (could add intensity, pattern, etc.).
 };
 
+struct MarqueeEventState {
+    HorizontalScrollState scroll_state;
+};
+
 enum class DoorSide { LEFT, RIGHT };
 
 enum class DuckEventPhase {
@@ -95,7 +107,7 @@ struct DuckEventState {
     double obstacle_spawn_timer = 0.0;
 };
 
-using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DuckEventState, MeltdownEventState, RainEventState>;
+using EventState = std::variant<ColorCycleEventState, ColorShowcaseEventState, DuckEventState, MarqueeEventState, MeltdownEventState, RainEventState>;
 
 struct ActiveEvent {
     EventState state;
@@ -110,6 +122,7 @@ struct ClockEventConfigs {
     ColorCycleEventConfig color_cycle;
     ColorShowcaseEventConfig color_showcase;
     DuckEventConfig duck;
+    MarqueeEventConfig marquee;
     MeltdownEventConfig meltdown;
     RainEventConfig rain;
 };

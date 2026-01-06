@@ -120,6 +120,7 @@ private:
     void updateColorShowcaseEvent(World& world, ColorShowcaseEventState& state, double deltaTime);
     void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
+    void updateMarqueeEvent(World& world, MarqueeEventState& state, double& remaining_time, double deltaTime);
     void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 

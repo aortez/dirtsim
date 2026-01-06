@@ -57,6 +57,8 @@ const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) cons
         return event_configs_.color_showcase.timing;
     case ClockEventType::DUCK:
         return event_configs_.duck.timing;
+    case ClockEventType::MARQUEE:
+        return event_configs_.marquee.timing;
     case ClockEventType::MELTDOWN:
         return event_configs_.meltdown.timing;
     case ClockEventType::RAIN:
@@ -459,7 +461,8 @@ void ClockScenario::tick(World& world, double deltaTime)
 {
     redrawWalls(world);
 
-    if (!isMeltdownActive() && !isEventActive(ClockEventType::COLOR_CYCLE)) {
+    if (!isMeltdownActive() && !isEventActive(ClockEventType::COLOR_CYCLE) &&
+        !isEventActive(ClockEventType::MARQUEE)) {
         drawTime(world);
     }
 
@@ -772,10 +775,11 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerEvents(World& world)
 {
-    static constexpr std::array<ClockEventType, 5> ALL_EVENT_TYPES = {
+    static constexpr std::array<ClockEventType, 6> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE,
         ClockEventType::COLOR_SHOWCASE,
         ClockEventType::DUCK,
+        ClockEventType::MARQUEE,
         ClockEventType::MELTDOWN,
         ClockEventType::RAIN,
     };
@@ -839,6 +843,22 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         spdlog::info("ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at index {})",
             eventTiming.duration, getMaterialName(starting_material), state.current_index);
     }
+    else if (type == ClockEventType::MARQUEE) {
+        MarqueeEventState marquee_state;
+        std::string time_str = getCurrentTimeString();
+        double visible_width = static_cast<double>(world.getData().width);
+        startHorizontalScroll(
+            marquee_state.scroll_state,
+            time_str,
+            visible_width,
+            event_configs_.marquee.scroll_speed,
+            getDigitWidth(),
+            getDigitGap(),
+            getColonWidth());
+        event.state = marquee_state;
+        spdlog::info("ClockScenario: Starting MARQUEE event (duration: {}s, speed: {})",
+            eventTiming.duration, event_configs_.marquee.scroll_speed);
+    }
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
 
@@ -881,6 +901,8 @@ void ClockScenario::updateEvent(World& world, ClockEventType /*type*/, ActiveEve
             updateColorShowcaseEvent(world, state, deltaTime);
         } else if constexpr (std::is_same_v<T, DuckEventState>) {
             updateDuckEvent(world, state, event.remaining_time, deltaTime);
+        } else if constexpr (std::is_same_v<T, MarqueeEventState>) {
+            updateMarqueeEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, MeltdownEventState>) {
             updateMeltdownEvent(world, state, event.remaining_time, deltaTime);
         } else if constexpr (std::is_same_v<T, RainEventState>) {
@@ -907,6 +929,47 @@ void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEven
 void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, double deltaTime)
 {
     ClockEvents::updateRain(world, deltaTime, rng_, uniform_dist_);
+}
+
+void ClockScenario::updateMarqueeEvent(
+    World& world, MarqueeEventState& state, double& remaining_time, double deltaTime)
+{
+    std::string time_str = getCurrentTimeString();
+    MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime);
+
+    if (frame.finished) {
+        remaining_time = 0.0;
+        return;
+    }
+
+    // Clear previous digits.
+    clearDigits(world);
+
+    // Get font dimensions.
+    int dw = getDigitWidth();
+    int dh = getDigitHeight();
+
+    // Calculate vertical centering (same as drawTimeString).
+    int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
+
+    // Draw each digit from the frame, offset by viewport.
+    for (const auto& placement : frame.digits) {
+        // Apply viewport offset.
+        double screen_x = placement.x - frame.viewportX;
+
+        // Skip if off-screen.
+        if (screen_x + dw < 0 || screen_x >= static_cast<double>(world.getData().width)) {
+            continue;
+        }
+
+        int x = static_cast<int>(screen_x);
+
+        if (placement.c >= '0' && placement.c <= '9') {
+            drawDigit(world, placement.c - '0', x, start_y);
+        } else if (placement.c == ':') {
+            drawColon(world, x, start_y);
+        }
+    }
 }
 
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
@@ -1077,6 +1140,7 @@ static const char* eventTypeName(ClockEventType type)
         case ClockEventType::COLOR_CYCLE: return "COLOR_CYCLE";
         case ClockEventType::COLOR_SHOWCASE: return "COLOR_SHOWCASE";
         case ClockEventType::DUCK: return "DUCK";
+        case ClockEventType::MARQUEE: return "MARQUEE";
         case ClockEventType::MELTDOWN: return "MELTDOWN";
         case ClockEventType::RAIN: return "RAIN";
     }

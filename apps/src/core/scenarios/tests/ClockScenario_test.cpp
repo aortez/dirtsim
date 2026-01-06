@@ -21,6 +21,7 @@ protected:
                 .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
             },
+            .marquee = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .meltdown = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
             .rain = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
         });
@@ -136,6 +137,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
             .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
+        .marquee = {},
         .meltdown = {},
         .rain = {},
     });
@@ -208,6 +210,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
             .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
+        .marquee = {},
         .meltdown = {},
         .rain = {},
     });
