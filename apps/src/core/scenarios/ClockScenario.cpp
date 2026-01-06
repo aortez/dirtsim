@@ -260,6 +260,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         bool color_cycle_was_enabled = config_.colorCycleEnabled;
         bool color_showcase_was_enabled = config_.colorShowcaseEnabled;
         bool duck_was_enabled = config_.duckEnabled;
+        bool marquee_was_enabled = config_.marqueeEnabled;
         bool rain_was_enabled = config_.rainEnabled;
 
         config_ = incoming;
@@ -395,6 +396,26 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
                 active_events_.erase(it);
                 event_cooldowns_[ClockEventType::DUCK] = 0.0;  // No cooldown for manual stop.
                 spdlog::info("ClockScenario: Duck manually disabled");
+            }
+        }
+
+        // Marquee event toggle.
+        if (config_.marqueeEnabled && !marquee_was_enabled) {
+            // User enabled marquee - start it if not already active.
+            if (!active_events_.contains(ClockEventType::MARQUEE)) {
+                event_cooldowns_[ClockEventType::MARQUEE] = 0.0;  // Clear cooldown.
+                startEvent(world, ClockEventType::MARQUEE);
+                spdlog::info("ClockScenario: Marquee manually enabled");
+            }
+        }
+        else if (!config_.marqueeEnabled && marquee_was_enabled) {
+            // User disabled marquee - stop it if active.
+            auto it = active_events_.find(ClockEventType::MARQUEE);
+            if (it != active_events_.end()) {
+                endEvent(world, ClockEventType::MARQUEE, it->second);
+                active_events_.erase(it);
+                event_cooldowns_[ClockEventType::MARQUEE] = 0.0;  // No cooldown for manual stop.
+                spdlog::info("ClockScenario: Marquee manually disabled");
             }
         }
 
@@ -856,6 +877,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             getDigitGap(),
             getColonWidth());
         event.state = marquee_state;
+        config_.marqueeEnabled = true;  // Sync config flag.
         spdlog::info("ClockScenario: Starting MARQUEE event (duration: {}s, speed: {})",
             eventTiming.duration, event_configs_.marquee.scroll_speed);
     }
@@ -1161,6 +1183,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     else if (type == ClockEventType::DUCK) {
         config_.duckEnabled = false;
     }
+    else if (type == ClockEventType::MARQUEE) {
+        config_.marqueeEnabled = false;
+    }
     else if (type == ClockEventType::RAIN) {
         config_.rainEnabled = false;
     }
@@ -1234,6 +1259,7 @@ void ClockScenario::cancelAllEvents(World& world)
     config_.colorCycleEnabled = false;
     config_.colorShowcaseEnabled = false;
     config_.duckEnabled = false;
+    config_.marqueeEnabled = false;
     config_.rainEnabled = false;
 
     active_events_.clear();

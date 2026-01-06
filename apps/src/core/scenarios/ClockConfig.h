@@ -17,7 +17,7 @@ enum class ClockFont : uint8_t {
 };
 
 struct Clock {
-    using serialize = zpp::bits::members<17>;
+    using serialize = zpp::bits::members<18>;
 
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
@@ -33,6 +33,7 @@ struct Clock {
     bool colorCycleEnabled = false;
     bool colorShowcaseEnabled = false;
     bool duckEnabled = false;
+    bool marqueeEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
     MaterialType digitMaterial = MaterialType::METAL;  // Render color for clock digits.

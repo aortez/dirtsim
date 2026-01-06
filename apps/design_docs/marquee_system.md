@@ -108,8 +108,8 @@ The effect ends early when `MarqueeFrame.finished=true` (sets `remaining_time=0`
 - `HorizontalScrollState` and update function
 - Event system integration (starts, updates, ends, cooldown)
 - Unit tests (21 tests passing)
+- UI control button to manually trigger marquee effect
 
 **Next:**
 - Add more effects (VerticalWave, etc.)
-- UI controls to manually trigger/configure marquee
-- Tune timing and speed for production use
+- Tune timing and speed

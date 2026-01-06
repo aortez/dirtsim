@@ -193,6 +193,27 @@ void ClockControls::createMainView(lv_obj_t* view)
                                .glowColor(0x00FFFF)  // Cyan glow for showcase.
                                .callback(onColorShowcaseToggled, this)
                                .buildOrLog();
+
+    // Marquee row.
+    lv_obj_t* marqueeRow = lv_obj_create(view);
+    lv_obj_set_size(marqueeRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(marqueeRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(marqueeRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(marqueeRow, 4, 0);
+    lv_obj_set_style_bg_opa(marqueeRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(marqueeRow, 0, 0);
+    lv_obj_clear_flag(marqueeRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Marquee event toggle.
+    marqueeSwitch_ = LVGLBuilder::actionButton(marqueeRow)
+                         .text("Marquee")
+                         .mode(LVGLBuilder::ActionMode::Toggle)
+                         .size(80)
+                         .checked(false)
+                         .textColor(0x44FF44)  // Green text.
+                         .glowColor(0x44FF44)  // Green glow for marquee scroll.
+                         .callback(onMarqueeToggled, this)
+                         .buildOrLog();
 }
 
 void ClockControls::createFontSelectionView(lv_obj_t* view)
@@ -421,6 +442,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated duck button to {}", config.duckEnabled);
     }
 
+    // Update marquee button.
+    if (marqueeSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(marqueeSwitch_, config.marqueeEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated marquee button to {}", config.marqueeEnabled);
+    }
+
     // Update digit material selection and button text.
     currentMaterialIndex_ = static_cast<int>(config.digitMaterial);
     if (digitMaterialButton_) {
@@ -484,6 +511,11 @@ Config::Clock ClockControls::getCurrentConfig() const
     // Get duck enabled from button.
     if (duckSwitch_) {
         config.duckEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(duckSwitch_);
+    }
+
+    // Get marquee enabled from button.
+    if (marqueeSwitch_) {
+        config.marqueeEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(marqueeSwitch_);
     }
 
     // Populate display dimensions from getter for auto-scaling.
@@ -774,6 +806,30 @@ void ClockControls::onColorShowcaseToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorShowcaseSwitch_);
 
     spdlog::info("ClockControls: Color showcase toggled to {}", enabled ? "ON" : "OFF");
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
+void ClockControls::onMarqueeToggled(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onMarqueeToggled called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring marquee toggle during initialization");
+        return;
+    }
+
+    // Get current state from ActionButton.
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->marqueeSwitch_);
+
+    spdlog::info("ClockControls: Marquee toggled to {}", enabled ? "ON" : "OFF");
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
