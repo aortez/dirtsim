@@ -52,8 +52,7 @@ struct DuckEventConfig {
 };
 
 struct MarqueeEventConfig {
-    // High chance so it triggers frequently during development.
-    EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 1.0, .cooldown = 5.0 };
+    EventTimingConfig timing = { .duration = 10.0, .chance_per_second = .05, .cooldown = 5.0 };
     double scroll_speed = 100.0;  // Units per second.
 };
 
@@ -76,7 +75,8 @@ struct ColorCycleEventState {
 };
 
 struct ColorShowcaseEventState {
-    size_t current_index = 0;  // Current position in showcase materials list.
+    size_t current_index = 0;        // Current position in showcase materials list.
+    std::string last_seen_time = ""; // Tracks time independently for change detection.
 };
 
 struct DigitSlideEventState {

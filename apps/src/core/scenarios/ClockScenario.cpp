@@ -24,10 +24,6 @@
 
 namespace DirtSim {
 
-// ============================================================================
-// ClockScenario Implementation
-// ============================================================================
-
 ClockScenario::ClockScenario(ClockEventConfigs event_configs)
     : event_configs_(std::move(event_configs))
 {
@@ -505,6 +501,10 @@ void ClockScenario::tick(World& world, double deltaTime)
 {
     redrawWalls(world);
 
+    // Update event system first so digit slide can detect time changes
+    // before drawTime() updates last_drawn_time_.
+    updateEvents(world, deltaTime);
+
     // Check if digit slide is animating (takes over rendering like marquee).
     bool digit_slide_animating = false;
     if (isEventActive(ClockEventType::DIGIT_SLIDE)) {
@@ -518,9 +518,6 @@ void ClockScenario::tick(World& world, double deltaTime)
     if (!isMeltdownActive() && !isEventActive(ClockEventType::MARQUEE) && !digit_slide_animating) {
         drawTime(world);
     }
-
-    // Update event system (may clear floor obstacles).
-    updateEvents(world, deltaTime);
 
     // Manage floor drain based on water level.
     // Runs after events so drain clearing catches any floor restored by obstacle clearing.
@@ -743,6 +740,11 @@ void ClockScenario::drawTime(World& world)
 
 std::string ClockScenario::getCurrentTimeString() const
 {
+    // Return override if set (for testing).
+    if (time_override_) {
+        return *time_override_;
+    }
+
     auto now = std::chrono::system_clock::now();
     std::time_t now_time = std::chrono::system_clock::to_time_t(now);
 
@@ -777,6 +779,16 @@ std::string ClockScenario::getCurrentTimeString() const
             time_info->tm_min / 10, time_info->tm_min % 10);
     }
     return std::string(buffer);
+}
+
+void ClockScenario::setTimeOverride(const std::string& time_str)
+{
+    time_override_ = time_str;
+}
+
+void ClockScenario::clearTimeOverride()
+{
+    time_override_.reset();
 }
 
 // ============================================================================
@@ -891,7 +903,8 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         ColorShowcaseEventState state;
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-        MaterialType starting_material = ClockEvents::startColorShowcase(state, showcase_materials, rng_);
+        MaterialType starting_material = ClockEvents::startColorShowcase(
+            state, showcase_materials, rng_, getCurrentTimeString());
         config_.digitMaterial = starting_material;
         event.state = state;
         config_.colorShowcaseEnabled = true;  // Sync config flag.
@@ -997,7 +1010,7 @@ void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEven
 {
     const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
     std::string current_time = getCurrentTimeString();
-    auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, current_time, last_drawn_time_);
+    auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, current_time);
     if (new_material) {
         config_.digitMaterial = *new_material;
     }

@@ -553,11 +553,11 @@ void World::swapCells(Vector2i pos1, Vector2i pos2)
     // Perform the swap.
     std::swap(cell1, cell2);
 
-    // Update organism tracking (grid + cell sets + anchors).
-    organism_manager_->swapOrganisms(pos1, pos2);
-
-    LOG_INFO(Swap, "swapCells: ({}, {}) ↔ ({}, {}) - organisms: {} ↔ {}",
-        pos1.x, pos1.y, pos2.x, pos2.y, org1, org2);
+    // Update organism tracking.
+    if (org1 != INVALID_ORGANISM_ID || org2 != INVALID_ORGANISM_ID) {
+        LOG_INFO(Swap, "swapCells: ({}, {}) ↔ ({}, {}) - organisms: {} ↔ {}", pos1.x, pos1.y, pos2.x, pos2.y, org1, org2);
+        organism_manager_->swapOrganisms(pos1, pos2);
+    }
 }
 
 void World::replaceMaterialAtCell(int x, int y, MaterialType material)
@@ -1826,8 +1826,10 @@ void World::processMaterialMoves()
                 // Update organism tracking (swap happened).
                 organism_manager_->swapOrganisms(from_pos, to_pos);
 
-                LOG_INFO(Swap, "Material swap: ({},{}) ↔ ({},{}) - organisms: {} ↔ {}",
-                    from_pos.x, from_pos.y, to_pos.x, to_pos.y, from_org_id, to_org_id);
+                if (to_org_id != INVALID_ORGANISM_ID ||from_org_id != INVALID_ORGANISM_ID) {
+                    LOG_INFO(Swap, "Material swap: ({},{}) ↔ ({},{}) - organisms: {} ↔ {}",
+                        from_pos.x, from_pos.y, to_pos.x, to_pos.y, from_org_id, to_org_id);
+                }
 
                 continue;
             }
