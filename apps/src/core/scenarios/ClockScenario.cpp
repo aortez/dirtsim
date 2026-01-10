@@ -468,21 +468,8 @@ void ClockScenario::setup(World& world)
         }
     }
 
-    // Add wall border around the world (for duck to run on).
-    uint32_t width = world.getData().width;
-    uint32_t height = world.getData().height;
-
-    // Top and bottom borders.
-    for (uint32_t x = 0; x < width; ++x) {
-        world.replaceMaterialAtCell(x, 0, MaterialType::WALL);
-        world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
-    }
-
-    // Left and right borders.
-    for (uint32_t y = 0; y < height; ++y) {
-        world.replaceMaterialAtCell(0, y, MaterialType::WALL);
-        world.replaceMaterialAtCell(width - 1, y, MaterialType::WALL);
-    }
+    // Draw walls using centralized wall system.
+    redrawWalls(world);
 
     // Draw current time.
     drawTime(world);
@@ -1729,58 +1716,101 @@ void ClockScenario::sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_
     cell = Cell();
 }
 
-void ClockScenario::redrawWalls(World& world)
+std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const WorldData& data) const
 {
-    const WorldData& data = world.getData();
     uint32_t width = data.width;
     uint32_t height = data.height;
 
-    // Top and bottom borders.
+    // Pre-allocate for efficiency: border cells + potential hurdles + roof cells.
+    std::vector<WallSpec> walls;
+    walls.reserve(2 * (width + height) + 20);
+
+    // Top border (wooden frame).
     for (uint32_t x = 0; x < width; ++x) {
-        Vector2i top_pos{ static_cast<int>(x), 0 };
-        Vector2i bottom_pos{ static_cast<int>(x), static_cast<int>(height - 1) };
-
-        if (!door_manager_.isOpenDoorAt(top_pos, data)) {
-            world.replaceMaterialAtCell(x, 0, MaterialType::WALL);
+        Vector2i pos{ static_cast<int>(x), 0 };
+        if (!door_manager_.isOpenDoorAt(pos, data)) {
+            walls.push_back({ x, 0, MaterialType::WOOD });
         }
+    }
 
-        // Skip drain cells in bottom wall when drain is open.
+    // Bottom border (dirt floor).
+    for (uint32_t x = 0; x < width; ++x) {
+        Vector2i pos{ static_cast<int>(x), static_cast<int>(height - 1) };
+
+        // Skip open doors, drain cells, and pit cells.
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
-        // Skip pit cells (floor removed).
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
-        if (!door_manager_.isOpenDoorAt(bottom_pos, data) && !is_drain_cell && !is_pit_cell) {
-            world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
-        } else if (is_pit_cell && !is_drain_cell) {
-            // Ensure pit cells are cleared.
+        if (!door_manager_.isOpenDoorAt(pos, data) && !is_drain_cell && !is_pit_cell) {
+            walls.push_back({ x, height - 1, MaterialType::DIRT });
+        }
+    }
+
+    // Left border (wooden frame).
+    for (uint32_t y = 0; y < height; ++y) {
+        Vector2i pos{ 0, static_cast<int>(y) };
+        if (!door_manager_.isOpenDoorAt(pos, data)) {
+            walls.push_back({ 0, y, MaterialType::WOOD });
+        }
+    }
+
+    // Right border (wooden frame).
+    for (uint32_t y = 0; y < height; ++y) {
+        Vector2i pos{ static_cast<int>(width - 1), static_cast<int>(y) };
+        if (!door_manager_.isOpenDoorAt(pos, data)) {
+            walls.push_back({ width - 1, y, MaterialType::WOOD });
+        }
+    }
+
+    // Hurdle obstacles (one row above floor, render as wall/gray).
+    if (height > 2) {
+        for (uint32_t x = 0; x < width; ++x) {
+            if (obstacle_manager_.isHurdleAt(x)) {
+                walls.push_back({ x, height - 2, MaterialType::WALL });
+            }
+        }
+    }
+
+    // Door roof cells (structural, render as wall/gray).
+    for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
+        walls.push_back({
+            static_cast<uint32_t>(roof_pos.x),
+            static_cast<uint32_t>(roof_pos.y),
+            MaterialType::WALL
+        });
+    }
+
+    return walls;
+}
+
+void ClockScenario::applyWalls(World& world, const std::vector<WallSpec>& walls)
+{
+    for (const auto& wall : walls) {
+        world.replaceMaterialAtCell(wall.x, wall.y, MaterialType::WALL);
+        world.getData().at(wall.x, wall.y).render_as = static_cast<int8_t>(wall.render_as);
+    }
+}
+
+void ClockScenario::redrawWalls(World& world)
+{
+    const WorldData& data = world.getData();
+
+    // Generate and apply wall specs.
+    std::vector<WallSpec> walls = generateWallSpecs(data);
+    applyWalls(world, walls);
+
+    // Clear pit cells that shouldn't have walls.
+    uint32_t height = data.height;
+    for (uint32_t x = 0; x < data.width; ++x) {
+        bool is_pit_cell = obstacle_manager_.isPitAt(x);
+        bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
+
+        if (is_pit_cell && !is_drain_cell) {
             Cell& cell = world.getData().at(x, height - 1);
             if (cell.material_type == MaterialType::WALL) {
                 cell = Cell();
             }
         }
-
-        // Hurdle cells (one row above floor).
-        if (height > 2 && obstacle_manager_.isHurdleAt(x)) {
-            world.replaceMaterialAtCell(x, height - 2, MaterialType::WALL);
-        }
-    }
-
-    // Left and right borders.
-    for (uint32_t y = 0; y < height; ++y) {
-        Vector2i left_pos{ 0, static_cast<int>(y) };
-        Vector2i right_pos{ static_cast<int>(width - 1), static_cast<int>(y) };
-
-        if (!door_manager_.isOpenDoorAt(left_pos, data)) {
-            world.replaceMaterialAtCell(0, y, MaterialType::WALL);
-        }
-        if (!door_manager_.isOpenDoorAt(right_pos, data)) {
-            world.replaceMaterialAtCell(width - 1, y, MaterialType::WALL);
-        }
-    }
-
-    // Ensure roof cells are walls.
-    for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
-        world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
 }
 

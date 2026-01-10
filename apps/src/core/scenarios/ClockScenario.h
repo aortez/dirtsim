@@ -13,13 +13,14 @@
 #include "core/scenarios/Scenario.h"
 #include <array>
 #include <map>
-#include <memory>
 #include <optional>
 #include <random>
+#include <vector>
 
 namespace DirtSim {
 
 class World;
+struct WorldData;
 
 /**
  * Clock scenario - displays system time as a digital clock.
@@ -49,6 +50,13 @@ public:
         {"JST", "Tokyo (JST)", +9},
         {"AEST", "Sydney (AEST)", +10},
     }};
+
+    // Specifies a wall cell's position and visual appearance.
+    struct WallSpec {
+        uint32_t x;
+        uint32_t y;
+        MaterialType render_as;  // Visual appearance (WOOD for frame, DIRT for floor, etc.).
+    };
 
     explicit ClockScenario(ClockEventConfigs event_configs = {});
 
@@ -136,6 +144,10 @@ private:
 
     bool isMeltdownActive() const;
     void convertStrayDigitMaterialToWater(World& world, MaterialType digit_material);
+
+    // Centralized wall system.
+    std::vector<WallSpec> generateWallSpecs(const WorldData& data) const;
+    void applyWalls(World& world, const std::vector<WallSpec>& walls);
     void redrawWalls(World& world);
 };
 
