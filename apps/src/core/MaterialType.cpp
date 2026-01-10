@@ -28,7 +28,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
-        .is_fluid = true },
+        .is_fluid = true,
+        .light = { .opacity = 0.0f, .scatter = 0.0f } },
 
       // ========== DIRT ==========
       { .density = 1.5,
@@ -45,7 +46,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.75,
         .stick_velocity = 0.1,
         .friction_transition_width = 0.10,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 0.9f, .scatter = 0.2f, .tint = 0x8B6914FF } },
 
       // ========== LEAF ==========
       { .density = 0.3,
@@ -62,7 +64,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.3,
         .stick_velocity = 0.03,
         .friction_transition_width = 0.06,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 0.4f, .scatter = 0.3f, .tint = 0x228B22FF } },
 
       // ========== METAL ==========
       { .density = 7.8,
@@ -79,7 +82,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.01,
         .friction_transition_width = 0.02,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 1.0f, .scatter = 0.8f } },
 
       // ========== ROOT ==========
       // Underground tree tissue that grips soil and forms networks.
@@ -97,7 +101,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.8,
         .stick_velocity = 0.03,
         .friction_transition_width = 0.05,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 0.9f, .scatter = 0.15f, .tint = 0x5C4033FF } },
 
       // ========== SAND ==========
       { .density = 1.8,
@@ -114,7 +119,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.4,
         .stick_velocity = 0.04,
         .friction_transition_width = 0.08,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 0.7f, .scatter = 0.2f, .tint = 0xE6D5ACFF } },
 
       // ========== SEED ==========
       { .density = 1.5,
@@ -131,7 +137,12 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.9,
         .stick_velocity = 0.02,
         .friction_transition_width = 0.03,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 0.3f,
+                   .scatter = 0.2f,
+                   .tint = 0x90EE90FF,
+                   .emission = 0.1f,
+                   .emission_color = 0x80FF80FF } },
 
       // ========== WALL ==========
       { .density = 1000.0,
@@ -148,7 +159,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 1.0,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
-        .is_fluid = false },
+        .is_fluid = false,
+        .light = { .opacity = 1.0f, .scatter = 0.1f } },
 
       // ========== WATER ==========
       { .density = 1.0,
@@ -165,7 +177,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.01,
         .stick_velocity = 0.0,
         .friction_transition_width = 0.001,
-        .is_fluid = true },
+        .is_fluid = true,
+        .light = { .opacity = 0.05f, .scatter = 0.1f, .tint = 0xCCE6FFFF } },
 
       // ========== WOOD ==========
       { .density = 0.3,
@@ -182,7 +195,8 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .kinetic_friction_coefficient = 0.9,
         .stick_velocity = 0.02,
         .friction_transition_width = 0.03,
-        .is_fluid = false } }
+        .is_fluid = false,
+        .light = { .opacity = 0.95f, .scatter = 0.15f, .tint = 0xDEB887FF } } }
 };
 
 // Material name lookup table.

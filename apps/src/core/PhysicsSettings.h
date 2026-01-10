@@ -1,9 +1,33 @@
 #pragma once
 
 #include "ReflectSerializer.h"
+#include <cstdint>
 #include <nlohmann/json.hpp>
 
 namespace DirtSim {
+
+/**
+ * Light system configuration.
+ * Controls ambient light, sunlight, and diffusion parameters.
+ */
+struct LightConfig {
+    uint32_t ambient_color = 0x1A1A1EFF; // dayAmbient default.
+    bool sun_enabled = true;
+    uint32_t sun_color = 0xFFF2D9FF; // warmSunlight default.
+    float sun_intensity = 1.0f;
+    int diffusion_iterations = 2;
+    float diffusion_rate = 0.3f;
+};
+
+inline void to_json(nlohmann::json& j, const LightConfig& config)
+{
+    j = ReflectSerializer::to_json(config);
+}
+
+inline void from_json(const nlohmann::json& j, LightConfig& config)
+{
+    config = ReflectSerializer::from_json<LightConfig>(j);
+}
 
 /**
  * @brief Physics simulation parameters.
@@ -48,6 +72,7 @@ struct PhysicsSettings {
     double timescale;
     double viscosity_strength;
     bool viscosity_enabled;
+    LightConfig light;
 };
 
 /**

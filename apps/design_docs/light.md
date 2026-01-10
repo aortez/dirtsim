@@ -294,35 +294,31 @@ Expose in a LightPanel or PhysicsPanel section:
 
 ## Implementation Phases
 
-### Phase 1: Foundation
+### Phase 1: Foundation ✓ COMPLETE
 
-1. Add `color_` field to Cell (replacing or alongside render_as)
-2. Add light properties to MaterialProperties
-3. Create WorldLightCalculator skeleton
-4. Initialize cells with material base colors
-5. Verify rendering still works
+1. ✓ Add `color_` field to Cell (alongside render_as)
+2. ✓ Add `LightProperties` struct to MaterialType.h
+3. ✓ Add light properties to all 10 materials in MaterialProperties
+4. ✓ Create WorldLightCalculator with calculate() and lightMapString()
+5. ✓ Add `LightConfig` struct to PhysicsSettings.h
+6. ✓ Implement ambient light, sunlight with opacity/tinting, emissive cells, diffusion
+7. ✓ Add 7 passing unit tests
 
-### Phase 2: Direct Lighting
+### Phase 2: Integration (Next)
 
-1. Implement ambient light application
-2. Implement top-down sunlight with opacity
-3. Add LightConfig to PhysicsConfig
-4. Add basic UI controls (sun toggle, intensity)
+1. Integrate WorldLightCalculator into World::advanceTime()
+2. Update CellRenderer to use cell.getColor() instead of getMaterialColor()
+3. Add basic UI controls (sun toggle, intensity)
+4. Verify visual rendering works
 
 ### Phase 3: Point Lights
 
 1. Implement PointLight struct and storage in World
 2. Implement ray tracing for point lights
-3. Implement emissive material detection
+3. Add API commands for adding/removing point lights
 4. Test with a few point lights
 
-### Phase 4: Diffusion
-
-1. Implement diffusion passes with scatter property
-2. Add material tinting for transmitted light
-3. Tune diffusion parameters for visual quality
-
-### Phase 5: Tree Integration
+### Phase 4: Tree Integration
 
 1. Update TreeSensoryData to include light values
 2. Implement photosynthesis using light

@@ -52,6 +52,9 @@ struct Cell {
     // Allows cells to behave as one material but display as another.
     int8_t render_as = -1;
 
+    // Calculated lit color (packed RGBA). Set by WorldLightCalculator.
+    uint32_t color_ = 0x000000FF;
+
     // =================================================================
     // MATERIAL PROPERTIES
     // =================================================================
@@ -77,6 +80,12 @@ struct Cell {
 
     // Get the material type to use for rendering (respects render_as override).
     MaterialType getRenderMaterial() const;
+
+    // Get the calculated lit color (packed RGBA).
+    uint32_t getColor() const { return color_; }
+
+    // Set the calculated lit color (packed RGBA).
+    void setColor(uint32_t color) { color_ = color; }
 
     // =================================================================
     // PHYSICS PROPERTIES
