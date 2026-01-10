@@ -20,12 +20,6 @@ namespace DirtSim {
  */
 class Tree : public Organism {
 public:
-    /**
-     * Construct a new tree with a given brain implementation.
-     *
-     * @param id Unique organism identifier.
-     * @param brain Brain implementation for decision making.
-     */
     Tree(OrganismId id, std::unique_ptr<TreeBrain> brain);
 
     // Organism interface.
