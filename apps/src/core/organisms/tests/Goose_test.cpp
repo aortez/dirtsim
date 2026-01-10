@@ -1,3 +1,5 @@
+#include "CellTrackerUtil.h"
+#include "core/GridOfCells.h"
 #include "core/LoggingChannels.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
@@ -6,6 +8,7 @@
 #include "core/organisms/GooseBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include <gtest/gtest.h>
+#include <iomanip>
 #include <spdlog/spdlog.h>
 
 using namespace DirtSim;
@@ -21,19 +24,19 @@ public:
         (void)deltaTime;
 
         switch (current_action_) {
-        case GooseAction::RUN_LEFT:
-            goose.setWalkDirection(-1.0f);
-            break;
-        case GooseAction::RUN_RIGHT:
-            goose.setWalkDirection(1.0f);
-            break;
-        case GooseAction::JUMP:
-            goose.jump();
-            break;
-        case GooseAction::WAIT:
-        default:
-            goose.setWalkDirection(0.0f);
-            break;
+            case GooseAction::RUN_LEFT:
+                goose.setWalkDirection(-1.0f);
+                break;
+            case GooseAction::RUN_RIGHT:
+                goose.setWalkDirection(1.0f);
+                break;
+            case GooseAction::JUMP:
+                goose.jump();
+                break;
+            case GooseAction::WAIT:
+            default:
+                goose.setWalkDirection(0.0f);
+                break;
         }
     }
 
@@ -43,6 +46,35 @@ public:
 class GooseTest : public ::testing::Test {
 protected:
     void SetUp() override { spdlog::set_level(spdlog::level::debug); }
+
+    /**
+     * Print goose physics state for debugging.
+     */
+    void printGooseState(int frame, const Goose* goose, const World& world)
+    {
+        Vector2i anchor = goose->getAnchorCell();
+        const auto& data = world.getData();
+
+        std::cout << std::setw(3) << frame << " | " << "pos=(" << std::fixed << std::setprecision(2)
+                  << std::setw(6) << goose->position.x << "," << std::setw(5) << goose->position.y
+                  << ") | " << "grid=(" << std::setw(2) << anchor.x << "," << anchor.y << ") | "
+                  << "vel=(" << std::setw(6) << goose->velocity.x << "," << std::setw(6)
+                  << goose->velocity.y << ") | " << "ground=" << (goose->isOnGround() ? "Y" : "N");
+
+        // Print cell forces if valid position.
+        if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
+            && static_cast<uint32_t>(anchor.y) < data.height) {
+            const Cell& cell = data.at(anchor.x, anchor.y);
+            const auto& debug = world.getGrid().debugAt(anchor.x, anchor.y);
+            std::cout << " | pend=(" << std::setw(5) << cell.pending_force.x << "," << std::setw(5)
+                      << cell.pending_force.y << ")" << " grav=(" << std::setw(4)
+                      << debug.accumulated_gravity_force.x << "," << std::setw(4)
+                      << debug.accumulated_gravity_force.y << ")" << " fric=(" << std::setw(5)
+                      << debug.accumulated_friction_force.x << "," << std::setw(5)
+                      << debug.accumulated_friction_force.y << ")";
+        }
+        std::cout << "\n";
+    }
 
     /**
      * Create a world with air and a WALL floor.
@@ -117,7 +149,7 @@ TEST_F(GooseTest, CreateGoosePlacesWoodCell)
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(10, 8);
     EXPECT_EQ(cell.material_type, MaterialType::WOOD);
-    EXPECT_EQ(manager.at(Vector2i{10, 8}), goose_id);
+    EXPECT_EQ(manager.at(Vector2i{ 10, 8 }), goose_id);
 
     // Check goose's anchor cell.
     EXPECT_EQ(goose->getAnchorCell(), Vector2i(10, 8));
@@ -147,9 +179,20 @@ TEST_F(GooseTest, GooseStandsStillWithWaitAction)
 
     int start_x = goose->getAnchorCell().x;
 
+    // Set up cell tracker for detailed diagnostics.
+    CellTracker tracker(*world, goose_id, 20);
+    tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, 0);
+
     // Run physics for many frames.
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
+        tracker.recordFrame(frame);
+
+        // Track if the goose cell moved.
+        Vector2i current_anchor = goose->getAnchorCell();
+        if (current_anchor != Vector2i(10, 8)) {
+            tracker.trackCell(current_anchor, MaterialType::WOOD, frame);
+        }
     }
 
     printWorld(*world, "After 100 frames with WAIT action");
@@ -165,7 +208,26 @@ TEST_F(GooseTest, GooseStandsStillWithWaitAction)
 
     // Velocity should be near zero.
     EXPECT_NEAR(goose->velocity.x, 0.0, 0.1) << "Horizontal velocity should be near zero";
-    EXPECT_NEAR(goose->velocity.y, 0.0, 0.5) << "Vertical velocity should be near zero when on ground";
+    EXPECT_NEAR(goose->velocity.y, 0.0, 0.5)
+        << "Vertical velocity should be near zero when on ground";
+
+    // Print detailed diagnostics only if test failed.
+    if (HasFailure()) {
+        std::cout << "\n=== GOOSE STANDING STILL DEBUG ===\n";
+        tracker.printTableHeader();
+        for (int frame = 0; frame < 100; frame += 10) {
+            tracker.printTableRow(frame, true);
+        }
+
+        std::cout << "\n=== FINAL STATE ===\n";
+        printGooseState(100, goose, *world);
+        std::cout << "Goose position: (" << goose->position.x << ", " << goose->position.y << ")\n";
+        std::cout << "Goose velocity: (" << goose->velocity.x << ", " << goose->velocity.y << ")\n";
+        std::cout << "Goose on_ground: " << (goose->isOnGround() ? "true" : "false") << "\n";
+
+        std::cout << "\n=== CELL FORCE HISTORY ===\n";
+        tracker.printHistory(goose->getAnchorCell(), 100);
+    }
 }
 
 TEST_F(GooseTest, GooseFallsToFloorThenStops)
@@ -184,9 +246,20 @@ TEST_F(GooseTest, GooseFallsToFloorThenStops)
 
     printWorld(*world, "Initial state - goose at (10, 2)");
 
+    // Set up cell tracker.
+    CellTracker tracker(*world, goose_id, 20);
+    tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, 0);
+
     // Run physics - goose should fall due to gravity.
     for (int frame = 0; frame < 200; ++frame) {
         world->advanceTime(0.016);
+        tracker.recordFrame(frame);
+
+        // Track if the goose cell moved.
+        Vector2i current_anchor = goose->getAnchorCell();
+        if (frame < 100) {
+            tracker.trackCell(current_anchor, MaterialType::WOOD, frame);
+        }
     }
 
     printWorld(*world, "After 200 frames - should have fallen to floor");
@@ -199,7 +272,25 @@ TEST_F(GooseTest, GooseFallsToFloorThenStops)
     EXPECT_TRUE(goose->isOnGround()) << "Goose should detect it is on ground";
 
     // Velocity should be near zero after settling.
-    EXPECT_NEAR(goose->velocity.y, 0.0, 0.5) << "Vertical velocity should be near zero after landing";
+    EXPECT_NEAR(goose->velocity.y, 0.0, 0.5)
+        << "Vertical velocity should be near zero after landing";
+
+    // Print detailed diagnostics only if test failed.
+    if (HasFailure()) {
+        std::cout << "\n=== GOOSE FALLING DEBUG ===\n";
+        tracker.printTableHeader();
+        for (int frame = 0; frame < 200; frame += 20) {
+            tracker.printTableRow(frame, true);
+        }
+
+        std::cout << "\n=== FINAL STATE ===\n";
+        std::cout << "Goose position: (" << goose->position.x << ", " << goose->position.y << ")\n";
+        std::cout << "Goose velocity: (" << goose->velocity.x << ", " << goose->velocity.y << ")\n";
+        std::cout << "Goose on_ground: " << (goose->isOnGround() ? "true" : "false") << "\n";
+
+        std::cout << "\n=== CELL FORCE HISTORY ===\n";
+        tracker.printHistory(goose->getAnchorCell(), 200);
+    }
 }
 
 // =============================================================================
@@ -232,13 +323,19 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
     ASSERT_TRUE(goose->isOnGround()) << "Goose should be on ground before walking test";
     ASSERT_EQ(goose->getAnchorCell().y, expected_y)
         << "Goose should be at y=" << expected_y << " after settling, not inside the floor";
-    spdlog::info("Goose settled at ({}, {})", goose->getAnchorCell().x, goose->getAnchorCell().y);
+
+    // Set up cell tracker.
+    CellTracker tracker(*world, goose_id, 20);
+    tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, 0);
 
     // Walk right for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_RIGHT);
     double max_velocity = 0.0;
+
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
+        tracker.recordFrame(frame);
+        tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, frame);
 
         // Track max velocity.
         Vector2i pos = goose->getAnchorCell();
@@ -253,20 +350,37 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
     Vector2i final_pos = goose->getAnchorCell();
     int distance_moved = final_pos.x - start_x;
 
-    spdlog::info("Goose walked from x={} to x={}, distance={} cells, max_velocity={:.1f}",
-        start_x, final_pos.x, distance_moved, max_velocity);
-
-    // Check horizontal movement: expect ~30 cells in 100 frames with terminal velocity ~50.
-    EXPECT_GE(distance_moved, 25) << "Goose should move at least 25 cells when walking right for 100 frames";
+    // Check horizontal movement with ground friction.
+    EXPECT_GE(distance_moved, 20)
+        << "Goose should move at least 20 cells when walking right for 100 frames";
     EXPECT_LE(distance_moved, 35) << "Goose should not move more than 35 cells in 100 frames";
 
-    // Check terminal velocity is in expected range (45-51 cells/sec).
-    EXPECT_GE(max_velocity, 45.0) << "Goose terminal velocity should be at least 45 cells/sec";
-    EXPECT_LE(max_velocity, 51.0) << "Goose terminal velocity should not exceed 51 cells/sec";
+    // Check terminal velocity with ground friction (25-35 cells/sec).
+    EXPECT_GE(max_velocity, 25.0) << "Goose terminal velocity should be at least 25 cells/sec";
+    EXPECT_LE(max_velocity, 35.0) << "Goose terminal velocity should not exceed 35 cells/sec";
 
     // Check vertical position: should still be on the floor, not fallen through.
     EXPECT_EQ(final_pos.y, expected_y)
         << "Goose should stay at y=" << expected_y << " while walking, not fall into floor";
+
+    // Print detailed diagnostics only if test failed.
+    if (HasFailure()) {
+        std::cout << "\n=== GOOSE WALKING RIGHT DEBUG ===\n";
+        std::cout << "Walked from x=" << start_x << " to x=" << final_pos.x
+                  << ", distance=" << distance_moved << " cells, max_velocity=" << max_velocity
+                  << "\n";
+
+        tracker.printTableHeader();
+        for (int frame = 0; frame < 100; frame += 10) {
+            tracker.printTableRow(frame, true);
+        }
+
+        std::cout << "\n=== FINAL STATE ===\n";
+        printGooseState(100, goose, *world);
+
+        std::cout << "\n=== CELL FORCE HISTORY (final position) ===\n";
+        tracker.printHistory(goose->getAnchorCell(), 100);
+    }
 }
 
 TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
@@ -295,13 +409,18 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
     ASSERT_TRUE(goose->isOnGround()) << "Goose should be on ground before walking test";
     ASSERT_EQ(goose->getAnchorCell().y, expected_y)
         << "Goose should be at y=" << expected_y << " after settling, not inside the floor";
-    spdlog::info("Goose settled at ({}, {})", goose->getAnchorCell().x, goose->getAnchorCell().y);
+
+    // Set up cell tracker.
+    CellTracker tracker(*world, goose_id, 20);
+    tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, 0);
 
     // Walk left for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_LEFT);
     double max_velocity = 0.0;
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
+        tracker.recordFrame(frame);
+        tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, frame);
 
         // Track max velocity (absolute value since going left).
         Vector2i pos = goose->getAnchorCell();
@@ -316,20 +435,37 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
     Vector2i final_pos = goose->getAnchorCell();
     int distance_moved = start_x - final_pos.x; // Inverted for left movement.
 
-    spdlog::info("Goose walked from x={} to x={}, distance={} cells left, max_velocity={:.1f}",
-        start_x, final_pos.x, distance_moved, max_velocity);
-
-    // Check horizontal movement: expect ~30 cells in 100 frames with terminal velocity ~50.
-    EXPECT_GE(distance_moved, 25) << "Goose should move at least 25 cells when walking left for 100 frames";
+    // Check horizontal movement with ground friction.
+    EXPECT_GE(distance_moved, 20)
+        << "Goose should move at least 20 cells when walking left for 100 frames";
     EXPECT_LE(distance_moved, 35) << "Goose should not move more than 35 cells in 100 frames";
 
-    // Check terminal velocity is in expected range (45-51 cells/sec).
-    EXPECT_GE(max_velocity, 45.0) << "Goose terminal velocity should be at least 45 cells/sec";
-    EXPECT_LE(max_velocity, 51.0) << "Goose terminal velocity should not exceed 51 cells/sec";
+    // Check terminal velocity with ground friction (25-35 cells/sec).
+    EXPECT_GE(max_velocity, 25.0) << "Goose terminal velocity should be at least 25 cells/sec";
+    EXPECT_LE(max_velocity, 35.0) << "Goose terminal velocity should not exceed 35 cells/sec";
 
     // Check vertical position: should still be on the floor, not fallen through.
     EXPECT_EQ(final_pos.y, expected_y)
         << "Goose should stay at y=" << expected_y << " while walking, not fall into floor";
+
+    // Print detailed diagnostics only if test failed.
+    if (HasFailure()) {
+        std::cout << "\n=== GOOSE WALKING LEFT DEBUG ===\n";
+        std::cout << "Walked from x=" << start_x << " to x=" << final_pos.x
+                  << ", distance=" << distance_moved << " cells, max_velocity=" << max_velocity
+                  << "\n";
+
+        tracker.printTableHeader();
+        for (int frame = 0; frame < 100; frame += 10) {
+            tracker.printTableRow(frame, true);
+        }
+
+        std::cout << "\n=== FINAL STATE ===\n";
+        printGooseState(100, goose, *world);
+
+        std::cout << "\n=== CELL FORCE HISTORY (final position) ===\n";
+        tracker.printHistory(goose->getAnchorCell(), 100);
+    }
 }
 
 TEST_F(GooseTest, GooseStopsWhenWalkDirectionChangesToZero)
@@ -341,44 +477,74 @@ TEST_F(GooseTest, GooseStopsWhenWalkDirectionChangesToZero)
     auto test_brain = std::make_unique<TestGooseBrain>();
     TestGooseBrain* brain_ptr = test_brain.get();
 
-    // Create goose on the floor.
-    OrganismId goose_id = manager.createGoose(*world, 10, 8, std::move(test_brain));
+    // Create goose on the floor near the left side.
+    OrganismId goose_id = manager.createGoose(*world, 2, 8, std::move(test_brain));
     Goose* goose = manager.getGoose(goose_id);
     ASSERT_NE(goose, nullptr);
+
+    // Set up tracker.
+    CellTracker tracker(*world, goose_id, 100);
+    tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, 0);
+
+    int frame = 0;
 
     // Let goose settle.
     brain_ptr->setAction(GooseAction::WAIT);
     for (int i = 0; i < 20; ++i) {
         world->advanceTime(0.016);
+        tracker.recordFrame(++frame);
     }
 
-    // Walk right to build up velocity.
+    // Walk right until 1/3 of the way across the world.
     brain_ptr->setAction(GooseAction::RUN_RIGHT);
-    for (int i = 0; i < 30; ++i) {
+    int stop_x = static_cast<int>(world->getData().width) / 3;
+    while (goose->getAnchorCell().x < stop_x) {
         world->advanceTime(0.016);
+        ++frame;
+        tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, frame);
+        tracker.recordFrame(frame);
     }
 
     // Goose should have some velocity now.
     double velocity_while_walking = goose->velocity.x;
-    spdlog::info("Velocity while walking: {}", velocity_while_walking);
-    EXPECT_GT(velocity_while_walking, 0.0) << "Goose should have positive velocity while walking right";
+    EXPECT_GT(velocity_while_walking, 0.0)
+        << "Goose should have positive velocity while walking right";
 
     // Now stop.
     brain_ptr->setAction(GooseAction::WAIT);
     int x_when_stopped = goose->getAnchorCell().x;
+    double vel_when_stopped = goose->velocity.x;
 
     // Run more frames - goose should slow down and stop.
     for (int i = 0; i < 50; ++i) {
         world->advanceTime(0.016);
+        ++frame;
+        tracker.trackCell(goose->getAnchorCell(), MaterialType::WOOD, frame);
+        tracker.recordFrame(frame);
     }
 
     int final_x = goose->getAnchorCell().x;
     int drift = final_x - x_when_stopped;
 
-    spdlog::info("Goose drifted {} cells after stopping", drift);
+    // Goose shouldn't drift too far after stopping (friction decelerates over time).
+    EXPECT_LE(drift, 7) << "Goose should not drift more than 7 cells after stopping";
 
-    // Goose shouldn't drift too far after stopping (maybe 1-2 cells due to momentum).
-    EXPECT_LE(drift, 3) << "Goose should not drift more than 3 cells after stopping";
+    // Print detailed diagnostics only if test failed.
+    if (HasFailure()) {
+        std::cout << "\n=== GOOSE STOPPING DEBUG ===\n";
+        std::cout << "Velocity while walking: " << velocity_while_walking << "\n";
+        std::cout << "Position when stopped: x=" << x_when_stopped
+                  << ", velocity=" << vel_when_stopped << "\n";
+        std::cout << "Final position: x=" << final_x << ", drift=" << drift << " cells\n";
+
+        tracker.printTableHeader();
+        for (int f = 0; f < frame; f += 10) {
+            tracker.printTableRow(f, true);
+        }
+
+        std::cout << "\n=== CELL FORCE HISTORY (final position) ===\n";
+        tracker.printHistory(goose->getAnchorCell(), frame);
+    }
 }
 
 // =============================================================================
@@ -414,8 +580,7 @@ TEST_F(GooseTest, GooseCannotWalkThroughVerticalWall)
         world->advanceTime(0.016);
     }
 
-    ASSERT_EQ(goose->getAnchorCell().y, expected_y)
-        << "Goose should settle at y=" << expected_y;
+    ASSERT_EQ(goose->getAnchorCell().y, expected_y) << "Goose should settle at y=" << expected_y;
 
     printWorld(*world, "Before walking toward wall");
 
@@ -453,7 +618,8 @@ TEST_F(GooseTest, GooseCannotWalkThroughOtherOrganism)
     obstacle_brain->setAction(GooseAction::WAIT);
     int obstacle_x = 12;
     int expected_y = 8;
-    OrganismId obstacle_id = manager.createGoose(*world, obstacle_x, expected_y, std::move(obstacle_brain));
+    OrganismId obstacle_id =
+        manager.createGoose(*world, obstacle_x, expected_y, std::move(obstacle_brain));
     Goose* obstacle_goose = manager.getGoose(obstacle_id);
     ASSERT_NE(obstacle_goose, nullptr);
 
@@ -461,7 +627,8 @@ TEST_F(GooseTest, GooseCannotWalkThroughOtherOrganism)
     auto walker_brain = std::make_unique<TestGooseBrain>();
     TestGooseBrain* walker_brain_ptr = walker_brain.get();
     int start_x = 5;
-    OrganismId walker_id = manager.createGoose(*world, start_x, expected_y, std::move(walker_brain));
+    OrganismId walker_id =
+        manager.createGoose(*world, start_x, expected_y, std::move(walker_brain));
     Goose* walker_goose = manager.getGoose(walker_id);
     ASSERT_NE(walker_goose, nullptr);
 
@@ -486,8 +653,12 @@ TEST_F(GooseTest, GooseCannotWalkThroughOtherOrganism)
 
     Vector2i walker_pos = walker_goose->getAnchorCell();
     Vector2i obstacle_pos = obstacle_goose->getAnchorCell();
-    spdlog::info("Walker ended at ({}, {}), obstacle at ({}, {})",
-        walker_pos.x, walker_pos.y, obstacle_pos.x, obstacle_pos.y);
+    spdlog::info(
+        "Walker ended at ({}, {}), obstacle at ({}, {})",
+        walker_pos.x,
+        walker_pos.y,
+        obstacle_pos.x,
+        obstacle_pos.y);
 
     // Walker should have stopped before the obstacle (not overlapping).
     EXPECT_LT(walker_pos.x, obstacle_pos.x)
@@ -498,8 +669,6 @@ TEST_F(GooseTest, GooseCannotWalkThroughOtherOrganism)
         << "Walker goose should have walked up to the obstacle";
 
     // Both geese should still be at correct y position.
-    EXPECT_EQ(walker_pos.y, expected_y)
-        << "Walker goose should stay at y=" << expected_y;
-    EXPECT_EQ(obstacle_pos.y, expected_y)
-        << "Obstacle goose should stay at y=" << expected_y;
+    EXPECT_EQ(walker_pos.y, expected_y) << "Walker goose should stay at y=" << expected_y;
+    EXPECT_EQ(obstacle_pos.y, expected_y) << "Obstacle goose should stay at y=" << expected_y;
 }

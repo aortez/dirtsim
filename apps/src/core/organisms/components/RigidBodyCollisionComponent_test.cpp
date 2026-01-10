@@ -272,7 +272,7 @@ TEST_F(RigidBodyCollisionComponentTest, ResponseWithRestitutionBounces)
     result.blocked = true;
     result.contactNormal = { 0.0, -1.0 }; // Floor normal.
 
-    Vector2d velocity{ 0.0, 5.0 }; // Moving down.
+    Vector2d velocity{ 0.0, 5.0 };            // Moving down.
     collision.respond(result, velocity, 1.0); // Full restitution.
 
     EXPECT_NEAR(velocity.y, -5.0, 0.0001); // Full bounce.
@@ -363,4 +363,138 @@ TEST_F(RigidBodyCollisionComponentTest, ContactNormalFromMultipleBlockedCells)
         result.contactNormal.x * result.contactNormal.x
         + result.contactNormal.y * result.contactNormal.y);
     EXPECT_NEAR(len, 1.0, 0.01);
+}
+
+// =============================================================================
+// Ground Friction
+// =============================================================================
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionReturnsZeroWhenNotOnGround)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 10.0, 0.0 }; // Moving horizontally.
+    double normalForce = 0.0;       // No ground contact.
+
+    Vector2d friction =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce);
+
+    EXPECT_NEAR(friction.x, 0.0, 0.0001);
+    EXPECT_NEAR(friction.y, 0.0, 0.0001);
+}
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionOpposesHorizontalVelocity)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    // Place DIRT ground below organism.
+    world->getData().at(5, 6).material_type = MaterialType::DIRT;
+    world->getData().at(5, 6).fill_ratio = 1.0;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 10.0, 0.0 }; // Moving right.
+    double normalForce = 100.0;     // On ground.
+
+    Vector2d friction =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce);
+
+    // Friction should oppose motion (point left).
+    EXPECT_LT(friction.x, 0.0);
+    EXPECT_NEAR(friction.y, 0.0, 0.0001); // No vertical friction.
+}
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionProportionalToNormalForce)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    // Place DIRT ground below organism.
+    world->getData().at(5, 6).material_type = MaterialType::DIRT;
+    world->getData().at(5, 6).fill_ratio = 1.0;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 10.0, 0.0 };
+
+    // Test with two different normal forces.
+    double normalForce1 = 50.0;
+    double normalForce2 = 100.0;
+
+    Vector2d friction1 =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce1);
+    Vector2d friction2 =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce2);
+
+    // Friction should be proportional to normal force.
+    // friction2 should be approximately 2x friction1.
+    double ratio = std::abs(friction2.x / friction1.x);
+    EXPECT_NEAR(ratio, 2.0, 0.1);
+}
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionUsesStaticCoefficientWhenSlow)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    // Place DIRT ground (static_friction=1.5, stick_velocity=0.1).
+    world->getData().at(5, 6).material_type = MaterialType::DIRT;
+    world->getData().at(5, 6).fill_ratio = 1.0;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 0.05, 0.0 }; // Below stick_velocity.
+    double normalForce = 100.0;
+
+    Vector2d friction =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce);
+
+    // Friction magnitude should be close to static_friction * normal_force.
+    // DIRT static_friction ≈ 1.5, so expect |friction| ≈ 150.
+    double frictionMag = std::abs(friction.x);
+    EXPECT_GT(frictionMag, 100.0); // Higher than kinetic.
+}
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionUsesKineticCoefficientWhenFast)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    // Place DIRT ground (kinetic_friction=0.5, stick_velocity=0.1, transition_width=0.1).
+    world->getData().at(5, 6).material_type = MaterialType::DIRT;
+    world->getData().at(5, 6).fill_ratio = 1.0;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 10.0, 0.0 }; // Well above stick_velocity + transition_width.
+    double normalForce = 100.0;
+
+    Vector2d friction =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce);
+
+    // Friction magnitude should be close to kinetic_friction * normal_force.
+    // DIRT kinetic_friction = 0.5, so expect |friction| ≈ 50.
+    double frictionMag = std::abs(friction.x);
+    EXPECT_LT(frictionMag, 100.0); // Lower than static.
+    EXPECT_GT(frictionMag, 30.0);  // Reasonable kinetic friction.
+}
+
+TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionZeroWhenStationary)
+{
+    auto world = createWorld();
+    RigidBodyCollisionComponent collision;
+
+    // Place DIRT ground below organism.
+    world->getData().at(5, 6).material_type = MaterialType::DIRT;
+    world->getData().at(5, 6).fill_ratio = 1.0;
+
+    std::vector<Vector2i> currentCells = { { 5, 5 } };
+    Vector2d velocity{ 0.0, 0.0 }; // Stationary.
+    double normalForce = 100.0;
+
+    Vector2d friction =
+        collision.computeGroundFriction(*world, kOrganism1, currentCells, velocity, normalForce);
+
+    // No velocity = no friction force.
+    EXPECT_NEAR(friction.x, 0.0, 0.0001);
+    EXPECT_NEAR(friction.y, 0.0, 0.0001);
 }

@@ -16,23 +16,46 @@ CollisionResult RigidBodyCollisionComponent::detect(
     CollisionResult result;
     const WorldData& data = world.getData();
 
-    // Compute organism center from current cells for contact normal calculation.
-    Vector2d organismCenter{ 0.0, 0.0 };
+    // Get reference current cell for normal calculation.
+    // For multi-cell organisms, use the center of current cells.
+    Vector2i currentRef{ 0, 0 };
     if (!currentCells.empty()) {
         for (const auto& cell : currentCells) {
-            organismCenter.x += static_cast<double>(cell.x);
-            organismCenter.y += static_cast<double>(cell.y);
+            currentRef.x += cell.x;
+            currentRef.y += cell.y;
         }
-        organismCenter.x /= static_cast<double>(currentCells.size());
-        organismCenter.y /= static_cast<double>(currentCells.size());
+        currentRef.x /= static_cast<int>(currentCells.size());
+        currentRef.y /= static_cast<int>(currentCells.size());
     }
 
     Vector2d normalSum{ 0.0, 0.0 };
 
+    // Helper lambda to add normal based on which cell boundary was crossed.
+    // Compares blocked cell to current cell position to determine collision direction.
+    auto addBoundaryCrossedNormal = [&normalSum, &currentRef](const Vector2i& blockedPos) {
+        int dx = blockedPos.x - currentRef.x;
+        int dy = blockedPos.y - currentRef.y;
+
+        // Determine collision direction based on which axis changed.
+        // When both axes change equally (diagonal movement), prioritize vertical (floor/ceiling)
+        // because organisms walking on floors commonly cross cell boundaries diagonally.
+        if (std::abs(dy) >= std::abs(dx) && dy != 0) {
+            // Vertical boundary crossed (floor or ceiling).
+            normalSum.y -= (dy > 0) ? 1.0 : -1.0;
+        }
+        else if (dx != 0) {
+            // Horizontal boundary crossed (left or right wall).
+            normalSum.x -= (dx > 0) ? 1.0 : -1.0;
+        }
+        else {
+            // Same cell (shouldn't happen) - use floor collision as default.
+            normalSum.y -= 1.0;
+        }
+    };
+
     for (const auto& cellPos : predictedCells) {
         // Check world boundaries.
-        if (cellPos.x < 0 || cellPos.y < 0
-            || static_cast<uint32_t>(cellPos.x) >= data.width
+        if (cellPos.x < 0 || cellPos.y < 0 || static_cast<uint32_t>(cellPos.x) >= data.width
             || static_cast<uint32_t>(cellPos.y) >= data.height) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
@@ -59,18 +82,7 @@ CollisionResult RigidBodyCollisionComponent::detect(
         if (cell.material_type == MaterialType::WALL) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
-
-            // Compute normal from organism center toward blocking cell.
-            Vector2d toObstacle{
-                static_cast<double>(cellPos.x) - organismCenter.x,
-                static_cast<double>(cellPos.y) - organismCenter.y
-            };
-            double len = std::sqrt(toObstacle.x * toObstacle.x + toObstacle.y * toObstacle.y);
-            if (len > 0.0001) {
-                // Normal points away from obstacle (opposite direction).
-                normalSum.x -= toObstacle.x / len;
-                normalSum.y -= toObstacle.y / len;
-            }
+            addBoundaryCrossedNormal(cellPos);
             continue;
         }
 
@@ -79,41 +91,20 @@ CollisionResult RigidBodyCollisionComponent::detect(
         if (cellOrg != INVALID_ORGANISM_ID && cellOrg != organismId) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
-
-            // Compute normal from organism center toward blocking cell.
-            Vector2d toObstacle{
-                static_cast<double>(cellPos.x) - organismCenter.x,
-                static_cast<double>(cellPos.y) - organismCenter.y
-            };
-            double len = std::sqrt(toObstacle.x * toObstacle.x + toObstacle.y * toObstacle.y);
-            if (len > 0.0001) {
-                normalSum.x -= toObstacle.x / len;
-                normalSum.y -= toObstacle.y / len;
-            }
+            addBoundaryCrossedNormal(cellPos);
             continue;
         }
 
         // Check for dense solid material (not owned by this organism).
         bool isSolid = cell.material_type == MaterialType::DIRT
-            || cell.material_type == MaterialType::SAND
-            || cell.material_type == MaterialType::WOOD
+            || cell.material_type == MaterialType::SAND || cell.material_type == MaterialType::WOOD
             || cell.material_type == MaterialType::METAL
             || cell.material_type == MaterialType::ROOT;
 
         if (isSolid && cell.fill_ratio > 0.8 && cellOrg != organismId) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
-
-            // Compute normal from organism center toward blocking cell.
-            Vector2d toObstacle{
-                static_cast<double>(cellPos.x) - organismCenter.x,
-                static_cast<double>(cellPos.y) - organismCenter.y
-            };
-            double len = std::sqrt(toObstacle.x * toObstacle.x + toObstacle.y * toObstacle.y);
-            if (len > 0.0001) {
-                normalSum.x -= toObstacle.x / len;
-                normalSum.y -= toObstacle.y / len;
-            }
+            addBoundaryCrossedNormal(cellPos);
             continue;
         }
     }
@@ -131,9 +122,7 @@ CollisionResult RigidBodyCollisionComponent::detect(
 }
 
 void RigidBodyCollisionComponent::respond(
-    const CollisionResult& collision,
-    Vector2d& velocity,
-    double restitution)
+    const CollisionResult& collision, Vector2d& velocity, double restitution)
 {
     if (!collision.blocked) {
         return;
@@ -158,6 +147,175 @@ void RigidBodyCollisionComponent::respond(
     double impulse = -vIntoSurface * (1.0 + restitution);
     velocity.x += impulse * normal.x;
     velocity.y += impulse * normal.y;
+}
+
+Vector2d RigidBodyCollisionComponent::computeSupportForce(
+    const World& world,
+    OrganismId organismId,
+    const std::vector<Vector2i>& currentCells,
+    double weight,
+    Vector2d gravityDir)
+{
+    if (currentCells.empty() || weight < 0.0001) {
+        return { 0.0, 0.0 };
+    }
+
+    const WorldData& data = world.getData();
+    int contactCount = 0;
+    double supportFraction = 0.0;
+
+    for (const auto& pos : currentCells) {
+        // Check cell below (in gravity direction).
+        int groundX = pos.x + static_cast<int>(gravityDir.x);
+        int groundY = pos.y + static_cast<int>(gravityDir.y);
+
+        // World boundary = full support.
+        if (groundX < 0 || groundY < 0 || static_cast<uint32_t>(groundX) >= data.width
+            || static_cast<uint32_t>(groundY) >= data.height) {
+            return { -gravityDir.x * weight, -gravityDir.y * weight };
+        }
+
+        const Cell& groundCell = data.at(groundX, groundY);
+
+        // Skip empty cells.
+        if (groundCell.isEmpty()) {
+            continue;
+        }
+
+        // Skip cells belonging to same organism.
+        Vector2i groundPos{ groundX, groundY };
+        if (world.getOrganismManager().at(groundPos) == organismId) {
+            continue;
+        }
+
+        ++contactCount;
+
+        // Solid materials provide full support.
+        MaterialType mat = groundCell.material_type;
+        if (mat == MaterialType::WALL || mat == MaterialType::METAL || mat == MaterialType::WOOD
+            || mat == MaterialType::DIRT || mat == MaterialType::SAND || mat == MaterialType::SEED
+            || mat == MaterialType::ROOT) {
+            supportFraction += 1.0;
+        }
+        else if (mat == MaterialType::WATER) {
+            // Partial buoyancy.
+            supportFraction += 0.5 * groundCell.fill_ratio;
+        }
+        else if (mat == MaterialType::LEAF) {
+            supportFraction += 0.3 * groundCell.fill_ratio;
+        }
+    }
+
+    // No contact = free fall.
+    if (contactCount == 0) {
+        return { 0.0, 0.0 };
+    }
+
+    // Any solid contact provides full support.
+    double normalized = std::min(supportFraction / static_cast<double>(contactCount), 1.0);
+    if (normalized > 0.5) {
+        normalized = 1.0;
+    }
+
+    double magnitude = weight * normalized;
+    return { -gravityDir.x * magnitude, -gravityDir.y * magnitude };
+}
+
+Vector2d RigidBodyCollisionComponent::computeGroundFriction(
+    const World& world,
+    OrganismId organismId,
+    const std::vector<Vector2i>& currentCells,
+    const Vector2d& velocity,
+    double normalForce)
+{
+    // No ground contact = no friction.
+    if (normalForce < 0.01 || currentCells.empty()) {
+        return { 0.0, 0.0 };
+    }
+
+    // Extract horizontal velocity (tangential to ground).
+    // Assumes horizontal ground (gravity downward).
+    Vector2d tangentialVelocity{ velocity.x, 0.0 };
+    double tangentialSpeed = std::abs(tangentialVelocity.x);
+
+    // No motion = no friction force.
+    static constexpr double MIN_TANGENTIAL_SPEED = 1e-6;
+    if (tangentialSpeed < MIN_TANGENTIAL_SPEED) {
+        return { 0.0, 0.0 };
+    }
+
+    // Find ground materials below organism.
+    const WorldData& data = world.getData();
+    Vector2d gravityDir{ 0.0, 1.0 }; // Assumes downward gravity.
+
+    std::vector<MaterialType> groundMaterials;
+    for (const auto& pos : currentCells) {
+        int groundX = pos.x + static_cast<int>(gravityDir.x);
+        int groundY = pos.y + static_cast<int>(gravityDir.y);
+
+        // World boundary = treat as WALL (provides full support and friction).
+        if (groundX < 0 || groundY < 0 || static_cast<uint32_t>(groundX) >= data.width
+            || static_cast<uint32_t>(groundY) >= data.height) {
+            groundMaterials.push_back(MaterialType::WALL);
+            continue;
+        }
+
+        const Cell& groundCell = data.at(groundX, groundY);
+
+        // Skip empty cells and own cells.
+        if (groundCell.isEmpty()) {
+            continue;
+        }
+        Vector2i groundPos{ groundX, groundY };
+        if (world.getOrganismManager().at(groundPos) == organismId) {
+            continue;
+        }
+
+        groundMaterials.push_back(groundCell.material_type);
+    }
+
+    // No ground materials found = no friction.
+    if (groundMaterials.empty()) {
+        return { 0.0, 0.0 };
+    }
+
+    // Calculate average friction coefficient from all ground materials.
+    double totalStaticFriction = 0.0;
+    double totalKineticFriction = 0.0;
+    double totalStickVelocity = 0.0;
+    double totalTransitionWidth = 0.0;
+
+    for (const auto& mat : groundMaterials) {
+        const MaterialProperties& props = getMaterialProperties(mat);
+        totalStaticFriction += props.static_friction_coefficient;
+        totalKineticFriction += props.kinetic_friction_coefficient;
+        totalStickVelocity += props.stick_velocity;
+        totalTransitionWidth += props.friction_transition_width;
+    }
+
+    double count = static_cast<double>(groundMaterials.size());
+    double staticFriction = totalStaticFriction / count;
+    double kineticFriction = totalKineticFriction / count;
+    double stickVelocity = totalStickVelocity / count;
+    double transitionWidth = totalTransitionWidth / count;
+
+    // Calculate friction coefficient with smooth static/kinetic transition.
+    double frictionCoefficient = staticFriction;
+    if (tangentialSpeed >= stickVelocity) {
+        double t = (tangentialSpeed - stickVelocity) / transitionWidth;
+        t = std::clamp(t, 0.0, 1.0);
+        double smoothT = t * t * (3.0 - 2.0 * t); // Smooth cubic interpolation.
+        frictionCoefficient = staticFriction * (1.0 - smoothT) + kineticFriction * smoothT;
+    }
+
+    // Calculate friction force magnitude.
+    double frictionMagnitude = frictionCoefficient * normalForce;
+
+    // Direction opposes tangential velocity.
+    Vector2d frictionDirection =
+        tangentialVelocity.x > 0.0 ? Vector2d{ -1.0, 0.0 } : Vector2d{ 1.0, 0.0 };
+
+    return { frictionDirection.x * frictionMagnitude, 0.0 };
 }
 
 } // namespace DirtSim

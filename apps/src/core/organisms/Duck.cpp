@@ -11,36 +11,37 @@
 #include <algorithm>
 
 namespace {
-  // Physics constants.
-  static constexpr float WALK_FORCE = 20.0f;          // Force applied each frame when walking.
-  static constexpr float JUMP_FORCE = 300.0f;         // Impulse force applied once when jumping.
+// Physics constants.
+static constexpr float WALK_FORCE = 10.0f;  // Force applied each frame when walking.
+static constexpr float JUMP_FORCE = 300.0f; // Impulse force applied once when jumping.
 
-  // SMB1-style asymmetric air steering: you accelerate faster in the direction
-  // you are NOT facing. This enables the "backwards jump trick".
-  static constexpr float AIR_CONTROL_SAME = 0.15f;      // Steering same direction as facing.
-  static constexpr float AIR_CONTROL_OPPOSING = 0.30f;  // Steering opposite to facing (2x bonus).
+// SMB1-style asymmetric air steering: you accelerate faster in the direction
+// you are NOT facing. This enables the "backwards jump trick".
+static constexpr float AIR_CONTROL_SAME = 0.15f;     // Steering same direction as facing.
+static constexpr float AIR_CONTROL_OPPOSING = 0.30f; // Steering opposite to facing (2x bonus).
 
-  // Sparkle constants.
-  static constexpr int MIN_SPARKLES = 0;           // Sparkles when at rest.
-  static constexpr int MAX_SPARKLES = 32;          // Sparkles at full speed.
-  static constexpr float SPARKLE_ACCELERATION_FLOOR = 30.0f;  // Below this, no sparkles (filters noise).
-  static constexpr float SPARKLE_ACCELERATION_MAX = 200.0f;   // Acceleration for max sparkles (cells/sec^2).
-  static constexpr float SPARKLE_ACCEL_SMOOTHING = 0.85f;    // Smoothing factor (0=instant, 1=never updates).
-  static constexpr float SPARKLE_LIFETIME = 2.0f;  // Seconds before sparkle fades completely.
-  static constexpr float SPARKLE_DRAG = 0.98f;     // Velocity multiplier per frame (damping).
-  static constexpr float SPARKLE_IMPULSE = 3.0f;   // Max random impulse magnitude.
-  static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f;  // Chance per frame of impulse.
-  static constexpr float SPARKLE_GRAVITY = 20.0f;   // Gravity acceleration (cells/sec^2).
-  static constexpr float SPARKLE_BOUNCE = 0.7f;    // Velocity retained after bounce (0-1).
-}
+// Sparkle constants.
+static constexpr int MIN_SPARKLES = 0;  // Sparkles when at rest.
+static constexpr int MAX_SPARKLES = 32; // Sparkles at full speed.
+static constexpr float SPARKLE_ACCELERATION_FLOOR =
+    30.0f; // Below this, no sparkles (filters noise).
+static constexpr float SPARKLE_ACCELERATION_MAX =
+    200.0f; // Acceleration for max sparkles (cells/sec^2).
+static constexpr float SPARKLE_ACCEL_SMOOTHING =
+    0.85f;                                      // Smoothing factor (0=instant, 1=never updates).
+static constexpr float SPARKLE_LIFETIME = 2.0f; // Seconds before sparkle fades completely.
+static constexpr float SPARKLE_DRAG = 0.98f;    // Velocity multiplier per frame (damping).
+static constexpr float SPARKLE_IMPULSE = 3.0f;  // Max random impulse magnitude.
+static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f; // Chance per frame of impulse.
+static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (cells/sec^2).
+static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
+} // namespace
 
 namespace DirtSim {
 
 Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
-    : Organism(id, OrganismType::DUCK)
-    , brain_(std::move(brain))
-{
-}
+    : Organism(id, OrganismType::DUCK), brain_(std::move(brain))
+{}
 
 void Duck::update(World& world, double deltaTime)
 {
@@ -54,46 +55,67 @@ void Duck::update(World& world, double deltaTime)
 
     // INVARIANT CHECKS: Verify duck's anchor_cell_ matches world state.
     const WorldData& data = world.getData();
-    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0 &&
-        static_cast<uint32_t>(anchor_cell_.x) < data.width &&
-        static_cast<uint32_t>(anchor_cell_.y) < data.height) {
+    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0
+        && static_cast<uint32_t>(anchor_cell_.x) < data.width
+        && static_cast<uint32_t>(anchor_cell_.y) < data.height) {
 
         const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
 
         // Cell material must be WOOD.
         if (our_cell.material_type != MaterialType::WOOD) {
-            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has {} instead of WOOD!",
-                id_, anchor_cell_.x, anchor_cell_.y, getMaterialName(our_cell.material_type));
-            spdlog::critical("  Duck: age={:.1f}s, on_ground={}, facing=({:.1f},{:.1f})",
-                age_seconds_, on_ground_, facing_.x, facing_.y);
+            spdlog::critical(
+                "Duck {} VIOLATION: anchor ({},{}) has {} instead of WOOD!",
+                id_,
+                anchor_cell_.x,
+                anchor_cell_.y,
+                getMaterialName(our_cell.material_type));
+            spdlog::critical(
+                "  Duck: age={:.1f}s, on_ground={}, facing=({:.1f},{:.1f})",
+                age_seconds_,
+                on_ground_,
+                facing_.x,
+                facing_.y);
             OrganismId anchor_org = world.getOrganismManager().at(anchor_cell_);
-            spdlog::critical("  Cell at anchor: fill={:.2f}, vel=({:.1f},{:.1f}), organism_id={}",
-                our_cell.fill_ratio, our_cell.velocity.x, our_cell.velocity.y, anchor_org);
+            spdlog::critical(
+                "  Cell at anchor: fill={:.2f}, vel=({:.1f},{:.1f}), organism_id={}",
+                our_cell.fill_ratio,
+                our_cell.velocity.x,
+                our_cell.velocity.y,
+                anchor_org);
 
             // Scan entire world to find where our organism actually is.
             spdlog::critical("  Scanning world for duck's actual cells...");
             for (uint32_t y = 0; y < data.height; ++y) {
                 for (uint32_t x = 0; x < data.width; ++x) {
-                    Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+                    Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                     if (world.getOrganismManager().at(pos) == id_) {
                         const Cell& cell = data.at(x, y);
-                        spdlog::critical("    Found organism_id={} at ({},{}): material={}, fill={:.2f}",
-                            id_, x, y, getMaterialName(cell.material_type), cell.fill_ratio);
+                        spdlog::critical(
+                            "    Found organism_id={} at ({},{}): material={}, fill={:.2f}",
+                            id_,
+                            x,
+                            y,
+                            getMaterialName(cell.material_type),
+                            cell.fill_ratio);
                     }
                 }
             }
         }
-        DIRTSIM_ASSERT(our_cell.material_type == MaterialType::WOOD,
-            "Duck anchor cell must be WOOD!");
+        DIRTSIM_ASSERT(
+            our_cell.material_type == MaterialType::WOOD, "Duck anchor cell must be WOOD!");
 
         // OrganismManager must say we own our anchor.
         OrganismId manager_says = world.getOrganismManager().at(anchor_cell_);
         if (manager_says != id_) {
-            spdlog::critical("Duck {} VIOLATION: anchor ({},{}) has organism_id {} instead of {}!",
-                id_, anchor_cell_.x, anchor_cell_.y, manager_says, id_);
+            spdlog::critical(
+                "Duck {} VIOLATION: anchor ({},{}) has organism_id {} instead of {}!",
+                id_,
+                anchor_cell_.x,
+                anchor_cell_.y,
+                manager_says,
+                id_);
         }
-        DIRTSIM_ASSERT(manager_says == id_,
-            "Duck anchor cell organism_id must match!");
+        DIRTSIM_ASSERT(manager_says == id_, "Duck anchor cell organism_id must match!");
     }
 
     // Update ground detection first.
@@ -146,9 +168,8 @@ void Duck::updateGroundDetection(const World& world)
     // Also check if it's a wall or has significant fill.
     bool is_solid_below =
         (below.material_type == MaterialType::WALL || below.material_type == MaterialType::DIRT
-            || below.material_type == MaterialType::SAND || below.material_type == MaterialType::WOOD
-            || below.material_type == MaterialType::METAL
-            || below.material_type == MaterialType::ROOT)
+         || below.material_type == MaterialType::SAND || below.material_type == MaterialType::WOOD
+         || below.material_type == MaterialType::METAL || below.material_type == MaterialType::ROOT)
         && below.fill_ratio > 0.5;
 
     // Also check our own cell's COM - if it's near the bottom, we might be resting.
@@ -180,9 +201,12 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
     if (current_input_.jump) {
         if (!on_ground_) {
             LOG_WARN(Brain, "Duck {}: Jump requested but not on ground.", id_);
-        } else if (jump_cooldown_ > 0.0f) {
-            LOG_WARN(Brain, "Duck {}: Jump requested but in cooldown ({:.2f}s).", id_, jump_cooldown_);
-        } else {
+        }
+        else if (jump_cooldown_ > 0.0f) {
+            LOG_WARN(
+                Brain, "Duck {}: Jump requested but in cooldown ({:.2f}s).", id_, jump_cooldown_);
+        }
+        else {
             double gravity = world.getPhysicsSettings().gravity;
             double jump_direction = (gravity >= 0) ? -1.0 : 1.0;
             Vector2d jump_force(0.0, jump_direction * JUMP_FORCE);
@@ -200,10 +224,11 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
         float multiplier;
         if (on_ground_) {
             multiplier = 1.0f;
-        } else {
+        }
+        else {
             // SMB1-style asymmetric air control: steering opposite to facing gives bonus.
-            bool steering_opposes_facing = (move_x > 0 && facing_.x < 0) ||
-                                           (move_x < 0 && facing_.x > 0);
+            bool steering_opposes_facing =
+                (move_x > 0 && facing_.x < 0) || (move_x < 0 && facing_.x > 0);
             multiplier = steering_opposes_facing ? AIR_CONTROL_OPPOSING : AIR_CONTROL_SAME;
         }
         Vector2d walk_force(move_x * WALK_FORCE * multiplier, 0.0);
@@ -216,7 +241,8 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
         if (std::abs(move_x) > 0.01f) {
             facing_.x = (move_x > 0) ? 1.0f : -1.0f;
             facing_.y = 0.0f;
-        } else if (std::abs(cell.velocity.x) > 0.1) {
+        }
+        else if (std::abs(cell.velocity.x) > 0.1) {
             facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
             facing_.y = 0.0f;
         }
@@ -237,13 +263,20 @@ void Duck::logPhysicsState(const World& world)
 
     const Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
 
-    LOG_INFO(Brain, "Duck {} frame {}: pos=({}, {}), com=({:.2f}, {:.2f}), vel=({:.2f}, {:.2f}), "
+    LOG_INFO(
+        Brain,
+        "Duck {} frame {}: pos=({}, {}), com=({:.2f}, {:.2f}), vel=({:.2f}, {:.2f}), "
         "force=({:.2f}, {:.2f}), on_ground={}, material={}",
-        id_, frame_counter_,
-        anchor_cell_.x, anchor_cell_.y,
-        cell.com.x, cell.com.y,
-        cell.velocity.x, cell.velocity.y,
-        cell.pending_force.x, cell.pending_force.y,
+        id_,
+        frame_counter_,
+        anchor_cell_.x,
+        anchor_cell_.y,
+        cell.com.x,
+        cell.com.y,
+        cell.velocity.x,
+        cell.velocity.y,
+        cell.pending_force.x,
+        cell.pending_force.y,
         on_ground_,
         static_cast<int>(cell.material_type));
 }
@@ -254,8 +287,9 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
 
     // Use the utility to gather material histograms centered on duck.
     // Out-of-bounds cells are marked as WALL for edge detection.
-    SensoryUtils::gatherMaterialHistograms<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-        world, anchor_cell_, data.material_histograms, data.world_offset);
+    SensoryUtils::
+        gatherMaterialHistograms<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
+            world, anchor_cell_, data.material_histograms, data.world_offset);
 
     // Set actual dimensions (always grid size for duck, no scaling).
     data.actual_width = DuckSensoryData::GRID_SIZE;
@@ -318,20 +352,21 @@ void Duck::updateSparkles(const World& world, double deltaTime)
         // Horizontal collision.
         if (cell_x != old_cell_x && isSolidCell(world, cell_x, old_cell_y)) {
             sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
-            new_x = sparkle.position.x;  // Don't move into solid.
+            new_x = sparkle.position.x; // Don't move into solid.
         }
 
         // Vertical collision.
         if (cell_y != old_cell_y && isSolidCell(world, static_cast<int>(new_x), cell_y)) {
             sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
-            new_y = sparkle.position.y;  // Don't move into solid.
+            new_y = sparkle.position.y; // Don't move into solid.
         }
 
         // World bounds check.
         if (new_x < 0.0f) {
             new_x = 0.0f;
             sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
-        } else if (new_x >= static_cast<float>(data.width)) {
+        }
+        else if (new_x >= static_cast<float>(data.width)) {
             new_x = static_cast<float>(data.width) - 0.01f;
             sparkle.velocity.x = -sparkle.velocity.x * SPARKLE_BOUNCE;
         }
@@ -339,7 +374,8 @@ void Duck::updateSparkles(const World& world, double deltaTime)
         if (new_y < 0.0f) {
             new_y = 0.0f;
             sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
-        } else if (new_y >= static_cast<float>(data.height)) {
+        }
+        else if (new_y >= static_cast<float>(data.height)) {
             new_y = static_cast<float>(data.height) - 0.01f;
             sparkle.velocity.y = -sparkle.velocity.y * SPARKLE_BOUNCE;
         }
@@ -371,16 +407,18 @@ void Duck::updateSparkles(const World& world, double deltaTime)
 
     // Remove dead sparkles.
     sparkles_.erase(
-        std::remove_if(sparkles_.begin(), sparkles_.end(),
+        std::remove_if(
+            sparkles_.begin(),
+            sparkles_.end(),
             [](const DuckSparkle& s) { return s.lifetime <= 0.0f; }),
         sparkles_.end());
 
     // Spawn or remove sparkles to match desired count based on acceleration.
     // Get duck's current velocity from cell and calculate acceleration.
     const WorldData& world_data = world.getData();
-    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0 &&
-        static_cast<uint32_t>(anchor_cell_.x) < world_data.width &&
-        static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
+    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0
+        && static_cast<uint32_t>(anchor_cell_.x) < world_data.width
+        && static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
         const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
 
         // Calculate instantaneous acceleration components (change in velocity over time).
@@ -396,8 +434,10 @@ void Duck::updateSparkles(const World& world, double deltaTime)
         auto smooth_component = [](double current, double instant) {
             if (instant > current) {
                 // Fast rise (respond quickly to acceleration events).
-                return current * SPARKLE_ACCEL_SMOOTHING + instant * (1.0 - SPARKLE_ACCEL_SMOOTHING);
-            } else {
+                return current * SPARKLE_ACCEL_SMOOTHING
+                    + instant * (1.0 - SPARKLE_ACCEL_SMOOTHING);
+            }
+            else {
                 // Slower decay (sparkles linger briefly after acceleration).
                 return current * 0.92 + instant * 0.08;
             }
@@ -408,11 +448,20 @@ void Duck::updateSparkles(const World& world, double deltaTime)
         // Log acceleration stats every 10 frames.
         if (frame_counter_ % 10 == 0) {
             double smoothed_mag = smoothed_acceleration_.magnitude();
-            LOG_INFO(Brain, "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), dv=({:.2f},{:.2f}), smooth=({:.1f},{:.1f}), mag={:.1f}",
-                id_, anchor_cell_.x, anchor_cell_.y,
-                cell.velocity.x, cell.velocity.y,
-                velocity_change.x, velocity_change.y,
-                smoothed_acceleration_.x, smoothed_acceleration_.y, smoothed_mag);
+            LOG_INFO(
+                Brain,
+                "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), dv=({:.2f},{:.2f}), "
+                "smooth=({:.1f},{:.1f}), mag={:.1f}",
+                id_,
+                anchor_cell_.x,
+                anchor_cell_.y,
+                cell.velocity.x,
+                cell.velocity.y,
+                velocity_change.x,
+                velocity_change.y,
+                smoothed_acceleration_.x,
+                smoothed_acceleration_.y,
+                smoothed_mag);
         }
 
         // Update previous velocity for next frame.
@@ -490,8 +539,15 @@ void Duck::spawnSparkle(const Vector2d& duck_velocity)
     sparkle.velocity.x = static_cast<float>(duck_velocity.x * 0.5) + burst_x;
     sparkle.velocity.y = static_cast<float>(duck_velocity.y * 0.5) + burst_y;
 
-    LOG_DEBUG(Brain, "Sparkle spawn: duck_vel=({:.1f},{:.1f}), burst=({:.1f},{:.1f}), final=({:.1f},{:.1f})",
-        duck_velocity.x, duck_velocity.y, burst_x, burst_y, sparkle.velocity.x, sparkle.velocity.y);
+    LOG_DEBUG(
+        Brain,
+        "Sparkle spawn: duck_vel=({:.1f},{:.1f}), burst=({:.1f},{:.1f}), final=({:.1f},{:.1f})",
+        duck_velocity.x,
+        duck_velocity.y,
+        burst_x,
+        burst_y,
+        sparkle.velocity.x,
+        sparkle.velocity.y);
 
     // Randomize lifetime a bit.
     std::uniform_real_distribution<float> life_dist(0.7f, 1.0f);

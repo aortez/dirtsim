@@ -12,28 +12,26 @@
 #include <cmath>
 
 namespace {
-// Physics constants (same as Duck for comparison).
-static constexpr float WALK_FORCE = 50.0f;
-static constexpr float JUMP_FORCE = 600.0f;
+// Physics constants.
+static constexpr float WALK_FORCE = 10.0f;
+static constexpr float JUMP_FORCE = 150.0f;
 } // namespace
 
 namespace DirtSim {
 
 Goose::Goose(OrganismId id, std::unique_ptr<GooseBrain> brain)
-    : Organism(id, OrganismType::GOOSE)
-    , brain_(std::move(brain))
-    , collision_(std::make_unique<RigidBodyCollisionComponent>())
-    , physics_(std::make_unique<RigidBodyPhysicsComponent>(MaterialType::WOOD))
-    , projection_(std::make_unique<LocalShapeProjection>())
+    : Organism(id, OrganismType::GOOSE),
+      brain_(std::move(brain)),
+      collision_(std::make_unique<RigidBodyCollisionComponent>()),
+      physics_(std::make_unique<RigidBodyPhysicsComponent>(MaterialType::WOOD)),
+      projection_(std::make_unique<LocalShapeProjection>())
 {
     // Initialize local shape with a single cell at origin.
     projection_->addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
 
     // Also keep base class local_shape in sync for mass computation.
-    local_shape.push_back(LocalCell{
-        .localPos = { 0, 0 },
-        .material = MaterialType::WOOD,
-        .fillRatio = 1.0 });
+    local_shape.push_back(
+        LocalCell{ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
 
     // Compute mass from local shape.
     recomputeMass();
@@ -45,10 +43,8 @@ Goose::~Goose() = default;
 Vector2i Goose::getAnchorCell() const
 {
     // Anchor is the grid cell the goose occupies (floor of continuous position).
-    return Vector2i{
-        static_cast<int>(std::floor(position.x)),
-        static_cast<int>(std::floor(position.y))
-    };
+    return Vector2i{ static_cast<int>(std::floor(position.x)),
+                     static_cast<int>(std::floor(position.y)) };
 }
 
 void Goose::setAnchorCell(Vector2i pos)
@@ -63,8 +59,27 @@ void Goose::update(World& world, double deltaTime)
     age_seconds_ += deltaTime;
     frame_counter_++;
 
-    // Update ground detection based on current position.
-    updateGroundDetection(world);
+    // Compute current grid positions from current position.
+    std::vector<Vector2i> current_cells;
+    for (const auto& local : local_shape) {
+        Vector2d world_pos{ position.x + static_cast<double>(local.localPos.x),
+                            position.y + static_cast<double>(local.localPos.y) };
+        current_cells.push_back(Vector2i{ static_cast<int>(std::floor(world_pos.x)),
+                                          static_cast<int>(std::floor(world_pos.y)) });
+    }
+
+    // Compute ground support force and update ground detection.
+    double gravity = world.getPhysicsSettings().gravity;
+    double weight = mass * std::abs(gravity);
+    Vector2d gravityDir{ 0.0, gravity >= 0 ? 1.0 : -1.0 };
+    Vector2d supportForce =
+        collision_->computeSupportForce(world, id_, current_cells, weight, gravityDir);
+    double supportMagnitude = std::abs(supportForce.x) + std::abs(supportForce.y);
+    on_ground_ = supportMagnitude > 0.01;
+
+    // Compute ground friction based on current velocity and normal force.
+    Vector2d frictionForce =
+        collision_->computeGroundFriction(world, id_, current_cells, velocity, supportMagnitude);
 
     // Let brain decide what to do.
     if (brain_) {
@@ -81,21 +96,16 @@ void Goose::update(World& world, double deltaTime)
     // Apply movement forces (walking, jumping).
     applyMovementForces(world, deltaTime);
 
-    // Compute current grid positions from current position.
-    std::vector<Vector2i> current_cells;
-    for (const auto& local : local_shape) {
-        Vector2d world_pos{
-            position.x + static_cast<double>(local.localPos.x),
-            position.y + static_cast<double>(local.localPos.y)
-        };
-        current_cells.push_back(Vector2i{
-            static_cast<int>(std::floor(world_pos.x)),
-            static_cast<int>(std::floor(world_pos.y))
-        });
-    }
+    // Rigid body organisms compute all forces themselves.
+    // Gravity force (downward).
+    Vector2d gravityForce{ 0.0, mass * gravity };
+    physics_->addForce(gravityForce);
 
-    // Gather forces from environment (gravity, pressure, etc. from cells).
-    physics_->gatherForces(world, current_cells);
+    // Ground support force (cancels gravity when on solid surface).
+    physics_->addForce(supportForce);
+
+    // Ground friction force (opposes horizontal motion).
+    physics_->addForce(frictionForce);
 
     // Apply air resistance based on current velocity.
     physics_->applyAirResistance(world, velocity);
@@ -105,21 +115,15 @@ void Goose::update(World& world, double deltaTime)
     physics_->clearPendingForce();
 
     // Predict position and check for collisions.
-    Vector2d desired_position{
-        position.x + velocity.x * deltaTime,
-        position.y + velocity.y * deltaTime
-    };
+    Vector2d desired_position{ position.x + velocity.x * deltaTime,
+                               position.y + velocity.y * deltaTime };
 
     std::vector<Vector2i> predicted_cells;
     for (const auto& local : local_shape) {
-        Vector2d world_pos{
-            desired_position.x + static_cast<double>(local.localPos.x),
-            desired_position.y + static_cast<double>(local.localPos.y)
-        };
-        predicted_cells.push_back(Vector2i{
-            static_cast<int>(std::floor(world_pos.x)),
-            static_cast<int>(std::floor(world_pos.y))
-        });
+        Vector2d world_pos{ desired_position.x + static_cast<double>(local.localPos.x),
+                            desired_position.y + static_cast<double>(local.localPos.y) };
+        predicted_cells.push_back(Vector2i{ static_cast<int>(std::floor(world_pos.x)),
+                                            static_cast<int>(std::floor(world_pos.y)) });
     }
 
     CollisionResult collision = collision_->detect(world, id_, current_cells, predicted_cells);
@@ -127,22 +131,25 @@ void Goose::update(World& world, double deltaTime)
     // Move if not blocked, otherwise apply collision response.
     if (!collision.blocked) {
         position = desired_position;
-    } else {
+    }
+    else {
         collision_->respond(collision, velocity);
 
         // Clamp position to stay within current cell to prevent creeping into obstacles.
+        // Use larger vertical margin to account for sprite rendering offset (feet at bottom).
         Vector2i current_cell = getAnchorCell();
-        constexpr double margin = 0.01;
+        constexpr double horizontal_margin = 0.01;
+        constexpr double vertical_margin = 0.25; // Matches EntityRenderer offset.
 
         if (collision.contactNormal.x != 0.0) {
-            double cell_min_x = static_cast<double>(current_cell.x) + margin;
-            double cell_max_x = static_cast<double>(current_cell.x + 1) - margin;
+            double cell_min_x = static_cast<double>(current_cell.x) + horizontal_margin;
+            double cell_max_x = static_cast<double>(current_cell.x + 1) - horizontal_margin;
             position.x = std::clamp(position.x, cell_min_x, cell_max_x);
         }
 
         if (collision.contactNormal.y != 0.0) {
-            double cell_min_y = static_cast<double>(current_cell.y) + margin;
-            double cell_max_y = static_cast<double>(current_cell.y + 1) - margin;
+            double cell_min_y = static_cast<double>(current_cell.y) + vertical_margin;
+            double cell_max_y = static_cast<double>(current_cell.y + 1) - vertical_margin;
             position.y = std::clamp(position.y, cell_min_y, cell_max_y);
         }
     }
@@ -217,12 +224,10 @@ void Goose::updateGroundDetection(const World& world)
     const Cell& below = data.at(anchor.x, below_y);
 
     // Ground is any solid, non-AIR cell with significant fill.
-    bool is_solid_below = (below.material_type == MaterialType::WALL
-                              || below.material_type == MaterialType::DIRT
-                              || below.material_type == MaterialType::SAND
-                              || below.material_type == MaterialType::WOOD
-                              || below.material_type == MaterialType::METAL
-                              || below.material_type == MaterialType::ROOT)
+    bool is_solid_below =
+        (below.material_type == MaterialType::WALL || below.material_type == MaterialType::DIRT
+         || below.material_type == MaterialType::SAND || below.material_type == MaterialType::WOOD
+         || below.material_type == MaterialType::METAL || below.material_type == MaterialType::ROOT)
         && below.fill_ratio > 0.5;
 
     // Also check COM position - if we're near bottom of cell, more likely grounded.
