@@ -48,12 +48,7 @@ protected:
      * @brief Helper to fill a rectangular region with a material.
      */
     void fillRegion(
-        World& world,
-        uint32_t x1,
-        uint32_t y1,
-        uint32_t x2,
-        uint32_t y2,
-        MaterialType material)
+        World& world, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, MaterialType material)
     {
         WorldData& data = world.getData();
         for (uint32_t y = y1; y <= y2; ++y) {
@@ -194,7 +189,7 @@ TEST_F(WorldResizeTest, IncrementalResizingDoesNotCauseDrift)
     auto world = std::make_unique<World>(45, 30);
     OrganismId duckId = world->getOrganismManager().createDuck(*world, 31, 20);
 
-    Vector2i initialAnchor{31, 20};
+    Vector2i initialAnchor{ 31, 20 };
     auto* duck = world->getOrganismManager().getDuck(duckId);
     ASSERT_NE(duck, nullptr);
     EXPECT_EQ(duck->getAnchorCell(), initialAnchor);
@@ -247,4 +242,3 @@ TEST_F(WorldResizeTest, IncrementalResizingDoesNotCauseDrift)
     EXPECT_NEAR(finalAnchor.x, initialAnchor.x, 1);
     EXPECT_NEAR(finalAnchor.y, initialAnchor.y, 1);
 }
-

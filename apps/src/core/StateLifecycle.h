@@ -51,8 +51,7 @@ void invokeOnExit(StateAny& state, StateMachine& sm)
 template <typename StateAny>
 std::string getStateName(const StateAny& state)
 {
-    return std::visit(
-        [](const auto& s) { return std::string(s.name()); }, state.getVariant());
+    return std::visit([](const auto& s) { return std::string(s.name()); }, state.getVariant());
 }
 
 } // namespace DirtSim

@@ -655,7 +655,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabelBuilder::build()
 // ============================================================================
 
 LVGLBuilder::DropdownBuilder::DropdownBuilder(lv_obj_t* parent)
-    : parent_(parent), position_(0, 0, LV_ALIGN_TOP_LEFT), size_(Style::CONTROL_WIDTH, Style::ACTION_SIZE)
+    : parent_(parent),
+      position_(0, 0, LV_ALIGN_TOP_LEFT),
+      size_(Style::CONTROL_WIDTH, Style::ACTION_SIZE)
 {}
 
 LVGLBuilder::DropdownBuilder& LVGLBuilder::DropdownBuilder::options(const char* options)
@@ -1109,8 +1111,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_slider_set_value(slider_, initially_enabled_ ? initial_value_ : 0, LV_ANIM_OFF);
 
     // Style the slider knob for easy touch grabbing.
-    lv_obj_set_style_pad_all(slider_, Style::SLIDER_KNOB_SIZE / 2 - Style::SLIDER_TRACK_HEIGHT / 2,
-                             LV_PART_KNOB);
+    lv_obj_set_style_pad_all(
+        slider_, Style::SLIDER_KNOB_SIZE / 2 - Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_KNOB);
     lv_obj_set_style_radius(slider_, Style::SLIDER_KNOB_RADIUS, LV_PART_KNOB);
 
     // Round the track ends.
@@ -1307,7 +1309,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::CollapsiblePanelBuilder::createColla
     lv_obj_set_flex_align(header_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_left(header_, Style::PAD_HORIZONTAL, 0);
     lv_obj_set_style_pad_right(header_, Style::PAD_HORIZONTAL, 0);
-    lv_obj_set_style_pad_ver(header_, 0, 0);  // No vertical padding - let flex centering handle it.
+    lv_obj_set_style_pad_ver(header_, 0, 0); // No vertical padding - let flex centering handle it.
     lv_obj_set_style_pad_column(header_, Style::GAP, 0);
     lv_obj_set_style_bg_color(header_, lv_color_hex(header_color_), 0);
     lv_obj_set_style_bg_opa(header_, LV_OPA_COVER, 0);
@@ -1668,7 +1670,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
     lv_obj_set_style_pad_all(button_, 8, 0);
     if (layout_flow_ == LV_FLEX_FLOW_ROW) {
         lv_obj_set_style_pad_column(button_, 8, 0);
-    } else {
+    }
+    else {
         lv_obj_set_style_pad_row(button_, 2, 0);
     }
 
@@ -1699,14 +1702,14 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
     }
 
     // Allocate and store state for toggle behavior.
-    ActionButtonState* state = new ActionButtonState{
-        .is_toggle = (mode_ == ActionMode::Toggle),
-        .is_checked = initial_checked_,
-        .glow_color = glow_color_,
-        .button = button_,
-        .user_callback = nullptr, // Not used - we register user callback separately.
-        .user_data = nullptr
-    };
+    ActionButtonState* state =
+        new ActionButtonState{ .is_toggle = (mode_ == ActionMode::Toggle),
+                               .is_checked = initial_checked_,
+                               .glow_color = glow_color_,
+                               .button = button_,
+                               .user_callback =
+                                   nullptr, // Not used - we register user callback separately.
+                               .user_data = nullptr };
     lv_obj_set_user_data(container_, state);
 
     // Add our internal click handler for toggle behavior.
@@ -1865,7 +1868,8 @@ LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::troughPa
     return *this;
 }
 
-LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::backgroundColor(uint32_t color)
+LVGLBuilder::ActionDropdownBuilder& LVGLBuilder::ActionDropdownBuilder::backgroundColor(
+    uint32_t color)
 {
     bg_color_ = color;
     return *this;
@@ -1945,7 +1949,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::createActionD
 
     // Use row layout for label + dropdown.
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(container_, 8, 0);
 
     // Remove scrollbars.
@@ -2115,8 +2120,8 @@ static void onStepperPressed(lv_event_t* e, bool increment)
     stepperStopRepeat(state);
     state->isIncrementing = increment;
     state->initialDelayPassed = false;
-    state->repeatTimer = lv_timer_create(
-        stepperRepeatTimerCallback, ActionStepperState::INITIAL_DELAY_MS, state);
+    state->repeatTimer =
+        lv_timer_create(stepperRepeatTimerCallback, ActionStepperState::INITIAL_DELAY_MS, state);
 }
 
 static void onStepperReleased(lv_event_t* e)
@@ -2127,8 +2132,12 @@ static void onStepperReleased(lv_event_t* e)
 }
 
 LVGLBuilder::ActionStepperBuilder::ActionStepperBuilder(lv_obj_t* parent)
-    : parent_(parent), container_(nullptr), minusBtn_(nullptr), plusBtn_(nullptr),
-      labelObj_(nullptr), valueObj_(nullptr)
+    : parent_(parent),
+      container_(nullptr),
+      minusBtn_(nullptr),
+      plusBtn_(nullptr),
+      labelObj_(nullptr),
+      valueObj_(nullptr)
 {}
 
 LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::label(const char* text)
@@ -2139,7 +2148,8 @@ LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::label(cons
     return *this;
 }
 
-LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::range(int32_t min, int32_t max)
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::range(
+    int32_t min, int32_t max)
 {
     min_ = min;
     max_ = max;
@@ -2184,7 +2194,8 @@ LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::height(int
     return *this;
 }
 
-LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::backgroundColor(uint32_t color)
+LVGLBuilder::ActionStepperBuilder& LVGLBuilder::ActionStepperBuilder::backgroundColor(
+    uint32_t color)
 {
     bg_color_ = color;
     return *this;
@@ -2264,7 +2275,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
 
     // Row layout for the three sections.
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(container_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_column(container_, Style::TROUGH_PADDING, 0);
 
     lv_obj_set_scrollbar_mode(container_, LV_SCROLLBAR_MODE_OFF);
@@ -2274,10 +2286,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     int btnSize = height_ - (Style::TROUGH_PADDING * 2);
 
     // Create state structure.
-    auto* state = new ActionStepperState{
-        nullptr, container_, value_, min_, max_, step_, value_scale_, value_format_,
-        nullptr, false, false
-    };
+    auto* state = new ActionStepperState{ nullptr,      container_,    value_,  min_,  max_, step_,
+                                          value_scale_, value_format_, nullptr, false, false };
 
     // --- Minus button ---
     minusBtn_ = lv_btn_create(container_);
@@ -2296,8 +2306,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_center(minusLabel);
 
     lv_obj_add_event_cb(minusBtn_, onMinusClicked, LV_EVENT_CLICKED, state);
-    lv_obj_add_event_cb(minusBtn_, [](lv_event_t* e) { onStepperPressed(e, false); },
-        LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(
+        minusBtn_, [](lv_event_t* e) { onStepperPressed(e, false); }, LV_EVENT_PRESSED, state);
     lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
     lv_obj_add_event_cb(minusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
 
@@ -2312,7 +2322,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_set_style_pad_all(centerSection, 4, 0);
 
     lv_obj_set_flex_flow(centerSection, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(centerSection, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        centerSection, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollbar_mode(centerSection, LV_SCROLLBAR_MODE_OFF);
     lv_obj_clear_flag(centerSection, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -2352,8 +2363,8 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_center(plusLabel);
 
     lv_obj_add_event_cb(plusBtn_, onPlusClicked, LV_EVENT_CLICKED, state);
-    lv_obj_add_event_cb(plusBtn_, [](lv_event_t* e) { onStepperPressed(e, true); },
-        LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(
+        plusBtn_, [](lv_event_t* e) { onStepperPressed(e, true); }, LV_EVENT_PRESSED, state);
     lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
     lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
 
@@ -2366,15 +2377,19 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     }
 
     // Cleanup callback.
-    lv_obj_add_event_cb(container_, [](lv_event_t* e) {
-        if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
-        lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-        auto* st = static_cast<ActionStepperState*>(lv_obj_get_user_data(obj));
-        if (st->repeatTimer) {
-            lv_timer_delete(st->repeatTimer);
-        }
-        delete st;
-    }, LV_EVENT_DELETE, nullptr);
+    lv_obj_add_event_cb(
+        container_,
+        [](lv_event_t* e) {
+            if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
+            lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            auto* st = static_cast<ActionStepperState*>(lv_obj_get_user_data(obj));
+            if (st->repeatTimer) {
+                lv_timer_delete(st->repeatTimer);
+            }
+            delete st;
+        },
+        LV_EVENT_DELETE,
+        nullptr);
 
     return Result<lv_obj_t*, std::string>::okay(container_);
 }
@@ -2425,4 +2440,3 @@ LVGLBuilder::ActionStepperBuilder LVGLBuilder::actionStepper(lv_obj_t* parent)
 {
     return ActionStepperBuilder(parent);
 }
-

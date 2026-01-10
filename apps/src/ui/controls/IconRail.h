@@ -14,8 +14,8 @@ namespace Ui {
 enum class IconId { CORE = 0, SCENARIO, PHYSICS, TREE, COUNT };
 
 enum class RailMode {
-    Normal,    // Full width with all icon buttons.
-    Minimized  // Narrow width with single expand button.
+    Normal,   // Full width with all icon buttons.
+    Minimized // Narrow width with single expand button.
 };
 
 /**
@@ -23,8 +23,8 @@ enum class RailMode {
  */
 struct IconConfig {
     IconId id;
-    const char* symbol;  // LV_SYMBOL_* or text.
-    const char* tooltip; // Description for accessibility.
+    const char* symbol;        // LV_SYMBOL_* or text.
+    const char* tooltip;       // Description for accessibility.
     uint32_t color = 0xFFFFFF; // Icon color (default white).
 };
 
@@ -95,7 +95,10 @@ public:
      * @brief Set a callback for when the rail mode changes (Normal <-> Minimized).
      * Called when auto-shrink or manual collapse/expand occurs.
      */
-    void setModeChangeCallback(ModeChangeCallback callback) { modeChangeCallback_ = std::move(callback); }
+    void setModeChangeCallback(ModeChangeCallback callback)
+    {
+        modeChangeCallback_ = std::move(callback);
+    }
 
     RailMode getMode() const { return mode_; }
     void setMode(RailMode mode);

@@ -44,7 +44,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            const Cell& neighbor =
+                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
                             if (neighbor.material_type == MaterialType::WOOD
                                 || neighbor.material_type == MaterialType::SEED) {
                                 has_structural_neighbor = true;
@@ -100,7 +101,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            const Cell& neighbor =
+                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
                             if (neighbor.material_type == MaterialType::WOOD) {
                                 has_wood_neighbor = true;
                                 break;
@@ -151,7 +153,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
                         && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            const Cell& neighbor =
+                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
                             if (neighbor.material_type == MaterialType::ROOT
                                 || neighbor.material_type == MaterialType::SEED) {
                                 has_root_neighbor = true;
@@ -230,7 +233,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 return { CommandResult::SUCCESS, "Seed production successful" };
             }
             else if constexpr (std::is_same_v<T, WaitCommand>) {
-                spdlog::debug("Tree {}: Waited for {} seconds", tree.getId(), command.duration_seconds);
+                spdlog::debug(
+                    "Tree {}: Waited for {} seconds", tree.getId(), command.duration_seconds);
                 return { CommandResult::SUCCESS, "Wait completed" };
             }
 

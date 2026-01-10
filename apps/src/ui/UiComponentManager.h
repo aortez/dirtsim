@@ -143,8 +143,8 @@ private:
     std::unique_ptr<ExpandablePanel> expandablePanel_;
 
     // Simulation screen layout containers.
-    lv_obj_t* simMainRow_ = nullptr;         // Main horizontal row (icon rail + rest).
-    lv_obj_t* simDisplayArea_ = nullptr;     // Contains world + neural grid.
+    lv_obj_t* simMainRow_ = nullptr;     // Main horizontal row (icon rail + rest).
+    lv_obj_t* simDisplayArea_ = nullptr; // Contains world + neural grid.
     lv_obj_t* simWorldDisplayArea_ = nullptr;
     lv_obj_t* simNeuralGridDisplayArea_ = nullptr;
 

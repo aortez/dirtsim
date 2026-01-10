@@ -58,13 +58,13 @@ TEST_F(RigidBodyCalculatorTest, LShapedWoodConnects)
     //   W W W
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 1, 0);
     world->getData().at(1, 1).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {1, 1});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 1, 1 });
     world->getData().at(1, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {1, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 1, 2 });
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {2, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 0 });
 
@@ -80,7 +80,7 @@ TEST_F(RigidBodyCalculatorTest, DiagonalDoesNotConnect)
     //   . W
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 1, 1);
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {2, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 1 });
 
@@ -109,7 +109,7 @@ TEST_F(RigidBodyCalculatorTest, SameOrganismIdConnects)
     // Two adjacent wood cells with same organism ID.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, tree_id);
 
@@ -125,12 +125,12 @@ TEST_F(RigidBodyCalculatorTest, FindAllStructuresFindsMultiple)
     // Structure 1: cells at (1,2), (2,2).
     OrganismId tree1 = world->getOrganismManager().createTree(*world, 1, 2);
     world->getData().at(2, 2).replaceMaterial(MaterialType::METAL, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree1, {2, 2});
+    world->getOrganismManager().addCellToOrganism(tree1, { 2, 2 });
 
     // Structure 2: cells at (7,2), (8,2).
     OrganismId tree2 = world->getOrganismManager().createTree(*world, 7, 2);
     world->getData().at(8, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree2, {8, 2});
+    world->getOrganismManager().addCellToOrganism(tree2, { 8, 2 });
 
     auto structures = calculator.findAllStructures(*world);
 
@@ -144,7 +144,7 @@ TEST_F(RigidBodyCalculatorTest, CalculateMassIsSumOfCellMasses)
     // SEED + WOOD cells.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
     double mass = calculator.calculateStructureMass(*world, structure);
@@ -162,7 +162,7 @@ TEST_F(RigidBodyCalculatorTest, CalculateCOMIsWeightedCenter)
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
     Vector2d com = calculator.calculateStructureCOM(*world, structure);
@@ -180,7 +180,7 @@ TEST_F(RigidBodyCalculatorTest, GatherForcesIsSumOfPendingForces)
     world->getData().at(2, 2).pending_force = { 1.0, 2.0 };
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
     world->getData().at(3, 2).pending_force = { 0.5, -1.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
@@ -200,11 +200,11 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocitySetsAllCellsToSameVelocity)
     world->getData().at(1, 2).pending_force = { 1.0, -2.0 };
 
     world->getData().at(2, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {2, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
     world->getData().at(2, 2).pending_force = { 0.0, -1.0 };
 
     world->getData().at(3, 2).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {3, 2});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
     world->getData().at(3, 2).pending_force = { -1.0, -1.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 2 });

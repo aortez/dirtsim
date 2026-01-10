@@ -55,8 +55,8 @@ bool CellTracker::checkForDisplacements(int frame)
         const Cell& cell = world_.getData().at(pos.x, pos.y);
         OrganismId current_org = world_.getOrganismManager().at(pos);
 
-        bool cell_moved = (current_org != organism_id_)
-            || (cell.material_type != tracked.material) || (cell.fill_ratio < 0.5);
+        bool cell_moved = (current_org != organism_id_) || (cell.material_type != tracked.material)
+            || (cell.fill_ratio < 0.5);
 
         if (cell_moved) {
             any_displaced = true;

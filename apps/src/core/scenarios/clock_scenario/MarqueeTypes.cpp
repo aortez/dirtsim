@@ -5,22 +5,21 @@
 namespace DirtSim {
 
 std::vector<DigitPlacement> layoutString(
-    const std::string& content,
-    int digitWidth,
-    int digitGap,
-    int colonWidth)
+    const std::string& content, int digitWidth, int digitGap, int colonWidth)
 {
     std::vector<DigitPlacement> placements;
     double x = 0.0;
 
     for (const char c : content) {
         if (c >= '0' && c <= '9') {
-            placements.push_back({.c = c, .x = x, .y = 0.0});
+            placements.push_back({ .c = c, .x = x, .y = 0.0 });
             x += digitWidth;
-        } else if (c == ':') {
-            placements.push_back({.c = c, .x = x, .y = 0.0});
+        }
+        else if (c == ':') {
+            placements.push_back({ .c = c, .x = x, .y = 0.0 });
             x += colonWidth;
-        } else if (c == ' ') {
+        }
+        else if (c == ' ') {
             // Spaces create gaps but aren't drawn.
             x += digitGap;
         }
@@ -29,20 +28,18 @@ std::vector<DigitPlacement> layoutString(
     return placements;
 }
 
-int calculateStringWidth(
-    const std::string& content,
-    int digitWidth,
-    int digitGap,
-    int colonWidth)
+int calculateStringWidth(const std::string& content, int digitWidth, int digitGap, int colonWidth)
 {
     int width = 0;
 
     for (const char c : content) {
         if (c >= '0' && c <= '9') {
             width += digitWidth;
-        } else if (c == ':') {
+        }
+        else if (c == ':') {
             width += colonWidth;
-        } else if (c == ' ') {
+        }
+        else if (c == ' ') {
             width += digitGap;
         }
     }
@@ -74,9 +71,7 @@ void startHorizontalScroll(
 }
 
 MarqueeFrame updateHorizontalScroll(
-    HorizontalScrollState& state,
-    const std::string& content,
-    double deltaTime)
+    HorizontalScrollState& state, const std::string& content, double deltaTime)
 {
     // Advance viewport.
     state.viewport_x += state.speed * deltaTime;
@@ -88,7 +83,8 @@ MarqueeFrame updateHorizontalScroll(
             state.viewport_x = -state.visible_width;
             state.scrolling_out = false;
         }
-    } else {
+    }
+    else {
         // Scrolling in: content comes in from right until at position 0.
         if (state.viewport_x >= 0.0) {
             state.viewport_x = 0.0;
@@ -127,9 +123,7 @@ void initVerticalSlide(
 }
 
 bool checkAndStartSlide(
-    VerticalSlideState& state,
-    const std::string& old_time,
-    const std::string& new_time)
+    VerticalSlideState& state, const std::string& old_time, const std::string& new_time)
 {
     // No change? Nothing to animate.
     if (old_time == new_time) {
@@ -153,14 +147,10 @@ bool checkAndStartSlide(
             // Only animate digits and colons, not spaces.
             char old_c = old_time[i];
             char new_c = new_time[i];
-            if ((old_c >= '0' && old_c <= '9') || old_c == ':' ||
-                (new_c >= '0' && new_c <= '9') || new_c == ':') {
-                state.changing_digits.push_back({
-                    .string_index = i,
-                    .old_char = old_c,
-                    .new_char = new_c,
-                    .progress = 0.0
-                });
+            if ((old_c >= '0' && old_c <= '9') || old_c == ':' || (new_c >= '0' && new_c <= '9')
+                || new_c == ':') {
+                state.changing_digits.push_back(
+                    { .string_index = i, .old_char = old_c, .new_char = new_c, .progress = 0.0 });
             }
         }
     }
@@ -173,19 +163,14 @@ bool checkAndStartSlide(
     return true;
 }
 
-MarqueeFrame updateVerticalSlide(
-    VerticalSlideState& state,
-    double deltaTime)
+MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
 {
     MarqueeFrame frame;
 
     if (!state.active) {
         // Not animating - just return the current time string normally.
-        frame.digits = layoutString(
-            state.new_time_str,
-            state.digit_width,
-            state.digit_gap,
-            state.colon_width);
+        frame.digits =
+            layoutString(state.new_time_str, state.digit_width, state.digit_gap, state.colon_width);
         frame.finished = true;
         return frame;
     }
@@ -196,18 +181,16 @@ MarqueeFrame updateVerticalSlide(
         slide.progress += state.speed * deltaTime;
         if (slide.progress < 1.0) {
             all_complete = false;
-        } else {
+        }
+        else {
             slide.progress = 1.0;
         }
     }
 
     // Build the frame with animated digit positions.
     // Start with the new time string layout as the base.
-    auto base_layout = layoutString(
-        state.new_time_str,
-        state.digit_width,
-        state.digit_gap,
-        state.colon_width);
+    auto base_layout =
+        layoutString(state.new_time_str, state.digit_width, state.digit_gap, state.colon_width);
 
     // Create a set of changing string indices for quick lookup.
     std::vector<bool> is_changing(state.new_time_str.size(), false);
@@ -221,7 +204,8 @@ MarqueeFrame updateVerticalSlide(
     // We need to build this because layoutString skips spaces but preserves order.
     std::vector<size_t> string_to_layout(state.new_time_str.size(), SIZE_MAX);
     size_t layout_idx = 0;
-    for (size_t str_idx = 0; str_idx < state.new_time_str.size() && layout_idx < base_layout.size(); ++str_idx) {
+    for (size_t str_idx = 0; str_idx < state.new_time_str.size() && layout_idx < base_layout.size();
+         ++str_idx) {
         char c = state.new_time_str[str_idx];
         if ((c >= '0' && c <= '9') || c == ':') {
             string_to_layout[str_idx] = layout_idx;
@@ -234,7 +218,7 @@ MarqueeFrame updateVerticalSlide(
     for (size_t str_idx = 0; str_idx < state.new_time_str.size(); ++str_idx) {
         size_t layout_i = string_to_layout[str_idx];
         if (layout_i == SIZE_MAX) {
-            continue;  // This was a space, skip.
+            continue; // This was a space, skip.
         }
 
         if (!is_changing[str_idx]) {
@@ -253,7 +237,7 @@ MarqueeFrame updateVerticalSlide(
         }
 
         double base_x = base_layout[layout_i].x;
-        double base_y = base_layout[layout_i].y;  // Should be 0.
+        double base_y = base_layout[layout_i].y; // Should be 0.
 
         // Old character slides down and out (y goes from base_y to base_y + digit_height).
         // New character slides down from above (y goes from base_y - digit_height to base_y).
@@ -262,20 +246,12 @@ MarqueeFrame updateVerticalSlide(
 
         // Add old character (sliding out) if still visible.
         if (slide.old_char != ' ' && old_y < dh) {
-            frame.digits.push_back({
-                .c = slide.old_char,
-                .x = base_x,
-                .y = old_y
-            });
+            frame.digits.push_back({ .c = slide.old_char, .x = base_x, .y = old_y });
         }
 
         // Add new character (sliding in) if visible.
         if (slide.new_char != ' ' && new_y > -dh) {
-            frame.digits.push_back({
-                .c = slide.new_char,
-                .x = base_x,
-                .y = new_y
-            });
+            frame.digits.push_back({ .c = slide.new_char, .x = base_x, .y = new_y });
         }
     }
 

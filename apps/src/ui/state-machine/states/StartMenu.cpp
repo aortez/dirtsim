@@ -33,7 +33,8 @@ void StartMenu::onEnter(StateMachine& sm)
             const auto& response = result.value();
             if (response.isValue()) {
                 ScenarioMetadataCache::load(response.value().scenarios);
-                LOG_INFO(State, "Loaded {} scenarios from server", response.value().scenarios.size());
+                LOG_INFO(
+                    State, "Loaded {} scenarios from server", response.value().scenarios.size());
             }
             else {
                 LOG_ERROR(State, "ScenarioListGet failed: {}", response.errorValue().message);
@@ -294,9 +295,7 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
         return StartMenu{};
     }
 
-    const Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16
-    };
+    const Api::SimRun::Command cmd{ .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16 };
 
     // Retry logic for autoRun to handle server startup race condition.
     const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
@@ -316,7 +315,8 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
         if (response.isError()) {
             const auto& errMsg = response.errorValue().message;
             // Retry if server is still starting up.
-            if (errMsg.find("not supported in state") != std::string::npos && attempt < maxRetries) {
+            if (errMsg.find("not supported in state") != std::string::npos
+                && attempt < maxRetries) {
                 LOG_WARN(State, "Server not ready ({}), retrying...", errMsg);
                 continue;
             }
@@ -370,11 +370,9 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     }
 
     // Send sim_run command to DSSM server via binary protocol.
-    const DirtSim::Api::SimRun::Command cmd{
-        .timestep = 0.016,
-        .max_steps = -1,
-        .max_frame_ms = 16
-    };
+    const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
+                                             .max_steps = -1,
+                                             .max_frame_ms = 16 };
 
     const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);
     if (result.isError()) {

@@ -57,8 +57,8 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 
     if (!metadata) {
         LOG_ERROR(State, "Scenario '{}' not found in registry", scenarioId);
-        cwc.sendResponse(Api::SimRun::Response::error(
-            ApiError("Scenario not found: " + scenarioId)));
+        cwc.sendResponse(
+            Api::SimRun::Response::error(ApiError("Scenario not found: " + scenarioId)));
         return Idle{};
     }
 

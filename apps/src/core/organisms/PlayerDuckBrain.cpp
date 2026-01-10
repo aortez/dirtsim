@@ -14,7 +14,7 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
     // No input yet - just wait.
     if (!gamepad_input_.has_value()) {
         current_action_ = DuckAction::WAIT;
-        duck.setInput({.move = {}, .jump = false});
+        duck.setInput({ .move = {}, .jump = false });
         return;
     }
 
@@ -48,13 +48,17 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
     bool should_jump = jump_pressed && !last_jump_pressed_ && sensory.on_ground;
     if (should_jump) {
         current_action_ = DuckAction::JUMP;
-        LOG_DEBUG(Brain, "PlayerDuck {}: JUMP at ({}, {}).",
-            duck.getId(), sensory.position.x, sensory.position.y);
+        LOG_DEBUG(
+            Brain,
+            "PlayerDuck {}: JUMP at ({}, {}).",
+            duck.getId(),
+            sensory.position.x,
+            sensory.position.y);
     }
     last_jump_pressed_ = jump_pressed;
 
     // Send combined input (movement AND jump together).
-    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = should_jump });
 
     // Clear input after consuming (brain receives fresh input each tick).
     gamepad_input_.reset();

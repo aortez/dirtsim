@@ -537,8 +537,8 @@ void World::swapCells(Vector2i pos1, Vector2i pos2)
 {
     // Validate positions.
     if (!isValidCell(pos1) || !isValidCell(pos2)) {
-        spdlog::warn("swapCells: Invalid positions ({}, {}) or ({}, {})",
-            pos1.x, pos1.y, pos2.x, pos2.y);
+        spdlog::warn(
+            "swapCells: Invalid positions ({}, {}) or ({}, {})", pos1.x, pos1.y, pos2.x, pos2.y);
         return;
     }
 
@@ -555,7 +555,15 @@ void World::swapCells(Vector2i pos1, Vector2i pos2)
 
     // Update organism tracking.
     if (org1 != INVALID_ORGANISM_ID || org2 != INVALID_ORGANISM_ID) {
-        LOG_INFO(Swap, "swapCells: ({}, {}) ↔ ({}, {}) - organisms: {} ↔ {}", pos1.x, pos1.y, pos2.x, pos2.y, org1, org2);
+        LOG_INFO(
+            Swap,
+            "swapCells: ({}, {}) ↔ ({}, {}) - organisms: {} ↔ {}",
+            pos1.x,
+            pos1.y,
+            pos2.x,
+            pos2.y,
+            org1,
+            org2);
         organism_manager_->swapOrganisms(pos1, pos2);
     }
 }
@@ -577,23 +585,32 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     Cell& cell = pImpl->data_.at(x, y);
 
     if (cell.isEmpty() || cell.material_type == material) {
-        Vector2i pos{x, y};
+        Vector2i pos{ x, y };
         OrganismId org_id = organism_manager_->at(pos);
         if (org_id != INVALID_ORGANISM_ID) {
-            spdlog::critical("replaceMaterialAtCell({},{},{}): Empty cell has organism_id={}!",
-                x, y, getMaterialName(material), org_id);
-            spdlog::critical("  Cell: material={}, fill={:.2f}",
-                getMaterialName(cell.material_type), cell.fill_ratio);
+            spdlog::critical(
+                "replaceMaterialAtCell({},{},{}): Empty cell has organism_id={}!",
+                x,
+                y,
+                getMaterialName(material),
+                org_id);
+            spdlog::critical(
+                "  Cell: material={}, fill={:.2f}",
+                getMaterialName(cell.material_type),
+                cell.fill_ratio);
 
             auto* organism = organism_manager_->getOrganism(org_id);
             if (organism) {
-                spdlog::critical("  Organism: type={}, anchor=({},{}), cells.size()={}",
+                spdlog::critical(
+                    "  Organism: type={}, anchor=({},{}), cells.size()={}",
                     static_cast<int>(organism->getType()),
-                    organism->getAnchorCell().x, organism->getAnchorCell().y,
+                    organism->getAnchorCell().x,
+                    organism->getAnchorCell().y,
                     organism->getCells().size());
             }
 
-            spdlog::critical("World state:\n{}", WorldDiagramGeneratorEmoji::generateEmojiDiagram(*this));
+            spdlog::critical(
+                "World state:\n{}", WorldDiagramGeneratorEmoji::generateEmojiDiagram(*this));
 
             DIRTSIM_ASSERT(false, "replaceMaterialAtCell: Empty cell should not have organism");
         }
@@ -602,12 +619,12 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     }
 
     // Find best adjacent cell to displace existing material (prefer empty, then least-filled).
-    Vector2i best_dir{0, 0};
+    Vector2i best_dir{ 0, 0 };
     double best_score = -999.0;
-    double best_fill = 2.0;  // Track fill ratio of best neighbor (2.0 = no valid neighbor yet).
+    double best_fill = 2.0; // Track fill ratio of best neighbor (2.0 = no valid neighbor yet).
 
     static constexpr std::array<std::pair<int, int>, 4> directions = {
-        {{1, 0}, {-1, 0}, {0, 1}, {0, -1}}
+        { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
     };
 
     for (auto [dx, dy] : directions) {
@@ -619,7 +636,7 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
         }
 
         // Never displace into cells that belong to an organism.
-        Vector2i neighbor_pos{nx, ny};
+        Vector2i neighbor_pos{ nx, ny };
         if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
             continue;
         }
@@ -632,14 +649,15 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
             // Empty cell - high priority.
             if (com_score > best_score || best_fill > 0.5) {
                 best_score = com_score;
-                best_dir = {dx, dy};
+                best_dir = { dx, dy };
                 best_fill = 0.0;
             }
-        } else if (best_fill > 0.5) {
+        }
+        else if (best_fill > 0.5) {
             // No empty found yet - track least-filled option.
             if (neighbor.fill_ratio < best_fill) {
                 best_score = com_score;
-                best_dir = {dx, dy};
+                best_dir = { dx, dy };
                 best_fill = neighbor.fill_ratio;
             }
         }
@@ -662,7 +680,7 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
                     }
 
                     // Never displace into cells that belong to an organism.
-                    Vector2i neighbor_pos{nx, ny};
+                    Vector2i neighbor_pos{ nx, ny };
                     if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
                         continue;
                     }
@@ -673,12 +691,13 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
                     if (neighbor.isEmpty()) {
                         if (score > best_score || best_fill > 0.5) {
                             best_score = score;
-                            best_dir = {dx, dy};
+                            best_dir = { dx, dy };
                             best_fill = 0.0;
                         }
-                    } else if (best_fill > 0.5 && neighbor.fill_ratio < best_fill) {
+                    }
+                    else if (best_fill > 0.5 && neighbor.fill_ratio < best_fill) {
                         best_score = score;
-                        best_dir = {dx, dy};
+                        best_dir = { dx, dy };
                         best_fill = neighbor.fill_ratio;
                     }
                 }
@@ -688,11 +707,15 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
 
     // Last resort: if completely surrounded, just overwrite in place.
     if (best_dir.x == 0 && best_dir.y == 0) {
-        Vector2i pos{x, y};
+        Vector2i pos{ x, y };
         OrganismId org_id = organism_manager_->at(pos);
         if (org_id != INVALID_ORGANISM_ID) {
-            spdlog::warn("World: replaceMaterialAtCell({},{},{}) destroying trapped organism {}",
-                x, y, getMaterialName(material), org_id);
+            spdlog::warn(
+                "World: replaceMaterialAtCell({},{},{}) destroying trapped organism {}",
+                x,
+                y,
+                getMaterialName(material),
+                org_id);
             organism_manager_->removeOrganismFromWorld(*this, org_id);
         }
         cell.replaceMaterial(material, 1.0);
@@ -700,22 +723,28 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     }
 
     // Displace existing material to empty neighbor.
-    Vector2i empty_pos{x + best_dir.x, y + best_dir.y};
-    Vector2i target_pos{x, y};
+    Vector2i empty_pos{ x + best_dir.x, y + best_dir.y };
+    Vector2i target_pos{ x, y };
 
-    DIRTSIM_ASSERT(organism_manager_->at(empty_pos) == INVALID_ORGANISM_ID,
+    DIRTSIM_ASSERT(
+        organism_manager_->at(empty_pos) == INVALID_ORGANISM_ID,
         "replaceMaterialAtCell: Cannot displace into organism cell");
 
     OrganismId displaced_org = organism_manager_->at(target_pos);
     if (displaced_org != INVALID_ORGANISM_ID) {
-        spdlog::info("World: replaceMaterialAtCell displacing organism {} from ({},{}) to ({},{})",
-            displaced_org, x, y, empty_pos.x, empty_pos.y);
+        spdlog::info(
+            "World: replaceMaterialAtCell displacing organism {} from ({},{}) to ({},{})",
+            displaced_org,
+            x,
+            y,
+            empty_pos.x,
+            empty_pos.y);
     }
 
     swapCells(empty_pos, target_pos);
 
     // Now target is empty (displaced material moved to empty_pos). Place new material.
-    pImpl->data_.at(target_pos.x, target_pos.y) = Cell{material, 1.0};
+    pImpl->data_.at(target_pos.x, target_pos.y) = Cell{ material, 1.0 };
 }
 
 void World::clearCellAtPosition(int x, int y)
@@ -725,7 +754,7 @@ void World::clearCellAtPosition(int x, int y)
     }
 
     // Skip cells that belong to an organism.
-    Vector2i pos{x, y};
+    Vector2i pos{ x, y };
     if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
         return;
     }
@@ -752,28 +781,25 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
             Vector2i anchor = organism.getAnchorCell();
 
             // Read COM from world cell to get full continuous position.
-            Vector2d com{0.0, 0.0};
-            if (anchor.x >= 0 && anchor.y >= 0 &&
-                static_cast<uint32_t>(anchor.x) < pImpl->data_.width &&
-                static_cast<uint32_t>(anchor.y) < pImpl->data_.height) {
+            Vector2d com{ 0.0, 0.0 };
+            if (anchor.x >= 0 && anchor.y >= 0
+                && static_cast<uint32_t>(anchor.x) < pImpl->data_.width
+                && static_cast<uint32_t>(anchor.y) < pImpl->data_.height) {
                 const Cell& cell = pImpl->data_.at(anchor.x, anchor.y);
                 com = cell.com;
             }
 
             // Convert anchor + COM to continuous position.
-            organism.position = Vector2d{
-                static_cast<double>(anchor.x) + (com.x + 1.0) / 2.0,
-                static_cast<double>(anchor.y) + (com.y + 1.0) / 2.0
-            };
+            organism.position = Vector2d{ static_cast<double>(anchor.x) + (com.x + 1.0) / 2.0,
+                                          static_cast<double>(anchor.y) + (com.y + 1.0) / 2.0 };
         });
 
         // Now clear organism cells from world grid before interpolation.
         organism_manager_->forEachOrganism([this](Organism& organism) {
             for (const auto& pos : organism.getCells()) {
-                if (pos.x >= 0 && pos.y >= 0 &&
-                    static_cast<uint32_t>(pos.x) < pImpl->data_.width &&
-                    static_cast<uint32_t>(pos.y) < pImpl->data_.height) {
-                    pImpl->data_.at(pos.x, pos.y) = Cell();  // Clear to AIR.
+                if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < pImpl->data_.width
+                    && static_cast<uint32_t>(pos.y) < pImpl->data_.height) {
+                    pImpl->data_.at(pos.x, pos.y) = Cell(); // Clear to AIR.
                 }
             }
         });
@@ -859,7 +885,8 @@ void World::applyAirResistance()
 
             if (!cell.isEmpty() && !cell.isWall()) {
                 // Skip rigid body organism cells - they compute their own air resistance.
-                OrganismId org_id = organism_manager_->at(Vector2i{static_cast<int>(x), static_cast<int>(y)});
+                OrganismId org_id =
+                    organism_manager_->at(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
                 if (org_id != INVALID_ORGANISM_ID) {
                     auto* organism = organism_manager_->getOrganism(org_id);
                     if (organism && organism->usesRigidBodyPhysics()) {
@@ -1146,7 +1173,8 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                 Cell& cell = data.at(x, y);
 
                 // Skip organism cells - they're handled by resolveRigidBodies().
-                if (organism_manager_->hasOrganism(Vector2i{static_cast<int>(x), static_cast<int>(y)})) {
+                if (organism_manager_->hasOrganism(
+                        Vector2i{ static_cast<int>(x), static_cast<int>(y) })) {
                     continue;
                 }
 
@@ -1202,8 +1230,7 @@ void World::resolveRigidBodies(double deltaTime)
         // For single-cell organisms (like ducks), apply simple F=ma physics.
         if (organism.getType() != OrganismType::TREE) {
             Vector2i anchor = organism.getAnchorCell();
-            if (anchor.x >= 0 && anchor.y >= 0
-                && anchor.x < static_cast<int>(data.width)
+            if (anchor.x >= 0 && anchor.y >= 0 && anchor.x < static_cast<int>(data.width)
                 && anchor.y < static_cast<int>(data.height)) {
                 Cell& cell = data.at(anchor.x, anchor.y);
                 double mass = cell.getMass();
@@ -1247,8 +1274,7 @@ void World::resolveRigidBodies(double deltaTime)
             Cell& cell = data.at(pos.x, pos.y);
 
             // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != MaterialType::SEED
-                && cell.material_type != MaterialType::ROOT
+            if (cell.material_type != MaterialType::SEED && cell.material_type != MaterialType::ROOT
                 && cell.material_type != MaterialType::WOOD) {
                 continue;
             }
@@ -1365,8 +1391,7 @@ void World::pruneDisconnectedFragments()
             Cell& cell = data.at(pos.x, pos.y);
 
             // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != MaterialType::SEED
-                && cell.material_type != MaterialType::ROOT
+            if (cell.material_type != MaterialType::SEED && cell.material_type != MaterialType::ROOT
                 && cell.material_type != MaterialType::WOOD) {
                 continue;
             }
@@ -1479,7 +1504,7 @@ Vector2d World::computeOrganismSupportForce(
         }
 
         // Skip if ground cell is part of the same organism (internal).
-        Vector2i ground_pos{ground_x, ground_y};
+        Vector2i ground_pos{ ground_x, ground_y };
         if (organism_manager_->at(ground_pos) == organism_id) {
             continue;
         }
@@ -1517,7 +1542,8 @@ Vector2d World::computeOrganismSupportForce(
     // Normalize by number of organism cells to get average support per contact.
     // If all bottom cells have solid contact, support_fraction >= 1.0.
     // Cap at 1.0 (can't exceed full support).
-    double normalized_support = std::min(support_fraction / static_cast<double>(contact_count), 1.0);
+    double normalized_support =
+        std::min(support_fraction / static_cast<double>(contact_count), 1.0);
 
     // If we have any solid contact, provide full support for the whole structure.
     // This is physically correct: a tree on ground is fully supported.
@@ -1587,7 +1613,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
             }
 
             // Skip rigid body organism cells - they control their own position.
-            Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
             OrganismId org_id = organism_manager_->at(pos);
             if (org_id != INVALID_ORGANISM_ID) {
                 auto* organism = organism_manager_->getOrganism(org_id);
@@ -1638,7 +1664,9 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
             // Corner crossings must pick ONE dominant direction.
             uint8_t num_moves_to_process = crossed_boundaries.count;
             if (crossed_boundaries.count > 1) {
-                uint8_t keep_idx = (std::abs(cell.velocity.x) > std::abs(cell.velocity.y)) ? 0 : (crossed_boundaries.count - 1);
+                uint8_t keep_idx = (std::abs(cell.velocity.x) > std::abs(cell.velocity.y))
+                    ? 0
+                    : (crossed_boundaries.count - 1);
                 crossed_boundaries.dirs[0] = crossed_boundaries.dirs[keep_idx];
                 num_moves_to_process = 1;
             }
@@ -1816,8 +1844,8 @@ void World::processMaterialMoves()
                 }
 
                 // Capture organism ownership BEFORE the swap.
-                Vector2i from_pos{static_cast<int>(move.fromX), static_cast<int>(move.fromY)};
-                Vector2i to_pos{static_cast<int>(move.toX), static_cast<int>(move.toY)};
+                Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
+                Vector2i to_pos{ static_cast<int>(move.toX), static_cast<int>(move.toY) };
                 OrganismId from_org_id = organism_manager_->at(from_pos);
                 OrganismId to_org_id = organism_manager_->at(to_pos);
 
@@ -1826,9 +1854,16 @@ void World::processMaterialMoves()
                 // Update organism tracking (swap happened).
                 organism_manager_->swapOrganisms(from_pos, to_pos);
 
-                if (to_org_id != INVALID_ORGANISM_ID ||from_org_id != INVALID_ORGANISM_ID) {
-                    LOG_INFO(Swap, "Material swap: ({},{}) ↔ ({},{}) - organisms: {} ↔ {}",
-                        from_pos.x, from_pos.y, to_pos.x, to_pos.y, from_org_id, to_org_id);
+                if (to_org_id != INVALID_ORGANISM_ID || from_org_id != INVALID_ORGANISM_ID) {
+                    LOG_INFO(
+                        Swap,
+                        "Material swap: ({},{}) ↔ ({},{}) - organisms: {} ↔ {}",
+                        from_pos.x,
+                        from_pos.y,
+                        to_pos.x,
+                        to_pos.y,
+                        from_org_id,
+                        to_org_id);
                 }
 
                 continue;
@@ -1836,7 +1871,7 @@ void World::processMaterialMoves()
         }
 
         // Track organism_id before transfer (in case source cell becomes empty).
-        Vector2i from_pos{static_cast<int>(move.fromX), static_cast<int>(move.fromY)};
+        Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
         OrganismId organism_id = organism_manager_->at(from_pos);
 
         // Determine effective collision type (may be overridden for organism cells).
@@ -1900,9 +1935,14 @@ void World::processMaterialMoves()
         // an organism's cell via transferToWithPhysics.
         if (organism_id != INVALID_ORGANISM_ID && fromCell.isEmpty()) {
             // Material fully transferred - update organism tracking.
-            Vector2i to_pos{static_cast<int>(move.toX), static_cast<int>(move.toY)};
-            spdlog::info("Organism tracking: organism {} moved ({},{}) → ({},{}) via {}",
-                organism_id, from_pos.x, from_pos.y, to_pos.x, to_pos.y,
+            Vector2i to_pos{ static_cast<int>(move.toX), static_cast<int>(move.toY) };
+            spdlog::info(
+                "Organism tracking: organism {} moved ({},{}) → ({},{}) via {}",
+                organism_id,
+                from_pos.x,
+                from_pos.y,
+                to_pos.x,
+                to_pos.y,
                 static_cast<int>(move.collision_type));
             organism_manager_->moveOrganismCell(from_pos, to_pos, organism_id);
         }

@@ -41,11 +41,11 @@ struct MarqueeFrame {
  *         scrolls back to 0 so content appears from the right.
  */
 struct HorizontalScrollState {
-    double viewport_x = 0.0;      // Current viewport X position.
-    double content_width = 0.0;   // Total width of laid-out content.
-    double visible_width = 0.0;   // Width of visible area.
-    double speed = 100.0;         // Scroll speed in units per second.
-    bool scrolling_out = true;    // True = scrolling out left, false = scrolling in from right.
+    double viewport_x = 0.0;    // Current viewport X position.
+    double content_width = 0.0; // Total width of laid-out content.
+    double visible_width = 0.0; // Width of visible area.
+    double speed = 100.0;       // Scroll speed in units per second.
+    bool scrolling_out = true;  // True = scrolling out left, false = scrolling in from right.
 
     // Layout parameters (stored at start).
     int digit_width = 0;
@@ -57,10 +57,10 @@ struct HorizontalScrollState {
  * Tracks animation state for a single digit that's changing.
  */
 struct SlideDigit {
-    size_t string_index = 0;  // Position in the time string.
-    char old_char = ' ';      // The character being replaced.
-    char new_char = ' ';      // The character sliding in.
-    double progress = 0.0;    // Animation progress [0, 1]. 0=old visible, 1=new visible.
+    size_t string_index = 0; // Position in the time string.
+    char old_char = ' ';     // The character being replaced.
+    char new_char = ' ';     // The character sliding in.
+    double progress = 0.0;   // Animation progress [0, 1]. 0=old visible, 1=new visible.
 };
 
 /**
@@ -70,11 +70,11 @@ struct SlideDigit {
  * slides down from above. Unchanged digits remain static.
  */
 struct VerticalSlideState {
-    std::vector<SlideDigit> changing_digits;  // Digits currently animating.
-    std::string old_time_str;                 // Previous time string.
-    std::string new_time_str;                 // Current time string.
-    double speed = 2.0;                       // Animation speed (progress per second).
-    bool active = false;                      // True while animation is in progress.
+    std::vector<SlideDigit> changing_digits; // Digits currently animating.
+    std::string old_time_str;                // Previous time string.
+    std::string new_time_str;                // Current time string.
+    double speed = 2.0;                      // Animation speed (progress per second).
+    bool active = false;                     // True while animation is in progress.
 
     // Layout parameters (stored at start).
     int digit_width = 0;
@@ -87,17 +87,10 @@ using MarqueeEffectState = std::variant<HorizontalScrollState, VerticalSlideStat
 
 // Lays out a string into digit placements at y=0.
 std::vector<DigitPlacement> layoutString(
-    const std::string& content,
-    int digitWidth,
-    int digitGap,
-    int colonWidth);
+    const std::string& content, int digitWidth, int digitGap, int colonWidth);
 
 // Calculates the total width of a laid-out string.
-int calculateStringWidth(
-    const std::string& content,
-    int digitWidth,
-    int digitGap,
-    int colonWidth);
+int calculateStringWidth(const std::string& content, int digitWidth, int digitGap, int colonWidth);
 
 // ============================================================================
 // Effect Functions
@@ -115,9 +108,7 @@ void startHorizontalScroll(
 
 // Update the horizontal scroll effect and return the frame to render.
 MarqueeFrame updateHorizontalScroll(
-    HorizontalScrollState& state,
-    const std::string& content,
-    double deltaTime);
+    HorizontalScrollState& state, const std::string& content, double deltaTime);
 
 // ============================================================================
 // Vertical Slide Effect Functions
@@ -135,14 +126,10 @@ void initVerticalSlide(
 // Check if time changed and start a new slide animation if needed.
 // Returns true if a new animation was started.
 bool checkAndStartSlide(
-    VerticalSlideState& state,
-    const std::string& old_time,
-    const std::string& new_time);
+    VerticalSlideState& state, const std::string& old_time, const std::string& new_time);
 
 // Update the vertical slide animation and return the frame to render.
 // Returns a frame with digits at their animated Y positions.
-MarqueeFrame updateVerticalSlide(
-    VerticalSlideState& state,
-    double deltaTime);
+MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime);
 
 } // namespace DirtSim

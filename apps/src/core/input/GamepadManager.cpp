@@ -9,15 +9,17 @@ GamepadManager::GamepadManager()
     if (SDL_WasInit(SDL_INIT_GAMECONTROLLER)) {
         sdl_available_ = true;
         spdlog::debug("[GamepadManager] SDL_INIT_GAMECONTROLLER already initialized.");
-    } else {
+    }
+    else {
         // Try to initialize it ourselves.
         if (SDL_InitSubSystem(SDL_INIT_GAMECONTROLLER) == 0) {
             we_initialized_sdl_ = true;
             sdl_available_ = true;
             spdlog::info("[GamepadManager] SDL_INIT_GAMECONTROLLER initialized.");
-        } else {
-            spdlog::warn("[GamepadManager] Failed to initialize SDL gamecontroller: {}",
-                         SDL_GetError());
+        }
+        else {
+            spdlog::warn(
+                "[GamepadManager] Failed to initialize SDL gamecontroller: {}", SDL_GetError());
             return;
         }
     }
@@ -117,8 +119,8 @@ void GamepadManager::handleControllerAdded(int device_index)
 {
     SDL_GameController* controller = SDL_GameControllerOpen(device_index);
     if (!controller) {
-        spdlog::warn("[GamepadManager] Failed to open controller {}: {}",
-                     device_index, SDL_GetError());
+        spdlog::warn(
+            "[GamepadManager] Failed to open controller {}: {}", device_index, SDL_GetError());
         return;
     }
 
@@ -129,8 +131,10 @@ void GamepadManager::handleControllerAdded(int device_index)
     // Check if we've already opened this controller (by joystick_id).
     for (size_t i = 0; i < devices_.size(); ++i) {
         if (devices_[i].joystick_id == joystick_id) {
-            spdlog::debug("[GamepadManager] Controller {} already open in slot {}, skipping duplicate.",
-                         name ? name : "Unknown", i);
+            spdlog::debug(
+                "[GamepadManager] Controller {} already open in slot {}, skipping duplicate.",
+                name ? name : "Unknown",
+                i);
             SDL_GameControllerClose(controller);
             return;
         }
@@ -156,8 +160,11 @@ void GamepadManager::handleControllerAdded(int device_index)
 
     newly_connected_.push_back(slot);
 
-    spdlog::info("[GamepadManager] Gamepad {} connected: {} (joystick_id={})",
-                 slot, name ? name : "Unknown", joystick_id);
+    spdlog::info(
+        "[GamepadManager] Gamepad {} connected: {} (joystick_id={})",
+        slot,
+        name ? name : "Unknown",
+        joystick_id);
 }
 
 void GamepadManager::handleControllerRemoved(SDL_JoystickID joystick_id)
@@ -165,8 +172,8 @@ void GamepadManager::handleControllerRemoved(SDL_JoystickID joystick_id)
     for (size_t i = 0; i < devices_.size(); ++i) {
         if (devices_[i].joystick_id == joystick_id) {
             const char* name = SDL_GameControllerName(devices_[i].controller);
-            spdlog::info("[GamepadManager] Gamepad {} disconnected: {}",
-                         i, name ? name : "Unknown");
+            spdlog::info(
+                "[GamepadManager] Gamepad {} disconnected: {}", i, name ? name : "Unknown");
 
             SDL_GameControllerClose(devices_[i].controller);
             devices_[i].controller = nullptr;

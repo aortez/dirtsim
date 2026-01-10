@@ -11,9 +11,9 @@
 #include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/CellSet.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/NeuralGridRenderer.h"
+#include "server/api/CellSet.h"
 #include "state-machine/EventSink.h"
 #include "ui/UiComponentManager.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -31,9 +31,8 @@ SimPlayground::SimPlayground(
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
 
     // Register callback to set up event handlers whenever canvas is (re)created.
-    renderer_->setCanvasCreatedCallback([this](lv_obj_t* canvas) {
-        setupCanvasEventHandlers(canvas);
-    });
+    renderer_->setCanvasCreatedCallback(
+        [this](lv_obj_t* canvas) { setupCanvasEventHandlers(canvas); });
 
     lv_obj_t* worldContainer = uiManager_->getWorldDisplayArea();
     renderer_->initialize(worldContainer, 10, 10);
@@ -50,18 +49,18 @@ void SimPlayground::connectToIconRail()
 {
     IconRail* iconRail = uiManager_->getIconRail();
     if (iconRail) {
-        iconRail->setSecondaryCallback(
-            [this](IconId selectedId, IconId previousId) {
-                onIconSelected(selectedId, previousId);
-            });
+        iconRail->setSecondaryCallback([this](IconId selectedId, IconId previousId) {
+            onIconSelected(selectedId, previousId);
+        });
 
-        iconRail->setModeChangeCallback(
-            [this](RailMode newMode) {
-                LOG_INFO(Controls, "IconRail mode changed to: {}",
-                    newMode == RailMode::Minimized ? "Minimized" : "Normal");
-                // Trigger display resize for auto-scaling scenarios like Clock.
-                sendDisplayResizeUpdate();
-            });
+        iconRail->setModeChangeCallback([this](RailMode newMode) {
+            LOG_INFO(
+                Controls,
+                "IconRail mode changed to: {}",
+                newMode == RailMode::Minimized ? "Minimized" : "Normal");
+            // Trigger display resize for auto-scaling scenarios like Clock.
+            sendDisplayResizeUpdate();
+        });
 
         LOG_INFO(Controls, "Connected to IconRail selection and mode callbacks");
     }
@@ -117,18 +116,18 @@ void SimPlayground::showPanelContent(IconId panelId)
 
     // Create content for the selected panel.
     switch (panelId) {
-    case IconId::CORE:
-        createCorePanel(container);
-        break;
-    case IconId::SCENARIO:
-        createScenarioPanel(container);
-        break;
-    case IconId::PHYSICS:
-        createPhysicsPanel(container);
-        break;
-    default:
-        LOG_WARN(Controls, "Unknown panel id: {}", static_cast<int>(panelId));
-        return;
+        case IconId::CORE:
+            createCorePanel(container);
+            break;
+        case IconId::SCENARIO:
+            createScenarioPanel(container);
+            break;
+        case IconId::PHYSICS:
+            createPhysicsPanel(container);
+            break;
+        default:
+            LOG_WARN(Controls, "Unknown panel id: {}", static_cast<int>(panelId));
+            return;
     }
 
     activePanel_ = panelId;
@@ -159,8 +158,8 @@ void SimPlayground::createCorePanel(lv_obj_t* container)
 {
     LOG_DEBUG(Controls, "Creating Core panel");
 
-    coreControls_ =
-        std::make_unique<CoreControls>(container, wsService_, eventSink_, coreControlsState_, uiManager_);
+    coreControls_ = std::make_unique<CoreControls>(
+        container, wsService_, eventSink_, coreControlsState_, uiManager_);
 }
 
 void SimPlayground::createScenarioPanel(lv_obj_t* container)
@@ -187,9 +186,9 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
                 width += RAIL_WIDTH_DIFF;
             }
 
-            return DisplayDimensions{width, height};
+            return DisplayDimensions{ width, height };
         }
-        return DisplayDimensions{760, 480}; // Fallback assumes minimized rail.
+        return DisplayDimensions{ 760, 480 }; // Fallback assumes minimized rail.
     };
 
     // Create scenario panel with modal navigation.
@@ -308,7 +307,6 @@ void SimPlayground::renderNeuralGrid(const WorldData& data)
     }
 }
 
-
 std::optional<SimPlayground::ScreenshotData> SimPlayground::captureScreenshotPixels()
 {
     if (!renderer_) {
@@ -361,10 +359,12 @@ void SimPlayground::sendDisplayResizeUpdate()
         lv_obj_t* grandparent = lv_obj_get_parent(parent);
         if (grandparent) {
             lv_obj_update_layout(grandparent);
-        } else {
+        }
+        else {
             lv_obj_update_layout(parent);
         }
-    } else {
+    }
+    else {
         lv_obj_update_layout(worldArea);
     }
 
@@ -459,8 +459,9 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
     self->lastPaintedCell_ = *cell;
 
     // DRAW mode places the selected material, ERASE mode places AIR.
-    MaterialType material =
-        (mode == InteractionMode::ERASE) ? MaterialType::AIR : self->coreControlsState_.drawMaterial;
+    MaterialType material = (mode == InteractionMode::ERASE)
+        ? MaterialType::AIR
+        : self->coreControlsState_.drawMaterial;
     double fillRatio = (mode == InteractionMode::ERASE) ? 0.0 : 1.0;
 
     static std::atomic<uint64_t> nextId{ 1 };

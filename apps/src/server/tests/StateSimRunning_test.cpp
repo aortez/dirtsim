@@ -35,9 +35,7 @@ protected:
     {
         // Create Idle and transition to SimRunning.
         Idle idleState;
-        Api::SimRun::Command cmd{
-            0.016, 150, 0
-        }; // max_frame_ms=0 for unlimited speed testing.
+        Api::SimRun::Command cmd{ 0.016, 150, 0 }; // max_frame_ms=0 for unlimited speed testing.
         Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
         State::Any state = idleState.onEvent(cwc, *stateMachine);
 
@@ -91,8 +89,7 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
     simRunning.onEnter(*stateMachine);
 
     // Verify: Sandbox scenario is still applied.
-    EXPECT_EQ(simRunning.scenario_id, "Sandbox")
-        << "Scenario should remain Sandbox";
+    EXPECT_EQ(simRunning.scenario_id, "Sandbox") << "Scenario should remain Sandbox";
 
     // Verify: Walls exist (basic scenario setup check).
     const Cell& topLeft = simRunning.world->getData().at(0, 0);
@@ -249,7 +246,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
 
     // Execute: Toggle water column OFF.
     Config::Sandbox configOff;
-    configOff.quadrantEnabled = true;      // Keep quadrant.
+    configOff.quadrantEnabled = true;     // Keep quadrant.
     configOff.waterColumnEnabled = false; // Turn off water column.
     configOff.rightThrowEnabled = false;
     configOff.rainRate = 0.0;
@@ -606,8 +603,8 @@ TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     // Add a duck organism.
     const uint32_t duckX = 10;
     const uint32_t duckY = 10;
-    OrganismId duckId = simRunning.world->getOrganismManager().createDuck(
-        *simRunning.world, duckX, duckY);
+    OrganismId duckId =
+        simRunning.world->getOrganismManager().createDuck(*simRunning.world, duckX, duckY);
 
     // Verify duck exists.
     ASSERT_NE(duckId, INVALID_ORGANISM_ID);

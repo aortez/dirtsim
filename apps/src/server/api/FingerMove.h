@@ -24,9 +24,9 @@ DEFINE_API_NAME(FingerMove);
  * within the finger's radius, pushing them in the direction of movement.
  */
 struct Command {
-    uint32_t finger_id;  // Must match a previous FingerDown finger_id.
-    double world_x;      // New world coordinate X (cell units, fractional).
-    double world_y;      // New world coordinate Y (cell units, fractional).
+    uint32_t finger_id; // Must match a previous FingerDown finger_id.
+    double world_x;     // New world coordinate X (cell units, fractional).
+    double world_y;     // New world coordinate Y (cell units, fractional).
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

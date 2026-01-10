@@ -1,9 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <lvgl.h>
 #include <memory>
 #include <vector>
-#include <lvgl.h>
 
 namespace DirtSim {
 namespace Ui {

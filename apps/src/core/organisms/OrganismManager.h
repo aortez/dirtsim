@@ -48,22 +48,13 @@ public:
 
     // Factory methods for creating organisms.
     OrganismId createTree(
-        World& world,
-        uint32_t x,
-        uint32_t y,
-        std::unique_ptr<TreeBrain> brain = nullptr);
+        World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain = nullptr);
 
     OrganismId createDuck(
-        World& world,
-        uint32_t x,
-        uint32_t y,
-        std::unique_ptr<DuckBrain> brain = nullptr);
+        World& world, uint32_t x, uint32_t y, std::unique_ptr<DuckBrain> brain = nullptr);
 
     OrganismId createGoose(
-        World& world,
-        uint32_t x,
-        uint32_t y,
-        std::unique_ptr<GooseBrain> brain = nullptr);
+        World& world, uint32_t x, uint32_t y, std::unique_ptr<GooseBrain> brain = nullptr);
 
     // Remove an organism and clean up its cells from the world.
     void removeOrganismFromWorld(World& world, OrganismId id);
@@ -118,7 +109,7 @@ private:
     void clearOrganismAt(Vector2i pos);
 
     std::unordered_map<OrganismId, std::unique_ptr<Organism>> organisms_;
-    OrganismId next_id_{1};
+    OrganismId next_id_{ 1 };
 
     std::vector<OrganismId> grid_;
     uint32_t width_ = 0;

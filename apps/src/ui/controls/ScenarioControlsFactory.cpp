@@ -35,8 +35,7 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
             else {
                 // Config::Empty, Config::Benchmark, Config::DamBreak, Config::FallingDirt,
                 // Config::WaterEqualization, etc. - no UI needed yet.
-                spdlog::debug(
-                    "ScenarioControlsFactory: No controls for scenario '{}'", scenarioId);
+                spdlog::debug("ScenarioControlsFactory: No controls for scenario '{}'", scenarioId);
                 return nullptr;
             }
         },

@@ -19,12 +19,7 @@ class World;
  */
 class Duck {
 public:
-    enum class Action {
-        WAIT,
-        RUN_LEFT,
-        RUN_RIGHT,
-        JUMP
-    };
+    enum class Action { WAIT, RUN_LEFT, RUN_RIGHT, JUMP };
 
     Duck(uint32_t entity_id, Vector2<float> spawn_position);
 
@@ -41,8 +36,8 @@ private:
     // AI state.
     Action current_action_ = Action::WAIT;
     float action_timer_ = 0.0f;
-    int run_distance_ = 0;        // Target cells to run (1-5).
-    float run_start_x_ = 0.0f;    // X position when run started.
+    int run_distance_ = 0;     // Target cells to run (1-5).
+    float run_start_x_ = 0.0f; // X position when run started.
     bool on_ground_ = false;
 
     std::mt19937 rng_{ std::random_device{}() };

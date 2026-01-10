@@ -19,8 +19,8 @@ void Cell::setFillRatio(double ratio)
     // If fill ratio becomes effectively zero, convert to empty AIR.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
         if (material_type == MaterialType::WOOD) {
-            spdlog::info("Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)",
-                fill_ratio);
+            spdlog::info(
+                "Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)", fill_ratio);
         }
         material_type = MaterialType::AIR;
         fill_ratio = 0.0;
@@ -93,8 +93,11 @@ double Cell::addMaterialWithPhysics(
     // If we're empty, accept any material type with trajectory-based COM.
     if (isEmpty()) {
         if (material_type == MaterialType::WOOD && type != MaterialType::WOOD) {
-            spdlog::info("Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell (old_fill={:.3f})",
-                getMaterialName(type), fill_ratio);
+            spdlog::info(
+                "Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell "
+                "(old_fill={:.3f})",
+                getMaterialName(type),
+                fill_ratio);
         }
         material_type = type;
         const double added = std::min(amount, 1.0);
@@ -151,7 +154,8 @@ double Cell::removeMaterial(double amount)
     // Check if we became empty.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
         if (material_type == MaterialType::WOOD) {
-            spdlog::info("Cell::removeMaterial - clearing WOOD cell (fill {:.3f} -> 0.0)",
+            spdlog::info(
+                "Cell::removeMaterial - clearing WOOD cell (fill {:.3f} -> 0.0)",
                 fill_ratio + removed);
         }
         clear();
@@ -194,12 +198,15 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
 
     if (accepted > 0.0) {
         if (material_type == MaterialType::WOOD) {
-            spdlog::info("Cell::transferToWithPhysics - removing {:.3f} WOOD (accepted by target)",
+            spdlog::info(
+                "Cell::transferToWithPhysics - removing {:.3f} WOOD (accepted by target)",
                 accepted);
         }
         removeMaterial(accepted);
-    } else if (material_type == MaterialType::WOOD && available > 0.0) {
-        spdlog::info("Cell::transferToWithPhysics - WOOD transfer REJECTED (target couldn't accept)");
+    }
+    else if (material_type == MaterialType::WOOD && available > 0.0) {
+        spdlog::info(
+            "Cell::transferToWithPhysics - WOOD transfer REJECTED (target couldn't accept)");
     }
 
     return accepted;

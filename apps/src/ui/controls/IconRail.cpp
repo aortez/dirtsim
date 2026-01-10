@@ -7,14 +7,15 @@
 namespace DirtSim {
 namespace Ui {
 
-IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect) : onSelectCallback_(std::move(onSelect))
+IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect)
+    : onSelectCallback_(std::move(onSelect))
 {
     // Define our icon configuration with per-icon colors.
     iconConfigs_ = {
-        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },       // Light blue.
-        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },       // Orange.
-        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },      // Silver.
-        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },     // Lime green.
+        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },   // Light blue.
+        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },   // Orange.
+        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },  // Silver.
+        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 }, // Lime green.
     };
 
     createIcons(parent);
@@ -120,7 +121,11 @@ void IconRail::onIconClicked(lv_event_t* e)
     IconId clickedId = self->iconConfigs_[index].id;
     IconId previousId = self->selectedId_;
 
-    LOG_DEBUG(Controls, "Icon clicked: {} (was: {})", static_cast<int>(clickedId), static_cast<int>(previousId));
+    LOG_DEBUG(
+        Controls,
+        "Icon clicked: {} (was: {})",
+        static_cast<int>(clickedId),
+        static_cast<int>(previousId));
 
     // Toggle behavior: clicking selected icon deselects it.
     if (clickedId == self->selectedId_) {
@@ -274,7 +279,8 @@ void IconRail::createModeButtons()
         lv_obj_t* btn = lv_obj_get_child(collapseButton_, 0);
         if (btn) {
             lv_obj_set_user_data(btn, this);
-            lv_obj_add_event_cb(btn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(0));
+            lv_obj_add_event_cb(
+                btn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(0));
         }
     }
 
@@ -472,12 +478,16 @@ void IconRail::onGesture(lv_event_t* e)
     lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
 
     // Log all gesture events for debugging.
-    const char* dirName = (dir == LV_DIR_LEFT)    ? "LEFT"
-                          : (dir == LV_DIR_RIGHT) ? "RIGHT"
-                          : (dir == LV_DIR_TOP)   ? "UP"
-                          : (dir == LV_DIR_BOTTOM) ? "DOWN"
-                                                   : "NONE";
-    LOG_INFO(Controls, "Gesture detected: {} (mode={})", dirName, self->mode_ == RailMode::Minimized ? "minimized" : "normal");
+    const char* dirName = (dir == LV_DIR_LEFT) ? "LEFT"
+        : (dir == LV_DIR_RIGHT)                ? "RIGHT"
+        : (dir == LV_DIR_TOP)                  ? "UP"
+        : (dir == LV_DIR_BOTTOM)               ? "DOWN"
+                                               : "NONE";
+    LOG_INFO(
+        Controls,
+        "Gesture detected: {} (mode={})",
+        dirName,
+        self->mode_ == RailMode::Minimized ? "minimized" : "normal");
 
     // Swipe right to expand when minimized.
     if (dir == LV_DIR_RIGHT && self->mode_ == RailMode::Minimized) {

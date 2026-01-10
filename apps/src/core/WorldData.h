@@ -23,7 +23,7 @@ struct WorldData {
     // Grid dimensions and cells (1D storage for performance).
     uint32_t width = 0;
     uint32_t height = 0;
-    std::vector<Cell> cells; // Flat array: cells[y * width + x]
+    std::vector<Cell> cells;              // Flat array: cells[y * width + x]
     std::vector<OrganismId> organism_ids; // Parallel to cells: organism_ids[y * width + x]
 
     // Simulation state.
@@ -44,10 +44,10 @@ struct WorldData {
     // Aggregate struct - ReflectSerializer handles it automatically.
     struct OrganismDebugInfo {
         OrganismId id;
-        std::string type;  // "DUCK", "TREE", "GOOSE".
+        std::string type; // "DUCK", "TREE", "GOOSE".
         Vector2i anchor_cell;
-        std::string material_at_anchor;  // Material type at anchor position.
-        OrganismId organism_id_at_anchor;  // Cell's organism_id.
+        std::string material_at_anchor;   // Material type at anchor position.
+        OrganismId organism_id_at_anchor; // Cell's organism_id.
     };
     std::vector<OrganismDebugInfo> organism_debug;
 
@@ -92,13 +92,11 @@ struct WorldData {
  */
 inline void to_json(nlohmann::json& j, const WorldData::OrganismDebugInfo& info)
 {
-    j = nlohmann::json{
-        {"id", info.id},
-        {"type", info.type},
-        {"anchor_cell", info.anchor_cell},
-        {"material_at_anchor", info.material_at_anchor},
-        {"organism_id_at_anchor", info.organism_id_at_anchor}
-    };
+    j = nlohmann::json{ { "id", info.id },
+                        { "type", info.type },
+                        { "anchor_cell", info.anchor_cell },
+                        { "material_at_anchor", info.material_at_anchor },
+                        { "organism_id_at_anchor", info.organism_id_at_anchor } };
 }
 
 inline void from_json(const nlohmann::json& j, WorldData::OrganismDebugInfo& info)

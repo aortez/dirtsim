@@ -32,15 +32,17 @@ void startMeltdown(MeltdownEventState& state, World& world)
             if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                 // Convert to the digit material so it can fall.
                 cell.material_type = state.digit_material;
-                cell.render_as = -1;  // Clear override - now it's the real material.
+                cell.render_as = -1; // Clear override - now it's the real material.
                 max_digit_y = std::max(max_digit_y, static_cast<int>(y));
             }
         }
     }
     state.digit_bottom_y = max_digit_y;
 
-    spdlog::info("ClockScenario: MELTDOWN started (digit_bottom_y: {}, material: {})",
-        state.digit_bottom_y, getMaterialName(state.digit_material));
+    spdlog::info(
+        "ClockScenario: MELTDOWN started (digit_bottom_y: {}, material: {})",
+        state.digit_bottom_y,
+        getMaterialName(state.digit_material));
 }
 
 void updateMeltdown(

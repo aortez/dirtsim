@@ -162,8 +162,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
         LOG_INFO(State, "Draw mode active");
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
-            MaterialType material =
-                (cwc.command.button == UiApi::MouseButton::LEFT) ? MaterialType::WALL : MaterialType::AIR;
+            MaterialType material = (cwc.command.button == UiApi::MouseButton::LEFT)
+                ? MaterialType::WALL
+                : MaterialType::AIR;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
@@ -195,11 +196,13 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
     }
 
     DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
-    if (activeMouseButton.has_value() && playground_->getInteractionMode() == InteractionMode::DRAW) {
+    if (activeMouseButton.has_value()
+        && playground_->getInteractionMode() == InteractionMode::DRAW) {
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
-            MaterialType material =
-                (*activeMouseButton == UiApi::MouseButton::LEFT) ? MaterialType::WALL : MaterialType::AIR;
+            MaterialType material = (*activeMouseButton == UiApi::MouseButton::LEFT)
+                ? MaterialType::WALL
+                : MaterialType::AIR;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
@@ -363,7 +366,8 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
     if (playground_ && worldData) {
         // Update controls with new world state.
         sm.getTimers().startTimer("update_controls");
-        playground_->updateFromWorldData(*worldData, evt.scenario_id, evt.scenario_config, smoothedUiFps);
+        playground_->updateFromWorldData(
+            *worldData, evt.scenario_id, evt.scenario_config, smoothedUiFps);
         sm.getTimers().stopTimer("update_controls");
 
         // Render world.

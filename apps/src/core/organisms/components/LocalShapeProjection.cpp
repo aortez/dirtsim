@@ -11,11 +11,8 @@ namespace DirtSim {
 
 void LocalShapeProjection::addCell(Vector2i localPos, MaterialType material, double fillRatio)
 {
-    localShape.push_back(LocalCell{
-        .localPos = localPos,
-        .material = material,
-        .fillRatio = fillRatio
-    });
+    localShape.push_back(
+        LocalCell{ .localPos = localPos, .material = material, .fillRatio = fillRatio });
 }
 
 void LocalShapeProjection::clear(World& world)
@@ -23,8 +20,7 @@ void LocalShapeProjection::clear(World& world)
     auto& data = world.getData();
 
     for (const auto& oldPos : occupiedCells) {
-        if (oldPos.x < 0 || oldPos.y < 0
-            || static_cast<uint32_t>(oldPos.x) >= data.width
+        if (oldPos.x < 0 || oldPos.y < 0 || static_cast<uint32_t>(oldPos.x) >= data.width
             || static_cast<uint32_t>(oldPos.y) >= data.height) {
             continue;
         }
@@ -53,10 +49,7 @@ const std::vector<Vector2i>& LocalShapeProjection::getOccupiedCells() const
 }
 
 void LocalShapeProjection::project(
-    World& world,
-    OrganismId id,
-    Vector2d position,
-    Vector2d velocity)
+    World& world, OrganismId id, Vector2d position, Vector2d velocity)
 {
     auto& data = world.getData();
 
@@ -67,20 +60,15 @@ void LocalShapeProjection::project(
     // Project each local cell to grid.
     for (const auto& local : localShape) {
         // World position = organism position + local offset.
-        const Vector2d worldPos{
-            position.x + static_cast<double>(local.localPos.x),
-            position.y + static_cast<double>(local.localPos.y)
-        };
+        const Vector2d worldPos{ position.x + static_cast<double>(local.localPos.x),
+                                 position.y + static_cast<double>(local.localPos.y) };
 
         // Snap to grid.
-        const Vector2i gridPos{
-            static_cast<int>(std::floor(worldPos.x)),
-            static_cast<int>(std::floor(worldPos.y))
-        };
+        const Vector2i gridPos{ static_cast<int>(std::floor(worldPos.x)),
+                                static_cast<int>(std::floor(worldPos.y)) };
 
         // Bounds check.
-        if (gridPos.x < 0 || gridPos.y < 0
-            || static_cast<uint32_t>(gridPos.x) >= data.width
+        if (gridPos.x < 0 || gridPos.y < 0 || static_cast<uint32_t>(gridPos.x) >= data.width
             || static_cast<uint32_t>(gridPos.y) >= data.height) {
             continue;
         }
@@ -109,10 +97,9 @@ void LocalShapeProjection::project(
 
 void LocalShapeProjection::removeCell(Vector2i localPos)
 {
-    auto it = std::remove_if(
-        localShape.begin(),
-        localShape.end(),
-        [&](const LocalCell& c) { return c.localPos == localPos; });
+    auto it = std::remove_if(localShape.begin(), localShape.end(), [&](const LocalCell& c) {
+        return c.localPos == localPos;
+    });
     localShape.erase(it, localShape.end());
 }
 

@@ -26,7 +26,7 @@ TEST(MarqueeTypesTest, LayoutString_TwoDigits)
     EXPECT_EQ(placements[0].c, '1');
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
     EXPECT_EQ(placements[1].c, '2');
-    EXPECT_DOUBLE_EQ(placements[1].x, 5.0);  // After first digit.
+    EXPECT_DOUBLE_EQ(placements[1].x, 5.0); // After first digit.
 }
 
 TEST(MarqueeTypesTest, LayoutString_DigitsWithSpace)
@@ -37,7 +37,7 @@ TEST(MarqueeTypesTest, LayoutString_DigitsWithSpace)
     EXPECT_EQ(placements[0].c, '1');
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
     EXPECT_EQ(placements[1].c, '2');
-    EXPECT_DOUBLE_EQ(placements[1].x, 7.0);  // 5 (digit) + 2 (gap).
+    EXPECT_DOUBLE_EQ(placements[1].x, 7.0); // 5 (digit) + 2 (gap).
 }
 
 TEST(MarqueeTypesTest, LayoutString_WithColon)
@@ -50,7 +50,7 @@ TEST(MarqueeTypesTest, LayoutString_WithColon)
     EXPECT_EQ(placements[1].c, ':');
     EXPECT_DOUBLE_EQ(placements[1].x, 5.0);
     EXPECT_EQ(placements[2].c, '2');
-    EXPECT_DOUBLE_EQ(placements[2].x, 8.0);  // 5 + 3 (colon).
+    EXPECT_DOUBLE_EQ(placements[2].x, 8.0); // 5 + 3 (colon).
 }
 
 TEST(MarqueeTypesTest, LayoutString_TimeFormat)
@@ -126,13 +126,13 @@ TEST(MarqueeTypesTest, CalculateWidth_TwoDigits)
 TEST(MarqueeTypesTest, CalculateWidth_DigitsWithSpace)
 {
     int width = calculateStringWidth("1 2", 5, 2, 1);
-    EXPECT_EQ(width, 12);  // 5 + 2 + 5.
+    EXPECT_EQ(width, 12); // 5 + 2 + 5.
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_WithColon)
 {
     int width = calculateStringWidth("1:2", 5, 1, 3);
-    EXPECT_EQ(width, 13);  // 5 + 3 + 5.
+    EXPECT_EQ(width, 13); // 5 + 3 + 5.
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_TimeFormat)
@@ -152,7 +152,7 @@ TEST(MarqueeTypesTest, CalculateWidth_EmptyString)
 TEST(MarqueeTypesTest, CalculateWidth_OnlySpaces)
 {
     int width = calculateStringWidth("   ", 5, 2, 1);
-    EXPECT_EQ(width, 6);  // 3 gaps of 2 each.
+    EXPECT_EQ(width, 6); // 3 gaps of 2 each.
 }
 
 // =============================================================================
@@ -239,7 +239,7 @@ TEST(MarqueeTypesTest, HorizontalScroll_ClampsToZeroOnFinish)
     startHorizontalScroll(state, "1", 10.0, 100.0, 5, 1, 1);
 
     // Force into scroll-in phase.
-    updateHorizontalScroll(state, "1", 0.1);  // Passes content_width (5), teleports to -10.
+    updateHorizontalScroll(state, "1", 0.1); // Passes content_width (5), teleports to -10.
     EXPECT_FALSE(state.scrolling_out);
 
     // Overshoot: 0.2s at 100 = 20 units, from -10 would be +10, but should clamp to 0.
@@ -288,7 +288,7 @@ TEST(MarqueeTypesTest, VerticalSlide_ChangeStartsAnimation)
 
     EXPECT_TRUE(started);
     EXPECT_TRUE(state.active);
-    EXPECT_EQ(state.changing_digits.size(), 1u);  // Only the last digit changed.
+    EXPECT_EQ(state.changing_digits.size(), 1u); // Only the last digit changed.
 }
 
 TEST(MarqueeTypesTest, VerticalSlide_TracksCorrectChangingDigits)
@@ -361,7 +361,7 @@ TEST(MarqueeTypesTest, VerticalSlide_DoesNotInterruptOngoingAnimation)
 
     // Try to start another animation while first is active.
     bool started2 = checkAndStartSlide(state, "1 2 : 3 5", "1 2 : 3 6");
-    EXPECT_FALSE(started2);  // Should be rejected.
+    EXPECT_FALSE(started2); // Should be rejected.
 
     // Original animation state should be unchanged.
     EXPECT_EQ(state.changing_digits.size(), 1u);
@@ -381,7 +381,7 @@ TEST(MarqueeTypesTest, VerticalSlide_FrameContainsStaticAndAnimatingDigits)
 
     // Should contain: static '1', animating '2' (old) and '3' (new).
     // Total: 3 placements.
-    EXPECT_GE(frame.digits.size(), 2u);  // At least static '1' and new '3'.
+    EXPECT_GE(frame.digits.size(), 2u); // At least static '1' and new '3'.
 
     // Find the static digit.
     bool found_static_1 = false;
@@ -401,16 +401,16 @@ TEST(MarqueeTypesTest, VerticalSlide_AnimatingDigitsHaveOffsetY)
     checkAndStartSlide(state, "1 2", "1 3");
 
     // At progress 0.5, old digit should be halfway down, new digit halfway in.
-    updateVerticalSlide(state, 0.25);  // 0.5 progress.
+    updateVerticalSlide(state, 0.25); // 0.5 progress.
 
-    auto frame = updateVerticalSlide(state, 0.0);  // Don't advance, just get frame.
+    auto frame = updateVerticalSlide(state, 0.0); // Don't advance, just get frame.
 
     // Look for the animating digits.
     bool found_old_at_offset = false;
     bool found_new_at_offset = false;
     double digit_height = 15.0;
-    double expected_old_y = 0.5 * digit_height;  // 7.5
-    double expected_new_y = -digit_height + 0.5 * digit_height;  // -7.5
+    double expected_old_y = 0.5 * digit_height;                 // 7.5
+    double expected_new_y = -digit_height + 0.5 * digit_height; // -7.5
 
     for (const auto& p : frame.digits) {
         if (p.c == '2' && std::abs(p.y - expected_old_y) < 0.01) {

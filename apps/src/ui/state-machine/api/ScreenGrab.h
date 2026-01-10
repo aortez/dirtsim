@@ -17,9 +17,9 @@ DEFINE_API_NAME(ScreenGrab);
 
 // Output format for screen capture.
 enum class Format : uint8_t {
-    Raw = 0, // ARGB8888 raw pixel data.
+    Raw = 0,  // ARGB8888 raw pixel data.
     H264 = 1, // H.264 encoded video frame.
-    Png = 2  // PNG compressed image.
+    Png = 2   // PNG compressed image.
 };
 
 // JSON serialization for Format enum (string-based for readability).

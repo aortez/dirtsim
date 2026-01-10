@@ -137,17 +137,17 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     // After 30 timesteps, SEED should have fallen from (4,4) to (4,5).
     ASSERT_EQ(world->getData().at(4, 5).material_type, MaterialType::SEED)
         << "SEED should have fallen to (4,5)";
-    ASSERT_EQ(world->getOrganismManager().at(Vector2i{4, 5}), tree_id)
+    ASSERT_EQ(world->getOrganismManager().at(Vector2i{ 4, 5 }), tree_id)
         << "SEED should have organism_id set";
     tree->setAnchorCell(Vector2i{ 4, 5 });
 
     // Force grow ROOT at (4,6).
     world->getData().at(4, 6).replaceMaterial(MaterialType::ROOT, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {4, 6});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 4, 6 });
 
     // Force grow WOOD at (4,4).
     world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
-    world->getOrganismManager().addCellToOrganism(tree_id, {4, 4});
+    world->getOrganismManager().addCellToOrganism(tree_id, { 4, 4 });
 
     // Gather sensory data.
     TreeSensoryData sensory = tree->gatherSensoryData(*world);

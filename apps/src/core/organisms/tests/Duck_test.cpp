@@ -35,17 +35,17 @@ public:
         // Legacy action-based mode.
         switch (current_action_) {
             case DuckAction::RUN_LEFT:
-                duck.setInput({.move = {-1.0f, 0.0f}, .jump = false});
+                duck.setInput({ .move = { -1.0f, 0.0f }, .jump = false });
                 break;
             case DuckAction::RUN_RIGHT:
-                duck.setInput({.move = {1.0f, 0.0f}, .jump = false});
+                duck.setInput({ .move = { 1.0f, 0.0f }, .jump = false });
                 break;
             case DuckAction::JUMP:
-                duck.setInput({.move = {}, .jump = true});
+                duck.setInput({ .move = {}, .jump = true });
                 break;
             case DuckAction::WAIT:
             default:
-                duck.setInput({.move = {}, .jump = false});
+                duck.setInput({ .move = {}, .jump = false });
                 break;
         }
     }
@@ -56,7 +56,7 @@ public:
     void setDirectInput(Vector2f move, bool jump)
     {
         use_direct_input_ = true;
-        direct_input_ = {.move = move, .jump = jump};
+        direct_input_ = { .move = move, .jump = jump };
     }
 
     void setMove(Vector2f move)
@@ -74,12 +74,12 @@ public:
     void clearDirectInput()
     {
         use_direct_input_ = false;
-        direct_input_ = {.move = {}, .jump = false};
+        direct_input_ = { .move = {}, .jump = false };
     }
 
 private:
     bool use_direct_input_ = false;
-    DuckInput direct_input_ = {.move = {}, .jump = false};
+    DuckInput direct_input_ = { .move = {}, .jump = false };
 };
 
 class DuckTest : public ::testing::Test {
@@ -160,7 +160,8 @@ protected:
          * @param duck_y Duck spawn Y position (typically height-2 for floor level).
          * @param settle_frames Frames to run for settling (default 20).
          */
-        static DuckTestSetup create(int width, int height, int duck_x, int duck_y, int settle_frames = 20)
+        static DuckTestSetup create(
+            int width, int height, int duck_x, int duck_y, int settle_frames = 20)
         {
             DuckTestSetup setup;
 
@@ -205,10 +206,7 @@ protected:
         }
 
         // Advance simulation by one frame.
-        void advance(double dt = 0.016)
-        {
-            world->advanceTime(dt);
-        }
+        void advance(double dt = 0.016) { world->advanceTime(dt); }
 
         // Advance simulation by N frames.
         void advanceFrames(int frames, double dt = 0.016)
@@ -236,7 +234,7 @@ TEST_F(DuckTest, CreateDuckPlacesWoodCell)
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(2, 2);
     EXPECT_EQ(cell.material_type, MaterialType::WOOD);
-    EXPECT_EQ(manager.at(Vector2i{2, 2}), duck_id);
+    EXPECT_EQ(manager.at(Vector2i{ 2, 2 }), duck_id);
 
     // Check duck's anchor cell.
     EXPECT_EQ(duck->getAnchorCell(), Vector2i(2, 2));
@@ -269,7 +267,10 @@ TEST_F(DuckTest, DuckFallsWithGravity)
     for (int frame = 0; frame < 40; ++frame) {
         world->advanceTime(0.016);
 
-        spdlog::info("Frame {}: anchor_cell=({},{})", frame, duck->getAnchorCell().x,
+        spdlog::info(
+            "Frame {}: anchor_cell=({},{})",
+            frame,
+            duck->getAnchorCell().x,
             duck->getAnchorCell().y);
     }
 
@@ -281,16 +282,23 @@ TEST_F(DuckTest, DuckFallsWithGravity)
     const Cell& cell_below = world->getData().at(2, 2);
     const Cell& cell_at_floor = world->getData().at(2, 3);
 
-    spdlog::info("Cell (2,1): type={}, fill={}", static_cast<int>(cell_at_start.material_type),
+    spdlog::info(
+        "Cell (2,1): type={}, fill={}",
+        static_cast<int>(cell_at_start.material_type),
         cell_at_start.fill_ratio);
-    spdlog::info("Cell (2,2): type={}, fill={}", static_cast<int>(cell_below.material_type),
+    spdlog::info(
+        "Cell (2,2): type={}, fill={}",
+        static_cast<int>(cell_below.material_type),
         cell_below.fill_ratio);
-    spdlog::info("Cell (2,3): type={}, fill={}", static_cast<int>(cell_at_floor.material_type),
+    spdlog::info(
+        "Cell (2,3): type={}, fill={}",
+        static_cast<int>(cell_at_floor.material_type),
         cell_at_floor.fill_ratio);
 
     // Duck should have fallen - WOOD should be at a lower position.
-    bool wood_moved_down = (cell_below.material_type == MaterialType::WOOD
-        || cell_at_floor.material_type == MaterialType::WOOD);
+    bool wood_moved_down =
+        (cell_below.material_type == MaterialType::WOOD
+         || cell_at_floor.material_type == MaterialType::WOOD);
 
     EXPECT_TRUE(wood_moved_down) << "Duck's WOOD cell should have fallen due to gravity";
 }
@@ -384,7 +392,8 @@ TEST_F(DuckTest, DuckWalksWhenOnGround)
     int final_x = duck->getAnchorCell().x;
     int distance_moved = final_x - start_x;
 
-    spdlog::info("Duck walked from x={} to x={}, distance={} cells", start_x, final_x, distance_moved);
+    spdlog::info(
+        "Duck walked from x={} to x={}, distance={} cells", start_x, final_x, distance_moved);
 
     // Should have moved at least 1-2 cells after 100 frames (~1.6 seconds).
     EXPECT_GE(distance_moved, 1) << "Duck should move at least 1 cell when walking for 100 frames";
@@ -478,10 +487,16 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
 
     // Report results.
     spdlog::info("Walking test results (100 frames = 1.6 seconds):");
-    spdlog::info("{:8} {:>10} {:>12} {:>12} {:>12}", "Surface", "Distance", "Vel@20", "Vel@80", "MaxVel");
+    spdlog::info(
+        "{:8} {:>10} {:>12} {:>12} {:>12}", "Surface", "Distance", "Vel@20", "Vel@80", "MaxVel");
     for (const auto& r : results) {
-        spdlog::info("{:8} {:>10} {:>12.1f} {:>12.1f} {:>12.1f}",
-            r.name, r.distance, r.velocity_at_frame_20, r.velocity_at_frame_80, r.max_velocity);
+        spdlog::info(
+            "{:8} {:>10} {:>12.1f} {:>12.1f} {:>12.1f}",
+            r.name,
+            r.distance,
+            r.velocity_at_frame_20,
+            r.velocity_at_frame_80,
+            r.max_velocity);
     }
 
     // Check if velocity plateaued (air resistance) or kept growing.
@@ -490,7 +505,8 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
             double ratio = r.velocity_at_frame_80 / r.velocity_at_frame_20;
             if (ratio > 2.0) {
                 spdlog::warn("{}: Velocity grew {}x - no terminal velocity", r.name, ratio);
-            } else {
+            }
+            else {
                 spdlog::info("{}: Velocity ratio {:.2f}x - air resistance working", r.name, ratio);
             }
         }
@@ -536,8 +552,11 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
                 Vector2i pos = duck->getAnchorCell();
                 if (pos.x >= 0 && pos.x < 100) {
                     const Cell& cell = world->getData().at(pos.x, pos.y);
-                    spdlog::info("DuckBrain2 frame {}: pos={}, velocity.x={:.1f}",
-                        frame, pos.x, cell.velocity.x);
+                    spdlog::info(
+                        "DuckBrain2 frame {}: pos={}, velocity.x={:.1f}",
+                        frame,
+                        pos.x,
+                        cell.velocity.x);
                 }
             }
         }
@@ -594,20 +613,33 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
     {
         Vector2i pos = duck->getAnchorCell();
         const Cell& cell = world->getData().at(pos.x, pos.y);
-        spdlog::info("Duck settled at y={}, COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
-            settled_y, cell.com.x, cell.com.y, cell.velocity.x, cell.velocity.y, duck->isOnGround());
+        spdlog::info(
+            "Duck settled at y={}, COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
+            settled_y,
+            cell.com.x,
+            cell.com.y,
+            cell.velocity.x,
+            cell.velocity.y,
+            duck->isOnGround());
     }
 
     // Trigger jump.
     brain_ptr->setAction(DuckAction::JUMP);
-    world->advanceTime(0.016);  // One frame to initiate jump.
+    world->advanceTime(0.016); // One frame to initiate jump.
 
     // Log state immediately after jump frame.
     {
         Vector2i pos = duck->getAnchorCell();
         const Cell& cell = world->getData().at(pos.x, pos.y);
-        spdlog::info("After jump frame: pos=({},{}), COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
-            pos.x, pos.y, cell.com.x, cell.com.y, cell.velocity.x, cell.velocity.y, duck->isOnGround());
+        spdlog::info(
+            "After jump frame: pos=({},{}), COM=({:.3f},{:.3f}), vel=({:.2f},{:.2f}), on_ground={}",
+            pos.x,
+            pos.y,
+            cell.com.x,
+            cell.com.y,
+            cell.velocity.x,
+            cell.velocity.y,
+            duck->isOnGround());
     }
 
     // Switch to wait so we don't keep trying to jump.
@@ -615,7 +647,7 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
 
     // Track the highest point (minimum Y since Y increases downward).
     int min_y = settled_y;
-    double min_com_y = 1.0;  // Track minimum COM.y (most upward position within cell).
+    double min_com_y = 1.0; // Track minimum COM.y (most upward position within cell).
 
     // Run physics for enough frames to complete the jump arc.
     for (int frame = 0; frame < 100; ++frame) {
@@ -626,8 +658,14 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
 
         // Log first 30 frames to see jump dynamics.
         if (frame < 30) {
-            spdlog::info("Frame {:3d}: pos=({},{}), COM.y={:+.3f}, vel.y={:+.2f}, on_ground={}",
-                frame, pos.x, pos.y, cell.com.y, cell.velocity.y, duck->isOnGround());
+            spdlog::info(
+                "Frame {:3d}: pos=({},{}), COM.y={:+.3f}, vel.y={:+.2f}, on_ground={}",
+                frame,
+                pos.x,
+                pos.y,
+                cell.com.y,
+                cell.velocity.y,
+                duck->isOnGround());
         }
 
         int current_y = pos.y;
@@ -644,7 +682,8 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
     spdlog::info("Min COM.y reached: {:.3f} (negative = upward from center)", min_com_y);
 
     int jump_height = settled_y - min_y;
-    spdlog::info("Duck jumped from y={} to min y={}, height={} cells", settled_y, min_y, jump_height);
+    spdlog::info(
+        "Duck jumped from y={} to min y={}, height={} cells", settled_y, min_y, jump_height);
 
     // Verify duck jumped at least 2 cells high.
     EXPECT_GE(jump_height, 2) << "Duck should jump at least 2 cells high";
@@ -672,9 +711,13 @@ TEST_F(DuckTest, DuckOnGroundDetection)
 
     // By now the duck should have fallen and be resting on the wall.
     const Cell& cell = world->getData().at(duck->getAnchorCell().x, duck->getAnchorCell().y);
-    spdlog::info("Duck at ({},{}), velocity=({},{}), on_ground={}",
-        duck->getAnchorCell().x, duck->getAnchorCell().y,
-        cell.velocity.x, cell.velocity.y, duck->isOnGround());
+    spdlog::info(
+        "Duck at ({},{}), velocity=({},{}), on_ground={}",
+        duck->getAnchorCell().x,
+        duck->getAnchorCell().y,
+        cell.velocity.x,
+        cell.velocity.y,
+        duck->isOnGround());
 
     // Duck should detect it's on ground after falling and coming to rest.
     EXPECT_TRUE(duck->isOnGround()) << "Duck should detect ground after falling to rest";
@@ -747,8 +790,11 @@ TEST_F(DuckTest, WallBouncingBrainPingPongs)
             if (current_direction != Direction::UNKNOWN && actual_direction != current_direction) {
                 // Direction changed - this is a bounce.
                 bounce_count++;
-                spdlog::info("Frame {}: Bounce #{} detected at x={} (now moving {})",
-                    i, bounce_count, current_x,
+                spdlog::info(
+                    "Frame {}: Bounce #{} detected at x={} (now moving {})",
+                    i,
+                    bounce_count,
+                    current_x,
                     (actual_direction == Direction::RIGHT) ? "RIGHT" : "LEFT");
             }
 
@@ -758,8 +804,7 @@ TEST_F(DuckTest, WallBouncingBrainPingPongs)
         last_x = current_x;
     }
 
-    spdlog::info("Duck traveled from x={} to x={}, {} total bounces",
-        min_x, max_x, bounce_count);
+    spdlog::info("Duck traveled from x={} to x={}, {} total bounces", min_x, max_x, bounce_count);
 
     // Duck should bounce multiple times in 600 frames (3x original duration).
     EXPECT_GE(bounce_count, 3) << "Duck should bounce at least 3 times in 600 frames";
@@ -803,12 +848,14 @@ TEST_F(DuckTest, WallBouncingBrainBouncesOffWall)
             double wall_fill = sensory.material_histograms[y][x][7];
             if (wall_fill > 0.5) {
                 row += "W";
-            } else {
+            }
+            else {
                 // Check for WOOD (duck itself, material index 9).
                 double wood_fill = sensory.material_histograms[y][x][9];
                 if (wood_fill > 0.5) {
                     row += "D";
-                } else {
+                }
+                else {
                     row += ".";
                 }
             }
@@ -884,7 +931,7 @@ TEST_F(DuckTest, WallBouncingBrainJumpsAtMidpoint)
     // Run long enough to establish consistent pattern and see jumps.
     int jump_count = 0;
     int last_y = duck->getAnchorCell().y;
-    int local_max_y = last_y;  // Track local peak (lowest point before jump).
+    int local_max_y = last_y; // Track local peak (lowest point before jump).
     bool was_on_ground = duck->isOnGround();
 
     for (int i = 0; i < 800; ++i) {
@@ -896,7 +943,8 @@ TEST_F(DuckTest, WallBouncingBrainJumpsAtMidpoint)
         // Detect jump: transition from on_ground to airborne with upward movement.
         if (was_on_ground && !on_ground && current_y <= last_y) {
             jump_count++;
-            spdlog::info("Frame {}: Jump #{} detected - left ground at y={}", i, jump_count, current_y);
+            spdlog::info(
+                "Frame {}: Jump #{} detected - left ground at y={}", i, jump_count, current_y);
         }
 
         // Track local peaks (before jumps).
@@ -935,8 +983,7 @@ TEST_F(DuckTest, DuckBrain2DetectsSpawnSide)
 
     // Duck should be running right (away from spawn side).
     DuckAction action = duck->getCurrentAction();
-    EXPECT_EQ(action, DuckAction::RUN_RIGHT)
-        << "Duck spawned on left should run right toward exit";
+    EXPECT_EQ(action, DuckAction::RUN_RIGHT) << "Duck spawned on left should run right toward exit";
 }
 
 TEST_F(DuckTest, DuckBrain2TurnsAroundAtWall)
@@ -977,7 +1024,8 @@ TEST_F(DuckTest, DuckBrain2TurnsAroundAtWall)
         // Track jumps before first turn.
         if (!turned_around && was_on_ground && !on_ground) {
             jump_count_before_turn++;
-            spdlog::info("Frame {}: Jump #{} detected at x={}", i, jump_count_before_turn, current_x);
+            spdlog::info(
+                "Frame {}: Jump #{} detected at x={}", i, jump_count_before_turn, current_x);
         }
 
         // Detect hitting right wall (near x=13 or 14).
@@ -1025,7 +1073,7 @@ TEST_F(DuckTest, DuckBrain2BouncesBackAndForth)
     // Track direction changes (bounces).
     int last_x = duck->getAnchorCell().x;
     int bounce_count = 0;
-    int last_direction = 0;  // 1 = right, -1 = left.
+    int last_direction = 0; // 1 = right, -1 = left.
     bool was_on_ground = duck->isOnGround();
 
     for (int i = 0; i < 800; ++i) {
@@ -1038,17 +1086,30 @@ TEST_F(DuckTest, DuckBrain2BouncesBackAndForth)
         if (!on_ground || !was_on_ground || (i >= 80 && i <= 150)) {
             const Cell& cell = world->getData().at(current_x, current_y);
             const CellDebug& debug = world->getGrid().debugAt(current_x, current_y);
-            spdlog::info("Frame {}: pos=({},{}), vel=({:.2f},{:.2f}), on_ground={}",
-                i, current_x, current_y, cell.velocity.x, cell.velocity.y, on_ground);
-            spdlog::info("  Forces: gravity=({:.2f},{:.2f}), friction=({:.2f},{:.2f}), "
+            spdlog::info(
+                "Frame {}: pos=({},{}), vel=({:.2f},{:.2f}), on_ground={}",
+                i,
+                current_x,
+                current_y,
+                cell.velocity.x,
+                cell.velocity.y,
+                on_ground);
+            spdlog::info(
+                "  Forces: gravity=({:.2f},{:.2f}), friction=({:.2f},{:.2f}), "
                 "viscous=({:.2f},{:.2f}), cohesion=({:.2f},{:.2f}), adhesion=({:.2f},{:.2f}), "
                 "pressure=({:.2f},{:.2f})",
-                debug.accumulated_gravity_force.x, debug.accumulated_gravity_force.y,
-                debug.accumulated_friction_force.x, debug.accumulated_friction_force.y,
-                debug.accumulated_viscous_force.x, debug.accumulated_viscous_force.y,
-                debug.accumulated_com_cohesion_force.x, debug.accumulated_com_cohesion_force.y,
-                debug.accumulated_adhesion_force.x, debug.accumulated_adhesion_force.y,
-                debug.accumulated_pressure_force.x, debug.accumulated_pressure_force.y);
+                debug.accumulated_gravity_force.x,
+                debug.accumulated_gravity_force.y,
+                debug.accumulated_friction_force.x,
+                debug.accumulated_friction_force.y,
+                debug.accumulated_viscous_force.x,
+                debug.accumulated_viscous_force.y,
+                debug.accumulated_com_cohesion_force.x,
+                debug.accumulated_com_cohesion_force.y,
+                debug.accumulated_adhesion_force.x,
+                debug.accumulated_adhesion_force.y,
+                debug.accumulated_pressure_force.x,
+                debug.accumulated_pressure_force.y);
         }
 
         if (current_x != last_x) {
@@ -1124,14 +1185,19 @@ TEST_F(DuckTest, DuckBrain2JumpsWhenMovingFastInMiddle)
         int approx_center = 10;
         for (size_t i = 0; i < jump_positions.size(); ++i) {
             int dist_from_center = std::abs(jump_positions[i] - approx_center);
-            spdlog::info("Jump #{} at x={}, distance from center: {}", i + 1, jump_positions[i], dist_from_center);
+            spdlog::info(
+                "Jump #{} at x={}, distance from center: {}",
+                i + 1,
+                jump_positions[i],
+                dist_from_center);
         }
 
         // Later jumps should be closer to center as learning improves.
         if (jump_positions.size() >= 3) {
             int first_dist = std::abs(jump_positions[0] - approx_center);
             int last_dist = std::abs(jump_positions.back() - approx_center);
-            spdlog::info("First jump dist from center: {}, Last jump dist: {}", first_dist, last_dist);
+            spdlog::info(
+                "First jump dist from center: {}, Last jump dist: {}", first_dist, last_dist);
         }
     }
 }
@@ -1178,8 +1244,8 @@ TEST_F(DuckTest, DuckBrain2DoesNotJumpWhenStationary)
  * Layout (width x 10):
  *   Row 0: WALL border (ceiling)
  *   Row 1-7: AIR
- *   Row 8: WALL floor from x=0 to cliff_start-1, AIR from cliff_start to cliff_end, WALL from cliff_end+1 to width-1
- *   Row 9: WALL border (bottom)
+ *   Row 8: WALL floor from x=0 to cliff_start-1, AIR from cliff_start to cliff_end, WALL from
+ * cliff_end+1 to width-1 Row 9: WALL border (bottom)
  */
 std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_end)
 {
@@ -1197,7 +1263,8 @@ std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_en
         if (x >= cliff_start && x <= cliff_end) {
             // Gap - air.
             world->getData().at(x, 8).replaceMaterial(MaterialType::AIR, 0.0);
-        } else {
+        }
+        else {
             // Floor - wall.
             world->getData().at(x, 8).replaceMaterial(MaterialType::WALL, 1.0);
         }
@@ -1240,7 +1307,7 @@ TEST_F(DuckTest, DuckBrain2JumpsOverCliffWhenFast)
     bool fell_in_cliff = false;
     bool crossed_cliff = false;
     int jump_count = 0;
-    int first_cliff_jump_x = -1;  // Track where the first cliff jump occurred.
+    int first_cliff_jump_x = -1; // Track where the first cliff jump occurred.
     bool was_on_ground = duck->isOnGround();
 
     for (int i = 0; i < 500; ++i) {
@@ -1280,11 +1347,17 @@ TEST_F(DuckTest, DuckBrain2JumpsOverCliffWhenFast)
 
     // Log knowledge state.
     const auto& knowledge = brain_ptr->getKnowledge();
-    spdlog::info("CliffTest: Knowledge - max_speed={:.1f}, jump_distance={:.1f}",
-        knowledge.max_speed.value_or(-1), knowledge.jump_distance.value_or(-1));
+    spdlog::info(
+        "CliffTest: Knowledge - max_speed={:.1f}, jump_distance={:.1f}",
+        knowledge.max_speed.value_or(-1),
+        knowledge.jump_distance.value_or(-1));
 
-    spdlog::info("CliffTest: fell_in_cliff={}, crossed_cliff={}, jump_count={}, first_cliff_jump_x={}",
-        fell_in_cliff, crossed_cliff, jump_count, first_cliff_jump_x);
+    spdlog::info(
+        "CliffTest: fell_in_cliff={}, crossed_cliff={}, jump_count={}, first_cliff_jump_x={}",
+        fell_in_cliff,
+        crossed_cliff,
+        jump_count,
+        first_cliff_jump_x);
 
     // Duck should jump when it sees a cliff (survival instinct, no knowledge needed).
     EXPECT_GE(jump_count, 1) << "Duck should jump when cliff detected";
@@ -1331,7 +1404,7 @@ TEST_F(DuckTest, DuckBrain2DetectsCliffInSensoryData)
     // Log the floor row of sensory grid.
     spdlog::info("CliffSensory: Duck at x={}, facing_x={}", sensory.position.x, sensory.facing_x);
     std::string floor_str;
-    constexpr int FLOOR_ROW = 5;  // Row below duck center (4).
+    constexpr int FLOOR_ROW = 5; // Row below duck center (4).
     for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
         double total_fill = 0.0;
         for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
@@ -1405,7 +1478,7 @@ protected:
         // Place obstacle: WALL blocks rising from the floor.
         // Floor is at row HEIGHT-1, so obstacle occupies rows above it.
         for (int h = 0; h < obstacle_height; ++h) {
-            int y = HEIGHT - 2 - h;  // Start one above floor, go up.
+            int y = HEIGHT - 2 - h; // Start one above floor, go up.
             if (y >= 1) {
                 world->getData().at(obstacle_x, y).replaceMaterial(MaterialType::WALL, 1.0);
             }
@@ -1443,8 +1516,11 @@ protected:
 TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
 {
     const auto& params = GetParam();
-    spdlog::info("ObstacleJumpTest: obstacle_x={}, height={}, name={}",
-        params.obstacle_x, params.obstacle_height, params.name);
+    spdlog::info(
+        "ObstacleJumpTest: obstacle_x={}, height={}, name={}",
+        params.obstacle_x,
+        params.obstacle_height,
+        params.name);
 
     auto world = createObstacleWorld(params.obstacle_x, params.obstacle_height);
     printWorld(*world, "Initial world with obstacle");
@@ -1454,7 +1530,7 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
     // Duck spawns with one cell gap from left wall, one cell up from floor.
     // In a 20x10 world: wall at x=0, gap at x=1, duck at x=2.
     constexpr int SPAWN_X = 2;
-    constexpr int SPAWN_Y = 7;  // One cell up in the air to let it settle.
+    constexpr int SPAWN_Y = 7; // One cell up in the air to let it settle.
 
     auto brain = std::make_unique<DuckBrain2>();
     DuckBrain2* brain_ptr = brain.get();
@@ -1495,8 +1571,11 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
         // Check movement by frame 10.
         if (frame == 10) {
             moving_right_by_frame_10 = (current_x > settled_x);
-            spdlog::info("Frame 10: x={}, settled_x={}, moving_right={}",
-                current_x, settled_x, moving_right_by_frame_10);
+            spdlog::info(
+                "Frame 10: x={}, settled_x={}, moving_right={}",
+                current_x,
+                settled_x,
+                moving_right_by_frame_10);
         }
 
         // Detect jump.
@@ -1523,19 +1602,23 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
 
     // Log final state.
     const auto& knowledge = brain_ptr->getKnowledge();
-    spdlog::info("Final state: jumped={}, jump_x={}, max_x={}, cleared={}",
-        jumped, jump_x, max_x_reached, cleared_obstacle);
-    spdlog::info("Knowledge: max_speed={:.1f}, jump_distance={:.1f}",
-        knowledge.max_speed.value_or(-1), knowledge.jump_distance.value_or(-1));
+    spdlog::info(
+        "Final state: jumped={}, jump_x={}, max_x={}, cleared={}",
+        jumped,
+        jump_x,
+        max_x_reached,
+        cleared_obstacle);
+    spdlog::info(
+        "Knowledge: max_speed={:.1f}, jump_distance={:.1f}",
+        knowledge.max_speed.value_or(-1),
+        knowledge.jump_distance.value_or(-1));
 
     printWorld(*world, "Final world state");
 
     // Assertions.
-    EXPECT_TRUE(moving_right_by_frame_10)
-        << "Duck should be moving right by frame 10";
+    EXPECT_TRUE(moving_right_by_frame_10) << "Duck should be moving right by frame 10";
 
-    EXPECT_TRUE(jumped)
-        << "Duck should jump when approaching obstacle";
+    EXPECT_TRUE(jumped) << "Duck should jump when approaching obstacle";
 
     if (jumped) {
         EXPECT_LT(jump_x, params.obstacle_x)
@@ -1543,26 +1626,21 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
             << ", obstacle_x=" << params.obstacle_x << ")";
     }
 
-    EXPECT_TRUE(cleared_obstacle)
-        << "Duck should clear the obstacle (max_x=" << max_x_reached
-        << ", obstacle_x=" << params.obstacle_x << ")";
+    EXPECT_TRUE(cleared_obstacle) << "Duck should clear the obstacle (max_x=" << max_x_reached
+                                  << ", obstacle_x=" << params.obstacle_x << ")";
 }
 
 // Start with just one test case: obstacle in the middle.
 INSTANTIATE_TEST_SUITE_P(
     ObstacleLocations,
     DuckObstacleJumpTest,
-    ::testing::Values(
-        ObstacleTestCase{10, 1, "middle_1h"}
-        // Future test cases:
-        // ObstacleTestCase{5, 1, "near_spawn_1h"},
-        // ObstacleTestCase{15, 1, "far_1h"},
-        // ObstacleTestCase{10, 2, "middle_2h"}
-    ),
-    [](const ::testing::TestParamInfo<ObstacleTestCase>& info) {
-        return info.param.name;
-    }
-);
+    ::testing::Values(ObstacleTestCase{ 10, 1, "middle_1h" }
+                      // Future test cases:
+                      // ObstacleTestCase{5, 1, "near_spawn_1h"},
+                      // ObstacleTestCase{15, 1, "far_1h"},
+                      // ObstacleTestCase{10, 2, "middle_2h"}
+                      ),
+    [](const ::testing::TestParamInfo<ObstacleTestCase>& info) { return info.param.name; });
 
 // ============================================================================
 // Air Steering Tests (SMB1-style limited air control)
@@ -1589,22 +1667,23 @@ TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
     spdlog::info("AirSteeringForward: Duck settled at ({}, {})", start_x, start_y);
 
     // Phase 1: Build up rightward velocity on ground.
-    setup.brain->setDirectInput({1.0f, 0.0f}, false);
+    setup.brain->setDirectInput({ 1.0f, 0.0f }, false);
     setup.advanceFrames(30);
 
     double vel_before_jump = setup.getVelocity().x;
     int x_before_jump = setup.duck->getAnchorCell().x;
-    spdlog::info("AirSteeringForward: Before jump - x={}, vel.x={:.2f}", x_before_jump, vel_before_jump);
+    spdlog::info(
+        "AirSteeringForward: Before jump - x={}, vel.x={:.2f}", x_before_jump, vel_before_jump);
 
     ASSERT_GT(vel_before_jump, 1.0) << "Duck should have built up rightward velocity";
     ASSERT_TRUE(setup.duck->isOnGround()) << "Duck should still be on ground";
 
     // Phase 2: Jump while holding right.
-    setup.brain->setDirectInput({1.0f, 0.0f}, true);
-    setup.advance();  // Jump frame.
+    setup.brain->setDirectInput({ 1.0f, 0.0f }, true);
+    setup.advance(); // Jump frame.
 
     // Phase 3: Track jump arc using Y position only (ground detection is unreliable).
-    int min_y = start_y;  // Track highest point (lowest Y).
+    int min_y = start_y; // Track highest point (lowest Y).
     int airborne_start_frame = -1;
     int peak_frame = -1;
     int landed_frame = -1;
@@ -1621,8 +1700,11 @@ TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
         if (airborne_start_frame < 0 && y < start_y) {
             airborne_start_frame = frame;
             vel_at_airborne_start = vel_x;
-            spdlog::info("AirSteeringForward: Became airborne at frame {}, y={}, vel.x={:.2f}",
-                frame, y, vel_x);
+            spdlog::info(
+                "AirSteeringForward: Became airborne at frame {}, y={}, vel.x={:.2f}",
+                frame,
+                y,
+                vel_x);
         }
 
         // Track peak of jump (minimum y).
@@ -1636,8 +1718,13 @@ TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
 
         // Log key frames.
         if (frame % 10 == 0) {
-            spdlog::info("  Frame {}: pos=({},{}), vel=({:.2f},{:.2f})",
-                frame, setup.duck->getAnchorCell().x, y, vel_x, vel_y);
+            spdlog::info(
+                "  Frame {}: pos=({},{}), vel=({:.2f},{:.2f})",
+                frame,
+                setup.duck->getAnchorCell().x,
+                y,
+                vel_x,
+                vel_y);
         }
 
         // Detect landing: after reaching peak, Y returns to start_y or higher.
@@ -1658,7 +1745,8 @@ TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
     double vel_after_land = setup.getVelocity().x;
     int air_frames = landed_frame - airborne_start_frame;
 
-    spdlog::info("AirSteeringForward: After landing - x={}, vel.x={:.2f}", x_after_jump, vel_after_land);
+    spdlog::info(
+        "AirSteeringForward: After landing - x={}, vel.x={:.2f}", x_after_jump, vel_after_land);
     spdlog::info("AirSteeringForward: Air phase: {} frames, peak at y={}", air_frames, min_y);
 
     // Assertions for SMB1-style behavior:
@@ -1667,7 +1755,8 @@ TEST_F(DuckTest, AirSteeringForwardWhileMovingForward)
 
     // 2. For forward input while moving forward, velocity should be roughly maintained.
     double vel_change_during_air = vel_after_land - vel_at_airborne_start;
-    spdlog::info("AirSteeringForward: Velocity change during air phase: {:.2f}", vel_change_during_air);
+    spdlog::info(
+        "AirSteeringForward: Velocity change during air phase: {:.2f}", vel_change_during_air);
 }
 
 /**
@@ -1687,20 +1776,20 @@ TEST_F(DuckTest, AirSteeringBackwardDecelsFasterThanForward)
     auto runJumpScenario = [](float air_input_x, const char* label) -> double {
         auto setup = DuckTestSetup::create(50, 15, 5, 13);
         if (!setup.duck || !setup.duck->isOnGround()) {
-            return 0.0;  // Setup failed.
+            return 0.0; // Setup failed.
         }
 
         int start_y = setup.duck->getAnchorCell().y;
 
         // Build up rightward velocity on ground.
-        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.brain->setDirectInput({ 1.0f, 0.0f }, false);
         setup.advanceFrames(30);
 
         double vel_before_jump = setup.getVelocity().x;
         spdlog::info("{}: Before jump vel.x={:.2f}", label, vel_before_jump);
 
         // Jump.
-        setup.brain->setDirectInput({1.0f, 0.0f}, true);
+        setup.brain->setDirectInput({ 1.0f, 0.0f }, true);
         setup.advance();
 
         // Track jump arc, apply air input when airborne.
@@ -1719,9 +1808,13 @@ TEST_F(DuckTest, AirSteeringBackwardDecelsFasterThanForward)
             if (airborne_start_frame < 0 && y < start_y) {
                 airborne_start_frame = frame;
                 vel_at_airborne_start = vel_x;
-                setup.brain->setMove({air_input_x, 0.0f});
-                spdlog::info("{}: Airborne at frame {}, vel.x={:.2f}, input={:.1f}",
-                    label, frame, vel_x, air_input_x);
+                setup.brain->setMove({ air_input_x, 0.0f });
+                spdlog::info(
+                    "{}: Airborne at frame {}, vel.x={:.2f}, input={:.1f}",
+                    label,
+                    frame,
+                    vel_x,
+                    air_input_x);
             }
 
             // Track peak.
@@ -1755,7 +1848,7 @@ TEST_F(DuckTest, AirSteeringBackwardDecelsFasterThanForward)
     // KEY ASSERTION: Backward input should cause MORE deceleration than forward.
     // (More negative = more deceleration.)
     // This will FAIL until air steering is implemented.
-    constexpr double MIN_DIFFERENCE = 2.0;  // Backward should decel at least 2 units more.
+    constexpr double MIN_DIFFERENCE = 2.0; // Backward should decel at least 2 units more.
     EXPECT_LT(vel_change_backward, vel_change_forward - MIN_DIFFERENCE)
         << "Backward air input should cause more deceleration than forward input. "
         << "Forward: " << vel_change_forward << ", Backward: " << vel_change_backward
@@ -1784,12 +1877,12 @@ TEST_F(DuckTest, FacingLockedWhileAirborne)
     int start_y = setup.duck->getAnchorCell().y;
 
     // Build rightward velocity - facing should become RIGHT.
-    setup.brain->setDirectInput({1.0f, 0.0f}, false);
+    setup.brain->setDirectInput({ 1.0f, 0.0f }, false);
     setup.advanceFrames(30);
     ASSERT_GT(setup.duck->getFacing().x, 0.0f) << "Should be facing right after moving right";
 
     // Jump while holding right.
-    setup.brain->setDirectInput({1.0f, 0.0f}, true);
+    setup.brain->setDirectInput({ 1.0f, 0.0f }, true);
     setup.advance();
 
     // Wait until airborne (position-based detection like other tests).
@@ -1804,12 +1897,12 @@ TEST_F(DuckTest, FacingLockedWhileAirborne)
     ASSERT_GE(airborne_frame, 0) << "Duck should become airborne after jump";
 
     float facing_at_jump = setup.duck->getFacing().x;
-    spdlog::info("FacingLocked: Airborne at frame {}, facing.x = {:.1f}",
-        airborne_frame, facing_at_jump);
+    spdlog::info(
+        "FacingLocked: Airborne at frame {}, facing.x = {:.1f}", airborne_frame, facing_at_jump);
     ASSERT_GT(facing_at_jump, 0.0f) << "Should be facing right at jump time";
 
     // Now steer LEFT while airborne for several frames.
-    setup.brain->setMove({-1.0f, 0.0f});
+    setup.brain->setMove({ -1.0f, 0.0f });
     int frames_checked = 0;
     for (int frame = 0; frame < 50; ++frame) {
         setup.advance();
@@ -1821,14 +1914,15 @@ TEST_F(DuckTest, FacingLockedWhileAirborne)
             float current_facing = setup.duck->getFacing().x;
             EXPECT_GT(current_facing, 0.0f)
                 << "Facing should remain RIGHT while airborne, but at frame " << frame
-                << " facing.x = " << current_facing
-                << ". Facing should be locked at jump time.";
+                << " facing.x = " << current_facing << ". Facing should be locked at jump time.";
         }
 
         // Stop once we land.
         if (y >= start_y && frame > airborne_frame + 5) {
-            spdlog::info("FacingLocked: Landed at frame {}, checked {} airborne frames",
-                frame, frames_checked);
+            spdlog::info(
+                "FacingLocked: Landed at frame {}, checked {} airborne frames",
+                frame,
+                frames_checked);
             break;
         }
     }
@@ -1860,7 +1954,7 @@ TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
         int start_y = setup.duck->getAnchorCell().y;
 
         // Phase 1: Build up rightward velocity on ground.
-        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.brain->setDirectInput({ 1.0f, 0.0f }, false);
         setup.advanceFrames(30);
 
         double vel_before_jump = setup.getVelocity().x;
@@ -1869,12 +1963,13 @@ TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
         // Phase 2: Jump frame - optionally face left by tapping left.
         if (jump_facing_left) {
             // Tap left on jump frame to set facing left, but still jump.
-            setup.brain->setDirectInput({-1.0f, 0.0f}, true);
-        } else {
-            // Normal: jump while holding right.
-            setup.brain->setDirectInput({1.0f, 0.0f}, true);
+            setup.brain->setDirectInput({ -1.0f, 0.0f }, true);
         }
-        setup.advance();  // Execute jump.
+        else {
+            // Normal: jump while holding right.
+            setup.brain->setDirectInput({ 1.0f, 0.0f }, true);
+        }
+        setup.advance(); // Execute jump.
 
         // Phase 3: Track jump arc, steer RIGHT once airborne.
         int min_y = start_y;
@@ -1893,7 +1988,7 @@ TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
                 airborne_start_frame = frame;
                 vel_at_airborne_start = vel_x;
                 // Both scenarios steer RIGHT in the air.
-                setup.brain->setMove({1.0f, 0.0f});
+                setup.brain->setMove({ 1.0f, 0.0f });
                 spdlog::info("{}: Airborne at frame {}, vel.x={:.2f}", label, frame, vel_x);
             }
 
@@ -1921,8 +2016,10 @@ TEST_F(DuckTest, BackwardsJumpTrickGivesBetterAcceleration)
     double vel_change_backwards = runJumpScenario(true, "BackwardsJump");
 
     spdlog::info("=== Backwards Jump Trick Comparison ===");
-    spdlog::info("Normal jump (face right, steer right):    vel_change = {:.2f}", vel_change_normal);
-    spdlog::info("Backwards jump (face left, steer right):  vel_change = {:.2f}", vel_change_backwards);
+    spdlog::info(
+        "Normal jump (face right, steer right):    vel_change = {:.2f}", vel_change_normal);
+    spdlog::info(
+        "Backwards jump (face left, steer right):  vel_change = {:.2f}", vel_change_backwards);
     spdlog::info("Difference: {:.2f}", vel_change_backwards - vel_change_normal);
 
     // KEY ASSERTION: Backwards jump should result in better acceleration (less deceleration
@@ -1958,22 +2055,26 @@ TEST_F(DuckTest, AsymmetricAirSteeringOpposingGivesHigherForce)
         int start_y = setup.duck->getAnchorCell().y;
 
         // Build rightward velocity.
-        setup.brain->setDirectInput({1.0f, 0.0f}, false);
+        setup.brain->setDirectInput({ 1.0f, 0.0f }, false);
         setup.advanceFrames(30);
 
         double vel_before = setup.getVelocity().x;
 
         // Jump - optionally tap left to face left.
         if (face_left_at_jump) {
-            setup.brain->setDirectInput({-1.0f, 0.0f}, true);
-        } else {
-            setup.brain->setDirectInput({1.0f, 0.0f}, true);
+            setup.brain->setDirectInput({ -1.0f, 0.0f }, true);
+        }
+        else {
+            setup.brain->setDirectInput({ 1.0f, 0.0f }, true);
         }
         setup.advance();
 
         float facing_at_jump = setup.duck->getFacing().x;
-        spdlog::info("{}: Before jump vel.x={:.2f}, facing at jump={:.1f}",
-            label, vel_before, facing_at_jump);
+        spdlog::info(
+            "{}: Before jump vel.x={:.2f}, facing at jump={:.1f}",
+            label,
+            vel_before,
+            facing_at_jump);
 
         // Track until airborne, then steer RIGHT.
         double vel_at_airborne = 0.0;
@@ -1982,9 +2083,12 @@ TEST_F(DuckTest, AsymmetricAirSteeringOpposingGivesHigherForce)
             if (setup.duck->getAnchorCell().y < start_y) {
                 vel_at_airborne = setup.getVelocity().x;
                 // Both scenarios steer RIGHT.
-                setup.brain->setMove({1.0f, 0.0f});
-                spdlog::info("{}: Airborne, vel.x={:.2f}, facing={:.1f}, steering RIGHT",
-                    label, vel_at_airborne, setup.duck->getFacing().x);
+                setup.brain->setMove({ 1.0f, 0.0f });
+                spdlog::info(
+                    "{}: Airborne, vel.x={:.2f}, facing={:.1f}, steering RIGHT",
+                    label,
+                    vel_at_airborne,
+                    setup.duck->getFacing().x);
                 break;
             }
         }
@@ -1997,14 +2101,18 @@ TEST_F(DuckTest, AsymmetricAirSteeringOpposingGivesHigherForce)
 
         double vel_after = setup.getVelocity().x;
         double vel_change = vel_after - vel_at_airborne;
-        spdlog::info("{}: After {} air frames, vel.x={:.2f}, change={:.2f}",
-            label, AIR_FRAMES, vel_after, vel_change);
+        spdlog::info(
+            "{}: After {} air frames, vel.x={:.2f}, change={:.2f}",
+            label,
+            AIR_FRAMES,
+            vel_after,
+            vel_change);
         return vel_change;
     };
 
     // Both scenarios steer RIGHT, but with different facing.
-    double vel_change_face_right = runScenario(false, "FaceRight");  // Same as steer.
-    double vel_change_face_left = runScenario(true, "FaceLeft");     // Opposing steer.
+    double vel_change_face_right = runScenario(false, "FaceRight"); // Same as steer.
+    double vel_change_face_left = runScenario(true, "FaceLeft");    // Opposing steer.
 
     spdlog::info("=== Asymmetric Air Steering Test ===");
     spdlog::info("Face RIGHT, steer RIGHT (same):     vel_change = {:.2f}", vel_change_face_right);
@@ -2017,8 +2125,8 @@ TEST_F(DuckTest, AsymmetricAirSteeringOpposingGivesHigherForce)
     // The opposing scenario should accelerate MORE (or decelerate less).
     // This is the backwards jump trick - facing away gives better acceleration.
     double accel_difference = vel_change_face_left - vel_change_face_right;
-    spdlog::info("Acceleration difference: {:.2f} (positive = opposing accelerates more)",
-        accel_difference);
+    spdlog::info(
+        "Acceleration difference: {:.2f} (positive = opposing accelerates more)", accel_difference);
 
     constexpr double MIN_ASYMMETRY = 10.0;
     EXPECT_GT(accel_difference, MIN_ASYMMETRY)
@@ -2046,7 +2154,7 @@ TEST_F(DuckTest, DuckFloatsInWater)
     // Create a 3x6 world (narrow column of water with duck submerged).
     auto world = std::make_unique<World>(3, 6);
     world->setWallsEnabled(false);
-    world->setRandomSeed(123);  // Deterministic physics for reproducible test.
+    world->setRandomSeed(123); // Deterministic physics for reproducible test.
 
     // Configure physics for buoyancy testing.
     world->getPhysicsSettings().pressure_hydrostatic_enabled = true;
@@ -2090,7 +2198,8 @@ TEST_F(DuckTest, DuckFloatsInWater)
     int swap_count = 0;
 
     // Output formatted table header.
-    // Format: step | duck_y | duck_com_y | duck_vel_y | above_mat | above_com_y | above_vel_y | swap
+    // Format: step | duck_y | duck_com_y | duck_vel_y | above_mat | above_com_y | above_vel_y |
+    // swap
     std::cout << "\n=== BUOYANCY DATA TABLE ===\n";
     std::cout << "step\tduck_y\tcom_y\tvel_y\tabove_mat\tabove_com\tabove_vel\tswap\n";
     std::cout << "----\t------\t-----\t-----\t---------\t---------\t---------\t----\n";
@@ -2123,9 +2232,15 @@ TEST_F(DuckTest, DuckFloatsInWater)
                 above_vel = fmt::format("{:.2f}", above.velocity.y);
             }
 
-            std::cout << fmt::format("{}\t{}\t{:.2f}\t{:.2f}\t{}\t{}\t{}\t{}\n",
-                step, y_after, duck_cell.com.y, duck_cell.velocity.y,
-                above_mat, above_com, above_vel,
+            std::cout << fmt::format(
+                "{}\t{}\t{:.2f}\t{:.2f}\t{}\t{}\t{}\t{}\n",
+                step,
+                y_after,
+                duck_cell.com.y,
+                duck_cell.velocity.y,
+                above_mat,
+                above_com,
+                above_vel,
                 swapped ? "SWAP" : "");
         }
 
@@ -2137,7 +2252,8 @@ TEST_F(DuckTest, DuckFloatsInWater)
     }
     std::cout << "=== END TABLE ===\n\n";
 
-    spdlog::info("Duck final position: y={} (started at y={}), {} swaps", final_y, initial_y, swap_count);
+    spdlog::info(
+        "Duck final position: y={} (started at y={}), {} swaps", final_y, initial_y, swap_count);
 
     // Duck should have floated upward (y decreased).
     EXPECT_LT(final_y, initial_y)
@@ -2151,8 +2267,11 @@ TEST_F(DuckTest, DuckFloatsInWater)
     // Distance traveled = initial_y - final_y (positive when rising).
     int distance_traveled = initial_y - final_y;
     double rise_rate = static_cast<double>(distance_traveled) / static_cast<double>(swap_count);
-    spdlog::info("Rise rate: {:.2f} cells/swap ({} cells in {} swaps)",
-        rise_rate, distance_traveled, swap_count);
-    EXPECT_LE(rise_rate, 0.75)
-        << "Duck should not rise faster than 0.75 cells per swap (was " << rise_rate << ")";
+    spdlog::info(
+        "Rise rate: {:.2f} cells/swap ({} cells in {} swaps)",
+        rise_rate,
+        distance_traveled,
+        swap_count);
+    EXPECT_LE(rise_rate, 0.75) << "Duck should not rise faster than 0.75 cells per swap (was "
+                               << rise_rate << ")";
 }

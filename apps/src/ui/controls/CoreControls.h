@@ -4,8 +4,8 @@
 #include "core/WorldData.h"
 #include "lvgl/lvgl.h"
 #include "ui/InteractionMode.h"
-#include "ui/rendering/RenderMode.h"
 #include "ui/PanelViewController.h"
+#include "ui/rendering/RenderMode.h"
 #include <memory>
 
 namespace DirtSim {

@@ -31,8 +31,7 @@ std::optional<MaterialType> updateColorShowcase(
         state.current_index = (state.current_index + 1) % showcase_materials.size();
         MaterialType new_material = showcase_materials[state.current_index];
 
-        spdlog::info("ClockScenario: COLOR_SHOWCASE changed to {}",
-            getMaterialName(new_material));
+        spdlog::info("ClockScenario: COLOR_SHOWCASE changed to {}", getMaterialName(new_material));
 
         return new_material;
     }

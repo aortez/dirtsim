@@ -27,11 +27,7 @@ namespace DirtSim {
  */
 class FontSampler {
 public:
-    FontSampler(
-        const lv_font_t* font,
-        int targetWidth,
-        int targetHeight,
-        float threshold = 0.3f);
+    FontSampler(const lv_font_t* font, int targetWidth, int targetHeight, float threshold = 0.3f);
 
     ~FontSampler();
 
@@ -61,7 +57,8 @@ public:
     void resizeCanvas(int newWidth, int newHeight);
 
     // Pattern utility functions.
-    static std::vector<std::vector<bool>> trimPattern(const std::vector<std::vector<bool>>& pattern);
+    static std::vector<std::vector<bool>> trimPattern(
+        const std::vector<std::vector<bool>>& pattern);
     static bool hasClipping(const std::vector<std::vector<bool>>& pattern);
 
     int getWidth() const { return targetWidth_; }

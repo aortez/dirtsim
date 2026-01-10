@@ -14,30 +14,30 @@ void RandomGooseBrain::think(Goose& goose, const GooseSensoryData& sensory, doub
     bool action_complete = false;
 
     switch (current_action_) {
-    case GooseAction::WAIT:
-        action_complete = (action_timer_ <= 0.0f);
-        goose.setWalkDirection(0.0f);
-        break;
-
-    case GooseAction::RUN_LEFT:
-    case GooseAction::RUN_RIGHT: {
-        float current_x = static_cast<float>(sensory.position.x);
-        float distance_traveled = std::abs(current_x - run_start_x_);
-
-        if (distance_traveled >= run_target_cells_ || action_timer_ <= 0.0f) {
-            action_complete = true;
+        case GooseAction::WAIT:
+            action_complete = (action_timer_ <= 0.0f);
             goose.setWalkDirection(0.0f);
-        }
-        else {
-            float direction = (current_action_ == GooseAction::RUN_LEFT) ? -1.0f : 1.0f;
-            goose.setWalkDirection(direction);
-        }
-        break;
-    }
+            break;
 
-    case GooseAction::JUMP:
-        action_complete = true;
-        break;
+        case GooseAction::RUN_LEFT:
+        case GooseAction::RUN_RIGHT: {
+            float current_x = static_cast<float>(sensory.position.x);
+            float distance_traveled = std::abs(current_x - run_start_x_);
+
+            if (distance_traveled >= run_target_cells_ || action_timer_ <= 0.0f) {
+                action_complete = true;
+                goose.setWalkDirection(0.0f);
+            }
+            else {
+                float direction = (current_action_ == GooseAction::RUN_LEFT) ? -1.0f : 1.0f;
+                goose.setWalkDirection(direction);
+            }
+            break;
+        }
+
+        case GooseAction::JUMP:
+            action_complete = true;
+            break;
     }
 
     if (action_complete) {

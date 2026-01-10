@@ -40,7 +40,8 @@ struct CellPattern {
 
     CellPattern() = default;
     CellPattern(MatchMode m) : mode(m) {}
-    CellPattern(MatchMode m, std::vector<MaterialType> mats) : mode(m), materials(std::move(mats)) {}
+    CellPattern(MatchMode m, std::vector<MaterialType> mats) : mode(m), materials(std::move(mats))
+    {}
 };
 
 /**

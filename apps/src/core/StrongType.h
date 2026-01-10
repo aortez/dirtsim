@@ -22,8 +22,8 @@
 template <typename Tag>
 class StrongType {
 public:
-    constexpr StrongType() : m_value{0} {}
-    constexpr explicit StrongType(int value) : m_value{value} {}
+    constexpr StrongType() : m_value{ 0 } {}
+    constexpr explicit StrongType(int value) : m_value{ value } {}
 
     [[nodiscard]] constexpr int get() const { return m_value; }
 
@@ -56,7 +56,8 @@ public:
 // Hash support for use in unordered containers.
 template <typename Tag>
 struct std::hash<StrongType<Tag>> {
-    std::size_t operator()(const StrongType<Tag>& st) const noexcept {
+    std::size_t operator()(const StrongType<Tag>& st) const noexcept
+    {
         return std::hash<int>{}(st.get());
     }
 };
@@ -71,7 +72,7 @@ void to_json(nlohmann::json& j, const StrongType<Tag>& st)
 template <typename Tag>
 void from_json(const nlohmann::json& j, StrongType<Tag>& st)
 {
-    st = StrongType<Tag>{j.get<int>()};
+    st = StrongType<Tag>{ j.get<int>() };
 }
 
 // fmt formatting support for spdlog.

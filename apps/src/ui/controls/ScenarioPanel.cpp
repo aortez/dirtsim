@@ -117,7 +117,8 @@ void ScenarioPanel::updateFromConfig(const std::string& scenarioId, const Scenar
         if (scenarioButton_) {
             lv_obj_t* button = lv_obj_get_child(scenarioButton_, 0);
             if (button) {
-                lv_obj_t* label = lv_obj_get_child(button, 1); // Second child is text (first is icon).
+                lv_obj_t* label =
+                    lv_obj_get_child(button, 1); // Second child is text (first is icon).
                 if (label) {
                     std::string buttonText = "Scenario: " + scenarioId;
                     lv_label_set_text(label, buttonText.c_str());
@@ -139,7 +140,11 @@ void ScenarioPanel::updateFromConfig(const std::string& scenarioId, const Scenar
         lv_obj_t* mainView = viewController_->getView("main");
         if (mainView) {
             scenarioControls_ = ScenarioControlsFactory::create(
-                mainView, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter_);
+                mainView,
+                wsService_,
+                currentScenarioId_,
+                currentScenarioConfig_,
+                dimensionsGetter_);
         }
     }
 
@@ -189,7 +194,8 @@ void ScenarioPanel::onScenarioSelected(lv_event_t* e)
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
         if (result.isError()) {
-            LOG_ERROR(Controls, "ScenarioPanel: Failed to send ScenarioSwitch: {}", result.errorValue());
+            LOG_ERROR(
+                Controls, "ScenarioPanel: Failed to send ScenarioSwitch: {}", result.errorValue());
         }
     }
     else {

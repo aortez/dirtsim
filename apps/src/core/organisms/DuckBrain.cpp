@@ -2,8 +2,8 @@
 #include "Duck.h"
 #include "DuckSensoryData.h"
 #include "core/LoggingChannels.h"
-#include "core/organisms/OrganismSensoryData.h"
 #include "core/ReflectSerializer.h"
+#include "core/organisms/OrganismSensoryData.h"
 #include <cmath>
 
 namespace DirtSim {
@@ -15,26 +15,26 @@ void RandomDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double d
 
     // Check if current action is complete and pick next action if so.
     switch (current_action_) {
-    case DuckAction::WAIT:
-        if (action_timer_ <= 0.0f) {
-            pickNextAction(duck, sensory);
-        }
-        break;
+        case DuckAction::WAIT:
+            if (action_timer_ <= 0.0f) {
+                pickNextAction(duck, sensory);
+            }
+            break;
 
-    case DuckAction::RUN_LEFT:
-    case DuckAction::RUN_RIGHT: {
-        float current_x = static_cast<float>(sensory.position.x);
-        float distance_traveled = std::abs(current_x - run_start_x_);
-        if (distance_traveled >= run_target_cells_ || action_timer_ <= 0.0f) {
-            pickNextAction(duck, sensory);
+        case DuckAction::RUN_LEFT:
+        case DuckAction::RUN_RIGHT: {
+            float current_x = static_cast<float>(sensory.position.x);
+            float distance_traveled = std::abs(current_x - run_start_x_);
+            if (distance_traveled >= run_target_cells_ || action_timer_ <= 0.0f) {
+                pickNextAction(duck, sensory);
+            }
+            break;
         }
-        break;
-    }
 
-    case DuckAction::JUMP:
-        // Jump action completes immediately after initiating.
-        pickNextAction(duck, sensory);
-        break;
+        case DuckAction::JUMP:
+            // Jump action completes immediately after initiating.
+            pickNextAction(duck, sensory);
+            break;
     }
 
     // Build input from current action state.
@@ -42,21 +42,21 @@ void RandomDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double d
     float move_x = 0.0f;
 
     switch (current_action_) {
-    case DuckAction::WAIT:
-        break;
-    case DuckAction::RUN_LEFT:
-        move_x = -1.0f;
-        break;
-    case DuckAction::RUN_RIGHT:
-        move_x = 1.0f;
-        break;
-    case DuckAction::JUMP:
-        should_jump = true;
-        break;
+        case DuckAction::WAIT:
+            break;
+        case DuckAction::RUN_LEFT:
+            move_x = -1.0f;
+            break;
+        case DuckAction::RUN_RIGHT:
+            move_x = 1.0f;
+            break;
+        case DuckAction::JUMP:
+            should_jump = true;
+            break;
     }
 
     // Apply input once at the end.
-    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = should_jump });
 }
 
 void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
@@ -70,8 +70,13 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         current_action_ = DuckAction::WAIT;
         std::uniform_real_distribution<float> wait_dist(0.5f, 2.0f);
         action_timer_ = wait_dist(rng_);
-        LOG_INFO(Brain, "Duck {}: WAIT for {:.1f}s at ({}, {}).",
-            duck.getId(), action_timer_, sensory.position.x, sensory.position.y);
+        LOG_INFO(
+            Brain,
+            "Duck {}: WAIT for {:.1f}s at ({}, {}).",
+            duck.getId(),
+            action_timer_,
+            sensory.position.x,
+            sensory.position.y);
     }
     else if (roll < 7) {
         // 30% chance: Run left.
@@ -80,8 +85,13 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         run_target_cells_ = dist_dist(rng_);
         run_start_x_ = static_cast<float>(sensory.position.x);
         action_timer_ = 5.0f;
-        LOG_INFO(Brain, "Duck {}: RUN_LEFT {} cells from ({}, {}).",
-            duck.getId(), run_target_cells_, sensory.position.x, sensory.position.y);
+        LOG_INFO(
+            Brain,
+            "Duck {}: RUN_LEFT {} cells from ({}, {}).",
+            duck.getId(),
+            run_target_cells_,
+            sensory.position.x,
+            sensory.position.y);
     }
     else if (roll < 10) {
         // 30% chance: Run right.
@@ -90,22 +100,35 @@ void RandomDuckBrain::pickNextAction(Duck& duck, const DuckSensoryData& sensory)
         run_target_cells_ = dist_dist(rng_);
         run_start_x_ = static_cast<float>(sensory.position.x);
         action_timer_ = 5.0f;
-        LOG_INFO(Brain, "Duck {}: RUN_RIGHT {} cells from ({}, {}).",
-            duck.getId(), run_target_cells_, sensory.position.x, sensory.position.y);
+        LOG_INFO(
+            Brain,
+            "Duck {}: RUN_RIGHT {} cells from ({}, {}).",
+            duck.getId(),
+            run_target_cells_,
+            sensory.position.x,
+            sensory.position.y);
     }
     else {
         // 10% chance: Jump (only if on ground).
         if (sensory.on_ground) {
             current_action_ = DuckAction::JUMP;
-            LOG_INFO(Brain, "Duck {}: JUMP at ({}, {}).",
-                duck.getId(), sensory.position.x, sensory.position.y);
+            LOG_INFO(
+                Brain,
+                "Duck {}: JUMP at ({}, {}).",
+                duck.getId(),
+                sensory.position.x,
+                sensory.position.y);
         }
         else {
             // Can't jump - wait instead.
             current_action_ = DuckAction::WAIT;
             action_timer_ = 0.3f;
-            LOG_INFO(Brain, "Duck {}: Can't jump (not on ground), WAIT at ({}, {}).",
-                duck.getId(), sensory.position.x, sensory.position.y);
+            LOG_INFO(
+                Brain,
+                "Duck {}: Can't jump (not on ground), WAIT at ({}, {}).",
+                duck.getId(),
+                sensory.position.x,
+                sensory.position.y);
         }
     }
 }
@@ -137,10 +160,16 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
         constexpr int WALL_MATERIAL_INDEX = 7;
         double left_wall = sensory.material_histograms[CENTER][CENTER - 1][WALL_MATERIAL_INDEX];
         double right_wall = sensory.material_histograms[CENTER][CENTER + 1][WALL_MATERIAL_INDEX];
-        LOG_INFO(Brain, "Duck {}: pos=({},{}), target={}, left_wall={:.2f}, right_wall={:.2f}, touching={}",
-            duck.getId(), sensory.position.x, sensory.position.y,
+        LOG_INFO(
+            Brain,
+            "Duck {}: pos=({},{}), target={}, left_wall={:.2f}, right_wall={:.2f}, touching={}",
+            duck.getId(),
+            sensory.position.x,
+            sensory.position.y,
             (target_wall_ == TargetWall::LEFT) ? "LEFT" : "RIGHT",
-            left_wall, right_wall, touching);
+            left_wall,
+            right_wall,
+            touching);
     }
 
     if (touching) {
@@ -149,10 +178,16 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
         current_run_time_ = 0.0f;
 
         target_wall_ = (target_wall_ == TargetWall::LEFT) ? TargetWall::RIGHT : TargetWall::LEFT;
-        LOG_INFO(Brain, "Duck {}: Wall touched at ({},{}), switching to {} wall (run_time={:.2f}s, avg={:.2f}s)",
-            duck.getId(), sensory.position.x, sensory.position.y,
+        LOG_INFO(
+            Brain,
+            "Duck {}: Wall touched at ({},{}), switching to {} wall (run_time={:.2f}s, "
+            "avg={:.2f}s)",
+            duck.getId(),
+            sensory.position.x,
+            sensory.position.y,
             (target_wall_ == TargetWall::LEFT) ? "LEFT" : "RIGHT",
-            current_run_time_, average_run_time_);
+            current_run_time_,
+            average_run_time_);
     }
 
     // Check if jump timer has expired.
@@ -164,13 +199,14 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
     if (target_wall_ == TargetWall::LEFT) {
         current_action_ = DuckAction::RUN_LEFT;
         move_x = -1.0f;
-    } else {
+    }
+    else {
         current_action_ = DuckAction::RUN_RIGHT;
         move_x = 1.0f;
     }
 
     // Apply accumulated input state once at the end.
-    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = should_jump });
 }
 
 void WallBouncingBrain::pickFurthestWall(const DuckSensoryData& sensory)
@@ -178,8 +214,11 @@ void WallBouncingBrain::pickFurthestWall(const DuckSensoryData& sensory)
     // TODO: Determine actual world width from sensory data to pick furthest wall.
     // For now, just start by going right.
     target_wall_ = TargetWall::RIGHT;
-    LOG_INFO(Brain, "Duck {}: Starting WallBouncingBrain - targeting RIGHT wall (pos {})",
-        0, sensory.position.x);
+    LOG_INFO(
+        Brain,
+        "Duck {}: Starting WallBouncingBrain - targeting RIGHT wall (pos {})",
+        0,
+        sensory.position.x);
 }
 
 bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const
@@ -196,7 +235,8 @@ bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWal
         // Check left neighbor (grid position [4][3]).
         double wall_fill = sensory.material_histograms[CENTER][CENTER - 1][WALL_MATERIAL_INDEX];
         return wall_fill >= WALL_THRESHOLD;
-    } else {
+    }
+    else {
         // Check right neighbor (grid position [4][5]).
         double wall_fill = sensory.material_histograms[CENTER][CENTER + 1][WALL_MATERIAL_INDEX];
         return wall_fill >= WALL_THRESHOLD;
@@ -206,14 +246,15 @@ bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWal
 void WallBouncingBrain::onWallTouch(float run_time)
 {
     static constexpr float EMA_ALPHA = 0.3f;
-    
+
     run_count_++;
 
     // Update exponential moving average.
     if (average_run_time_ == 0.0f) {
         // Seed with first run value.
         average_run_time_ = run_time;
-    } else {
+    }
+    else {
         // Exponential moving average: 20% weight to new sample.
         average_run_time_ = EMA_ALPHA * run_time + (1.0f - EMA_ALPHA) * average_run_time_;
     }
@@ -224,11 +265,22 @@ void WallBouncingBrain::onWallTouch(float run_time)
         if (deviation <= 0.20f) {
             // Consistent timing - schedule jump at midpoint.
             jump_timer_ = average_run_time_ / 2.0f;
-            LOG_INFO(Brain, "Duck: Consistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), scheduling jump at {:.2f}s",
-                run_time, average_run_time_, deviation * 100.0f, jump_timer_);
-        } else {
-            LOG_INFO(Brain, "Duck: Inconsistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), no jump scheduled",
-                run_time, average_run_time_, deviation * 100.0f);
+            LOG_INFO(
+                Brain,
+                "Duck: Consistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), scheduling jump at "
+                "{:.2f}s",
+                run_time,
+                average_run_time_,
+                deviation * 100.0f,
+                jump_timer_);
+        }
+        else {
+            LOG_INFO(
+                Brain,
+                "Duck: Inconsistent run time {:.2f}s (avg {:.2f}s, dev {:.1f}%), no jump scheduled",
+                run_time,
+                average_run_time_,
+                deviation * 100.0f);
         }
     }
 }
@@ -274,12 +326,19 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
     DuckSituation situation = assessSituation(sensory);
 
     // Debug: log situation and sensory data every frame.
-    LOG_DEBUG(Brain, "Duck {}: situation={}", duck.getId(),
-        ReflectSerializer::to_json(situation).dump());
-    LOG_DEBUG(Brain, "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), facing_x={:.1f}, on_ground={}, cooldown={:.2f}",
-        duck.getId(), sensory.position.x, sensory.position.y,
-        sensory.velocity.x, sensory.velocity.y, sensory.facing_x,
-        sensory.on_ground, jump_cooldown_seconds_);
+    LOG_DEBUG(
+        Brain, "Duck {}: situation={}", duck.getId(), ReflectSerializer::to_json(situation).dump());
+    LOG_DEBUG(
+        Brain,
+        "Duck {}: pos=({},{}), vel=({:.1f},{:.1f}), facing_x={:.1f}, on_ground={}, cooldown={:.2f}",
+        duck.getId(),
+        sensory.position.x,
+        sensory.position.y,
+        sensory.velocity.x,
+        sensory.velocity.y,
+        sensory.facing_x,
+        sensory.on_ground,
+        jump_cooldown_seconds_);
 
     // Determine exit side from knowledge.
     Side exit_side = knowledge_.exitSide();
@@ -291,16 +350,21 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
     // Priority: Check if exit door is visible - override everything.
     if (knowledge_.knowsExitWall() && phase_ == Phase::BOUNCING) {
         if (situation.gap_in_exit_wall) {
-            LOG_INFO(Brain, "Duck {}: Detected gap in exit wall at pos={}, exit_wall_x={}. Switching to EXITING phase.",
-                duck.getId(), sensory.position.x, *knowledge_.exit_wall_x);
+            LOG_INFO(
+                Brain,
+                "Duck {}: Detected gap in exit wall at pos={}, exit_wall_x={}. Switching to "
+                "EXITING phase.",
+                duck.getId(),
+                sensory.position.x,
+                *knowledge_.exit_wall_x);
             phase_ = Phase::EXITING;
         }
     }
 
     // Priority: Jump over hazards (cliffs, obstacles) - works in any phase.
     if (situation.on_ground && jump_cooldown_seconds_ <= 0.0f) {
-        bool fast_enough = !knowledge_.knowsMaxSpeed() ||
-            (situation.current_speed >= *knowledge_.max_speed * MIN_SPEED_RATIO_FOR_CLIFF_JUMP);
+        bool fast_enough = !knowledge_.knowsMaxSpeed()
+            || (situation.current_speed >= *knowledge_.max_speed * MIN_SPEED_RATIO_FOR_CLIFF_JUMP);
 
         // Cliff: jump immediately when detected.
         if (situation.cliff_ahead && fast_enough) {
@@ -308,8 +372,12 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
             jump_start_x_ = sensory.position.x;
             jump_cooldown_seconds_ = JUMP_COOLDOWN;
             current_action_ = DuckAction::JUMP;
-            LOG_INFO(Brain, "Duck {}: Cliff ahead, jumping at speed={:.1f}, pos={}.",
-                duck.getId(), situation.current_speed, sensory.position.x);
+            LOG_INFO(
+                Brain,
+                "Duck {}: Cliff ahead, jumping at speed={:.1f}, pos={}.",
+                duck.getId(),
+                situation.current_speed,
+                sensory.position.x);
         }
         // Obstacle: time the jump to land on top of it.
         else if (situation.obstacle_ahead() && fast_enough) {
@@ -319,7 +387,8 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
             if (knowledge_.knowsJumpDistance()) {
                 // Jump when obstacle is at our learned jump distance.
                 trigger_distance = static_cast<int>(*knowledge_.jump_distance + 0.5);
-            } else {
+            }
+            else {
                 // No data yet - use conservative estimate.
                 trigger_distance = 3;
             }
@@ -330,123 +399,155 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
                 jump_start_x_ = sensory.position.x;
                 jump_cooldown_seconds_ = JUMP_COOLDOWN;
                 current_action_ = DuckAction::JUMP;
-                LOG_INFO(Brain, "Duck {}: Obstacle at {} cells, trigger={}, jumping. speed={:.1f}, pos={}.",
-                    duck.getId(), situation.obstacle_distance, trigger_distance,
-                    situation.current_speed, sensory.position.x);
+                LOG_INFO(
+                    Brain,
+                    "Duck {}: Obstacle at {} cells, trigger={}, jumping. speed={:.1f}, pos={}.",
+                    duck.getId(),
+                    situation.obstacle_distance,
+                    trigger_distance,
+                    situation.current_speed,
+                    sensory.position.x);
             }
         }
     }
 
     // Phase-specific behavior - determines movement direction.
     switch (phase_) {
-    case Phase::SEEKING_EXIT_WALL: {
-        // Run toward exit side until we find the wall boundary pattern.
-        move_x = moveForSide(exit_side);
-        current_action_ = (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
+        case Phase::SEEKING_EXIT_WALL: {
+            // Run toward exit side until we find the wall boundary pattern.
+            move_x = moveForSide(exit_side);
+            current_action_ =
+                (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
 
-        // Debug: log sensory grid every 60 frames during seeking.
-        if (debug_frame_counter_ % 60 == 0) {
-            constexpr int WALL_IDX = 7;
-            std::string grid_str;
-            for (int row = 0; row < DuckSensoryData::GRID_SIZE; ++row) {
-                for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
-                    double wall_fill = sensory.material_histograms[row][col][WALL_IDX];
-                    grid_str += (wall_fill >= 0.5) ? "W" : ".";
+            // Debug: log sensory grid every 60 frames during seeking.
+            if (debug_frame_counter_ % 60 == 0) {
+                constexpr int WALL_IDX = 7;
+                std::string grid_str;
+                for (int row = 0; row < DuckSensoryData::GRID_SIZE; ++row) {
+                    for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
+                        double wall_fill = sensory.material_histograms[row][col][WALL_IDX];
+                        grid_str += (wall_fill >= 0.5) ? "W" : ".";
+                    }
+                    grid_str += "\n";
                 }
-                grid_str += "\n";
+                LOG_INFO(
+                    Brain,
+                    "Duck {}: SEEKING at pos={}, sensory grid:\n{}",
+                    duck.getId(),
+                    sensory.position.x,
+                    grid_str);
             }
-            LOG_INFO(Brain, "Duck {}: SEEKING at pos={}, sensory grid:\n{}", duck.getId(), sensory.position.x, grid_str);
-        }
 
-        // Build wall boundary template: vertical wall with floor.
-        SensoryUtils::SensoryTemplate wall_template(2, 4);
-        int wall_col = (exit_side == Side::RIGHT) ? 1 : 0;
-        int empty_col = (exit_side == Side::RIGHT) ? 0 : 1;
+            // Build wall boundary template: vertical wall with floor.
+            SensoryUtils::SensoryTemplate wall_template(2, 4);
+            int wall_col = (exit_side == Side::RIGHT) ? 1 : 0;
+            int empty_col = (exit_side == Side::RIGHT) ? 0 : 1;
 
-        // Rows 0-2: vertical wall + empty.
-        for (int row = 0; row < 3; ++row) {
-            wall_template.pattern[row][wall_col] = SensoryUtils::CellPattern(
-                SensoryUtils::MatchMode::Is, {MaterialType::WALL});
-            wall_template.pattern[row][empty_col] = SensoryUtils::CellPattern(
-                SensoryUtils::MatchMode::IsEmpty);
-        }
-        // Row 3: floor (both columns are wall).
-        wall_template.pattern[3][0] = SensoryUtils::CellPattern(
-            SensoryUtils::MatchMode::Is, {MaterialType::WALL});
-        wall_template.pattern[3][1] = SensoryUtils::CellPattern(
-            SensoryUtils::MatchMode::Is, {MaterialType::WALL});
+            // Rows 0-2: vertical wall + empty.
+            for (int row = 0; row < 3; ++row) {
+                wall_template.pattern[row][wall_col] =
+                    SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
+                wall_template.pattern[row][empty_col] =
+                    SensoryUtils::CellPattern(SensoryUtils::MatchMode::IsEmpty);
+            }
+            // Row 3: floor (both columns are wall).
+            wall_template.pattern[3][0] =
+                SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
+            wall_template.pattern[3][1] =
+                SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
 
-        // Find wall boundary pattern.
-        auto match = SensoryUtils::findTemplate<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-            sensory.material_histograms, wall_template);
+            // Find wall boundary pattern.
+            auto match = SensoryUtils::
+                findTemplate<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
+                    sensory.material_histograms, wall_template);
 
-        if (match.found) {
-            // Calculate actual wall position from grid match.
-            int wall_grid_col = match.col + wall_col;
-            knowledge_.exit_wall_x = sensory.world_offset.x + wall_grid_col;
-            phase_ = Phase::BOUNCING;
-            current_target_ = knowledge_.spawn_side;
-            jump_cooldown_seconds_ = JUMP_COOLDOWN;
-            LOG_INFO(Brain, "Duck {}: Found exit wall boundary at grid col {}, world x={}. Starting BOUNCING phase.",
-                duck.getId(), wall_grid_col, *knowledge_.exit_wall_x);
-        }
-        break;
-    }
-
-    case Phase::BOUNCING: {
-        // Bounce between walls, jumping when appropriate.
-        move_x = moveForSide(current_target_);
-        current_action_ = (current_target_ == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
-
-        // Check if we hit a wall and need to turn around.
-        bool touching_entry_wall = isTouchingWall(sensory, knowledge_.spawn_side);
-        bool touching_exit_wall = isTouchingWall(sensory, exit_side);
-
-        if (current_target_ == knowledge_.spawn_side && touching_entry_wall) {
-            current_target_ = exit_side;
-            jump_cooldown_seconds_ = 0.0f;
-            LOG_INFO(Brain, "Duck {}: Hit entry wall, bouncing toward exit.", duck.getId());
-        }
-        else if (current_target_ == exit_side && touching_exit_wall) {
-            current_target_ = knowledge_.spawn_side;
-            jump_cooldown_seconds_ = 0.0f;
-            LOG_INFO(Brain, "Duck {}: Hit exit wall, bouncing toward entry.", duck.getId());
-        }
-
-        // Jump decision: middle jumps for fun (hazard jumps handled in priority section).
-        if (situation.on_ground && jump_cooldown_seconds_ <= 0.0f && situation.at_full_speed) {
-            if (situation.near_middle) {
-                should_jump = true;
-                jump_start_x_ = sensory.position.x;
+            if (match.found) {
+                // Calculate actual wall position from grid match.
+                int wall_grid_col = match.col + wall_col;
+                knowledge_.exit_wall_x = sensory.world_offset.x + wall_grid_col;
+                phase_ = Phase::BOUNCING;
+                current_target_ = knowledge_.spawn_side;
                 jump_cooldown_seconds_ = JUMP_COOLDOWN;
-                current_action_ = DuckAction::JUMP;
-                double max_spd = knowledge_.max_speed.value_or(0.0);
-                LOG_INFO(Brain, "Duck {}: Jumping in middle. speed={:.1f}, max_speed={:.1f}, pos={}.",
-                    duck.getId(), situation.current_speed, max_spd, sensory.position.x);
+                LOG_INFO(
+                    Brain,
+                    "Duck {}: Found exit wall boundary at grid col {}, world x={}. Starting "
+                    "BOUNCING phase.",
+                    duck.getId(),
+                    wall_grid_col,
+                    *knowledge_.exit_wall_x);
             }
+            break;
         }
-        break;
-    }
 
-    case Phase::EXITING:
-        // Run toward exit as fast as possible.
-        move_x = moveForSide(exit_side);
-        current_action_ = (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
-        break;
+        case Phase::BOUNCING: {
+            // Bounce between walls, jumping when appropriate.
+            move_x = moveForSide(current_target_);
+            current_action_ =
+                (current_target_ == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
+
+            // Check if we hit a wall and need to turn around.
+            bool touching_entry_wall = isTouchingWall(sensory, knowledge_.spawn_side);
+            bool touching_exit_wall = isTouchingWall(sensory, exit_side);
+
+            if (current_target_ == knowledge_.spawn_side && touching_entry_wall) {
+                current_target_ = exit_side;
+                jump_cooldown_seconds_ = 0.0f;
+                LOG_INFO(Brain, "Duck {}: Hit entry wall, bouncing toward exit.", duck.getId());
+            }
+            else if (current_target_ == exit_side && touching_exit_wall) {
+                current_target_ = knowledge_.spawn_side;
+                jump_cooldown_seconds_ = 0.0f;
+                LOG_INFO(Brain, "Duck {}: Hit exit wall, bouncing toward entry.", duck.getId());
+            }
+
+            // Jump decision: middle jumps for fun (hazard jumps handled in priority section).
+            if (situation.on_ground && jump_cooldown_seconds_ <= 0.0f && situation.at_full_speed) {
+                if (situation.near_middle) {
+                    should_jump = true;
+                    jump_start_x_ = sensory.position.x;
+                    jump_cooldown_seconds_ = JUMP_COOLDOWN;
+                    current_action_ = DuckAction::JUMP;
+                    double max_spd = knowledge_.max_speed.value_or(0.0);
+                    LOG_INFO(
+                        Brain,
+                        "Duck {}: Jumping in middle. speed={:.1f}, max_speed={:.1f}, pos={}.",
+                        duck.getId(),
+                        situation.current_speed,
+                        max_spd,
+                        sensory.position.x);
+                }
+            }
+            break;
+        }
+
+        case Phase::EXITING:
+            // Run toward exit as fast as possible.
+            move_x = moveForSide(exit_side);
+            current_action_ =
+                (exit_side == Side::LEFT) ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
+            break;
     }
 
     // Apply accumulated input state once at the end.
-    duck.setInput({.move = {move_x, 0.0f}, .jump = should_jump});
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = should_jump });
 
     // Debug logging every 60 frames.
     if (debug_frame_counter_++ % 60 == 0) {
-        const char* phase_str = (phase_ == Phase::SEEKING_EXIT_WALL) ? "SEEKING" :
-                                (phase_ == Phase::BOUNCING) ? "BOUNCING" : "EXITING";
+        const char* phase_str = (phase_ == Phase::SEEKING_EXIT_WALL) ? "SEEKING"
+            : (phase_ == Phase::BOUNCING)                            ? "BOUNCING"
+                                                                     : "EXITING";
         const char* spawn_str = (knowledge_.spawn_side == Side::LEFT) ? "L" : "R";
         int exit_x = knowledge_.exit_wall_x.value_or(-1);
-        LOG_INFO(Brain, "Duck {}: phase={}, spawn={}, exit_wall_x={}, pos={}, vel={:.1f}, elapsed={:.1f}s",
-            duck.getId(), phase_str, spawn_str, exit_x,
-            sensory.position.x, sensory.velocity.x, elapsed_time_seconds_);
+        LOG_INFO(
+            Brain,
+            "Duck {}: phase={}, spawn={}, exit_wall_x={}, pos={}, vel={:.1f}, elapsed={:.1f}s",
+            duck.getId(),
+            phase_str,
+            spawn_str,
+            exit_x,
+            sensory.position.x,
+            sensory.velocity.x,
+            elapsed_time_seconds_);
     }
 }
 
@@ -454,11 +555,13 @@ void DuckBrain2::initialize(const DuckSensoryData& sensory)
 {
     knowledge_.spawn_x = sensory.position.x;
     knowledge_.spawn_side = detectSpawnSide(sensory);
-    knowledge_.entry_wall_x = sensory.position.x;  // We're next to entry wall at spawn.
+    knowledge_.entry_wall_x = sensory.position.x; // We're next to entry wall at spawn.
     current_target_ = knowledge_.exitSide();
     initialized_ = true;
 
-    LOG_INFO(Brain, "DuckBrain2: Initialized at x={}, spawn_side={}, heading {}",
+    LOG_INFO(
+        Brain,
+        "DuckBrain2: Initialized at x={}, spawn_side={}, heading {}",
         knowledge_.spawn_x,
         knowledge_.spawn_side == Side::LEFT ? "LEFT" : "RIGHT",
         current_target_ == Side::LEFT ? "LEFT" : "RIGHT");
@@ -478,12 +581,16 @@ DuckBrain2::Side DuckBrain2::detectSpawnSide(const DuckSensoryData& sensory) con
         int y = CENTER_Y + dy;
         if (y >= 0 && y < DuckSensoryData::GRID_SIZE) {
             left_wall_total += sensory.material_histograms[y][0][WALL_MATERIAL_INDEX];
-            right_wall_total += sensory.material_histograms[y][DuckSensoryData::GRID_SIZE - 1][WALL_MATERIAL_INDEX];
+            right_wall_total +=
+                sensory.material_histograms[y][DuckSensoryData::GRID_SIZE - 1][WALL_MATERIAL_INDEX];
         }
     }
 
-    LOG_INFO(Brain, "DuckBrain2: Spawn detection - left_wall={:.2f}, right_wall={:.2f}",
-        left_wall_total, right_wall_total);
+    LOG_INFO(
+        Brain,
+        "DuckBrain2: Spawn detection - left_wall={:.2f}, right_wall={:.2f}",
+        left_wall_total,
+        right_wall_total);
 
     // Spawn side has more wall presence.
     if (left_wall_total > right_wall_total + 0.5) {
@@ -534,13 +641,15 @@ bool DuckBrain2::detectsGapInExitWall(const DuckSensoryData& sensory) const
     // Build door template: empty opening above floor.
     SensoryUtils::SensoryTemplate door_template(1, 2);
     door_template.pattern[0][0] = SensoryUtils::CellPattern(SensoryUtils::MatchMode::IsEmpty);
-    door_template.pattern[1][0] = SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, {MaterialType::WALL});
+    door_template.pattern[1][0] =
+        SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
 
     // Check around center row for door pattern at the recorded wall position.
     constexpr int CENTER_Y = 4;
     for (int check_y = CENTER_Y - 1; check_y <= CENTER_Y + 1; ++check_y) {
-        if (SensoryUtils::matchesTemplate<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-                sensory.material_histograms, door_template, exit_wall_grid_x, check_y)) {
+        if (SensoryUtils::
+                matchesTemplate<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
+                    sensory.material_histograms, door_template, exit_wall_grid_x, check_y)) {
             return true;
         }
     }
@@ -555,7 +664,7 @@ int DuckBrain2::findObstacleDistance(const DuckSensoryData& sensory) const
     //
     // Returns distance to nearest obstacle (1-4 cells), or -1 if none found.
     constexpr int CENTER = 4;
-    constexpr int FLOOR_ROW = CENTER + 1;  // Row below duck.
+    constexpr int FLOOR_ROW = CENTER + 1; // Row below duck.
 
     int direction = (sensory.facing_x > 0) ? 1 : -1;
 
@@ -593,7 +702,7 @@ int DuckBrain2::findObstacleDistance(const DuckSensoryData& sensory) const
         }
     }
 
-    return -1;  // No obstacle found.
+    return -1; // No obstacle found.
 }
 
 bool DuckBrain2::isNearMiddle(const DuckSensoryData& sensory) const
@@ -612,7 +721,8 @@ bool DuckBrain2::isNearMiddle(const DuckSensoryData& sensory) const
     if (sensory.velocity.x > 0) {
         // Heading right: must be before or at center.
         approaching_center = (signed_dist_to_center <= 0);
-    } else if (sensory.velocity.x < 0) {
+    }
+    else if (sensory.velocity.x < 0) {
         // Heading left: must be at or past center.
         approaching_center = (signed_dist_to_center >= 0);
     }
@@ -626,7 +736,8 @@ bool DuckBrain2::isNearMiddle(const DuckSensoryData& sensory) const
     if (knowledge_.knowsJumpDistance()) {
         // Jump when distance_to_center ≈ half of jump distance (apex at center).
         trigger_distance = *knowledge_.jump_distance / 2.0;
-    } else {
+    }
+    else {
         // No data yet - use conservative narrow zone.
         trigger_distance = 3.0;
     }
@@ -652,12 +763,13 @@ DuckSituation DuckBrain2::assessSituation(const DuckSensoryData& sensory) const
     // Physical state.
     situation.on_ground = sensory.on_ground;
     situation.current_speed = std::abs(sensory.velocity.x);
-    situation.facing_direction = (sensory.velocity.x > 0.1) ? 1 :
-                                  (sensory.velocity.x < -0.1) ? -1 : 0;
+    situation.facing_direction = (sensory.velocity.x > 0.1) ? 1
+        : (sensory.velocity.x < -0.1)                       ? -1
+                                                            : 0;
 
     // Spatial awareness.
-    situation.wall_ahead = isTouchingWall(sensory,
-        (situation.facing_direction > 0) ? Side::RIGHT : Side::LEFT);
+    situation.wall_ahead =
+        isTouchingWall(sensory, (situation.facing_direction > 0) ? Side::RIGHT : Side::LEFT);
     situation.obstacle_distance = findObstacleDistance(sensory);
     situation.cliff_ahead = detectsCliffAhead(sensory);
     situation.gap_in_exit_wall = detectsGapInExitWall(sensory);
@@ -668,7 +780,8 @@ DuckSituation DuckBrain2::assessSituation(const DuckSensoryData& sensory) const
     if (knowledge_.knowsMaxSpeed() && *knowledge_.max_speed > 0) {
         situation.at_full_speed =
             (situation.current_speed >= *knowledge_.max_speed * MIN_SPEED_RATIO_FOR_JUMP);
-    } else {
+    }
+    else {
         // Fallback: use absolute threshold.
         situation.at_full_speed = (situation.current_speed >= MIN_SPEED_FOR_JUMP);
     }
@@ -686,7 +799,7 @@ DuckSituation DuckBrain2::assessSituation(const DuckSensoryData& sensory) const
 void DuckBrain2::updateSpeedLearning(const DuckSensoryData& sensory)
 {
     if (knowledge_.knowsMaxSpeed()) {
-        return;  // Already learned.
+        return; // Already learned.
     }
 
     double current_speed = std::abs(sensory.velocity.x);
@@ -698,10 +811,14 @@ void DuckBrain2::updateSpeedLearning(const DuckSensoryData& sensory)
         // Lock in max speed after 1 second of steady state.
         if (steady_speed_time_ >= SPEED_CONVERGENCE_TIME) {
             knowledge_.max_speed = current_speed;
-            LOG_INFO(Brain, "Duck: Learned max speed = {:.1f} cells/sec (converged for {:.1f}s)",
-                current_speed, steady_speed_time_);
+            LOG_INFO(
+                Brain,
+                "Duck: Learned max speed = {:.1f} cells/sec (converged for {:.1f}s)",
+                current_speed,
+                steady_speed_time_);
         }
-    } else {
+    }
+    else {
         // Speed changed - reset steady state timer.
         steady_speed_time_ = 0.0;
     }
@@ -723,11 +840,15 @@ void DuckBrain2::updateJumpDistanceLearning(const DuckSensoryData& sensory)
         if (!knowledge_.knowsJumpDistance()) {
             knowledge_.jump_distance = static_cast<double>(jump_distance);
             LOG_INFO(Brain, "Duck: First jump distance = {} cells", jump_distance);
-        } else {
+        }
+        else {
             knowledge_.jump_distance = JUMP_DISTANCE_EMA_ALPHA * jump_distance
                 + (1.0f - JUMP_DISTANCE_EMA_ALPHA) * (*knowledge_.jump_distance);
-            LOG_INFO(Brain, "Duck: Jump distance = {} cells, EMA = {:.1f} cells",
-                jump_distance, *knowledge_.jump_distance);
+            LOG_INFO(
+                Brain,
+                "Duck: Jump distance = {} cells, EMA = {:.1f} cells",
+                jump_distance,
+                *knowledge_.jump_distance);
         }
 
         jump_start_x_ = -1;
@@ -744,7 +865,7 @@ bool DuckBrain2::detectsCliffAhead(const DuckSensoryData& sensory) const
     //
     // Cliff pattern: floor exists at current position, absent ahead.
     constexpr int CENTER = 4;
-    constexpr int FLOOR_ROW = CENTER + 1;  // Row below duck.
+    constexpr int FLOOR_ROW = CENTER + 1; // Row below duck.
 
     // Determine which column to check based on facing direction.
     int check_col = (sensory.facing_x > 0) ? (CENTER + 1) : (CENTER - 1);
@@ -774,7 +895,7 @@ bool DuckBrain2::detectsCliffAhead(const DuckSensoryData& sensory) const
                 total_fill += sensory.material_histograms[FLOOR_ROW][col][mat];
             }
         }
-        return total_fill >= 0.3;  // Threshold for "has floor."
+        return total_fill >= 0.3; // Threshold for "has floor."
     };
 
     bool has_floor_here = hasFloorAt(CENTER);

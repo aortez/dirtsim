@@ -247,7 +247,8 @@ public:
 
     void broadcastBinary(const std::vector<std::byte>& data);
 
-    void broadcastRenderMessage(const WorldData& data, const std::vector<OrganismId>& organism_grid);
+    void broadcastRenderMessage(
+        const WorldData& data, const std::vector<OrganismId>& organism_grid);
 
     void setClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws, RenderFormat format);
 

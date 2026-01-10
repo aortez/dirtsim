@@ -45,7 +45,9 @@ public:
      * and rebuilds scenario controls if scenario changed.
      */
     void updateFromWorldData(
-        const WorldData& data, const std::string& scenario_id, const ScenarioConfig& scenario_config);
+        const WorldData& data,
+        const std::string& scenario_id,
+        const ScenarioConfig& scenario_config);
 
 private:
     lv_obj_t* container_;

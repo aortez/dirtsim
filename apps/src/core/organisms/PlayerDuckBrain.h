@@ -24,7 +24,7 @@ public:
 
 private:
     std::optional<GamepadState> gamepad_input_;
-    bool last_jump_pressed_ = false;  // For edge detection on A button.
+    bool last_jump_pressed_ = false; // For edge detection on A button.
 
     // Deadzone for analog stick.
     static constexpr float STICK_DEADZONE = 0.2f;

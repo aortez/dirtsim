@@ -16,95 +16,72 @@ AllColumnConfigs createAllColumnConfigs()
 {
     AllColumnConfigs configs;
 
-    configs.generalPhysics = { .title = "General Physics",
-                               .controls = { { .label = "Timescale",
-                                               .type = ControlType::TOGGLE_SLIDER,
-                                               .rangeMin = -500,
-                                               .rangeMax = 1000,
-                                               .defaultValue = 100,
-                                               .valueScale = 0.01,
-                                               .valueFormat = "%.2fx",
-                                               .initiallyEnabled = true,
-                                               .valueSetter =
-                                                   [](PhysicsSettings& s, double v) { s.timescale = v; },
-                                               .valueGetter =
-                                                   [](const PhysicsSettings& s) { return s.timescale; },
-                                               .enableSetter =
-                                                   [](PhysicsSettings& s, bool e) {
-                                                       if (!e) s.timescale = 0.0;
-                                                   },
-                                               .enableGetter =
-                                                   [](const PhysicsSettings& s) {
-                                                       return s.timescale > 0.0;
-                                                   } },
-                                             { .label = "Gravity",
-                                               .type = ControlType::TOGGLE_SLIDER,
-                                               .rangeMin = -5000,
-                                               .rangeMax = 50000,
-                                               .defaultValue = 981,
-                                               .valueScale = 0.01,
-                                               .valueFormat = "%.2f",
-                                               .initiallyEnabled = true,
-                                               .valueSetter =
-                                                   [](PhysicsSettings& s, double v) { s.gravity = v; },
-                                               .valueGetter =
-                                                   [](const PhysicsSettings& s) { return s.gravity; },
-                                               .enableSetter =
-                                                   [](PhysicsSettings& s, bool e) {
-                                                       if (!e) s.gravity = 0.0;
-                                                   },
-                                               .enableGetter =
-                                                   [](const PhysicsSettings& s) {
-                                                       return s.gravity != 0.0;
-                                                   } },
-                                             { .label = "Elasticity",
-                                               .type = ControlType::TOGGLE_SLIDER,
-                                               .rangeMin = 0,
-                                               .rangeMax = 100,
-                                               .defaultValue = 80,
-                                               .valueScale = 0.01,
-                                               .valueFormat = "%.2f",
-                                               .initiallyEnabled = true,
-                                               .valueSetter =
-                                                   [](PhysicsSettings& s, double v) { s.elasticity = v; },
-                                               .valueGetter =
-                                                   [](const PhysicsSettings& s) {
-                                                       return s.elasticity;
-                                                   },
-                                               .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                                                  [[maybe_unused]] bool e) {},
-                                               .enableGetter =
-                                                   []([[maybe_unused]] const PhysicsSettings& s) {
-                                                       return true;
-                                                   } },
-                                             { .label = "Air Resistance",
-                                               .type = ControlType::TOGGLE_SLIDER,
-                                               .rangeMin = 0,
-                                               .rangeMax = 100,
-                                               .defaultValue = 10,
-                                               .valueScale = 0.01,
-                                               .valueFormat = "%.2f",
-                                               .initiallyEnabled = true,
-                                               .valueSetter = [](PhysicsSettings& s, double v) {
-                                                   s.air_resistance = v;
-                                               },
-                                               .valueGetter =
-                                                   [](const PhysicsSettings& s) {
-                                                       return s.air_resistance;
-                                                   },
-                                               .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                                                  [[maybe_unused]] bool e) {},
-                                               .enableGetter =
-                                                   []([[maybe_unused]] const PhysicsSettings& s) {
-                                                       return true;
-                                                   } },
-                                             { .label = "Enable Swap",
-                                               .type = ControlType::SWITCH_ONLY,
-                                               .enableSetter =
-                                                   [](PhysicsSettings& s, bool e) { s.swap_enabled = e; },
-                                               .enableGetter = [](const PhysicsSettings& s) {
-                                                   return s.swap_enabled;
-                                               } } } };
+    configs.generalPhysics = {
+        .title = "General Physics",
+        .controls = { { .label = "Timescale",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = -500,
+                        .rangeMax = 1000,
+                        .defaultValue = 100,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2fx",
+                        .initiallyEnabled = true,
+                        .valueSetter = [](PhysicsSettings& s, double v) { s.timescale = v; },
+                        .valueGetter = [](const PhysicsSettings& s) { return s.timescale; },
+                        .enableSetter =
+                            [](PhysicsSettings& s, bool e) {
+                                if (!e) s.timescale = 0.0;
+                            },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.timescale > 0.0; } },
+                      { .label = "Gravity",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = -5000,
+                        .rangeMax = 50000,
+                        .defaultValue = 981,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter = [](PhysicsSettings& s, double v) { s.gravity = v; },
+                        .valueGetter = [](const PhysicsSettings& s) { return s.gravity; },
+                        .enableSetter =
+                            [](PhysicsSettings& s, bool e) {
+                                if (!e) s.gravity = 0.0;
+                            },
+                        .enableGetter = [](const PhysicsSettings& s) { return s.gravity != 0.0; } },
+                      { .label = "Elasticity",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 80,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter = [](PhysicsSettings& s, double v) { s.elasticity = v; },
+                        .valueGetter = [](const PhysicsSettings& s) { return s.elasticity; },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                      { .label = "Air Resistance",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 10,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter = [](PhysicsSettings& s, double v) { s.air_resistance = v; },
+                        .valueGetter = [](const PhysicsSettings& s) { return s.air_resistance; },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                      { .label = "Enable Swap",
+                        .type = ControlType::SWITCH_ONLY,
+                        .enableSetter = [](PhysicsSettings& s, bool e) { s.swap_enabled = e; },
+                        .enableGetter = [](const PhysicsSettings& s) { return s.swap_enabled; } } }
+    };
 
     configs.pressure = {
         .title = "Pressure",
@@ -116,17 +93,21 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.pressure_hydrostatic_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.pressure_hydrostatic_strength = v; },
                         .valueGetter =
-                            [](const PhysicsSettings& s) { return s.pressure_hydrostatic_strength; },
+                            [](const PhysicsSettings& s) {
+                                return s.pressure_hydrostatic_strength;
+                            },
                         .enableSetter =
                             [](PhysicsSettings& s, bool e) {
                                 s.pressure_hydrostatic_enabled = e;
                                 if (!e) s.pressure_hydrostatic_strength = 0.0;
                             },
                         .enableGetter =
-                            [](const PhysicsSettings& s) { return s.pressure_hydrostatic_enabled; } },
+                            [](const PhysicsSettings& s) {
+                                return s.pressure_hydrostatic_enabled;
+                            } },
                       { .label = "Dynamic",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -135,8 +116,8 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.pressure_dynamic_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.pressure_dynamic_strength = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.pressure_dynamic_strength; },
                         .enableSetter =
@@ -154,8 +135,8 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.pressure_diffusion_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.pressure_diffusion_strength = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.pressure_diffusion_strength; },
                         .enableSetter =
@@ -182,11 +163,10 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.pressure_diffusion_iterations);
                             },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Scale",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -215,14 +195,16 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.0f",
                         .initiallyEnabled = true,
-                        .valueSetter = [](PhysicsSettings& s, double v) { s.cohesion_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.cohesion_strength = v; },
                         .valueGetter = [](const PhysicsSettings& s) { return s.cohesion_strength; },
                         .enableSetter =
                             [](PhysicsSettings& s, bool e) {
                                 s.cohesion_enabled = e;
                                 if (!e) s.cohesion_strength = 0.0;
                             },
-                        .enableGetter = [](const PhysicsSettings& s) { return s.cohesion_enabled; } },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.cohesion_enabled; } },
                       { .label = "Adhesion",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -231,14 +213,16 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.1f",
                         .initiallyEnabled = true,
-                        .valueSetter = [](PhysicsSettings& s, double v) { s.adhesion_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.adhesion_strength = v; },
                         .valueGetter = [](const PhysicsSettings& s) { return s.adhesion_strength; },
                         .enableSetter =
                             [](PhysicsSettings& s, bool e) {
                                 s.adhesion_enabled = e;
                                 if (!e) s.adhesion_strength = 0.0;
                             },
-                        .enableGetter = [](const PhysicsSettings& s) { return s.adhesion_enabled; } },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.adhesion_enabled; } },
                       { .label = "Viscosity",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -247,9 +231,10 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.viscosity_strength = v; },
-                        .valueGetter = [](const PhysicsSettings& s) { return s.viscosity_strength; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.viscosity_strength = v; },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) { return s.viscosity_strength; },
                         .enableSetter =
                             [](PhysicsSettings& s, bool e) {
                                 s.viscosity_enabled = e;
@@ -265,7 +250,8 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter = [](PhysicsSettings& s, double v) { s.friction_strength = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.friction_strength = v; },
                         .valueGetter = [](const PhysicsSettings& s) { return s.friction_strength; },
                         .enableSetter =
                             [](PhysicsSettings& s, bool e) {
@@ -282,8 +268,8 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 1.0,
                         .valueFormat = "%.0f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.cohesion_resistance_factor = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.cohesion_resistance_factor = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.cohesion_resistance_factor; },
                         .enableSetter =
@@ -306,15 +292,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.1f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.buoyancy_energy_scale = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.buoyancy_energy_scale = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.buoyancy_energy_scale; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Cohesion Bonds",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -323,15 +308,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.0f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.cohesion_resistance_factor = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.cohesion_resistance_factor = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.cohesion_resistance_factor; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Horizontal Flow Resist",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -340,19 +324,16 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.1f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) {
-                                s.horizontal_flow_resistance_factor = v;
-                            },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.horizontal_flow_resistance_factor = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return s.horizontal_flow_resistance_factor;
                             },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Fluid Lubrication",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -361,15 +342,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.fluid_lubrication_factor = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.fluid_lubrication_factor = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.fluid_lubrication_factor; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } } }
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } } }
     };
 
     configs.swap2 = {
@@ -382,15 +362,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.horizontal_non_fluid_penalty = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.horizontal_non_fluid_penalty = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.horizontal_non_fluid_penalty; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Horizontal Target Resist",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -407,11 +386,10 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return s.horizontal_non_fluid_target_resistance;
                             },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Horiz Non-Fluid Energy",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -428,18 +406,18 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return s.horizontal_non_fluid_energy_multiplier;
                             },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } } }
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } } }
     };
 
     configs.frag = {
         .title = "Frag",
         .controls = { { .label = "Enabled",
                         .type = ControlType::SWITCH_ONLY,
-                        .enableSetter = [](PhysicsSettings& s, bool e) { s.fragmentation_enabled = e; },
+                        .enableSetter = [](PhysicsSettings& s,
+                                           bool e) { s.fragmentation_enabled = e; },
                         .enableGetter =
                             [](const PhysicsSettings& s) { return s.fragmentation_enabled; } },
                       { .label = "Threshold",
@@ -450,15 +428,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.1,
                         .valueFormat = "%.1f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.fragmentation_threshold = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.fragmentation_threshold = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.fragmentation_threshold; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Full Threshold",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -467,15 +444,14 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.1,
                         .valueFormat = "%.1f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.fragmentation_full_threshold = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.fragmentation_full_threshold = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.fragmentation_full_threshold; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
                       { .label = "Spray Fraction",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,
@@ -484,28 +460,28 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
                         .initiallyEnabled = true,
-                        .valueSetter =
-                            [](PhysicsSettings& s, double v) { s.fragmentation_spray_fraction = v; },
+                        .valueSetter = [](PhysicsSettings& s,
+                                          double v) { s.fragmentation_spray_fraction = v; },
                         .valueGetter =
                             [](const PhysicsSettings& s) { return s.fragmentation_spray_fraction; },
-                        .enableSetter =
-                            []([[maybe_unused]] PhysicsSettings& s, [[maybe_unused]] bool e) {},
-                        .enableGetter = []([[maybe_unused]] const PhysicsSettings& s) {
-                            return true;
-                        } } }
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } } }
     };
 
     return configs;
 }
 
-size_t createControlsFromColumn(lv_obj_t* parent,
-                                 const ColumnConfig& config,
-                                 Control* controlsArray,
-                                 size_t startIndex,
-                                 std::unordered_map<lv_obj_t*, Control*>& widgetToControl,
-                                 lv_event_cb_t toggleCallback,
-                                 lv_event_cb_t sliderCallback,
-                                 void* callbackUserData)
+size_t createControlsFromColumn(
+    lv_obj_t* parent,
+    const ColumnConfig& config,
+    Control* controlsArray,
+    size_t startIndex,
+    std::unordered_map<lv_obj_t*, Control*>& widgetToControl,
+    lv_event_cb_t toggleCallback,
+    lv_event_cb_t sliderCallback,
+    void* callbackUserData)
 {
     size_t index = startIndex;
     for (const auto& controlConfig : config.controls) {
@@ -563,8 +539,7 @@ size_t createControlsFromColumn(lv_obj_t* parent,
     return index - startIndex;
 }
 
-Control* findControl(lv_obj_t* widget,
-                      std::unordered_map<lv_obj_t*, Control*>& widgetToControl)
+Control* findControl(lv_obj_t* widget, std::unordered_map<lv_obj_t*, Control*>& widgetToControl)
 {
     auto it = widgetToControl.find(widget);
     if (it != widgetToControl.end()) {
@@ -590,9 +565,8 @@ Control* findControl(lv_obj_t* widget,
     return nullptr;
 }
 
-void updateControlsFromSettings(Control* controlsArray,
-                                 size_t controlCount,
-                                 const PhysicsSettings& settings)
+void updateControlsFromSettings(
+    Control* controlsArray, size_t controlCount, const PhysicsSettings& settings)
 {
     auto updateToggleSlider = [](Control* control, double value, bool enabled) {
         if (!control || !control->widget) return;

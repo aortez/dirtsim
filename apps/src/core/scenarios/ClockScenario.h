@@ -38,24 +38,24 @@ public:
         int offset_hours;
     };
 
-    static constexpr std::array<TimezoneInfo, 10> TIMEZONES = {{
-        {"Local", "Local System Time", 0},
-        {"UTC", "UTC (Universal)", 0},
-        {"PST", "Los Angeles (PST)", -8},
-        {"MST", "Denver (MST)", -7},
-        {"CST", "Chicago (CST)", -6},
-        {"EST", "New York (EST)", -5},
-        {"GMT", "London (GMT)", 0},
-        {"CET", "Paris (CET)", +1},
-        {"JST", "Tokyo (JST)", +9},
-        {"AEST", "Sydney (AEST)", +10},
-    }};
+    static constexpr std::array<TimezoneInfo, 10> TIMEZONES = { {
+        { "Local", "Local System Time", 0 },
+        { "UTC", "UTC (Universal)", 0 },
+        { "PST", "Los Angeles (PST)", -8 },
+        { "MST", "Denver (MST)", -7 },
+        { "CST", "Chicago (CST)", -6 },
+        { "EST", "New York (EST)", -5 },
+        { "GMT", "London (GMT)", 0 },
+        { "CET", "Paris (CET)", +1 },
+        { "JST", "Tokyo (JST)", +9 },
+        { "AEST", "Sydney (AEST)", +10 },
+    } };
 
     // Specifies a wall cell's position and visual appearance.
     struct WallSpec {
         uint32_t x;
         uint32_t y;
-        MaterialType render_as;  // Visual appearance (WOOD for frame, DIRT for floor, etc.).
+        MaterialType render_as; // Visual appearance (WOOD for frame, DIRT for floor, etc.).
     };
 
     explicit ClockScenario(ClockEventConfigs event_configs = {});
@@ -81,14 +81,14 @@ private:
     Config::Clock config_;
     ClockEventConfigs event_configs_;
     std::string last_drawn_time_;
-    std::optional<std::string> time_override_;  // For testing.
+    std::optional<std::string> time_override_; // For testing.
 
     // Event system.
     std::map<ClockEventType, ActiveEvent> active_events_;
     std::map<ClockEventType, double> event_cooldowns_;
     double time_since_last_trigger_check_ = 0.0;
-    std::string last_trigger_check_time_;   // For detecting time changes.
-    bool time_changed_this_frame_ = false;  // Set each frame, used by event updates.
+    std::string last_trigger_check_time_;  // For detecting time changes.
+    bool time_changed_this_frame_ = false; // Set each frame, used by event updates.
 
     // Door and obstacle management.
     DoorManager door_manager_;
@@ -98,7 +98,7 @@ private:
     bool drain_open_ = false;
     uint32_t drain_start_x_ = 0;
     uint32_t drain_end_x_ = 0;
-    uint32_t current_drain_size_ = 0;  // Current drain size (0, 1, 3, 5, or 7).
+    uint32_t current_drain_size_ = 0; // Current drain size (0, 1, 3, 5, or 7).
     std::chrono::steady_clock::time_point last_drain_size_change_;
 
     std::mt19937 rng_{ std::random_device{}() };
@@ -136,10 +136,13 @@ private:
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
     void updateColorShowcaseEvent(World& world, ColorShowcaseEventState& state, double deltaTime);
     void updateDigitSlideEvent(World& world, DigitSlideEventState& state, double deltaTime);
-    void updateDuckEvent(World& world, DuckEventState& state, double& remaining_time, double deltaTime);
+    void updateDuckEvent(
+        World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
-    void updateMarqueeEvent(World& world, MarqueeEventState& state, double& remaining_time, double deltaTime);
-    void updateMeltdownEvent(World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
+    void updateMarqueeEvent(
+        World& world, MarqueeEventState& state, double& remaining_time, double deltaTime);
+    void updateMeltdownEvent(
+        World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 
     bool isMeltdownActive() const;

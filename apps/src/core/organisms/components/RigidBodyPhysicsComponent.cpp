@@ -7,10 +7,8 @@
 
 namespace DirtSim {
 
-RigidBodyPhysicsComponent::RigidBodyPhysicsComponent(MaterialType mat)
-    : material(mat)
-{
-}
+RigidBodyPhysicsComponent::RigidBodyPhysicsComponent(MaterialType mat) : material(mat)
+{}
 
 void RigidBodyPhysicsComponent::addForce(Vector2d force)
 {

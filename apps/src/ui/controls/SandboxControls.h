@@ -40,7 +40,6 @@ protected:
     void createWidgets() override;
 
 private:
-
     // Widgets.
     lv_obj_t* addSeedButton_ = nullptr;
     lv_obj_t* dropDirtBallButton_ = nullptr;

@@ -53,7 +53,7 @@ public:
     GooseAction getCurrentAction() const;
 
     // Movement control (called by brain).
-    void setWalkDirection(float dir);  // -1 = left, 0 = stop, +1 = right.
+    void setWalkDirection(float dir); // -1 = left, 0 = stop, +1 = right.
     void jump();
 
     // Replace the brain (for testing).

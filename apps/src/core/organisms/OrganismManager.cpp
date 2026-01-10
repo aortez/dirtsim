@@ -21,9 +21,8 @@ namespace DirtSim {
 
 OrganismId OrganismManager::at(Vector2i pos) const
 {
-    if (pos.x < 0 || pos.y < 0 ||
-        static_cast<uint32_t>(pos.x) >= width_ ||
-        static_cast<uint32_t>(pos.y) >= height_) {
+    if (pos.x < 0 || pos.y < 0 || static_cast<uint32_t>(pos.x) >= width_
+        || static_cast<uint32_t>(pos.y) >= height_) {
         return INVALID_ORGANISM_ID;
     }
     return grid_[pos.y * width_ + pos.x];
@@ -49,8 +48,13 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
     uint32_t oldWidth = width_;
     uint32_t oldHeight = height_;
 
-    spdlog::info("OrganismManager::resizeGrid: {}x{} -> {}x{}, repositioning {} organisms",
-                 oldWidth, oldHeight, newWidth, newHeight, organisms_.size());
+    spdlog::info(
+        "OrganismManager::resizeGrid: {}x{} -> {}x{}, repositioning {} organisms",
+        oldWidth,
+        oldHeight,
+        newWidth,
+        newHeight,
+        organisms_.size());
 
     // For each organism, scale its continuous position.
     // organism->position was set by World::resizeGrid() to preserve sub-cell precision.
@@ -61,16 +65,11 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
         double scaleX = static_cast<double>(newWidth) / static_cast<double>(oldWidth);
         double scaleY = static_cast<double>(newHeight) / static_cast<double>(oldHeight);
 
-        Vector2d newPosition{
-            organism->position.x * scaleX,
-            organism->position.y * scaleY
-        };
+        Vector2d newPosition{ organism->position.x * scaleX, organism->position.y * scaleY };
 
         // Split continuous position into anchor + COM.
-        Vector2i newAnchor{
-            static_cast<int>(std::floor(newPosition.x)),
-            static_cast<int>(std::floor(newPosition.y))
-        };
+        Vector2i newAnchor{ static_cast<int>(std::floor(newPosition.x)),
+                            static_cast<int>(std::floor(newPosition.y)) };
 
         // Clamp anchor to valid range.
         newAnchor.x = std::max(0, std::min(newAnchor.x, static_cast<int>(newWidth) - 1));
@@ -79,10 +78,7 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
         // Calculate COM from fractional part.
         double fracX = newPosition.x - std::floor(newPosition.x);
         double fracY = newPosition.y - std::floor(newPosition.y);
-        Vector2d newCom{
-            fracX * 2.0 - 1.0,
-            fracY * 2.0 - 1.0
-        };
+        Vector2d newCom{ fracX * 2.0 - 1.0, fracY * 2.0 - 1.0 };
 
         // Update organism position (for both cell-based and rigid body organisms).
         organism->position = newPosition;
@@ -99,9 +95,8 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
             Vector2i newPos = oldPos + offset;
 
             // Bounds check - clip cells outside new world.
-            if (newPos.x >= 0 && newPos.y >= 0 &&
-                static_cast<uint32_t>(newPos.x) < newWidth &&
-                static_cast<uint32_t>(newPos.y) < newHeight) {
+            if (newPos.x >= 0 && newPos.y >= 0 && static_cast<uint32_t>(newPos.x) < newWidth
+                && static_cast<uint32_t>(newPos.y) < newHeight) {
                 newCells.insert(newPos);
             }
         }
@@ -112,8 +107,13 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
         // TODO: Find cleaner way to pass this back.
         organism->center_of_mass = newCom;
 
-        spdlog::debug("OrganismManager::resizeGrid: Organism {} moved from ({},{}) to ({},{})",
-                      id, oldAnchor.x, oldAnchor.y, newAnchor.x, newAnchor.y);
+        spdlog::debug(
+            "OrganismManager::resizeGrid: Organism {} moved from ({},{}) to ({},{})",
+            id,
+            oldAnchor.x,
+            oldAnchor.y,
+            newAnchor.x,
+            newAnchor.y);
     }
 
     // Resize the organism grid.
@@ -131,9 +131,8 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 
 void OrganismManager::setOrganismAt(Vector2i pos, OrganismId id)
 {
-    if (pos.x < 0 || pos.y < 0 ||
-        static_cast<uint32_t>(pos.x) >= width_ ||
-        static_cast<uint32_t>(pos.y) >= height_) {
+    if (pos.x < 0 || pos.y < 0 || static_cast<uint32_t>(pos.x) >= width_
+        || static_cast<uint32_t>(pos.y) >= height_) {
         return;
     }
     grid_[pos.y * width_ + pos.x] = id;
@@ -163,10 +162,7 @@ void OrganismManager::advanceTime(World& world, double deltaTime)
 }
 
 OrganismId OrganismManager::createTree(
-    World& world,
-    uint32_t x,
-    uint32_t y,
-    std::unique_ptr<TreeBrain> brain)
+    World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain)
 {
     OrganismId id = next_id_++;
 
@@ -196,18 +192,18 @@ OrganismId OrganismManager::createTree(
 }
 
 OrganismId OrganismManager::createDuck(
-    World& world,
-    uint32_t x,
-    uint32_t y,
-    std::unique_ptr<DuckBrain> brain)
+    World& world, uint32_t x, uint32_t y, std::unique_ptr<DuckBrain> brain)
 {
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
 
     // Check if spawn location is already occupied by another organism.
     OrganismId existing = at(pos);
     if (existing != INVALID_ORGANISM_ID) {
-        spdlog::warn("OrganismManager::createDuck: Spawn location ({}, {}) already occupied by organism {}",
-            x, y, existing);
+        spdlog::warn(
+            "OrganismManager::createDuck: Spawn location ({}, {}) already occupied by organism {}",
+            x,
+            y,
+            existing);
         DIRTSIM_ASSERT(false, "createDuck: Spawn location already occupied by another organism");
     }
 
@@ -237,10 +233,7 @@ OrganismId OrganismManager::createDuck(
 }
 
 OrganismId OrganismManager::createGoose(
-    World& world,
-    uint32_t x,
-    uint32_t y,
-    std::unique_ptr<GooseBrain> brain)
+    World& world, uint32_t x, uint32_t y, std::unique_ptr<GooseBrain> brain)
 {
     OrganismId id = next_id_++;
 
@@ -278,15 +271,16 @@ void OrganismManager::removeOrganismFromWorld(World& world, OrganismId id)
 
     // Clear all cells owned by this organism from the world.
     for (const auto& pos : organism->getCells()) {
-        if (pos.x >= 0 && pos.y >= 0 &&
-            static_cast<uint32_t>(pos.x) < data.width &&
-            static_cast<uint32_t>(pos.y) < data.height) {
+        if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < data.width
+            && static_cast<uint32_t>(pos.y) < data.height) {
             data.at(pos.x, pos.y) = Cell();
         }
     }
 
-    spdlog::info("OrganismManager: Removed organism {} from world ({} cells cleared)",
-        id, organism->getCells().size());
+    spdlog::info(
+        "OrganismManager: Removed organism {} from world ({} cells cleared)",
+        id,
+        organism->getCells().size());
 
     // Now do the internal cleanup.
     removeOrganism(id);
@@ -380,7 +374,8 @@ const Goose* OrganismManager::getGoose(OrganismId id) const
 void OrganismManager::addCellToOrganism(OrganismId id, Vector2i pos)
 {
     auto* organism = getOrganism(id);
-    DIRTSIM_ASSERT(organism != nullptr,
+    DIRTSIM_ASSERT(
+        organism != nullptr,
         "addCellToOrganism called with non-existent organism - register organism first!");
     if (!organism) {
         spdlog::warn("OrganismManager: Attempted to add cell to non-existent organism {}", id);
@@ -426,15 +421,17 @@ void OrganismManager::swapOrganisms(Vector2i pos1, Vector2i pos2)
 
     // Detect stale tracking bug.
     if (org1 == org2 && org1 != INVALID_ORGANISM_ID) {
-        spdlog::critical("swapOrganisms: INVARIANT VIOLATION - Same organism {} at both positions!",
-            org1);
+        spdlog::critical(
+            "swapOrganisms: INVARIANT VIOLATION - Same organism {} at both positions!", org1);
         spdlog::critical("  pos1=({},{}), pos2=({},{})", pos1.x, pos1.y, pos2.x, pos2.y);
 
         auto* organism = getOrganism(org1);
         if (organism) {
-            spdlog::critical("  Organism type={}, anchor=({},{}), cells.size()={}",
+            spdlog::critical(
+                "  Organism type={}, anchor=({},{}), cells.size()={}",
                 static_cast<int>(organism->getType()),
-                organism->getAnchorCell().x, organism->getAnchorCell().y,
+                organism->getAnchorCell().x,
+                organism->getAnchorCell().y,
                 organism->getCells().size());
         }
 
@@ -486,8 +483,7 @@ void OrganismManager::moveOrganismCell(Vector2i from, Vector2i to, OrganismId or
             from.x,
             from.y,
             current_at_from);
-        DIRTSIM_ASSERT(
-            false, "moveOrganismCell: Source cell doesn't have expected organism");
+        DIRTSIM_ASSERT(false, "moveOrganismCell: Source cell doesn't have expected organism");
     }
 
     // Update grid.
@@ -621,25 +617,18 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.type = EntityType::DUCK;
             entity.visible = true;
 
-            entity.position = Vector2<float>{
-                static_cast<float>(anchor.x),
-                static_cast<float>(anchor.y)
-            };
+            entity.position =
+                Vector2<float>{ static_cast<float>(anchor.x), static_cast<float>(anchor.y) };
 
             // Get COM from the duck's cell.
-            if (anchor.x >= 0 && anchor.y >= 0 &&
-                static_cast<uint32_t>(anchor.x) < data.width &&
-                static_cast<uint32_t>(anchor.y) < data.height) {
+            if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
+                && static_cast<uint32_t>(anchor.y) < data.height) {
                 const Cell& cell = data.at(anchor.x, anchor.y);
                 // TODO: Temporarily disabled COM.y clamping for testing.
-                entity.com = Vector2<float>{
-                    static_cast<float>(cell.com.x),
-                    static_cast<float>(cell.com.y)
-                };
-                entity.velocity = Vector2<float>{
-                    static_cast<float>(cell.velocity.x),
-                    static_cast<float>(cell.velocity.y)
-                };
+                entity.com = Vector2<float>{ static_cast<float>(cell.com.x),
+                                             static_cast<float>(cell.com.y) };
+                entity.velocity = Vector2<float>{ static_cast<float>(cell.velocity.x),
+                                                  static_cast<float>(cell.velocity.y) };
             }
 
             entity.facing = duck->getFacing();
@@ -666,23 +655,17 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.type = EntityType::GOOSE;
             entity.visible = true;
 
-            entity.position = Vector2<float>{
-                static_cast<float>(anchor.x),
-                static_cast<float>(anchor.y)
-            };
+            entity.position =
+                Vector2<float>{ static_cast<float>(anchor.x), static_cast<float>(anchor.y) };
 
             // Get COM offset from the continuous position.
             double frac_x = goose->position.x - std::floor(goose->position.x);
             double frac_y = goose->position.y - std::floor(goose->position.y);
-            entity.com = Vector2<float>{
-                static_cast<float>(frac_x * 2.0 - 1.0),
-                static_cast<float>(frac_y * 2.0 - 1.0)
-            };
+            entity.com = Vector2<float>{ static_cast<float>(frac_x * 2.0 - 1.0),
+                                         static_cast<float>(frac_y * 2.0 - 1.0) };
 
-            entity.velocity = Vector2<float>{
-                static_cast<float>(goose->velocity.x),
-                static_cast<float>(goose->velocity.y)
-            };
+            entity.velocity = Vector2<float>{ static_cast<float>(goose->velocity.x),
+                                              static_cast<float>(goose->velocity.y) };
 
             entity.facing = goose->getFacing();
             entity.mass = static_cast<float>(goose->mass);

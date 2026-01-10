@@ -15,8 +15,8 @@ namespace DirtSim {
  * happens in Duck::DuckSparkle; this is just what gets sent to the renderer.
  */
 struct SparkleParticle {
-    Vector2<float> position{ 0.0f, 0.0f };  // Absolute world position.
-    float opacity = 1.0f;                    // 0.0 = invisible, 1.0 = fully visible.
+    Vector2<float> position{ 0.0f, 0.0f }; // Absolute world position.
+    float opacity = 1.0f;                  // 0.0 = invisible, 1.0 = fully visible.
 
     using serialize = zpp::bits::members<2>;
 };
@@ -35,7 +35,7 @@ void from_json(const nlohmann::json& j, SparkleParticle& s);
 enum class EntityType : uint8_t {
     DUCK = 0,
     GOOSE = 1,
-    SPARKLE = 2,  // Legacy standalone sparkle (may be removed).
+    SPARKLE = 2, // Legacy standalone sparkle (may be removed).
     // Future: BUTTERFLY, BIRD, FISH, etc.
 };
 
@@ -66,10 +66,10 @@ struct Entity {
     bool visible = true;
 
     // Physics state (all vectors for consistency).
-    Vector2<float> position{ 0.0f, 0.0f };  // Cell coordinates.
-    Vector2<float> com{ 0.0f, 0.0f };       // Sub-cell offset [-1, 1].
-    Vector2<float> velocity{ 0.0f, 0.0f };  // Cells per second.
-    Vector2<float> facing{ 1.0f, 0.0f };    // Direction (normalized).
+    Vector2<float> position{ 0.0f, 0.0f }; // Cell coordinates.
+    Vector2<float> com{ 0.0f, 0.0f };      // Sub-cell offset [-1, 1].
+    Vector2<float> velocity{ 0.0f, 0.0f }; // Cells per second.
+    Vector2<float> facing{ 1.0f, 0.0f };   // Direction (normalized).
     float mass = 1.0f;
 
     // Attached sparkle particles (used by DUCK entities).

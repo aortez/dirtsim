@@ -536,8 +536,7 @@ void LoggingChannels::applyConfig(const nlohmann::json& config, const std::strin
         // Create default sinks if config failed.
         auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         console_sink->set_level(consoleLevel);
-        auto file_sink =
-            std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", true);
+        auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", true);
         file_sink->set_level(fileLevel);
         sinks = { console_sink, file_sink };
     }

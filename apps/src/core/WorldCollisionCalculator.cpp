@@ -114,12 +114,14 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     // Single-cell organisms must not fragment via partial TRANSFER_ONLY.
     // Only allow full transfers into completely empty cells.
     OrganismId org_id = world.getOrganismManager().at(fromPos);
-    if (org_id != INVALID_ORGANISM_ID &&
-        move.collision_type == CollisionType::TRANSFER_ONLY &&
-        !toCell.isEmpty()) {
+    if (org_id != INVALID_ORGANISM_ID && move.collision_type == CollisionType::TRANSFER_ONLY
+        && !toCell.isEmpty()) {
         move.collision_type = CollisionType::ELASTIC_REFLECTION;
-        spdlog::debug("Organism at ({},{}) - target not empty (fill={:.2f}), forcing collision",
-            fromPos.x, fromPos.y, toCell.fill_ratio);
+        spdlog::debug(
+            "Organism at ({},{}) - target not empty (fill={:.2f}), forcing collision",
+            fromPos.x,
+            fromPos.y,
+            toCell.fill_ratio);
     }
 
     // Set material-specific restitution coefficient.
@@ -304,11 +306,15 @@ void WorldCollisionCalculator::handleTransferMove(
 {
     // Single-cell organisms must not fragment.
     // Re-check target is empty at execution time (moves are shuffled).
-    Vector2i from_pos{static_cast<int>(move.fromX), static_cast<int>(move.fromY)};
+    Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
     OrganismId org_id = world.getOrganismManager().at(from_pos);
     if (org_id != INVALID_ORGANISM_ID && !toCell.isEmpty()) {
-        spdlog::info("handleTransferMove: Organism at ({},{}) - target became non-empty (fill={:.2f}), aborting transfer",
-            move.fromX, move.fromY, toCell.fill_ratio);
+        spdlog::info(
+            "handleTransferMove: Organism at ({},{}) - target became non-empty (fill={:.2f}), "
+            "aborting transfer",
+            move.fromX,
+            move.fromY,
+            toCell.fill_ratio);
         // Apply bounce instead.
         Vector2i direction(move.toX - move.fromX, move.toY - move.fromY);
         handleElasticCollision(fromCell, toCell, move);
@@ -669,8 +675,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
     double base_angle = std::atan2(spray_direction.y, spray_direction.x);
 
     std::vector<FragTarget> frag_targets;
-    double frag_amount_each =
-        (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
+    double frag_amount_each = (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
 
     for (double angle_offset : frag_angles) {
         double frag_angle = base_angle + angle_offset;
@@ -886,10 +891,9 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     }
 
     // Blend radial and reflection directions using each cell's params.
-    Vector2d from_spray_dir =
-        (from_radial_dir * from_params.radial_bias
-            + from_reflect_dir * (1.0 - from_params.radial_bias))
-            .normalize();
+    Vector2d from_spray_dir = (from_radial_dir * from_params.radial_bias
+                               + from_reflect_dir * (1.0 - from_params.radial_bias))
+                                  .normalize();
     Vector2d to_spray_dir =
         (to_radial_dir * to_params.radial_bias + to_reflect_dir * (1.0 - to_params.radial_bias))
             .normalize();
@@ -1108,7 +1112,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
     // Rigid body organisms resist displacement (they manage their own physics).
     // Single-cell organisms (like Duck) participate in normal cell physics including swaps.
-    Vector2i toPos{static_cast<int>(fromX + direction.x), static_cast<int>(fromY + direction.y)};
+    Vector2i toPos{ static_cast<int>(fromX + direction.x), static_cast<int>(fromY + direction.y) };
     OrganismId toOrgId = world.getOrganismManager().at(toPos);
     if (toOrgId != INVALID_ORGANISM_ID) {
         const Organism* organism = world.getOrganismManager().getOrganism(toOrgId);
@@ -1203,8 +1207,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
         // Opposing momentum: target velocity against swap direction increases resistance.
         Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
-        double opposing_momentum =
-            std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
+        double opposing_momentum = std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         // Fluids are easier to displace than solids.
         double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
@@ -1215,21 +1218,22 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double com_distance = 0.0;
         if (direction.x > 0) {
             // Moving right: from exits at x=+1, to is entered at x=-1.
-            double from_dist = 1.0 - fromCell.com.x;  // 0 at boundary, 2 at far edge.
-            double to_dist = toCell.com.x + 1.0;      // 0 at boundary, 2 at far edge.
-            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
-        } else {
+            double from_dist = 1.0 - fromCell.com.x;    // 0 at boundary, 2 at far edge.
+            double to_dist = toCell.com.x + 1.0;        // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0; // Normalize to 0-1.
+        }
+        else {
             // Moving left: from exits at x=-1, to is entered at x=+1.
-            double from_dist = fromCell.com.x + 1.0;  // 0 at boundary, 2 at far edge.
-            double to_dist = 1.0 - toCell.com.x;      // 0 at boundary, 2 at far edge.
-            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+            double from_dist = fromCell.com.x + 1.0;    // 0 at boundary, 2 at far edge.
+            double to_dist = 1.0 - toCell.com.x;        // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0; // Normalize to 0-1.
         }
 
         // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
         // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
         double com_resistance_multiplier = 1.0;
         if (com_distance > 0.3) {
-            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0;  // 1x at 0.3, ~11x at 1.0
+            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0; // 1x at 0.3, ~11x at 1.0
         }
         to_resistance *= com_resistance_multiplier;
 
@@ -1298,8 +1302,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
         // Opposing momentum: target velocity against swap direction increases resistance.
         Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
-        double opposing_momentum =
-            std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
+        double opposing_momentum = std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         double to_resistance = to_mass + cohesion_strength + opposing_momentum;
 
@@ -1309,21 +1312,22 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double com_distance = 0.0;
         if (direction.y > 0) {
             // Moving down: from exits at y=+1, to is entered at y=-1.
-            double from_dist = 1.0 - fromCell.com.y;  // 0 at boundary, 2 at far edge.
-            double to_dist = toCell.com.y + 1.0;      // 0 at boundary, 2 at far edge.
-            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
-        } else {
+            double from_dist = 1.0 - fromCell.com.y;    // 0 at boundary, 2 at far edge.
+            double to_dist = toCell.com.y + 1.0;        // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0; // Normalize to 0-1.
+        }
+        else {
             // Moving up: from exits at y=-1, to is entered at y=+1.
-            double from_dist = fromCell.com.y + 1.0;  // 0 at boundary, 2 at far edge.
-            double to_dist = 1.0 - toCell.com.y;      // 0 at boundary, 2 at far edge.
-            com_distance = (from_dist + to_dist) / 4.0;  // Normalize to 0-1.
+            double from_dist = fromCell.com.y + 1.0;    // 0 at boundary, 2 at far edge.
+            double to_dist = 1.0 - toCell.com.y;        // 0 at boundary, 2 at far edge.
+            com_distance = (from_dist + to_dist) / 4.0; // Normalize to 0-1.
         }
 
         // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
         // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
         double com_resistance_multiplier = 1.0;
         if (com_distance > 0.3) {
-            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0;  // 1x at 0.3, ~11x at 1.0
+            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0; // 1x at 0.3, ~11x at 1.0
         }
         to_resistance *= com_resistance_multiplier;
 
@@ -1594,8 +1598,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // Scale tuned so displaced material resists cascading swaps.
     constexpr double BUOYANCY_VELOCITY_SCALE = 10.0;
     double buoyancy_velocity = density_diff * BUOYANCY_VELOCITY_SCALE;
-    Vector2d opposing_dir(
-        static_cast<double>(-direction.x), static_cast<double>(-direction.y));
+    Vector2d opposing_dir(static_cast<double>(-direction.x), static_cast<double>(-direction.y));
     fromCell.velocity = opposing_dir * buoyancy_velocity;
 
     // Log with full details, INFO for non-air swaps, DEBUG for air swaps.

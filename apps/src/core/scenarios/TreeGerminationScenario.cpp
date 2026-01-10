@@ -41,8 +41,7 @@ void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& 
 
 void TreeGerminationScenario::setup(World& world)
 {
-    spdlog::info(
-        "TreeGerminationScenario::setup - creating 9x9 world with balanced tree growth");
+    spdlog::info("TreeGerminationScenario::setup - creating 9x9 world with balanced tree growth");
 
     // Clear world to air.
     for (uint32_t y = 0; y < world.getData().height; ++y) {

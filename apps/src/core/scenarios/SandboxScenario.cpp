@@ -14,8 +14,7 @@ namespace DirtSim {
 SandboxScenario::SandboxScenario()
 {
     metadata_.name = "Sandbox";
-    metadata_.description =
-        "Default sandbox with dirt quadrant and particle streams (no walls)";
+    metadata_.description = "Default sandbox with dirt quadrant and particle streams (no walls)";
     metadata_.category = "sandbox";
 
     // Initialize with default config.

@@ -9,8 +9,8 @@
 #include "core/network/WebSocketService.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
-#include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/StateMachine.h"
+#include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/network/MessageParser.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <lvgl/lvgl.h>
@@ -33,8 +33,11 @@ constexpr uint32_t RAIL_COLOR = 0x303030;
 void Disconnected::onEnter(StateMachine& sm)
 {
     sm_ = &sm;
-    LOG_INFO(State, "Entered Disconnected state (retry_count={}, retry_pending={})",
-        retry_count_, retry_pending_);
+    LOG_INFO(
+        State,
+        "Entered Disconnected state (retry_count={}, retry_pending={})",
+        retry_count_,
+        retry_pending_);
 
     createDiagnosticsScreen(sm);
 }
@@ -89,7 +92,8 @@ void Disconnected::createDiagnosticsScreen(StateMachine& sm)
     lv_obj_set_style_border_width(iconRail_, 0, 0);
     lv_obj_set_style_pad_all(iconRail_, 4, 0);
     lv_obj_set_flex_flow(iconRail_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(iconRail_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        iconRail_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(iconRail_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Create log icon button.
@@ -153,7 +157,8 @@ void Disconnected::updateStatusLabel()
         }
 
         status = "Unable to connect to server\n";
-        status += "Retry " + std::to_string(retry_count_) + "/" + std::to_string(MAX_RETRY_ATTEMPTS);
+        status +=
+            "Retry " + std::to_string(retry_count_) + "/" + std::to_string(MAX_RETRY_ATTEMPTS);
         status += " in " + std::to_string(static_cast<int>(remaining + 0.5)) + "s...";
     }
     else if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
@@ -181,14 +186,19 @@ void Disconnected::updateAnimations()
 
     if (elapsed >= RETRY_INTERVAL_SECONDS) {
         if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
-            LOG_ERROR(State, "Connection failed after {} retry attempts, giving up",
-                MAX_RETRY_ATTEMPTS);
+            LOG_ERROR(
+                State, "Connection failed after {} retry attempts, giving up", MAX_RETRY_ATTEMPTS);
             retry_pending_ = false;
             return;
         }
 
-        LOG_INFO(State, "Retrying connection to {}:{} (attempt {}/{})",
-            pending_host_, pending_port_, retry_count_ + 1, MAX_RETRY_ATTEMPTS);
+        LOG_INFO(
+            State,
+            "Retrying connection to {}:{} (attempt {}/{})",
+            pending_host_,
+            pending_port_,
+            retry_count_ + 1,
+            MAX_RETRY_ATTEMPTS);
 
         // Queue a new connection attempt.
         sm_->queueEvent(ConnectToServerCommand{ pending_host_, pending_port_ });
@@ -282,7 +292,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     MaterialType material;
                     double fill_ratio;
                     int8_t render_as;
-                    RenderMessageUtils::unpackBasicCell(basicCells[i], material, fill_ratio, render_as);
+                    RenderMessageUtils::unpackBasicCell(
+                        basicCells[i], material, fill_ratio, render_as);
                     worldData.cells[i].material_type = material;
                     worldData.cells[i].fill_ratio = fill_ratio;
                     worldData.cells[i].render_as = render_as;
@@ -290,7 +301,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             }
 
             // Apply sparse organism data.
-            worldData.organism_ids = RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
+            worldData.organism_ids =
+                RenderMessageUtils::applyOrganismData(renderMsg.organisms, numCells);
 
             // Copy bone data for structural visualization.
             worldData.bones = renderMsg.bones;
@@ -333,8 +345,12 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         retry_pending_ = true;
 
         if (retry_count_ < MAX_RETRY_ATTEMPTS) {
-            LOG_INFO(State, "Will retry connection in {:.0f}s (attempt {}/{})",
-                RETRY_INTERVAL_SECONDS, retry_count_, MAX_RETRY_ATTEMPTS);
+            LOG_INFO(
+                State,
+                "Will retry connection in {:.0f}s (attempt {}/{})",
+                RETRY_INTERVAL_SECONDS,
+                retry_count_,
+                MAX_RETRY_ATTEMPTS);
         }
 
         updateStatusLabel();

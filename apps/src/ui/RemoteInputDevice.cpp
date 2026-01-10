@@ -95,7 +95,12 @@ void RemoteInputDevice::updatePosition(int x, int y)
         mouseX_ = rawX;
         mouseY_ = rawY;
         spdlog::trace(
-            "RemoteInputDevice: logical({}, {}) -> raw({}, {}) [rot={}]", x, y, rawX, rawY, static_cast<int>(rotation));
+            "RemoteInputDevice: logical({}, {}) -> raw({}, {}) [rot={}]",
+            x,
+            y,
+            rawX,
+            rawY,
+            static_cast<int>(rotation));
     }
     else {
         mouseX_ = static_cast<int32_t>(x);

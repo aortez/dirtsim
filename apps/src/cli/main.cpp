@@ -12,7 +12,6 @@
 #include <args.hxx>
 #include <chrono>
 #include <cmath>
-#include <thread>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -21,6 +20,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <thread>
 
 using namespace DirtSim;
 
@@ -28,12 +28,12 @@ using namespace DirtSim;
 std::vector<uint8_t> base64Decode(const std::string& encoded)
 {
     static const int base64_index[256] = {
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  62,
-        63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  0,  0,  0,  0,  0,
-        1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22,
-        23, 24, 25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38,
-        39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+        0,  62, 63, 62, 62, 63, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 0,  0,  0,  0,  0,
+        0,  0,  0,  1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12, 13, 14, 15, 16, 17, 18,
+        19, 20, 21, 22, 23, 24, 25, 0,  0,  0,  0,  63, 0,  26, 27, 28, 29, 30, 31, 32, 33,
+        34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51
     };
 
     std::vector<uint8_t> decoded;
@@ -381,8 +381,8 @@ int main(int argc, char** argv)
 
             // Report newly connected gamepads.
             for (size_t idx : manager.getNewlyConnected()) {
-                std::cout << "[Gamepad " << idx << "] Connected: "
-                          << manager.getGamepadName(idx) << std::endl;
+                std::cout << "[Gamepad " << idx << "] Connected: " << manager.getGamepadName(idx)
+                          << std::endl;
             }
 
             // Report newly disconnected gamepads.
@@ -414,15 +414,13 @@ int main(int argc, char** argv)
                 if (state->button_b != prev.button_b) changed = true;
 
                 if (changed) {
-                    std::cout << "[Gamepad " << i << "] "
-                              << "stick_x: " << std::fixed << std::setprecision(2)
-                              << std::setw(6) << state->stick_x << "  "
-                              << "stick_y: " << std::setw(6) << state->stick_y << "  "
-                              << "dpad: (" << static_cast<int>(state->dpad_x) << ", "
+                    std::cout << "[Gamepad " << i << "] " << "stick_x: " << std::fixed
+                              << std::setprecision(2) << std::setw(6) << state->stick_x << "  "
+                              << "stick_y: " << std::setw(6) << state->stick_y << "  " << "dpad: ("
+                              << static_cast<int>(state->dpad_x) << ", "
                               << static_cast<int>(state->dpad_y) << ")  "
                               << "A: " << (state->button_a ? "true " : "false") << "  "
-                              << "B: " << (state->button_b ? "true " : "false")
-                              << std::endl;
+                              << "B: " << (state->button_b ? "true " : "false") << std::endl;
 
                     prev = *state;
                 }
@@ -495,9 +493,8 @@ int main(int argc, char** argv)
         else {
             // Generate default filename with timestamp.
             auto now = std::chrono::system_clock::now();
-            auto timestamp = std::chrono::duration_cast<std::chrono::seconds>(
-                                 now.time_since_epoch())
-                                 .count();
+            auto timestamp =
+                std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count();
             outputFile = "screenshot_" + std::to_string(timestamp) + ".png";
         }
 
@@ -719,8 +716,7 @@ int main(int argc, char** argv)
 
     // Dispatch command using type-safe dispatcher.
     Client::CommandDispatcher dispatcher;
-    auto dispatchTarget =
-        (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
+    auto dispatchTarget = (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
     auto responseResult = dispatcher.dispatch(dispatchTarget, client, commandName, bodyJson);
     if (responseResult.isError()) {
         std::cerr << "Failed to execute command: " << responseResult.errorValue().message

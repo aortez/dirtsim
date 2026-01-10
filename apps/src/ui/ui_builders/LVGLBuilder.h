@@ -75,7 +75,7 @@ public:
         static constexpr int TROUGH_PADDING = 4;  // Padding inside trough containers.
 
         // Trough colors (for ActionButton, ActionDropdown, etc.).
-        static constexpr uint32_t TROUGH_COLOR = 0x202020;      // Dark inset trough.
+        static constexpr uint32_t TROUGH_COLOR = 0x202020;       // Dark inset trough.
         static constexpr uint32_t TROUGH_INNER_COLOR = 0x404040; // Inner element background.
     };
 
@@ -401,8 +401,8 @@ public:
      */
     struct IconConfig {
         IconId id;
-        const char* symbol;  // LV_SYMBOL_* or text.
-        const char* tooltip; // Description for accessibility.
+        const char* symbol;        // LV_SYMBOL_* or text.
+        const char* tooltip;       // Description for accessibility.
         uint32_t color = 0xFFFFFF; // Icon color (default white).
     };
 
@@ -443,16 +443,17 @@ public:
         ActionButtonBuilder& checked(bool initial); // Initial state for Toggle mode.
 
         // Sizing.
-        ActionButtonBuilder& size(int dimension);   // Square size (width = height).
+        ActionButtonBuilder& size(int dimension); // Square size (width = height).
         ActionButtonBuilder& width(int w);
         ActionButtonBuilder& height(int h);
         ActionButtonBuilder& troughPadding(int px);
 
         // Layout.
-        ActionButtonBuilder& layoutRow(); // Horizontal: icon on left, text on right (default for rectangular).
+        ActionButtonBuilder& layoutRow();    // Horizontal: icon on left, text on right (default for
+                                             // rectangular).
         ActionButtonBuilder& layoutColumn(); // Vertical: icon above text (default for square).
-        ActionButtonBuilder& alignLeft(); // Left-align content (useful for row layout).
-        ActionButtonBuilder& alignCenter(); // Center-align content (default).
+        ActionButtonBuilder& alignLeft();    // Left-align content (useful for row layout).
+        ActionButtonBuilder& alignCenter();  // Center-align content (default).
 
         // Colors.
         ActionButtonBuilder& backgroundColor(uint32_t color); // Button face color.
@@ -481,9 +482,9 @@ public:
 
     private:
         lv_obj_t* parent_;
-        lv_obj_t* container_; // Outer trough.
-        lv_obj_t* button_;    // Inner button face.
-        lv_obj_t* label_;     // Text label.
+        lv_obj_t* container_;  // Outer trough.
+        lv_obj_t* button_;     // Inner button face.
+        lv_obj_t* label_;      // Text label.
         lv_obj_t* icon_label_; // Icon label (optional).
 
         std::string text_;
@@ -500,7 +501,7 @@ public:
 
         uint32_t bg_color_ = Style::TROUGH_INNER_COLOR;
         uint32_t trough_color_ = Style::TROUGH_COLOR;
-        uint32_t glow_color_ = 0x00CC00;    // Green glow when on.
+        uint32_t glow_color_ = 0x00CC00; // Green glow when on.
         uint32_t text_color_ = 0xFFFFFF;
 
         lv_event_cb_t callback_ = nullptr;
@@ -546,8 +547,8 @@ public:
         ActionDropdownBuilder& label(const char* text);
 
         // Sizing.
-        ActionDropdownBuilder& width(int w);           // Total width including trough.
-        ActionDropdownBuilder& dropdownWidth(int w);   // Width of dropdown itself.
+        ActionDropdownBuilder& width(int w);         // Total width including trough.
+        ActionDropdownBuilder& dropdownWidth(int w); // Width of dropdown itself.
         ActionDropdownBuilder& troughPadding(int px);
 
         // Colors.
@@ -623,12 +624,12 @@ public:
         ActionStepperBuilder& value(int32_t initialValue);
 
         // Display formatting.
-        ActionStepperBuilder& valueFormat(const char* fmt);  // e.g., "%.1f"
-        ActionStepperBuilder& valueScale(double scale);      // Display as value * scale.
+        ActionStepperBuilder& valueFormat(const char* fmt); // e.g., "%.1f"
+        ActionStepperBuilder& valueScale(double scale);     // Display as value * scale.
 
         // Sizing.
         ActionStepperBuilder& width(int w);
-        ActionStepperBuilder& height(int h);  // Default 80 to match ActionButton.
+        ActionStepperBuilder& height(int h); // Default 80 to match ActionButton.
 
         // Colors.
         ActionStepperBuilder& backgroundColor(uint32_t color);
@@ -652,7 +653,7 @@ public:
 
     private:
         lv_obj_t* parent_;
-        lv_obj_t* container_;      // Outer trough.
+        lv_obj_t* container_; // Outer trough.
         lv_obj_t* minusBtn_;
         lv_obj_t* plusBtn_;
         lv_obj_t* labelObj_;

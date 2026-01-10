@@ -45,11 +45,8 @@ double getBoneStiffness(MaterialType a, MaterialType b)
     return 0.3;
 }
 
-Organism::Organism(OrganismId id, OrganismType type)
-    : id_(id)
-    , type_(type)
-{
-}
+Organism::Organism(OrganismId id, OrganismType type) : id_(id), type_(type)
+{}
 
 void Organism::onCellTransfer(Vector2i from, Vector2i to)
 {
@@ -57,7 +54,12 @@ void Organism::onCellTransfer(Vector2i from, Vector2i to)
     if (from == getAnchorCell()) {
         spdlog::info(
             "Organism {} (type={}): ANCHOR UPDATE from ({},{}) to ({},{})",
-            id_, static_cast<int>(type_), from.x, from.y, to.x, to.y);
+            id_,
+            static_cast<int>(type_),
+            from.x,
+            from.y,
+            to.x,
+            to.y);
         setAnchorCell(to);
     }
 
@@ -107,7 +109,7 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
                 continue;
             }
 
-            Vector2i neighbor_pos{nx, ny};
+            Vector2i neighbor_pos{ nx, ny };
             if (world.getOrganismManager().at(neighbor_pos) != id_) continue;
 
             const Cell& neighbor = data.at(nx, ny);
@@ -201,8 +203,7 @@ void Organism::applyForce(Vector2d force, double dt)
 }
 
 CollisionInfo Organism::detectCollisions(
-    const std::vector<Vector2i>& target_cells,
-    const World& world) const
+    const std::vector<Vector2i>& target_cells, const World& world) const
 {
     CollisionInfo info;
     const WorldData& data = world.getData();
@@ -210,8 +211,7 @@ CollisionInfo Organism::detectCollisions(
 
     for (const auto& cell_pos : target_cells) {
         // Check world boundaries.
-        if (cell_pos.x < 0 || cell_pos.y < 0
-            || static_cast<uint32_t>(cell_pos.x) >= data.width
+        if (cell_pos.x < 0 || cell_pos.y < 0 || static_cast<uint32_t>(cell_pos.x) >= data.width
             || static_cast<uint32_t>(cell_pos.y) >= data.height) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
@@ -243,8 +243,7 @@ CollisionInfo Organism::detectCollisions(
 
         // Check for dense solid material (skip our own cells).
         bool is_solid = cell.material_type == MaterialType::DIRT
-            || cell.material_type == MaterialType::SAND
-            || cell.material_type == MaterialType::WOOD
+            || cell.material_type == MaterialType::SAND || cell.material_type == MaterialType::WOOD
             || cell.material_type == MaterialType::METAL
             || cell.material_type == MaterialType::ROOT;
         if (is_solid && cell.fill_ratio > 0.8 && cell_org != id_) {

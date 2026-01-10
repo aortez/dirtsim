@@ -1,6 +1,6 @@
 #include "SparklingDuckButton.h"
-#include "duck_img.h"
 #include "core/LoggingChannels.h"
+#include "duck_img.h"
 #include <cmath>
 
 namespace DirtSim {
@@ -8,13 +8,13 @@ namespace Ui {
 
 // Animation constants.
 static constexpr float PI = 3.14159265359f;
-static constexpr float ORBIT_SPEED = 0.04f;            // Radians per frame (normal orbit).
-static constexpr float SPIN_UP_ACCELERATION = 0.006f;  // Angular acceleration during spin-up.
-static constexpr float RADIUS_GROWTH_RATE = 1.5f;      // Pixels per frame during spin-up.
-static constexpr float FLY_OUT_SPEED = 3.5f;           // Radial pixels per frame when flying.
-static constexpr float FLY_OUT_ANGULAR_MULT = 1.5f;    // Angular velocity multiplier when flying.
-static constexpr float FADE_RATE = 3.0f;               // Opacity units per frame when flying out.
-static constexpr float MAX_FLY_RADIUS = 250.0f;        // Reset sparkle when it gets this far.
+static constexpr float ORBIT_SPEED = 0.04f;           // Radians per frame (normal orbit).
+static constexpr float SPIN_UP_ACCELERATION = 0.006f; // Angular acceleration during spin-up.
+static constexpr float RADIUS_GROWTH_RATE = 1.5f;     // Pixels per frame during spin-up.
+static constexpr float FLY_OUT_SPEED = 3.5f;          // Radial pixels per frame when flying.
+static constexpr float FLY_OUT_ANGULAR_MULT = 1.5f;   // Angular velocity multiplier when flying.
+static constexpr float FADE_RATE = 3.0f;              // Opacity units per frame when flying out.
+static constexpr float MAX_FLY_RADIUS = 250.0f;       // Reset sparkle when it gets this far.
 
 SparklingDuckButton::SparklingDuckButton(lv_obj_t* parent, ClickCallback onClick)
     : onClick_(std::move(onClick))
@@ -80,7 +80,7 @@ void SparklingDuckButton::createButton(lv_obj_t* parent)
     lv_obj_center(duckBackground_);
     lv_obj_set_style_radius(duckBackground_, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(duckBackground_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(duckBackground_, LV_OPA_70, 0);  // 70% opacity.
+    lv_obj_set_style_bg_opa(duckBackground_, LV_OPA_70, 0); // 70% opacity.
     lv_obj_set_style_border_width(duckBackground_, 0, 0);
     lv_obj_remove_flag(duckBackground_, LV_OBJ_FLAG_CLICKABLE);
 
@@ -111,17 +111,23 @@ void SparklingDuckButton::createSparkles(lv_obj_t* parent)
         // Cycle through white, yellow, and gold sparkles.
         lv_color_t color;
         switch (i % 3) {
-            case 0: color = lv_color_hex(0xFFFFFF); break; // White.
-            case 1: color = lv_color_hex(0xFFFF00); break; // Yellow.
-            default: color = lv_color_hex(0xFFD700); break; // Gold.
+            case 0:
+                color = lv_color_hex(0xFFFFFF);
+                break; // White.
+            case 1:
+                color = lv_color_hex(0xFFFF00);
+                break; // Yellow.
+            default:
+                color = lv_color_hex(0xFFD700);
+                break; // Gold.
         }
         lv_obj_set_style_text_color(sparkles_[i], color, 0);
 
         // Vary the font size for depth effect.
         const lv_font_t* font = (i % 4 == 0) ? &lv_font_montserrat_20
-                                             : (i % 4 == 1) ? &lv_font_montserrat_18
-                                             : (i % 4 == 2) ? &lv_font_montserrat_16
-                                                            : &lv_font_montserrat_14;
+            : (i % 4 == 1)                   ? &lv_font_montserrat_18
+            : (i % 4 == 2)                   ? &lv_font_montserrat_16
+                                             : &lv_font_montserrat_14;
         lv_obj_set_style_text_font(sparkles_[i], font, 0);
 
         // Add subtle shadow for glow effect.
@@ -220,9 +226,8 @@ void SparklingDuckButton::updateSparkleSpinningUp(int i, lv_coord_t btnX, lv_coo
     state.opacity = opacity;
 
     // Check if ready to fly out (only if still pressed).
-    if (isPressed_ &&
-        state.radius >= state.targetRadius &&
-        state.angularVelocity >= state.targetAngularVelocity) {
+    if (isPressed_ && state.radius >= state.targetRadius
+        && state.angularVelocity >= state.targetAngularVelocity) {
         state.phase = SparklePhase::FLYING_OUT;
         state.radialVelocity = FLY_OUT_SPEED;
         state.angularVelocity *= FLY_OUT_ANGULAR_MULT;
@@ -262,7 +267,8 @@ void SparklingDuckButton::updateSparkleFlyingOut(int i, lv_coord_t btnX, lv_coor
             state.opacity = 50;
             state.phase = SparklePhase::SPINNING_UP;
             // Keep the angle to maintain orbital position continuity.
-        } else {
+        }
+        else {
             // Return to normal orbit.
             initSparkleState(i);
         }

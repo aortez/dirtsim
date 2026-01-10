@@ -183,7 +183,7 @@ public:
     static constexpr double COM_COHESION_INNER_THRESHOLD =
         0.5; // COM must be > 0.5 from center to activate
     static constexpr double COM_COHESION_MIN_DISTANCE = 0.1; // Prevent division by near-zero
-    static constexpr double COM_COHESION_MAX_FORCE = 5.0; // Cap maximum force magnitude.
+    static constexpr double COM_COHESION_MAX_FORCE = 5.0;    // Cap maximum force magnitude.
 
     // =================================================================
     // FORCE CALCULATION METHODS

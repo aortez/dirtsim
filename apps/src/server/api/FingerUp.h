@@ -23,7 +23,7 @@ DEFINE_API_NAME(FingerUp);
  * the finger session tracking state for this finger_id.
  */
 struct Command {
-    uint32_t finger_id;  // Must match a previous FingerDown finger_id.
+    uint32_t finger_id; // Must match a previous FingerDown finger_id.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

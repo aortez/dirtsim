@@ -24,9 +24,7 @@ struct FloorObstacle {
 class ObstacleManager {
 public:
     bool spawnObstacle(
-        World& world,
-        std::mt19937& rng,
-        std::uniform_real_distribution<double>& uniform_dist);
+        World& world, std::mt19937& rng, std::uniform_real_distribution<double>& uniform_dist);
 
     void clearAll(World& world);
 

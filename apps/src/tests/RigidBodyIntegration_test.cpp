@@ -78,9 +78,9 @@ TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
 
     // Verify setup.
     EXPECT_EQ(world->getData().at(1, 1).material_type, MaterialType::SEED);
-    EXPECT_EQ(organism_manager.at(Vector2i{1, 1}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 1, 1 }), tree_id);
     EXPECT_EQ(world->getData().at(2, 1).material_type, MaterialType::WOOD);
-    EXPECT_EQ(organism_manager.at(Vector2i{2, 1}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 2, 1 }), tree_id);
 
     // Run several physics frames.
     for (int frame = 0; frame < 10; ++frame) {
@@ -158,21 +158,23 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
     organism_manager.addCellToOrganism(tree_id, { 6, 2 });
 
     // Verify initial state.
-    EXPECT_EQ(organism_manager.at(Vector2i{2, 2}), tree_id);
-    EXPECT_EQ(organism_manager.at(Vector2i{3, 2}), tree_id);
-    EXPECT_EQ(organism_manager.at(Vector2i{4, 2}), tree_id);
-    EXPECT_EQ(organism_manager.at(Vector2i{6, 2}), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 2, 2 }), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 3, 2 }), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 4, 2 }), tree_id);
+    EXPECT_EQ(organism_manager.at(Vector2i{ 6, 2 }), tree_id);
 
     // Run one physics frame.
     world->advanceTime(0.016);
 
     // Verify connected cells still belong to organism.
-    EXPECT_EQ(organism_manager.at(Vector2i{2, 2}), tree_id) << "SEED should remain connected";
-    EXPECT_EQ(organism_manager.at(Vector2i{3, 2}), tree_id) << "Adjacent WOOD should remain connected";
-    EXPECT_EQ(organism_manager.at(Vector2i{4, 2}), tree_id) << "Adjacent WOOD should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{ 2, 2 }), tree_id) << "SEED should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{ 3, 2 }), tree_id)
+        << "Adjacent WOOD should remain connected";
+    EXPECT_EQ(organism_manager.at(Vector2i{ 4, 2 }), tree_id)
+        << "Adjacent WOOD should remain connected";
 
     // Verify disconnected cell was pruned.
-    EXPECT_EQ(organism_manager.at(Vector2i{6, 2}), INVALID_ORGANISM_ID)
+    EXPECT_EQ(organism_manager.at(Vector2i{ 6, 2 }), INVALID_ORGANISM_ID)
         << "Disconnected WOOD should have organism_id=0 after pruning";
 
     // Verify tree's cell tracking was updated.
@@ -182,5 +184,6 @@ TEST_F(RigidBodyIntegrationTest, DisconnectedFragmentGetsPruned)
     EXPECT_TRUE(tree->getCells().count({ 2, 2 })) << "SEED should be in tree.cells";
     EXPECT_TRUE(tree->getCells().count({ 3, 2 })) << "Connected WOOD should be in tree.cells";
     EXPECT_TRUE(tree->getCells().count({ 4, 2 })) << "Connected WOOD should be in tree.cells";
-    EXPECT_FALSE(tree->getCells().count({ 6, 2 })) << "Disconnected WOOD should NOT be in tree.cells";
+    EXPECT_FALSE(tree->getCells().count({ 6, 2 }))
+        << "Disconnected WOOD should NOT be in tree.cells";
 }

@@ -46,101 +46,101 @@ bool matchesTemplate(
             const auto& cell_histogram = histograms[grid_row][grid_col];
 
             switch (cell_pattern.mode) {
-            case MatchMode::Any:
-                continue;
+                case MatchMode::Any:
+                    continue;
 
-            case MatchMode::IsEmpty: {
-                double total_fill = 0.0;
-                for (int m = 0; m < NumMaterials; ++m) {
-                    total_fill += cell_histogram[m];
-                }
-                if (total_fill >= EMPTY_THRESHOLD) {
-                    return false;
-                }
-                break;
-            }
-
-            case MatchMode::IsNotEmpty: {
-                double total_fill = 0.0;
-                for (int m = 0; m < NumMaterials; ++m) {
-                    total_fill += cell_histogram[m];
-                }
-                if (total_fill < EMPTY_THRESHOLD) {
-                    return false;
-                }
-                break;
-            }
-
-            case MatchMode::IsSolid: {
-                // Find dominant material and check if it's solid (not fluid).
-                MaterialType dominant = MaterialType::AIR;
-                double max_fill = 0.0;
-                for (int m = 0; m < NumMaterials; ++m) {
-                    if (cell_histogram[m] > max_fill) {
-                        max_fill = cell_histogram[m];
-                        dominant = static_cast<MaterialType>(m);
+                case MatchMode::IsEmpty: {
+                    double total_fill = 0.0;
+                    for (int m = 0; m < NumMaterials; ++m) {
+                        total_fill += cell_histogram[m];
                     }
-                }
-                if (max_fill < MATERIAL_THRESHOLD) {
-                    return false;
-                }
-                const MaterialProperties& props = getMaterialProperties(dominant);
-                if (props.is_fluid) {
-                    return false;
-                }
-                break;
-            }
-
-            case MatchMode::IsLiquid: {
-                // Find dominant material and check if it's fluid.
-                MaterialType dominant = MaterialType::AIR;
-                double max_fill = 0.0;
-                for (int m = 0; m < NumMaterials; ++m) {
-                    if (cell_histogram[m] > max_fill) {
-                        max_fill = cell_histogram[m];
-                        dominant = static_cast<MaterialType>(m);
+                    if (total_fill >= EMPTY_THRESHOLD) {
+                        return false;
                     }
+                    break;
                 }
-                if (max_fill < MATERIAL_THRESHOLD) {
-                    return false;
-                }
-                const MaterialProperties& props = getMaterialProperties(dominant);
-                if (!props.is_fluid) {
-                    return false;
-                }
-                break;
-            }
 
-            case MatchMode::Is: {
-                // Must be one of the specified materials.
-                bool matched = false;
-                for (MaterialType mat : cell_pattern.materials) {
-                    int mat_idx = static_cast<int>(mat);
-                    if (mat_idx >= 0 && mat_idx < NumMaterials) {
-                        if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
-                            matched = true;
-                            break;
+                case MatchMode::IsNotEmpty: {
+                    double total_fill = 0.0;
+                    for (int m = 0; m < NumMaterials; ++m) {
+                        total_fill += cell_histogram[m];
+                    }
+                    if (total_fill < EMPTY_THRESHOLD) {
+                        return false;
+                    }
+                    break;
+                }
+
+                case MatchMode::IsSolid: {
+                    // Find dominant material and check if it's solid (not fluid).
+                    MaterialType dominant = MaterialType::AIR;
+                    double max_fill = 0.0;
+                    for (int m = 0; m < NumMaterials; ++m) {
+                        if (cell_histogram[m] > max_fill) {
+                            max_fill = cell_histogram[m];
+                            dominant = static_cast<MaterialType>(m);
                         }
                     }
+                    if (max_fill < MATERIAL_THRESHOLD) {
+                        return false;
+                    }
+                    const MaterialProperties& props = getMaterialProperties(dominant);
+                    if (props.is_fluid) {
+                        return false;
+                    }
+                    break;
                 }
-                if (!matched) {
-                    return false;
-                }
-                break;
-            }
 
-            case MatchMode::IsNot: {
-                // Must NOT be any of the specified materials.
-                for (MaterialType mat : cell_pattern.materials) {
-                    int mat_idx = static_cast<int>(mat);
-                    if (mat_idx >= 0 && mat_idx < NumMaterials) {
-                        if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
-                            return false;
+                case MatchMode::IsLiquid: {
+                    // Find dominant material and check if it's fluid.
+                    MaterialType dominant = MaterialType::AIR;
+                    double max_fill = 0.0;
+                    for (int m = 0; m < NumMaterials; ++m) {
+                        if (cell_histogram[m] > max_fill) {
+                            max_fill = cell_histogram[m];
+                            dominant = static_cast<MaterialType>(m);
                         }
                     }
+                    if (max_fill < MATERIAL_THRESHOLD) {
+                        return false;
+                    }
+                    const MaterialProperties& props = getMaterialProperties(dominant);
+                    if (!props.is_fluid) {
+                        return false;
+                    }
+                    break;
                 }
-                break;
-            }
+
+                case MatchMode::Is: {
+                    // Must be one of the specified materials.
+                    bool matched = false;
+                    for (MaterialType mat : cell_pattern.materials) {
+                        int mat_idx = static_cast<int>(mat);
+                        if (mat_idx >= 0 && mat_idx < NumMaterials) {
+                            if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
+                                matched = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!matched) {
+                        return false;
+                    }
+                    break;
+                }
+
+                case MatchMode::IsNot: {
+                    // Must NOT be any of the specified materials.
+                    for (MaterialType mat : cell_pattern.materials) {
+                        int mat_idx = static_cast<int>(mat);
+                        if (mat_idx >= 0 && mat_idx < NumMaterials) {
+                            if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
+                                return false;
+                            }
+                        }
+                    }
+                    break;
+                }
             }
         }
     }
@@ -260,34 +260,22 @@ template void gatherMaterialHistograms<9, 10>(
     Vector2i& world_offset);
 
 template MaterialType getDominantMaterial<15, 10>(
-    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
 template MaterialType getDominantMaterial<9, 10>(
-    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool isSolid<15, 10>(
-    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
 template bool isSolid<9, 10>(
-    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool isEmpty<15, 10>(
-    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
 template bool isEmpty<9, 10>(
-    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
-    int gx,
-    int gy);
+    const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool matchesTemplate<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms,

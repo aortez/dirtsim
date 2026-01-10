@@ -2,6 +2,8 @@
 
 #include "ClockEventTypes.h"
 #include "core/Vector2.h"
+#include <chrono>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -35,7 +37,13 @@ public:
     bool openDoor(DoorId id, World& world);
     void closeDoor(DoorId id, World& world);
 
-    // Remove a door entirely.
+    // Schedule a door for removal after a delay.
+    void scheduleRemoval(DoorId id, std::chrono::milliseconds delay);
+
+    // Process scheduled removals. Call this each frame.
+    void update();
+
+    // Remove a door immediately.
     void removeDoor(DoorId id);
 
     // Query door state.
@@ -63,19 +71,22 @@ public:
     void closeAllDoors(World& world);
 
 private:
-    // Logical door definition - positions computed from world dimensions.
-    struct DoorDef {
+    using TimePoint = std::chrono::steady_clock::time_point;
+
+    // Logical door - positions computed from world dimensions.
+    struct Door {
         DoorSide side = DoorSide::LEFT;
-        uint32_t cells_above_floor = 1;  // Height relative to floor (1 = one cell above floor wall).
+        uint32_t cells_above_floor = 1; // Height relative to floor (1 = one cell above floor wall).
         bool is_open = false;
+        std::optional<TimePoint> removal_time; // When set, door will be removed after this time.
     };
 
-    std::unordered_map<DoorId, DoorDef> doors_;
+    std::unordered_map<DoorId, Door> doors_;
     DoorId next_id_{ 1 };
 
     // Compute positions from door definition and world dimensions.
-    Vector2i computeDoorPosition(const DoorDef& def, const WorldData& world_data) const;
-    Vector2i computeRoofPosition(const DoorDef& def, const WorldData& world_data) const;
+    Vector2i computeDoorPosition(const Door& door, const WorldData& world_data) const;
+    Vector2i computeRoofPosition(const Door& door, const WorldData& world_data) const;
 };
 
 } // namespace DirtSim

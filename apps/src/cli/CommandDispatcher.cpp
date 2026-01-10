@@ -20,7 +20,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::GravitySet::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::PeersGet::Command, Api::PeersGet::Okay>(serverHandlers_);
     registerCommand<Api::PerfStatsGet::Command, Api::PerfStatsGet::Okay>(serverHandlers_);
-    registerCommand<Api::PhysicsSettingsGet::Command, Api::PhysicsSettingsGet::Okay>(serverHandlers_);
+    registerCommand<Api::PhysicsSettingsGet::Command, Api::PhysicsSettingsGet::Okay>(
+        serverHandlers_);
     registerCommand<Api::PhysicsSettingsSet::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::RenderFormatGet::Command, Api::RenderFormatGet::Okay>(serverHandlers_);
     registerCommand<Api::RenderFormatSet::Command, Api::RenderFormatSet::Okay>(serverHandlers_);

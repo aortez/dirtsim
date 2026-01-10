@@ -8,9 +8,7 @@
 namespace DirtSim {
 
 bool ObstacleManager::spawnObstacle(
-    World& world,
-    std::mt19937& rng,
-    std::uniform_real_distribution<double>& uniform_dist)
+    World& world, std::mt19937& rng, std::uniform_real_distribution<double>& uniform_dist)
 {
     if (obstacles_.size() >= MAX_OBSTACLES) {
         return false;
@@ -23,7 +21,8 @@ bool ObstacleManager::spawnObstacle(
     int max_x = static_cast<int>(data.width) - MARGIN - 1;
 
     if (max_x <= min_x) {
-        spdlog::info("ObstacleManager: World too narrow for floor obstacles (width={})", data.width);
+        spdlog::info(
+            "ObstacleManager: World too narrow for floor obstacles (width={})", data.width);
         return false;
     }
 
@@ -42,9 +41,8 @@ bool ObstacleManager::spawnObstacle(
     int start_x = x_dist(rng);
 
     // Choose type: hurdle or pit.
-    FloorObstacleType type = (uniform_dist(rng) < 0.5)
-        ? FloorObstacleType::HURDLE
-        : FloorObstacleType::PIT;
+    FloorObstacleType type =
+        (uniform_dist(rng) < 0.5) ? FloorObstacleType::HURDLE : FloorObstacleType::PIT;
 
     // Check for overlap with existing obstacles.
     for (const auto& existing : obstacles_) {
@@ -62,9 +60,11 @@ bool ObstacleManager::spawnObstacle(
         .type = type,
     });
 
-    spdlog::info("ObstacleManager: Spawned {} at x={}, width={}",
+    spdlog::info(
+        "ObstacleManager: Spawned {} at x={}, width={}",
         type == FloorObstacleType::HURDLE ? "HURDLE" : "PIT",
-        start_x, obstacle_width);
+        start_x,
+        obstacle_width);
 
     return true;
 }
@@ -95,7 +95,8 @@ void ObstacleManager::clearAll(World& world)
                         cell = Cell();
                     }
                 }
-            } else {
+            }
+            else {
                 // Restore floor at height-1 for pit.
                 world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
             }
@@ -111,8 +112,7 @@ bool ObstacleManager::isHurdleAt(uint32_t x) const
         if (obs.type != FloorObstacleType::HURDLE) {
             continue;
         }
-        if (static_cast<int>(x) >= obs.start_x &&
-            static_cast<int>(x) < obs.start_x + obs.width) {
+        if (static_cast<int>(x) >= obs.start_x && static_cast<int>(x) < obs.start_x + obs.width) {
             return true;
         }
     }
@@ -125,8 +125,7 @@ bool ObstacleManager::isPitAt(uint32_t x) const
         if (obs.type != FloorObstacleType::PIT) {
             continue;
         }
-        if (static_cast<int>(x) >= obs.start_x &&
-            static_cast<int>(x) < obs.start_x + obs.width) {
+        if (static_cast<int>(x) >= obs.start_x && static_cast<int>(x) < obs.start_x + obs.width) {
             return true;
         }
     }

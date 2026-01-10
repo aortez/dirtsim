@@ -17,11 +17,11 @@
  *   DIRTSIM_ASSERT(duck->anchor_cell == cell_position,
  *                  "Duck anchor must match cell position");
  */
-#define DIRTSIM_ASSERT(condition, message)                                                         \
-    do {                                                                                           \
-        if (!(condition)) {                                                                        \
-            spdlog::critical("ASSERTION FAILED: {} at {}:{}", message, __FILE__, __LINE__);       \
-            spdlog::critical("  Condition: {}", #condition);                                       \
-            std::abort();                                                                          \
-        }                                                                                          \
+#define DIRTSIM_ASSERT(condition, message)                                                  \
+    do {                                                                                    \
+        if (!(condition)) {                                                                 \
+            spdlog::critical("ASSERTION FAILED: {} at {}:{}", message, __FILE__, __LINE__); \
+            spdlog::critical("  Condition: {}", #condition);                                \
+            std::abort();                                                                   \
+        }                                                                                   \
     } while (0)

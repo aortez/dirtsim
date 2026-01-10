@@ -17,10 +17,10 @@ namespace DirtSim {
  * and fade out over their lifetime.
  */
 struct DuckSparkle {
-    Vector2<float> position{ 0.0f, 0.0f };  // Absolute world position.
-    Vector2<float> velocity{ 0.0f, 0.0f };  // Cells per second.
-    float lifetime = 1.0f;                   // Remaining life (1.0 = full, 0.0 = dead).
-    float max_lifetime = 1.0f;               // For calculating opacity.
+    Vector2<float> position{ 0.0f, 0.0f }; // Absolute world position.
+    Vector2<float> velocity{ 0.0f, 0.0f }; // Cells per second.
+    float lifetime = 1.0f;                 // Remaining life (1.0 = full, 0.0 = dead).
+    float max_lifetime = 1.0f;             // For calculating opacity.
 };
 
 /**
@@ -80,15 +80,15 @@ private:
     float jump_cooldown_ = 0.0f;
     uint32_t frame_counter_ = 0;
 
-    static constexpr float JUMP_COOLDOWN = 0.5f;  // Minimum time between jumps.
+    static constexpr float JUMP_COOLDOWN = 0.5f; // Minimum time between jumps.
 
     std::unique_ptr<DuckBrain> brain_;
 
     // Sparkle particle system.
     std::vector<DuckSparkle> sparkles_;
     std::mt19937 sparkle_rng_{ std::random_device{}() };
-    Vector2d previous_velocity_{ 0.0, 0.0 };  // For acceleration calculation.
-    Vector2d smoothed_acceleration_{ 0.0, 0.0 };  // Smoothed X/Y acceleration for sparkle emission.
+    Vector2d previous_velocity_{ 0.0, 0.0 };     // For acceleration calculation.
+    Vector2d smoothed_acceleration_{ 0.0, 0.0 }; // Smoothed X/Y acceleration for sparkle emission.
 
     void updateGroundDetection(const World& world);
     void applyMovementToCell(World& world, double deltaTime);

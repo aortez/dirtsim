@@ -55,8 +55,7 @@ Result<T, std::string> ConfigLoader::load(const std::string& filename)
         return Result<T, std::string>::okay(config);
     }
     catch (const std::exception& e) {
-        return Result<T, std::string>::error(
-            "Failed to parse " + filename + ": " + e.what());
+        return Result<T, std::string>::error("Failed to parse " + filename + ": " + e.what());
     }
 }
 

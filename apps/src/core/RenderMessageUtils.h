@@ -159,9 +159,7 @@ inline std::vector<BoneData> extractBones(const WorldData& data)
  * @brief Pack WorldData into RenderMessage with specified format.
  */
 inline RenderMessage packRenderMessage(
-    const WorldData& data,
-    RenderFormat format,
-    const std::vector<OrganismId>& organism_grid)
+    const WorldData& data, RenderFormat format, const std::vector<OrganismId>& organism_grid)
 {
     RenderMessage msg;
     msg.format = format;
@@ -266,7 +264,7 @@ inline std::vector<OrganismId> applyOrganismData(
     for (const auto& org : organisms) {
         for (uint16_t idx : org.cell_indices) {
             if (idx < num_cells) {
-                organism_ids[idx] = OrganismId{static_cast<int>(org.organism_id)};
+                organism_ids[idx] = OrganismId{ static_cast<int>(org.organism_id) };
             }
         }
     }

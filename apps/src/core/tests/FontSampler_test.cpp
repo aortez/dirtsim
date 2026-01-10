@@ -128,10 +128,10 @@ TEST_F(FontSamplerTest, TrimPattern_RemovesEmptyBorder)
 {
     // Create a pattern with empty border around filled center.
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false, false, false},
-        {false, true,  true,  false, false},
-        {false, true,  true,  false, false},
-        {false, false, false, false, false},
+        { false, false, false, false, false },
+        { false, true, true, false, false },
+        { false, true, true, false, false },
+        { false, false, false, false, false },
     };
 
     auto trimmed = FontSampler::trimPattern(pattern);
@@ -147,8 +147,8 @@ TEST_F(FontSamplerTest, TrimPattern_RemovesEmptyBorder)
 TEST_F(FontSamplerTest, TrimPattern_EmptyPatternReturnsEmpty)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false},
-        {false, false, false},
+        { false, false, false },
+        { false, false, false },
     };
 
     auto trimmed = FontSampler::trimPattern(pattern);
@@ -159,8 +159,8 @@ TEST_F(FontSamplerTest, TrimPattern_EmptyPatternReturnsEmpty)
 TEST_F(FontSamplerTest, TrimPattern_NoTrimNeeded)
 {
     std::vector<std::vector<bool>> pattern = {
-        {true, true},
-        {true, true},
+        { true, true },
+        { true, true },
     };
 
     auto trimmed = FontSampler::trimPattern(pattern);
@@ -172,9 +172,9 @@ TEST_F(FontSamplerTest, TrimPattern_NoTrimNeeded)
 TEST_F(FontSamplerTest, HasClipping_DetectsTopEdge)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, true,  false},
-        {false, false, false},
-        {false, false, false},
+        { false, true, false },
+        { false, false, false },
+        { false, false, false },
     };
 
     EXPECT_TRUE(FontSampler::hasClipping(pattern));
@@ -183,9 +183,9 @@ TEST_F(FontSamplerTest, HasClipping_DetectsTopEdge)
 TEST_F(FontSamplerTest, HasClipping_DetectsBottomEdge)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false},
-        {false, false, false},
-        {false, true,  false},
+        { false, false, false },
+        { false, false, false },
+        { false, true, false },
     };
 
     EXPECT_TRUE(FontSampler::hasClipping(pattern));
@@ -194,9 +194,9 @@ TEST_F(FontSamplerTest, HasClipping_DetectsBottomEdge)
 TEST_F(FontSamplerTest, HasClipping_DetectsLeftEdge)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false},
-        {true,  false, false},
-        {false, false, false},
+        { false, false, false },
+        { true, false, false },
+        { false, false, false },
     };
 
     EXPECT_TRUE(FontSampler::hasClipping(pattern));
@@ -205,9 +205,9 @@ TEST_F(FontSamplerTest, HasClipping_DetectsLeftEdge)
 TEST_F(FontSamplerTest, HasClipping_DetectsRightEdge)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false},
-        {false, false, true },
-        {false, false, false},
+        { false, false, false },
+        { false, false, true },
+        { false, false, false },
     };
 
     EXPECT_TRUE(FontSampler::hasClipping(pattern));
@@ -216,9 +216,9 @@ TEST_F(FontSamplerTest, HasClipping_DetectsRightEdge)
 TEST_F(FontSamplerTest, HasClipping_NoClipping)
 {
     std::vector<std::vector<bool>> pattern = {
-        {false, false, false},
-        {false, true,  false},
-        {false, false, false},
+        { false, false, false },
+        { false, true, false },
+        { false, false, false },
     };
 
     EXPECT_FALSE(FontSampler::hasClipping(pattern));
@@ -272,7 +272,7 @@ TEST_F(FontSamplerTest, ResizeCanvas_ClearsCache)
 
     // Cache a pattern.
     const auto& pattern1 = sampler.getCachedPattern('A');
-    (void)pattern1;  // Suppress unused warning.
+    (void)pattern1; // Suppress unused warning.
 
     // Resize canvas.
     sampler.resizeCanvas(60, 60);

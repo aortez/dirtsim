@@ -228,9 +228,8 @@ void UiComponentManager::createSimulationLayout()
     // -------------------------------------------------------------------------
     // Icon Rail (48px wide, full height).
     // -------------------------------------------------------------------------
-    iconRail_ = std::make_unique<IconRail>(
-        simMainRow_,
-        [this](IconId selectedId, IconId previousId) {
+    iconRail_ =
+        std::make_unique<IconRail>(simMainRow_, [this](IconId selectedId, IconId previousId) {
             // Handle icon selection changes.
             LOG_INFO(
                 Controls,

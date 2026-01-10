@@ -24,10 +24,10 @@ DEFINE_API_NAME(FingerDown);
  * Subsequent FingerMove commands calculate force based on delta from last position.
  */
 struct Command {
-    uint32_t finger_id;  // Client-assigned finger ID (for multi-touch support).
-    double world_x;      // World coordinate X (cell units, fractional).
-    double world_y;      // World coordinate Y (cell units, fractional).
-    double radius;       // Radius of influence in cell units.
+    uint32_t finger_id; // Client-assigned finger ID (for multi-touch support).
+    double world_x;     // World coordinate X (cell units, fractional).
+    double world_y;     // World coordinate Y (cell units, fractional).
+    double radius;      // Radius of influence in cell units.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

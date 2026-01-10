@@ -18,17 +18,17 @@ namespace {
 // Concrete organism for testing (Organism is abstract).
 class TestOrganism : public Organism {
 public:
-    TestOrganism(OrganismId id, OrganismType type)
-        : Organism(id, type)
-    {
-    }
+    TestOrganism(OrganismId id, OrganismType type) : Organism(id, type) {}
 
     Vector2i getAnchorCell() const override
     {
         return Vector2i{ static_cast<int>(position.x), static_cast<int>(position.y) };
     }
 
-    void setAnchorCell(Vector2i pos) override { position = { static_cast<double>(pos.x), static_cast<double>(pos.y) }; }
+    void setAnchorCell(Vector2i pos) override
+    {
+        position = { static_cast<double>(pos.x), static_cast<double>(pos.y) };
+    }
 
     void update(World& /*world*/, double /*deltaTime*/) override
     {
@@ -43,7 +43,7 @@ protected:
     // Helper to create a simple single-cell organism.
     std::unique_ptr<TestOrganism> createSingleCellOrganism(Vector2d pos, MaterialType material)
     {
-        auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
+        auto org = std::make_unique<TestOrganism>(OrganismId{ 1 }, OrganismType::TREE);
         org->position = pos;
         org->velocity = { 0.0, 0.0 };
 
@@ -62,14 +62,17 @@ protected:
     // Helper to create a multi-cell organism (horizontal 3-cell beam).
     std::unique_ptr<TestOrganism> createHorizontalBeam(Vector2d pos)
     {
-        auto org = std::make_unique<TestOrganism>(OrganismId{2}, OrganismType::TREE);
+        auto org = std::make_unique<TestOrganism>(OrganismId{ 2 }, OrganismType::TREE);
         org->position = pos;
         org->velocity = { 0.0, 0.0 };
 
         // Three WOOD cells in a row: local positions (0,0), (1,0), (2,0).
-        org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
-        org->local_shape.push_back({ .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
-        org->local_shape.push_back({ .localPos = { 2, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        org->local_shape.push_back(
+            { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        org->local_shape.push_back(
+            { .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        org->local_shape.push_back(
+            { .localPos = { 2, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
 
         org->recomputeMass();
         org->recomputeCenterOfMass();
@@ -170,7 +173,7 @@ TEST_F(OrganismPhysicsTest, MassComputedFromMultipleCells)
 
 TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
 {
-    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{ 1 }, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 
@@ -189,13 +192,15 @@ TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
 
 TEST_F(OrganismPhysicsTest, MassAccountsForDifferentMaterials)
 {
-    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{ 1 }, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 
     // Mix of WOOD and METAL.
-    org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
-    org->local_shape.push_back({ .localPos = { 1, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
+    org->local_shape.push_back(
+        { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+    org->local_shape.push_back(
+        { .localPos = { 1, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
 
@@ -231,13 +236,15 @@ TEST_F(OrganismPhysicsTest, COMAtCenterOfSymmetricShape)
 
 TEST_F(OrganismPhysicsTest, COMShiftsTowardHeavierMaterial)
 {
-    auto org = std::make_unique<TestOrganism>(OrganismId{1}, OrganismType::TREE);
+    auto org = std::make_unique<TestOrganism>(OrganismId{ 1 }, OrganismType::TREE);
     org->position = { 0.0, 0.0 };
     org->velocity = { 0.0, 0.0 };
 
     // WOOD at (0,0), METAL at (2,0). METAL is denser, so COM shifts right.
-    org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
-    org->local_shape.push_back({ .localPos = { 2, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
+    org->local_shape.push_back(
+        { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+    org->local_shape.push_back(
+        { .localPos = { 2, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
     org->recomputeCenterOfMass();

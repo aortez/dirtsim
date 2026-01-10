@@ -432,7 +432,7 @@ void CellRenderer::initializeWithPixelSize(
     double scaleX = (double)containerWidth / canvasWidth_;
     double scaleY = (double)containerHeight / canvasHeight_;
     double scale = std::min(scaleX, scaleY); // Preserve aspect ratio.
-    displayScale_ = scale; // Store for coordinate transformation in pixelToCell.
+    displayScale_ = scale;                   // Store for coordinate transformation in pixelToCell.
 
     int lvglScaleX = (int)(scale * 256);
     int lvglScaleY = (int)(scale * 256);
@@ -452,7 +452,8 @@ void CellRenderer::initializeWithPixelSize(
     lv_obj_set_pos(worldCanvas_, offsetX, offsetY);
 
     spdlog::info(
-        "CellRenderer: Initialized canvas {}x{} pixels ({}x{} cells at {}px/cell), scaling {:.2f}×, "
+        "CellRenderer: Initialized canvas {}x{} pixels ({}x{} cells at {}px/cell), scaling "
+        "{:.2f}×, "
         "offset ({}, {})",
         canvasWidth_,
         canvasHeight_,
@@ -556,8 +557,7 @@ void CellRenderer::renderWorldData(
 
     bool containerGrew = (currentContainerWidth > lastContainerWidth_ + GROW_THRESHOLD)
         || (currentContainerHeight > lastContainerHeight_ + GROW_THRESHOLD);
-    bool containerShrunk =
-        (lastContainerWidth_ - currentContainerWidth > SHRINK_THRESHOLD)
+    bool containerShrunk = (lastContainerWidth_ - currentContainerWidth > SHRINK_THRESHOLD)
         || (lastContainerHeight_ - currentContainerHeight > SHRINK_THRESHOLD);
 
     bool containerResized = containerGrew || containerShrunk;
@@ -625,7 +625,7 @@ void CellRenderer::renderWorldData(
         // FIXME: Entity::id should be EntityId. For now, we treat it as OrganismId.
         std::unordered_set<OrganismId> sprite_organism_ids;
         for (const auto& entity : worldData.entities) {
-            sprite_organism_ids.insert(OrganismId{static_cast<int>(entity.id)});
+            sprite_organism_ids.insert(OrganismId{ static_cast<int>(entity.id) });
         }
 
         for (uint32_t y = 0; y < worldData.height; ++y) {
@@ -655,7 +655,8 @@ void CellRenderer::renderWorldData(
                 bool is_sprite_organism =
                     (org_id != INVALID_ORGANISM_ID) && (sprite_organism_ids.count(org_id) > 0);
 
-                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR && !is_sprite_organism) {
+                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR
+                    && !is_sprite_organism) {
                     lv_color_t matColor = getMaterialColor(cell.getRenderMaterial());
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).

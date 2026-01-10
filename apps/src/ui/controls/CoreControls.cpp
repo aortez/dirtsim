@@ -62,7 +62,8 @@ void CoreControls::createMainView(lv_obj_t* view)
     lv_obj_t* topRow = lv_obj_create(view);
     lv_obj_set_size(topRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(topRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(topRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        topRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(topRow, 4, 0);
     lv_obj_set_style_bg_opa(topRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(topRow, 0, 0);
@@ -98,7 +99,8 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .buildOrLog();
 
     // Interaction mode button - navigates to modal for selection.
-    std::string interactionModeText = "Interaction: " + interactionModeToString(state_.interactionMode);
+    std::string interactionModeText =
+        "Interaction: " + interactionModeToString(state_.interactionMode);
     interactionModeButton_ = LVGLBuilder::actionButton(view)
                                  .text(interactionModeText.c_str())
                                  .icon(LV_SYMBOL_RIGHT)
@@ -133,30 +135,28 @@ void CoreControls::createMainView(lv_obj_t* view)
                             .buildOrLog();
 
     // Scale Factor stepper.
-    scaleFactorStepper_ =
-        LVGLBuilder::actionStepper(view)
-            .label("Render Scale")
-            .range(1, 200)
-            .step(5)
-            .value(static_cast<int32_t>(state_.scaleFactor * 100))
-            .valueFormat("%.2f")
-            .valueScale(0.01)
-            .width(LV_PCT(95))
-            .callback(onScaleFactorChanged, this)
-            .buildOrLog();
+    scaleFactorStepper_ = LVGLBuilder::actionStepper(view)
+                              .label("Render Scale")
+                              .range(1, 200)
+                              .step(5)
+                              .value(static_cast<int32_t>(state_.scaleFactor * 100))
+                              .valueFormat("%.2f")
+                              .valueScale(0.01)
+                              .width(LV_PCT(95))
+                              .callback(onScaleFactorChanged, this)
+                              .buildOrLog();
 
     // World Size stepper.
-    worldSizeStepper_ =
-        LVGLBuilder::actionStepper(view)
-            .label("World Size")
-            .range(1, 400)
-            .step(1)
-            .value(state_.worldSize)
-            .valueFormat("%.0f")
-            .valueScale(1.0)
-            .width(LV_PCT(95))
-            .callback(onWorldSizeChanged, this)
-            .buildOrLog();
+    worldSizeStepper_ = LVGLBuilder::actionStepper(view)
+                            .label("World Size")
+                            .range(1, 400)
+                            .step(1)
+                            .value(state_.worldSize)
+                            .valueFormat("%.0f")
+                            .valueScale(1.0)
+                            .width(LV_PCT(95))
+                            .callback(onWorldSizeChanged, this)
+                            .buildOrLog();
 }
 
 void CoreControls::createRenderModeView(lv_obj_t* view)
@@ -182,7 +182,7 @@ void CoreControls::createRenderModeView(lv_obj_t* view)
 
     // Render mode option buttons.
     buttonToRenderMode_.clear();
-    const char* modes[] = {"Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug"};
+    const char* modes[] = { "Adaptive", "Sharp", "Smooth", "Pixel Perfect", "LVGL Debug" };
     for (int i = 0; i < 5; i++) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
                                   .text(modes[i])
@@ -300,17 +300,11 @@ void CoreControls::createDrawMaterialView(lv_obj_t* view)
 
     // Material option buttons (excluding AIR since that's for erasing).
     buttonToDrawMaterial_.clear();
-    const std::vector<MaterialType> drawableMaterials = {
-        MaterialType::DIRT,
-        MaterialType::LEAF,
-        MaterialType::METAL,
-        MaterialType::ROOT,
-        MaterialType::SAND,
-        MaterialType::SEED,
-        MaterialType::WALL,
-        MaterialType::WATER,
-        MaterialType::WOOD
-    };
+    const std::vector<MaterialType> drawableMaterials = { MaterialType::DIRT,  MaterialType::LEAF,
+                                                          MaterialType::METAL, MaterialType::ROOT,
+                                                          MaterialType::SAND,  MaterialType::SEED,
+                                                          MaterialType::WALL,  MaterialType::WATER,
+                                                          MaterialType::WOOD };
 
     for (MaterialType material : drawableMaterials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
@@ -479,9 +473,15 @@ void CoreControls::onInteractionModeSelected(lv_event_t* e)
     // Order: "None" (0), "Erase" (2).
     InteractionMode mode;
     switch (modeIndex) {
-        case 0: mode = InteractionMode::NONE; break;
-        case 2: mode = InteractionMode::ERASE; break;
-        default: mode = InteractionMode::NONE; break;
+        case 0:
+            mode = InteractionMode::NONE;
+            break;
+        case 2:
+            mode = InteractionMode::ERASE;
+            break;
+        default:
+            mode = InteractionMode::NONE;
+            break;
     }
 
     spdlog::info("CoreControls: Interaction mode changed to {}", interactionModeToString(mode));
@@ -521,8 +521,7 @@ void CoreControls::onDrawMaterialSelected(lv_event_t* e)
 
     MaterialType material = it->second;
 
-    spdlog::info(
-        "CoreControls: Draw mode enabled with material {}", getMaterialName(material));
+    spdlog::info("CoreControls: Draw mode enabled with material {}", getMaterialName(material));
 
     // Set both the interaction mode and the draw material.
     self->state_.interactionMode = InteractionMode::DRAW;

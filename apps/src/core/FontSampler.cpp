@@ -5,15 +5,8 @@
 
 namespace DirtSim {
 
-FontSampler::FontSampler(
-    const lv_font_t* font,
-    int targetWidth,
-    int targetHeight,
-    float threshold)
-    : font_(font)
-    , targetWidth_(targetWidth)
-    , targetHeight_(targetHeight)
-    , threshold_(threshold)
+FontSampler::FontSampler(const lv_font_t* font, int targetWidth, int targetHeight, float threshold)
+    : font_(font), targetWidth_(targetWidth), targetHeight_(targetHeight), threshold_(threshold)
 {
     initCanvas();
 }
@@ -24,13 +17,13 @@ FontSampler::~FontSampler()
 }
 
 FontSampler::FontSampler(FontSampler&& other) noexcept
-    : font_(other.font_)
-    , targetWidth_(other.targetWidth_)
-    , targetHeight_(other.targetHeight_)
-    , threshold_(other.threshold_)
-    , canvas_(other.canvas_)
-    , drawBuf_(other.drawBuf_)
-    , cache_(std::move(other.cache_))
+    : font_(other.font_),
+      targetWidth_(other.targetWidth_),
+      targetHeight_(other.targetHeight_),
+      threshold_(other.threshold_),
+      canvas_(other.canvas_),
+      drawBuf_(other.drawBuf_),
+      cache_(std::move(other.cache_))
 {
     other.canvas_ = nullptr;
     other.drawBuf_ = nullptr;
@@ -57,11 +50,8 @@ void FontSampler::initCanvas()
 {
     // Create draw buffer with ARGB8888 format for easy pixel reading.
     // Use lv_draw_buf_create which properly allocates and initializes.
-    auto* buf = lv_draw_buf_create(
-        targetWidth_,
-        targetHeight_,
-        LV_COLOR_FORMAT_ARGB8888,
-        LV_STRIDE_AUTO);
+    auto* buf =
+        lv_draw_buf_create(targetWidth_, targetHeight_, LV_COLOR_FORMAT_ARGB8888, LV_STRIDE_AUTO);
 
     if (!buf) {
         spdlog::error("FontSampler: Failed to create draw buffer");
@@ -136,13 +126,13 @@ std::vector<std::vector<bool>> FontSampler::sampleCharacter(char c, float thresh
     dsc.opa = LV_OPA_COVER;
 
     // Create single-character string.
-    char text[2] = {c, '\0'};
+    char text[2] = { c, '\0' };
     dsc.text = text;
 
     // Draw with margin so we can detect clipping.
     // If filled pixels appear at canvas edge (outside margin), glyph is clipped.
     constexpr int MARGIN = 2;
-    lv_area_t coords = {MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN};
+    lv_area_t coords = { MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN };
     lv_draw_label(&layer, &dsc, &coords);
 
     // Finalize drawing.
@@ -177,7 +167,7 @@ std::vector<std::vector<bool>> FontSampler::sampleUtf8Character(const std::strin
 
     // Draw with margin so we can detect clipping.
     constexpr int MARGIN = 2;
-    lv_area_t coords = {MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN};
+    lv_area_t coords = { MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN };
     lv_draw_label(&layer, &dsc, &coords);
 
     // Finalize drawing.
@@ -350,7 +340,8 @@ bool FontSampler::hasClipping(const std::vector<std::vector<bool>>& pattern)
     return false;
 }
 
-std::vector<std::vector<bool>> FontSampler::trimPattern(const std::vector<std::vector<bool>>& pattern)
+std::vector<std::vector<bool>> FontSampler::trimPattern(
+    const std::vector<std::vector<bool>>& pattern)
 {
     if (pattern.empty() || pattern[0].empty()) {
         return {};

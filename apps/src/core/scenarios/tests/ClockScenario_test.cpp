@@ -94,8 +94,7 @@ TEST_F(ClockScenarioTest, Setup_HasMinimumDigitBlocks)
 
     // Should have at least some digit cells (HH:MM = 4 digits minimum).
     // Each 7-segment digit has at least 10 cells, so expect at least 40.
-    EXPECT_GE(digit_cell_count, 40)
-        << "Expected at least 40 digit cells for HH:MM display";
+    EXPECT_GE(digit_cell_count, 40) << "Expected at least 40 digit cells for HH:MM display";
 }
 
 TEST_F(ClockScenarioTest, Setup_NoActiveEvents)
@@ -117,7 +116,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CanStartManually)
     // Get the current config and enable duck.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.duckEnabled = true;
-    config.eventFrequency = 0.0;  // Disable random triggering.
+    config.eventFrequency = 0.0; // Disable random triggering.
     scenario_->setConfig(config, *world_);
 
     // Duck event should now be active.
@@ -160,7 +159,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 
     // Advance time past the event duration.
     double elapsed = 0.0;
-    const double dt = 0.05;  // Small timesteps for accuracy.
+    const double dt = 0.05; // Small timesteps for accuracy.
     int ticks = 0;
 
     // Run for duration + buffer time.
@@ -192,8 +191,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoesNotTriggerRandomlyWhenDisabled)
     }
 
     // No events should have started.
-    EXPECT_EQ(scenario_->getActiveEventCount(), 0u)
-        << "No events should trigger with frequency=0";
+    EXPECT_EQ(scenario_->getActiveEventCount(), 0u) << "No events should trigger with frequency=0";
 }
 
 // =============================================================================
@@ -259,8 +257,8 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 
     // Helper to check if a position is an open door (AIR at wall position).
     auto is_door_open = [&](int x, int y) -> bool {
-        if (x < 0 || x >= static_cast<int>(world_width) ||
-            y < 0 || y >= static_cast<int>(world_height)) {
+        if (x < 0 || x >= static_cast<int>(world_width) || y < 0
+            || y >= static_cast<int>(world_height)) {
             return false;
         }
         const Cell& cell = data.at(x, y);
@@ -270,8 +268,8 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 
     // Run simulation and track all frames.
     double elapsed = 0.0;
-    const double dt = 0.05;  // Small timesteps for accuracy.
-    const double max_time = 25.0;  // Safety limit.
+    const double dt = 0.05;       // Small timesteps for accuracy.
+    const double max_time = 25.0; // Safety limit.
 
     while (test_scenario->isEventActive(ClockEventType::DUCK) && elapsed < max_time) {
         // Check left door (x=0).
@@ -284,53 +282,35 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
         if (!entrance_door_opened && (left_door_open || right_door_open)) {
             entrance_door_opened = true;
             entrance_door_x = left_door_open ? 0 : static_cast<int>(world_width - 1);
-            door_events.push_back({
-                elapsed,
-                "ENTRANCE_DOOR_OPENED",
-                entrance_door_x,
-                expected_door_y
-            });
-            std::cout << "t=" << elapsed << "s: Entrance door opened at ("
-                      << entrance_door_x << ", " << expected_door_y << ")\n";
+            door_events.push_back(
+                { elapsed, "ENTRANCE_DOOR_OPENED", entrance_door_x, expected_door_y });
+            std::cout << "t=" << elapsed << "s: Entrance door opened at (" << entrance_door_x
+                      << ", " << expected_door_y << ")\n";
         }
 
         // Track entrance door closing.
         if (entrance_door_opened && !entrance_door_closed) {
-            bool entrance_still_open = (entrance_door_x == 0)
-                ? left_door_open
-                : right_door_open;
+            bool entrance_still_open = (entrance_door_x == 0) ? left_door_open : right_door_open;
             if (!entrance_still_open) {
                 entrance_door_closed = true;
-                door_events.push_back({
-                    elapsed,
-                    "ENTRANCE_DOOR_CLOSED",
-                    entrance_door_x,
-                    expected_door_y
-                });
-                std::cout << "t=" << elapsed << "s: Entrance door closed at ("
-                          << entrance_door_x << ", " << expected_door_y << ")\n";
+                door_events.push_back(
+                    { elapsed, "ENTRANCE_DOOR_CLOSED", entrance_door_x, expected_door_y });
+                std::cout << "t=" << elapsed << "s: Entrance door closed at (" << entrance_door_x
+                          << ", " << expected_door_y << ")\n";
             }
         }
 
         // Track exit door opening (opposite side from entrance).
         if (entrance_door_opened && !exit_door_opened) {
-            int potential_exit_x = (entrance_door_x == 0)
-                ? static_cast<int>(world_width - 1)
-                : 0;
-            bool exit_open = (potential_exit_x == 0)
-                ? left_door_open
-                : right_door_open;
+            int potential_exit_x = (entrance_door_x == 0) ? static_cast<int>(world_width - 1) : 0;
+            bool exit_open = (potential_exit_x == 0) ? left_door_open : right_door_open;
             if (exit_open) {
                 exit_door_opened = true;
                 exit_door_x = potential_exit_x;
-                door_events.push_back({
-                    elapsed,
-                    "EXIT_DOOR_OPENED",
-                    exit_door_x,
-                    expected_door_y
-                });
-                std::cout << "t=" << elapsed << "s: Exit door opened at ("
-                          << exit_door_x << ", " << expected_door_y << ")\n";
+                door_events.push_back(
+                    { elapsed, "EXIT_DOOR_OPENED", exit_door_x, expected_door_y });
+                std::cout << "t=" << elapsed << "s: Exit door opened at (" << exit_door_x << ", "
+                          << expected_door_y << ")\n";
             }
         }
 
@@ -342,27 +322,21 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 
     // After event ends, check if exit door closed.
     if (exit_door_opened && !exit_door_closed) {
-        bool exit_still_open = (exit_door_x == 0)
-            ? is_door_open(0, expected_door_y)
-            : is_door_open(world_width - 1, expected_door_y);
+        bool exit_still_open = (exit_door_x == 0) ? is_door_open(0, expected_door_y)
+                                                  : is_door_open(world_width - 1, expected_door_y);
         if (!exit_still_open) {
             exit_door_closed = true;
-            door_events.push_back({
-                elapsed,
-                "EXIT_DOOR_CLOSED",
-                exit_door_x,
-                expected_door_y
-            });
-            std::cout << "t=" << elapsed << "s: Exit door closed at ("
-                      << exit_door_x << ", " << expected_door_y << ")\n";
+            door_events.push_back({ elapsed, "EXIT_DOOR_CLOSED", exit_door_x, expected_door_y });
+            std::cout << "t=" << elapsed << "s: Exit door closed at (" << exit_door_x << ", "
+                      << expected_door_y << ")\n";
         }
     }
 
     // Print summary.
     std::cout << "\n=== Door Event Summary ===\n";
     for (const auto& event : door_events) {
-        std::cout << "  t=" << event.time << "s: " << event.description
-                  << " at (" << event.door_x << ", " << event.door_y << ")\n";
+        std::cout << "  t=" << event.time << "s: " << event.description << " at (" << event.door_x
+                  << ", " << event.door_y << ")\n";
     }
     std::cout << "Event ended after " << elapsed << "s\n";
 
@@ -391,8 +365,8 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     // Verify all doors were at the correct Y position (one above floor).
     for (const auto& event : door_events) {
         EXPECT_EQ(event.door_y, expected_door_y)
-            << "Door at event '" << event.description
-            << "' should be at y=" << expected_door_y << " (one above floor)";
+            << "Door at event '" << event.description << "' should be at y=" << expected_door_y
+            << " (one above floor)";
     }
 
     // Verify event completed.
@@ -426,7 +400,8 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
     double elapsed = 0.0;
     const double sample_dt = 0.1;
 
-    while (scenario_->isEventActive(ClockEventType::COLOR_CYCLE) && elapsed < event_duration + 1.0) {
+    while (scenario_->isEventActive(ClockEventType::COLOR_CYCLE)
+           && elapsed < event_duration + 1.0) {
         // Sample current material from digit cells.
         const WorldData& data = world_->getData();
         for (uint32_t y = 1; y < data.height - 1; ++y) {
@@ -435,11 +410,11 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     MaterialType render_material = static_cast<MaterialType>(cell.render_as);
                     material_counts[render_material]++;
-                    goto sampled;  // Sample one cell per tick.
+                    goto sampled; // Sample one cell per tick.
                 }
             }
         }
-        sampled:
+    sampled:
 
         scenario_->tick(*world_, sample_dt);
         world_->advanceTime(sample_dt);
@@ -498,7 +473,7 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
 
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0;  // Enable events.
+    config.eventFrequency = 1.0; // Enable events.
     scenario_->setConfig(config, *world_);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DIGIT_SLIDE));
@@ -531,8 +506,12 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
 
     // During animation, we should see digits at different Y positions than before.
     // The old digit slides down (Y increases) and new digit slides in from above.
-    int mid_min_y = mid_positions.empty() ? min_y : *std::min_element(mid_positions.begin(), mid_positions.end());
-    int mid_max_y = mid_positions.empty() ? max_y : *std::max_element(mid_positions.begin(), mid_positions.end());
+    int mid_min_y = mid_positions.empty()
+        ? min_y
+        : *std::min_element(mid_positions.begin(), mid_positions.end());
+    int mid_max_y = mid_positions.empty()
+        ? max_y
+        : *std::max_element(mid_positions.begin(), mid_positions.end());
 
     std::cout << "Mid-animation digit Y range: " << mid_min_y << " to " << mid_max_y << "\n";
 
@@ -578,8 +557,8 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
 
     // Run until the event finishes.
     double elapsed = 0.0;
-    const double dt = 0.02;  // Small timesteps.
-    const double max_time = 30.0;  // Safety limit.
+    const double dt = 0.02;       // Small timesteps.
+    const double max_time = 30.0; // Safety limit.
 
     while (scenario_->isEventActive(ClockEventType::MARQUEE) && elapsed < max_time) {
         scenario_->tick(*world_, dt);
@@ -646,7 +625,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.colorShowcaseEnabled = true;
     config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0;  // Enable events.
+    config.eventFrequency = 1.0; // Enable events.
     scenario_->setConfig(config, *world_);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_SHOWCASE));
@@ -676,7 +655,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     std::map<MaterialType, int> material_counts;
     int num_samples = 0;
 
-    for (int frame = 0; frame < 30; ++frame) {  // ~0.5s of animation at 60fps.
+    for (int frame = 0; frame < 30; ++frame) { // ~0.5s of animation at 60fps.
         scenario_->tick(*world_, 0.016);
 
         auto frame_materials = getDigitMaterials(world_->getData());
@@ -690,8 +669,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     std::cout << "\n=== Material Distribution During Animation ===\n";
     for (const auto& [mat, count] : material_counts) {
         double pct = 100.0 * count / num_samples;
-        std::cout << "  " << getMaterialName(mat) << ": " << count
-                  << " samples (" << pct << "%)\n";
+        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples (" << pct << "%)\n";
     }
 
     // METAL should NOT appear during showcase+slide (that indicates showcase reset bug).
@@ -704,8 +682,8 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     // All frames should use the same material (no rapid cycling through all colors).
     // Showcase changes once when time changes, then stays consistent.
     EXPECT_EQ(material_counts.size(), 1u)
-        << "Should see exactly 1 material during animation (no rapid cycling). "
-        << "Found " << material_counts.size() << " different materials.";
+        << "Should see exactly 1 material during animation (no rapid cycling). " << "Found "
+        << material_counts.size() << " different materials.";
 }
 
 TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
@@ -750,7 +728,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     std::map<MaterialType, int> material_counts;
     int num_samples = 0;
 
-    for (int frame = 0; frame < 60; ++frame) {  // ~1s of animation.
+    for (int frame = 0; frame < 60; ++frame) { // ~1s of animation.
         scenario_->tick(*world_, 0.016);
         world_->advanceTime(0.016);
 
@@ -765,17 +743,15 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     std::cout << "\n=== Material Distribution During Marquee ===\n";
     for (const auto& [mat, count] : material_counts) {
         double pct = 100.0 * count / num_samples;
-        std::cout << "  " << getMaterialName(mat) << ": " << count
-                  << " samples (" << pct << "%)\n";
+        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples (" << pct << "%)\n";
     }
 
     // METAL should NOT appear during showcase+marquee.
     auto metal_it = material_counts.find(MaterialType::METAL);
     if (metal_it != material_counts.end() && showcase_material != MaterialType::METAL) {
         FAIL() << "Found METAL material during marquee when showcase material was "
-               << getMaterialName(showcase_material)
-               << ". METAL appeared " << metal_it->second << " times out of "
-               << num_samples << " samples.";
+               << getMaterialName(showcase_material) << ". METAL appeared " << metal_it->second
+               << " times out of " << num_samples << " samples.";
     }
 
     // Should see at most 2 materials (no rapid cycling).

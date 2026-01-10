@@ -22,10 +22,10 @@ enum class GooseAction {
  * Sensory data provided to goose brain each tick.
  */
 struct GooseSensoryData {
-    Vector2i position;           // Current grid position.
-    Vector2d velocity;           // Current velocity (from rigid body).
-    bool on_ground = false;      // Whether goose is on solid ground.
-    float facing_x = 1.0f;       // Facing direction (-1 = left, 1 = right).
+    Vector2i position;      // Current grid position.
+    Vector2d velocity;      // Current velocity (from rigid body).
+    bool on_ground = false; // Whether goose is on solid ground.
+    float facing_x = 1.0f;  // Facing direction (-1 = left, 1 = right).
     double delta_time_seconds = 0.0;
 };
 

@@ -40,7 +40,8 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
     // Gather histograms centered at (7,7) with 9x9 grid.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
     Vector2i world_offset;
-    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 7, 7 }, histograms, world_offset);
+    SensoryUtils::gatherMaterialHistograms<9, 10>(
+        *world, Vector2i{ 7, 7 }, histograms, world_offset);
 
     // Grid center is at (4,4) in neural coords.
     // World offset should be (7-4, 7-4) = (3, 3).
@@ -88,7 +89,8 @@ TEST(SensoryUtilsTest, GatherHistogramsMarksBoundariesAsWall)
     // Request 9x9 grid centered at (1,1) - extends to (-3,-3) which is OOB.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
     Vector2i world_offset;
-    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 1, 1 }, histograms, world_offset);
+    SensoryUtils::gatherMaterialHistograms<9, 10>(
+        *world, Vector2i{ 1, 1 }, histograms, world_offset);
 
     // Offset is centered on organism: (1-4, 1-4) = (-3, -3).
     EXPECT_EQ(world_offset.x, -3);
@@ -121,7 +123,8 @@ TEST(SensoryUtilsTest, GatherHistogramsAtWorldEdge)
     // Request 9x9 grid centered at (8,5) - near right edge, extends to (12,5) which is OOB.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
     Vector2i world_offset;
-    SensoryUtils::gatherMaterialHistograms<9, 10>(*world, Vector2i{ 8, 5 }, histograms, world_offset);
+    SensoryUtils::gatherMaterialHistograms<9, 10>(
+        *world, Vector2i{ 8, 5 }, histograms, world_offset);
 
     // Offset is centered on organism: (8-4, 5-4) = (4, 1).
     EXPECT_EQ(world_offset.x, 4);
@@ -460,14 +463,16 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
     ASSERT_LT(wall_neural_y, DuckSensoryData::GRID_SIZE);
 
     // Check that isSolid detects the wall.
-    bool wall_is_solid = SensoryUtils::isSolid<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-        sensory.material_histograms, wall_neural_x, wall_neural_y);
+    bool wall_is_solid =
+        SensoryUtils::isSolid<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
+            sensory.material_histograms, wall_neural_x, wall_neural_y);
     EXPECT_TRUE(wall_is_solid) << "Should detect wall ahead as solid";
 
     // Center should not be solid (it's the duck's WOOD cell, but let's check air around it).
     // Actually the duck itself is WOOD which is solid, so check one cell away.
     int left_of_duck_x = 4 - 1; // One cell left of center in neural coords.
-    bool left_is_solid = SensoryUtils::isSolid<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-        sensory.material_histograms, left_of_duck_x, 4);
+    bool left_is_solid =
+        SensoryUtils::isSolid<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
+            sensory.material_histograms, left_of_duck_x, 4);
     EXPECT_FALSE(left_is_solid) << "Air to the left of duck should not be solid";
 }

@@ -12,13 +12,13 @@
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/PlayerDuckBrain.h"
 #include "core/organisms/Tree.h"
+#include "core/scenarios/Scenario.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/ScenarioSwitch.h"
-#include "core/scenarios/Scenario.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
 #include <cmath>
@@ -72,7 +72,8 @@ void SimRunning::onEnter(StateMachine& dsm)
             // Register scenario with World for tick during advanceTime.
             world->setScenario(scenario.get());
 
-            spdlog::info("SimRunning: Startup scenario '{}' applied with config", startupScenarioId);
+            spdlog::info(
+                "SimRunning: Startup scenario '{}' applied with config", startupScenarioId);
         }
     }
 
@@ -121,7 +122,8 @@ void SimRunning::tick(StateMachine& dsm)
 
         // Check for Start button press (edge-detected) to spawn duck.
         bool prev_start = prev_start_button_[i];
-        if (state->button_start && !prev_start && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
+        if (state->button_start && !prev_start
+            && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
             // Spawn a new player-controlled duck at center-top of world.
             uint32_t spawn_x = world->getData().width / 2;
             uint32_t spawn_y = 2;
@@ -130,18 +132,22 @@ void SimRunning::tick(StateMachine& dsm)
             Vector2i spawn_pos{ static_cast<int>(spawn_x), static_cast<int>(spawn_y) };
             OrganismId blocking = world->getOrganismManager().at(spawn_pos);
             if (blocking != INVALID_ORGANISM_ID) {
-                spdlog::warn("SimRunning: Gamepad {} spawn blocked by organism {} at ({}, {})",
-                    i, blocking, spawn_x, spawn_y);
+                spdlog::warn(
+                    "SimRunning: Gamepad {} spawn blocked by organism {} at ({}, {})",
+                    i,
+                    blocking,
+                    spawn_x,
+                    spawn_y);
                 continue;
             }
 
             auto brain = std::make_unique<PlayerDuckBrain>();
-            OrganismId duck_id = world->getOrganismManager().createDuck(
-                *world, spawn_x, spawn_y, std::move(brain));
+            OrganismId duck_id =
+                world->getOrganismManager().createDuck(*world, spawn_x, spawn_y, std::move(brain));
 
             gamepad_to_duck_[i] = duck_id;
-            spdlog::info("SimRunning: Gamepad {} spawned duck {} at ({}, {})",
-                i, duck_id, spawn_x, spawn_y);
+            spdlog::info(
+                "SimRunning: Gamepad {} spawned duck {} at ({}, {})", i, duck_id, spawn_x, spawn_y);
         }
         prev_start_button_[i] = state->button_start;
 
@@ -177,8 +183,8 @@ void SimRunning::tick(StateMachine& dsm)
             }
             else {
                 // Duck no longer exists (died, removed, etc.) - clean up mapping.
-                spdlog::debug("SimRunning: Gamepad {} duck {} no longer exists, cleaning up",
-                    i, it->second);
+                spdlog::debug(
+                    "SimRunning: Gamepad {} duck {} no longer exists, cleaning up", i, it->second);
                 gamepad_to_duck_.erase(it);
             }
         }
@@ -295,17 +301,23 @@ void SimRunning::tick(StateMachine& dsm)
     }
 
     if (duck_organism_count != duck_entity_count) {
-        spdlog::critical("INVARIANT VIOLATION: {} duck organisms but {} duck entities!",
-            duck_organism_count, duck_entity_count);
+        spdlog::critical(
+            "INVARIANT VIOLATION: {} duck organisms but {} duck entities!",
+            duck_organism_count,
+            duck_entity_count);
     }
-    DIRTSIM_ASSERT(duck_organism_count == duck_entity_count,
+    DIRTSIM_ASSERT(
+        duck_organism_count == duck_entity_count,
         "Duck entities must match duck organisms before caching!");
 
     if (goose_organism_count != goose_entity_count) {
-        spdlog::critical("INVARIANT VIOLATION: {} goose organisms but {} goose entities!",
-            goose_organism_count, goose_entity_count);
+        spdlog::critical(
+            "INVARIANT VIOLATION: {} goose organisms but {} goose entities!",
+            goose_organism_count,
+            goose_entity_count);
     }
-    DIRTSIM_ASSERT(goose_organism_count == goose_entity_count,
+    DIRTSIM_ASSERT(
+        goose_organism_count == goose_entity_count,
         "Goose entities must match goose organisms before caching!");
 
     dsm.updateCachedWorldData(world->getData());
@@ -620,8 +632,10 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     // Create fresh world for new scenario.
     const auto& metadata = newScenario->getMetadata();
-    uint32_t newWidth = (metadata.requiredWidth > 0) ? metadata.requiredWidth : world->getData().width;
-    uint32_t newHeight = (metadata.requiredHeight > 0) ? metadata.requiredHeight : world->getData().height;
+    uint32_t newWidth =
+        (metadata.requiredWidth > 0) ? metadata.requiredWidth : world->getData().width;
+    uint32_t newHeight =
+        (metadata.requiredHeight > 0) ? metadata.requiredHeight : world->getData().height;
     world = std::make_unique<World>(newWidth, newHeight);
 
     // Clear gamepad-controlled duck mappings (ducks are gone with the old world).
@@ -686,7 +700,8 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& /*dsm
 
     // Plant seed as tree organism.
     spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    OrganismId tree_id = world->getOrganismManager().createTree(*world, cwc.command.x, cwc.command.y);
+    OrganismId tree_id =
+        world->getOrganismManager().createTree(*world, cwc.command.x, cwc.command.y);
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
@@ -775,29 +790,36 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     world->getOrganismManager().forEachOrganism([&](const Organism& org) {
         WorldData::OrganismDebugInfo debug{
             .id = org.getId(),
-            .type = "",  // Set below based on type.
+            .type = "", // Set below based on type.
             .anchor_cell = org.getAnchorCell(),
-            .material_at_anchor = "",  // Set below.
-            .organism_id_at_anchor = INVALID_ORGANISM_ID  // Set below.
+            .material_at_anchor = "",                    // Set below.
+            .organism_id_at_anchor = INVALID_ORGANISM_ID // Set below.
         };
 
         // Get organism type name.
         switch (org.getType()) {
-            case OrganismType::DUCK:  debug.type = "DUCK"; break;
-            case OrganismType::TREE:  debug.type = "TREE"; break;
-            case OrganismType::GOOSE: debug.type = "GOOSE"; break;
+            case OrganismType::DUCK:
+                debug.type = "DUCK";
+                break;
+            case OrganismType::TREE:
+                debug.type = "TREE";
+                break;
+            case OrganismType::GOOSE:
+                debug.type = "GOOSE";
+                break;
         }
 
         // Check what's actually at the anchor position.
         const WorldData& data = world->getData();
-        if (debug.anchor_cell.x >= 0 && debug.anchor_cell.y >= 0 &&
-            static_cast<uint32_t>(debug.anchor_cell.x) < data.width &&
-            static_cast<uint32_t>(debug.anchor_cell.y) < data.height) {
+        if (debug.anchor_cell.x >= 0 && debug.anchor_cell.y >= 0
+            && static_cast<uint32_t>(debug.anchor_cell.x) < data.width
+            && static_cast<uint32_t>(debug.anchor_cell.y) < data.height) {
 
             const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
             debug.material_at_anchor = getMaterialName(cell.material_type);
             debug.organism_id_at_anchor = world->getOrganismManager().at(debug.anchor_cell);
-        } else {
+        }
+        else {
             debug.material_at_anchor = "OUT_OF_BOUNDS";
         }
 

@@ -59,9 +59,7 @@ void FallingDirtScenario::setup(World& world)
 
     // Add floor.
     for (uint32_t x = 0; x < world.getData().width; ++x) {
-        world.getData()
-            .at(x, world.getData().height - 1)
-            .replaceMaterial(MaterialType::WALL, 1.0);
+        world.getData().at(x, world.getData().height - 1).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
     // Add some initial dirt piles to make it interesting.

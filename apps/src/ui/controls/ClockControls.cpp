@@ -12,7 +12,8 @@ ClockControls::ClockControls(
     Network::WebSocketService* wsService,
     const Config::Clock& config,
     DisplayDimensionsGetter dimensionsGetter)
-    : ScenarioControlsBase(container, wsService, "clock"), dimensionsGetter_(std::move(dimensionsGetter))
+    : ScenarioControlsBase(container, wsService, "clock"),
+      dimensionsGetter_(std::move(dimensionsGetter))
 {
     // Create widgets.
     createWidgets();
@@ -60,8 +61,8 @@ void ClockControls::createWidgets()
 void ClockControls::createMainView(lv_obj_t* view)
 {
     // Font selector button.
-    const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
-                               "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+    const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
+                                "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
     std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
 
     fontButton_ = LVGLBuilder::actionButton(view)
@@ -75,8 +76,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                       .buildOrLog();
 
     // Timezone selector button.
-    std::string timezoneText = std::string("Timezone: ") +
-                               ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+    std::string timezoneText =
+        std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
 
     timezoneButton_ = LVGLBuilder::actionButton(view)
                           .text(timezoneText.c_str())
@@ -89,8 +90,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                           .buildOrLog();
 
     // Digit material selector button.
-    std::string materialText = std::string("Digit Color: ") +
-                               getMaterialName(static_cast<MaterialType>(currentMaterialIndex_));
+    std::string materialText = std::string("Digit Color: ")
+        + getMaterialName(static_cast<MaterialType>(currentMaterialIndex_));
 
     digitMaterialButton_ = LVGLBuilder::actionButton(view)
                                .text(materialText.c_str())
@@ -106,7 +107,8 @@ void ClockControls::createMainView(lv_obj_t* view)
     lv_obj_t* secondsRow = lv_obj_create(view);
     lv_obj_set_size(secondsRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(secondsRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(secondsRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        secondsRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(secondsRow, 4, 0);
     lv_obj_set_style_bg_opa(secondsRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(secondsRow, 0, 0);
@@ -126,8 +128,8 @@ void ClockControls::createMainView(lv_obj_t* view)
     meltButton_ = LVGLBuilder::actionButton(secondsRow)
                       .text(LV_SYMBOL_WARNING "\nMelt")
                       .size(80)
-                      .textColor(0xFFA500)   // Construction orange.
-                      .glowColor(0xFF4400)   // Orange glow for meltdown.
+                      .textColor(0xFFA500) // Construction orange.
+                      .glowColor(0xFF4400) // Orange glow for meltdown.
                       .callback(onMeltClicked, this)
                       .buildOrLog();
 
@@ -135,7 +137,8 @@ void ClockControls::createMainView(lv_obj_t* view)
     lv_obj_t* eventRow = lv_obj_create(view);
     lv_obj_set_size(eventRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(eventRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(eventRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        eventRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(eventRow, 4, 0);
     lv_obj_set_style_bg_opa(eventRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(eventRow, 0, 0);
@@ -147,8 +150,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                       .mode(LVGLBuilder::ActionMode::Toggle)
                       .size(80)
                       .checked(false)
-                      .textColor(0x0088FF)  // Blue text.
-                      .glowColor(0x0088FF)  // Blue glow for water/rain.
+                      .textColor(0x0088FF) // Blue text.
+                      .glowColor(0x0088FF) // Blue glow for water/rain.
                       .callback(onRainToggled, this)
                       .buildOrLog();
 
@@ -158,7 +161,7 @@ void ClockControls::createMainView(lv_obj_t* view)
                       .mode(LVGLBuilder::ActionMode::Toggle)
                       .size(80)
                       .checked(false)
-                      .glowColor(0xFFCC00)  // Yellow glow for duck.
+                      .glowColor(0xFFCC00) // Yellow glow for duck.
                       .callback(onDuckToggled, this)
                       .buildOrLog();
 
@@ -166,7 +169,8 @@ void ClockControls::createMainView(lv_obj_t* view)
     lv_obj_t* cycleRow = lv_obj_create(view);
     lv_obj_set_size(cycleRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(cycleRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(cycleRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        cycleRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(cycleRow, 4, 0);
     lv_obj_set_style_bg_opa(cycleRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(cycleRow, 0, 0);
@@ -178,8 +182,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                             .mode(LVGLBuilder::ActionMode::Toggle)
                             .size(80)
                             .checked(false)
-                            .textColor(0xFF00FF)  // Magenta text.
-                            .glowColor(0xFF00FF)  // Magenta glow for color cycling.
+                            .textColor(0xFF00FF) // Magenta text.
+                            .glowColor(0xFF00FF) // Magenta glow for color cycling.
                             .callback(onColorCycleToggled, this)
                             .buildOrLog();
 
@@ -189,8 +193,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                                .mode(LVGLBuilder::ActionMode::Toggle)
                                .size(80)
                                .checked(false)
-                               .textColor(0x00FFFF)  // Cyan text.
-                               .glowColor(0x00FFFF)  // Cyan glow for showcase.
+                               .textColor(0x00FFFF) // Cyan text.
+                               .glowColor(0x00FFFF) // Cyan glow for showcase.
                                .callback(onColorShowcaseToggled, this)
                                .buildOrLog();
 
@@ -198,7 +202,8 @@ void ClockControls::createMainView(lv_obj_t* view)
     lv_obj_t* marqueeRow = lv_obj_create(view);
     lv_obj_set_size(marqueeRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(marqueeRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(marqueeRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        marqueeRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(marqueeRow, 4, 0);
     lv_obj_set_style_bg_opa(marqueeRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(marqueeRow, 0, 0);
@@ -210,8 +215,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                             .mode(LVGLBuilder::ActionMode::Toggle)
                             .size(80)
                             .checked(false)
-                            .textColor(0xFFAA00)  // Orange text.
-                            .glowColor(0xFFAA00)  // Orange glow for slide effect.
+                            .textColor(0xFFAA00) // Orange text.
+                            .glowColor(0xFFAA00) // Orange glow for slide effect.
                             .callback(onDigitSlideToggled, this)
                             .buildOrLog();
 
@@ -221,8 +226,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                          .mode(LVGLBuilder::ActionMode::Toggle)
                          .size(80)
                          .checked(false)
-                         .textColor(0x44FF44)  // Green text.
-                         .glowColor(0x44FF44)  // Green glow for marquee scroll.
+                         .textColor(0x44FF44) // Green text.
+                         .glowColor(0x44FF44) // Green glow for marquee scroll.
                          .callback(onMarqueeToggled, this)
                          .buildOrLog();
 }
@@ -250,8 +255,8 @@ void ClockControls::createFontSelectionView(lv_obj_t* view)
 
     // Font option buttons.
     // Order matches ClockFont enum.
-    const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
-                               "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+    const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
+                                "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
     buttonToFontIndex_.clear();
 
     for (int i = 0; i < 6; i++) {
@@ -339,18 +344,11 @@ void ClockControls::createDigitMaterialSelectionView(lv_obj_t* view)
     buttonToMaterialIndex_.clear();
 
     // All material types in enum order.
-    static const MaterialType materials[] = {
-        MaterialType::AIR,
-        MaterialType::DIRT,
-        MaterialType::LEAF,
-        MaterialType::METAL,
-        MaterialType::ROOT,
-        MaterialType::SAND,
-        MaterialType::SEED,
-        MaterialType::WALL,
-        MaterialType::WATER,
-        MaterialType::WOOD
-    };
+    static const MaterialType materials[] = { MaterialType::AIR,   MaterialType::DIRT,
+                                              MaterialType::LEAF,  MaterialType::METAL,
+                                              MaterialType::ROOT,  MaterialType::SAND,
+                                              MaterialType::SEED,  MaterialType::WALL,
+                                              MaterialType::WATER, MaterialType::WOOD };
 
     for (MaterialType mat : materials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
@@ -393,8 +391,8 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update font selection and button text.
     currentFontIndex_ = static_cast<int>(config.font);
     if (fontButton_) {
-        const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
-                                   "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
+        const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
+                                    "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
         std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
 
         lv_obj_t* button = lv_obj_get_child(fontButton_, 0);
@@ -410,8 +408,8 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update timezone selection and button text.
     currentTimezoneIndex_ = config.timezoneIndex;
     if (timezoneButton_) {
-        std::string timezoneText = std::string("Timezone: ") +
-                                   ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+        std::string timezoneText =
+            std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
 
         lv_obj_t* button = lv_obj_get_child(timezoneButton_, 0);
         if (button) {
@@ -432,13 +430,18 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update color cycle button.
     if (colorCycleSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(colorCycleSwitch_, config.colorCycleEnabled);
-        LOG_DEBUG(Controls, "ClockControls: Updated color cycle button to {}", config.colorCycleEnabled);
+        LOG_DEBUG(
+            Controls, "ClockControls: Updated color cycle button to {}", config.colorCycleEnabled);
     }
 
     // Update color showcase button.
     if (colorShowcaseSwitch_) {
-        LVGLBuilder::ActionButtonBuilder::setChecked(colorShowcaseSwitch_, config.colorShowcaseEnabled);
-        LOG_DEBUG(Controls, "ClockControls: Updated color showcase button to {}", config.colorShowcaseEnabled);
+        LVGLBuilder::ActionButtonBuilder::setChecked(
+            colorShowcaseSwitch_, config.colorShowcaseEnabled);
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated color showcase button to {}",
+            config.colorShowcaseEnabled);
     }
 
     // Update rain button.
@@ -456,7 +459,8 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update digit slide button.
     if (digitSlideSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(digitSlideSwitch_, config.digitSlideEnabled);
-        LOG_DEBUG(Controls, "ClockControls: Updated digit slide button to {}", config.digitSlideEnabled);
+        LOG_DEBUG(
+            Controls, "ClockControls: Updated digit slide button to {}", config.digitSlideEnabled);
     }
 
     // Update marquee button.
@@ -468,18 +472,20 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update digit material selection and button text.
     currentMaterialIndex_ = static_cast<int>(config.digitMaterial);
     if (digitMaterialButton_) {
-        std::string materialText = std::string("Digit Color: ") +
-                                   getMaterialName(config.digitMaterial);
+        std::string materialText =
+            std::string("Digit Color: ") + getMaterialName(config.digitMaterial);
 
         lv_obj_t* button = lv_obj_get_child(digitMaterialButton_, 0);
         if (button) {
-            lv_obj_t* label = lv_obj_get_child(button, 1);  // Second child is text.
+            lv_obj_t* label = lv_obj_get_child(button, 1); // Second child is text.
             if (label) {
                 lv_label_set_text(label, materialText.c_str());
             }
         }
-        LOG_DEBUG(Controls, "ClockControls: Updated digit material to {}",
-                  getMaterialName(config.digitMaterial));
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated digit material to {}",
+            getMaterialName(config.digitMaterial));
     }
 
     // Cache current config.
@@ -517,7 +523,8 @@ Config::Clock ClockControls::getCurrentConfig() const
 
     // Get color showcase enabled from button.
     if (colorShowcaseSwitch_) {
-        config.colorShowcaseEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(colorShowcaseSwitch_);
+        config.colorShowcaseEnabled =
+            LVGLBuilder::ActionButtonBuilder::isChecked(colorShowcaseSwitch_);
     }
 
     // Get rain enabled from button.
@@ -580,9 +587,10 @@ void ClockControls::onFontSelected(lv_event_t* e)
     }
 
     int fontIndex = it->second;
-    static const char* fontNames[] = {"Dot Matrix", "7-Segment", "7-Segment Extra Tall",
-                                      "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall"};
-    LOG_INFO(Controls, "ClockControls: Font changed to index {} ({})", fontIndex, fontNames[fontIndex]);
+    static const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
+                                       "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
+    LOG_INFO(
+        Controls, "ClockControls: Font changed to index {} ({})", fontIndex, fontNames[fontIndex]);
 
     // Update selection and button text.
     self->currentFontIndex_ = fontIndex;
@@ -640,16 +648,17 @@ void ClockControls::onTimezoneSelected(lv_event_t* e)
     }
 
     int timezoneIndex = it->second;
-    LOG_INFO(Controls,
-             "ClockControls: Timezone changed to index {} ({})",
-             timezoneIndex,
-             ClockScenario::TIMEZONES[timezoneIndex].label);
+    LOG_INFO(
+        Controls,
+        "ClockControls: Timezone changed to index {} ({})",
+        timezoneIndex,
+        ClockScenario::TIMEZONES[timezoneIndex].label);
 
     // Update selection and button text.
     self->currentTimezoneIndex_ = timezoneIndex;
     if (self->timezoneButton_) {
-        std::string timezoneText = std::string("Timezone: ") +
-                                   ClockScenario::TIMEZONES[timezoneIndex].label;
+        std::string timezoneText =
+            std::string("Timezone: ") + ClockScenario::TIMEZONES[timezoneIndex].label;
         lv_obj_t* button = lv_obj_get_child(self->timezoneButton_, 0);
         if (button) {
             lv_obj_t* label = lv_obj_get_child(button, 1);
@@ -703,10 +712,11 @@ void ClockControls::onDigitMaterialSelected(lv_event_t* e)
 
     int materialIndex = it->second;
     MaterialType material = static_cast<MaterialType>(materialIndex);
-    LOG_INFO(Controls,
-             "ClockControls: Digit material changed to {} ({})",
-             materialIndex,
-             getMaterialName(material));
+    LOG_INFO(
+        Controls,
+        "ClockControls: Digit material changed to {} ({})",
+        materialIndex,
+        getMaterialName(material));
 
     // Update selection and button text.
     self->currentMaterialIndex_ = materialIndex;

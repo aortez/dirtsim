@@ -29,7 +29,7 @@ struct Clock {
     uint32_t targetDisplayHeight = 480;
     uint32_t marginPixels = 20;
     double eventFrequency = 0.5;
-    double colorsPerSecond = 4.0;  // Color cycle rate when colorCycleEnabled is true.
+    double colorsPerSecond = 4.0; // Color cycle rate when colorCycleEnabled is true.
     bool colorCycleEnabled = false;
     bool colorShowcaseEnabled = false;
     bool digitSlideEnabled = false;
@@ -37,7 +37,7 @@ struct Clock {
     bool marqueeEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
-    MaterialType digitMaterial = MaterialType::METAL;  // Render color for clock digits.
+    MaterialType digitMaterial = MaterialType::METAL; // Render color for clock digits.
 };
 
 } // namespace DirtSim::Config

@@ -65,21 +65,20 @@ struct AllColumnConfigs {
 
 AllColumnConfigs createAllColumnConfigs();
 
-size_t createControlsFromColumn(lv_obj_t* parent,
-                                 const ColumnConfig& config,
-                                 Control* controlsArray,
-                                 size_t startIndex,
-                                 std::unordered_map<lv_obj_t*, Control*>& widgetToControl,
-                                 lv_event_cb_t toggleCallback,
-                                 lv_event_cb_t sliderCallback,
-                                 void* callbackUserData);
+size_t createControlsFromColumn(
+    lv_obj_t* parent,
+    const ColumnConfig& config,
+    Control* controlsArray,
+    size_t startIndex,
+    std::unordered_map<lv_obj_t*, Control*>& widgetToControl,
+    lv_event_cb_t toggleCallback,
+    lv_event_cb_t sliderCallback,
+    void* callbackUserData);
 
-Control* findControl(lv_obj_t* widget,
-                      std::unordered_map<lv_obj_t*, Control*>& widgetToControl);
+Control* findControl(lv_obj_t* widget, std::unordered_map<lv_obj_t*, Control*>& widgetToControl);
 
-void updateControlsFromSettings(Control* controlsArray,
-                                 size_t controlCount,
-                                 const PhysicsSettings& settings);
+void updateControlsFromSettings(
+    Control* controlsArray, size_t controlCount, const PhysicsSettings& settings);
 
 void syncSettingsToServer(Network::WebSocketService* wsService, const PhysicsSettings& settings);
 

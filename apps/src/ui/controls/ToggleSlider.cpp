@@ -7,7 +7,8 @@ namespace Ui {
 
 // --- Builder Implementation ---
 
-ToggleSlider::Builder::Builder(lv_obj_t* parent) : parent_(parent) {}
+ToggleSlider::Builder::Builder(lv_obj_t* parent) : parent_(parent)
+{}
 
 ToggleSlider::Builder& ToggleSlider::Builder::label(const char* text)
 {

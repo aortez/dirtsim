@@ -25,7 +25,7 @@ struct Command {
 };
 
 struct Okay {
-    std::string state; // Current state machine state (always present).
+    std::string state;         // Current state machine state (always present).
     std::string error_message; // Populated when state is "Error".
     uint64_t timestep = 0;
     std::string scenario_id;

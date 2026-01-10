@@ -71,7 +71,7 @@ TEST_F(TreeGerminationTest, SeedGerminates)
 {
     scenario->setup(*world);
 
-    OrganismId id{1};
+    OrganismId id{ 1 };
     const Tree* tree = world->getOrganismManager().getTree(id);
     EXPECT_EQ(tree->getStage(), GrowthStage::SEED);
 
@@ -119,7 +119,7 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
 {
     scenario->setup(*world);
 
-    OrganismId id{1};
+    OrganismId id{ 1 };
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "Initial state (Seed at: " << tree->getAnchorCell().x << ", "
@@ -169,14 +169,16 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
         // Print every 50 frames for detailed view.
         if (i % 50 == 0 && i > 0) {
             std::cout << "After " << (i * 0.016) << "s (Energy: " << tree->getEnergy()
-                      << ", Cells: " << tree->getCells().size() << ", Seed: " << tree->getAnchorCell().x
-                      << ", " << tree->getAnchorCell().y << "):\n"
+                      << ", Cells: " << tree->getCells().size()
+                      << ", Seed: " << tree->getAnchorCell().x << ", " << tree->getAnchorCell().y
+                      << "):\n"
                       << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
         }
     }
 
-    std::cout << "Final state (Energy: " << tree->getEnergy() << ", Cells: " << tree->getCells().size()
-              << ", Seed at: (" << tree->getAnchorCell().x << ", " << tree->getAnchorCell().y << ")):\n"
+    std::cout << "Final state (Energy: " << tree->getEnergy()
+              << ", Cells: " << tree->getCells().size() << ", Seed at: (" << tree->getAnchorCell().x
+              << ", " << tree->getAnchorCell().y << ")):\n"
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
 
     EXPECT_EQ(tree->getStage(), GrowthStage::SAPLING);
@@ -192,7 +194,7 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
 
     for (uint32_t y = 0; y < 7; ++y) {
         for (uint32_t x = 0; x < 7; ++x) {
-            Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
             if (world->getOrganismManager().at(pos) != tree->getId()) continue;
 
             const Cell& cell = world->getData().at(x, y);
@@ -287,7 +289,7 @@ TEST_F(TreeGerminationTest, TreeStopsGrowingWhenOutOfEnergy)
 {
     scenario->setup(*world);
 
-    OrganismId id{1};
+    OrganismId id{ 1 };
     Tree* tree = world->getOrganismManager().getTree(id);
 
     const double initial_energy = 25.0;
@@ -304,7 +306,8 @@ TEST_F(TreeGerminationTest, TreeStopsGrowingWhenOutOfEnergy)
     // - Can't afford another WOOD (10.0) or ROOT (12.0)
     // Expected: 3 cells (SEED + ROOT + WOOD), 3.0 energy remaining.
 
-    EXPECT_EQ(tree->getCells().size(), 3u) << "Tree should have SEED + ROOT + WOOD (25.0 energy limit)";
+    EXPECT_EQ(tree->getCells().size(), 3u)
+        << "Tree should have SEED + ROOT + WOOD (25.0 energy limit)";
     EXPECT_DOUBLE_EQ(tree->getEnergy(), 3.0)
         << "Should have 3.0 energy remaining after germination";
 }
@@ -313,7 +316,7 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
 {
     scenario->setup(*world);
 
-    OrganismId id{1};
+    OrganismId id{ 1 };
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "Initial state:\n"
@@ -332,7 +335,7 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
         wood_positions.clear();
         for (uint32_t y = 0; y < 9; ++y) {
             for (uint32_t x = 0; x < 9; ++x) {
-                Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+                Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                 if (world->getOrganismManager().at(pos) == tree->getId()) {
                     const Cell& cell = world->getData().at(x, y);
                     if (cell.material_type == MaterialType::WOOD) {
@@ -374,8 +377,7 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
             std::cout << "Frame " << frame << " (" << tree->getAge() << "s):\n";
             std::cout << "  WOOD[1] at (" << second_wood_pos.x << ", " << second_wood_pos.y
                       << "): material=" << getMaterialName(cell.material_type)
-                      << ", fill=" << cell.fill_ratio << ", organism_id=" << org_at_wood
-                      << "\n";
+                      << ", fill=" << cell.fill_ratio << ", organism_id=" << org_at_wood << "\n";
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
         }
 
@@ -473,7 +475,8 @@ TEST_F(TreeGerminationTest, DISABLED_HorizontalBoneForceBehavior)
     }
 
     ASSERT_TRUE(wood_grown) << "WOOD should have grown at target position";
-    ASSERT_EQ(tree->getBones().size(), 1) << "Should have exactly one bone connecting SEED and WOOD";
+    ASSERT_EQ(tree->getBones().size(), 1)
+        << "Should have exactly one bone connecting SEED and WOOD";
 
     const Bone& bone = tree->getBones()[0];
     std::cout << "Bone: (" << bone.cell_a.x << "," << bone.cell_a.y << ") <-> (" << bone.cell_b.x
@@ -630,7 +633,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 {
     scenario->setup(*world);
 
-    OrganismId id{1};
+    OrganismId id{ 1 };
     const Tree* tree = world->getOrganismManager().getTree(id);
 
     std::cout << "=== DEEP DEBUG: Wood Cell Physics ===\n\n";
@@ -649,7 +652,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
         wood_positions.clear();
         for (uint32_t y = 0; y < 9; ++y) {
             for (uint32_t x = 0; x < 9; ++x) {
-                Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+                Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                 if (world->getOrganismManager().at(pos) == tree->getId()) {
                     const Cell& cell = world->getData().at(x, y);
                     if (cell.material_type == MaterialType::WOOD) {
@@ -755,12 +758,13 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                 // Find where it went.
                 for (uint32_t y = 0; y < 7; ++y) {
                     for (uint32_t x = 0; x < 7; ++x) {
-                        Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+                        Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                         if (world->getOrganismManager().at(pos) == tree->getId()) {
                             const Cell& cell = world->getData().at(x, y);
-                            if (cell.material_type == MaterialType::WOOD && !(
-                                static_cast<int>(x) == wood0_pos.x
-                                && static_cast<int>(y) == wood0_pos.y)) {
+                            if (cell.material_type == MaterialType::WOOD
+                                && !(
+                                    static_cast<int>(x) == wood0_pos.x
+                                    && static_cast<int>(y) == wood0_pos.y)) {
                                 std::cout << "Found WOOD[1] at new position: (" << x << ", " << y
                                           << ")\n";
                                 wood1_pos = Vector2i{ static_cast<int>(x), static_cast<int>(y) };
@@ -825,7 +829,7 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
 
     // Get the tree created by the scenario.
-    OrganismId tree_id{1};
+    OrganismId tree_id{ 1 };
     Tree* tree = world->getOrganismManager().getTree(tree_id);
     ASSERT_NE(tree, nullptr);
 
@@ -846,7 +850,8 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
         Vector2i current_pos = tree->getAnchorCell();
         if (current_pos.x != last_seed_pos.x || current_pos.y != last_seed_pos.y) {
             std::cout << "Frame " << frame << ": Seed moved from (" << last_seed_pos.x << ", "
-                      << last_seed_pos.y << ") to (" << current_pos.x << ", " << current_pos.y << ")\n";
+                      << last_seed_pos.y << ") to (" << current_pos.x << ", " << current_pos.y
+                      << ")\n";
             last_seed_pos = current_pos;
         }
 
@@ -886,7 +891,8 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
 
     std::cout << "Growth targets:\n";
     for (size_t i = 0; i < growth_targets.size(); ++i) {
-        std::cout << "  " << i << ": (" << growth_targets[i].x << ", " << growth_targets[i].y << ")\n";
+        std::cout << "  " << i << ": (" << growth_targets[i].x << ", " << growth_targets[i].y
+                  << ")\n";
     }
     std::cout << "\n";
 
@@ -927,8 +933,8 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
                 if (cells_before.find(pos) == cells_before.end()) {
                     const Cell& cell = world->getData().at(pos.x, pos.y);
                     tracker.trackCell(pos, cell.material_type, frame);
-                    std::cout << "New cell: " << getMaterialName(cell.material_type) << " at (" << pos.x
-                              << ", " << pos.y << ")\n";
+                    std::cout << "New cell: " << getMaterialName(cell.material_type) << " at ("
+                              << pos.x << ", " << pos.y << ")\n";
                 }
             }
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
@@ -955,17 +961,18 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
                     const Cell& cell = world->getData().at(pos.x, pos.y);
 
                     // Check COM drift.
-                    double com_magnitude = std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
+                    double com_magnitude =
+                        std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
                     if (com_magnitude > COM_THRESHOLD && s == STABILITY_FRAMES - 1) {
                         std::cout << "⚠️  COM drift at (" << pos.x << ", " << pos.y
-                                  << "): magnitude=" << com_magnitude << " (threshold=" << COM_THRESHOLD
-                                  << ")\n";
+                                  << "): magnitude=" << com_magnitude
+                                  << " (threshold=" << COM_THRESHOLD << ")\n";
                     }
 
                     // Check velocity after stability period.
                     if (s == STABILITY_FRAMES - 1) {
-                        double vel_magnitude =
-                            std::sqrt(cell.velocity.x * cell.velocity.x + cell.velocity.y * cell.velocity.y);
+                        double vel_magnitude = std::sqrt(
+                            cell.velocity.x * cell.velocity.x + cell.velocity.y * cell.velocity.y);
                         if (vel_magnitude > VEL_THRESHOLD) {
                             std::cout << "⚠️  Velocity at (" << pos.x << ", " << pos.y
                                       << "): magnitude=" << vel_magnitude
@@ -982,10 +989,10 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
                 std::cout << "Cell states after stabilization:\n";
                 for (const auto& pos : tree->getCells()) {
                     const Cell& cell = world->getData().at(pos.x, pos.y);
-                    std::cout << "  " << getMaterialName(cell.material_type) << " at (" << pos.x << ", "
-                              << pos.y << "): COM=(" << std::fixed << std::setprecision(3) << cell.com.x
-                              << ", " << cell.com.y << "), vel=(" << cell.velocity.x << ", "
-                              << cell.velocity.y << ")\n";
+                    std::cout << "  " << getMaterialName(cell.material_type) << " at (" << pos.x
+                              << ", " << pos.y << "): COM=(" << std::fixed << std::setprecision(3)
+                              << cell.com.x << ", " << cell.com.y << "), vel=(" << cell.velocity.x
+                              << ", " << cell.velocity.y << ")\n";
                 }
             }
 
@@ -1007,7 +1014,7 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
     for (const auto& pos : tree->getCells()) {
         const Cell& cell = world->getData().at(pos.x, pos.y);
         double com_magnitude = std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
-        EXPECT_LT(com_magnitude, COM_THRESHOLD)
-            << "Cell at (" << pos.x << ", " << pos.y << ") has excessive COM drift: " << com_magnitude;
+        EXPECT_LT(com_magnitude, COM_THRESHOLD) << "Cell at (" << pos.x << ", " << pos.y
+                                                << ") has excessive COM drift: " << com_magnitude;
     }
 }

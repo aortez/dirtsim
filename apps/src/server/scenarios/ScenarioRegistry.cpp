@@ -25,73 +25,64 @@ ScenarioRegistry ScenarioRegistry::createDefault()
     {
         auto temp = std::make_unique<BenchmarkScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<BenchmarkScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<BenchmarkScenario>(); });
     }
 
     {
         auto temp = std::make_unique<ClockScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<ClockScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<ClockScenario>(); });
     }
 
     {
         auto temp = std::make_unique<DamBreakScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<DamBreakScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<DamBreakScenario>(); });
     }
 
     {
         auto temp = std::make_unique<EmptyScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<EmptyScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<EmptyScenario>(); });
     }
 
     {
         auto temp = std::make_unique<FallingDirtScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<FallingDirtScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<FallingDirtScenario>(); });
     }
 
     {
         auto temp = std::make_unique<GooseTestScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<GooseTestScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<GooseTestScenario>(); });
     }
 
     {
         auto temp = std::make_unique<RainingScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<RainingScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<RainingScenario>(); });
     }
 
     {
         auto temp = std::make_unique<SandboxScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<SandboxScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<SandboxScenario>(); });
     }
 
     {
         auto temp = std::make_unique<TreeGerminationScenario>();
         std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
-            return std::make_unique<TreeGerminationScenario>();
-        });
+        registry.registerScenario(
+            id, temp->getMetadata(), []() { return std::make_unique<TreeGerminationScenario>(); });
     }
 
     {

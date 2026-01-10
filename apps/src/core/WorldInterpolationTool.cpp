@@ -64,13 +64,13 @@ std::vector<Cell> WorldInterpolationTool::generateInterpolatedCellsB(
             // When shrinking, without this fix, edge cells would blend with interior
             // and walls could disappear due to nearest-neighbor material selection.
             if (newX == 0) {
-                srcX = std::min(srcX, 0.49);  // Force nearest-neighbor to pick left edge.
+                srcX = std::min(srcX, 0.49); // Force nearest-neighbor to pick left edge.
             }
             if (newX == newWidth - 1) {
                 srcX = std::max(srcX, static_cast<double>(oldWidth - 1) + 0.01);
             }
             if (newY == 0) {
-                srcY = std::min(srcY, 0.49);  // Force nearest-neighbor to pick top edge.
+                srcY = std::min(srcY, 0.49); // Force nearest-neighbor to pick top edge.
             }
             if (newY == newHeight - 1) {
                 srcY = std::max(srcY, static_cast<double>(oldHeight - 1) + 0.01);
@@ -175,8 +175,7 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
         double bestFill = 0.0;
 
         for (const Cell* corner : corners) {
-            if (corner->material_type != MaterialType::AIR
-                && corner->fill_ratio > bestFill) {
+            if (corner->material_type != MaterialType::AIR && corner->fill_ratio > bestFill) {
                 bestCorner = corner;
                 bestFill = corner->fill_ratio;
             }

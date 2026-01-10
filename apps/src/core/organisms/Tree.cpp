@@ -12,10 +12,8 @@
 namespace DirtSim {
 
 Tree::Tree(OrganismId id, std::unique_ptr<TreeBrain> brain)
-    : Organism(id, OrganismType::TREE)
-    , brain_(std::move(brain))
-{
-}
+    : Organism(id, OrganismType::TREE), brain_(std::move(brain))
+{}
 
 void Tree::update(World& world, double deltaTime)
 {
@@ -105,7 +103,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
 
     for (uint32_t y = 0; y < world.getData().height; y++) {
         for (uint32_t x = 0; x < world.getData().width; x++) {
-            Vector2i pos{static_cast<int>(x), static_cast<int>(y)};
+            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
             if (world.getOrganismManager().at(pos) == id_) {
                 min_x = std::min(min_x, static_cast<int>(x));
                 min_y = std::min(min_y, static_cast<int>(y));

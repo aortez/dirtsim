@@ -14,8 +14,8 @@ namespace DirtSim {
  * both simultaneously (e.g., jump while running right).
  */
 struct DuckInput {
-    Vector2f move{};  // Movement force: x [-1,1] left/right, y [-1,1] up/down.
-    bool jump = false;  // Request jump this frame.
+    Vector2f move{};   // Movement force: x [-1,1] left/right, y [-1,1] up/down.
+    bool jump = false; // Request jump this frame.
 };
 
 } // namespace DirtSim

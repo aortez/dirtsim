@@ -36,7 +36,9 @@ PhysicsPanel::~PhysicsPanel()
 void PhysicsPanel::createMenuView(lv_obj_t* view)
 {
     // Section names matching the order in getSectionConfig().
-    const char* sectionNames[] = { "General", "Pressure", "Forces", "Swap Tuning", "Swap2", "Frag" };
+    const char* sectionNames[] = {
+        "General", "Pressure", "Forces", "Swap Tuning", "Swap2", "Frag"
+    };
 
     // Clear button mapping.
     buttonToSection_.clear();
@@ -90,7 +92,10 @@ void PhysicsPanel::showSection(int sectionIndex)
 
     const auto& config = getSectionConfig(sectionIndex);
     LOG_INFO(
-        Controls, "PhysicsPanel: Showing section '{}' with {} controls", config.title, controls_.size());
+        Controls,
+        "PhysicsPanel: Showing section '{}' with {} controls",
+        config.title,
+        controls_.size());
 }
 
 void PhysicsPanel::createSectionView(lv_obj_t* view, int sectionIndex)
@@ -133,17 +138,19 @@ void PhysicsPanel::createSectionView(lv_obj_t* view, int sectionIndex)
     controls_.resize(config.controls.size());
 
     // Create controls for this section.
-    PhysicsControlHelpers::createControlsFromColumn(controlsContainer,
-                                                     config,
-                                                     controls_.data(),
-                                                     0,
-                                                     widgetToControl_,
-                                                     onGenericToggle,
-                                                     onGenericValueChange,
-                                                     this);
+    PhysicsControlHelpers::createControlsFromColumn(
+        controlsContainer,
+        config,
+        controls_.data(),
+        0,
+        widgetToControl_,
+        onGenericToggle,
+        onGenericValueChange,
+        this);
 
     // Update controls from current settings.
-    PhysicsControlHelpers::updateControlsFromSettings(controls_.data(), controls_.size(), settings_);
+    PhysicsControlHelpers::updateControlsFromSettings(
+        controls_.data(), controls_.size(), settings_);
 }
 
 void PhysicsPanel::showMenu()
@@ -162,19 +169,19 @@ void PhysicsPanel::showMenu()
 const PhysicsControlHelpers::ColumnConfig& PhysicsPanel::getSectionConfig(int index) const
 {
     switch (index) {
-    case 0:
-        return configs_.generalPhysics;
-    case 1:
-        return configs_.pressure;
-    case 2:
-        return configs_.forces;
-    case 3:
-        return configs_.swapTuning;
-    case 4:
-        return configs_.swap2;
-    case 5:
-    default:
-        return configs_.frag;
+        case 0:
+            return configs_.generalPhysics;
+        case 1:
+            return configs_.pressure;
+        case 2:
+            return configs_.forces;
+        case 3:
+            return configs_.swapTuning;
+        case 4:
+            return configs_.swap2;
+        case 5:
+        default:
+            return configs_.frag;
     }
 }
 
@@ -244,7 +251,8 @@ void PhysicsPanel::onGenericToggle(lv_event_t* e)
             control->config.enableSetter(self->settings_, enabled);
         }
         catch (const std::exception& ex) {
-            LOG_ERROR(Controls, "PhysicsPanel: Exception in enableSetter for {}: {}", label, ex.what());
+            LOG_ERROR(
+                Controls, "PhysicsPanel: Exception in enableSetter for {}: {}", label, ex.what());
             return;
         }
     }
@@ -256,10 +264,15 @@ void PhysicsPanel::onGenericToggle(lv_event_t* e)
             if (control->config.valueSetter) {
                 control->config.valueSetter(self->settings_, scaledValue);
             }
-            LOG_DEBUG(Controls, "PhysicsPanel: Restored {} to {:.2f}", control->config.label, scaledValue);
+            LOG_DEBUG(
+                Controls,
+                "PhysicsPanel: Restored {} to {:.2f}",
+                control->config.label,
+                scaledValue);
         }
         else {
-            LOG_WARN(Controls, "PhysicsPanel: No slider widget found for {}", control->config.label);
+            LOG_WARN(
+                Controls, "PhysicsPanel: No slider widget found for {}", control->config.label);
         }
     }
 

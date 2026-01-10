@@ -7,7 +7,7 @@ namespace DirtSim {
 // Provides system health metrics (CPU usage, memory usage) by reading from /proc.
 // Linux-specific implementation.
 class SystemMetrics {
-  public:
+public:
     struct Metrics {
         double cpu_percent = 0.0;     // CPU usage as percentage (0-100).
         double memory_percent = 0.0;  // Memory usage as percentage (0-100).
@@ -22,7 +22,7 @@ class SystemMetrics {
     // Call this periodically - CPU calculation requires delta from previous call.
     Metrics get();
 
-  private:
+private:
     struct CpuSnapshot {
         uint64_t user = 0;
         uint64_t nice = 0;

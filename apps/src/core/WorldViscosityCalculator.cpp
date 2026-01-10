@@ -88,7 +88,8 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     }
 
     // Calculate average neighbor velocity.
-    Vector2d avg_neighbor_velocity = (weight_sum > 0.0) ? (velocity_sum / weight_sum) : Vector2d{ 0.0, 0.0 };
+    Vector2d avg_neighbor_velocity =
+        (weight_sum > 0.0) ? (velocity_sum / weight_sum) : Vector2d{ 0.0, 0.0 };
 
     // Velocity difference drives viscous force.
     Vector2d velocity_difference = avg_neighbor_velocity - cell.velocity;

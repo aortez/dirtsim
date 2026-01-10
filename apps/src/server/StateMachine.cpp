@@ -4,11 +4,11 @@
 #include "ServerConfig.h"
 #include "api/PeersGet.h"
 #include "core/LoggingChannels.h"
-#include "core/StateLifecycle.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
 #include "core/RenderMessageUtils.h"
 #include "core/ScenarioConfig.h"
+#include "core/StateLifecycle.h"
 #include "core/SystemMetrics.h"
 #include "core/Timers.h"
 #include "core/World.h" // Must be first for complete type in variant.
@@ -16,10 +16,10 @@
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/scenarios/Scenario.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
-#include "core/scenarios/Scenario.h"
 #include "scenarios/ScenarioRegistry.h"
 #include "states/State.h"
 #include <cassert>
@@ -545,11 +545,11 @@ void StateMachine::handleEvent(const Event& event)
         for (const auto& id : scenarioIds) {
             const ScenarioMetadata* metadata = registry.getMetadata(id);
             if (metadata) {
-                response.scenarios.push_back(Api::ScenarioListGet::ScenarioInfo{
-                    .id = id,
-                    .name = metadata->name,
-                    .description = metadata->description,
-                    .category = metadata->category });
+                response.scenarios.push_back(
+                    Api::ScenarioListGet::ScenarioInfo{ .id = id,
+                                                        .name = metadata->name,
+                                                        .description = metadata->description,
+                                                        .category = metadata->category });
             }
         }
 
@@ -753,23 +753,24 @@ void StateMachine::broadcastCommand(const std::string& messageType)
         return;
     }
 
-    spdlog::debug("StateMachine: Broadcasting command '{}' to {} clients",
-        messageType, pImpl->subscribedClients_.size());
+    spdlog::debug(
+        "StateMachine: Broadcasting command '{}' to {} clients",
+        messageType,
+        pImpl->subscribedClients_.size());
 
     // Create envelope with no payload.
-    Network::MessageEnvelope envelope{
-        .id = 0,
-        .message_type = messageType,
-        .payload = {}
-    };
+    Network::MessageEnvelope envelope{ .id = 0, .message_type = messageType, .payload = {} };
 
     std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
 
     for (const auto& client : pImpl->subscribedClients_) {
         auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
         if (result.isError()) {
-            spdlog::error("StateMachine: Failed to send '{}' to '{}': {}",
-                messageType, client.connectionId, result.errorValue());
+            spdlog::error(
+                "StateMachine: Failed to send '{}' to '{}': {}",
+                messageType,
+                client.connectionId,
+                result.errorValue());
         }
     }
 }

@@ -53,7 +53,8 @@ SystemMetrics::Metrics SystemMetrics::get()
         uint64_t total_delta = curr.total() - prev_cpu_.total();
         uint64_t active_delta = curr.totalActive() - prev_cpu_.totalActive();
         if (total_delta > 0) {
-            m.cpu_percent = (static_cast<double>(active_delta) / static_cast<double>(total_delta)) * 100.0;
+            m.cpu_percent =
+                (static_cast<double>(active_delta) / static_cast<double>(total_delta)) * 100.0;
         }
     }
     prev_cpu_ = curr;
@@ -74,7 +75,10 @@ SystemMetrics::Metrics SystemMetrics::get()
                 std::string label;
                 iss >> label >> mem_total;
                 found_total = true;
-            } else if (line.compare(0, 14, "MemAvailable:") == 0 || line.compare(0, 13, "MemAvailable:") == 0) {
+            }
+            else if (
+                line.compare(0, 14, "MemAvailable:") == 0
+                || line.compare(0, 13, "MemAvailable:") == 0) {
                 std::istringstream iss(line);
                 std::string label;
                 iss >> label >> mem_available;

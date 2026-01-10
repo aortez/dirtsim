@@ -102,7 +102,9 @@ void RainingControls::updateFromConfig(const ScenarioConfig& configVariant)
             rainControl_->setValue(sliderValue);
         }
         spdlog::debug(
-            "RainingControls: Updated rain control (enabled={}, value={})", shouldBeEnabled, sliderValue);
+            "RainingControls: Updated rain control (enabled={}, value={})",
+            shouldBeEnabled,
+            sliderValue);
     }
 
     // Update drain size control.

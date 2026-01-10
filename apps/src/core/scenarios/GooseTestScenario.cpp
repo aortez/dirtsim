@@ -59,8 +59,7 @@ void GooseTestScenario::setup(World& world)
     uint32_t goose_y = data.height - 6; // Just above ground.
     goose_id_ = world.getOrganismManager().createGoose(world, goose_x, goose_y);
 
-    spdlog::info(
-        "GooseTestScenario: Created goose {} at ({}, {})", goose_id_, goose_x, goose_y);
+    spdlog::info("GooseTestScenario: Created goose {} at ({}, {})", goose_id_, goose_x, goose_y);
 }
 
 void GooseTestScenario::reset(World& world)

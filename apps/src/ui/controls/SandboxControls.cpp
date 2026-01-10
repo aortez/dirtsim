@@ -35,7 +35,8 @@ void SandboxControls::createWidgets()
     lv_obj_t* row1 = lv_obj_create(controlsContainer_);
     lv_obj_set_size(row1, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row1, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row1, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        row1, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(row1, 4, 0);
     lv_obj_set_style_bg_opa(row1, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row1, 0, 0);
@@ -64,7 +65,8 @@ void SandboxControls::createWidgets()
     lv_obj_t* row2 = lv_obj_create(controlsContainer_);
     lv_obj_set_size(row2, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(row2, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(row2, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(
+        row2, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(row2, 4, 0);
     lv_obj_set_style_bg_opa(row2, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row2, 0, 0);
@@ -140,8 +142,7 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
         bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(quadrantSwitch_);
         if (currentState != config.quadrantEnabled) {
             LVGLBuilder::ActionButtonBuilder::setChecked(quadrantSwitch_, config.quadrantEnabled);
-            spdlog::debug(
-                "SandboxControls: Updated quadrant button to {}", config.quadrantEnabled);
+            spdlog::debug("SandboxControls: Updated quadrant button to {}", config.quadrantEnabled);
         }
     }
 
@@ -149,7 +150,8 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
     if (waterColumnSwitch_) {
         bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(waterColumnSwitch_);
         if (currentState != config.waterColumnEnabled) {
-            LVGLBuilder::ActionButtonBuilder::setChecked(waterColumnSwitch_, config.waterColumnEnabled);
+            LVGLBuilder::ActionButtonBuilder::setChecked(
+                waterColumnSwitch_, config.waterColumnEnabled);
             spdlog::info(
                 "SandboxControls: Updated water column button to {}", config.waterColumnEnabled);
         }
@@ -159,7 +161,8 @@ void SandboxControls::updateFromConfig(const ScenarioConfig& configVariant)
     if (rightThrowSwitch_) {
         bool currentState = LVGLBuilder::ActionButtonBuilder::isChecked(rightThrowSwitch_);
         if (currentState != config.rightThrowEnabled) {
-            LVGLBuilder::ActionButtonBuilder::setChecked(rightThrowSwitch_, config.rightThrowEnabled);
+            LVGLBuilder::ActionButtonBuilder::setChecked(
+                rightThrowSwitch_, config.rightThrowEnabled);
             spdlog::debug(
                 "SandboxControls: Updated right throw button to {}", config.rightThrowEnabled);
         }

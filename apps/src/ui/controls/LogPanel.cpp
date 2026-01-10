@@ -1,16 +1,16 @@
 #include "LogPanel.h"
 #include "core/LoggingChannels.h"
-#include <lvgl/lvgl.h>
 #include <fstream>
+#include <lvgl/lvgl.h>
 #include <sstream>
 
 namespace DirtSim {
 namespace Ui {
 
 LogPanel::LogPanel(lv_obj_t* parent, const std::string& logFilePath, size_t maxLines)
-    : logFilePath_(logFilePath)
-    , maxLines_(maxLines)
-    , lastRefreshTime_(std::chrono::steady_clock::now())
+    : logFilePath_(logFilePath),
+      maxLines_(maxLines),
+      lastRefreshTime_(std::chrono::steady_clock::now())
 {
     // Create container that fills parent.
     container_ = lv_obj_create(parent);
@@ -20,7 +20,8 @@ LogPanel::LogPanel(lv_obj_t* parent, const std::string& logFilePath, size_t maxL
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_pad_all(container_, 8, 0);
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_flex_align(
+        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
     // Create header label.
     headerLabel_ = lv_label_create(container_);
@@ -44,7 +45,8 @@ LogPanel::LogPanel(lv_obj_t* parent, const std::string& logFilePath, size_t maxL
     lv_obj_clear_flag(logTextArea_, LV_OBJ_FLAG_CLICK_FOCUSABLE);
 
     // Create auto-refresh timer.
-    refreshTimer_ = lv_timer_create(onRefreshTimer, static_cast<uint32_t>(refreshIntervalSeconds_ * 1000), this);
+    refreshTimer_ = lv_timer_create(
+        onRefreshTimer, static_cast<uint32_t>(refreshIntervalSeconds_ * 1000), this);
 
     // Initial refresh.
     refresh();

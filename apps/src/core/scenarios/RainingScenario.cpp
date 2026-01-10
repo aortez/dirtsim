@@ -16,8 +16,8 @@ RainingScenario::RainingScenario()
     metadata_.category = "demo";
 
     // Initialize with default config.
-    config_.rainRate = 10.0;       // 10 drops per second.
-    config_.drainSize = 0.0;       // No drain (solid floor).
+    config_.rainRate = 10.0;      // 10 drops per second.
+    config_.drainSize = 0.0;      // No drain (solid floor).
     config_.maxFillPercent = 0.0; // No evaporation limit.
 }
 

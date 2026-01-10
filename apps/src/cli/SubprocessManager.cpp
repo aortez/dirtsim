@@ -77,7 +77,8 @@ bool SubprocessManager::launchServer(const std::string& serverPath, const std::s
 
 bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSec)
 {
-    std::cerr << "DEBUG: waitForServerReady() called, url=" << url << ", serverPid_=" << serverPid_ << std::endl;
+    std::cerr << "DEBUG: waitForServerReady() called, url=" << url << ", serverPid_=" << serverPid_
+              << std::endl;
     SLOG_INFO("SubprocessManager: Waiting for server to be ready at {}", url);
 
     auto startTime = std::chrono::steady_clock::now();
@@ -120,7 +121,8 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
                     }
                     else if (response.contains("error")) {
                         // Server returned error (e.g., command not supported in Startup).
-                        SLOG_DEBUG("SubprocessManager: Server error: {}",
+                        SLOG_DEBUG(
+                            "SubprocessManager: Server error: {}",
                             response["error"].get<std::string>());
                     }
                 }
@@ -162,8 +164,7 @@ void SubprocessManager::killServer()
 
             if (waitResult == 0) {
                 // Still running, force kill.
-                SLOG_WARN(
-                    "SubprocessManager: Server didn't respond to SIGTERM, sending SIGKILL");
+                SLOG_WARN("SubprocessManager: Server didn't respond to SIGTERM, sending SIGKILL");
                 kill(serverPid_, SIGKILL);
                 waitpid(serverPid_, &status, 0);
             }

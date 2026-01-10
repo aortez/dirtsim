@@ -26,8 +26,8 @@ struct DuckKnowledge {
     std::optional<int> exit_wall_x;
 
     // Self-knowledge (learned through experience).
-    std::optional<double> max_speed;       // Learned when velocity converges.
-    std::optional<double> jump_distance;   // Learned from landing after jumps.
+    std::optional<double> max_speed;     // Learned when velocity converges.
+    std::optional<double> jump_distance; // Learned from landing after jumps.
 
     // Helpers.
     bool knowsMaxSpeed() const { return max_speed.has_value(); }
@@ -36,8 +36,9 @@ struct DuckKnowledge {
 
     Side exitSide() const
     {
-        return (spawn_side == Side::LEFT) ? Side::RIGHT :
-               (spawn_side == Side::RIGHT) ? Side::LEFT : Side::UNKNOWN;
+        return (spawn_side == Side::LEFT) ? Side::RIGHT
+            : (spawn_side == Side::RIGHT) ? Side::LEFT
+                                          : Side::UNKNOWN;
     }
 };
 
@@ -50,18 +51,18 @@ struct DuckSituation {
     // Physical state.
     bool on_ground = false;
     double current_speed = 0.0;
-    int facing_direction = 0;  // -1 = left, +1 = right, 0 = none.
+    int facing_direction = 0; // -1 = left, +1 = right, 0 = none.
 
     // Spatial awareness (what's ahead).
     bool wall_ahead = false;
-    int obstacle_distance = -1;  // Distance to obstacle in cells, -1 if none detected.
+    int obstacle_distance = -1; // Distance to obstacle in cells, -1 if none detected.
     bool cliff_ahead = false;
     bool gap_in_exit_wall = false;
 
     // Derived assessments (require knowledge to compute).
     bool near_middle = false;
-    bool at_full_speed = false;  // True if current_speed >= 90% of known max_speed.
-    bool can_clear_cliff = false;  // True if jump_distance would clear detected cliff.
+    bool at_full_speed = false;   // True if current_speed >= 90% of known max_speed.
+    bool can_clear_cliff = false; // True if jump_distance would clear detected cliff.
 
     // Convenience accessor.
     bool obstacle_ahead() const { return obstacle_distance >= 0; }
@@ -149,26 +150,22 @@ private:
  */
 class WallBouncingBrain : public DuckBrain {
 public:
-    explicit WallBouncingBrain(bool enable_jumping = false)
-        : enable_jumping_(enable_jumping) {}
+    explicit WallBouncingBrain(bool enable_jumping = false) : enable_jumping_(enable_jumping) {}
 
     void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
 
 private:
-    enum class TargetWall {
-        LEFT,
-        RIGHT
-    };
+    enum class TargetWall { LEFT, RIGHT };
 
     TargetWall target_wall_ = TargetWall::RIGHT;
     bool initialized_ = false;
     bool enable_jumping_ = false;
 
     // Timing for jump prediction.
-    float current_run_time_ = 0.0f;      // Time elapsed in current run.
-    float average_run_time_ = 0.0f;      // Exponential moving average of crossing time.
-    int run_count_ = 0;                  // Number of completed runs.
-    float jump_timer_ = -1.0f;           // Time until jump (-1 = no jump scheduled).
+    float current_run_time_ = 0.0f; // Time elapsed in current run.
+    float average_run_time_ = 0.0f; // Exponential moving average of crossing time.
+    int run_count_ = 0;             // Number of completed runs.
+    float jump_timer_ = -1.0f;      // Time until jump (-1 = no jump scheduled).
 
     void pickFurthestWall(const DuckSensoryData& sensory);
     bool isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const;

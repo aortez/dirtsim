@@ -3,11 +3,11 @@
 #include "StateForward.h"
 #include "core/Vector2d.h"
 #include "core/organisms/OrganismType.h"
+#include "core/scenarios/Scenario.h"
 #include "server/Event.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
-#include "core/scenarios/Scenario.h"
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -25,9 +25,9 @@ namespace State {
  * @brief Tracks an active finger interaction session.
  */
 struct FingerSession {
-    Vector2d last_position;  // Last known position in world coordinates.
-    double radius;           // Radius of influence in cell units.
-    bool active = false;     // Whether this finger is currently touching.
+    Vector2d last_position; // Last known position in world coordinates.
+    double radius;          // Radius of influence in cell units.
+    bool active = false;    // Whether this finger is currently touching.
 };
 
 /**
@@ -58,9 +58,9 @@ struct SimRunning {
 
     // Gamepad-controlled duck tracking.
     std::map<size_t, OrganismId> gamepad_to_duck_;
-    std::map<size_t, bool> prev_start_button_;  // For edge detection of spawn.
-    std::map<size_t, bool> prev_back_button_;   // For edge detection of reset.
-    std::map<size_t, bool> prev_y_button_;      // For edge detection of debug toggle.
+    std::map<size_t, bool> prev_start_button_; // For edge detection of spawn.
+    std::map<size_t, bool> prev_back_button_;  // For edge detection of reset.
+    std::map<size_t, bool> prev_y_button_;     // For edge detection of debug toggle.
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
