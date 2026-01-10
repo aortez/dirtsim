@@ -737,15 +737,12 @@ SEED at (4,5), WOOD at (4,3), but (4,4) is AIR
   - `integrate()` - F=ma velocity update
   - `addForce()` / `clearPendingForce()` - force accumulation
 - ✅ `ProjectionComponent` interface created
-- ✅ `LocalShapeProjection` implementation (WIP - needs field name fixes)
-
-#### In Progress
-- 🔧 `LocalShapeProjection` tests - blocked on LocalCell field naming
-
-#### Blocking Issue: LocalCell Field Names
-The existing `LocalCell` struct in `Organism.h` uses snake_case (`local_pos`, `fill_ratio`), which conflicts with the project's lowerCamelCase convention. Options:
-1. Update `LocalCell` to use lowerCamelCase (breaking change, update all usages)
-2. Components use existing snake_case (inconsistent but non-breaking)
+- ✅ `LocalShapeProjection` extracted with 10 passing unit tests
+  - `addCell()` / `removeCell()` - shape modification for growth
+  - `project()` - stamps cells to grid from continuous position
+  - `clear()` - removes old projection before re-projecting
+  - Computes sub-cell COM from fractional position
+- ✅ `LocalCell` fields renamed to lowerCamelCase (`localPos`, `fillRatio`)
 
 #### Remaining
 - `RigidBodyCollisionComponent` - collision detection and response
