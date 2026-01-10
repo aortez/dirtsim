@@ -579,7 +579,7 @@ void ClockScenario::clearDigits(World& world)
 
             // Skip door roof cells.
             Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
-            if (door_manager_.isRoofCell(pos)) {
+            if (door_manager_.isRoofCellAt(pos, data)) {
                 continue;
             }
 
@@ -987,21 +987,19 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     else if (type == ClockEventType::DUCK) {
         DuckEventState duck_state;
 
-        // Choose random entrance side and calculate door position.
+        // Choose random entrance side. Door is 1 cell above floor.
         duck_state.entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
-        uint32_t door_y = world.getData().height - 2;
-        uint32_t door_x = (duck_state.entrance_side == DoorSide::LEFT) ? 0 : world.getData().width - 1;
+        constexpr uint32_t kCellsAboveFloor = 1;
 
-        duck_state.entrance_door_pos = Vector2i{ static_cast<int>(door_x), static_cast<int>(door_y) };
-        duck_state.entrance_door_open = true;
-        duck_state.exit_door_open = false;
+        // Create entrance door (DoorManager computes position from side + cells_above_floor).
+        duck_state.entrance_door_id = door_manager_.createDoor(duck_state.entrance_side, kCellsAboveFloor);
 
-        // Calculate exit door position (opposite side).
-        uint32_t exit_x = (duck_state.entrance_side == DoorSide::LEFT) ? world.getData().width - 1 : 0;
-        duck_state.exit_door_pos = Vector2i{ static_cast<int>(exit_x), static_cast<int>(door_y) };
+        // Create exit door on opposite side at same height.
+        DoorSide exit_side = (duck_state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
+        duck_state.exit_door_id = door_manager_.createDoor(exit_side, kCellsAboveFloor);
 
         // Open entrance door via DoorManager. Duck spawns after delay.
-        door_manager_.openDoor(duck_state.entrance_door_pos, duck_state.entrance_side, world);
+        door_manager_.openDoor(duck_state.entrance_door_id, world);
         duck_state.phase = DuckEventPhase::DOOR_OPENING;
         duck_state.door_open_timer = 0.0;
 
@@ -1160,9 +1158,7 @@ void ClockScenario::updateMarqueeEvent(
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
 {
     // Spawn duck in the door opening.
-    uint32_t duck_x = static_cast<uint32_t>(state.entrance_door_pos.x);
-    uint32_t duck_y = static_cast<uint32_t>(state.entrance_door_pos.y);
-    Vector2i spawn_pos{ static_cast<int>(duck_x), static_cast<int>(duck_y) };
+    Vector2i spawn_pos = door_manager_.getDoorPosition(state.entrance_door_id, world.getData());
 
     // Check if spawn location is blocked by another organism.
     OrganismId blocking = world.getOrganismManager().at(spawn_pos);
@@ -1203,7 +1199,7 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
         if (best_neighbor.x < 0) {
             // Can't displace - skip spawn for this frame.
             spdlog::info("ClockScenario: Cannot displace organism {} from spawn location ({}, {}), waiting...",
-                blocking, duck_x, duck_y);
+                blocking, spawn_pos.x, spawn_pos.y);
             return;
         }
 
@@ -1216,12 +1212,16 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
     // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
     std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
 
-    state.organism_id = world.getOrganismManager().createDuck(world, duck_x, duck_y, std::move(brain));
+    state.organism_id = world.getOrganismManager().createDuck(
+        world,
+        static_cast<uint32_t>(spawn_pos.x),
+        static_cast<uint32_t>(spawn_pos.y),
+        std::move(brain));
 
     spdlog::info("ClockScenario: Duck organism {} enters through {} door at ({}, {})",
         state.organism_id,
         state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
-        duck_x, duck_y);
+        spawn_pos.x, spawn_pos.y);
 
     state.phase = DuckEventPhase::DUCK_ACTIVE;
 }
@@ -1282,30 +1282,30 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
     }
 
     // Close entrance door once duck moves away from it.
-    if (state.entrance_door_open && duck_cell != state.entrance_door_pos) {
-        door_manager_.closeDoor(state.entrance_door_pos, world);
-        state.entrance_door_open = false;
+    Vector2i entrance_pos = door_manager_.getDoorPosition(state.entrance_door_id, data);
+    if (door_manager_.isOpen(state.entrance_door_id) && duck_cell != entrance_pos) {
+        door_manager_.closeDoor(state.entrance_door_id, world);
     }
 
     // Open exit door in the last 7 seconds.
-    if (!state.exit_door_open && remaining_time <= 7.0) {
-        DoorSide exit_side = (state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
-        door_manager_.openDoor(state.exit_door_pos, exit_side, world);
-        state.exit_door_open = true;
+    if (!door_manager_.isOpen(state.exit_door_id) && remaining_time <= 7.0) {
+        door_manager_.openDoor(state.exit_door_id, world);
 
         // Log world state when exit door opens.
+        Vector2i exit_pos = door_manager_.getDoorPosition(state.exit_door_id, data);
         spdlog::info("ClockScenario: Exit door opened at ({}, {})",
-            state.exit_door_pos.x, state.exit_door_pos.y);
+            exit_pos.x, exit_pos.y);
         std::string diagram = WorldDiagramGeneratorEmoji::generateEmojiDiagram(world);
         spdlog::info("\n{}", diagram);
     }
 
     // Check if duck entered the exit door and passed the middle of the cell.
-    if (state.exit_door_open && duck_cell == state.exit_door_pos) {
+    Vector2i exit_pos = door_manager_.getDoorPosition(state.exit_door_id, data);
+    if (door_manager_.isOpen(state.exit_door_id) && duck_cell == exit_pos) {
         bool past_middle = (state.entrance_side == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
         if (past_middle) {
             spdlog::info("ClockScenario: Duck exited through door at ({}, {}), COM.x={:.2f}",
-                state.exit_door_pos.x, state.exit_door_pos.y, duck_com.x);
+                exit_pos.x, exit_pos.y, duck_com.x);
 
             // Remove the duck immediately.
             world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
@@ -1377,13 +1377,11 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         // Clear any floor obstacles.
         obstacle_manager_.clearAll(world);
 
-        // Close any open doors.
-        if (state.entrance_door_open) {
-            door_manager_.closeDoor(state.entrance_door_pos, world);
-        }
-        if (state.exit_door_open) {
-            door_manager_.closeDoor(state.exit_door_pos, world);
-        }
+        // Close and remove doors.
+        door_manager_.closeDoor(state.entrance_door_id, world);
+        door_manager_.closeDoor(state.exit_door_id, world);
+        door_manager_.removeDoor(state.entrance_door_id);
+        door_manager_.removeDoor(state.exit_door_id);
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         // Restore default digit material (METAL).
@@ -1733,15 +1731,16 @@ void ClockScenario::sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_
 
 void ClockScenario::redrawWalls(World& world)
 {
-    uint32_t width = world.getData().width;
-    uint32_t height = world.getData().height;
+    const WorldData& data = world.getData();
+    uint32_t width = data.width;
+    uint32_t height = data.height;
 
     // Top and bottom borders.
     for (uint32_t x = 0; x < width; ++x) {
         Vector2i top_pos{ static_cast<int>(x), 0 };
         Vector2i bottom_pos{ static_cast<int>(x), static_cast<int>(height - 1) };
 
-        if (!door_manager_.isOpenDoor(top_pos)) {
+        if (!door_manager_.isOpenDoorAt(top_pos, data)) {
             world.replaceMaterialAtCell(x, 0, MaterialType::WALL);
         }
 
@@ -1750,7 +1749,7 @@ void ClockScenario::redrawWalls(World& world)
         // Skip pit cells (floor removed).
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
-        if (!door_manager_.isOpenDoor(bottom_pos) && !is_drain_cell && !is_pit_cell) {
+        if (!door_manager_.isOpenDoorAt(bottom_pos, data) && !is_drain_cell && !is_pit_cell) {
             world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
         } else if (is_pit_cell && !is_drain_cell) {
             // Ensure pit cells are cleared.
@@ -1771,16 +1770,16 @@ void ClockScenario::redrawWalls(World& world)
         Vector2i left_pos{ 0, static_cast<int>(y) };
         Vector2i right_pos{ static_cast<int>(width - 1), static_cast<int>(y) };
 
-        if (!door_manager_.isOpenDoor(left_pos)) {
+        if (!door_manager_.isOpenDoorAt(left_pos, data)) {
             world.replaceMaterialAtCell(0, y, MaterialType::WALL);
         }
-        if (!door_manager_.isOpenDoor(right_pos)) {
+        if (!door_manager_.isOpenDoorAt(right_pos, data)) {
             world.replaceMaterialAtCell(width - 1, y, MaterialType::WALL);
         }
     }
 
     // Ensure roof cells are walls.
-    for (const auto& roof_pos : door_manager_.getRoofPositions()) {
+    for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
         world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
     }
 }

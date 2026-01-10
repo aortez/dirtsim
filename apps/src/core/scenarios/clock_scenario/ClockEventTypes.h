@@ -2,6 +2,7 @@
 
 #include "MarqueeTypes.h"
 #include "core/MaterialType.h"
+#include "core/StrongType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include <variant>
@@ -48,7 +49,7 @@ struct ColorCycleEventConfig {
 struct ColorShowcaseEventConfig {
     EventTimingConfig timing = {
         .trigger_type = EventTriggerType::OnTimeChange,
-        .duration = 120.0,
+        .duration = 10.0,
         .chance = 0.3,
         .cooldown = 60.0
     };
@@ -58,12 +59,11 @@ struct ColorShowcaseEventConfig {
 };
 
 struct DigitSlideEventConfig {
-    // Runs indefinitely when enabled - duration is just a fallback.
     EventTimingConfig timing = {
         .trigger_type = EventTriggerType::OnTimeChange,
-        .duration = 3600.0,
-        .chance = 0.0,  // Manual only.
-        .cooldown = 0.0
+        .duration = 5.0,
+        .chance = 0.5,
+        .cooldown = 60.0
     };
     double animation_speed = 2.0;  // Progress per second (1.0 = 1 second to complete slide).
 };
@@ -140,6 +140,9 @@ struct MarqueeEventState {
 
 enum class DoorSide { LEFT, RIGHT };
 
+using DoorId = StrongType<struct DoorIdTag>;
+const DoorId INVALID_DOOR_ID{};
+
 enum class DuckEventPhase {
     DOOR_OPENING,  // Door open, waiting before spawning duck.
     DUCK_ACTIVE,   // Duck spawned and walking.
@@ -149,10 +152,8 @@ enum class DuckEventPhase {
 struct DuckEventState {
     OrganismId organism_id = INVALID_ORGANISM_ID;
     DoorSide entrance_side = DoorSide::LEFT;
-    Vector2i entrance_door_pos{ -1, -1 };
-    Vector2i exit_door_pos{ -1, -1 };
-    bool entrance_door_open = false;
-    bool exit_door_open = false;
+    DoorId entrance_door_id = INVALID_DOOR_ID;
+    DoorId exit_door_id = INVALID_DOOR_ID;
     DuckEventPhase phase = DuckEventPhase::DOOR_OPENING;
     double door_open_timer = 0.0;
     double door_close_timer = 0.0;

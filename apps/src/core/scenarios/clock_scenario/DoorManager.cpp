@@ -6,95 +6,164 @@
 
 namespace DirtSim {
 
-Vector2i DoorManager::calculateRoofPos(Vector2i door_pos, DoorSide side)
+DoorId DoorManager::createDoor(DoorSide side, uint32_t cells_above_floor)
 {
-    // Roof goes up one and inward one.
-    // Left door: inward = +1 x. Right door: inward = -1 x.
-    int dx = (side == DoorSide::LEFT) ? 1 : -1;
-    return Vector2i{ door_pos.x + dx, door_pos.y - 1 };
+    DoorId id = next_id_++;
+    doors_[id] = DoorDef{ side, cells_above_floor, false };
+    return id;
 }
 
-bool DoorManager::openDoor(Vector2i pos, DoorSide side, World& world)
+bool DoorManager::openDoor(DoorId id, World& world)
 {
-    // Check if already open.
-    if (doors_.contains(pos) && doors_[pos].is_open) {
+    auto it = doors_.find(id);
+    if (it == doors_.end()) {
+        spdlog::warn("DoorManager: Cannot open invalid door {}", id);
         return false;
     }
 
-    DoorState state;
-    state.is_open = true;
-    state.side = side;
-    state.door_pos = pos;
-    state.roof_pos = calculateRoofPos(pos, side);
+    DoorDef& def = it->second;
+    if (def.is_open) {
+        return false;  // Already open.
+    }
+
+    const WorldData& data = world.getData();
+    Vector2i door_pos = computeDoorPosition(def, data);
+    Vector2i roof_pos = computeRoofPosition(def, data);
+
+    // Validate positions are within bounds.
+    if (door_pos.x < 0 || door_pos.y < 0 ||
+        static_cast<uint32_t>(door_pos.x) >= data.width ||
+        static_cast<uint32_t>(door_pos.y) >= data.height) {
+        spdlog::warn("DoorManager: Door {} position ({}, {}) is outside world bounds {}x{}",
+            id, door_pos.x, door_pos.y, data.width, data.height);
+        return false;
+    }
+
+    if (roof_pos.x < 0 || roof_pos.y < 0 ||
+        static_cast<uint32_t>(roof_pos.x) >= data.width ||
+        static_cast<uint32_t>(roof_pos.y) >= data.height) {
+        spdlog::warn("DoorManager: Door {} roof position ({}, {}) is outside world bounds {}x{}",
+            id, roof_pos.x, roof_pos.y, data.width, data.height);
+        return false;
+    }
 
     // Clear the door cell (make it passable).
-    world.getData().at(pos.x, pos.y) = Cell();
+    world.getData().at(door_pos.x, door_pos.y) = Cell();
 
     // Place wall at roof position (displace any organisms).
-    world.replaceMaterialAtCell(state.roof_pos.x, state.roof_pos.y, MaterialType::WALL);
+    world.replaceMaterialAtCell(roof_pos.x, roof_pos.y, MaterialType::WALL);
 
-    doors_[pos] = state;
+    def.is_open = true;
 
-    spdlog::info("DoorManager: Opened door at ({}, {}), roof at ({}, {})",
-        pos.x, pos.y, state.roof_pos.x, state.roof_pos.y);
+    spdlog::info("DoorManager: Opened door {} at ({}, {}), roof at ({}, {})",
+        id, door_pos.x, door_pos.y, roof_pos.x, roof_pos.y);
 
     return true;
 }
 
-void DoorManager::closeDoor(Vector2i pos, World& world)
+void DoorManager::closeDoor(DoorId id, World& world)
 {
-    auto it = doors_.find(pos);
+    auto it = doors_.find(id);
     if (it == doors_.end() || !it->second.is_open) {
         return;
     }
 
-    const DoorState& state = it->second;
+    DoorDef& def = it->second;
+    const WorldData& data = world.getData();
+    Vector2i door_pos = computeDoorPosition(def, data);
+    Vector2i roof_pos = computeRoofPosition(def, data);
 
-    // Restore wall at door position (push any organisms out of the way).
-    world.replaceMaterialAtCell(pos.x, pos.y, MaterialType::WALL);
+    // Validate positions are within bounds before accessing.
+    if (door_pos.x >= 0 && door_pos.y >= 0 &&
+        static_cast<uint32_t>(door_pos.x) < data.width &&
+        static_cast<uint32_t>(door_pos.y) < data.height) {
+        // Restore wall at door position.
+        world.replaceMaterialAtCell(door_pos.x, door_pos.y, MaterialType::WALL);
+    }
 
-    // Clear roof cell (it will be restored by normal wall drawing if needed).
-    Cell& roof_cell = world.getData().at(state.roof_pos.x, state.roof_pos.y);
-    roof_cell = Cell();
+    if (roof_pos.x >= 0 && roof_pos.y >= 0 &&
+        static_cast<uint32_t>(roof_pos.x) < data.width &&
+        static_cast<uint32_t>(roof_pos.y) < data.height) {
+        // Clear roof cell.
+        world.getData().at(roof_pos.x, roof_pos.y) = Cell();
+    }
 
-    spdlog::info("DoorManager: Closed door at ({}, {})", pos.x, pos.y);
+    spdlog::info("DoorManager: Closed door {} at ({}, {})", id, door_pos.x, door_pos.y);
 
-    doors_.erase(it);
+    def.is_open = false;
 }
 
-bool DoorManager::isOpenDoor(Vector2i pos) const
+void DoorManager::removeDoor(DoorId id)
 {
-    auto it = doors_.find(pos);
+    doors_.erase(id);
+}
+
+bool DoorManager::isOpen(DoorId id) const
+{
+    auto it = doors_.find(id);
     return it != doors_.end() && it->second.is_open;
 }
 
-bool DoorManager::isRoofCell(Vector2i pos) const
+bool DoorManager::isValidDoor(DoorId id) const
 {
-    for (const auto& [door_pos, state] : doors_) {
-        if (state.is_open && state.roof_pos == pos) {
+    return doors_.contains(id);
+}
+
+Vector2i DoorManager::getDoorPosition(DoorId id, const WorldData& world_data) const
+{
+    auto it = doors_.find(id);
+    if (it == doors_.end()) {
+        return Vector2i{ -1, -1 };
+    }
+    return computeDoorPosition(it->second, world_data);
+}
+
+Vector2i DoorManager::getRoofPosition(DoorId id, const WorldData& world_data) const
+{
+    auto it = doors_.find(id);
+    if (it == doors_.end()) {
+        return Vector2i{ -1, -1 };
+    }
+    return computeRoofPosition(it->second, world_data);
+}
+
+bool DoorManager::isOpenDoorAt(Vector2i pos, const WorldData& world_data) const
+{
+    for (const auto& [id, def] : doors_) {
+        if (def.is_open && computeDoorPosition(def, world_data) == pos) {
             return true;
         }
     }
     return false;
 }
 
-std::vector<Vector2i> DoorManager::getOpenDoorPositions() const
+bool DoorManager::isRoofCellAt(Vector2i pos, const WorldData& world_data) const
+{
+    for (const auto& [id, def] : doors_) {
+        if (def.is_open && computeRoofPosition(def, world_data) == pos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::vector<Vector2i> DoorManager::getOpenDoorPositions(const WorldData& world_data) const
 {
     std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(pos);
+    for (const auto& [id, def] : doors_) {
+        if (def.is_open) {
+            positions.push_back(computeDoorPosition(def, world_data));
         }
     }
     return positions;
 }
 
-std::vector<Vector2i> DoorManager::getRoofPositions() const
+std::vector<Vector2i> DoorManager::getRoofPositions(const WorldData& world_data) const
 {
     std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(state.roof_pos);
+    for (const auto& [id, def] : doors_) {
+        if (def.is_open) {
+            positions.push_back(computeRoofPosition(def, world_data));
         }
     }
     return positions;
@@ -102,16 +171,37 @@ std::vector<Vector2i> DoorManager::getRoofPositions() const
 
 void DoorManager::closeAllDoors(World& world)
 {
-    // Collect positions first to avoid iterator invalidation.
-    std::vector<Vector2i> positions;
-    for (const auto& [pos, state] : doors_) {
-        if (state.is_open) {
-            positions.push_back(pos);
+    // Collect IDs first to avoid iterator invalidation.
+    std::vector<DoorId> ids;
+    for (const auto& [id, def] : doors_) {
+        if (def.is_open) {
+            ids.push_back(id);
         }
     }
-    for (const auto& pos : positions) {
-        closeDoor(pos, world);
+    for (DoorId id : ids) {
+        closeDoor(id, world);
     }
+}
+
+Vector2i DoorManager::computeDoorPosition(const DoorDef& def, const WorldData& world_data) const
+{
+    // Door is on the wall edge, positioned relative to the floor.
+    // Floor is at (height - 1), so door Y = floor - cells_above_floor.
+    int x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
+    int y = static_cast<int>(world_data.height - 1 - def.cells_above_floor);
+    return Vector2i{ x, y };
+}
+
+Vector2i DoorManager::computeRoofPosition(const DoorDef& def, const WorldData& world_data) const
+{
+    // Roof is one cell up and one cell inward from the door.
+    // Door Y is (height - 1 - cells_above_floor), so roof Y is one higher.
+    int door_x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
+    int dx = (def.side == DoorSide::LEFT) ? 1 : -1;
+    int x = door_x + dx;
+    int door_y = static_cast<int>(world_data.height - 1 - def.cells_above_floor);
+    int y = door_y - 1;  // One cell above the door.
+    return Vector2i{ x, y };
 }
 
 } // namespace DirtSim
