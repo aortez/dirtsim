@@ -318,34 +318,6 @@ void Tree::executeCommand(WorldB& world) {
 - Cannot grow into other trees
 - Limited by available energy
 
-## Materials
-
-### New Material Types
-
-**SEED** - Dense material, grows into tree
-- density: 8.0 (sinks in water)
-- elasticity: 0.2
-- cohesion: 0.9 (stays together)
-- adhesion: 0.3
-- is_rigid: true
-- color: 0x8B4513 (saddle brown)
-
-**ROOT** - Underground tree tissue
-- density: 1.2
-- elasticity: 0.3
-- cohesion: 0.8 (forms networks)
-- adhesion: 0.6 (grips soil)
-- is_rigid: false (can bend)
-- color: 0x654321 (dark brown)
-
-**Tree Materials**:
-- SEED - Converts to WOOD during germination
-- WOOD - Structural (already exists)
-- ROOT - Nutrient extraction, underground structure
-- LEAF - Energy production (already exists)
-- All subject to normal physics
-- Marked with organism_id
-
 ## Resource Systems
 
 **Air**
@@ -406,12 +378,10 @@ Material displacement multipliers (future):
 **GERMINATION** (100-200 timesteps)
 - SEED → WOOD conversion
 - Grows first ROOT downward
-- Very vulnerable
 
 **SAPLING** (200-1000 timesteps)
 - Rapid growth
 - Prioritizes ROOTs and LEAFs
-- Establishes structure
 
 **MATURE** (1000+ timesteps)
 - Balanced growth
@@ -441,67 +411,15 @@ Material displacement multipliers (future):
 ### Phase 1: Foundation + Neural Grid Visualization
 **Goal**: SEED material, tree organisms, and visual debugging of tree perception
 
-**Status: ✅ COMPLETE**
-
-Completed:
-- ✅ Add SEED to MaterialType enum (alphabetized)
-- ✅ Define SEED material properties (density: 3.5, rigid, cohesive)
-- ✅ Add SEED rendering color (0x8B4313 - saddle brown)
-- ✅ Create SeedAdd API command
-- ✅ Add UI button for placing seeds
-- ✅ Create TreeCommands.h, TreeSensoryData.h/cpp (TreeTypes.h deleted, split into focused files)
-- ✅ Create TreeBrain.h abstract interface
-- ✅ Create Tree.h/cpp with command execution system
-- ✅ Create TreeManager.h/cpp for lifecycle management
-- ✅ Add organism_id field to Cell class
-- ✅ Integrate TreeManager into World class
-- ✅ Update CMakeLists.txt with organism source files
-- ✅ Add std::hash<Vector2i> specialization for unordered containers
-- ✅ Seeds fall with gravity and participate in full physics simulation
-- ✅ NeuralGridRenderer for 15×15 tree vision display (UI side-by-side layout)
-- ✅ Efficient organism transfer tracking (O(transfers) batch updates)
-- ✅ organism_id automatically transferred with material movements
-- ✅ TreeSensoryData serialization (JSON + zpp_bits)
-- ✅ seed_position tracking for neural grid centering
-- ✅ Material histogram population from world state
-
-Deferred to Phase 3+:
-- ❌ Material picker UI (doesn't exist yet - seeds placeable via SeedAdd command)
+**Status: DONE**
 
 ### Phase 2: Growth System
 **Goal**: Intelligent germination and balanced growth with resource constraints
 
-**Status: ✅ MOSTLY COMPLETE**
+**Status: WIP!???**
 
-Completed:
-- ✅ Add ROOT material type (density: 1.2, grips soil with adhesion 0.6, can bend)
-- ✅ ROOT rendering (color: 0x654321 dark brown, emoji: 🌿)
-- ✅ Continuous time system (deltaTime-based, all timing in seconds)
-- ✅ TreeCommandProcessor for validated command execution
-- ✅ Contact-based germination (detect dirt → observe 2s → grow ROOT 2s → grow WOOD 3s)
-- ✅ SEED stays permanent as tree core (not replaced during germination)
-- ✅ Adjacency validation (allow AIR/DIRT/SAND, block WALL/METAL/WATER)
-- ✅ Energy validation (commands rejected if insufficient energy)
-- ✅ RuleBasedBrain with intelligent growth decisions
-- ✅ Balanced growth system (analyzes material_histograms, maintains target ratios)
-- ✅ Water-seeking behavior (roots target 30% → 15% when water found)
-- ✅ LEAF air-only restriction (leaves require AIR > 0.5, no underground foliage)
-- ✅ LEAF growth from WOOD cells (cardinal directions, prefers outward expansion)
-- ✅ Swap physics integration (organism tracking works with material swaps)
-- ✅ UI enhancements (energy display, current thought display)
-- ✅ Test infrastructure (6 passing tests with emoji visualization)
-- ✅ Stage transitions (SEED → GERMINATION → SAPLING)
+Need to do a status review of the tests and implementation.
 
-Limitations:
-- Growth happens from seed position only (not from tree edges) - trees grow as blobs
-- No energy regeneration (trees deplete and stop growing)
-- SAPLING continues indefinitely (no MATURE transition)
-- No death/decomposition when energy depleted
-
-Next steps for Phase 2 completion:
-- Fix growth topology (extend from edges, not seed center)
-- Add MATURE stage transition (based on size or age)
-- Basic energy regeneration (LEAFs produce small amounts over time)
 
 ### Phase 3: Resource Economy
 1. Light map calculation
