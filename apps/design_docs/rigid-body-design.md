@@ -224,11 +224,47 @@ class Duck : public Organism {
 ### Testing Strategy
 
 **Component unit tests** (test in isolation with real World, minimal setup):
-- `RigidBodyPhysicsComponent_GatherForcesSumsFromCells`
-- `RigidBodyPhysicsComponent_IntegrateFollowsFEqualsMA`
-- `LocalShapeProjection_ProjectsAllCellsToGrid`
-- `LocalShapeProjection_AddCellExpandsShape`
-- `RigidBodyCollisionComponent_DetectsBlockingCells`
+
+`RigidBodyPhysicsComponent_test.cpp`:
+- `GatherForcesSumsFromCells` - Sum pending_force from all occupied cells
+- `GathersFromCurrentPositionNotOccupiedCells` - Use floor(position + local_pos), not stale occupied_cells
+- `IncludesGravity` - Total force includes mass × gravity
+- `EmptyCellsContributeZeroForce` - AIR cells don't add to force sum
+- `IntegrateFollowsFEqualsMA` - velocity += (force / mass) × dt
+- `AirResistanceReducesVelocity` - Drag computed from current velocity
+
+`LocalShapeProjection_test.cpp`:
+- `ClearsOldOccupiedCells` - Previous projection cleared before new one
+- `ProjectsAllCellsToGrid` - Each local cell appears at correct grid position
+- `SetsOrganismIdOnProjectedCells` - Grid cells have correct organism_id
+- `SetsMaterialTypeOnProjectedCells` - Grid cells have correct material from local_shape
+- `SetsVelocityOnProjectedCells` - Grid cells have organism's velocity
+- `ComputesSubCellCOMFromFractionalPosition` - cell.com reflects sub-grid position
+- `AddCellExpandsShape` - Growth adds to local_shape
+- `RemoveCellShrinksShape` - Damage removes from local_shape
+
+`RigidBodyCollisionComponent_test.cpp`:
+- `DetectsWallCollision` - WALL material blocks movement
+- `DetectsOtherOrganismCollision` - Different organism_id blocks movement
+- `DetectsDenseSolidCollision` - fill_ratio > 0.8 solid blocks movement
+- `DetectsWorldBoundaryCollision` - Out of bounds blocks movement
+- `NoCollisionWithEmptySpace` - AIR cells don't block
+- `NoCollisionWithOwnCells` - Same organism_id doesn't block
+- `ContactNormalPointsAwayFromObstacle` - Normal computed correctly (**KNOWN BUG: currently hardcoded**)
+- `ImpulseReversesNormalVelocity` - Velocity into surface is reversed
+- `RestitutionControlsBounce` - e=0 stops, e=1 full bounce
+- `TangentialVelocityPreserved` - Velocity parallel to surface unchanged
+- `ReactionForceAppliedToEnvironment` - Blocked cells receive equal-and-opposite force
+
+`OrganismGrowth_test.cpp` (for LocalShapeProjection growth support):
+- `GrowCellAddsToLocalShape` - local_shape.size() increases
+- `GrowCellUpdatesMass` - organism mass increases by new cell's mass
+- `GrowCellUpdatesCOM` - center_of_mass shifts toward new cell
+- `AnchorPositionUnchanged` - organism.position stays fixed during growth
+
+**Already implemented** (in `OrganismPhysics_test.cpp`, `OrganismCollision_test.cpp`):
+- 13 physics tests (position, velocity, mass, COM, gravity)
+- 11 collision detection tests (wall, floor, bounds, organisms, dense solids)
 
 **Organism integration tests** (verify full behavior):
 - `GooseFallsAndLandsOnGround` (existing)
@@ -254,7 +290,8 @@ src/core/organisms/
 ├── tests/
 │   ├── RigidBodyPhysicsComponent_test.cpp
 │   ├── LocalShapeProjection_test.cpp
-│   └── RigidBodyCollisionComponent_test.cpp
+│   ├── RigidBodyCollisionComponent_test.cpp
+│   └── OrganismGrowth_test.cpp
 ├── Duck.h / Duck.cpp
 ├── Goose.h / Goose.cpp
 └── Tree.h / Tree.cpp
@@ -446,6 +483,10 @@ Vector2d acceleration = total_force * (1.0 / total_mass);
 ### Phase 4: Component Extraction & Tree Migration
 
 This phase extracts reusable components from Goose and migrates Tree to use them. See "Component Framework" section for design details.
+
+**Known Goose Issues** (to fix during extraction):
+- **Contact normal hardcoded** - `Organism.cpp:236` returns `(0,-1)` (floor) for all collisions. Need to compute actual direction from organism to obstacle.
+- **No deceleration friction** - Organisms don't slow down when they stop walking. Need friction when walk direction becomes zero.
 
 **4.1 Extract RigidBodyPhysicsComponent from Goose**
 - Create `PhysicsComponent` interface
