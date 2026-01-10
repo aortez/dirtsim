@@ -492,6 +492,9 @@ void ClockScenario::tick(World& world, double deltaTime)
     // before drawTime() updates last_drawn_time_.
     updateEvents(world, deltaTime);
 
+    // Process scheduled door removals.
+    door_manager_.update();
+
     // Check if digit slide is animating (takes over rendering like marquee).
     bool digit_slide_animating = false;
     if (isEventActive(ClockEventType::DIGIT_SLIDE)) {
@@ -1268,10 +1271,11 @@ void ClockScenario::updateDuckEvent(World& world, DuckEventState& state, double&
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
     }
 
-    // Close entrance door once duck moves away from it.
+    // Close entrance door once duck moves away from it and schedule removal.
     Vector2i entrance_pos = door_manager_.getDoorPosition(state.entrance_door_id, data);
     if (door_manager_.isOpen(state.entrance_door_id) && duck_cell != entrance_pos) {
         door_manager_.closeDoor(state.entrance_door_id, world);
+        door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
     }
 
     // Open exit door in the last 7 seconds.
@@ -1364,11 +1368,11 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         // Clear any floor obstacles.
         obstacle_manager_.clearAll(world);
 
-        // Close and remove doors.
+        // Close doors and schedule removal after a delay.
         door_manager_.closeDoor(state.entrance_door_id, world);
         door_manager_.closeDoor(state.exit_door_id, world);
-        door_manager_.removeDoor(state.entrance_door_id);
-        door_manager_.removeDoor(state.exit_door_id);
+        door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
+        door_manager_.scheduleRemoval(state.exit_door_id, std::chrono::seconds(2));
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         // Restore default digit material (METAL).
@@ -1617,8 +1621,8 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
                 }
             }
 
-            // All drain cells dissipate: full to empty in 1/4 second.
-            cell.fill_ratio -= (deltaTime * 4);
+            // All drain cells dissipate: full to empty pretty fast.
+            cell.fill_ratio -= (deltaTime * 10);
             if (cell.fill_ratio <= 0.0) {
                 cell = Cell();
             }
@@ -1671,17 +1675,25 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             double strength = 1.0 - 0.9 * std::min(distance / max_distance, 1.0);
             double force_magnitude = MAX_FORCE * strength;
 
-            // Direction toward drain center.
-            double direction = (cell_x < drain_center_x) ? 1.0 : -1.0;
-            if (std::abs(cell_x - drain_center_x) < 0.5) {
-                direction = 0.0;  // Already at drain.
-            }
-
             // Pull water down when directly over the drain opening.
             bool over_drain = (x >= drain_start_x_ && x <= drain_end_x_);
             double downward_force = over_drain ? MAX_FORCE : 0.0;
 
-            cell.addPendingForce(Vector2d{ direction * force_magnitude, downward_force });
+            double horizontal_force;
+            if (over_drain) {
+                // Apply horizontal damping to prevent overshooting the drain.
+                // Damping opposes horizontal velocity with magnitude equal to suction force.
+                horizontal_force = -cell.velocity.x * force_magnitude;
+            } else {
+                // Direction toward drain center.
+                double direction = (cell_x < drain_center_x) ? 1.0 : -1.0;
+                if (std::abs(cell_x - drain_center_x) < 0.5) {
+                    direction = 0.0;  // Already at drain.
+                }
+                horizontal_force = direction * force_magnitude;
+            }
+
+            cell.addPendingForce(Vector2d{ horizontal_force, downward_force });
         }
     }
 }
