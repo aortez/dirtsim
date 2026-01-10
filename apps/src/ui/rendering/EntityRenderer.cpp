@@ -19,8 +19,11 @@ void renderEntities(
 
     static bool logged_once = false;
     if (!logged_once) {
-        spdlog::info("EntityRenderer: Rendering {} entities (cell size: {}x{} pixels)",
-            entities.size(), scaledCellWidth, scaledCellHeight);
+        spdlog::info(
+            "EntityRenderer: Rendering {} entities (cell size: {}x{} pixels)",
+            entities.size(),
+            scaledCellWidth,
+            scaledCellHeight);
         logged_once = true;
     }
 
@@ -47,7 +50,9 @@ void renderEntities(
                 int32_t sparklePixelY = static_cast<int32_t>(sparkle.position.y * scaledCellHeight);
 
                 // Draw sparkle as a small cross (5 pixels).
-                const int32_t offsets[5][2] = { { 0, 0 }, { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 } };
+                const int32_t offsets[5][2] = {
+                    { 0, 0 }, { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 }
+                };
                 for (const auto& offset : offsets) {
                     int32_t px = sparklePixelX + offset[0];
                     int32_t py = sparklePixelY + offset[1];
@@ -82,9 +87,9 @@ void renderEntities(
             float scaleX = static_cast<float>(duckPixelWidth) / DUCK_IMG_WIDTH;
             float scaleY = static_cast<float>(duckPixelHeight) / DUCK_IMG_HEIGHT;
 
-            // Center duck on its position, shifted up 0.5 cells for testing.
+            // Center duck on its position, shifted up a bit to align feet with floor.
             int32_t duckStartX = pixelX - duckPixelWidth / 2;
-            int32_t duckStartY = pixelY - duckPixelHeight / 2 - duckPixelHeight / 2;
+            int32_t duckStartY = pixelY - duckPixelHeight / 2 - static_cast<int32_t>(duckPixelHeight * 0.45);
 
             // Draw duck sprite with scaling.
             // Flip horizontally if facing vector points left.
@@ -156,7 +161,7 @@ void renderEntities(
 
             // Center goose on its position, shifted up 0.5 cells.
             int32_t gooseStartX = pixelX - goosePixelWidth / 2;
-            int32_t gooseStartY = pixelY - goosePixelHeight / 2 - goosePixelHeight / 2;
+            int32_t gooseStartY = pixelY - goosePixelHeight / 2;// - goosePixelHeight / 2;
 
             // Draw goose sprite with scaling.
             const uint8_t* gooseData = goose_img_data;
