@@ -731,21 +731,25 @@ SEED at (4,5), WOOD at (4,3), but (4,4) is AIR
 
 #### Completed
 - ✅ `PhysicsComponent` interface created
-- ✅ `RigidBodyPhysicsComponent` extracted with 10 passing unit tests
+- ✅ `RigidBodyPhysicsComponent` extracted with 14 passing unit tests
   - `gatherForces()` - sums pending_force from occupied cells
   - `applyAirResistance()` - velocity-squared drag
   - `integrate()` - F=ma velocity update
   - `addForce()` / `clearPendingForce()` - force accumulation
 - ✅ `ProjectionComponent` interface created
-- ✅ `LocalShapeProjection` extracted with 10 passing unit tests
+- ✅ `LocalShapeProjection` extracted with 14 passing unit tests
   - `addCell()` / `removeCell()` - shape modification for growth
   - `project()` - stamps cells to grid from continuous position
   - `clear()` - removes old projection before re-projecting
   - Computes sub-cell COM from fractional position
 - ✅ `LocalCell` fields renamed to lowerCamelCase (`localPos`, `fillRatio`)
+- ✅ `CollisionComponent` interface created
+- ✅ `RigidBodyCollisionComponent` extracted with 19 passing unit tests
+  - `detect()` - checks boundaries, walls, other organisms, dense solids
+  - `respond()` - zeros velocity into surface, supports restitution
+  - **Fixed:** Contact normal now computed from organism center toward obstacle (was hardcoded to floor)
 
 #### Remaining
-- `RigidBodyCollisionComponent` - collision detection and response
 - Wire Goose to use components
 - Migrate Tree to use components
 
@@ -755,11 +759,15 @@ src/core/organisms/components/
 ├── PhysicsComponent.h           # Interface
 ├── RigidBodyPhysicsComponent.h
 ├── RigidBodyPhysicsComponent.cpp
-├── RigidBodyPhysicsComponent_test.cpp  # 10 tests passing
+├── RigidBodyPhysicsComponent_test.cpp   # 14 tests
 ├── ProjectionComponent.h        # Interface
 ├── LocalShapeProjection.h
-├── LocalShapeProjection.cpp     # WIP
-└── LocalShapeProjection_test.cpp  # WIP
+├── LocalShapeProjection.cpp
+├── LocalShapeProjection_test.cpp        # 14 tests
+├── CollisionComponent.h         # Interface
+├── RigidBodyCollisionComponent.h
+├── RigidBodyCollisionComponent.cpp
+└── RigidBodyCollisionComponent_test.cpp # 19 tests
 ```
 
 #### Phase 5: Advanced Features
@@ -817,11 +825,8 @@ advanceTime(deltaTime)
 ### 🎯 Next Steps
 
 **Immediate:**
-1. Fix LocalCell field naming (update to lowerCamelCase or accept snake_case)
-2. Complete `LocalShapeProjection` tests
-3. Extract `RigidBodyCollisionComponent` from Goose
-4. Wire Goose to use extracted components
-5. Verify all Goose tests pass with components
+1. Wire Goose to use extracted components (physics, projection, collision)
+2. Verify all Goose tests pass with components
 
 **After component extraction:**
 6. Migrate Tree to use components - continuous position, projection-based
