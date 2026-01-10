@@ -6,6 +6,11 @@
 
 namespace DirtSim {
 
+// Forward declarations for components.
+class CollisionComponent;
+class PhysicsComponent;
+class ProjectionComponent;
+
 /**
  * Goose organism - a mobile creature using rigid body physics.
  *
@@ -35,6 +40,7 @@ public:
      * @param brain Brain implementation for movement decisions.
      */
     Goose(OrganismId id, std::unique_ptr<GooseBrain> brain);
+    ~Goose();
 
     // Organism interface.
     Vector2i getAnchorCell() const override;
@@ -53,10 +59,6 @@ public:
     // Replace the brain (for testing).
     void setBrain(std::unique_ptr<GooseBrain> brain) { brain_ = std::move(brain); }
 
-    // Rigid body physics - the core of the new system.
-    void gatherForces(World& world);
-    void projectToGrid(World& world);
-
 private:
     bool on_ground_ = false;
     float walk_direction_ = 0.0f;
@@ -65,14 +67,13 @@ private:
 
     std::unique_ptr<GooseBrain> brain_;
 
-    // Pending forces accumulated this frame.
-    Vector2d pending_force_{ 0.0, 0.0 };
+    // Physics components.
+    std::unique_ptr<CollisionComponent> collision_;
+    std::unique_ptr<PhysicsComponent> physics_;
+    std::unique_ptr<ProjectionComponent> projection_;
 
     void updateGroundDetection(const World& world);
     void applyMovementForces(const World& world, double deltaTime);
-    void applyAirResistance(const World& world);
-    void clearOldProjection(World& world);
-    bool isSolidCell(const World& world, int x, int y) const;
 };
 
 } // namespace DirtSim

@@ -254,12 +254,12 @@ OrganismId OrganismManager::createGoose(
     // Set initial position (continuous, centered in cell).
     goose->setAnchorCell(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
 
-    // Register organism BEFORE projectToGrid so addCellToOrganism can find it.
+    // Register organism BEFORE initial update so addCellToOrganism can find it.
     Goose* goose_ptr = goose.get();
     organisms_.emplace(id, std::move(goose));
 
-    // Do initial projection to grid.
-    goose_ptr->projectToGrid(world);
+    // Do initial projection to grid via update with zero deltaTime.
+    goose_ptr->update(world, 0.0);
 
     spdlog::info("OrganismManager: Created goose {} at ({}, {})", id, x, y);
 
