@@ -22,9 +22,9 @@ Goose::Goose(OrganismId id, std::unique_ptr<GooseBrain> brain)
 {
     // Initialize local shape with a single cell at origin.
     local_shape.push_back(LocalCell{
-        .local_pos = { 0, 0 },
+        .localPos = { 0, 0 },
         .material = MaterialType::WOOD,
-        .fill_ratio = 1.0 });
+        .fillRatio = 1.0 });
 
     // Compute mass from local shape.
     recomputeMass();
@@ -91,8 +91,8 @@ void Goose::update(World& world, double deltaTime)
     std::vector<Vector2i> predicted_cells;
     for (const auto& local : local_shape) {
         Vector2d world_pos{
-            desired_position.x + static_cast<double>(local.local_pos.x),
-            desired_position.y + static_cast<double>(local.local_pos.y)
+            desired_position.x + static_cast<double>(local.localPos.x),
+            desired_position.y + static_cast<double>(local.localPos.y)
         };
         predicted_cells.push_back(Vector2i{
             static_cast<int>(std::floor(world_pos.x)),
@@ -183,8 +183,8 @@ void Goose::gatherForces(World& world)
     std::vector<Vector2i> current_cells;
     for (const auto& local : local_shape) {
         Vector2d world_pos{
-            position.x + static_cast<double>(local.local_pos.x),
-            position.y + static_cast<double>(local.local_pos.y)
+            position.x + static_cast<double>(local.localPos.x),
+            position.y + static_cast<double>(local.localPos.y)
         };
         Vector2i grid_pos{
             static_cast<int>(std::floor(world_pos.x)),
@@ -243,8 +243,8 @@ void Goose::projectToGrid(World& world)
     for (const auto& local : local_shape) {
         // World position = organism position + local offset.
         Vector2d world_pos{
-            position.x + static_cast<double>(local.local_pos.x),
-            position.y + static_cast<double>(local.local_pos.y)
+            position.x + static_cast<double>(local.localPos.x),
+            position.y + static_cast<double>(local.localPos.y)
         };
 
         // Snap to grid (floor).
@@ -265,7 +265,7 @@ void Goose::projectToGrid(World& world)
         // Project cell.
         world.getOrganismManager().addCellToOrganism(id_, grid_pos);
         cell.material_type = local.material;
-        cell.fill_ratio = local.fill_ratio;
+        cell.fill_ratio = local.fillRatio;
         cell.velocity = velocity;
 
         // Compute sub-cell COM from fractional position.

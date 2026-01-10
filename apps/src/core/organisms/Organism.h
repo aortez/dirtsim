@@ -21,9 +21,9 @@ class World;
  * continuous position.
  */
 struct LocalCell {
-    Vector2i local_pos;      // Position relative to organism anchor.
-    MaterialType material;   // Material type of this cell.
-    double fill_ratio;       // Fill ratio [0, 1].
+    Vector2i localPos;
+    MaterialType material;
+    double fillRatio;
 };
 
 /**

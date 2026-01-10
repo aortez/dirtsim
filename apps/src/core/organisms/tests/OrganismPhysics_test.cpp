@@ -48,9 +48,9 @@ protected:
         org->velocity = { 0.0, 0.0 };
 
         org->local_shape.push_back({
-            .local_pos = { 0, 0 },
+            .localPos = { 0, 0 },
             .material = material,
-            .fill_ratio = 1.0,
+            .fillRatio = 1.0,
         });
 
         org->recomputeMass();
@@ -67,9 +67,9 @@ protected:
         org->velocity = { 0.0, 0.0 };
 
         // Three WOOD cells in a row: local positions (0,0), (1,0), (2,0).
-        org->local_shape.push_back({ .local_pos = { 0, 0 }, .material = MaterialType::WOOD, .fill_ratio = 1.0 });
-        org->local_shape.push_back({ .local_pos = { 1, 0 }, .material = MaterialType::WOOD, .fill_ratio = 1.0 });
-        org->local_shape.push_back({ .local_pos = { 2, 0 }, .material = MaterialType::WOOD, .fill_ratio = 1.0 });
+        org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        org->local_shape.push_back({ .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        org->local_shape.push_back({ .localPos = { 2, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
 
         org->recomputeMass();
         org->recomputeCenterOfMass();
@@ -176,9 +176,9 @@ TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
 
     // One cell at 50% fill.
     org->local_shape.push_back({
-        .local_pos = { 0, 0 },
+        .localPos = { 0, 0 },
         .material = MaterialType::WOOD,
-        .fill_ratio = 0.5,
+        .fillRatio = 0.5,
     });
 
     org->recomputeMass();
@@ -194,8 +194,8 @@ TEST_F(OrganismPhysicsTest, MassAccountsForDifferentMaterials)
     org->velocity = { 0.0, 0.0 };
 
     // Mix of WOOD and METAL.
-    org->local_shape.push_back({ .local_pos = { 0, 0 }, .material = MaterialType::WOOD, .fill_ratio = 1.0 });
-    org->local_shape.push_back({ .local_pos = { 1, 0 }, .material = MaterialType::METAL, .fill_ratio = 1.0 });
+    org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+    org->local_shape.push_back({ .localPos = { 1, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
 
@@ -236,8 +236,8 @@ TEST_F(OrganismPhysicsTest, COMShiftsTowardHeavierMaterial)
     org->velocity = { 0.0, 0.0 };
 
     // WOOD at (0,0), METAL at (2,0). METAL is denser, so COM shifts right.
-    org->local_shape.push_back({ .local_pos = { 0, 0 }, .material = MaterialType::WOOD, .fill_ratio = 1.0 });
-    org->local_shape.push_back({ .local_pos = { 2, 0 }, .material = MaterialType::METAL, .fill_ratio = 1.0 });
+    org->local_shape.push_back({ .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+    org->local_shape.push_back({ .localPos = { 2, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
     org->recomputeCenterOfMass();

@@ -160,7 +160,7 @@ void Organism::recomputeMass()
 {
     mass = 0.0;
     for (const auto& cell : local_shape) {
-        double cell_mass = getMaterialProperties(cell.material).density * cell.fill_ratio;
+        double cell_mass = getMaterialProperties(cell.material).density * cell.fillRatio;
         mass += cell_mass;
     }
 }
@@ -174,9 +174,9 @@ void Organism::recomputeCenterOfMass()
 
     Vector2d weighted_sum{ 0.0, 0.0 };
     for (const auto& cell : local_shape) {
-        double cell_mass = getMaterialProperties(cell.material).density * cell.fill_ratio;
-        weighted_sum.x += static_cast<double>(cell.local_pos.x) * cell_mass;
-        weighted_sum.y += static_cast<double>(cell.local_pos.y) * cell_mass;
+        double cell_mass = getMaterialProperties(cell.material).density * cell.fillRatio;
+        weighted_sum.x += static_cast<double>(cell.localPos.x) * cell_mass;
+        weighted_sum.y += static_cast<double>(cell.localPos.y) * cell_mass;
     }
 
     center_of_mass.x = weighted_sum.x / mass;
