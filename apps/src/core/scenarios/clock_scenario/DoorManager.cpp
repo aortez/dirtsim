@@ -169,6 +169,31 @@ std::vector<Vector2i> DoorManager::getRoofPositions(const WorldData& world_data)
     return positions;
 }
 
+std::vector<Vector2i> DoorManager::getFramePositions(const WorldData& world_data) const
+{
+    std::vector<Vector2i> positions;
+    for (const auto& [id, def] : doors_) {
+        // Return frame positions for all doors (open or closed) so the
+        // doorframe is visible for the door's entire lifetime.
+        Vector2i door_pos = computeDoorPosition(def, world_data);
+
+        // The door cell itself (renders as WALL instead of WOOD when closed).
+        positions.push_back(door_pos);
+
+        // Wall cell above the door opening.
+        Vector2i above_door{ door_pos.x, door_pos.y - 1 };
+        if (above_door.y >= 0) {
+            positions.push_back(above_door);
+        }
+
+        // Floor cell at the door position.
+        int floor_y = static_cast<int>(world_data.height - 1);
+        Vector2i floor_at_door{ door_pos.x, floor_y };
+        positions.push_back(floor_at_door);
+    }
+    return positions;
+}
+
 void DoorManager::closeAllDoors(World& world)
 {
     // Collect IDs first to avoid iterator invalidation.

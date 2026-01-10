@@ -1780,6 +1780,15 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
         });
     }
 
+    // Door frame cells (wall above door, floor at door - render as wall/gray).
+    for (const auto& frame_pos : door_manager_.getFramePositions(data)) {
+        walls.push_back({
+            static_cast<uint32_t>(frame_pos.x),
+            static_cast<uint32_t>(frame_pos.y),
+            MaterialType::WALL
+        });
+    }
+
     return walls;
 }
 

@@ -54,6 +54,11 @@ public:
     std::vector<Vector2i> getOpenDoorPositions(const WorldData& world_data) const;
     std::vector<Vector2i> getRoofPositions(const WorldData& world_data) const;
 
+    // Get doorframe positions - cells that should render as WALL for the door's lifetime.
+    // Returns positions for all doors (open or closed). Includes: the door cell itself,
+    // wall cell above door, and floor cell at door position.
+    std::vector<Vector2i> getFramePositions(const WorldData& world_data) const;
+
     // Close and remove all doors.
     void closeAllDoors(World& world);
 
