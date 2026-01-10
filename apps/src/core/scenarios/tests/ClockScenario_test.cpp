@@ -15,16 +15,16 @@ protected:
     {
         // Create scenario with default event configs but random triggering disabled.
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
-            .color_cycle = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
-            .color_showcase = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
-            .digit_slide = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
+            .color_cycle = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .color_showcase = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .digit_slide = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
             .duck = {
-                .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 },
+                .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
             },
-            .marquee = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
-            .meltdown = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
-            .rain = { .timing = { .duration = 5.0, .chance_per_second = 0.0, .cooldown = 1.0 } },
+            .marquee = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .meltdown = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .rain = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
         });
 
         // Get required dimensions from scenario metadata.
@@ -129,14 +129,14 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 {
     // Create scenario with short duck duration for faster test.
     // Duration of 0.5s will timeout before the door even finishes opening.
-    // Note: chance_per_second = 0.0 prevents random triggering; we don't set
+    // Note: chance = 0.0 prevents random triggering; we don't set
     // eventFrequency = 0.0 because that would skip updateEvents() entirely.
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
         .digit_slide = {},
         .duck = {
-            .timing = { .duration = 0.5, .chance_per_second = 0.0, .cooldown = 0.0 },
+            .timing = { .duration = 0.5, .chance = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
         .marquee = {},
@@ -181,7 +181,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 
 TEST_F(ClockScenarioTest, DuckEvent_DoesNotTriggerRandomlyWhenDisabled)
 {
-    // With eventFrequency = 0 and chance_per_second = 0, no events should trigger.
+    // With eventFrequency = 0 and chance = 0, no events should trigger.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.eventFrequency = 0.0;
     scenario_->setConfig(config, *world_);
@@ -210,7 +210,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
         .color_showcase = {},
         .digit_slide = {},
         .duck = {
-            .timing = { .duration = 15.0, .chance_per_second = 0.0, .cooldown = 0.0 },
+            .timing = { .duration = 15.0, .chance = 0.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
         .marquee = {},

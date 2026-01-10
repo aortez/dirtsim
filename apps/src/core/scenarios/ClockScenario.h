@@ -79,6 +79,8 @@ private:
     std::map<ClockEventType, ActiveEvent> active_events_;
     std::map<ClockEventType, double> event_cooldowns_;
     double time_since_last_trigger_check_ = 0.0;
+    std::string last_trigger_check_time_;   // For detecting time changes.
+    bool time_changed_this_frame_ = false;  // Set each frame, used by event updates.
 
     // Door and obstacle management.
     DoorManager door_manager_;
@@ -112,7 +114,8 @@ private:
 
     // Event system helpers.
     void updateEvents(World& world, double deltaTime);
-    void tryTriggerEvents(World& world);
+    void tryTriggerPeriodicEvents(World& world);
+    void tryTriggerTimeChangeEvents(World& world);
     void startEvent(World& world, ClockEventType type);
     void updateEvent(World& world, ClockEventType type, ActiveEvent& event, double deltaTime);
     void endEvent(World& world, ClockEventType type, ActiveEvent& event);

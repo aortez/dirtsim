@@ -809,11 +809,19 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
         }
     }
 
-    // Check for new events once per second.
+    // Check for time change - set flag and trigger OnTimeChange events.
+    std::string current_time = getCurrentTimeString();
+    time_changed_this_frame_ = (current_time != last_trigger_check_time_);
+    if (time_changed_this_frame_) {
+        last_trigger_check_time_ = current_time;
+        tryTriggerTimeChangeEvents(world);
+    }
+
+    // Periodic trigger check (once per second).
     time_since_last_trigger_check_ += deltaTime;
     if (time_since_last_trigger_check_ >= 1.0) {
         time_since_last_trigger_check_ = 0.0;
-        tryTriggerEvents(world);
+        tryTriggerPeriodicEvents(world);
     }
 
     // Update active events and collect ones that need to end.
@@ -838,7 +846,7 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
     }
 }
 
-void ClockScenario::tryTriggerEvents(World& world)
+void ClockScenario::tryTriggerPeriodicEvents(World& world)
 {
     static constexpr std::array<ClockEventType, 7> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE,
@@ -850,23 +858,55 @@ void ClockScenario::tryTriggerEvents(World& world)
         ClockEventType::RAIN,
     };
 
-    // Check each event type for triggering.
     for (ClockEventType type : ALL_EVENT_TYPES) {
-        // Skip if already active.
+        const auto& timing = getEventTiming(type);
+        if (timing.trigger_type != EventTriggerType::Periodic) {
+            continue;
+        }
+
         if (active_events_.contains(type)) {
             continue;
         }
 
-        // Skip if on cooldown.
         if (event_cooldowns_.contains(type) && event_cooldowns_[type] > 0.0) {
             continue;
         }
 
-        // Scale chance by eventFrequency config.
-        const auto& timing = getEventTiming(type);
-        double effective_chance = timing.chance_per_second * config_.eventFrequency;
-
+        double effective_chance = timing.chance * config_.eventFrequency;
         if (uniform_dist_(rng_) < effective_chance) {
+            startEvent(world, type);
+        }
+    }
+}
+
+void ClockScenario::tryTriggerTimeChangeEvents(World& world)
+{
+    static constexpr std::array<ClockEventType, 7> ALL_EVENT_TYPES = {
+        ClockEventType::COLOR_CYCLE,
+        ClockEventType::COLOR_SHOWCASE,
+        ClockEventType::DIGIT_SLIDE,
+        ClockEventType::DUCK,
+        ClockEventType::MARQUEE,
+        ClockEventType::MELTDOWN,
+        ClockEventType::RAIN,
+    };
+
+    for (ClockEventType type : ALL_EVENT_TYPES) {
+        const auto& timing = getEventTiming(type);
+        if (timing.trigger_type != EventTriggerType::OnTimeChange) {
+            continue;
+        }
+
+        if (active_events_.contains(type)) {
+            continue;
+        }
+
+        if (event_cooldowns_.contains(type) && event_cooldowns_[type] > 0.0) {
+            continue;
+        }
+
+        double effective_chance = timing.chance * config_.eventFrequency;
+        if (effective_chance >= 1.0 || uniform_dist_(rng_) < effective_chance) {
             startEvent(world, type);
         }
     }
@@ -904,7 +944,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         ColorShowcaseEventState state;
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
         MaterialType starting_material = ClockEvents::startColorShowcase(
-            state, showcase_materials, rng_, getCurrentTimeString());
+            state, showcase_materials, rng_);
         config_.digitMaterial = starting_material;
         event.state = state;
         config_.colorShowcaseEnabled = true;  // Sync config flag.
@@ -1009,8 +1049,7 @@ void ClockScenario::updateColorCycleEvent(World& /*world*/, ColorCycleEventState
 void ClockScenario::updateColorShowcaseEvent(World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
 {
     const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-    std::string current_time = getCurrentTimeString();
-    auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, current_time);
+    auto new_material = ClockEvents::updateColorShowcase(state, showcase_materials, time_changed_this_frame_);
     if (new_material) {
         config_.digitMaterial = *new_material;
     }

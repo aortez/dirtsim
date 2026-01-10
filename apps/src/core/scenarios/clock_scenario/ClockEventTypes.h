@@ -23,18 +23,35 @@ enum class ClockEventType {
     RAIN
 };
 
+// Determines when an event's trigger probability is checked.
+enum class EventTriggerType {
+    Periodic,      // Checked once per second.
+    OnTimeChange,  // Checked when displayed time string changes.
+};
+
 struct EventTimingConfig {
+    EventTriggerType trigger_type = EventTriggerType::Periodic;
     double duration;
-    double chance_per_second;
+    double chance;   // Probability per trigger (meaning depends on trigger_type).
     double cooldown;
 };
 
 struct ColorCycleEventConfig {
-    EventTimingConfig timing = { .duration = 10.0, .chance_per_second = 0.04, .cooldown = 15.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::OnTimeChange,
+        .duration = 10.0,
+        .chance = 0.15,
+        .cooldown = 15.0
+    };
 };
 
 struct ColorShowcaseEventConfig {
-    EventTimingConfig timing = { .duration = 120.0, .chance_per_second = 0.1, .cooldown = 60.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::OnTimeChange,
+        .duration = 120.0,
+        .chance = 0.3,
+        .cooldown = 60.0
+    };
     std::vector<MaterialType> showcase_materials = {
         MaterialType::LEAF, MaterialType::WATER, MaterialType::WOOD
     };
@@ -42,26 +59,51 @@ struct ColorShowcaseEventConfig {
 
 struct DigitSlideEventConfig {
     // Runs indefinitely when enabled - duration is just a fallback.
-    EventTimingConfig timing = { .duration = 3600.0, .chance_per_second = 0.0, .cooldown = 0.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::OnTimeChange,
+        .duration = 3600.0,
+        .chance = 0.0,  // Manual only.
+        .cooldown = 0.0
+    };
     double animation_speed = 2.0;  // Progress per second (1.0 = 1 second to complete slide).
 };
 
 struct DuckEventConfig {
-    EventTimingConfig timing = { .duration = 30.0, .chance_per_second = 0.05, .cooldown = 10.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::Periodic,
+        .duration = 30.0,
+        .chance = 0.05,
+        .cooldown = 10.0
+    };
     bool floor_obstacles_enabled = true;
 };
 
 struct MarqueeEventConfig {
-    EventTimingConfig timing = { .duration = 10.0, .chance_per_second = .05, .cooldown = 5.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::OnTimeChange,
+        .duration = 10.0,
+        .chance = 0.1,
+        .cooldown = 5.0
+    };
     double scroll_speed = 100.0;  // Units per second.
 };
 
 struct MeltdownEventConfig {
-    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::OnTimeChange,
+        .duration = 20.0,
+        .chance = 0.02,
+        .cooldown = 30.0
+    };
 };
 
 struct RainEventConfig {
-    EventTimingConfig timing = { .duration = 20.0, .chance_per_second = 0.01, .cooldown = 30.0 };
+    EventTimingConfig timing = {
+        .trigger_type = EventTriggerType::Periodic,
+        .duration = 20.0,
+        .chance = 0.01,
+        .cooldown = 30.0
+    };
 };
 
 // ============================================================================
@@ -75,8 +117,7 @@ struct ColorCycleEventState {
 };
 
 struct ColorShowcaseEventState {
-    size_t current_index = 0;        // Current position in showcase materials list.
-    std::string last_seen_time = ""; // Tracks time independently for change detection.
+    size_t current_index = 0;  // Current position in showcase materials list.
 };
 
 struct DigitSlideEventState {
