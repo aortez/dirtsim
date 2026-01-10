@@ -7,9 +7,13 @@
 #include "core/WorldData.h"
 #include "core/api/UiUpdateEvent.h"
 #include "core/network/WebSocketService.h"
+#include "ui/UiComponentManager.h"
+#include "ui/controls/LogPanel.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/network/MessageParser.h"
+#include "ui/ui_builders/LVGLBuilder.h"
+#include <lvgl/lvgl.h>
 #include <nlohmann/json.hpp>
 #include <zpp_bits.h>
 
@@ -17,15 +21,156 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
+namespace {
+
+constexpr int ICON_RAIL_WIDTH = 80;
+constexpr int STATUS_HEIGHT = 60;
+constexpr uint32_t BG_COLOR = 0x202020;
+constexpr uint32_t RAIL_COLOR = 0x303030;
+
+} // namespace
+
 void Disconnected::onEnter(StateMachine& sm)
 {
     sm_ = &sm;
     LOG_INFO(State, "Entered Disconnected state (retry_count={}, retry_pending={})",
         retry_count_, retry_pending_);
+
+    createDiagnosticsScreen(sm);
+}
+
+void Disconnected::onExit(StateMachine& sm)
+{
+    LOG_INFO(State, "Exiting Disconnected state");
+
+    logPanel_.reset();
+
+    // Clear the container.
+    auto* uiManager = sm.getUiComponentManager();
+    if (uiManager) {
+        uiManager->clearCurrentContainer();
+    }
+
+    mainContainer_ = nullptr;
+    iconRail_ = nullptr;
+    logButton_ = nullptr;
+    contentArea_ = nullptr;
+    statusLabel_ = nullptr;
+}
+
+void Disconnected::createDiagnosticsScreen(StateMachine& sm)
+{
+    auto* uiManager = sm.getUiComponentManager();
+    if (!uiManager) {
+        return;
+    }
+
+    // Get the main menu container (reuse the menu screen).
+    lv_obj_t* screen = uiManager->getMainMenuContainer();
+    if (!screen) {
+        return;
+    }
+
+    // Create main container with horizontal flex layout.
+    mainContainer_ = lv_obj_create(screen);
+    lv_obj_set_size(mainContainer_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(mainContainer_, lv_color_hex(BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(mainContainer_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(mainContainer_, 0, 0);
+    lv_obj_set_style_pad_all(mainContainer_, 0, 0);
+    lv_obj_set_flex_flow(mainContainer_, LV_FLEX_FLOW_ROW);
+    lv_obj_clear_flag(mainContainer_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create icon rail on the left.
+    iconRail_ = lv_obj_create(mainContainer_);
+    lv_obj_set_size(iconRail_, ICON_RAIL_WIDTH, LV_PCT(100));
+    lv_obj_set_style_bg_color(iconRail_, lv_color_hex(RAIL_COLOR), 0);
+    lv_obj_set_style_bg_opa(iconRail_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(iconRail_, 0, 0);
+    lv_obj_set_style_pad_all(iconRail_, 4, 0);
+    lv_obj_set_flex_flow(iconRail_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(iconRail_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(iconRail_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create log icon button.
+    logButton_ = LVGLBuilder::actionButton(iconRail_)
+                     .icon(LV_SYMBOL_LIST)
+                     .mode(LVGLBuilder::ActionMode::Toggle)
+                     .size(ICON_RAIL_WIDTH - 8)
+                     .checked(true)
+                     .glowColor(0x00aaff)
+                     .textColor(0x00aaff)
+                     .buildOrLog();
+
+    // Create content area (right side).
+    contentArea_ = lv_obj_create(mainContainer_);
+    lv_obj_set_flex_grow(contentArea_, 1);
+    lv_obj_set_height(contentArea_, LV_PCT(100));
+    lv_obj_set_style_bg_color(contentArea_, lv_color_hex(BG_COLOR), 0);
+    lv_obj_set_style_bg_opa(contentArea_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(contentArea_, 0, 0);
+    lv_obj_set_style_pad_all(contentArea_, 8, 0);
+    lv_obj_set_flex_flow(contentArea_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_clear_flag(contentArea_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create status label at top of content area.
+    statusLabel_ = lv_label_create(contentArea_);
+    lv_obj_set_width(statusLabel_, LV_PCT(100));
+    lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xff6600), 0);
+    lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_bottom(statusLabel_, 8, 0);
+    updateStatusLabel();
+
+    // Create log panel container.
+    lv_obj_t* logContainer = lv_obj_create(contentArea_);
+    lv_obj_set_flex_grow(logContainer, 1);
+    lv_obj_set_width(logContainer, LV_PCT(100));
+    lv_obj_set_style_bg_opa(logContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(logContainer, 0, 0);
+    lv_obj_set_style_pad_all(logContainer, 0, 0);
+    lv_obj_clear_flag(logContainer, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Create log panel.
+    logPanel_ = std::make_unique<LogPanel>(logContainer, "dirtsim.log", 30);
+    logPanel_->setRefreshInterval(2.0);
+
+    LOG_INFO(State, "Diagnostics screen created");
+}
+
+void Disconnected::updateStatusLabel()
+{
+    if (!statusLabel_) {
+        return;
+    }
+
+    std::string status;
+    if (retry_pending_) {
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
+        double remaining = RETRY_INTERVAL_SECONDS - elapsed;
+        if (remaining < 0) {
+            remaining = 0;
+        }
+
+        status = "Unable to connect to server\n";
+        status += "Retry " + std::to_string(retry_count_) + "/" + std::to_string(MAX_RETRY_ATTEMPTS);
+        status += " in " + std::to_string(static_cast<int>(remaining + 0.5)) + "s...";
+    }
+    else if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
+        status = "Connection failed after " + std::to_string(MAX_RETRY_ATTEMPTS) + " attempts\n";
+        status += "Check server status and restart";
+    }
+    else {
+        status = "Connecting to server...";
+    }
+
+    lv_label_set_text(statusLabel_, status.c_str());
 }
 
 void Disconnected::updateAnimations()
 {
+    updateStatusLabel();
+
     if (!retry_pending_ || !sm_) {
         return;
     }
@@ -86,8 +231,6 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         });
 
     // Setup binary callback for RenderMessage pushes from server.
-    // Note: Command responses are routed via WebSocketService's pendingRequests_ map,
-    // so this callback only receives RenderMessage payloads (already extracted from envelope).
     wsService.onBinary([&sm](const std::vector<std::byte>& bytes) {
         LOG_DEBUG(Network, "Received binary message ({} bytes)", bytes.size());
 
@@ -194,7 +337,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 RETRY_INTERVAL_SECONDS, retry_count_, MAX_RETRY_ATTEMPTS);
         }
 
-        return std::move(*this);  // Stay in same state, preserving retry info.
+        updateStatusLabel();
+        return std::move(*this);
     }
 
     // Connection initiated successfully - clear retry state.
