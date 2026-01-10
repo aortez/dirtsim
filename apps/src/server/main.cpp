@@ -1,4 +1,3 @@
-#include "ServerConfig.h"
 #include "StateMachine.h"
 #include "core/ConfigLoader.h"
 #include "core/GridOfCells.h"
@@ -113,29 +112,6 @@ int main(int argc, char** argv)
         spdlog::info("Applied channel overrides: {}", args::get(logChannels));
     }
 
-    // Load server configuration (required).
-    auto serverConfigJson = ConfigLoader::load("server.json");
-    if (!serverConfigJson.has_value()) {
-        spdlog::error("No server.json found. Searched paths:");
-        for (const auto& path : ConfigLoader::getSearchPaths()) {
-            spdlog::error("  - {}", path.string());
-        }
-        return 1;
-    }
-
-    // Deserialize to typed struct.
-    ServerConfig serverConfig;
-    try {
-        DirtSim::from_json(serverConfigJson.value(), serverConfig);
-    }
-    catch (const std::exception& e) {
-        spdlog::error("Failed to parse server.json: {}", e.what());
-        return 1;
-    }
-
-    std::string startupScenario = getScenarioId(serverConfig.startupConfig);
-    spdlog::info("Startup scenario: {}", startupScenario);
-
     spdlog::info("Starting Sparkle Duck WebSocket Server");
     spdlog::info("Port: {}", port);
     if (maxSteps > 0) {
@@ -145,9 +121,8 @@ int main(int argc, char** argv)
         spdlog::info("Running indefinitely (Ctrl+C to stop)");
     }
 
-    // Create headless state machine.
+    // Create headless state machine. Config is loaded by Startup state.
     auto stateMachine = std::make_unique<Server::StateMachine>();
-    stateMachine->serverConfig = std::make_unique<ServerConfig>(std::move(serverConfig));
     g_stateMachine = stateMachine.get();
 
     // Start mDNS/Avahi advertisement so other nodes can discover us.
