@@ -82,9 +82,9 @@ void renderEntities(
             float scaleX = static_cast<float>(duckPixelWidth) / DUCK_IMG_WIDTH;
             float scaleY = static_cast<float>(duckPixelHeight) / DUCK_IMG_HEIGHT;
 
-            // Center duck on its position.
+            // Center duck on its position, shifted up 0.5 cells for testing.
             int32_t duckStartX = pixelX - duckPixelWidth / 2;
-            int32_t duckStartY = pixelY - duckPixelHeight / 2;
+            int32_t duckStartY = pixelY - duckPixelHeight / 2 - duckPixelHeight / 2;
 
             // Draw duck sprite with scaling.
             // Flip horizontally if facing vector points left.
@@ -154,9 +154,9 @@ void renderEntities(
             float scaleX = static_cast<float>(goosePixelWidth) / GOOSE_IMG_WIDTH;
             float scaleY = static_cast<float>(goosePixelHeight) / GOOSE_IMG_HEIGHT;
 
-            // Center goose on its position.
+            // Center goose on its position, shifted up 0.5 cells.
             int32_t gooseStartX = pixelX - goosePixelWidth / 2;
-            int32_t gooseStartY = pixelY - goosePixelHeight / 2;
+            int32_t gooseStartY = pixelY - goosePixelHeight / 2 - goosePixelHeight / 2;
 
             // Draw goose sprite with scaling.
             const uint8_t* gooseData = goose_img_data;

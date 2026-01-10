@@ -631,14 +631,10 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
                 static_cast<uint32_t>(anchor.x) < data.width &&
                 static_cast<uint32_t>(anchor.y) < data.height) {
                 const Cell& cell = data.at(anchor.x, anchor.y);
-                // Clamp COM.y when grounded.
-                double com_y = cell.com.y;
-                if (duck->isOnGround() && com_y > 0.0) {
-                    com_y = 0.0;
-                }
+                // TODO: Temporarily disabled COM.y clamping for testing.
                 entity.com = Vector2<float>{
                     static_cast<float>(cell.com.x),
-                    static_cast<float>(com_y)
+                    static_cast<float>(cell.com.y)
                 };
                 entity.velocity = Vector2<float>{
                     static_cast<float>(cell.velocity.x),
