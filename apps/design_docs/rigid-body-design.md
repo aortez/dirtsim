@@ -714,33 +714,56 @@ SEED at (4,5), WOOD at (4,3), but (4,4) is AIR
 
 **Impact**: Organisms can have temporary gaps, but overall structure remains functional. Tests pass.
 
-### ❌ Test Failures (2 expected, 162 pass)
+### ❌ Test Failures (6 known, 280 pass, 9 disabled)
 
-1. **`DisconnectedFragmentGetsPruned`** (Expected)
-   - Test expects structural disconnection detection
-   - Disabled until Phase 4 implements position constraints
+**Expected failures (will fix after component refactor):**
+1. **`DisconnectedFragmentGetsPruned`** - Needs position constraints from Phase 4
+2. **`ExtendedGrowthStability`** - Test threshold issue, physics working
+3. **`GooseTest.GooseWalksRightWhenOnGround`** - Goose tests await component wiring
+4. **`GooseTest.GooseWalksLeftWhenOnGround`**
+5. **`GooseTest.GooseCannotWalkThroughVerticalWall`**
+6. **`GooseTest.GooseCannotWalkThroughOtherOrganism`**
 
-2. **`ExtendedGrowthStability`** (Expected)
-   - Assertion: `com_magnitude < 0.4`
-   - Actual: SEED COM = 1.0 (particle resting at bottom of cell touching ground)
-   - Velocity ~0.003 confirms ground support working
-   - Failure is about test threshold, not physics
+**Disabled tests:**
+- `ParameterizedBuoyancyTest.MaterialBuoyancyBehavior` (4 cases) - Buoyancy needs tuning
 
-### 🚧 Not Yet Implemented
+### 🔨 In Progress: Phase 4 Component Extraction
 
-#### Phase 4: Component Extraction & Tree Migration
-**Why needed**: Tree currently uses cell-based physics but is multi-cell, causing structural tearing. Tree should use the same rigid body architecture as Goose.
+#### Completed
+- ✅ `PhysicsComponent` interface created
+- ✅ `RigidBodyPhysicsComponent` extracted with 10 passing unit tests
+  - `gatherForces()` - sums pending_force from occupied cells
+  - `applyAirResistance()` - velocity-squared drag
+  - `integrate()` - F=ma velocity update
+  - `addForce()` / `clearPendingForce()` - force accumulation
+- ✅ `ProjectionComponent` interface created
+- ✅ `LocalShapeProjection` implementation (WIP - needs field name fixes)
 
-**Approach**: Extract reusable components from Goose, then have Tree use them:
+#### In Progress
+- 🔧 `LocalShapeProjection` tests - blocked on LocalCell field naming
 
-1. **Extract RigidBodyPhysicsComponent** - Force gathering, air resistance, F=ma integration
-2. **Extract LocalShapeProjection** - Local shape storage, grid projection, growth support
-3. **Extract RigidBodyCollisionComponent** - Collision detection and response
-4. **Migrate Tree** - Continuous position, uses components, growth modifies local_shape
+#### Blocking Issue: LocalCell Field Names
+The existing `LocalCell` struct in `Organism.h` uses snake_case (`local_pos`, `fill_ratio`), which conflicts with the project's lowerCamelCase convention. Options:
+1. Update `LocalCell` to use lowerCamelCase (breaking change, update all usages)
+2. Components use existing snake_case (inconsistent but non-breaking)
 
-**Key insight**: The "structural gaps" problem (Challenge 4) is solved by continuous position + projection, not by position constraints on grid cells. Goose already works this way.
+#### Remaining
+- `RigidBodyCollisionComponent` - collision detection and response
+- Wire Goose to use components
+- Migrate Tree to use components
 
-**Dependencies**: None - can proceed incrementally. Each extraction step keeps Goose tests passing.
+#### File Structure
+```
+src/core/organisms/components/
+├── PhysicsComponent.h           # Interface
+├── RigidBodyPhysicsComponent.h
+├── RigidBodyPhysicsComponent.cpp
+├── RigidBodyPhysicsComponent_test.cpp  # 10 tests passing
+├── ProjectionComponent.h        # Interface
+├── LocalShapeProjection.h
+├── LocalShapeProjection.cpp     # WIP
+└── LocalShapeProjection_test.cpp  # WIP
+```
 
 #### Phase 5: Advanced Features
 - Rotation (angular velocity, torques)
@@ -796,24 +819,16 @@ advanceTime(deltaTime)
 
 ### 🎯 Next Steps
 
-**Phase 4: Component Extraction & Tree Migration**
+**Immediate:**
+1. Fix LocalCell field naming (update to lowerCamelCase or accept snake_case)
+2. Complete `LocalShapeProjection` tests
+3. Extract `RigidBodyCollisionComponent` from Goose
+4. Wire Goose to use extracted components
+5. Verify all Goose tests pass with components
 
-The path forward is to extract reusable components from Goose and migrate Tree to use them:
-
-1. **Create component interfaces** in `src/core/organisms/components/`
-2. **Extract RigidBodyPhysicsComponent** from Goose's `gatherForces()` and `applyForce()`
-3. **Write unit tests** for the component in isolation (real World, minimal setup)
-4. **Goose uses the component** - verify Goose tests still pass
-5. **Extract LocalShapeProjection** from Goose's `projectToGrid()`
-6. **Extract RigidBodyCollisionComponent** from Goose's collision logic
-7. **Migrate Tree** to use same components - continuous position, projection-based
-8. **Update Tree tests** for new architecture
-
-**Why this approach:**
-- Goose already solves the tearing problem - extract what works
-- Tree benefits from same physics without reimplementing
-- Incremental - each step keeps existing tests passing
-- Component tests catch regressions early
+**After component extraction:**
+6. Migrate Tree to use components - continuous position, projection-based
+7. Update Tree tests for new architecture
 
 **After Tree migration:**
 - Tree falls as rigid body (structure stays together)
