@@ -6,6 +6,50 @@ Rigid body organisms (Goose) store position in continuous space and project onto
 
 **Core principle:** Rigid bodies control their own position. World physics provides forces, not movement.
 
+## Organism Architecture
+
+Organisms fall into two categories based on their physics needs:
+
+### Single-Cell Organisms (Duck Template)
+
+Single-cell organisms live as a single grid cell. They use world physics directly:
+- The organism IS the cell - no separate position tracking needed
+- World physics handles gravity, pressure, collisions
+- Organism just adds forces (walk, jump) to the cell's pending_force
+- No tearing problem (only one cell)
+
+**Example:** Duck adds walk/jump forces to its cell, world physics does the rest.
+
+**Key characteristic:** `usesRigidBodyPhysics() = false`
+
+### Multi-Cell Organisms (Goose Prototype)
+
+Multi-cell organisms need continuous position tracking to prevent tearing:
+- Maintain floating-point position separate from grid
+- Define structure as `local_shape` (cells relative to position)
+- Each frame: gather forces → integrate → collision detect → project to grid
+- All cells move together because they're projected from one position
+
+**Example:** Goose has continuous position, projects its shape onto grid each frame.
+
+**Key characteristic:** `usesRigidBodyPhysics() = true`
+
+### Tree Migration
+
+Tree is currently implemented as cell-based (like Duck) but is multi-cell, causing structural tearing. Tree should migrate to the Goose pattern:
+- Continuous position (initially at seed location)
+- Local shape defines SEED, WOOD, ROOT, LEAF cells relative to position
+- Growth adds cells to local_shape, then projects to grid
+- Physics keeps structure together automatically
+
+### Architecture Summary
+
+| Organism | Cells | Position | Physics | Template |
+|----------|-------|----------|---------|----------|
+| Duck | 1 | Grid cell | World handles it | Single-cell |
+| Goose | N | Continuous | Self-integrated | Multi-cell |
+| Tree | N | Continuous (planned) | Self-integrated (planned) | Multi-cell |
+
 ## Critical Isolation Requirements
 
 Rigid body organisms MUST be skipped in these systems:
@@ -81,6 +125,140 @@ The `is_rigid` flag on `MaterialProperties` is being removed:
 - Was used by support system (removed)
 - Was used to skip pressure forces for rigid materials
 - Individual rigid-material cells will now behave like high-viscosity particles
+
+## Component Framework
+
+Rather than duplicating physics code between Goose and Tree, we extract shared behavior into reusable components. Organisms compose these components to get the physics behavior they need.
+
+### Design Principles
+
+1. **Extract from Goose** - Goose already has working rigid body physics. Extract components from it.
+2. **Tree consumes same components** - Tree migrates to use the extracted components.
+3. **Test components in isolation** - Unit tests for components, integration tests for organisms.
+4. **Composition over inheritance** - Organisms own components, not inherit from physics base classes.
+
+### Component Interfaces
+
+```cpp
+// How forces are gathered and applied
+class PhysicsComponent {
+public:
+    virtual void gatherForces(World& world, const std::vector<Vector2i>& cells) = 0;
+    virtual void applyAirResistance(const World& world, Vector2d velocity) = 0;
+    virtual Vector2d getPendingForce() const = 0;
+    virtual void clearPendingForce() = 0;
+    virtual void integrate(Vector2d& velocity, double mass, double dt) = 0;
+};
+
+// How the organism appears on the grid
+class ProjectionComponent {
+public:
+    virtual void project(World& world, OrganismId id, Vector2d position, Vector2d velocity) = 0;
+    virtual void clear(World& world) = 0;
+    virtual const std::vector<Vector2i>& getOccupiedCells() const = 0;
+
+    // For growable organisms
+    virtual void addCell(Vector2i local_pos, MaterialType type, double fill) = 0;
+    virtual void removeCell(Vector2i local_pos) = 0;
+};
+
+// Collision detection and response
+class CollisionComponent {
+public:
+    virtual CollisionInfo detect(
+        const World& world,
+        const std::vector<Vector2i>& current_cells,
+        const std::vector<Vector2i>& predicted_cells) = 0;
+    virtual void respond(CollisionInfo& info, Vector2d& velocity) = 0;
+};
+```
+
+### Component Implementations
+
+**RigidBodyPhysicsComponent** - For multi-cell organisms:
+- Gathers pending_force from all occupied grid cells
+- Applies air resistance based on current velocity
+- Integrates F=ma to update velocity
+
+**LocalShapeProjection** - For multi-cell organisms:
+- Stores `local_shape` (cells relative to organism position)
+- Projects cells onto grid based on continuous position
+- Computes sub-cell COM from fractional position
+- Supports adding/removing cells (for growth)
+
+**RigidBodyCollisionComponent** - For multi-cell organisms:
+- Predicts which cells would be occupied at desired position
+- Detects blocking cells (non-empty, non-organism)
+- Responds by zeroing velocity component into obstacle
+
+**CellPhysicsComponent** - For single-cell organisms:
+- Applies forces directly to the grid cell
+- Delegates integration to world physics
+
+**SingleCellProjection** - For single-cell organisms:
+- Organism occupies exactly one cell
+- No local_shape needed
+
+### Organism Composition
+
+```cpp
+// Multi-cell organism (Goose, Tree)
+class Goose : public Organism {
+    RigidBodyPhysicsComponent physics_;
+    LocalShapeProjection projection_;
+    RigidBodyCollisionComponent collision_;
+    std::unique_ptr<GooseBrain> brain_;
+
+    Vector2d position_;
+    Vector2d velocity_;
+};
+
+// Single-cell organism (Duck)
+class Duck : public Organism {
+    CellPhysicsComponent physics_;
+    SingleCellProjection projection_;
+    std::unique_ptr<DuckBrain> brain_;
+};
+```
+
+### Testing Strategy
+
+**Component unit tests** (test in isolation with real World, minimal setup):
+- `RigidBodyPhysicsComponent_GatherForcesSumsFromCells`
+- `RigidBodyPhysicsComponent_IntegrateFollowsFEqualsMA`
+- `LocalShapeProjection_ProjectsAllCellsToGrid`
+- `LocalShapeProjection_AddCellExpandsShape`
+- `RigidBodyCollisionComponent_DetectsBlockingCells`
+
+**Organism integration tests** (verify full behavior):
+- `GooseFallsAndLandsOnGround` (existing)
+- `TreeFallsAsRigidBody` (new - after migration)
+- `TreeGrowthUpdatesLocalShape` (new - after migration)
+
+### File Structure
+
+```
+src/core/organisms/
+├── components/
+│   ├── PhysicsComponent.h
+│   ├── RigidBodyPhysicsComponent.h
+│   ├── RigidBodyPhysicsComponent.cpp
+│   ├── CellPhysicsComponent.h
+│   ├── ProjectionComponent.h
+│   ├── LocalShapeProjection.h
+│   ├── LocalShapeProjection.cpp
+│   ├── SingleCellProjection.h
+│   ├── CollisionComponent.h
+│   ├── RigidBodyCollisionComponent.h
+│   └── RigidBodyCollisionComponent.cpp
+├── tests/
+│   ├── RigidBodyPhysicsComponent_test.cpp
+│   ├── LocalShapeProjection_test.cpp
+│   └── RigidBodyCollisionComponent_test.cpp
+├── Duck.h / Duck.cpp
+├── Goose.h / Goose.cpp
+└── Tree.h / Tree.cpp
+```
 
 ## Implementation Plan
 
@@ -265,23 +443,48 @@ Vector2d acceleration = total_force * (1.0 / total_mass);
 
 - **Threshold for "supported"**: Minimum pressure threshold to prevent micro-sinking on very low pressure. May not be needed given equilibrium dynamics.
 
-### Phase 4: Movement & Collisions
+### Phase 4: Component Extraction & Tree Migration
 
-**4.1 Structure Movement**
-- When structure velocity moves COMs across cell boundaries
-- Identify "leading edge" cells that will enter new grid positions
-- Calculate resistance from destination cells
-- Either displace particles or reflect/stop structure
+This phase extracts reusable components from Goose and migrates Tree to use them. See "Component Framework" section for design details.
 
-**4.2 Structure-Particle Interaction**
-- Lean on existing swap system, abstracting computations for organism-to-cell interactions
-- Structure pushes through fluids (water parts around it)
-- Structure displaces loose particles (dirt, sand get pushed aside)
-- High-resistance materials slow/stop structure
+**4.1 Extract RigidBodyPhysicsComponent from Goose**
+- Create `PhysicsComponent` interface
+- Move `gatherForces()`, `applyAirResistance()`, `applyForce()` logic to component
+- Goose owns component, delegates to it
+- Write unit tests for component in isolation
+- Verify Goose integration tests still pass
 
-**4.3 Structure-Structure Collision**
-- Multi-body dynamics modeled as simple elastic collisions between perfectly round objects
-- Keep it simple for now - no complex constraint solving
+**4.2 Extract LocalShapeProjection from Goose**
+- Create `ProjectionComponent` interface
+- Move `projectToGrid()`, `clearOldProjection()`, `local_shape` to component
+- Add `addCell()`, `removeCell()` methods for growth support
+- Write unit tests for projection behavior
+- Verify Goose integration tests still pass
+
+**4.3 Extract RigidBodyCollisionComponent from Goose**
+- Create `CollisionComponent` interface
+- Move `detectCollisions()`, collision response logic to component
+- Write unit tests for collision detection
+- Verify Goose integration tests still pass
+
+**4.4 Migrate Tree to Component Architecture**
+- Tree gets continuous `position_` and `velocity_`
+- Tree uses `RigidBodyPhysicsComponent` for physics
+- Tree uses `LocalShapeProjection` for grid presence
+- Tree uses `RigidBodyCollisionComponent` for collision
+- Growth modifies `projection_.addCell()` instead of grid directly
+- Seed position becomes initial `position_`
+
+**4.5 Update Tree Tests**
+- `TreeFallsAsRigidBody` - seed in air falls, structure stays together
+- `TreeGrowthUpdatesLocalShape` - growing adds cells to projection
+- `TreeCollisionStopsMovement` - hitting ground stops falling
+- Update existing germination tests for new architecture
+
+**4.6 Optional: Extract Single-Cell Components**
+- `CellPhysicsComponent` for Duck (delegates to world physics)
+- `SingleCellProjection` for Duck (organism = one cell)
+- Lower priority - Duck already works fine
 
 ### Phase 5: Future (Not This Sprint)
 
@@ -484,15 +687,19 @@ SEED at (4,5), WOOD at (4,3), but (4,4) is AIR
 
 ### 🚧 Not Yet Implemented
 
-#### Phase 4: Structure Movement & Collisions
-**Why needed**: Position constraints to prevent structural gaps.
+#### Phase 4: Component Extraction & Tree Migration
+**Why needed**: Tree currently uses cell-based physics but is multi-cell, causing structural tearing. Tree should use the same rigid body architecture as Goose.
 
-- **Structure movement as unit** - Leading edge detection, coordinated displacement
-- **Position constraints** - Maintain relative cell positions during transfers
-- **Structure-particle interaction** - Push through fluids, displace solids
-- **Structure-structure collision** - Simple elastic collisions
+**Approach**: Extract reusable components from Goose, then have Tree use them:
 
-**Dependencies**: Required for re-enabling structural disconnection pruning.
+1. **Extract RigidBodyPhysicsComponent** - Force gathering, air resistance, F=ma integration
+2. **Extract LocalShapeProjection** - Local shape storage, grid projection, growth support
+3. **Extract RigidBodyCollisionComponent** - Collision detection and response
+4. **Migrate Tree** - Continuous position, uses components, growth modifies local_shape
+
+**Key insight**: The "structural gaps" problem (Challenge 4) is solved by continuous position + projection, not by position constraints on grid cells. Goose already works this way.
+
+**Dependencies**: None - can proceed incrementally. Each extraction step keeps Goose tests passing.
 
 #### Phase 5: Advanced Features
 - Rotation (angular velocity, torques)
@@ -548,19 +755,27 @@ advanceTime(deltaTime)
 
 ### 🎯 Next Steps
 
-**Option 1: Fix Test Expectations (Low Priority)**
-- Update `ExtendedGrowthStability` COM threshold to accept ground-resting particles
-- Disable `DisconnectedFragmentGetsPruned` test until Phase 4
+**Phase 4: Component Extraction & Tree Migration**
 
-**Option 2: Implement Phase 4 (High Value)**
-- Add position constraints for organism structures
-- Implement structure-as-unit movement
-- Re-enable structural disconnection pruning
-- Fix remaining structural integrity issues
+The path forward is to extract reusable components from Goose and migrate Tree to use them:
 
-**Option 3: Tree Growth Improvements (Alternative)**
-- Investigate why trees run out of energy early
-- Add energy regeneration system
-- Improve growth algorithms
+1. **Create component interfaces** in `src/core/organisms/components/`
+2. **Extract RigidBodyPhysicsComponent** from Goose's `gatherForces()` and `applyForce()`
+3. **Write unit tests** for the component in isolation (real World, minimal setup)
+4. **Goose uses the component** - verify Goose tests still pass
+5. **Extract LocalShapeProjection** from Goose's `projectToGrid()`
+6. **Extract RigidBodyCollisionComponent** from Goose's collision logic
+7. **Migrate Tree** to use same components - continuous position, projection-based
+8. **Update Tree tests** for new architecture
 
-**Recommendation**: Phase 4 would complete the rigid body system's core functionality.
+**Why this approach:**
+- Goose already solves the tearing problem - extract what works
+- Tree benefits from same physics without reimplementing
+- Incremental - each step keeps existing tests passing
+- Component tests catch regressions early
+
+**After Tree migration:**
+- Tree falls as rigid body (structure stays together)
+- Growth adds to local_shape, projects to grid
+- No more structural gaps or COM drift
+- `DisconnectedFragmentGetsPruned` test becomes meaningful again
