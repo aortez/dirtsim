@@ -13,6 +13,7 @@
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "tests/MultiCellTestOrganism.h"
 #include <cassert>
 #include <cmath>
 #include <spdlog/spdlog.h>
@@ -259,6 +260,26 @@ OrganismId OrganismManager::createGoose(
     return id;
 }
 
+OrganismId OrganismManager::createMultiCellTestOrganism(
+    World& world, uint32_t x, uint32_t y, MultiCellShape shape)
+{
+    OrganismId id = next_id_++;
+
+    auto organism = std::make_unique<MultiCellTestOrganism>(id, shape);
+    organism->setAnchorCell(Vector2i{ static_cast<int>(x), static_cast<int>(y) });
+
+    // Register organism BEFORE initial update.
+    MultiCellTestOrganism* ptr = organism.get();
+    organisms_.emplace(id, std::move(organism));
+
+    // Do initial projection to grid.
+    ptr->update(world, 0.0);
+
+    spdlog::info("OrganismManager: Created test organism {} at ({}, {})", id, x, y);
+
+    return id;
+}
+
 void OrganismManager::removeOrganismFromWorld(World& world, OrganismId id)
 {
     auto* organism = getOrganism(id);
@@ -367,6 +388,25 @@ const Goose* OrganismManager::getGoose(OrganismId id) const
     const auto* organism = getOrganism(id);
     if (organism && organism->getType() == OrganismType::GOOSE) {
         return static_cast<const Goose*>(organism);
+    }
+    return nullptr;
+}
+
+MultiCellTestOrganism* OrganismManager::getMultiCellTestOrganism(OrganismId id)
+{
+    auto* organism = getOrganism(id);
+    // MultiCellTestOrganism uses TREE type for now.
+    if (organism && organism->getType() == OrganismType::TREE) {
+        return dynamic_cast<MultiCellTestOrganism*>(organism);
+    }
+    return nullptr;
+}
+
+const MultiCellTestOrganism* OrganismManager::getMultiCellTestOrganism(OrganismId id) const
+{
+    const auto* organism = getOrganism(id);
+    if (organism && organism->getType() == OrganismType::TREE) {
+        return dynamic_cast<const MultiCellTestOrganism*>(organism);
     }
     return nullptr;
 }

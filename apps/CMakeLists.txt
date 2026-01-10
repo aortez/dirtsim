@@ -347,7 +347,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
+    src/core/organisms/tests/MultiCellTestOrganism.cpp
     src/core/organisms/components/RigidBodyCollisionComponent.cpp
+    src/core/organisms/components/RigidBodyComponent.cpp
     src/core/organisms/components/RigidBodyPhysicsComponent.cpp
 )
 target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
@@ -535,6 +537,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/CellTrackerUtil.cpp
     src/core/organisms/tests/Duck_test.cpp
     src/core/organisms/tests/Goose_test.cpp
+    src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp
     src/core/organisms/tests/OrganismPhysics_test.cpp
     src/core/organisms/tests/OrganismSensoryData_test.cpp

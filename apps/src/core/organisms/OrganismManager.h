@@ -14,8 +14,10 @@ namespace DirtSim {
 // Forward declarations.
 class Duck;
 class Goose;
+class MultiCellTestOrganism;
 class Tree;
 class World;
+enum class MultiCellShape;
 
 /**
  * Manages all organisms in the world.
@@ -56,6 +58,9 @@ public:
     OrganismId createGoose(
         World& world, uint32_t x, uint32_t y, std::unique_ptr<GooseBrain> brain = nullptr);
 
+    OrganismId createMultiCellTestOrganism(
+        World& world, uint32_t x, uint32_t y, MultiCellShape shape);
+
     // Remove an organism and clean up its cells from the world.
     void removeOrganismFromWorld(World& world, OrganismId id);
 
@@ -70,6 +75,8 @@ public:
     const Duck* getDuck(OrganismId id) const;
     Goose* getGoose(OrganismId id);
     const Goose* getGoose(OrganismId id) const;
+    MultiCellTestOrganism* getMultiCellTestOrganism(OrganismId id);
+    const MultiCellTestOrganism* getMultiCellTestOrganism(OrganismId id) const;
 
     // Iteration over all organisms.
     template <typename Func>

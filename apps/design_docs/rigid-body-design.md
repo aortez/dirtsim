@@ -128,12 +128,30 @@ The `is_rigid` flag on `MaterialProperties` is being removed:
 
 ## Component Framework (Added)
 
-✅ **Component extraction complete.** Goose now uses composable components:
+✅ **Component architecture complete.** Three-layer design for rigid body organisms:
+
+**Base Components** (independently testable):
 - `RigidBodyPhysicsComponent` - Force gathering, air resistance, F=ma integration (10 tests)
 - `LocalShapeProjection` - Grid projection from continuous position (14 tests)
-- `RigidBodyCollisionComponent` - Collision detection, response, support, friction (19 tests)
+- `RigidBodyCollisionComponent` - Collision detection, response, support, friction (25 tests)
 
-See implementation in `src/core/organisms/components/`. Next step: migrate Tree to use these same components.
+**Composite Component** (orchestrates the physics loop):
+- `RigidBodyComponent` - Owns and coordinates the three base components (10 multi-cell tests)
+  - Single `update()` call handles: support → friction → forces → integration → collision → projection
+  - Eliminates ~40 lines of duplication per organism
+  - Organisms pass external forces (walk, jump, growth) and receive ground state
+
+**Design Rationale:** Initial implementation had organisms directly orchestrate the three components, duplicating the physics loop sequence. The composite emerged when Goose and MultiCellTestOrganism showed identical orchestration code. Now organisms focus on behavior (brain decisions, growth commands) while `RigidBodyComponent` handles all physics mechanics.
+
+**File structure:**
+```
+src/core/organisms/components/
+├── *Component.h (4 interfaces)
+├── RigidBody*.{h,cpp} (4 implementations + 1 composite)
+└── *_test.cpp (3 component test suites, 49 tests total)
+```
+
+See implementation in `src/core/organisms/components/`.
 
 ## Implementation Plan (Phases 1-3 Complete)
 
@@ -211,32 +229,33 @@ advanceTime(deltaTime)
 
 Component extraction is complete (see "Component Framework" section). This phase validates multi-cell behavior before migrating Tree.
 
-**4.0 Multi-Cell Validation Tests (Next)**
+**4.0 Multi-Cell Validation Tests (Complete)**
 
-Create simple static multi-cell test organisms to verify components work for multi-cell shapes:
+Created simple multi-cell test organisms to verify components work for multi-cell shapes:
 
 **Test organisms** (no growth, no brain, just physics):
 - `Stick` - 2 horizontal WOOD cells (basic multi-cell)
 - `LShape` - 3 cells in L shape (non-linear shapes)
 - `Column` - 3 vertical cells (stacking, partial ground contact)
 
-**Behaviors to verify:**
-1. **Cells stay together** when falling/moving (unified velocity)
-2. **Ground support** with multiple contact points (Column on ground)
-3. **Friction** sums correctly from multiple ground contacts
-4. **Collision** works with multi-cell shapes (L-shape hitting wall)
-5. **Center of mass** computed correctly for multi-cell shapes
-6. **Rotation-free movement** (cells don't tear apart during horizontal motion)
+**Behaviors verified (all 6 passing):**
+1. ✅ **Cells stay together** when falling/moving (unified velocity)
+2. ✅ **Ground support** with multiple contact points (Column on ground)
+3. ✅ **Friction** sums correctly from multiple ground contacts
+4. ✅ **Collision** works with multi-cell shapes (L-shape hitting wall)
+5. ✅ **Center of mass** computed correctly for multi-cell shapes
+6. ✅ **Rotation-free movement** (cells don't tear apart during horizontal motion)
 
-**Test plan:**
-- Create simple `MultiCellTestOrganism` class using existing components
-- Write integration tests for each shape and behavior
-- Verify all 6 behaviors pass before Tree migration
+**Implementation:**
+- `MultiCellTestOrganism` class using `RigidBodyComponent`
+- 10 integration tests in `MultiCellOrganism_test.cpp` (all passing)
+- `OrganismManager::createMultiCellTestOrganism()` factory method
+- `CellTracker` integration for debugging frame-by-frame physics
 
-**Benefits:**
-- De-risks Tree migration by proving components work for multi-cell
-- Easier to debug (no growth/germination complexity)
-- Tests document expected multi-cell behavior
+**Results:**
+- Validated components work correctly for 2-3 cell organisms
+- De-risked Tree migration by proving rigid body physics scales beyond single cells
+- Documented expected multi-cell behavior through tests
 
 **4.1 Migrate Tree to Component Architecture (After 4.0)**
 
@@ -443,25 +462,19 @@ advanceTime(deltaTime)
 
 ### 🎯 Next Steps
 
-**Completed (Phases 1-4):**
+**Completed (Phases 1-4.0):**
 1. ✅ Cleanup: Removed support system, disabled bones
 2. ✅ Rigid body foundation: Unified velocity, skip organism cells in world physics
 3. ✅ Ground support & friction: Contact-based support, material-specific friction
-4. ✅ Component extraction: 3 components with 49 tests, Goose fully functional (8/8 tests passing)
+4. ✅ Component extraction: 3 base components with 49 tests
+5. ✅ Composite component: `RigidBodyComponent` orchestrates physics loop
+6. ✅ Multi-cell validation: 10 tests with Stick/LShape/Column organisms (all passing)
+7. ✅ Goose refactored to use `RigidBodyComponent` (8/8 tests passing)
 
-**Next (Phase 4.0 - Multi-Cell Validation):**
-1. **Create simple multi-cell test organisms** (Stick, LShape, Column)
-2. **Verify multi-cell behaviors:**
-   - Cells stay together when falling/moving
-   - Ground support with multiple contact points
-   - Friction sums correctly from multiple contacts
-   - Collision detection for multi-cell shapes
-   - Center of mass computation
-   - No tearing during movement
-3. **Write integration tests** for each shape and behavior
-
-**After validation (Phase 4.1 - Tree Migration):**
-- Migrate Tree to component architecture (continuous position, projection-based)
+**Next (Phase 4.1 - Tree Migration):**
+- Migrate Tree to use `RigidBodyComponent`
+- Add continuous position and velocity to Tree
+- Growth commands modify local_shape via `rigidBody_->addCell()`
 - Update Tree tests for new architecture
-- Tree falls as rigid body (structure stays together)
-- Growth adds to local_shape, projects to grid
+- Verify Tree falls as rigid body (structure stays together)
+- Verify growth updates projection correctly
