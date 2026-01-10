@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.14)
 project(lvgl)
 
+# Export compile commands for clangd/LSP support.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Suppress FindBoost deprecation warning (we use Boost's config mode when available).
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
@@ -252,6 +255,7 @@ add_library(dirtsim-server-lib STATIC
     # Server state machine.
     src/server/StateMachine.cpp
     src/server/EventProcessor.cpp
+    src/server/states/Error.cpp
     src/server/states/Idle.cpp
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp

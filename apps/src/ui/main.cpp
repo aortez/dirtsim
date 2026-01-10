@@ -197,17 +197,10 @@ int main(int argc, char** argv)
     auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default());
 
     // Load UI configuration (optional - defaults apply if not found).
-    auto uiConfigJson = DirtSim::ConfigLoader::load("ui.json");
-    if (uiConfigJson.has_value()) {
-        try {
-            DirtSim::UiConfig uiConfig;
-            DirtSim::from_json(uiConfigJson.value(), uiConfig);
-            stateMachine->uiConfig = std::make_unique<DirtSim::UiConfig>(std::move(uiConfig));
-            SLOG_INFO("Loaded ui.json (autoRun={})", stateMachine->uiConfig->autoRun);
-        }
-        catch (const std::exception& e) {
-            SLOG_ERROR("Failed to parse ui.json: {}", e.what());
-        }
+    auto uiConfigResult = DirtSim::ConfigLoader::load<DirtSim::UiConfig>("ui.json");
+    if (uiConfigResult.isValue()) {
+        stateMachine->uiConfig = std::make_unique<DirtSim::UiConfig>(uiConfigResult.value());
+        SLOG_INFO("Loaded ui.json (autoRun={})", stateMachine->uiConfig->autoRun);
     }
     else {
         SLOG_INFO("No ui.json found, using defaults (autoRun=false)");

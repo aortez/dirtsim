@@ -3,6 +3,7 @@
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
 #include "core/LoggingChannels.h"
+#include "core/StateLifecycle.h"
 #include "core/encoding/H264Encoder.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
@@ -252,7 +253,7 @@ void StateMachine::updateAnimations()
                 state.updateAnimations();
             }
         },
-        fsmState);
+        fsmState.getVariant());
 
     // Send WebRTC video frames to connected clients.
     if (webRtcStreamer_ && webRtcStreamer_->hasClients()) {
@@ -519,7 +520,7 @@ void StateMachine::handleEvent(const Event& event)
 
                     if constexpr (requires { state.onEvent(evt, *this); }) {
                         auto newState = state.onEvent(evt, *this);
-                        if (!std::holds_alternative<StateType>(newState)) {
+                        if (!std::holds_alternative<StateType>(newState.getVariant())) {
                             transitionTo(std::move(newState));
                         }
                         else {
@@ -560,7 +561,7 @@ void StateMachine::handleEvent(const Event& event)
                         }
                     }
                 },
-                fsmState);
+                fsmState.getVariant());
         },
         event);
 }
@@ -580,14 +581,20 @@ void StateMachine::transitionTo(State::Any newState)
 {
     std::string oldStateName = State::getCurrentStateName(fsmState);
 
-    std::visit([this](auto&& state) { callOnExit(state); }, fsmState);
+    invokeOnExit(fsmState, *this);
 
+    auto expectedIndex = newState.getVariant().index();
     fsmState = std::move(newState);
 
     std::string newStateName = State::getCurrentStateName(fsmState);
     LOG_INFO(State, "Ui::StateMachine: {} -> {}", oldStateName, newStateName);
 
-    std::visit([this](auto&& state) { callOnEnter(state); }, fsmState);
+    fsmState = invokeOnEnter(std::move(fsmState), *this);
+
+    // Chain transition if onEnter redirected to a different state.
+    if (fsmState.getVariant().index() != expectedIndex) {
+        transitionTo(std::move(fsmState));
+    }
 }
 
 } // namespace Ui

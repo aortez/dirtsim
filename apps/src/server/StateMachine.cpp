@@ -4,6 +4,7 @@
 #include "ServerConfig.h"
 #include "api/PeersGet.h"
 #include "core/LoggingChannels.h"
+#include "core/StateLifecycle.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
 #include "core/RenderMessageUtils.h"
@@ -47,7 +48,7 @@ struct StateMachine::Impl {
     Timers timers_;
     PeerAdvertisement peerAdvertisement_;
     PeerDiscovery peerDiscovery_;
-    State::Any fsmState_{ State::Startup{} };
+    State::Any fsmState_{ State::PreStartup{} };
     Network::WebSocketService* wsService_ = nullptr;
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
@@ -270,12 +271,15 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
             status.height = cachedPtr->height;
         }
 
-        // Get scenario_id from SimRunning state if active.
+        // Get state-specific fields.
         std::visit(
             [&status](auto&& state) {
                 using T = std::decay_t<decltype(state)>;
                 if constexpr (std::is_same_v<T, State::SimRunning>) {
                     status.scenario_id = state.scenario_id;
+                }
+                else if constexpr (std::is_same_v<T, State::Error>) {
+                    status.error_message = state.error_message;
                 }
             },
             pImpl->fsmState_.getVariant());
@@ -417,8 +421,8 @@ void StateMachine::mainLoopRun()
 
     spdlog::info("Starting main event loop");
 
-    // Initialize by sending init complete event.
-    queueEvent(InitCompleteEvent{});
+    // Enter Startup state through the normal framework path.
+    transitionTo(State::Startup{});
 
     // Main event processing loop.
     while (!shouldExit()) {
@@ -644,17 +648,20 @@ void StateMachine::transitionTo(State::Any newState)
 {
     std::string oldStateName = getCurrentStateName();
 
-    // Call onExit for current state.
-    std::visit([this](auto& state) { callOnExit(state); }, pImpl->fsmState_.getVariant());
+    invokeOnExit(pImpl->fsmState_, *this);
 
-    // Perform transition.
+    auto expectedIndex = newState.getVariant().index();
     pImpl->fsmState_ = std::move(newState);
 
     std::string newStateName = getCurrentStateName();
     LOG_INFO(State, "Server::StateMachine: {} -> {}", oldStateName, newStateName);
 
-    // Call onEnter for new state.
-    std::visit([this](auto& state) { callOnEnter(state); }, pImpl->fsmState_.getVariant());
+    pImpl->fsmState_ = invokeOnEnter(std::move(pImpl->fsmState_), *this);
+
+    // Chain transition if onEnter redirected to a different state.
+    if (pImpl->fsmState_.getVariant().index() != expectedIndex) {
+        transitionTo(std::move(pImpl->fsmState_));
+    }
 }
 
 // Global event handlers.

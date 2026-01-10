@@ -95,22 +95,6 @@ private:
     std::unique_ptr<Server::PeerAdvertisement> peerAd_;
 
     void transitionTo(State::Any newState);
-
-    template <typename StateType>
-    void callOnEnter(StateType& state)
-    {
-        if constexpr (requires { state.onEnter(*this); }) {
-            state.onEnter(*this);
-        }
-    }
-
-    template <typename StateType>
-    void callOnExit(StateType& state)
-    {
-        if constexpr (requires { state.onExit(*this); }) {
-            state.onExit(*this);
-        }
-    }
 };
 
 } // namespace Ui

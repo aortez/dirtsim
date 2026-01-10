@@ -16,12 +16,35 @@ namespace Ui {
 namespace State {
 
 /**
+ * @brief Forward-declarable state wrapper class.
+ *
+ * Wraps the state variant to enable forward declaration,
+ * reducing compilation dependencies.
+ */
+class Any {
+public:
+    using Variant = std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup>;
+
+    template <typename T>
+    Any(T&& state) : variant_(std::forward<T>(state))
+    {}
+
+    Any() = default;
+
+    Variant& getVariant() { return variant_; }
+    const Variant& getVariant() const { return variant_; }
+
+private:
+    Variant variant_;
+};
+
+/**
  * @brief Get the name of the current state.
  * Requires complete state definitions, so defined here after all includes.
  */
 inline std::string getCurrentStateName(const Any& state)
 {
-    return std::visit([](const auto& s) { return std::string(s.name()); }, state);
+    return std::visit([](const auto& s) { return std::string(s.name()); }, state.getVariant());
 }
 
 } // namespace State

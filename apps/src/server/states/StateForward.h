@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-#include <variant>
-
 namespace DirtSim {
 namespace Server {
 
@@ -11,6 +8,8 @@ class StateMachine;
 namespace State {
 
 // Forward declarations.
+struct Error;
+struct PreStartup;
 struct Startup;
 struct Idle;
 struct SimRunning;

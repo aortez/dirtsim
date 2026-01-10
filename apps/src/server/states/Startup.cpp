@@ -1,20 +1,29 @@
 #include "State.h"
-#include "core/Timers.h"
-#include "core/World.h"
+#include "core/ConfigLoader.h"
+#include "core/LoggingChannels.h"
+#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
-#include "server/scenarios/ScenarioRegistry.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Server {
 namespace State {
 
-State::Any Startup::onEvent(const InitCompleteEvent& /*evt*/, StateMachine& /*dsm*/)
+Any Startup::onEnter(StateMachine& dsm)
 {
-    spdlog::info("Startup: Initialization complete");
-    spdlog::info("Startup: Transitioning to Idle (server ready, no active simulation)");
+    LOG_INFO(State, "Loading server configuration");
 
-    // Transition to Idle state (no World, waiting for SimRun command).
+    auto configResult = ConfigLoader::load<ServerConfig>("server.json");
+    if (configResult.isError()) {
+        LOG_ERROR(State, "Failed to load config: {}", configResult.errorValue());
+        return Error{ .error_message = configResult.errorValue() };
+    }
+
+    dsm.serverConfig = std::make_unique<ServerConfig>(configResult.value());
+
+    const std::string startupScenario = getScenarioId(dsm.serverConfig->startupConfig);
+    LOG_INFO(State, "Startup scenario: {}", startupScenario);
+    LOG_INFO(State, "Transitioning to Idle");
+
     return Idle{};
 }
 

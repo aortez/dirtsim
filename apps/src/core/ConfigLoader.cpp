@@ -62,50 +62,51 @@ std::optional<std::filesystem::path> ConfigLoader::findConfigFile(const std::str
     return std::nullopt;
 }
 
-std::optional<nlohmann::json> ConfigLoader::tryLoadJson(const std::filesystem::path& path)
+Result<nlohmann::json, std::string> ConfigLoader::tryLoadJson(const std::filesystem::path& path)
 {
+    namespace fs = std::filesystem;
+
     try {
+        // Check for empty file first.
+        if (fs::file_size(path) == 0) {
+            std::string error = "Empty config file: " + path.string();
+            spdlog::warn("ConfigLoader: {}", error);
+            return Result<nlohmann::json, std::string>::error(error);
+        }
+
         std::ifstream file(path);
         if (!file.is_open()) {
-            spdlog::warn("ConfigLoader: Cannot open file: {}", path.string());
-            return std::nullopt;
+            std::string error = "Cannot open config file: " + path.string();
+            spdlog::warn("ConfigLoader: {}", error);
+            return Result<nlohmann::json, std::string>::error(error);
         }
 
         nlohmann::json config = nlohmann::json::parse(file);
-        return config;
+        return Result<nlohmann::json, std::string>::okay(config);
     }
     catch (const nlohmann::json::parse_error& e) {
-        spdlog::error("ConfigLoader: Failed to parse {}: {}", path.string(), e.what());
-        return std::nullopt;
+        std::string error = "Parse error in " + path.string() + ": " + e.what();
+        spdlog::error("ConfigLoader: {}", error);
+        return Result<nlohmann::json, std::string>::error(error);
     }
     catch (const std::exception& e) {
-        spdlog::error("ConfigLoader: Error reading {}: {}", path.string(), e.what());
-        return std::nullopt;
+        std::string error = "Error reading " + path.string() + ": " + e.what();
+        spdlog::error("ConfigLoader: {}", error);
+        return Result<nlohmann::json, std::string>::error(error);
     }
 }
 
-std::optional<nlohmann::json> ConfigLoader::load(const std::string& filename)
+Result<nlohmann::json, std::string> ConfigLoader::loadJson(const std::string& filename)
 {
     auto path = findConfigFile(filename);
     if (!path.has_value()) {
-        spdlog::debug("ConfigLoader: Config file not found: {}", filename);
-        return std::nullopt;
+        std::string error = "Config file not found: " + filename;
+        spdlog::debug("ConfigLoader: {}", error);
+        return Result<nlohmann::json, std::string>::error(error);
     }
 
     spdlog::info("ConfigLoader: Loading config from {}", path->string());
     return tryLoadJson(path.value());
-}
-
-nlohmann::json ConfigLoader::loadWithDefault(
-    const std::string& filename, const nlohmann::json& defaultConfig)
-{
-    auto config = load(filename);
-    if (config.has_value()) {
-        return config.value();
-    }
-
-    spdlog::info("ConfigLoader: Using default config for {}", filename);
-    return defaultConfig;
 }
 
 } // namespace DirtSim

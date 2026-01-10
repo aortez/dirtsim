@@ -47,9 +47,6 @@ public:
     void mainLoopRun();
     void queueEvent(const Event& event);
 
-    /**
-     * @brief Handle an event by dispatching to current state.
-     */
     void handleEvent(const Event& event);
 
     std::string getCurrentStateName() const override;
@@ -114,35 +111,9 @@ private:
     struct Impl;
     Pimpl<Impl> pImpl;
 
-    /**
-     * @brief Transition to a new state.
-     * Handles onExit and onEnter lifecycle calls.
-     */
     void transitionTo(State::Any newState);
 
-    /**
-     * @brief Call onEnter if the state has it.
-     */
-    template <typename State>
-    void callOnEnter(State& state)
-    {
-        if constexpr (requires { state.onEnter(*this); }) {
-            state.onEnter(*this);
-        }
-    }
-
-    /**
-     * @brief Call onExit if the state has it.
-     */
-    template <typename State>
-    void callOnExit(State& state)
-    {
-        if constexpr (requires { state.onExit(*this); }) {
-            state.onExit(*this);
-        }
-    }
-
-    // Global event handlers (available in all states)
+    // Global event handlers (available in all states).
     State::Any onEvent(const QuitApplicationCommand& cmd);
     State::Any onEvent(const GetFPSCommand& cmd);
     State::Any onEvent(const GetSimStatsCommand& cmd);

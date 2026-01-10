@@ -1,8 +1,5 @@
 #pragma once
 
-#include <string>
-#include <variant>
-
 namespace DirtSim {
 namespace Ui {
 
@@ -18,8 +15,8 @@ struct SimRunning;
 struct StartMenu;
 struct Startup;
 
-// State variant type.
-using Any = std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup>;
+// Forward declaration of wrapper (definition in State.h after state includes).
+class Any;
 
 } // namespace State
 } // namespace Ui
