@@ -50,11 +50,8 @@ TEST_F(ClockScenarioTest, Setup_HasWallBorders)
     std::cout << "World size: " << data.width << "x" << data.height << "\n";
     std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world_) << "\n";
 
-    // Verify top border is all walls.
-    for (uint32_t x = 0; x < data.width; ++x) {
-        EXPECT_EQ(data.at(x, 0).material_type, MaterialType::WALL)
-            << "Top border missing WALL at x=" << x;
-    }
+    // Note: Top border intentionally has no walls to allow sunlight to illuminate the world.
+    // Only the corner cells (x=0 and x=width-1) have walls from the left/right borders.
 
     // Verify bottom border is all walls.
     for (uint32_t x = 0; x < data.width; ++x) {
