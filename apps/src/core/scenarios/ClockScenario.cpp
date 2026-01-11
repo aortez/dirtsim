@@ -219,16 +219,17 @@ void ClockScenario::ensureFontSamplerInitialized()
     // calls lv_init() before creating the display.
 
     // Create FontSampler with Montserrat 24pt.
-    // Canvas size should be larger than expected glyph to allow for trimming.
+    // Canvas size starts large to avoid resize iterations. Trimmed patterns will
+    // auto-resize if clipping is detected, then trim whitespace for a tight fit.
     font_sampler_ = std::make_unique<FontSampler>(
         &lv_font_montserrat_24,
-        ClockFonts::MONTSERRAT24_WIDTH + 4,
-        ClockFonts::MONTSERRAT24_HEIGHT + 4,
+        48, // Large initial canvas to fit 24pt glyphs without resizing.
+        48,
         0.3f);
 
-    // Precache digits 0-9.
+    // Precache digits 0-9 using trimmed patterns.
     for (char c = '0'; c <= '9'; ++c) {
-        font_sampler_->getCachedPattern(c);
+        font_sampler_->getCachedPatternTrimmed(c);
     }
 
     spdlog::info("ClockScenario: FontSampler initialized for Montserrat 24pt");
@@ -239,7 +240,7 @@ const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int 
     ensureFontSamplerInitialized();
 
     char c = static_cast<char>('0' + digit);
-    return font_sampler_->getCachedPattern(c);
+    return font_sampler_->getCachedPatternTrimmed(c);
 }
 
 void ClockScenario::recalculateDimensions()

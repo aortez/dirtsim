@@ -12,6 +12,15 @@ namespace DirtSim {
  */
 namespace ClockFonts {
 
+// Montserrat 24pt dimensions (sampled via FontSampler with trimming).
+// These are layout hints - actual trimmed patterns vary per glyph (7-15 wide, 17 tall).
+// Using max width (15) ensures no digits are clipped during rendering.
+static constexpr int MONTSERRAT24_WIDTH = 15;
+static constexpr int MONTSERRAT24_HEIGHT = 17;
+static constexpr int MONTSERRAT24_GAP = 2;
+static constexpr int MONTSERRAT24_COLON_WIDTH = 4;
+static constexpr int MONTSERRAT24_COLON_PADDING = 1;
+
 // Standard 7-segment dimensions (5×7).
 static constexpr int SEGMENT7_WIDTH = 5;
 static constexpr int SEGMENT7_HEIGHT = 7;
