@@ -1554,6 +1554,18 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     }
     // else target_drain_size remains 0 (closed).
 
+    // If there's any water on the bottom playable row, ensure drain opens at least one cell.
+    // This prevents water from pooling at the bottom with no way to drain.
+    if (target_drain_size == 0) {
+        uint32_t bottom_row = data.height - 2;
+        for (uint32_t x = 1; x < data.width - 1; ++x) {
+            if (data.at(x, bottom_row).material_type == MaterialType::WATER) {
+                target_drain_size = 1;
+                break;
+            }
+        }
+    }
+
     // Hysteresis: only change drain size one step per second.
     auto now = std::chrono::steady_clock::now();
     auto elapsed =
