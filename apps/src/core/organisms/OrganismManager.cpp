@@ -9,6 +9,7 @@
 #include "core/Cell.h"
 #include "core/Entity.h"
 #include "core/GridOfCells.h"
+#include "core/LightBuffer.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
@@ -643,6 +644,8 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
     WorldData& data = world.getData();
     data.entities.clear();
 
+    const LightBuffer& light = world.getRawLightBuffer();
+
     for (const auto& [id, organism] : organisms_) {
         if (!organism->isActive()) {
             continue;
@@ -660,17 +663,14 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.position =
                 Vector2<float>{ static_cast<float>(anchor.x), static_cast<float>(anchor.y) };
 
-            // Get COM and light from the duck's cell.
             if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
                 && static_cast<uint32_t>(anchor.y) < data.height) {
                 const Cell& cell = data.at(anchor.x, anchor.y);
-                // TODO: Temporarily disabled COM.y clamping for testing.
                 entity.com = Vector2<float>{ static_cast<float>(cell.com.x),
                                              static_cast<float>(cell.com.y) };
                 entity.velocity = Vector2<float>{ static_cast<float>(cell.velocity.x),
                                                   static_cast<float>(cell.velocity.y) };
-                // Sample light for rendering.
-                entity.light_color = cell.getColor();
+                entity.light_color = light.at(anchor.x, anchor.y);
             }
 
             entity.facing = duck->getFacing();
@@ -712,10 +712,9 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.facing = goose->getFacing();
             entity.mass = static_cast<float>(goose->mass);
 
-            // Sample light for rendering.
             if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
                 && static_cast<uint32_t>(anchor.y) < data.height) {
-                entity.light_color = data.at(anchor.x, anchor.y).getColor();
+                entity.light_color = light.at(anchor.x, anchor.y);
             }
 
             data.entities.push_back(std::move(entity));

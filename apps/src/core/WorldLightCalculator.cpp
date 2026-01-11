@@ -24,10 +24,8 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config)
     // Add emissive material contributions.
     applyEmissiveCells(world);
 
-    // Diffuse/scatter light.
     applyDiffusion(world, config.diffusion_iterations, config.diffusion_rate);
-
-    // Apply material base colors (multiply light by material color).
+    storeRawLight(world);
     applyMaterialColors(world);
 }
 
@@ -183,7 +181,7 @@ uint32_t getMaterialBaseColor(MaterialType mat)
 {
     switch (mat) {
         case MaterialType::AIR:
-            return ColorNames::black(); // AIR stays black (background).
+            return ColorNames::black();
         case MaterialType::DIRT:
             return ColorNames::dirt();
         case MaterialType::LEAF:
@@ -238,6 +236,25 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
         result += '\n';
     }
     return result;
+}
+
+void WorldLightCalculator::storeRawLight(World& world)
+{
+    auto& data = world.getData();
+    if (raw_light_.width != data.width || raw_light_.height != data.height) {
+        raw_light_.resize(data.width, data.height);
+    }
+
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            raw_light_.set(x, y, data.cells[y * data.width + x].getColor());
+        }
+    }
+}
+
+const LightBuffer& WorldLightCalculator::getRawLightBuffer() const
+{
+    return raw_light_;
 }
 
 } // namespace DirtSim

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "LightBuffer.h"
 #include "LightConfig.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
@@ -31,11 +32,9 @@ public:
      */
     void calculate(World& world, const LightConfig& config);
 
-    /**
-     * ASCII visualization of light levels for testing and debugging.
-     * Returns multi-line string with brightness mapped to characters.
-     */
     std::string lightMapString(const World& world) const;
+
+    const LightBuffer& getRawLightBuffer() const;
 
 private:
     void clearLight(World& world);
@@ -44,9 +43,10 @@ private:
     void applyEmissiveCells(World& world);
     void applyDiffusion(World& world, int iterations, float rate);
     void applyMaterialColors(World& world);
+    void storeRawLight(World& world);
 
-    // Temporary buffer for diffusion double-buffering.
     std::vector<uint32_t> light_buffer_;
+    LightBuffer raw_light_;
 };
 
 } // namespace DirtSim

@@ -25,6 +25,7 @@ class WorldFrictionCalculator;
 class WorldAdhesionCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
+struct LightBuffer;
 } // namespace DirtSim
 
 namespace DirtSim {
@@ -221,6 +222,8 @@ public:
     // Physics settings - public accessors for Pimpl-stored settings.
     PhysicsSettings& getPhysicsSettings();
     const PhysicsSettings& getPhysicsSettings() const;
+
+    const LightBuffer& getRawLightBuffer() const;
 
     // WorldInterface hook implementations (rarely overridden - can be public).
     void onPreResize(uint32_t newWidth, uint32_t newHeight);

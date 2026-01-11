@@ -209,6 +209,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/ColorNames.cpp
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
+    src/core/LightBuffer.cpp
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialFragmentationParams.cpp

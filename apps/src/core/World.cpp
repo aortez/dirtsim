@@ -225,6 +225,11 @@ const PhysicsSettings& World::getPhysicsSettings() const
     return pImpl->physicsSettings_;
 }
 
+const LightBuffer& World::getRawLightBuffer() const
+{
+    return pImpl->light_calculator_.getRawLightBuffer();
+}
+
 // =================================================================
 // SIMPLE GETTERS/SETTERS (moved from inline in header)
 // =================================================================
