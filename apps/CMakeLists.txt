@@ -209,7 +209,6 @@ set(DIRTSIM_CORE_SOURCES
     src/core/ColorNames.cpp
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
-    src/core/LightBuffer.cpp
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialFragmentationParams.cpp
@@ -349,6 +348,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/Tree.cpp
     src/core/organisms/TreeCommandProcessor.cpp
     src/core/organisms/TreeSensoryData.cpp
+    src/core/organisms/brains/Genome.cpp
+    src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
     src/core/organisms/tests/MultiCellTestOrganism.cpp
@@ -545,6 +546,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/OrganismCollision_test.cpp
     src/core/organisms/tests/OrganismPhysics_test.cpp
     src/core/organisms/tests/OrganismSensoryData_test.cpp
+    src/core/organisms/tests/NeuralNetBrain_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
