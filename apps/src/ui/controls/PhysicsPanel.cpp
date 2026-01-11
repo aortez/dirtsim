@@ -25,7 +25,7 @@ PhysicsPanel::PhysicsPanel(lv_obj_t* container, Network::WebSocketService* wsSer
     // Fetch initial settings from server.
     fetchSettings();
 
-    LOG_INFO(Controls, "PhysicsPanel: Initialized with PanelViewController (6 sections)");
+    LOG_INFO(Controls, "PhysicsPanel: Initialized with PanelViewController (7 sections)");
 }
 
 PhysicsPanel::~PhysicsPanel()
@@ -36,14 +36,13 @@ PhysicsPanel::~PhysicsPanel()
 void PhysicsPanel::createMenuView(lv_obj_t* view)
 {
     // Section names matching the order in getSectionConfig().
-    const char* sectionNames[] = {
-        "General", "Pressure", "Forces", "Swap Tuning", "Swap2", "Frag"
-    };
+    const char* sectionNames[] = { "General",     "Pressure", "Forces", "Light",
+                                   "Swap Tuning", "Swap2",    "Frag" };
 
     // Clear button mapping.
     buttonToSection_.clear();
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
                                   .text(sectionNames[i])
                                   .icon(LV_SYMBOL_RIGHT)
@@ -67,7 +66,7 @@ void PhysicsPanel::createMenuView(lv_obj_t* view)
 
 void PhysicsPanel::showSection(int sectionIndex)
 {
-    if (sectionIndex < 0 || sectionIndex > 5) {
+    if (sectionIndex < 0 || sectionIndex > 6) {
         LOG_ERROR(Controls, "PhysicsPanel: Invalid section index {}", sectionIndex);
         return;
     }
@@ -176,10 +175,12 @@ const PhysicsControlHelpers::ColumnConfig& PhysicsPanel::getSectionConfig(int in
         case 2:
             return configs_.forces;
         case 3:
-            return configs_.swapTuning;
+            return configs_.light;
         case 4:
-            return configs_.swap2;
+            return configs_.swapTuning;
         case 5:
+            return configs_.swap2;
+        case 6:
         default:
             return configs_.frag;
     }
@@ -287,14 +288,7 @@ void PhysicsPanel::onGenericToggle(lv_event_t* e)
 void PhysicsPanel::onGenericValueChange(lv_event_t* e)
 {
     lv_obj_t* target = static_cast<lv_obj_t*>(lv_event_get_target(e));
-
     lv_event_code_t code = lv_event_get_code(e);
-    if (code == LV_EVENT_VALUE_CHANGED) {
-        return;
-    }
-    else if (code != LV_EVENT_RELEASED) {
-        return;
-    }
 
     PhysicsPanel* self = static_cast<PhysicsPanel*>(lv_obj_get_user_data(target));
     if (!self) {
@@ -309,6 +303,30 @@ void PhysicsPanel::onGenericValueChange(lv_event_t* e)
     auto* control = self->findControl(target);
     if (!control) {
         LOG_WARN(Controls, "PhysicsPanel: Could not find control for value change event");
+        return;
+    }
+
+    // Handle DROPDOWN controls on VALUE_CHANGED.
+    if (control->config.type == PhysicsControlHelpers::ControlType::DROPDOWN) {
+        if (code != LV_EVENT_VALUE_CHANGED) {
+            return;
+        }
+        int selectedIndex = static_cast<int>(lv_dropdown_get_selected(target));
+        LOG_INFO(
+            Controls, "PhysicsPanel: {} changed to index {}", control->config.label, selectedIndex);
+
+        if (control->config.indexSetter) {
+            control->config.indexSetter(self->settings_, selectedIndex);
+        }
+        self->syncSettings();
+        return;
+    }
+
+    // Handle TOGGLE_SLIDER on RELEASED (ignore VALUE_CHANGED to avoid spam).
+    if (code == LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+    if (code != LV_EVENT_RELEASED) {
         return;
     }
 

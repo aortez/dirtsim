@@ -19,7 +19,7 @@ namespace Ui {
 /**
  * @brief Modal physics panel with two-level navigation.
  *
- * Provides a menu of 6 physics sections. Clicking a section shows only that
+ * Provides a menu of 7 physics sections. Clicking a section shows only that
  * section's controls with a back button to return to the menu. This modal
  * approach works better on small screens than scrollable collapsible sections.
  *
@@ -27,6 +27,7 @@ namespace Ui {
  * - General: Timescale, gravity, elasticity, air resistance, enable swap (5 controls).
  * - Pressure: Hydrostatic, dynamic, diffusion, iterations, scale (5 controls).
  * - Forces: Cohesion, adhesion, viscosity, friction, cohesion resist (5 controls).
+ * - Light: Sun enabled/intensity/color, ambient color, diffusion iters/rate (6 controls).
  * - Swap Tuning: Buoyancy energy, cohesion bonds, horizontal flow, fluid lubrication (4 controls).
  * - Swap2: Horizontal non-fluid penalty, target resist, non-fluid energy (3 controls).
  * - Frag: Enabled, threshold, full threshold, spray fraction (4 controls).
@@ -46,7 +47,7 @@ private:
     std::unique_ptr<PanelViewController> viewController_;
 
     // View state.
-    int activeSection_ = -1; // -1 = none, 0-5 = section index.
+    int activeSection_ = -1; // -1 = none, 0-6 = section index.
 
     // Physics settings and controls (only populated when in section view).
     PhysicsSettings settings_;

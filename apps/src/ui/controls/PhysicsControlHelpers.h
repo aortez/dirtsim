@@ -23,18 +23,24 @@ namespace PhysicsControlHelpers {
  * ForcesPanel all use these helpers to build their controls from column configs.
  */
 
-enum class ControlType { TOGGLE_SLIDER, SWITCH_ONLY };
+enum class ControlType { DROPDOWN, SWITCH_ONLY, TOGGLE_SLIDER };
 
 struct ControlConfig {
     const char* label;
     ControlType type;
 
+    // TOGGLE_SLIDER config.
     int rangeMin = 0;
     int rangeMax = 100;
     int defaultValue = 50;
     double valueScale = 1.0;
     const char* valueFormat = "%.1f";
     bool initiallyEnabled = false;
+
+    // DROPDOWN config.
+    const char* dropdownOptions = nullptr; // Newline-separated options.
+    std::function<void(PhysicsSettings&, int)> indexSetter = nullptr;
+    std::function<int(const PhysicsSettings&)> indexGetter = nullptr;
 
     std::function<void(PhysicsSettings&, double)> valueSetter = nullptr;
     std::function<double(const PhysicsSettings&)> valueGetter = nullptr;
@@ -49,18 +55,20 @@ struct ColumnConfig {
 
 struct Control {
     ControlConfig config;
-    lv_obj_t* widget = nullptr;
-    lv_obj_t* switchWidget = nullptr;
+    lv_obj_t* dropdownWidget = nullptr;
     lv_obj_t* sliderWidget = nullptr;
+    lv_obj_t* switchWidget = nullptr;
+    lv_obj_t* widget = nullptr;
 };
 
 struct AllColumnConfigs {
-    ColumnConfig generalPhysics;
-    ColumnConfig pressure;
     ColumnConfig forces;
-    ColumnConfig swapTuning;
-    ColumnConfig swap2;
     ColumnConfig frag;
+    ColumnConfig generalPhysics;
+    ColumnConfig light;
+    ColumnConfig pressure;
+    ColumnConfig swap2;
+    ColumnConfig swapTuning;
 };
 
 AllColumnConfigs createAllColumnConfigs();

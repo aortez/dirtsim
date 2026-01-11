@@ -480,7 +480,7 @@ Can be found here:
 - ✅ ActionButton with flexible layouts (row/column) and trough styling
 - ✅ CoreControls panel - Quit, Reset, Debug, Render Mode (modal selection)
 - ✅ ScenarioPanel - Scenario selection with modal navigation
-- ✅ PhysicsPanel - 6 sections with modal navigation (General, Pressure, Forces, Swap Tuning, Swap2, Frag)
+- ✅ PhysicsPanel - 7 sections with modal navigation (General, Pressure, Forces, Light, Swap Tuning, Swap2, Frag)
 - ✅ ClockControls - Font and Timezone selectors with modal navigation
 - ✅ Tree icon (🌳) - Shows/hides based on tree presence, toggles neural grid
 - ✅ All buttons use uniform 80px height (ACTION_SIZE)

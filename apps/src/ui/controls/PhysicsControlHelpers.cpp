@@ -1,4 +1,5 @@
 #include "PhysicsControlHelpers.h"
+#include "core/ColorNames.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
@@ -7,6 +8,81 @@
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <atomic>
 #include <spdlog/spdlog.h>
+
+namespace {
+
+// Sun color presets.
+struct ColorPreset {
+    const char* name;
+    uint32_t color;
+};
+
+const ColorPreset sunColorPresets[] = {
+    { "Warm Sunlight", 0 }, // Filled in at runtime from ColorNames.
+    { "Cool Moonlight", 0 }, { "Torch Orange", 0 }, { "Candle Yellow", 0 }, { "White", 0 },
+};
+const int sunColorPresetCount = 5;
+
+const ColorPreset ambientColorPresets[] = {
+    { "Day", 0 },
+    { "Dusk", 0 },
+    { "Night", 0 },
+    { "Cave", 0 },
+};
+const int ambientColorPresetCount = 4;
+
+// Initialize color values from ColorNames.
+uint32_t getSunColorByIndex(int index)
+{
+    switch (index) {
+        case 0:
+            return ColorNames::warmSunlight();
+        case 1:
+            return ColorNames::coolMoonlight();
+        case 2:
+            return ColorNames::torchOrange();
+        case 3:
+            return ColorNames::candleYellow();
+        case 4:
+            return ColorNames::white();
+        default:
+            return ColorNames::warmSunlight();
+    }
+}
+
+uint32_t getAmbientColorByIndex(int index)
+{
+    switch (index) {
+        case 0:
+            return ColorNames::dayAmbient();
+        case 1:
+            return ColorNames::duskAmbient();
+        case 2:
+            return ColorNames::nightAmbient();
+        case 3:
+            return ColorNames::caveAmbient();
+        default:
+            return ColorNames::dayAmbient();
+    }
+}
+
+int getSunColorIndex(uint32_t color)
+{
+    for (int i = 0; i < sunColorPresetCount; i++) {
+        if (getSunColorByIndex(i) == color) return i;
+    }
+    return 0; // Default to first if not found.
+}
+
+int getAmbientColorIndex(uint32_t color)
+{
+    for (int i = 0; i < ambientColorPresetCount; i++) {
+        if (getAmbientColorByIndex(i) == color) return i;
+    }
+    return 0; // Default to first if not found.
+}
+
+} // anonymous namespace
 
 namespace DirtSim {
 namespace Ui {
@@ -282,6 +358,96 @@ AllColumnConfigs createAllColumnConfigs()
                             } } }
     };
 
+    configs.light = {
+        .title = "Light",
+        .controls = { { .label = "Sun Enabled",
+                        .type = ControlType::SWITCH_ONLY,
+                        .enableSetter = [](PhysicsSettings& s, bool e) { s.light.sun_enabled = e; },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.light.sun_enabled; } },
+                      { .label = "Sun Intensity",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 200,
+                        .defaultValue = 100,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.sun_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.sun_intensity);
+                            },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                      { .label = "Sun Color",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions =
+                            "Warm Sunlight\nCool Moonlight\nTorch Orange\nCandle Yellow\nWhite",
+                        .indexSetter = [](PhysicsSettings& s,
+                                          int idx) { s.light.sun_color = getSunColorByIndex(idx); },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return getSunColorIndex(s.light.sun_color);
+                            } },
+                      { .label = "Ambient Color",
+                        .type = ControlType::DROPDOWN,
+                        .dropdownOptions = "Day\nDusk\nNight\nCave",
+                        .indexSetter =
+                            [](PhysicsSettings& s, int idx) {
+                                s.light.ambient_color = getAmbientColorByIndex(idx);
+                            },
+                        .indexGetter =
+                            [](const PhysicsSettings& s) {
+                                return getAmbientColorIndex(s.light.ambient_color);
+                            } },
+                      { .label = "Diffusion Iters",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 10,
+                        .defaultValue = 2,
+                        .valueScale = 1.0,
+                        .valueFormat = "%.0f",
+                        .initiallyEnabled = true,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.diffusion_iterations = static_cast<int>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.diffusion_iterations);
+                            },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                      { .label = "Diffusion Rate",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 30,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.diffusion_rate = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.diffusion_rate);
+                            },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } } }
+    };
+
     configs.swapTuning = {
         .title = "Swap Tuning",
         .controls = { { .label = "Buoyancy Energy",
@@ -532,6 +698,23 @@ size_t createControlsFromColumn(
                 widgetToControl[control.switchWidget] = &control;
             }
         }
+        else if (controlConfig.type == ControlType::DROPDOWN) {
+            control.widget = LVGLBuilder::actionDropdown(parent)
+                                 .label(controlConfig.label)
+                                 .options(controlConfig.dropdownOptions)
+                                 .selected(0)
+                                 .width(LV_PCT(95))
+                                 .callback(sliderCallback, callbackUserData)
+                                 .buildOrLog();
+
+            if (control.widget) {
+                control.dropdownWidget = lv_obj_get_child(control.widget, 1);
+                widgetToControl[control.widget] = &control;
+                if (control.dropdownWidget) {
+                    widgetToControl[control.dropdownWidget] = &control;
+                }
+            }
+        }
 
         index++;
     }
@@ -610,6 +793,18 @@ void updateControlsFromSettings(
 
     for (size_t i = 0; i < controlCount; i++) {
         Control& control = controlsArray[i];
+
+        // Handle DROPDOWN controls.
+        if (control.config.type == ControlType::DROPDOWN) {
+            if (control.config.indexGetter && control.dropdownWidget) {
+                int selectedIndex = control.config.indexGetter(settings);
+                lv_dropdown_set_selected(
+                    control.dropdownWidget, static_cast<uint16_t>(selectedIndex));
+            }
+            continue;
+        }
+
+        // Handle TOGGLE_SLIDER and SWITCH_ONLY.
         if (control.config.valueGetter && control.config.enableGetter) {
             double value = control.config.valueGetter(settings);
             bool enabled = control.config.enableGetter(settings);
