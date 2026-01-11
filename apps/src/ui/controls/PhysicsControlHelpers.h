@@ -23,20 +23,22 @@ namespace PhysicsControlHelpers {
  * ForcesPanel all use these helpers to build their controls from column configs.
  */
 
-enum class ControlType { ACTION_STEPPER, DROPDOWN, SWITCH_ONLY, TOGGLE_SLIDER };
+enum class ControlType { ACTION_STEPPER, DROPDOWN, SWITCH_ONLY };
 
 struct ControlConfig {
     const char* label;
     ControlType type;
 
-    // TOGGLE_SLIDER and ACTION_STEPPER config.
+    // ACTION_STEPPER config.
     int rangeMin = 0;
     int rangeMax = 100;
     int defaultValue = 50;
     double valueScale = 1.0;
     const char* valueFormat = "%.1f";
+    int step = 1;
+
+    // SWITCH_ONLY config.
     bool initiallyEnabled = false;
-    int step = 1; // Step size for ACTION_STEPPER.
 
     // DROPDOWN config.
     const char* dropdownOptions = nullptr; // Newline-separated options.
@@ -57,7 +59,6 @@ struct ColumnConfig {
 struct Control {
     ControlConfig config;
     lv_obj_t* dropdownWidget = nullptr;
-    lv_obj_t* sliderWidget = nullptr;
     lv_obj_t* stepperWidget = nullptr;
     lv_obj_t* switchWidget = nullptr;
     lv_obj_t* widget = nullptr;

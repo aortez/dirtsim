@@ -258,25 +258,6 @@ void PhysicsPanel::onGenericToggle(lv_event_t* e)
         }
     }
 
-    if (enabled && control->config.type == PhysicsControlHelpers::ControlType::TOGGLE_SLIDER) {
-        if (control->sliderWidget) {
-            int value = lv_slider_get_value(control->sliderWidget);
-            double scaledValue = value * control->config.valueScale;
-            if (control->config.valueSetter) {
-                control->config.valueSetter(self->settings_, scaledValue);
-            }
-            LOG_DEBUG(
-                Controls,
-                "PhysicsPanel: Restored {} to {:.2f}",
-                control->config.label,
-                scaledValue);
-        }
-        else {
-            LOG_WARN(
-                Controls, "PhysicsPanel: No slider widget found for {}", control->config.label);
-        }
-    }
-
     try {
         self->syncSettings();
     }
@@ -338,25 +319,6 @@ void PhysicsPanel::onGenericValueChange(lv_event_t* e)
         self->syncSettings();
         return;
     }
-
-    // Handle TOGGLE_SLIDER on RELEASED (ignore VALUE_CHANGED to avoid spam).
-    if (code == LV_EVENT_VALUE_CHANGED) {
-        return;
-    }
-    if (code != LV_EVENT_RELEASED) {
-        return;
-    }
-
-    int value = lv_slider_get_value(target);
-    double scaledValue = value * control->config.valueScale;
-
-    LOG_INFO(Controls, "PhysicsPanel: {} released at {:.2f}", control->config.label, scaledValue);
-
-    if (control->config.valueSetter) {
-        control->config.valueSetter(self->settings_, scaledValue);
-    }
-
-    self->syncSettings();
 }
 
 PhysicsControlHelpers::Control* PhysicsPanel::findControl(lv_obj_t* widget)

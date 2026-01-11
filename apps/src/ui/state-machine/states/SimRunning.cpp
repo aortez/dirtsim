@@ -10,7 +10,6 @@
 #include "ui/RemoteInputDevice.h"
 #include "ui/SimPlayground.h"
 #include "ui/UiComponentManager.h"
-#include "ui/controls/PhysicsControls.h"
 #include "ui/state-machine/StateMachine.h"
 #include <atomic>
 #include <cassert>
