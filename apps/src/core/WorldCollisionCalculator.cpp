@@ -52,16 +52,13 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     const Cell& toCell,
     const Vector2i& fromPos,
     const Vector2i& toPos,
-    const Vector2i& direction,
     double /* deltaTime */) const
 {
     MaterialMove move;
 
     // Standard move data.
-    move.fromX = fromPos.x;
-    move.fromY = fromPos.y;
-    move.toX = toPos.x;
-    move.toY = toPos.y;
+    move.from = Vector2s(fromPos.x, fromPos.y);
+    move.to = Vector2s(toPos.x, toPos.y);
     move.material = fromCell.material_type;
 
     // Calculate how much wants to transfer vs what can transfer.
@@ -99,8 +96,6 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     }
 
     move.momentum = fromCell.velocity;
-    move.boundary_normal =
-        Vector2d{ static_cast<double>(direction.x), static_cast<double>(direction.y) };
 
     // Calculate collision physics data.
     move.material_mass = calculateMaterialMass(fromCell);
@@ -230,7 +225,7 @@ double WorldCollisionCalculator::calculateCollisionEnergy(
     // IMPORTANT: Use velocity component in direction of movement, not total magnitude.
     // For swaps, only energy in the swap direction matters.
     // If falling vertically with little horizontal velocity, horizontal swaps should be hard.
-    Vector2d direction_vector(move.toX - move.fromX, move.toY - move.fromY);
+    Vector2d direction_vector(move.to.x - move.from.x, move.to.y - move.from.y);
     double velocity_in_direction = std::abs(move.momentum.dot(direction_vector));
 
     LOG_DEBUG(
@@ -238,8 +233,8 @@ double WorldCollisionCalculator::calculateCollisionEnergy(
         "Energy calc: total_vel=({:.3f},{:.3f}), dir=({},{}), vel_in_dir={:.3f}",
         move.momentum.x,
         move.momentum.y,
-        move.toX - move.fromX,
-        move.toY - move.fromY,
+        move.to.x - move.from.x,
+        move.to.y - move.from.y,
         velocity_in_direction);
 
     // If target cell has material, include reduced mass for collision.
@@ -306,17 +301,17 @@ void WorldCollisionCalculator::handleTransferMove(
 {
     // Single-cell organisms must not fragment.
     // Re-check target is empty at execution time (moves are shuffled).
-    Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
+    Vector2i from_pos{ static_cast<int>(move.from.x), static_cast<int>(move.from.y) };
     OrganismId org_id = world.getOrganismManager().at(from_pos);
     if (org_id != INVALID_ORGANISM_ID && !toCell.isEmpty()) {
         spdlog::info(
             "handleTransferMove: Organism at ({},{}) - target became non-empty (fill={:.2f}), "
             "aborting transfer",
-            move.fromX,
-            move.fromY,
+            move.from.x,
+            move.from.y,
             toCell.fill_ratio);
         // Apply bounce instead.
-        Vector2i direction(move.toX - move.fromX, move.toY - move.fromY);
+        Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
         handleElasticCollision(fromCell, toCell, move);
         return;
     }
@@ -325,32 +320,32 @@ void WorldCollisionCalculator::handleTransferMove(
     spdlog::debug(
         "TRANSFER: Before - From({},{}) vel=({:.3f},{:.3f}) fill={:.3f}, To({},{}) "
         "vel=({:.3f},{:.3f}) fill={:.3f}",
-        move.fromX,
-        move.fromY,
+        move.from.x,
+        move.from.y,
         fromCell.velocity.x,
         fromCell.velocity.y,
         fromCell.fill_ratio,
-        move.toX,
-        move.toY,
+        move.to.x,
+        move.to.y,
         toCell.velocity.x,
         toCell.velocity.y,
         toCell.fill_ratio);
 
     // Attempt the transfer.
     const double transferred =
-        fromCell.transferToWithPhysics(toCell, move.amount, move.boundary_normal);
+        fromCell.transferToWithPhysics(toCell, move.amount, move.getDirection());
 
     // Log post-transfer state.
     spdlog::debug(
         "TRANSFER: After  - From({},{}) vel=({:.3f},{:.3f}) fill={:.3f}, To({},{}) "
         "vel=({:.3f},{:.3f}) fill={:.3f}",
-        move.fromX,
-        move.fromY,
+        move.from.x,
+        move.from.y,
         fromCell.velocity.x,
         fromCell.velocity.y,
         fromCell.fill_ratio,
-        move.toX,
-        move.toY,
+        move.to.x,
+        move.to.y,
         toCell.velocity.x,
         toCell.velocity.y,
         toCell.fill_ratio);
@@ -360,12 +355,12 @@ void WorldCollisionCalculator::handleTransferMove(
             "Transferred {:.3f} {} from ({},{}) to ({},{}) with boundary normal ({:.2f},{:.2f})",
             transferred,
             getMaterialName(move.material),
-            move.fromX,
-            move.fromY,
-            move.toX,
-            move.toY,
-            move.boundary_normal.x,
-            move.boundary_normal.y);
+            move.from.x,
+            move.from.y,
+            move.to.x,
+            move.to.y,
+            move.getDirection().x,
+            move.getDirection().y);
     }
 
     // Check if transfer was incomplete (target full or couldn't accept all material)
@@ -373,7 +368,7 @@ void WorldCollisionCalculator::handleTransferMove(
     if (transfer_deficit > MIN_MATTER_THRESHOLD) {
         // Transfer failed partially or completely - apply elastic reflection for remaining
         // material.
-        Vector2i direction(move.toX - move.fromX, move.toY - move.fromY);
+        Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
 
         spdlog::debug(
             "Transfer incomplete: requested={:.3f}, transferred={:.3f}, deficit={:.3f} - applying "
@@ -399,10 +394,10 @@ void WorldCollisionCalculator::handleTransferMove(
                 energy);
 
             world.getPressureCalculator().queueBlockedTransfer(
-                { move.fromX,
-                  move.fromY,
-                  move.toX,
-                  move.toY,
+                { move.from.x,
+                  move.from.y,
+                  move.to.x,
+                  move.to.y,
                   transfer_deficit, // transfer_amount.
                   fromCell.velocity,
                   energy });
@@ -416,7 +411,7 @@ void WorldCollisionCalculator::handleElasticCollision(
     Cell& fromCell, Cell& toCell, const MaterialMove& move)
 {
     Vector2d incident_velocity = move.momentum;
-    Vector2d surface_normal = move.boundary_normal.normalize();
+    Vector2d surface_normal = move.getDirection().normalize();
 
     if (move.target_mass > 0.0 && !toCell.isEmpty()) {
         // Two-body elastic collision with proper normal/tangential decomposition.
@@ -453,20 +448,20 @@ void WorldCollisionCalculator::handleElasticCollision(
         Vector2d fromCOM = fromCell.com;
 
         // Check which boundary was crossed and apply separation.
-        if (move.boundary_normal.x > 0.5) { // Crossed right boundary (normal points left)
+        if (move.getDirection().x > 0.5) { // Crossed right boundary (normal points left)
             fromCOM.x = std::min(fromCOM.x, 1.0 - separation_distance);
             fromCell.setCOM(fromCOM);
         }
-        else if (move.boundary_normal.x < -0.5) { // Crossed left boundary (normal points right)
+        else if (move.getDirection().x < -0.5) { // Crossed left boundary (normal points right)
             fromCOM.x = std::max(fromCOM.x, -1.0 + separation_distance);
             fromCell.setCOM(fromCOM);
         }
 
-        if (move.boundary_normal.y > 0.5) { // Crossed bottom boundary (normal points up)
+        if (move.getDirection().y > 0.5) { // Crossed bottom boundary (normal points up)
             fromCOM.y = std::min(fromCOM.y, 1.0 - separation_distance);
             fromCell.setCOM(fromCOM);
         }
-        else if (move.boundary_normal.y < -0.5) { // Crossed top boundary (normal points down)
+        else if (move.getDirection().y < -0.5) { // Crossed top boundary (normal points down)
             fromCOM.y = std::max(fromCOM.y, -1.0 + separation_distance);
             fromCell.setCOM(fromCOM);
         }
@@ -476,10 +471,10 @@ void WorldCollisionCalculator::handleElasticCollision(
             "restitution: {:.2f}, COM adjusted to ({:.3f},{:.3f})",
             getMaterialName(move.material),
             getMaterialName(toCell.material_type),
-            move.fromX,
-            move.fromY,
-            move.toX,
-            move.toY,
+            move.from.x,
+            move.from.y,
+            move.to.x,
+            move.to.y,
             m1,
             m2,
             move.restitution_coefficient,
@@ -526,7 +521,7 @@ void WorldCollisionCalculator::handleInelasticCollision(
 {
     // Physics-correct component-based collision handling.
     Vector2d incident_velocity = move.momentum;
-    Vector2d surface_normal = move.boundary_normal.normalize();
+    Vector2d surface_normal = move.getDirection().normalize();
 
     // Decompose velocity into normal and tangential components.
     auto v_comp = decomposeVelocity(incident_velocity, surface_normal);
@@ -563,7 +558,7 @@ void WorldCollisionCalculator::handleInelasticCollision(
 
     // Attempt direct material transfer and measure actual amount transferred.
     double actual_transfer =
-        fromCell.transferToWithPhysics(toCell, transfer_amount, move.boundary_normal);
+        fromCell.transferToWithPhysics(toCell, transfer_amount, move.getDirection());
 
     // Check for blocked transfer and queue for dynamic pressure accumulation.
     double transfer_deficit = transfer_amount - actual_transfer;
@@ -586,10 +581,10 @@ void WorldCollisionCalculator::handleInelasticCollision(
             fromCell.velocity.magnitude(),
             energy);
 
-        world.getPressureCalculator().queueBlockedTransfer({ move.fromX,
-                                                             move.fromY,
-                                                             move.toX,
-                                                             move.toY,
+        world.getPressureCalculator().queueBlockedTransfer({ move.from.x,
+                                                             move.from.y,
+                                                             move.to.x,
+                                                             move.to.y,
                                                              transfer_deficit,
                                                              fromCell.velocity,
                                                              energy });
@@ -604,8 +599,8 @@ void WorldCollisionCalculator::handleFragmentation(
     spdlog::debug(
         "Fragmentation collision: {} at ({},{}) - treating as inelastic for now",
         getMaterialName(move.material),
-        move.fromX,
-        move.fromY);
+        move.from.x,
+        move.from.y);
 
     handleInelasticCollision(world, fromCell, toCell, move);
 }
@@ -617,12 +612,12 @@ void WorldCollisionCalculator::handleAbsorption(
     if (move.material == MaterialType::WATER && toCell.material_type == MaterialType::DIRT) {
         // Water absorbed by dirt - transfer all water.
         handleTransferMove(world, fromCell, toCell, move);
-        spdlog::trace("Absorption: WATER absorbed by DIRT at ({},{})", move.toX, move.toY);
+        spdlog::trace("Absorption: WATER absorbed by DIRT at ({},{})", move.to.x, move.to.y);
     }
     else if (move.material == MaterialType::DIRT && toCell.material_type == MaterialType::WATER) {
         // Dirt falls into water - mix materials.
         handleTransferMove(world, fromCell, toCell, move);
-        spdlog::trace("Absorption: DIRT mixed with WATER at ({},{})", move.toX, move.toY);
+        spdlog::trace("Absorption: DIRT mixed with WATER at ({},{})", move.to.x, move.to.y);
     }
     else {
         // Default to regular transfer.
@@ -870,7 +865,7 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     // Blend between radial (explosion-like) and reflection (momentum-preserving).
     // =================================================================
 
-    Vector2d surface_normal = move.boundary_normal.normalize();
+    Vector2d surface_normal = move.getDirection().normalize();
 
     // Radial directions: simply away from collision partner.
     Vector2d from_radial_dir = surface_normal * -1.0; // FROM sprays away from TO.
@@ -934,10 +929,10 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         from_sprayed = fragmentSingleCell(
             world,
             fromCell,
-            move.fromX,
-            move.fromY,
-            move.toX,
-            move.toY,
+            move.from.x,
+            move.from.y,
+            move.to.x,
+            move.to.y,
             from_spray_dir,
             num_frags,
             from_arc_width,
@@ -952,10 +947,10 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         to_sprayed = fragmentSingleCell(
             world,
             toCell,
-            move.toX,
-            move.toY,
-            move.fromX,
-            move.fromY,
+            move.to.x,
+            move.to.y,
+            move.from.x,
+            move.from.y,
             to_spray_dir,
             num_frags,
             to_arc_width,
@@ -990,12 +985,12 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
         "Water fragmentation: {} frags, FROM({},{}) sprayed {:.3f} remaining {:.3f}, TO({},{}) "
         "sprayed {:.3f} remaining {:.3f}",
         num_frags,
-        move.fromX,
-        move.fromY,
+        move.from.x,
+        move.from.y,
         from_sprayed,
         fromCell.fill_ratio,
-        move.toX,
-        move.toY,
+        move.to.x,
+        move.to.y,
         to_sprayed,
         toCell.fill_ratio);
 
@@ -1575,7 +1570,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // Moving material (now in toCell) continues trajectory with reduced velocity.
     // Calculate landing position based on boundary crossing trajectory.
     Vector2d landing_com =
-        fromCell.calculateTrajectoryLanding(fromCell.com, move.momentum, move.boundary_normal);
+        fromCell.calculateTrajectoryLanding(fromCell.com, move.momentum, move.getDirection());
     toCell.setCOM(landing_com);
     toCell.velocity = new_velocity;
 
@@ -1612,10 +1607,10 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
             "(air swap, momentum preserved) | landing_com: ({:.2f},{:.2f})",
             getMaterialName(from_type),
             getMaterialName(to_type),
-            move.fromX,
-            move.fromY,
-            move.toX,
-            move.toY,
+            move.from.x,
+            move.from.y,
+            move.to.x,
+            move.to.y,
             direction.x,
             direction.y,
             direction_str,
@@ -1631,10 +1626,10 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
             "{:.3f} | Vel: {:.3f} -> {:.3f} | landing_com: ({:.2f},{:.2f})",
             getMaterialName(from_type),
             getMaterialName(to_type),
-            move.fromX,
-            move.fromY,
-            move.toX,
-            move.toY,
+            move.from.x,
+            move.from.y,
+            move.to.x,
+            move.to.y,
             direction.x,
             direction.y,
             direction_str,

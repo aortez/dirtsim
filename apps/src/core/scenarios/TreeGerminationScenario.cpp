@@ -5,6 +5,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/organisms/Tree.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
 #include <spdlog/spdlog.h>
@@ -30,15 +31,35 @@ ScenarioConfig TreeGerminationScenario::getConfig() const
     return config_;
 }
 
-void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+void TreeGerminationScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 {
-    if (std::holds_alternative<Config::TreeGermination>(newConfig)) {
-        config_ = std::get<Config::TreeGermination>(newConfig);
-        spdlog::info("TreeGerminationScenario: Config updated");
-    }
-    else {
+    if (!std::holds_alternative<Config::TreeGermination>(newConfig)) {
         spdlog::error("TreeGerminationScenario: Invalid config type provided");
+        return;
     }
+
+    const auto& cfg = std::get<Config::TreeGermination>(newConfig);
+
+    // Check if brain type changed.
+    if (cfg.brain_type != config_.brain_type) {
+        Tree* tree = world.getOrganismManager().getTree(treeId_);
+        if (tree) {
+            std::unique_ptr<TreeBrain> brain;
+            if (cfg.brain_type == Config::TreeBrainType::NEURAL_NET) {
+                brain = std::make_unique<NeuralNetBrain>(cfg.neural_seed);
+                spdlog::info(
+                    "TreeGerminationScenario: Swapped to NeuralNetBrain (seed {})",
+                    cfg.neural_seed);
+            }
+            else {
+                brain = std::make_unique<RuleBasedBrain>();
+                spdlog::info("TreeGerminationScenario: Swapped to RuleBasedBrain");
+            }
+            tree->setBrain(std::move(brain));
+        }
+    }
+
+    config_ = cfg;
 }
 
 void TreeGerminationScenario::setup(World& world)
@@ -72,8 +93,8 @@ void TreeGerminationScenario::setup(World& world)
     }
 
     // Plant seed in center for balanced growth demonstration.
-    OrganismId tree_id = world.getOrganismManager().createTree(world, 4, 4, std::move(brain));
-    spdlog::info("TreeGerminationScenario: Planted seed {} at (4, 4)", tree_id);
+    treeId_ = world.getOrganismManager().createTree(world, 4, 4, std::move(brain));
+    spdlog::info("TreeGerminationScenario: Planted seed {} at (4, 4)", treeId_);
 }
 
 void TreeGerminationScenario::reset(World& world)

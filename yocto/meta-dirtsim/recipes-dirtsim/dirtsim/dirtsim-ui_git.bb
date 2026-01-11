@@ -29,6 +29,7 @@ SRC_URI = " \
 DEPENDS = " \
     avahi \
     boost \
+    freetype \
     libdrm \
     libinput \
     libsdl2 \
@@ -73,6 +74,10 @@ do_install() {
     # Install default UI configuration.
     install -d ${D}${sysconfdir}/dirtsim
     install -m 0644 ${EXTERNALSRC}/config/ui.json ${D}${sysconfdir}/dirtsim/ui.json
+
+    # Install fonts (for color emoji clock display).
+    install -d ${D}/data/dirtsim/fonts
+    install -m 0644 ${EXTERNALSRC}/fonts/NotoColorEmoji.ttf ${D}/data/dirtsim/fonts/
 }
 
 # Enable the systemd services.
@@ -86,6 +91,7 @@ FILES:${PN} = " \
     ${bindir}/dirtsim-detect-display.sh \
     ${bindir}/dirtsim-set-hostname.sh \
     ${bindir}/dirtsim-config-setup.sh \
+    /data/dirtsim/fonts/NotoColorEmoji.ttf \
     ${sysconfdir}/dirtsim/ui.json \
     ${systemd_system_unitdir}/dirtsim-ui.service \
     ${systemd_system_unitdir}/dirtsim-detect-display.service \
@@ -97,6 +103,7 @@ FILES:${PN} = " \
 RDEPENDS:${PN} = " \
     avahi-daemon \
     dirtsim-server \
+    freetype \
     libdrm \
     libinput \
     libsdl2 \

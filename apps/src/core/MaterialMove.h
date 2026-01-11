@@ -1,7 +1,7 @@
 #pragma once
 
 #include "MaterialType.h"
-#include "Vector2d.h"
+#include "Vector2.h"
 
 namespace DirtSim {
 
@@ -11,7 +11,7 @@ namespace DirtSim {
  * This enum defines how materials interact when they collide during
  * movement in the World physics simulation.
  */
-enum class CollisionType {
+enum class CollisionType : uint8_t {
     TRANSFER_ONLY,       // Material moves between cells (default behavior)
     ELASTIC_REFLECTION,  // Bouncing with energy conservation
     INELASTIC_COLLISION, // Bouncing with energy loss
@@ -25,25 +25,32 @@ enum class CollisionType {
  * This struct encapsulates all data needed to perform a material transfer
  * including collision detection, energy calculations, and physics responses.
  * It supports both simple transfers and complex collision interactions.
+ *
+ * Layout optimized for minimal size (~72 bytes):
+ * - Coordinates packed as Vector2s (int16_t) - sufficient for grids up to 32767x32767.
+ * - boundary_normal removed - computed on-the-fly via getDirection().
+ * - CollisionType and MaterialType packed as uint8_t.
  */
 struct MaterialMove {
-    // Basic transfer data (optimized layout for packing)
-    double amount;            // Amount of material to transfer
-    Vector2d momentum;        // Velocity/momentum of the moving material
-    Vector2d boundary_normal; // Direction of boundary crossing for physics
-    int fromX, fromY;         // Source cell coordinates
-    int toX, toY;             // Target cell coordinates
-    MaterialType material;    // Type of material being transferred
-
-    // Collision-specific data
+    // Basic transfer data (optimized layout for packing).
+    double amount;         // Amount of material to transfer.
+    Vector2d momentum;     // Velocity/momentum of the moving material.
+    Vector2s from;         // Source cell coordinates.
+    Vector2s to;           // Target cell coordinates.
+    MaterialType material; // Type of material being transferred.
     CollisionType collision_type = CollisionType::TRANSFER_ONLY;
-    double collision_energy = 0.0;        // Calculated impact energy
-    double restitution_coefficient = 0.0; // Material-specific bounce factor
-    double material_mass = 0.0;           // Mass of moving material
-    double target_mass = 0.0;             // Mass of target material (if any)
 
-    // Pressure from excess material that can't transfer
-    double pressure_from_excess = 0.0; // Pressure to add to target cell
+    // Collision-specific data.
+    double collision_energy = 0.0;        // Calculated impact energy.
+    double restitution_coefficient = 0.0; // Material-specific bounce factor.
+    double material_mass = 0.0;           // Mass of moving material.
+    double target_mass = 0.0;             // Mass of target material (if any).
+
+    // Pressure from excess material that can't transfer.
+    double pressure_from_excess = 0.0; // Pressure to add to target cell.
+
+    // Compute direction on-the-fly (replaces stored boundary_normal).
+    inline Vector2d getDirection() const { return Vector2d(to.x - from.x, to.y - from.y); }
 };
 
 } // namespace DirtSim

@@ -160,7 +160,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
         .is_fluid = false,
-        .light = { .opacity = 0.4f, .scatter = 0.3f } },
+        .light = { .opacity = 1.0f, .scatter = 0.3f } },
 
       // ========== WATER ==========
       { .density = 1.0,

@@ -2,6 +2,7 @@
 #include "ClockControls.h"
 #include "RainingControls.h"
 #include "SandboxControls.h"
+#include "TreeGerminationControls.h"
 #include <spdlog/spdlog.h>
 #include <type_traits>
 #include <variant>
@@ -31,6 +32,10 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
             else if constexpr (std::is_same_v<T, Config::Raining>) {
                 spdlog::debug("ScenarioControlsFactory: Creating RainingControls");
                 return std::make_unique<RainingControls>(parent, wsService, cfg);
+            }
+            else if constexpr (std::is_same_v<T, Config::TreeGermination>) {
+                spdlog::debug("ScenarioControlsFactory: Creating TreeGerminationControls");
+                return std::make_unique<TreeGerminationControls>(parent, wsService, cfg);
             }
             else {
                 // Config::Empty, Config::Benchmark, Config::DamBreak, Config::FallingDirt,

@@ -26,7 +26,7 @@ const ScenarioMetadata& GooseTestScenario::getMetadata() const
 
 ScenarioConfig GooseTestScenario::getConfig() const
 {
-    return Config::Empty{};
+    return Config::GooseTest{};
 }
 
 void GooseTestScenario::setConfig(const ScenarioConfig& /*newConfig*/, World& /*world*/)

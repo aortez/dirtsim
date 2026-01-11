@@ -22,6 +22,11 @@ void WorldLightCalculator::calculate(
         data.colors.resize(data.width, data.height, ColorNames::RgbF{});
     }
 
+    // Ensure emissive overlay is sized correctly.
+    if (emissive_overlay_.width != data.width || emissive_overlay_.height != data.height) {
+        emissive_overlay_.resize(data.width, data.height, ColorNames::RgbF{});
+    }
+
     // Clear to black before accumulating light.
     {
         ScopeTimer t(timers, "light_clear");
@@ -402,6 +407,9 @@ void WorldLightCalculator::resize(uint32_t width, uint32_t height)
 {
     if (emissive_overlay_.width != width || emissive_overlay_.height != height) {
         emissive_overlay_.resize(width, height, ColorNames::RgbF{});
+    }
+    if (raw_light_.width != width || raw_light_.height != height) {
+        raw_light_.resize(width, height);
     }
 }
 

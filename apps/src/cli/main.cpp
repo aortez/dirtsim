@@ -217,9 +217,9 @@ int main(int argc, char** argv)
     args::ValueFlag<std::string> benchScenario(
         parser,
         "scenario",
-        "Benchmark: scenario name (default: benchmark)",
+        "Benchmark: scenario name (default: Benchmark)",
         { "scenario" },
-        "benchmark");
+        "Benchmark");
     args::ValueFlag<int> benchWorldSize(
         parser,
         "size",
@@ -286,7 +286,7 @@ int main(int argc, char** argv)
         // Run benchmark.
         // Follow args library pattern: check presence before get.
         int actualSteps = benchSteps ? args::get(benchSteps) : 120;
-        std::string actualScenario = benchScenario ? args::get(benchScenario) : "benchmark";
+        std::string actualScenario = benchScenario ? args::get(benchScenario) : "Benchmark";
         (void)benchWorldSize; // Unused - world size now determined by scenario.
 
         if (compareCache) {

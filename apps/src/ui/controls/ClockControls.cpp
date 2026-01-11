@@ -1,5 +1,6 @@
 #include "ClockControls.h"
 #include "core/LoggingChannels.h"
+#include "core/reflect.h"
 #include "core/scenarios/ClockScenario.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
@@ -61,9 +62,8 @@ void ClockControls::createWidgets()
 void ClockControls::createMainView(lv_obj_t* view)
 {
     // Font selector button.
-    const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
-                                "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
-    std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
+    auto currentFont = static_cast<Config::ClockFont>(currentFontIndex_);
+    std::string fontText = std::string("Font: ") + Config::getDisplayName(currentFont);
 
     fontButton_ = LVGLBuilder::actionButton(view)
                       .text(fontText.c_str())
@@ -253,15 +253,13 @@ void ClockControls::createFontSelectionView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 4, 0);
 
-    // Font option buttons.
-    // Order matches ClockFont enum.
-    const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
-                                "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
+    // Font option buttons - iterate using reflection.
     buttonToFontIndex_.clear();
 
-    for (int i = 0; i < 6; i++) {
+    for (const auto& [value, name] : reflect::enumerators<Config::ClockFont>) {
+        auto font = static_cast<Config::ClockFont>(value);
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(fontNames[i])
+                                  .text(Config::getDisplayName(font))
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -270,7 +268,7 @@ void ClockControls::createFontSelectionView(lv_obj_t* view)
         if (container) {
             lv_obj_t* button = lv_obj_get_child(container, 0);
             if (button) {
-                buttonToFontIndex_[button] = i;
+                buttonToFontIndex_[button] = static_cast<int>(value);
                 lv_obj_add_event_cb(button, onFontSelected, LV_EVENT_CLICKED, this);
             }
         }
@@ -391,9 +389,7 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update font selection and button text.
     currentFontIndex_ = static_cast<int>(config.font);
     if (fontButton_) {
-        const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
-                                    "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
-        std::string fontText = std::string("Font: ") + fontNames[currentFontIndex_];
+        std::string fontText = std::string("Font: ") + Config::getDisplayName(config.font);
 
         lv_obj_t* button = lv_obj_get_child(fontButton_, 0);
         if (button) {
@@ -587,15 +583,17 @@ void ClockControls::onFontSelected(lv_event_t* e)
     }
 
     int fontIndex = it->second;
-    static const char* fontNames[] = { "Dot Matrix",      "7-Segment",       "7-Segment Extra Tall",
-                                       "7-Segment Jumbo", "7-Segment Large", "7-Segment Tall" };
+    auto font = static_cast<Config::ClockFont>(fontIndex);
     LOG_INFO(
-        Controls, "ClockControls: Font changed to index {} ({})", fontIndex, fontNames[fontIndex]);
+        Controls,
+        "ClockControls: Font changed to index {} ({})",
+        fontIndex,
+        Config::getDisplayName(font));
 
     // Update selection and button text.
     self->currentFontIndex_ = fontIndex;
     if (self->fontButton_) {
-        std::string fontText = std::string("Font: ") + fontNames[fontIndex];
+        std::string fontText = std::string("Font: ") + Config::getDisplayName(font);
         lv_obj_t* button = lv_obj_get_child(self->fontButton_, 0);
         if (button) {
             lv_obj_t* label = lv_obj_get_child(button, 1);

@@ -1,8 +1,13 @@
 #include "WorldPressureCalculator.h"
 #include "Cell.h"
+#include "GridOfCells.h"
 #include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
+
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -540,6 +545,12 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
     for (int iteration = 0; iteration < num_iterations; ++iteration) {
         std::vector<double> temp_pressure = new_pressure;
 
+        // Parallelize when OpenMP is enabled. Each cell reads from temp_pressure
+        // and writes to its unique index in new_pressure, so no race conditions.
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    schedule(static) if (GridOfCells::USE_OPENMP && height * width >= 2500)
+#endif
         for (uint32_t y = 0; y < height; ++y) {
             for (uint32_t x = 0; x < width; ++x) {
                 size_t idx = y * width + x;

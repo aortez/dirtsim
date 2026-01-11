@@ -1,8 +1,8 @@
 #pragma once
 
 #include "TreeGerminationConfig.h"
+#include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
-#include <memory>
 
 namespace DirtSim {
 
@@ -23,6 +23,7 @@ public:
 private:
     ScenarioMetadata metadata_;
     Config::TreeGermination config_;
+    OrganismId treeId_{};
 };
 
 } // namespace DirtSim

@@ -289,7 +289,7 @@ void StateMachine::handleEvent(const Event& event)
                 display ? static_cast<uint32_t>(lv_display_get_horizontal_resolution(display)) : 0U,
             .display_height =
                 display ? static_cast<uint32_t>(lv_display_get_vertical_resolution(display)) : 0U,
-            .fps = 0.0, // TODO: Track and return actual FPS.
+            .fps = getUiFps(),
             .cpu_percent = metrics.cpu_percent,
             .memory_percent = metrics.memory_percent
         };
@@ -569,6 +569,19 @@ void StateMachine::handleEvent(const Event& event)
 std::string StateMachine::getCurrentStateName() const
 {
     return State::getCurrentStateName(fsmState);
+}
+
+double StateMachine::getUiFps() const
+{
+    return std::visit(
+        [](const auto& state) -> double {
+            using T = std::decay_t<decltype(state)>;
+            if constexpr (std::is_same_v<T, State::SimRunning>) {
+                return state.smoothedUiFps;
+            }
+            return 0.0;
+        },
+        fsmState.getVariant());
 }
 
 Network::WebSocketService& StateMachine::getWebSocketService()

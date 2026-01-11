@@ -19,10 +19,11 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
-class WorldPressureCalculator;
+class WorldAdhesionCalculator;
 class WorldCollisionCalculator;
 class WorldFrictionCalculator;
-class WorldAdhesionCalculator;
+class WorldLightCalculator;
+class WorldPressureCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
 struct LightBuffer;
@@ -97,6 +98,9 @@ public:
 
     WorldCollisionCalculator& getCollisionCalculator();
     const WorldCollisionCalculator& getCollisionCalculator() const;
+
+    WorldLightCalculator& getLightCalculator();
+    const WorldLightCalculator& getLightCalculator() const;
 
     WorldAdhesionCalculator& getAdhesionCalculator();
     const WorldAdhesionCalculator& getAdhesionCalculator() const;
@@ -272,7 +276,6 @@ private:
     void pruneDisconnectedFragments();
     Vector2d computeOrganismSupportForce(
         const std::vector<Vector2i>& organism_cells, OrganismId organism_id) const;
-    void updateTransfers(double deltaTime);
     void processVelocityLimiting(double deltaTime);
     void processMaterialMoves();
     void setupBoundaryWalls();

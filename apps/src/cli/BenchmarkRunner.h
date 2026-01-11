@@ -16,7 +16,7 @@ namespace Client {
  * @brief Results from benchmark run (flattened for ReflectSerializer).
  */
 struct BenchmarkResults {
-    std::string scenario = "sandbox";
+    std::string scenario = "Benchmark";
     std::string grid_size = "28x28";
     uint32_t steps = 0;
     double duration_sec = 0.0;
@@ -50,7 +50,7 @@ public:
     BenchmarkResults run(
         const std::string& serverPath,
         uint32_t steps,
-        const std::string& scenario = "benchmark",
+        const std::string& scenario = "Benchmark",
         int worldSize = 0);
 
     BenchmarkResults runWithServerArgs(
@@ -63,8 +63,6 @@ public:
 private:
     SubprocessManager subprocessManager_;
     Network::WebSocketService client_;
-
-    bool waitForCompletion(uint32_t targetSteps, int timeoutSec);
 
     nlohmann::json queryPerfStats();
 };

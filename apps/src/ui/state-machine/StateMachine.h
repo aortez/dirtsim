@@ -78,6 +78,8 @@ public:
 
     Timers& getTimers() { return timers_; }
 
+    double getUiFps() const;
+
     // UI configuration (loaded from ui.json).
     std::unique_ptr<UiConfig> uiConfig;
 

@@ -17,6 +17,7 @@ EXTERNALSRC_BUILD = "${WORKDIR}/build"
 DEPENDS = " \
     avahi \
     boost \
+    freetype \
     libsdl2 \
     libyuv \
     openh264 \

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 #include <string>
@@ -233,6 +234,7 @@ struct Vector2 {
 using Vector2d = Vector2<double>;
 using Vector2f = Vector2<float>;
 using Vector2i = Vector2<int>;
+using Vector2s = Vector2<int16_t>; // Compact 32-bit total (16-bit per axis).
 
 // =================================================================
 // NON-MEMBER OPERATORS

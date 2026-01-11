@@ -4,6 +4,7 @@
 #include "Assert.h"
 #include "Cell.h"
 #include "GridOfCells.h"
+#include "LightConfig.h"
 #include "PhysicsSettings.h"
 #include "ReflectSerializer.h"
 #include "ScopeTimer.h"
@@ -70,6 +71,9 @@ struct World::Impl {
     WorldPressureCalculator pressure_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
 
+    // Light configuration.
+    LightConfig light_config_ = getDefaultLightConfig();
+
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
 
@@ -116,6 +120,9 @@ World::World(uint32_t width, uint32_t height)
     // Initialize organism manager grid.
     organism_manager_->resizeGrid(width, height);
 
+    // Initialize light calculator emissive overlay.
+    pImpl->light_calculator_.resize(width, height);
+
     // Initialize with empty air.
     for (auto& cell : pImpl->data_.cells) {
         cell = Cell{ MaterialType::AIR, 0.0 };
@@ -127,8 +134,6 @@ World::World(uint32_t width, uint32_t height)
     // Initialize persistent GridOfCells for debug info and caching.
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
-
-    pImpl->light_calculator_.resize(pImpl->data_.width, pImpl->data_.height);
 
     SLOG_INFO("World initialization complete");
 }
@@ -162,16 +167,6 @@ const WorldCollisionCalculator& World::getCollisionCalculator() const
     return pImpl->collision_calculator_;
 }
 
-WorldLightCalculator& World::getLightCalculator()
-{
-    return pImpl->light_calculator_;
-}
-
-const WorldLightCalculator& World::getLightCalculator() const
-{
-    return pImpl->light_calculator_;
-}
-
 WorldAdhesionCalculator& World::getAdhesionCalculator()
 {
     return pImpl->adhesion_calculator_;
@@ -190,6 +185,21 @@ WorldViscosityCalculator& World::getViscosityCalculator()
 const WorldViscosityCalculator& World::getViscosityCalculator() const
 {
     return pImpl->viscosity_calculator_;
+}
+
+WorldLightCalculator& World::getLightCalculator()
+{
+    return pImpl->light_calculator_;
+}
+
+const WorldLightCalculator& World::getLightCalculator() const
+{
+    return pImpl->light_calculator_;
+}
+
+const LightBuffer& World::getRawLightBuffer() const
+{
+    return pImpl->light_calculator_.getRawLightBuffer();
 }
 
 Timers& World::getTimers()
@@ -235,11 +245,6 @@ PhysicsSettings& World::getPhysicsSettings()
 const PhysicsSettings& World::getPhysicsSettings() const
 {
     return pImpl->physicsSettings_;
-}
-
-const LightBuffer& World::getRawLightBuffer() const
-{
-    return pImpl->light_calculator_.getRawLightBuffer();
 }
 
 // =================================================================
@@ -482,22 +487,6 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->pressure_calculator_.applyPressureDecay(*this, scaledDeltaTime);
     }
 
-    // Clear pending forces before scenario tick and force accumulation.
-    clearPendingForces();
-
-    // Scenario tick runs before lighting so cell setup (e.g., clock digits) is visible.
-    if (scenario_) {
-        ScopeTimer scenarioTimer(pImpl->timers_, "scenario_tick");
-        scenario_->tick(*this, scaledDeltaTime);
-    }
-
-    // Calculate lighting for rendering and tree photosynthesis.
-    {
-        ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
-        pImpl->light_calculator_.calculate(
-            *this, grid, pImpl->physicsSettings_.light, pImpl->timers_);
-    }
-
     // Update organisms before force accumulation so new cells participate in physics.
     {
         ScopeTimer organismTimer(pImpl->timers_, "organisms");
@@ -524,7 +513,7 @@ void World::advanceTime(double deltaTimeSeconds)
 
     {
         ScopeTimer transfersTimer(pImpl->timers_, "update_transfers");
-        updateTransfers(scaledDeltaTime);
+        pImpl->pending_moves_ = computeMaterialMoves(scaledDeltaTime);
     }
 
     // Process material moves - detects collisions for next frame's dynamic pressure.
@@ -533,6 +522,13 @@ void World::advanceTime(double deltaTimeSeconds)
     // Prune disconnected organism fragments AFTER transfers complete.
     // This ensures connectivity checks use current positions, not stale pre-transfer positions.
     pruneDisconnectedFragments();
+
+    // Calculate lighting for rendering.
+    {
+        ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
+        pImpl->light_calculator_.calculate(
+            *this, *pImpl->grid_, pImpl->light_config_, pImpl->timers_);
+    }
 
     // Sync organism render data to WorldData.entities for UI.
     organism_manager_->syncEntitiesToWorldData(*this);
@@ -850,8 +846,6 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
 
-    pImpl->light_calculator_.resize(newWidth, newHeight);
-
     // Resize organism grid and reposition organisms at new proportional positions.
     // OrganismManager::resizeGrid() handles all repositioning internally.
     if (organism_manager_) {
@@ -880,13 +874,6 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 // =================================================================.
 // INTERNAL PHYSICS METHODS.
 // =================================================================.
-
-void World::clearPendingForces()
-{
-    for (auto& cell : pImpl->data_.cells) {
-        cell.clearPendingForce();
-    }
-}
 
 void World::applyGravity()
 {
@@ -1102,12 +1089,34 @@ void World::applyPressureForces()
 
 void World::resolveForces(double deltaTime, const GridOfCells& grid)
 {
-    // Cache frequently accessed pImpl members as local references.
+    // Cache frequently accessed pImpl members as local references to eliminate indirection
+    // overhead.
     Timers& timers = pImpl->timers_;
+    WorldViscosityCalculator& viscosity_calc = pImpl->viscosity_calculator_;
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
+    std::vector<Cell>& cells = data.cells;
 
     ScopeTimer timer(timers, "resolve_forces");
+
+    // Clear pending forces at the start of each physics frame.
+    // Skip organism cells - they preserve forces added during organism update.
+    {
+        ScopeTimer clearTimer(timers, "resolve_forces_clear_pending");
+        const auto& org_grid = organism_manager_->getGrid();
+        for (size_t i = 0; i < cells.size(); ++i) {
+            if (org_grid[i] == INVALID_ORGANISM_ID) {
+                cells[i].clearPendingForce();
+            }
+        }
+    }
+
+    // Scenario tick - apply scenario forces after clear, before physics forces.
+    // This allows scenarios to use addPendingForce() and have forces processed normally.
+    if (scenario_) {
+        ScopeTimer scenarioTimer(timers, "resolve_forces_scenario_tick");
+        scenario_->tick(*this, deltaTime);
+    }
 
     // Apply gravity forces.
     {
@@ -1144,16 +1153,13 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     }
 
     // Apply organism bone forces.
-    {
-        ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-        organism_manager_->applyBoneForces(*this, deltaTime);
-    }
+    ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
+    organism_manager_->applyBoneForces(*this, deltaTime);
 
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
         ScopeTimer viscosityTimer(timers, "apply_viscous_forces");
-        WorldViscosityCalculator& viscosity_calc = pImpl->viscosity_calculator_;
-        double visc_strength = settings.viscosity_strength;
+        double visc_strength = settings.viscosity_strength; // Cache once for entire loop.
 
         // Parallelize when cache is enabled (use sequential for reference path).
 #ifdef _OPENMP
@@ -1599,17 +1605,6 @@ void World::processVelocityLimiting(double deltaTime)
     calculator.processAllCells(*this, deltaTime);
 }
 
-void World::updateTransfers(double deltaTime)
-{
-    ScopeTimer timer(pImpl->timers_, "update_transfers");
-
-    // Clear previous moves.
-    pImpl->pending_moves_.clear();
-
-    // Compute material moves based on COM positions and velocities.
-    pImpl->pending_moves_ = computeMaterialMoves(deltaTime);
-}
-
 std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
 {
     // Cache pImpl members as local references.
@@ -1708,7 +1703,6 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                         data.at(targetPos.x, targetPos.y),
                         Vector2i(x, y),
                         targetPos,
-                        direction,
                         deltaTime);
 
                     num_moves_generated++;
@@ -1828,8 +1822,8 @@ void World::processMaterialMoves()
     }
 
     for (const auto& move : pending_moves) {
-        Cell& fromCell = data.at(move.fromX, move.fromY);
-        Cell& toCell = data.at(move.toX, move.toY);
+        Cell& fromCell = data.at(move.from.x, move.from.y);
+        Cell& toCell = data.at(move.to.x, move.to.y);
 
         // Apply any pressure from excess that couldn't transfer.
         if (move.pressure_from_excess > 0.0) {
@@ -1838,8 +1832,8 @@ void World::processMaterialMoves()
 
                 spdlog::debug(
                     "Wall blocked transfer: source cell({},{}) pressure increased by {:.3f}",
-                    move.fromX,
-                    move.fromY,
+                    move.from.x,
+                    move.from.y,
                     move.pressure_from_excess);
             }
             else {
@@ -1847,17 +1841,17 @@ void World::processMaterialMoves()
 
                 spdlog::debug(
                     "Applied pressure from excess: cell({},{}) pressure increased by {:.3f}",
-                    move.toX,
-                    move.toY,
+                    move.to.x,
+                    move.to.y,
                     move.pressure_from_excess);
             }
         }
 
         // Check if materials should swap instead of colliding (if enabled).
         if (settings.swap_enabled) {
-            Vector2i direction(move.toX - move.fromX, move.toY - move.fromY);
+            Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
             bool should_swap = collision_calc.shouldSwapMaterials(
-                *this, move.fromX, move.fromY, fromCell, toCell, direction, move);
+                *this, move.from.x, move.from.y, fromCell, toCell, direction, move);
 
             if (should_swap) {
                 num_swaps++;
@@ -1869,8 +1863,8 @@ void World::processMaterialMoves()
                 }
 
                 // Capture organism ownership BEFORE the swap.
-                Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
-                Vector2i to_pos{ static_cast<int>(move.toX), static_cast<int>(move.toY) };
+                Vector2i from_pos{ static_cast<int>(move.from.x), static_cast<int>(move.from.y) };
+                Vector2i to_pos{ static_cast<int>(move.to.x), static_cast<int>(move.to.y) };
                 OrganismId from_org_id = organism_manager_->at(from_pos);
                 OrganismId to_org_id = organism_manager_->at(to_pos);
 
@@ -1896,7 +1890,7 @@ void World::processMaterialMoves()
         }
 
         // Track organism_id before transfer (in case source cell becomes empty).
-        Vector2i from_pos{ static_cast<int>(move.fromX), static_cast<int>(move.fromY) };
+        Vector2i from_pos{ static_cast<int>(move.from.x), static_cast<int>(move.from.y) };
         OrganismId organism_id = organism_manager_->at(from_pos);
 
         // Determine effective collision type (may be overridden for organism cells).
@@ -1920,10 +1914,10 @@ void World::processMaterialMoves()
                 "Processing collision: {} vs {} at ({},{}) -> ({},{}) - Type: {}",
                 getMaterialName(move.material),
                 getMaterialName(toCell.material_type),
-                move.fromX,
-                move.fromY,
-                move.toX,
-                move.toY,
+                move.from.x,
+                move.from.y,
+                move.to.x,
+                move.to.y,
                 static_cast<int>(effective_collision_type));
         }
 
@@ -1960,7 +1954,7 @@ void World::processMaterialMoves()
         // an organism's cell via transferToWithPhysics.
         if (organism_id != INVALID_ORGANISM_ID && fromCell.isEmpty()) {
             // Material fully transferred - update organism tracking.
-            Vector2i to_pos{ static_cast<int>(move.toX), static_cast<int>(move.toY) };
+            Vector2i to_pos{ static_cast<int>(move.to.x), static_cast<int>(move.to.y) };
             spdlog::info(
                 "Organism tracking: organism {} moved ({},{}) → ({},{}) via {}",
                 organism_id,

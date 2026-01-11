@@ -4,8 +4,6 @@
 #include "server/api/StatusGet.h"
 #include <chrono>
 #include <fcntl.h>
-#include <filesystem>
-#include <nlohmann/json.hpp>
 #include <signal.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
@@ -90,44 +88,34 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
         }
 
         // Try connecting and check server state.
-        try {
-            Network::WebSocketService client;
-            auto connectResult = client.connect(url, 1000);
+        Network::WebSocketService client;
+        auto connectResult = client.connect(url, 1000);
 
-            if (connectResult.isValue()) {
-                // Connected - now check if server is in a ready state (not Startup).
-                Api::StatusGet::Command statusCmd;
-                nlohmann::json cmdJson = statusCmd.toJson();
-                cmdJson["command"] = Api::StatusGet::Command::name();
+        if (connectResult.isValue()) {
+            // Connected - now check if server is in a ready state (not Startup).
+            Api::StatusGet::Command statusCmd;
+            auto statusResult = client.sendCommand<Api::StatusGet::Okay>(statusCmd, 1000);
+            client.disconnect();
 
-                auto statusResult = client.sendJsonAndReceive(cmdJson.dump(), 1000);
-                client.disconnect();
-
-                if (statusResult.isValue()) {
-                    nlohmann::json response = nlohmann::json::parse(statusResult.value());
-                    // Response format: {"state": "Idle", "success": true, ...} (not wrapped in
-                    // "value").
-                    if (response.contains("state")) {
-                        std::string state = response["state"].get<std::string>();
-                        if (state == "Idle" || state == "SimRunning") {
-                            SLOG_INFO("SubprocessManager: Server is ready (state: {})", state);
-                            return true;
-                        }
-                        // Server in Startup or other state - keep waiting.
-                        SLOG_DEBUG("SubprocessManager: Server not ready yet (state: {})", state);
-                    }
-                    else if (response.contains("error")) {
-                        // Server returned error (e.g., command not supported in Startup).
-                        SLOG_DEBUG(
-                            "SubprocessManager: Server error: {}",
-                            response["error"].get<std::string>());
-                    }
+            if (statusResult.isValue() && statusResult.value().isValue()) {
+                const auto& status = statusResult.value().value();
+                if (status.state == "Idle" || status.state == "SimRunning") {
+                    SLOG_INFO("SubprocessManager: Server is ready (state: {})", status.state);
+                    return true;
                 }
+                // Server in Startup or other state - keep waiting.
+                SLOG_DEBUG("SubprocessManager: Server not ready yet (state: {})", status.state);
+            }
+            else if (statusResult.isValue() && statusResult.value().isError()) {
+                // Server returned error (e.g., command not supported in Startup).
+                SLOG_DEBUG(
+                    "SubprocessManager: Server error: {}",
+                    statusResult.value().errorValue().message);
             }
         }
-        catch (const std::exception& e) {
+        else {
             // Connection failed - server still starting up.
-            SLOG_DEBUG("SubprocessManager: Connection failed: {}", e.what());
+            SLOG_DEBUG("SubprocessManager: Connection failed: {}", connectResult.errorValue());
         }
 
         // Check timeout.

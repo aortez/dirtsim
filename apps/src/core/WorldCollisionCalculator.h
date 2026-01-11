@@ -67,9 +67,7 @@ public:
      * @param toCell Target cell.
      * @param fromPos Source position.
      * @param toPos Target position.
-     * @param direction Movement direction.
      * @param deltaTime Time step.
-     * @param com_cohesion COM cohesion force data.
      * @return MaterialMove with collision physics data.
      */
     MaterialMove createCollisionAwareMove(
@@ -78,7 +76,6 @@ public:
         const Cell& toCell,
         const Vector2i& fromPos,
         const Vector2i& toPos,
-        const Vector2i& direction,
         double deltaTime) const;
 
     /**
