@@ -1,6 +1,7 @@
 #include "ClockScenario.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
+#include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
@@ -9,20 +10,56 @@
 #include "core/WorldCollisionCalculator.h"
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
+#include "core/WorldLightCalculator.h"
 #include "core/organisms/Duck.h"
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "spdlog/spdlog.h"
+
 #include <array>
 #include <chrono>
 #include <cmath>
 #include <ctime>
+#include <lvgl.h>
 
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
 
 namespace DirtSim {
+
+namespace {
+
+constexpr float DIGIT_EMISSION_INTENSITY = 2.0f;
+
+uint32_t getMaterialColor(MaterialType mat)
+{
+    switch (mat) {
+        case MaterialType::AIR:
+            return ColorNames::black();
+        case MaterialType::DIRT:
+            return ColorNames::dirt();
+        case MaterialType::LEAF:
+            return ColorNames::leaf();
+        case MaterialType::METAL:
+            return ColorNames::metal();
+        case MaterialType::ROOT:
+            return ColorNames::root();
+        case MaterialType::SAND:
+            return ColorNames::sand();
+        case MaterialType::SEED:
+            return ColorNames::seed();
+        case MaterialType::WALL:
+            return ColorNames::stone();
+        case MaterialType::WATER:
+            return ColorNames::water();
+        case MaterialType::WOOD:
+            return ColorNames::wood();
+    }
+    return ColorNames::white();
+}
+
+} // namespace
 
 ClockScenario::ClockScenario(ClockEventConfigs event_configs)
     : event_configs_(std::move(event_configs))
@@ -71,6 +108,8 @@ int ClockScenario::getDigitWidth() const
     switch (config_.font) {
         case Config::ClockFont::DotMatrix:
             return ClockFonts::DOT_MATRIX_WIDTH;
+        case Config::ClockFont::Montserrat24:
+            return ClockFonts::MONTSERRAT24_WIDTH;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_WIDTH;
         case Config::ClockFont::Segment7ExtraTall:
@@ -90,6 +129,8 @@ int ClockScenario::getDigitHeight() const
     switch (config_.font) {
         case Config::ClockFont::DotMatrix:
             return ClockFonts::DOT_MATRIX_HEIGHT;
+        case Config::ClockFont::Montserrat24:
+            return ClockFonts::MONTSERRAT24_HEIGHT;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_HEIGHT;
         case Config::ClockFont::Segment7ExtraTall:
@@ -109,6 +150,8 @@ int ClockScenario::getDigitGap() const
     switch (config_.font) {
         case Config::ClockFont::DotMatrix:
             return ClockFonts::DOT_MATRIX_GAP;
+        case Config::ClockFont::Montserrat24:
+            return ClockFonts::MONTSERRAT24_GAP;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_GAP;
         case Config::ClockFont::Segment7ExtraTall:
@@ -128,6 +171,8 @@ int ClockScenario::getColonWidth() const
     switch (config_.font) {
         case Config::ClockFont::DotMatrix:
             return ClockFonts::DOT_MATRIX_COLON_WIDTH;
+        case Config::ClockFont::Montserrat24:
+            return ClockFonts::MONTSERRAT24_COLON_WIDTH;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_COLON_WIDTH;
         case Config::ClockFont::Segment7ExtraTall:
@@ -147,6 +192,8 @@ int ClockScenario::getColonPadding() const
     switch (config_.font) {
         case Config::ClockFont::DotMatrix:
             return ClockFonts::DOT_MATRIX_COLON_PADDING;
+        case Config::ClockFont::Montserrat24:
+            return ClockFonts::MONTSERRAT24_COLON_PADDING;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_COLON_PADDING;
         case Config::ClockFont::Segment7ExtraTall:
@@ -159,6 +206,40 @@ int ClockScenario::getColonPadding() const
             return ClockFonts::SEGMENT7_TALL_COLON_PADDING;
     }
     return ClockFonts::SEGMENT7_COLON_PADDING;
+}
+
+void ClockScenario::ensureFontSamplerInitialized()
+{
+    if (font_sampler_) {
+        return;
+    }
+
+    // FontSampler::initCanvas() handles LVGL initialization and headless display creation.
+    // Do not create a display here - FontSampler's ensureHeadlessDisplay() properly
+    // calls lv_init() before creating the display.
+
+    // Create FontSampler with Montserrat 24pt.
+    // Canvas size should be larger than expected glyph to allow for trimming.
+    font_sampler_ = std::make_unique<FontSampler>(
+        &lv_font_montserrat_24,
+        ClockFonts::MONTSERRAT24_WIDTH + 4,
+        ClockFonts::MONTSERRAT24_HEIGHT + 4,
+        0.3f);
+
+    // Precache digits 0-9.
+    for (char c = '0'; c <= '9'; ++c) {
+        font_sampler_->getCachedPattern(c);
+    }
+
+    spdlog::info("ClockScenario: FontSampler initialized for Montserrat 24pt");
+}
+
+const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int digit)
+{
+    ensureFontSamplerInitialized();
+
+    char c = static_cast<char>('0' + digit);
+    return font_sampler_->getCachedPattern(c);
 }
 
 void ClockScenario::recalculateDimensions()
@@ -557,6 +638,9 @@ void ClockScenario::clearDigits(World& world)
 {
     WorldData& data = world.getData();
 
+    // Clear emissive overlay for digits.
+    world.getLightCalculator().clearAllEmissive();
+
     // Clear interior WALL cells (digit cells) but NOT:
     // - Boundary cells (x=0, x=width-1, y=0, y=height-1).
     // - Door roof cells.
@@ -611,6 +695,14 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                 case Config::ClockFont::DotMatrix:
                     pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
                     break;
+                case Config::ClockFont::Montserrat24: {
+                    const auto& pattern = getSampledDigitPattern(digit);
+                    if (row < static_cast<int>(pattern.size())
+                        && col < static_cast<int>(pattern[row].size())) {
+                        pixel = pattern[row][col];
+                    }
+                    break;
+                }
                 case Config::ClockFont::Segment7:
                     pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
                     break;
@@ -632,6 +724,10 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                 // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y, MaterialType::WALL);
                 world.getData().at(x, y).render_as = static_cast<int8_t>(config_.digitMaterial);
+
+                // Make digit cells emissive so they glow in darkness.
+                uint32_t color = getMaterialColor(config_.digitMaterial);
+                world.getLightCalculator().setEmissive(x, y, color, DIGIT_EMISSION_INTENSITY);
             }
         }
     }
@@ -656,6 +752,8 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
         // For large font, draw 2x2 dots; otherwise single pixels.
         int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
 
+        uint32_t color = getMaterialColor(config_.digitMaterial);
+
         for (int dy = 0; dy < dot_height; ++dy) {
             int y1 = dot1_y + dy;
             int y2 = dot2_y + dy;
@@ -664,11 +762,13 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
                 // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y1, MaterialType::WALL);
                 world.getData().at(x, y1).render_as = static_cast<int8_t>(config_.digitMaterial);
+                world.getLightCalculator().setEmissive(x, y1, color, DIGIT_EMISSION_INTENSITY);
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
                 // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(x, y2, MaterialType::WALL);
                 world.getData().at(x, y2).render_as = static_cast<int8_t>(config_.digitMaterial);
+                world.getLightCalculator().setEmissive(x, y2, color, DIGIT_EMISSION_INTENSITY);
             }
         }
     }
