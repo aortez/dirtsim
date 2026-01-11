@@ -12,8 +12,10 @@
 
 namespace DirtSim {
 
-Tree::Tree(OrganismId id, std::unique_ptr<TreeBrain> brain)
+Tree::Tree(
+    OrganismId id, std::unique_ptr<TreeBrain> brain, std::unique_ptr<ITreeCommandProcessor> proc)
     : Organism(id, OrganismType::TREE),
+      processor(std::move(proc)),
       brain_(std::move(brain)),
       rigidBody_(std::make_unique<RigidBodyComponent>(MaterialType::SEED))
 {
@@ -76,7 +78,7 @@ void Tree::update(World& world, double deltaTime)
 
 void Tree::executeCommand(World& world)
 {
-    CommandExecutionResult result = TreeCommandProcessor::execute(*this, world, *current_command_);
+    CommandExecutionResult result = processor->execute(*this, world, *current_command_);
 
     if (!result.succeeded()) {
         spdlog::warn("Tree {}: Command failed - {}", id_, result.message);

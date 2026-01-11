@@ -428,6 +428,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioPanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
+    src/ui/controls/TreeGerminationControls.cpp
     src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
 )
@@ -549,6 +550,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/NeuralNetBrain_test.cpp
     src/core/organisms/tests/TreeGermination_test.cpp
     src/core/organisms/tests/TreeManager_test.cpp
+    src/core/organisms/tests/TreeNeuralNetwork_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
 
     # Core tests.

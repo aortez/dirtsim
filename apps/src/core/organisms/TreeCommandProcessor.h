@@ -17,9 +17,17 @@ struct CommandExecutionResult {
     bool succeeded() const { return result == CommandResult::SUCCESS; }
 };
 
-class TreeCommandProcessor {
+// Interface for processing tree commands.
+class ITreeCommandProcessor {
 public:
-    static CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd);
+    virtual ~ITreeCommandProcessor() = default;
+    virtual CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) = 0;
+};
+
+// Default implementation that validates and executes commands.
+class TreeCommandProcessor : public ITreeCommandProcessor {
+public:
+    CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override;
 };
 
 } // namespace DirtSim

@@ -20,15 +20,31 @@ Trees are living organisms in the WorldB physics simulation that grow from seeds
 
 ```
 src/core/organisms/
-├── TreeTypes.h          // TreeId, TreeCommand variants, TreeSensoryData
-├── Tree.h/cpp           // Tree class
-├── TreeManager.h/cpp    // Manages all trees, lifecycle
-├── TreeBrain.h          // Abstract brain interface
+├── TreeTypes.h              // TreeId, TreeCommand variants, TreeSensoryData
+├── Tree.h/cpp               // Tree class
+├── TreeCommandProcessor.h/cpp // Command validation and execution (injectable)
+├── TreeManager.h/cpp        // Manages all trees, lifecycle
+├── TreeBrain.h              // Abstract brain interface
 └── brains/
     ├── RuleBasedBrain.h/cpp    // Hand-coded behavior (Phase 2)
-    ├── NeuralNetBrain.h/cpp    // Neural network (future)
+    ├── NeuralNetBrain.h/cpp    // Neural network (✅ IMPLEMENTED)
     └── LLMBrain.h/cpp          // Ollama integration (future)
 ```
+
+### Command Processing (✅ IMPLEMENTED)
+
+Tree commands are validated and executed by an injectable `ITreeCommandProcessor`:
+
+```cpp
+class ITreeCommandProcessor {
+public:
+    virtual ~ITreeCommandProcessor() = default;
+    virtual CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) = 0;
+};
+```
+
+Trees hold a `std::unique_ptr<ITreeCommandProcessor> processor` which can be swapped for testing.
+This enables recording/mock processors to verify brain behavior without running full simulation.
 
 ### Tree Commands
 
@@ -355,11 +371,27 @@ void Tree::executeCommand(WorldB& world) {
 }
 ```
 
-### Growth Constraints
-- Must be adjacent to existing tree cells
-- Cannot grow through WALL or METAL
-- Cannot grow into other trees
-- Limited by available energy
+### Growth Constraints (✅ IMPLEMENTED in TreeCommandProcessor)
+
+All growth commands are validated before execution:
+
+**WOOD growth:**
+- Must be cardinally adjacent to WOOD or SEED belonging to this tree
+
+**LEAF growth:**
+- Must be cardinally adjacent to WOOD belonging to this tree
+
+**ROOT growth:**
+- Must be cardinally adjacent to SEED or ROOT belonging to this tree
+
+**SEED production:**
+- Must be cardinally adjacent to WOOD or LEAF belonging to this tree
+- Target cell must be AIR (seeds need space to fall)
+- Target cell cannot be owned by another organism
+
+**All commands:**
+- Target must be within world bounds
+- Must have sufficient energy
 
 ## Resource Systems
 
@@ -576,6 +608,11 @@ Output Layer (231 neurons, linear)
 **Files**:
 - `src/core/organisms/brains/NeuralNetBrain.h/cpp` - Brain implementation.
 - `src/core/organisms/brains/Genome.h/cpp` - Weight vector with serialization.
+
+**Tests**:
+- `src/core/organisms/tests/NeuralNetBrain_test.cpp` - Unit tests for brain in isolation.
+- `src/core/organisms/tests/TreeNeuralNetwork_test.cpp` - Integration test with Tree and World.
+  Uses `RecordingCommandProcessor` to verify commands are produced.
 
 **Configuration**:
 TreeGerminationConfig has `brain_type` (RULE_BASED or NEURAL_NET) and `neural_seed`.

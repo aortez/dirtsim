@@ -5,6 +5,7 @@
 #include "Organism.h"
 #include "OrganismType.h"
 #include "TreeBrain.h"
+#include "TreeCommandProcessor.h"
 #include <memory>
 #include <unordered_map>
 #include <vector>

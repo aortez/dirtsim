@@ -9,6 +9,7 @@
 
 namespace DirtSim {
 
+class ITreeCommandProcessor;
 class RigidBodyComponent;
 
 /**
@@ -24,7 +25,10 @@ class RigidBodyComponent;
  */
 class Tree : public Organism {
 public:
-    Tree(OrganismId id, std::unique_ptr<TreeBrain> brain);
+    Tree(
+        OrganismId id,
+        std::unique_ptr<TreeBrain> brain,
+        std::unique_ptr<ITreeCommandProcessor> processor);
     ~Tree();
 
     // Organism interface.
@@ -52,6 +56,9 @@ public:
 
     // Replace the brain (for testing with custom brain implementations).
     void setBrain(std::unique_ptr<TreeBrain> brain) { brain_ = std::move(brain); }
+
+    // Command processor (public for testing with recording/mock processors).
+    std::unique_ptr<ITreeCommandProcessor> processor;
 
     // Growth: Add a cell to the tree's local shape.
     // Called by TreeCommandProcessor during growth commands.

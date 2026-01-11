@@ -173,7 +173,8 @@ OrganismId OrganismManager::createTree(
         brain = std::make_unique<RuleBasedBrain>();
     }
 
-    auto tree = std::make_unique<Tree>(id, std::move(brain));
+    auto tree =
+        std::make_unique<Tree>(id, std::move(brain), std::make_unique<TreeCommandProcessor>());
 
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
     tree->setAnchorCell(pos);

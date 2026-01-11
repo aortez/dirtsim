@@ -1,5 +1,6 @@
 #include "TreeCommandProcessor.h"
 #include "OrganismManager.h"
+#include "OrganismType.h"
 #include "Tree.h"
 #include "core/Cell.h"
 #include "core/MaterialType.h"
@@ -217,6 +218,45 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     || static_cast<uint32_t>(command.position.x) >= world.getData().width
                     || static_cast<uint32_t>(command.position.y) >= world.getData().height) {
                     return { CommandResult::INVALID_TARGET, "Seed position out of bounds" };
+                }
+
+                // Check cardinal adjacency to WOOD or LEAF (seeds grow from branches).
+                Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
+                bool has_branch_neighbor = false;
+                for (const auto& dir : cardinal_dirs) {
+                    Vector2i neighbor_pos = command.position + dir;
+                    if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
+                        && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
+                        && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
+                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
+                            const Cell& neighbor =
+                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                            if (neighbor.material_type == MaterialType::WOOD
+                                || neighbor.material_type == MaterialType::LEAF) {
+                                has_branch_neighbor = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!has_branch_neighbor) {
+                    return { CommandResult::INVALID_TARGET,
+                             "SEED requires cardinal adjacency to WOOD or LEAF" };
+                }
+
+                // Check target cell is growable (must be AIR - seeds need to fall).
+                const Cell& target_cell =
+                    world.getData().at(command.position.x, command.position.y);
+                if (target_cell.material_type != MaterialType::AIR) {
+                    return { CommandResult::BLOCKED, "SEED can only be placed in AIR cells" };
+                }
+
+                // Check target cell isn't owned by another organism.
+                OrganismId target_owner = world.getOrganismManager().at(command.position);
+                if (target_owner != INVALID_ORGANISM_ID && target_owner != tree.getId()) {
+                    return { CommandResult::BLOCKED,
+                             "Cannot place SEED in another organism's cell" };
                 }
 
                 world.getData()
