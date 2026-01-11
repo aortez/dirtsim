@@ -11,8 +11,10 @@
  */
 
 #include "core/ColorNames.h"
+#include "core/GridOfCells.h"
 #include "core/LightConfig.h"
 #include "core/MaterialType.h"
+#include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldLightCalculator.h"
@@ -24,6 +26,7 @@ class WorldLightCalculatorTest : public ::testing::Test {
 protected:
     WorldLightCalculator calc;
     LightConfig config;
+    ::Timers timers;
 
     void SetUp() override
     {
@@ -49,7 +52,7 @@ TEST_F(WorldLightCalculatorTest, SunlightEmptyColumn)
         }
     }
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // All cells should have some brightness (WATER is blue, attenuates slightly per row).
     for (uint32_t y = 0; y < data.height; ++y) {
@@ -78,7 +81,7 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
         data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Cells above wall (rows 0-2) should be lit (WATER is blue, ~0.26 brightness).
     for (uint32_t y = 0; y < 3; ++y) {
@@ -114,7 +117,7 @@ TEST_F(WorldLightCalculatorTest, LeafPartiallyBlocksSunlight)
     // Single leaf cell at x=2, y=0.
     data.at(2, 0).replaceMaterial(MaterialType::LEAF, 1.0);
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Cell below leaf should be dimmer than cell in adjacent column.
     float below_leaf = ColorNames::brightness(data.colors.at(2, 5));
@@ -138,7 +141,7 @@ TEST_F(WorldLightCalculatorTest, EmissiveSeedAddsLight)
     // Place a seed in the dark area.
     data.at(2, 2).replaceMaterial(MaterialType::SEED, 1.0);
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Seed cell should have some brightness from emission.
     float seed_brightness = ColorNames::brightness(data.colors.at(2, 2));
@@ -168,7 +171,7 @@ TEST_F(WorldLightCalculatorTest, WaterTransmitsLight)
         }
     }
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Water in lit area should have brightness (WATER is blue, ~0.26 brightness).
     float water_brightness = ColorNames::brightness(data.colors.at(2, 5));
@@ -191,7 +194,7 @@ TEST_F(WorldLightCalculatorTest, LightMapStringProducesOutput)
         }
     }
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     std::string light_map = calc.lightMapString(world);
 
@@ -224,15 +227,20 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
         data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
+    // Disable sun to isolate ambient light test.
+    config.sun_enabled = false;
+
     // No ambient (disable sky access for uniform ambient test).
     config.ambient_color = ColorNames::black();
+    config.ambient_intensity = 1.0f;
     config.sky_access_enabled = false;
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
     float dark_brightness = ColorNames::brightness(data.colors.at(2, 3));
 
     // With ambient.
     config.ambient_color = 0x404040FF; // Gray ambient.
-    calc.calculate(world, config);
+    config.ambient_intensity = 1.0f;
+    calc.calculate(world, world.getGrid(), config, timers);
     float ambient_brightness = ColorNames::brightness(data.colors.at(2, 3));
 
     EXPECT_GT(ambient_brightness, dark_brightness) << "Ambient light should add base illumination";
@@ -257,12 +265,12 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
 
     // Intensity 1.0.
     config.ambient_intensity = 1.0f;
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
     float brightness_1x = ColorNames::brightness(data.colors.at(2, 2));
 
     // Intensity 2.0.
     config.ambient_intensity = 2.0f;
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
     float brightness_2x = ColorNames::brightness(data.colors.at(2, 2));
 
     EXPECT_GT(brightness_2x, brightness_1x) << "Higher ambient intensity should be brighter";
@@ -292,7 +300,7 @@ TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
     config.sky_access_enabled = true;
     config.sky_access_falloff = 1.0f;
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Cell above wall (row 2) should have decent ambient.
     float above_wall = ColorNames::brightness(data.colors.at(2, 2));
@@ -329,7 +337,7 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
     config.sky_access_enabled = true;
     config.sky_access_falloff = 1.0f;
 
-    calc.calculate(world, config);
+    calc.calculate(world, world.getGrid(), config, timers);
 
     // Cell below wall (blocked) should be dimmer.
     float blocked = ColorNames::brightness(data.colors.at(3, 5));

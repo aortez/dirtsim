@@ -13,6 +13,7 @@ class Timers;
 
 namespace DirtSim {
 
+class GridOfCells;
 class World;
 
 /**
@@ -24,7 +25,8 @@ class WorldLightCalculator : public WorldCalculatorBase {
 public:
     WorldLightCalculator() = default;
 
-    void calculate(World& world, const LightConfig& config, Timers& timers);
+    void calculate(
+        World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers);
     std::string lightMapString(const World& world) const;
     const LightBuffer& getRawLightBuffer() const;
 
@@ -35,13 +37,13 @@ public:
     void resize(uint32_t width, uint32_t height);
 
 private:
-    void applyAmbient(World& world, const LightConfig& config);
-    void applyDiffusion(World& world, int iterations, float rate);
+    void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);
+    void applyDiffusion(World& world, const GridOfCells& grid, int iterations, float rate);
     void applyEmissiveCells(World& world);
     void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);
     void clearLight(World& world);
-    void applySunlight(World& world, uint32_t sun_color, float intensity);
+    void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
     void storeRawLight(World& world);
 
     GridBuffer<ColorNames::RgbF> emissive_overlay_;

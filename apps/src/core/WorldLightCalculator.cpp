@@ -2,6 +2,7 @@
 #include "Assert.h"
 #include "Cell.h"
 #include "ColorNames.h"
+#include "GridOfCells.h"
 #include "LightConfig.h"
 #include "MaterialType.h"
 #include "ScopeTimer.h"
@@ -11,7 +12,8 @@
 
 namespace DirtSim {
 
-void WorldLightCalculator::calculate(World& world, const LightConfig& config, Timers& timers)
+void WorldLightCalculator::calculate(
+    World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
 {
     auto& data = world.getData();
 
@@ -29,13 +31,13 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config, Ti
     // Add ambient light (with optional sky access attenuation).
     {
         ScopeTimer t(timers, "light_ambient");
-        applyAmbient(world, config);
+        applyAmbient(world, grid, config);
     }
 
     // Add sunlight (top-down).
     if (config.sun_enabled) {
         ScopeTimer t(timers, "light_sunlight");
-        applySunlight(world, config.sun_color, config.sun_intensity);
+        applySunlight(world, grid, config.sun_color, config.sun_intensity);
     }
 
     // Add emissive material contributions.
@@ -52,7 +54,7 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config, Ti
 
     {
         ScopeTimer t(timers, "light_diffusion");
-        applyDiffusion(world, config.diffusion_iterations, config.diffusion_rate);
+        applyDiffusion(world, grid, config.diffusion_iterations, config.diffusion_rate);
     }
 
     {
@@ -72,7 +74,8 @@ void WorldLightCalculator::clearLight(World& world)
     data.colors.clear(ColorNames::RgbF{});
 }
 
-void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
+void WorldLightCalculator::applyAmbient(
+    World& world, const GridOfCells& grid, const LightConfig& config)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
@@ -81,54 +84,126 @@ void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
     RgbF base_ambient = toRgbF(config.ambient_color) * config.ambient_intensity;
 
     if (!config.sky_access_enabled) {
-        for (RgbF* c = data.colors.begin(); c != data.colors.end(); ++c) {
-            *c += base_ambient;
+        // Simple uniform ambient - parallelize.
+        size_t count = data.colors.size();
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && count >= 2500)
+#endif
+        for (size_t i = 0; i < count; ++i) {
+            data.colors.data[i] += base_ambient;
         }
         return;
     }
 
+    uint32_t width = data.width;
+    uint32_t height = data.height;
+    float falloff = config.sky_access_falloff;
+
+    // Helper to apply ambient with sky attenuation for a single material.
+    auto processCell = [&data, &base_ambient, falloff](
+                           MaterialType mat, uint32_t x, uint32_t y, float& sky_factor) {
+        data.colors.at(x, y) += base_ambient * sky_factor;
+        float opacity = getMaterialProperties(mat).light.opacity;
+        sky_factor *= (1.0f - opacity * falloff);
+        if (sky_factor < 0.0f) {
+            sky_factor = 0.0f;
+        }
+    };
+
     // Sky access attenuation: ambient diminishes with depth based on opacity above.
-    for (uint32_t x = 0; x < data.width; ++x) {
+    // Use material neighborhood cache to process 3 cells per lookup.
+    // Columns are independent - parallelize with OpenMP.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (uint32_t x = 0; x < width; ++x) {
         float sky_factor = 1.0f;
 
-        for (uint32_t y = 0; y < data.height; ++y) {
-            const Cell& cell = data.cells[y * data.width + x];
+        // Process row 0 separately (top edge).
+        {
+            uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
+            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            processCell(mat, x, 0, sky_factor);
+        }
 
-            data.colors.at(x, y) += base_ambient * sky_factor;
+        // Process 3 cells at a time using the column from each neighborhood lookup.
+        uint32_t y = 1;
+        for (; y + 2 < height; y += 3) {
+            uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
+            MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
+            MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
+            MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
 
-            float opacity = cell.material().light.opacity;
-            sky_factor *= (1.0f - opacity * config.sky_access_falloff);
-            if (sky_factor < 0.0f) {
-                sky_factor = 0.0f;
-            }
+            processCell(mat0, x, y, sky_factor);
+            processCell(mat1, x, y + 1, sky_factor);
+            processCell(mat2, x, y + 2, sky_factor);
+        }
+
+        // Handle remaining rows.
+        for (; y < height; ++y) {
+            uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sky_factor);
         }
     }
 }
 
-void WorldLightCalculator::applySunlight(World& world, uint32_t sun_color, float intensity)
+void WorldLightCalculator::applySunlight(
+    World& world, const GridOfCells& grid, uint32_t sun_color, float intensity)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
     RgbF scaled_sun = toRgbF(sun_color) * intensity;
+    uint32_t width = data.width;
+    uint32_t height = data.height;
+
+    // Helper to apply sunlight attenuation for a single material.
+    auto processCell = [&data](MaterialType mat, uint32_t x, uint32_t y, RgbF& sun) {
+        data.colors.at(x, y) += sun;
+        const auto& light_props = getMaterialProperties(mat).light;
+        float transmittance = 1.0f - light_props.opacity;
+        sun *= transmittance;
+        sun *= ColorNames::toRgbF(light_props.tint);
+    };
 
     // Cast sunlight from top of world downward per column.
-    for (uint32_t x = 0; x < data.width; ++x) {
+    // Use material neighborhood cache to process 3 cells per lookup.
+    // Columns are independent - parallelize with OpenMP.
+#ifdef _OPENMP
+#pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (uint32_t x = 0; x < width; ++x) {
         RgbF sun = scaled_sun;
 
-        for (uint32_t y = 0; y < data.height; ++y) {
-            const Cell& cell = data.cells[y * data.width + x];
+        // Process row 0 separately (top edge).
+        {
+            uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
+            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            processCell(mat, x, 0, sun);
+        }
 
-            data.colors.at(x, y) += sun;
+        // Process 3 cells at a time using the column from each neighborhood lookup.
+        // Neighborhood at (x, y) contains: y-1 at bits 4-7, y at bits 16-19, y+1 at bits 28-31.
+        uint32_t y = 1;
+        for (; y + 2 < height; y += 3) {
+            // Fetch neighborhood centered at y+1 to get y, y+1, y+2.
+            uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
+            MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
+            MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
+            MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
 
-            const auto& light_props = cell.material().light;
-            float transmittance = 1.0f - light_props.opacity;
-            sun *= transmittance;
+            processCell(mat0, x, y, sun);
+            processCell(mat1, x, y + 1, sun);
+            processCell(mat2, x, y + 2, sun);
+        }
 
-            // Apply material tint.
-            RgbF tint = toRgbF(light_props.tint);
-            sun *= tint;
+        // Handle remaining rows (0-2 cells).
+        for (; y < height; ++y) {
+            uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            processCell(mat, x, y, sun);
         }
     }
 }
@@ -139,9 +214,16 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
-            const Cell& cell = data.cells[y * data.width + x];
+    uint32_t width = data.width;
+    uint32_t height = data.height;
+
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const Cell& cell = data.cells[y * width + x];
             const auto& light_props = cell.material().light;
 
             if (light_props.emission > 0.0f) {
@@ -152,7 +234,8 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
     }
 }
 
-void WorldLightCalculator::applyDiffusion(World& world, int iterations, float rate)
+void WorldLightCalculator::applyDiffusion(
+    World& world, const GridOfCells& grid, int iterations, float rate)
 {
     using ColorNames::RgbF;
 
@@ -164,23 +247,39 @@ void WorldLightCalculator::applyDiffusion(World& world, int iterations, float ra
     size_t cell_count = static_cast<size_t>(data.width) * data.height;
     light_buffer_.resize(cell_count);
 
+    const CellBitmap& empty = grid.emptyCells();
+    uint32_t width = data.width;
+    uint32_t height = data.height;
+
     for (int iter = 0; iter < iterations; ++iter) {
         std::copy(data.colors.begin(), data.colors.end(), light_buffer_.begin());
 
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
-                size_t idx = y * data.width + x;
-                const Cell& cell = data.cells[idx];
-                float scatter = cell.material().light.scatter;
+        // Within each iteration, cells are independent (read from buffer, write to colors).
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+        for (uint32_t y = 1; y < height - 1; ++y) {
+            for (uint32_t x = 1; x < width - 1; ++x) {
+                // Skip empty (AIR) cells - they have scatter = 0.
+                if (empty.isSet(x, y)) {
+                    continue;
+                }
+
+                // Get material from neighborhood cache instead of Cell struct.
+                uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+                float scatter = getMaterialProperties(mat).light.scatter;
 
                 if (scatter <= 0.0f) {
                     continue;
                 }
 
-                const RgbF& up = light_buffer_[(y - 1) * data.width + x];
-                const RgbF& down = light_buffer_[(y + 1) * data.width + x];
-                const RgbF& left = light_buffer_[y * data.width + (x - 1)];
-                const RgbF& right = light_buffer_[y * data.width + (x + 1)];
+                size_t idx = y * width + x;
+                const RgbF& up = light_buffer_[(y - 1) * width + x];
+                const RgbF& down = light_buffer_[(y + 1) * width + x];
+                const RgbF& left = light_buffer_[y * width + (x - 1)];
+                const RgbF& right = light_buffer_[y * width + (x + 1)];
 
                 RgbF neighbor_avg{ (up.r + down.r + left.r + right.r) * 0.25f,
                                    (up.g + down.g + left.g + right.g) * 0.25f,
@@ -229,9 +328,16 @@ ColorNames::RgbF getMaterialBaseColor(MaterialType mat)
 void WorldLightCalculator::applyMaterialColors(World& world)
 {
     auto& data = world.getData();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
-            const Cell& cell = data.cells[y * data.width + x];
+    uint32_t width = data.width;
+    uint32_t height = data.height;
+
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            const Cell& cell = data.cells[y * width + x];
             data.colors.at(x, y) *= getMaterialBaseColor(cell.getRenderMaterial());
         }
     }

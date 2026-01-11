@@ -494,7 +494,8 @@ void World::advanceTime(double deltaTimeSeconds)
     // Calculate lighting for rendering and tree photosynthesis.
     {
         ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
-        pImpl->light_calculator_.calculate(*this, pImpl->physicsSettings_.light, pImpl->timers_);
+        pImpl->light_calculator_.calculate(
+            *this, grid, pImpl->physicsSettings_.light, pImpl->timers_);
     }
 
     // Update organisms before force accumulation so new cells participate in physics.
