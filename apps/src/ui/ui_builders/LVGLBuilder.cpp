@@ -2072,6 +2072,28 @@ struct ActionStepperState {
     static constexpr uint32_t REPEAT_INTERVAL_MS = 80;
 };
 
+// Helper to get ActionStepperState from container widget.
+// State is stored in valueLabel's user_data (not container's) to leave
+// container's user_data available for the caller's use (e.g., PhysicsPanel*).
+static ActionStepperState* getStepperStateFromContainer(lv_obj_t* container)
+{
+    if (!container) return nullptr;
+
+    // Widget structure: container -> [minusBtn, centerSection, plusBtn]
+    // centerSection -> [labelObj (optional), valueLabel]
+    lv_obj_t* centerSection = lv_obj_get_child(container, 1);
+    if (!centerSection) return nullptr;
+
+    // valueLabel is always the last child of centerSection.
+    uint32_t childCount = lv_obj_get_child_count(centerSection);
+    if (childCount == 0) return nullptr;
+
+    lv_obj_t* valueLabel = lv_obj_get_child(centerSection, childCount - 1);
+    if (!valueLabel) return nullptr;
+
+    return static_cast<ActionStepperState*>(lv_obj_get_user_data(valueLabel));
+}
+
 static void stepperApplyDelta(ActionStepperState* state, int32_t delta)
 {
     int32_t oldValue = state->value;
@@ -2368,8 +2390,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_RELEASED, state);
     lv_obj_add_event_cb(plusBtn_, onStepperReleased, LV_EVENT_PRESS_LOST, state);
 
-    // Store state in container.
-    lv_obj_set_user_data(container_, state);
+    // Store state in valueLabel's user_data (not container's) so that
+    // container's user_data remains available for the caller's use.
+    lv_obj_set_user_data(state->valueLabel, state);
 
     // Register user callback on container (if provided).
     if (callback_) {
@@ -2381,12 +2404,14 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
         container_,
         [](lv_event_t* e) {
             if (lv_event_get_code(e) != LV_EVENT_DELETE) return;
-            lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-            auto* st = static_cast<ActionStepperState*>(lv_obj_get_user_data(obj));
-            if (st->repeatTimer) {
-                lv_timer_delete(st->repeatTimer);
+            lv_obj_t* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
+            auto* st = getStepperStateFromContainer(container);
+            if (st) {
+                if (st->repeatTimer) {
+                    lv_timer_delete(st->repeatTimer);
+                }
+                delete st;
             }
-            delete st;
         },
         LV_EVENT_DELETE,
         nullptr);
@@ -2412,9 +2437,7 @@ void LVGLBuilder::ActionStepperBuilder::onPlusClicked(lv_event_t* e)
 
 int32_t LVGLBuilder::ActionStepperBuilder::getValue(lv_obj_t* container)
 {
-    if (!container) return 0;
-
-    auto* state = static_cast<ActionStepperState*>(lv_obj_get_user_data(container));
+    auto* state = getStepperStateFromContainer(container);
     if (!state) return 0;
 
     return state->value;
@@ -2422,9 +2445,7 @@ int32_t LVGLBuilder::ActionStepperBuilder::getValue(lv_obj_t* container)
 
 void LVGLBuilder::ActionStepperBuilder::setValue(lv_obj_t* container, int32_t value)
 {
-    if (!container) return;
-
-    auto* state = static_cast<ActionStepperState*>(lv_obj_get_user_data(container));
+    auto* state = getStepperStateFromContainer(container);
     if (!state) return;
 
     // Clamp value to range.
