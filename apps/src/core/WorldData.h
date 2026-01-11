@@ -2,6 +2,7 @@
 
 #include "Cell.h"
 #include "CellDebug.h"
+#include "ColorNames.h"
 #include "Entity.h"
 #include "GridBuffer.h"
 #include "ReflectSerializer.h"
@@ -58,8 +59,8 @@ struct WorldData {
     // Bone connections for organism structural visualization.
     std::vector<BoneData> bones;
 
-    // Cell colors computed by light calculator (SoA for cache efficiency).
-    GridBuffer<uint32_t> colors;
+    // Cell colors computed by light calculator (float RGB for efficient computation).
+    GridBuffer<ColorNames::RgbF> colors;
 
     // Direct cell access methods (inline for performance).
     inline Cell& at(uint32_t x, uint32_t y)

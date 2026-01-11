@@ -1,11 +1,14 @@
 #pragma once
 
+#include "ColorNames.h"
 #include "LightBuffer.h"
 #include "LightConfig.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
 #include <string>
 #include <vector>
+
+class Timers;
 
 namespace DirtSim {
 
@@ -28,9 +31,9 @@ public:
 
     /**
      * Calculate lighting for the entire world.
-     * Writes final lit color to each cell's color_ field.
+     * Writes final lit color to WorldData::colors buffer.
      */
-    void calculate(World& world, const LightConfig& config);
+    void calculate(World& world, const LightConfig& config, Timers& timers);
 
     std::string lightMapString(const World& world) const;
 
@@ -45,7 +48,7 @@ private:
     void applyMaterialColors(World& world);
     void storeRawLight(World& world);
 
-    std::vector<uint32_t> light_buffer_;
+    std::vector<ColorNames::RgbF> light_buffer_;
     LightBuffer raw_light_;
 };
 

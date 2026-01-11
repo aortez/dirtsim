@@ -299,7 +299,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     worldData.cells[i].material_type = material;
                     worldData.cells[i].fill_ratio = fill_ratio;
                     worldData.cells[i].render_as = render_as;
-                    worldData.colors.data[i] = color;
+                    worldData.colors.data[i] = ColorNames::toRgbF(color);
                 }
             }
 

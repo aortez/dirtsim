@@ -1,9 +1,96 @@
 #pragma once
+#include <algorithm>
 #include <cstdint>
 
 // Named color constants and RGBA utilities.
 // Color values defined in ColorNames.cpp to minimize rebuild impact.
 namespace ColorNames {
+
+// RGB color in float space [0.0, 1.0] for efficient light calculations.
+struct RgbF {
+    float r = 0.0f;
+    float g = 0.0f;
+    float b = 0.0f;
+
+    RgbF() = default;
+    RgbF(float r_, float g_, float b_) : r(r_), g(g_), b(b_) {}
+
+    RgbF& operator+=(const RgbF& other)
+    {
+        r = std::min(1.0f, r + other.r);
+        g = std::min(1.0f, g + other.g);
+        b = std::min(1.0f, b + other.b);
+        return *this;
+    }
+
+    RgbF& operator*=(float s)
+    {
+        r *= s;
+        g *= s;
+        b *= s;
+        return *this;
+    }
+
+    RgbF& operator*=(const RgbF& other)
+    {
+        r *= other.r;
+        g *= other.g;
+        b *= other.b;
+        return *this;
+    }
+};
+
+inline RgbF operator+(RgbF a, const RgbF& b)
+{
+    a += b;
+    return a;
+}
+
+inline RgbF operator*(RgbF c, float s)
+{
+    c *= s;
+    return c;
+}
+
+inline RgbF operator*(float s, RgbF c)
+{
+    c *= s;
+    return c;
+}
+
+inline RgbF operator*(RgbF a, const RgbF& b)
+{
+    a *= b;
+    return a;
+}
+
+inline RgbF lerp(const RgbF& a, const RgbF& b, float t)
+{
+    return RgbF(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t);
+}
+
+inline float brightness(const RgbF& c)
+{
+    return 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+}
+
+inline RgbF toRgbF(uint32_t color)
+{
+    constexpr float inv255 = 1.0f / 255.0f;
+    return RgbF(
+        static_cast<float>((color >> 24) & 0xFF) * inv255,
+        static_cast<float>((color >> 16) & 0xFF) * inv255,
+        static_cast<float>((color >> 8) & 0xFF) * inv255);
+}
+
+inline uint32_t toRgba(const RgbF& c)
+{
+    auto clamp = [](float v) -> uint8_t {
+        return static_cast<uint8_t>(std::max(0.0f, std::min(1.0f, v)) * 255.0f);
+    };
+    return (static_cast<uint32_t>(clamp(c.r)) << 24) | (static_cast<uint32_t>(clamp(c.g)) << 16)
+        | (static_cast<uint32_t>(clamp(c.b)) << 8) | 0xFF;
+}
 
 // --- RGBA Utilities (inlined) ---
 

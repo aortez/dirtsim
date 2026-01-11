@@ -87,7 +87,8 @@ inline std::vector<std::byte> packBasicCells(const WorldData& data)
     cells.reserve(data.cells.size());
 
     for (size_t i = 0; i < data.cells.size(); ++i) {
-        uint32_t color = (i < data.colors.size()) ? data.colors.data[i] : 0x000000FF;
+        uint32_t color =
+            (i < data.colors.size()) ? ColorNames::toRgba(data.colors.data[i]) : 0x000000FF;
         cells.push_back(packBasicCell(data.cells[i], color));
     }
 

@@ -636,8 +636,9 @@ void CellRenderer::renderWorldData(
 
                 if (!cell.isEmpty() && cell.material_type != MaterialType::AIR
                     && !is_sprite_organism) {
-                    uint32_t cellColor =
-                        (idx < worldData.colors.size()) ? worldData.colors.data[idx] : 0x000000FF;
+                    uint32_t cellColor = (idx < worldData.colors.size())
+                        ? ColorNames::toRgba(worldData.colors.data[idx])
+                        : 0x000000FF;
                     lv_color_t matColor = getLitColor(cellColor);
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).
@@ -938,8 +939,9 @@ void CellRenderer::renderWorldData(
                 int32_t cellX = renderOffsetX + x * scaledCellWidth_;
                 int32_t cellY = renderOffsetY + y * scaledCellHeight_;
 
-                uint32_t cellColor =
-                    (idx < worldData.colors.size()) ? worldData.colors.data[idx] : 0x000000FF;
+                uint32_t cellColor = (idx < worldData.colors.size())
+                    ? ColorNames::toRgba(worldData.colors.data[idx])
+                    : 0x000000FF;
                 renderCellLVGL(cell, debug, layer, cellX, cellY, debugDraw, cellColor);
             }
         }
