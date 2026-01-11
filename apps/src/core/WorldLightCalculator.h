@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ColorNames.h"
+#include "GridBuffer.h"
 #include "LightBuffer.h"
 #include "LightConfig.h"
 #include "WorldCalculatorBase.h"
@@ -15,39 +16,35 @@ namespace DirtSim {
 class World;
 
 /**
- * Calculates illumination across the world grid from multiple light sources.
- *
- * Light sources include:
- * - Ambient light (baseline illumination everywhere)
- * - Directional sunlight (top-down with opacity/tinting)
- * - Point lights (localized sources with falloff)
- * - Emissive materials (cells with emission > 0)
- *
- * Results are written to each cell's color_ field as packed RGBA.
+ * Calculates illumination across the world grid from multiple light sources:
+ * ambient, directional sunlight, emissive materials, and an emissive overlay.
+ * Scenarios can use the overlay to make specific cells glow (e.g., clock digits).
  */
 class WorldLightCalculator : public WorldCalculatorBase {
 public:
     WorldLightCalculator() = default;
 
-    /**
-     * Calculate lighting for the entire world.
-     * Writes final lit color to WorldData::colors buffer.
-     */
     void calculate(World& world, const LightConfig& config, Timers& timers);
-
     std::string lightMapString(const World& world) const;
-
     const LightBuffer& getRawLightBuffer() const;
 
+    // Emissive overlay for scenario-controlled per-cell emission.
+    void setEmissive(uint32_t x, uint32_t y, uint32_t color, float intensity = 1.0f);
+    void clearEmissive(uint32_t x, uint32_t y);
+    void clearAllEmissive();
+    void resize(uint32_t width, uint32_t height);
+
 private:
-    void clearLight(World& world);
     void applyAmbient(World& world, const LightConfig& config);
-    void applySunlight(World& world, uint32_t sun_color, float intensity);
-    void applyEmissiveCells(World& world);
     void applyDiffusion(World& world, int iterations, float rate);
+    void applyEmissiveCells(World& world);
+    void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);
+    void clearLight(World& world);
+    void applySunlight(World& world, uint32_t sun_color, float intensity);
     void storeRawLight(World& world);
 
+    GridBuffer<ColorNames::RgbF> emissive_overlay_;
     std::vector<ColorNames::RgbF> light_buffer_;
     LightBuffer raw_light_;
 };

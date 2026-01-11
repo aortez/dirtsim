@@ -1,4 +1,5 @@
 #include "WorldLightCalculator.h"
+#include "Assert.h"
 #include "Cell.h"
 #include "ColorNames.h"
 #include "LightConfig.h"
@@ -41,6 +42,12 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config, Ti
     {
         ScopeTimer t(timers, "light_emissive");
         applyEmissiveCells(world);
+    }
+
+    // Add scenario-controlled emissive overlay.
+    {
+        ScopeTimer t(timers, "light_emissive_overlay");
+        applyEmissiveOverlay(world);
     }
 
     {
@@ -266,6 +273,45 @@ void WorldLightCalculator::storeRawLight(World& world)
 const LightBuffer& WorldLightCalculator::getRawLightBuffer() const
 {
     return raw_light_;
+}
+
+void WorldLightCalculator::setEmissive(uint32_t x, uint32_t y, uint32_t color, float intensity)
+{
+    DIRTSIM_ASSERT(x < emissive_overlay_.width && y < emissive_overlay_.height, "Out of bounds");
+    emissive_overlay_.at(x, y) = ColorNames::toRgbF(color) * intensity;
+}
+
+void WorldLightCalculator::clearEmissive(uint32_t x, uint32_t y)
+{
+    DIRTSIM_ASSERT(x < emissive_overlay_.width && y < emissive_overlay_.height, "Out of bounds");
+    emissive_overlay_.at(x, y) = ColorNames::RgbF{};
+}
+
+void WorldLightCalculator::clearAllEmissive()
+{
+    emissive_overlay_.clear(ColorNames::RgbF{});
+}
+
+void WorldLightCalculator::resize(uint32_t width, uint32_t height)
+{
+    if (emissive_overlay_.width != width || emissive_overlay_.height != height) {
+        emissive_overlay_.resize(width, height, ColorNames::RgbF{});
+    }
+}
+
+void WorldLightCalculator::applyEmissiveOverlay(World& world)
+{
+    auto& data = world.getData();
+    resize(data.width, data.height);
+
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            const ColorNames::RgbF& emission = emissive_overlay_.at(x, y);
+            if (emission.r > 0.0f || emission.g > 0.0f || emission.b > 0.0f) {
+                data.colors.at(x, y) += emission;
+            }
+        }
+    }
 }
 
 } // namespace DirtSim

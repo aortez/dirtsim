@@ -128,6 +128,8 @@ World::World(uint32_t width, uint32_t height)
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
 
+    pImpl->light_calculator_.resize(pImpl->data_.width, pImpl->data_.height);
+
     SLOG_INFO("World initialization complete");
 }
 
@@ -158,6 +160,16 @@ WorldCollisionCalculator& World::getCollisionCalculator()
 const WorldCollisionCalculator& World::getCollisionCalculator() const
 {
     return pImpl->collision_calculator_;
+}
+
+WorldLightCalculator& World::getLightCalculator()
+{
+    return pImpl->light_calculator_;
+}
+
+const WorldLightCalculator& World::getLightCalculator() const
+{
+    return pImpl->light_calculator_;
 }
 
 WorldAdhesionCalculator& World::getAdhesionCalculator()
@@ -482,7 +494,7 @@ void World::advanceTime(double deltaTimeSeconds)
     // Calculate lighting for rendering and tree photosynthesis.
     {
         ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
-        pImpl->light_calculator_.calculate(*this, pImpl->physicsSettings_.light);
+        pImpl->light_calculator_.calculate(*this, pImpl->physicsSettings_.light, pImpl->timers_);
     }
 
     // Update organisms before force accumulation so new cells participate in physics.
@@ -836,6 +848,8 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
     pImpl->data_.height = newHeight;
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
+
+    pImpl->light_calculator_.resize(newWidth, newHeight);
 
     // Resize organism grid and reposition organisms at new proportional positions.
     // OrganismManager::resizeGrid() handles all repositioning internally.
