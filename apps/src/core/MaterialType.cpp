@@ -47,7 +47,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.1,
         .friction_transition_width = 0.10,
         .is_fluid = false,
-        .light = { .opacity = 0.9f, .scatter = 0.2f, .tint = 0x8B6914FF } },
+        .light = { .opacity = 0.7f, .scatter = 0.2f, .tint = 0x8B6914FF } },
 
       // ========== LEAF ==========
       { .density = 0.3,
@@ -65,7 +65,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.03,
         .friction_transition_width = 0.06,
         .is_fluid = false,
-        .light = { .opacity = 0.4f, .scatter = 0.3f, .tint = 0x228B22FF } },
+        .light = { .opacity = 0.1f, .scatter = 0.3f, .tint = 0x228B22FF } },
 
       // ========== METAL ==========
       { .density = 7.8,
@@ -102,7 +102,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.03,
         .friction_transition_width = 0.05,
         .is_fluid = false,
-        .light = { .opacity = 0.9f, .scatter = 0.15f, .tint = 0x5C4033FF } },
+        .light = { .opacity = 0.7f, .scatter = 0.15f, .tint = 0x5C4033FF } },
 
       // ========== SAND ==========
       { .density = 1.8,
@@ -120,7 +120,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.04,
         .friction_transition_width = 0.08,
         .is_fluid = false,
-        .light = { .opacity = 0.7f, .scatter = 0.2f, .tint = 0xE6D5ACFF } },
+        .light = { .opacity = 0.4f, .scatter = 0.2f, .tint = 0xE6D5ACFF } },
 
       // ========== SEED ==========
       { .density = 1.5,
@@ -160,7 +160,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.0,
         .friction_transition_width = 0.01,
         .is_fluid = false,
-        .light = { .opacity = 1.0f, .scatter = 0.1f } },
+        .light = { .opacity = 0.4f, .scatter = 0.3f } },
 
       // ========== WATER ==========
       { .density = 1.0,
@@ -178,7 +178,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.0,
         .friction_transition_width = 0.001,
         .is_fluid = true,
-        .light = { .opacity = 0.05f, .scatter = 0.1f, .tint = 0xCCE6FFFF } },
+        .light = { .opacity = 0.03f, .scatter = 0.5f, .tint = 0xCCE6FFFF } },
 
       // ========== WOOD ==========
       { .density = 0.3,
@@ -196,7 +196,7 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .stick_velocity = 0.02,
         .friction_transition_width = 0.03,
         .is_fluid = false,
-        .light = { .opacity = 0.95f, .scatter = 0.15f, .tint = 0xDEB887FF } } }
+        .light = { .opacity = 0.6f, .scatter = 0.2f, .tint = 0xDEB887FF } } }
 };
 
 // Material name lookup table.
