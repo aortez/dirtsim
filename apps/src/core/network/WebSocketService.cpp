@@ -33,7 +33,10 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
         url_ = url;
 
         // Create WebSocket with large message size.
+        // Default is 256 KB which is too small for RenderMessage on large worlds.
+        // 200x200 world with DebugCell (~23 bytes/cell) = ~920 KB.
         rtc::WebSocketConfiguration config;
+        config.maxMessageSize = 16 * 1024 * 1024; // 16 MB.
 
         ws_ = std::make_shared<rtc::WebSocket>(config);
 
@@ -388,10 +391,13 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
         LOG_INFO(Network, "Starting server on port {}", port);
 
         // Create WebSocket server configuration.
+        // Default maxMessageSize is 256 KB which is too small for RenderMessage.
+        // 200x200 world with DebugCell (~23 bytes/cell) = ~920 KB.
         rtc::WebSocketServerConfiguration config;
         config.port = port;
-        config.bindAddress = "0.0.0.0"; // Listen on all interfaces.
-        config.enableTls = false;       // No TLS for now.
+        config.bindAddress = "0.0.0.0";           // Listen on all interfaces.
+        config.enableTls = false;                 // No TLS for now.
+        config.maxMessageSize = 16 * 1024 * 1024; // 16 MB.
 
         // Create server.
         server_ = std::make_unique<rtc::WebSocketServer>(config);
