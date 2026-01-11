@@ -92,9 +92,8 @@ void SandboxScenario::setup(World& world)
     }
     world.getOrganismManager().clear();
 
-    // Create boundary walls.
+    // Create boundary walls (no top wall - allows sunlight to illuminate the world).
     for (uint32_t x = 0; x < world.getData().width; ++x) {
-        world.getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0); // Top wall.
         world.getData()
             .at(x, world.getData().height - 1)
             .replaceMaterial(MaterialType::WALL, 1.0); // Bottom wall.

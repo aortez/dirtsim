@@ -1792,13 +1792,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     std::vector<WallSpec> walls;
     walls.reserve(2 * (width + height) + 20);
 
-    // Top border (wooden frame).
-    for (uint32_t x = 0; x < width; ++x) {
-        Vector2i pos{ static_cast<int>(x), 0 };
-        if (!door_manager_.isOpenDoorAt(pos, data)) {
-            walls.push_back({ x, 0, MaterialType::WOOD });
-        }
-    }
+    // No top border - allows sunlight to illuminate the world.
 
     // Bottom border (dirt floor).
     for (uint32_t x = 0; x < width; ++x) {
