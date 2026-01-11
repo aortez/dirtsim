@@ -152,28 +152,24 @@ BenchmarkResults BenchmarkRunner::run(
 
         try {
             nlohmann::json json = nlohmann::json::parse(response);
-            if (json.contains("value")) {
-                const auto& value = json["value"];
-                if (value.contains("timestep")) {
-                    uint64_t step = value["timestep"].get<uint64_t>();
+            // Response format: {"state": "...", "timestep": N, ...} (not wrapped in "value").
+            if (json.contains("timestep")) {
+                uint64_t step = json["timestep"].get<uint64_t>();
 
-                    // Capture world dimensions on first successful query.
-                    if (results.grid_size == "28x28" && value.contains("width")
-                        && value.contains("height")) {
-                        uint32_t width = value["width"].get<uint32_t>();
-                        uint32_t height = value["height"].get<uint32_t>();
-                        results.grid_size = std::to_string(width) + "x" + std::to_string(height);
-                        spdlog::info("BenchmarkRunner: World size {}x{}", width, height);
-                    }
+                // Capture world dimensions on first successful query.
+                if (results.grid_size == "28x28" && json.contains("width")
+                    && json.contains("height")) {
+                    uint32_t width = json["width"].get<uint32_t>();
+                    uint32_t height = json["height"].get<uint32_t>();
+                    results.grid_size = std::to_string(width) + "x" + std::to_string(height);
+                    spdlog::info("BenchmarkRunner: World size {}x{}", width, height);
+                }
 
-                    if (step >= steps) {
-                        spdlog::info(
-                            "BenchmarkRunner: Benchmark complete (step {} >= target {})",
-                            step,
-                            steps);
-                        benchmarkComplete = true;
-                        break;
-                    }
+                if (step >= steps) {
+                    spdlog::info(
+                        "BenchmarkRunner: Benchmark complete (step {} >= target {})", step, steps);
+                    benchmarkComplete = true;
+                    break;
                 }
             }
         }
@@ -212,19 +208,19 @@ BenchmarkResults BenchmarkRunner::run(
     try {
         nlohmann::json perfStatsJson = nlohmann::json::parse(perfStatsResponse);
 
-        if (perfStatsJson.contains("value")) {
-            const auto& value = perfStatsJson["value"];
-
+        // Response format: {"fps": N, "physics_avg_ms": M, ...} (not wrapped in "value").
+        if (perfStatsJson.contains("fps")) {
             // Populate server stats.
-            results.server_fps = value.value("fps", 0.0);
-            results.server_physics_avg_ms = value.value("physics_avg_ms", 0.0);
-            results.server_physics_total_ms = value.value("physics_total_ms", 0.0);
-            results.server_physics_calls = value.value("physics_calls", 0U);
-            results.server_serialization_avg_ms = value.value("serialization_avg_ms", 0.0);
-            results.server_serialization_total_ms = value.value("serialization_total_ms", 0.0);
-            results.server_serialization_calls = value.value("serialization_calls", 0U);
-            results.server_cache_update_avg_ms = value.value("cache_update_avg_ms", 0.0);
-            results.server_network_send_avg_ms = value.value("network_send_avg_ms", 0.0);
+            results.server_fps = perfStatsJson.value("fps", 0.0);
+            results.server_physics_avg_ms = perfStatsJson.value("physics_avg_ms", 0.0);
+            results.server_physics_total_ms = perfStatsJson.value("physics_total_ms", 0.0);
+            results.server_physics_calls = perfStatsJson.value("physics_calls", 0U);
+            results.server_serialization_avg_ms = perfStatsJson.value("serialization_avg_ms", 0.0);
+            results.server_serialization_total_ms =
+                perfStatsJson.value("serialization_total_ms", 0.0);
+            results.server_serialization_calls = perfStatsJson.value("serialization_calls", 0U);
+            results.server_cache_update_avg_ms = perfStatsJson.value("cache_update_avg_ms", 0.0);
+            results.server_network_send_avg_ms = perfStatsJson.value("network_send_avg_ms", 0.0);
 
             spdlog::info(
                 "BenchmarkRunner: Server stats - fps: {:.1f}, physics: {:.1f}ms avg, "
@@ -235,7 +231,7 @@ BenchmarkResults BenchmarkRunner::run(
         }
         else {
             spdlog::warn(
-                "BenchmarkRunner: perf_stats response missing 'value' field: {}",
+                "BenchmarkRunner: perf_stats response missing 'fps' field: {}",
                 perfStatsJson.dump());
         }
     }
@@ -255,10 +251,12 @@ BenchmarkResults BenchmarkRunner::run(
 
     try {
         nlohmann::json timerStatsJson = nlohmann::json::parse(timerStatsResponse);
-        if (timerStatsJson.contains("value")) {
-            results.timer_stats = timerStatsJson["value"];
-            spdlog::info("BenchmarkRunner: Received {} timer stats", results.timer_stats.size());
-        }
+        // Response format: {"timer_name": {...}, ...} - timer entries are at top level.
+        // Copy the response, but remove non-timer fields (id, success).
+        results.timer_stats = timerStatsJson;
+        results.timer_stats.erase("id");
+        results.timer_stats.erase("success");
+        spdlog::info("BenchmarkRunner: Received {} timer stats", results.timer_stats.size());
     }
     catch (const std::exception& e) {
         spdlog::error("BenchmarkRunner: Failed to parse timer_stats: {}", e.what());
@@ -394,13 +392,14 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
         try {
             nlohmann::json json = nlohmann::json::parse(response);
-            if (json.contains("value") && json["value"].contains("timestep")) {
-                uint64_t step = json["value"]["timestep"].get<uint64_t>();
+            // Response format: {"state": "...", "timestep": N, ...} (not wrapped in "value").
+            if (json.contains("timestep")) {
+                uint64_t step = json["timestep"].get<uint64_t>();
 
                 // Capture grid size.
-                if (results.grid_size == "28x28" && json["value"].contains("width")) {
-                    uint32_t w = json["value"]["width"].get<uint32_t>();
-                    uint32_t h = json["value"]["height"].get<uint32_t>();
+                if (results.grid_size == "28x28" && json.contains("width")) {
+                    uint32_t w = json["width"].get<uint32_t>();
+                    uint32_t h = json["height"].get<uint32_t>();
                     results.grid_size = std::to_string(w) + "x" + std::to_string(h);
                 }
 
@@ -453,9 +452,10 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
     try {
         nlohmann::json timerJson = nlohmann::json::parse(timerResponse);
-        if (timerJson.contains("value")) {
-            results.timer_stats = timerJson["value"];
-        }
+        // Response format: {"timer_name": {...}, ...} - timer entries are at top level.
+        results.timer_stats = timerJson;
+        results.timer_stats.erase("id");
+        results.timer_stats.erase("success");
     }
     catch (const std::exception& e) {
         spdlog::error("BenchmarkRunner: Failed to parse timer_stats: {}", e.what());
@@ -485,9 +485,9 @@ nlohmann::json BenchmarkRunner::queryPerfStats()
 
     try {
         nlohmann::json json = nlohmann::json::parse(response);
-        if (json.contains("value")) {
-            return json["value"];
-        }
+        // Response format: {"fps": N, ...} - stats are at top level (not wrapped in "value").
+        // Return as-is; caller knows the field names.
+        return json;
     }
     catch (const std::exception& e) {
         spdlog::error("BenchmarkRunner: Failed to parse perf_stats: {}", e.what());

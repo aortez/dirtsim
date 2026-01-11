@@ -77,16 +77,11 @@ bool SubprocessManager::launchServer(const std::string& serverPath, const std::s
 
 bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSec)
 {
-    std::cerr << "DEBUG: waitForServerReady() called, url=" << url << ", serverPid_=" << serverPid_
-              << std::endl;
     SLOG_INFO("SubprocessManager: Waiting for server to be ready at {}", url);
 
     auto startTime = std::chrono::steady_clock::now();
 
     while (true) {
-        std::cerr << "DEBUG: Inside while loop" << std::endl;
-        // Log startTime.
-        SLOG_INFO("SubprocessManager: Waiting for server to be ready");
 
         // Check if server process is still alive.
         if (!isServerRunning()) {
@@ -110,8 +105,10 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
 
                 if (statusResult.isValue()) {
                     nlohmann::json response = nlohmann::json::parse(statusResult.value());
-                    if (response.contains("value") && response["value"].contains("state")) {
-                        std::string state = response["value"]["state"].get<std::string>();
+                    // Response format: {"state": "Idle", "success": true, ...} (not wrapped in
+                    // "value").
+                    if (response.contains("state")) {
+                        std::string state = response["state"].get<std::string>();
                         if (state == "Idle" || state == "SimRunning") {
                             SLOG_INFO("SubprocessManager: Server is ready (state: {})", state);
                             return true;
