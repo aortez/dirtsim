@@ -281,9 +281,13 @@ Once multi-cell validation passes:
 
 ## Implementation Status
 
-### ✅ Completed: Phases 1-3 (Rigid Body Foundation + Ground Support)
+### ✅ Completed: Phases 1-4.1 (Rigid Body Foundation + Component Architecture + Tree Migration)
 
-**Test Results:** 162/164 tests pass (2 expected failures)
+**Test Results:** 175/177 tests pass (2 expected failures)
+- All Tree tests passing (13/13)
+- All Goose tests passing (8/8)
+- All component tests passing (49/49)
+- All multi-cell tests passing (10/10)
 
 #### Phase 1: Cleanup (Complete)
 - ✅ Disabled bones - `Organism::createBonesForCell()` returns early
@@ -413,7 +417,7 @@ src/core/organisms/components/
 advanceTime(deltaTime)
 ├── Pressure phases (injection, diffusion, decay)
 │
-├── organism_manager->update()                    // Non-rigid-body organisms (Duck, Tree)
+├── organism_manager->update()                    // Non-rigid-body organisms (Duck only)
 │   └── Duck adds walk force to cell              // Brain decides actions
 │
 ├── resolveForces(deltaTime, grid)                // Apply physics forces to cells
@@ -426,25 +430,35 @@ advanceTime(deltaTime)
 │   ├── Apply viscosity
 │   └── Integrate F=ma (skip organism cells)      ← Cell-based organisms handled separately
 │
-├── organism_manager->advanceTime()               // Rigid body organisms (Goose only)
-│   └── Goose::update():
-│       ├── Compute support force from ground contact
-│       ├── Compute ground friction from velocity and normal force
-│       ├── Update on_ground based on support magnitude
-│       ├── Brain decides walk direction
-│       ├── Add walk force to pending_force_
-│       ├── Compute gravity (mass × g) directly
-│       ├── Add support force (cancels gravity when on ground)
-│       ├── Add friction force (opposes horizontal motion)
-│       ├── Compute air resistance (velocity²)
-│       ├── Integrate F=ma → update velocity
-│       ├── Collision detection → predict cells at new position
-│       ├── Collision response → zero velocity into obstacles
-│       └── Project to grid → stamp cells at final position
+├── organism_manager->advanceTime()               // Rigid body organisms (Goose, Tree)
+│   ├── Goose::update():
+│   │   ├── Compute support force from ground contact
+│   │   ├── Compute ground friction from velocity and normal force
+│   │   ├── Update on_ground based on support magnitude
+│   │   ├── Brain decides walk direction
+│   │   ├── Add walk force to pending_force_
+│   │   ├── Compute gravity (mass × g) directly
+│   │   ├── Add support force (cancels gravity when on ground)
+│   │   ├── Add friction force (opposes horizontal motion)
+│   │   ├── Compute air resistance (velocity²)
+│   │   ├── Integrate F=ma → update velocity
+│   │   ├── Collision detection → predict cells at new position
+│   │   ├── Collision response → zero velocity into obstacles
+│   │   └── Project to grid → stamp cells at final position
+│   └── Tree::update():
+│       ├── Brain executes growth commands
+│       ├── Growth adds cells to local_shape via addCellToLocalShape()
+│       ├── RigidBodyComponent::update() handles physics:
+│       │   ├── Compute support force from ground contact
+│       │   ├── Compute ground friction
+│       │   ├── Compute gravity (mass × g)
+│       │   ├── Integrate F=ma → update position and velocity
+│       │   ├── Collision detection and response
+│       │   └── Project local_shape to grid
+│       └── Entire tree structure moves as rigid unit
 │
 ├── resolveRigidBodies(deltaTime)                 // Cell-based organism integration
 │   ├── Duck: F=ma on cell.pending_force
-│   ├── Tree: flood-fill structure, unified velocity, ground support
 │   └── Clear organism pending_force
 │
 ├── Velocity limiting
@@ -462,7 +476,7 @@ advanceTime(deltaTime)
 
 ### 🎯 Next Steps
 
-**Completed (Phases 1-4.0):**
+**Completed (Phases 1-4.1):**
 1. ✅ Cleanup: Removed support system, disabled bones
 2. ✅ Rigid body foundation: Unified velocity, skip organism cells in world physics
 3. ✅ Ground support & friction: Contact-based support, material-specific friction
@@ -470,11 +484,18 @@ advanceTime(deltaTime)
 5. ✅ Composite component: `RigidBodyComponent` orchestrates physics loop
 6. ✅ Multi-cell validation: 10 tests with Stick/LShape/Column organisms (all passing)
 7. ✅ Goose refactored to use `RigidBodyComponent` (8/8 tests passing)
+8. ✅ **Tree migrated to use `RigidBodyComponent`** (13/13 tests passing)
 
-**Next (Phase 4.1 - Tree Migration):**
-- Migrate Tree to use `RigidBodyComponent`
-- Add continuous position and velocity to Tree
-- Growth commands modify local_shape via `rigidBody_->addCell()`
-- Update Tree tests for new architecture
-- Verify Tree falls as rigid body (structure stays together)
-- Verify growth updates projection correctly
+**Phase 4.1 - Tree Migration (Complete):**
+- ✅ Migrated Tree to use `RigidBodyComponent`
+- ✅ Removed `seed_position_`, uses inherited `position` and `velocity`
+- ✅ Growth commands modify local_shape via `tree.addCellToLocalShape()`
+- ✅ Updated `TreeCommandProcessor` to convert world coords to local coords
+- ✅ Tree falls as rigid body (structure stays together)
+- ✅ Growth updates projection correctly via RigidBodyComponent
+- ✅ Updated `ExtendedGrowthStability` test to validate rigid body coherence
+
+**Next (Phase 5 - Future Enhancements):**
+- Rotation (angular velocity, moment of inertia, torques)
+- Fracture mechanics (structures breaking apart)
+- Non-organism rigid bodies (welded metal structures)

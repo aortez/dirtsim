@@ -1,6 +1,7 @@
 #include "Tree.h"
 #include "OrganismManager.h"
 #include "TreeCommandProcessor.h"
+#include "components/RigidBodyComponent.h"
 #include "core/Cell.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
@@ -12,13 +13,40 @@
 namespace DirtSim {
 
 Tree::Tree(OrganismId id, std::unique_ptr<TreeBrain> brain)
-    : Organism(id, OrganismType::TREE), brain_(std::move(brain))
-{}
+    : Organism(id, OrganismType::TREE),
+      brain_(std::move(brain)),
+      rigidBody_(std::make_unique<RigidBodyComponent>(MaterialType::SEED))
+{
+    // Initialize local shape with a single SEED cell at origin.
+    rigidBody_->addCell({ 0, 0 }, MaterialType::SEED, 1.0);
+
+    // Keep base class local_shape in sync for mass computation.
+    local_shape.push_back(
+        LocalCell{ .localPos = { 0, 0 }, .material = MaterialType::SEED, .fillRatio = 1.0 });
+
+    recomputeMass();
+    recomputeCenterOfMass();
+}
+
+Tree::~Tree() = default;
+
+Vector2i Tree::getAnchorCell() const
+{
+    return Vector2i{ static_cast<int>(std::floor(position.x)),
+                     static_cast<int>(std::floor(position.y)) };
+}
+
+void Tree::setAnchorCell(Vector2i pos)
+{
+    position.x = static_cast<double>(pos.x) + 0.5;
+    position.y = static_cast<double>(pos.y) + 0.5;
+}
 
 void Tree::update(World& world, double deltaTime)
 {
     age_seconds_ += deltaTime;
 
+    // Execute commands and brain logic.
     if (current_command_.has_value()) {
         time_remaining_seconds_ -= deltaTime;
         if (time_remaining_seconds_ <= 0.0) {
@@ -32,6 +60,18 @@ void Tree::update(World& world, double deltaTime)
     }
 
     updateResources(world);
+
+    // Run rigid body physics (gravity, collision, ground support).
+    // Trees don't have external forces (no walking), so just pass zero.
+    auto result = rigidBody_->update(
+        id_, position, velocity, mass, local_shape, world, deltaTime, Vector2d{ 0.0, 0.0 });
+
+    // Sync cells from projection.
+    occupied_cells = result.occupied_cells;
+    cells_.clear();
+    for (const auto& pos : occupied_cells) {
+        cells_.insert(pos);
+    }
 }
 
 void Tree::executeCommand(World& world)
@@ -133,10 +173,11 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
         data.actual_height = TreeSensoryData::GRID_SIZE;
         data.scale_factor = 1.0;
 
-        // Center the 15x15 window on the original seed position (fixed anchor).
+        // Center the 15x15 window on the tree's current position.
         int half_window = TreeSensoryData::GRID_SIZE / 2; // 7 cells on each side.
-        int offset_x = seed_position_.x - half_window;
-        int offset_y = seed_position_.y - half_window;
+        Vector2i anchor = getAnchorCell();
+        int offset_x = anchor.x - half_window;
+        int offset_y = anchor.y - half_window;
 
         // Clamp to world bounds (allow negative offsets for small worlds).
         // For worlds >= 15x15: clamp to keep window inside world.
@@ -225,7 +266,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
         }
     }
 
-    data.seed_position = seed_position_;
+    data.seed_position = getAnchorCell();
     data.age_seconds = age_seconds_;
     data.stage = stage_;
     data.total_energy = total_energy_;
@@ -266,6 +307,20 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     }
 
     return data;
+}
+
+void Tree::addCellToLocalShape(Vector2i localPos, MaterialType material, double fillRatio)
+{
+    // Add to RigidBodyComponent projection.
+    rigidBody_->addCell(localPos, material, fillRatio);
+
+    // Add to base class local_shape for mass computation.
+    local_shape.push_back(
+        LocalCell{ .localPos = localPos, .material = material, .fillRatio = fillRatio });
+
+    // Recompute mass and center of mass.
+    recomputeMass();
+    recomputeCenterOfMass();
 }
 
 } // namespace DirtSim

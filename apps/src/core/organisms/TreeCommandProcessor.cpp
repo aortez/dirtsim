@@ -60,11 +60,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "WOOD requires cardinal adjacency to WOOD or SEED" };
                 }
 
-                Cell& new_cell = world.getData().at(command.target_pos.x, command.target_pos.y);
-                new_cell.replaceMaterial(MaterialType::WOOD, 1.0);
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
 
-                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
-                tree.createBonesForCell(command.target_pos, MaterialType::WOOD, world);
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, MaterialType::WOOD, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_WOOD);
 
                 spdlog::info(
@@ -116,12 +117,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "LEAF requires cardinal adjacency to WOOD" };
                 }
 
-                world.getData()
-                    .at(command.target_pos.x, command.target_pos.y)
-                    .replaceMaterial(MaterialType::LEAF, 1.0);
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
 
-                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
-                tree.createBonesForCell(command.target_pos, MaterialType::LEAF, world);
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, MaterialType::LEAF, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_LEAF);
 
                 spdlog::info(
@@ -169,12 +170,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "ROOT requires cardinal adjacency to SEED or ROOT" };
                 }
 
-                world.getData()
-                    .at(command.target_pos.x, command.target_pos.y)
-                    .replaceMaterial(MaterialType::ROOT, 1.0);
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
 
-                world.getOrganismManager().addCellToOrganism(tree.getId(), command.target_pos);
-                tree.createBonesForCell(command.target_pos, MaterialType::ROOT, world);
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, MaterialType::ROOT, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_ROOT);
 
                 spdlog::info(

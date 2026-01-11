@@ -9,6 +9,8 @@
 
 namespace DirtSim {
 
+class RigidBodyComponent;
+
 /**
  * Tree organism class.
  *
@@ -17,15 +19,19 @@ namespace DirtSim {
  *
  * Trees execute commands over time, consume resources, and make growth decisions
  * through pluggable brain implementations.
+ *
+ * Uses RigidBodyComponent for physics - the entire tree structure moves as one unit.
  */
 class Tree : public Organism {
 public:
     Tree(OrganismId id, std::unique_ptr<TreeBrain> brain);
+    ~Tree();
 
     // Organism interface.
-    Vector2i getAnchorCell() const override { return seed_position_; }
-    void setAnchorCell(Vector2i pos) override { seed_position_ = pos; }
+    Vector2i getAnchorCell() const override;
+    void setAnchorCell(Vector2i pos) override;
     void update(World& world, double deltaTime) override;
+    bool usesRigidBodyPhysics() const override { return true; }
 
     // Tree-specific accessors.
     GrowthStage getStage() const { return stage_; }
@@ -47,14 +53,18 @@ public:
     // Replace the brain (for testing with custom brain implementations).
     void setBrain(std::unique_ptr<TreeBrain> brain) { brain_ = std::move(brain); }
 
+    // Growth: Add a cell to the tree's local shape.
+    // Called by TreeCommandProcessor during growth commands.
+    void addCellToLocalShape(Vector2i localPos, MaterialType material, double fillRatio = 1.0);
+
 private:
-    Vector2i seed_position_;
     GrowthStage stage_ = GrowthStage::SEED;
     double total_energy_ = 0.0;
     double total_water_ = 0.0;
     std::optional<TreeCommand> current_command_;
     double time_remaining_seconds_ = 0.0;
     std::unique_ptr<TreeBrain> brain_;
+    std::unique_ptr<RigidBodyComponent> rigidBody_;
 
     void executeCommand(World& world);
     void decideNextAction(const World& world);

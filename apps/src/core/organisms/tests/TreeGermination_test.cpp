@@ -903,16 +903,17 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
     CellTracker tracker(*world, tree_id, 50);
     tracker.trackCell(seed_pos, MaterialType::SEED, frame);
 
-    const int STABILITY_FRAMES = 60;   // Frames to run after each growth.
-    const double COM_THRESHOLD = 0.4;  // Max acceptable COM drift from center.
-    const double VEL_THRESHOLD = 0.05; // Max acceptable velocity after stabilization.
+    const int STABILITY_FRAMES = 60;             // Frames to run after each growth.
+    const double VEL_THRESHOLD = 0.05;           // Max acceptable velocity after stabilization.
+    const double POS_THRESHOLD = 0.01;           // Max tree position drift (cells/sec).
+    const double COM_VARIANCE_THRESHOLD = 0.001; // Max variance in COM offsets across cells.
 
     size_t last_cell_count = 1; // Start with seed.
-    int cells_grown = 0;
+    int growth_events = 0;
     bool any_stability_failure = false;
 
     // Run until all cells are grown and stable.
-    while (cells_grown < static_cast<int>(growth_targets.size()) && frame < 5000) {
+    while (tree->getCells().size() < growth_targets.size() + 2 && frame < 5000) {
         std::unordered_set<Vector2i> cells_before = tree->getCells();
 
         world->advanceTime(0.016);
@@ -923,12 +924,13 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
         // Detect new cells.
         std::unordered_set<Vector2i> cells_after = tree->getCells();
         if (cells_after.size() > last_cell_count) {
-            // New cell was grown!
-            cells_grown++;
-            std::cout << "\n━━━ GROWTH EVENT " << cells_grown << "/" << growth_targets.size()
-                      << " at frame " << frame << " ━━━\n";
+            // New cell(s) grown!
+            int new_cells = cells_after.size() - last_cell_count;
+            growth_events++;
+            std::cout << "\n━━━ GROWTH EVENT " << growth_events << " (+" << new_cells
+                      << " cells) at frame " << frame << " ━━━\n";
 
-            // Find the new cell.
+            // Find the new cells.
             for (const auto& pos : cells_after) {
                 if (cells_before.find(pos) == cells_before.end()) {
                     const Cell& cell = world->getData().at(pos.x, pos.y);
@@ -942,13 +944,14 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
             // Run stability check frames.
             std::cout << "Running " << STABILITY_FRAMES << " stability frames...\n";
             bool stable = true;
+            Vector2d tree_pos_after = tree->position;
 
             for (int s = 0; s < STABILITY_FRAMES; ++s) {
                 world->advanceTime(0.016);
                 frame++;
                 tracker.recordFrame(frame);
 
-                // Check for displaced cells.
+                // Check for displaced cells (still useful - detects tearing).
                 if (tracker.checkForDisplacements(frame)) {
                     std::cout << "❌ DISPLACEMENT DETECTED during stability check!\n";
                     stable = false;
@@ -956,44 +959,63 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
                     break;
                 }
 
-                // Check COM and velocity stability for all organism cells.
-                for (const auto& pos : tree->getCells()) {
-                    const Cell& cell = world->getData().at(pos.x, pos.y);
+                // RIGID BODY CHECK 1: Tree position should be stable.
+                if (s == STABILITY_FRAMES - 1) {
+                    double pos_drift = std::sqrt(
+                        std::pow(tree->position.x - tree_pos_after.x, 2)
+                        + std::pow(tree->position.y - tree_pos_after.y, 2));
+                    if (pos_drift > POS_THRESHOLD) {
+                        std::cout << "⚠️  Tree position drifted: " << pos_drift << " cells\n";
+                    }
 
-                    // Check COM drift.
-                    double com_magnitude =
-                        std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
-                    if (com_magnitude > COM_THRESHOLD && s == STABILITY_FRAMES - 1) {
-                        std::cout << "⚠️  COM drift at (" << pos.x << ", " << pos.y
-                                  << "): magnitude=" << com_magnitude
-                                  << " (threshold=" << COM_THRESHOLD << ")\n";
+                    // RIGID BODY CHECK 2: All cells should have same COM offset (coherence).
+                    std::vector<double> com_x_values, com_y_values;
+                    for (const auto& pos : tree->getCells()) {
+                        const Cell& cell = world->getData().at(pos.x, pos.y);
+                        com_x_values.push_back(cell.com.x);
+                        com_y_values.push_back(cell.com.y);
+                    }
+
+                    // Calculate variance in COM offsets.
+                    auto variance = [](const std::vector<double>& vals) {
+                        if (vals.empty()) return 0.0;
+                        double mean = 0.0;
+                        for (double v : vals)
+                            mean += v;
+                        mean /= vals.size();
+                        double var = 0.0;
+                        for (double v : vals)
+                            var += (v - mean) * (v - mean);
+                        return var / vals.size();
+                    };
+
+                    double com_x_variance = variance(com_x_values);
+                    double com_y_variance = variance(com_y_values);
+                    if (com_x_variance > COM_VARIANCE_THRESHOLD
+                        || com_y_variance > COM_VARIANCE_THRESHOLD) {
+                        std::cout << "⚠️  COM offsets not coherent - variance: x=" << com_x_variance
+                                  << ", y=" << com_y_variance << "\n";
                     }
 
                     // Check velocity after stability period.
-                    if (s == STABILITY_FRAMES - 1) {
-                        double vel_magnitude = std::sqrt(
-                            cell.velocity.x * cell.velocity.x + cell.velocity.y * cell.velocity.y);
-                        if (vel_magnitude > VEL_THRESHOLD) {
-                            std::cout << "⚠️  Velocity at (" << pos.x << ", " << pos.y
-                                      << "): magnitude=" << vel_magnitude
-                                      << " (threshold=" << VEL_THRESHOLD << ")\n";
-                        }
+                    double vel_magnitude = std::sqrt(
+                        tree->velocity.x * tree->velocity.x + tree->velocity.y * tree->velocity.y);
+                    if (vel_magnitude > VEL_THRESHOLD) {
+                        std::cout << "⚠️  Tree velocity: " << vel_magnitude
+                                  << " (threshold=" << VEL_THRESHOLD << ")\n";
                     }
                 }
             }
 
             if (stable) {
-                std::cout << "✅ Structure stable after growth " << cells_grown << "\n";
+                std::cout << "✅ Structure stable after growth event " << growth_events << "\n";
 
-                // Print final state of all cells.
-                std::cout << "Cell states after stabilization:\n";
-                for (const auto& pos : tree->getCells()) {
-                    const Cell& cell = world->getData().at(pos.x, pos.y);
-                    std::cout << "  " << getMaterialName(cell.material_type) << " at (" << pos.x
-                              << ", " << pos.y << "): COM=(" << std::fixed << std::setprecision(3)
-                              << cell.com.x << ", " << cell.com.y << "), vel=(" << cell.velocity.x
-                              << ", " << cell.velocity.y << ")\n";
-                }
+                // Print final state.
+                std::cout << "Tree position: (" << std::fixed << std::setprecision(3)
+                          << tree->position.x << ", " << tree->position.y << ")\n";
+                std::cout << "Tree velocity: (" << tree->velocity.x << ", " << tree->velocity.y
+                          << ")\n";
+                std::cout << "Cells: " << tree->getCells().size() << "\n";
             }
 
             last_cell_count = cells_after.size();
@@ -1002,19 +1024,45 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
 
     std::cout << "\n=== Final State ===\n";
     std::cout << "Total frames: " << frame << "\n";
-    std::cout << "Cells grown: " << cells_grown << "/" << growth_targets.size() << "\n";
+    std::cout << "Growth events: " << growth_events << "\n";
+    std::cout << "Final cell count: " << tree->getCells().size() << " (expected "
+              << (growth_targets.size() + 2) << " = seed + root + " << growth_targets.size()
+              << " targets)\n";
     std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
 
-    // Final assertions.
+    // Final assertions for rigid body behavior.
     EXPECT_FALSE(any_stability_failure) << "Structure should remain stable after each growth";
-    EXPECT_EQ(cells_grown, static_cast<int>(growth_targets.size()))
-        << "All growth targets should be reached";
+    EXPECT_EQ(tree->getCells().size(), growth_targets.size() + 2)
+        << "Should have seed + root + all growth targets";
 
-    // Final stability check: all COMs should be reasonably centered.
+    // RIGID BODY VALIDATION: Check all cells have consistent COM offsets.
+    std::vector<double> final_com_x, final_com_y;
     for (const auto& pos : tree->getCells()) {
         const Cell& cell = world->getData().at(pos.x, pos.y);
-        double com_magnitude = std::sqrt(cell.com.x * cell.com.x + cell.com.y * cell.com.y);
-        EXPECT_LT(com_magnitude, COM_THRESHOLD) << "Cell at (" << pos.x << ", " << pos.y
-                                                << ") has excessive COM drift: " << com_magnitude;
+        final_com_x.push_back(cell.com.x);
+        final_com_y.push_back(cell.com.y);
     }
+
+    auto variance = [](const std::vector<double>& vals) {
+        if (vals.empty()) return 0.0;
+        double mean = 0.0;
+        for (double v : vals)
+            mean += v;
+        mean /= vals.size();
+        double var = 0.0;
+        for (double v : vals)
+            var += (v - mean) * (v - mean);
+        return var / vals.size();
+    };
+
+    double final_x_variance = variance(final_com_x);
+    double final_y_variance = variance(final_com_y);
+
+    std::cout << "Final COM coherence - x variance: " << final_x_variance
+              << ", y variance: " << final_y_variance << "\n";
+
+    EXPECT_LT(final_x_variance, COM_VARIANCE_THRESHOLD)
+        << "All cells should have same X COM offset (rigid body coherence)";
+    EXPECT_LT(final_y_variance, COM_VARIANCE_THRESHOLD)
+        << "All cells should have same Y COM offset (rigid body coherence)";
 }

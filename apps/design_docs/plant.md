@@ -420,7 +420,6 @@ Material displacement multipliers (future):
 
 Need to do a status review of the tests and implementation.
 
-
 ### Phase 3: Resource Economy
 1. Light map calculation
 2. Photosynthesis implementation

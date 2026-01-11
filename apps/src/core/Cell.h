@@ -32,10 +32,6 @@ struct Cell {
     static constexpr uint32_t WIDTH = 30;
     static constexpr uint32_t HEIGHT = 30;
 
-    // =================================================================
-    // PUBLIC DATA MEMBERS (aggregate type)
-    // =================================================================
-
     MaterialType material_type = MaterialType::AIR;
     double fill_ratio = 0.0;
     Vector2d com = {};
@@ -52,12 +48,8 @@ struct Cell {
     // Allows cells to behave as one material but display as another.
     int8_t render_as = -1;
 
-    // Calculated lit color (packed RGBA). Set by WorldLightCalculator.
+    // Calculated lit color (packed RGBA).
     uint32_t color_ = 0x000000FF;
-
-    // =================================================================
-    // MATERIAL PROPERTIES
-    // =================================================================
 
     const MaterialProperties& material() const;
 
