@@ -25,17 +25,18 @@ enum class RenderFormat : uint8_t {
 };
 
 /**
- * @brief Basic cell data for rendering (3 bytes).
+ * @brief Basic cell data for rendering (7 bytes).
  *
- * Contains material type, fill ratio, and optional render-as override.
+ * Contains material type, fill ratio, render-as override, and lit color.
  * Fill ratio is quantized to 8-bit precision (256 levels).
  */
 struct BasicCell {
     uint8_t material_type; // MaterialType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
     int8_t render_as;      // Render override: -1 = use material_type, 0+ = MaterialType value.
+    uint32_t color;        // Lit color (packed RGBA from WorldLightCalculator).
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 /**

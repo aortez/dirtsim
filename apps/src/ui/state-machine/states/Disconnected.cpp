@@ -292,11 +292,13 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     MaterialType material;
                     double fill_ratio;
                     int8_t render_as;
+                    uint32_t color;
                     RenderMessageUtils::unpackBasicCell(
-                        basicCells[i], material, fill_ratio, render_as);
+                        basicCells[i], material, fill_ratio, render_as, color);
                     worldData.cells[i].material_type = material;
                     worldData.cells[i].fill_ratio = fill_ratio;
                     worldData.cells[i].render_as = render_as;
+                    worldData.cells[i].setColor(color);
                 }
             }
 

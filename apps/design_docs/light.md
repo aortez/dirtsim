@@ -304,12 +304,13 @@ Expose in a LightPanel or PhysicsPanel section:
 6. ✓ Implement ambient light, sunlight with opacity/tinting, emissive cells, diffusion
 7. ✓ Add 7 passing unit tests
 
-### Phase 2: Integration (Next)
+### Phase 2: Integration (In Progress)
 
-1. Integrate WorldLightCalculator into World::advanceTime()
-2. Update CellRenderer to use cell.getColor() instead of getMaterialColor()
-3. Add basic UI controls (sun toggle, intensity)
-4. Verify visual rendering works
+1. ✓ Integrate WorldLightCalculator into World::advanceTime()
+2. ✓ Update CellRenderer to use cell.getColor() instead of getMaterialColor()
+3. ✓ Add color to BasicCell transport (server→UI)
+4. Add basic UI controls (sun toggle, intensity)
+5. Tune material light properties for good visuals
 
 ### Phase 3: Point Lights
 

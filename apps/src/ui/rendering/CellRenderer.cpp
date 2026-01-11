@@ -234,32 +234,11 @@ static void applyBilinearFilter(uint32_t* pixels, uint32_t width, uint32_t heigh
     std::memcpy(pixels, filtered.data(), width * height * sizeof(uint32_t));
 }
 
-static lv_color_t getMaterialColor(MaterialType type)
+// Convert packed RGBA (ColorNames format) to LVGL color.
+// RGBA format: R << 24 | G << 16 | B << 8 | A.
+static lv_color_t getLitColor(uint32_t rgba)
 {
-    switch (type) {
-        case MaterialType::AIR:
-            return lv_color_hex(0x000000); // Black.
-        case MaterialType::DIRT:
-            return lv_color_hex(0xA0522D); // Sienna brown.
-        case MaterialType::LEAF:
-            return lv_color_hex(0x00FF32); // Bright lime green.
-        case MaterialType::METAL:
-            return lv_color_hex(0xC0C0C0); // Silver.
-        case MaterialType::ROOT:
-            return lv_color_hex(0xDEB887); // Burlywood.
-        case MaterialType::SAND:
-            return lv_color_hex(0xFFB347); // Sandy orange.
-        case MaterialType::SEED:
-            return lv_color_hex(0xFFD700); // Gold (bright and distinctive).
-        case MaterialType::WALL:
-            return lv_color_hex(0x808080); // Gray.
-        case MaterialType::WATER:
-            return lv_color_hex(0x00BFFF); // Deep sky blue.
-        case MaterialType::WOOD:
-            return lv_color_hex(0x654321); // Dark brown.
-        default:
-            return lv_color_hex(0xFF00FF); // Magenta for unknown.
-    }
+    return lv_color_hex((rgba >> 8) & 0xFFFFFF);
 }
 
 CellRenderer::~CellRenderer()
@@ -657,7 +636,7 @@ void CellRenderer::renderWorldData(
 
                 if (!cell.isEmpty() && cell.material_type != MaterialType::AIR
                     && !is_sprite_organism) {
-                    lv_color_t matColor = getMaterialColor(cell.getRenderMaterial());
+                    lv_color_t matColor = getLitColor(cell.getColor());
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).
                     // Normal mode: 0.85 opacity (subtle/faint border).
@@ -1059,7 +1038,7 @@ void CellRenderer::renderCellLVGL(
 
     // Render material if not empty.
     if (!cell.isEmpty() && cell.material_type != MaterialType::AIR) {
-        lv_color_t material_color = getMaterialColor(cell.getRenderMaterial());
+        lv_color_t material_color = getLitColor(cell.getColor());
         lv_opa_t opacity =
             static_cast<lv_opa_t>(cell.fill_ratio * static_cast<double>(LV_OPA_COVER));
 

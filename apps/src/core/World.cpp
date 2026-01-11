@@ -17,6 +17,7 @@
 #include "WorldDiagramGeneratorEmoji.h"
 #include "WorldFrictionCalculator.h"
 #include "WorldInterpolationTool.h"
+#include "WorldLightCalculator.h"
 #include "WorldPressureCalculator.h"
 #include "WorldRigidBodyCalculator.h"
 #include "WorldVelocityLimitCalculator.h"
@@ -63,9 +64,10 @@ struct World::Impl {
     std::optional<GridOfCells> grid_;
 
     // Calculators. WorldFrictionCalculator is constructed locally with GridOfCells reference.
-    WorldPressureCalculator pressure_calculator_;
-    WorldCollisionCalculator collision_calculator_;
     WorldAdhesionCalculator adhesion_calculator_;
+    WorldCollisionCalculator collision_calculator_;
+    WorldLightCalculator light_calculator_;
+    WorldPressureCalculator pressure_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
 
     // Material transfer queue (internal simulation state).
@@ -461,6 +463,12 @@ void World::advanceTime(double deltaTimeSeconds)
     {
         ScopeTimer decayTimer(pImpl->timers_, "pressure_decay");
         pImpl->pressure_calculator_.applyPressureDecay(*this, scaledDeltaTime);
+    }
+
+    // Calculate lighting for rendering and tree photosynthesis.
+    {
+        ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
+        pImpl->light_calculator_.calculate(*this, pImpl->physicsSettings_.light);
     }
 
     // Update organisms before force accumulation so new cells participate in physics.

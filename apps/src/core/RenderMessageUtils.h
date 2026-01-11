@@ -22,9 +22,9 @@ namespace RenderMessageUtils {
 // =============================================================================
 
 /**
- * @brief Pack a Cell into BasicCell format (2 bytes).
+ * @brief Pack a Cell into BasicCell format (7 bytes).
  *
- * Quantizes fill_ratio to 8-bit precision.
+ * Quantizes fill_ratio to 8-bit precision. Includes lit color.
  */
 inline BasicCell packBasicCell(const Cell& cell)
 {
@@ -32,6 +32,7 @@ inline BasicCell packBasicCell(const Cell& cell)
     result.material_type = static_cast<uint8_t>(cell.material_type);
     result.fill_ratio = static_cast<uint8_t>(std::clamp(cell.fill_ratio * 255.0, 0.0, 255.0));
     result.render_as = cell.render_as;
+    result.color = cell.getColor();
     return result;
 }
 
@@ -188,24 +189,17 @@ inline RenderMessage packRenderMessage(
 // UNPACKING FUNCTIONS (BasicCell/DebugCell → rendering data)
 // =============================================================================
 
-/**
- * @brief Unpack BasicCell to get material type, fill ratio, and render_as.
- */
 inline void unpackBasicCell(
-    const BasicCell& src, MaterialType& material, double& fill_ratio, int8_t& render_as)
+    const BasicCell& src,
+    MaterialType& material,
+    double& fill_ratio,
+    int8_t& render_as,
+    uint32_t& color)
 {
     material = static_cast<MaterialType>(src.material_type);
     fill_ratio = src.fill_ratio / 255.0;
     render_as = src.render_as;
-}
-
-/**
- * @brief Unpack BasicCell to get material type and fill ratio (legacy overload).
- */
-inline void unpackBasicCell(const BasicCell& src, MaterialType& material, double& fill_ratio)
-{
-    int8_t render_as;
-    unpackBasicCell(src, material, fill_ratio, render_as);
+    color = src.color;
 }
 
 /**
