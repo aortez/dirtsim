@@ -21,6 +21,14 @@ static constexpr int MONTSERRAT24_GAP = 2;
 static constexpr int MONTSERRAT24_COLON_WIDTH = 4;
 static constexpr int MONTSERRAT24_COLON_PADDING = 1;
 
+// Noto Color Emoji dimensions (sampled via FontSampler with FreeType).
+// Color emojis are rendered as square bitmaps, then converted to materials.
+static constexpr int NOTO_EMOJI_WIDTH = 32;
+static constexpr int NOTO_EMOJI_HEIGHT = 32;
+static constexpr int NOTO_EMOJI_GAP = 2;
+static constexpr int NOTO_EMOJI_COLON_WIDTH = 8;
+static constexpr int NOTO_EMOJI_COLON_PADDING = 1;
+
 // Standard 7-segment dimensions (5×7).
 static constexpr int SEGMENT7_WIDTH = 5;
 static constexpr int SEGMENT7_HEIGHT = 7;

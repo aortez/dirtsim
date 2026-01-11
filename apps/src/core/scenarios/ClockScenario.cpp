@@ -110,6 +110,8 @@ int ClockScenario::getDigitWidth() const
             return ClockFonts::DOT_MATRIX_WIDTH;
         case Config::ClockFont::Montserrat24:
             return ClockFonts::MONTSERRAT24_WIDTH;
+        case Config::ClockFont::NotoColorEmoji:
+            return ClockFonts::NOTO_EMOJI_WIDTH;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_WIDTH;
         case Config::ClockFont::Segment7ExtraTall:
@@ -131,6 +133,8 @@ int ClockScenario::getDigitHeight() const
             return ClockFonts::DOT_MATRIX_HEIGHT;
         case Config::ClockFont::Montserrat24:
             return ClockFonts::MONTSERRAT24_HEIGHT;
+        case Config::ClockFont::NotoColorEmoji:
+            return ClockFonts::NOTO_EMOJI_HEIGHT;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_HEIGHT;
         case Config::ClockFont::Segment7ExtraTall:
@@ -152,6 +156,8 @@ int ClockScenario::getDigitGap() const
             return ClockFonts::DOT_MATRIX_GAP;
         case Config::ClockFont::Montserrat24:
             return ClockFonts::MONTSERRAT24_GAP;
+        case Config::ClockFont::NotoColorEmoji:
+            return ClockFonts::NOTO_EMOJI_GAP;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_GAP;
         case Config::ClockFont::Segment7ExtraTall:
@@ -173,6 +179,8 @@ int ClockScenario::getColonWidth() const
             return ClockFonts::DOT_MATRIX_COLON_WIDTH;
         case Config::ClockFont::Montserrat24:
             return ClockFonts::MONTSERRAT24_COLON_WIDTH;
+        case Config::ClockFont::NotoColorEmoji:
+            return ClockFonts::NOTO_EMOJI_COLON_WIDTH;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_COLON_WIDTH;
         case Config::ClockFont::Segment7ExtraTall:
@@ -194,6 +202,8 @@ int ClockScenario::getColonPadding() const
             return ClockFonts::DOT_MATRIX_COLON_PADDING;
         case Config::ClockFont::Montserrat24:
             return ClockFonts::MONTSERRAT24_COLON_PADDING;
+        case Config::ClockFont::NotoColorEmoji:
+            return ClockFonts::NOTO_EMOJI_COLON_PADDING;
         case Config::ClockFont::Segment7:
             return ClockFonts::SEGMENT7_COLON_PADDING;
         case Config::ClockFont::Segment7ExtraTall:
@@ -210,6 +220,21 @@ int ClockScenario::getColonPadding() const
 
 void ClockScenario::ensureFontSamplerInitialized()
 {
+    // Check if we need to create or recreate the sampler for a different font.
+    bool needs_sampler_fonts =
+        (config_.font == Config::ClockFont::Montserrat24
+         || config_.font == Config::ClockFont::NotoColorEmoji);
+
+    if (!needs_sampler_fonts) {
+        // This font uses static patterns, not FontSampler.
+        return;
+    }
+
+    // Recreate sampler if font changed.
+    if (font_sampler_ && font_sampler_font_ != config_.font) {
+        font_sampler_.reset();
+    }
+
     if (font_sampler_) {
         return;
     }
@@ -218,21 +243,37 @@ void ClockScenario::ensureFontSamplerInitialized()
     // Do not create a display here - FontSampler's ensureHeadlessDisplay() properly
     // calls lv_init() before creating the display.
 
-    // Create FontSampler with Montserrat 24pt.
-    // Canvas size starts large to avoid resize iterations. Trimmed patterns will
-    // auto-resize if clipping is detected, then trim whitespace for a tight fit.
-    font_sampler_ = std::make_unique<FontSampler>(
-        &lv_font_montserrat_24,
-        48, // Large initial canvas to fit 24pt glyphs without resizing.
-        48,
-        0.3f);
+    if (config_.font == Config::ClockFont::NotoColorEmoji) {
+        // Create FontSampler with NotoColorEmoji via FreeType.
+        // Path relative to executable (fonts/ directory).
+        font_sampler_ = std::make_unique<FontSampler>(
+            "fonts/NotoColorEmoji.ttf",
+            ClockFonts::NOTO_EMOJI_HEIGHT,    // Font size matches target height.
+            ClockFonts::NOTO_EMOJI_WIDTH + 4, // Canvas slightly larger than glyph.
+            ClockFonts::NOTO_EMOJI_HEIGHT + 4,
+            0.3f);
+
+        spdlog::info("ClockScenario: FontSampler initialized for NotoColorEmoji");
+    }
+    else {
+        // Create FontSampler with Montserrat 24pt.
+        // Canvas size starts large to avoid resize iterations. Trimmed patterns will
+        // auto-resize if clipping is detected, then trim whitespace for a tight fit.
+        font_sampler_ = std::make_unique<FontSampler>(
+            &lv_font_montserrat_24,
+            48, // Large initial canvas to fit 24pt glyphs without resizing.
+            48,
+            0.3f);
+
+        spdlog::info("ClockScenario: FontSampler initialized for Montserrat 24pt");
+    }
+
+    font_sampler_font_ = config_.font;
 
     // Precache digits 0-9 using trimmed patterns.
     for (char c = '0'; c <= '9'; ++c) {
         font_sampler_->getCachedPatternTrimmed(c);
     }
-
-    spdlog::info("ClockScenario: FontSampler initialized for Montserrat 24pt");
 }
 
 const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int digit)
@@ -697,6 +738,15 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                     pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
                     break;
                 case Config::ClockFont::Montserrat24: {
+                    const auto& pattern = getSampledDigitPattern(digit);
+                    if (row < static_cast<int>(pattern.size())
+                        && col < static_cast<int>(pattern[row].size())) {
+                        pixel = pattern[row][col];
+                    }
+                    break;
+                }
+                case Config::ClockFont::NotoColorEmoji: {
+                    // NotoColorEmoji uses FontSampler like Montserrat24.
                     const auto& pattern = getSampledDigitPattern(digit);
                     if (row < static_cast<int>(pattern.size())
                         && col < static_cast<int>(pattern[row].size())) {

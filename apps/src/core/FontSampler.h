@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ColorMaterialMapper.h"
+#include "MaterialType.h"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -12,22 +14,30 @@ typedef struct _lv_font_t lv_font_t;
 namespace DirtSim {
 
 /**
- * Samples characters from LVGL fonts into boolean grid patterns.
+ * Samples characters from LVGL fonts into boolean or RGB grid patterns.
  *
  * Uses LVGL's canvas and text rendering to convert any supported font
- * character into a 2D boolean grid suitable for cell-based rendering.
+ * character into 2D patterns suitable for cell-based rendering. Supports
+ * boolean thresholding, full RGB sampling, and automatic dithering to
+ * MaterialTypes for colored emoji rendering.
  *
- * TODO: Add full RGB color sampling support:
- *   1. sampleCharacterRgb() - Return full RGBA per pixel (already available
- *      from lv_canvas_get_px, just need to expose it).
- *   2. Add color-to-material mapping that either:
- *      - Thresholds to binary on/off (current behavior), or
- *      - Dithers into the closest primary MaterialType color per cell.
- *   This would enable colored emoji and multi-material text rendering.
+ * Supports two font sources:
+ * 1. Built-in LVGL fonts (passed as const lv_font_t*)
+ * 2. Runtime-loaded fonts via FreeType (TTF files, including color emoji)
  */
 class FontSampler {
 public:
+    // Constructor for built-in LVGL fonts.
     FontSampler(const lv_font_t* font, int targetWidth, int targetHeight, float threshold = 0.3f);
+
+    // Constructor for runtime-loaded fonts (TTF files via FreeType).
+    // Supports color emoji fonts like NotoColorEmoji.ttf.
+    FontSampler(
+        const std::string& fontPath,
+        int fontSize,
+        int targetWidth,
+        int targetHeight,
+        float threshold = 0.3f);
 
     ~FontSampler();
 
@@ -42,6 +52,14 @@ public:
     std::vector<std::vector<bool>> sampleCharacter(char c);
     std::vector<std::vector<bool>> sampleCharacter(char c, float threshold);
     std::vector<std::vector<bool>> sampleUtf8Character(const std::string& utf8Char);
+
+    std::vector<std::vector<RgbPixel>> sampleCharacterRgb(char c);
+    std::vector<std::vector<RgbPixel>> sampleUtf8CharacterRgb(const std::string& utf8Char);
+
+    std::vector<std::vector<MaterialType>> sampleCharacterMaterial(
+        char c, float alphaThreshold = 0.5f);
+    std::vector<std::vector<MaterialType>> sampleUtf8CharacterMaterial(
+        const std::string& utf8Char, float alphaThreshold = 0.5f);
 
     // Samples character, auto-resizes canvas if clipping detected, and trims whitespace.
     // Returns a tight-fitting pattern with the font's natural aspect ratio.
@@ -69,12 +87,18 @@ public:
 private:
     void initCanvas();
     void destroyCanvas();
+    void initFreeType();
     std::vector<std::vector<bool>> sampleCurrentCanvas(float threshold);
+    std::vector<std::vector<RgbPixel>> sampleCurrentCanvasRgb();
 
     const lv_font_t* font_;
     int targetWidth_;
     int targetHeight_;
     float threshold_;
+
+    // FreeType font ownership. If true, we created the font and must delete it.
+    bool ownsFont_ = false;
+    lv_font_t* ownedFont_ = nullptr; // Non-const pointer for fonts we own.
 
     // LVGL canvas resources (stored as void* to avoid LVGL in header).
     void* canvas_ = nullptr;

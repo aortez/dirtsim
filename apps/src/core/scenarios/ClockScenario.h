@@ -10,9 +10,11 @@
 #include "clock_scenario/ObstacleManager.h"
 #include "clock_scenario/RainEvent.h"
 #include "core/Cell.h"
+#include "core/FontSampler.h"
 #include "core/scenarios/Scenario.h"
 #include <array>
 #include <map>
+#include <memory>
 #include <optional>
 #include <random>
 #include <vector>
@@ -103,6 +105,13 @@ private:
 
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
+
+    // FontSampler for LVGL-based fonts (lazy-initialized).
+    // Recreated if config_.font changes.
+    std::unique_ptr<FontSampler> font_sampler_;
+    Config::ClockFont font_sampler_font_ = Config::ClockFont::DotMatrix; // Track sampler's font.
+    void ensureFontSamplerInitialized();
+    const std::vector<std::vector<bool>>& getSampledDigitPattern(int digit);
 
     // Font dimension helpers.
     int getDigitWidth() const;

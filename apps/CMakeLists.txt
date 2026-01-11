@@ -60,6 +60,9 @@ pkg_check_modules(AVAHI REQUIRED avahi-client)
 # Find OpenH264 for H.264 video encoding.
 pkg_check_modules(OPENH264 REQUIRED openh264)
 
+# Find FreeType for font rendering (color emoji support).
+pkg_check_modules(FREETYPE REQUIRED freetype2)
+
 # libyuv for YUV color space conversion (no pkg-config, link directly).
 # Headers at /usr/include/libyuv.h, library at /usr/lib/x86_64-linux-gnu/libyuv.so
 
@@ -188,8 +191,8 @@ set(CONFIG_LV_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_SHARED_LIBS OFF CACHE BOOL "Build static libraries" FORCE)
 
 add_subdirectory(./lvgl ${CMAKE_BINARY_DIR}/lvgl)
-target_include_directories(lvgl PUBLIC ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/lib ${PKG_CONFIG_INC})
-target_link_libraries(lvgl PUBLIC ${PKG_CONFIG_LIB})
+target_include_directories(lvgl PUBLIC ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/src/lib ${PKG_CONFIG_INC} ${FREETYPE_INCLUDE_DIRS})
+target_link_libraries(lvgl PUBLIC ${PKG_CONFIG_LIB} ${FREETYPE_LIBRARIES})
 
 add_subdirectory(./spdlog ${CMAKE_BINARY_DIR}/spdlog)
 
