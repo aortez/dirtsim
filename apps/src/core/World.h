@@ -259,6 +259,7 @@ public:
 private:
     Scenario* scenario_ = nullptr;
 
+    void clearPendingForces();
     void applyGravity();
     void applyAirResistance();
     void applyCohesionForces(const GridOfCells& grid);

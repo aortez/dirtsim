@@ -465,6 +465,15 @@ void World::advanceTime(double deltaTimeSeconds)
         pImpl->pressure_calculator_.applyPressureDecay(*this, scaledDeltaTime);
     }
 
+    // Clear pending forces before scenario tick and force accumulation.
+    clearPendingForces();
+
+    // Scenario tick runs before lighting so cell setup (e.g., clock digits) is visible.
+    if (scenario_) {
+        ScopeTimer scenarioTimer(pImpl->timers_, "scenario_tick");
+        scenario_->tick(*this, scaledDeltaTime);
+    }
+
     // Calculate lighting for rendering and tree photosynthesis.
     {
         ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
@@ -852,6 +861,13 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 // INTERNAL PHYSICS METHODS.
 // =================================================================.
 
+void World::clearPendingForces()
+{
+    for (auto& cell : pImpl->data_.cells) {
+        cell.clearPendingForce();
+    }
+}
+
 void World::applyGravity()
 {
     // Cache pImpl members as local references.
@@ -1066,34 +1082,12 @@ void World::applyPressureForces()
 
 void World::resolveForces(double deltaTime, const GridOfCells& grid)
 {
-    // Cache frequently accessed pImpl members as local references to eliminate indirection
-    // overhead.
+    // Cache frequently accessed pImpl members as local references.
     Timers& timers = pImpl->timers_;
-    WorldViscosityCalculator& viscosity_calc = pImpl->viscosity_calculator_;
     PhysicsSettings& settings = pImpl->physicsSettings_;
     WorldData& data = pImpl->data_;
-    std::vector<Cell>& cells = data.cells;
 
     ScopeTimer timer(timers, "resolve_forces");
-
-    // Clear pending forces at the start of each physics frame.
-    // Skip organism cells - they preserve forces added during organism update.
-    {
-        ScopeTimer clearTimer(timers, "resolve_forces_clear_pending");
-        const auto& org_grid = organism_manager_->getGrid();
-        for (size_t i = 0; i < cells.size(); ++i) {
-            if (org_grid[i] == INVALID_ORGANISM_ID) {
-                cells[i].clearPendingForce();
-            }
-        }
-    }
-
-    // Scenario tick - apply scenario forces after clear, before physics forces.
-    // This allows scenarios to use addPendingForce() and have forces processed normally.
-    if (scenario_) {
-        ScopeTimer scenarioTimer(timers, "resolve_forces_scenario_tick");
-        scenario_->tick(*this, deltaTime);
-    }
 
     // Apply gravity forces.
     {
@@ -1136,7 +1130,8 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
         ScopeTimer viscosityTimer(timers, "apply_viscous_forces");
-        double visc_strength = settings.viscosity_strength; // Cache once for entire loop.
+        WorldViscosityCalculator& viscosity_calc = pImpl->viscosity_calculator_;
+        double visc_strength = settings.viscosity_strength;
 
         // Parallelize when cache is enabled (use sequential for reference path).
 #ifdef _OPENMP

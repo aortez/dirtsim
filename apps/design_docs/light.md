@@ -194,31 +194,31 @@ private:
 
 ```cpp
 void WorldLightCalculator::calculate(World& world, const LightConfig& config) {
-    // 1. Start with material base colors.
-    initializeBaseColors(world);
+    // 1. Clear to black before accumulating light.
+    clearLight(world);
 
     // 2. Add ambient light.
-    applyAmbient(world, config.ambientColor);
+    applyAmbient(world, config.ambient_color);
 
     // 3. Add sunlight (top-down).
-    if (config.sunEnabled) {
-        applySunlight(world, config.sunColor, config.sunIntensity);
+    if (config.sun_enabled) {
+        applySunlight(world, config.sun_color, config.sun_intensity);
     }
 
-    // 4. Add point lights.
-    applyPointLights(world, world.getPointLights());
-
-    // 5. Add emissive material contributions.
+    // 4. Add emissive material contributions.
     applyEmissiveCells(world);
 
-    // 6. Diffuse/scatter light.
-    applyDiffusion(world, config.diffusionIterations, config.diffusionRate);
+    // 5. Diffuse/scatter light.
+    applyDiffusion(world, config.diffusion_iterations, config.diffusion_rate);
+
+    // 6. Apply material base colors (multiply light by material color).
+    applyMaterialColors(world);
 }
 ```
 
 ### Integration with World
 
-Light calculation runs **after physics, before organisms** so trees have current light values for photosynthesis:
+Light calculation runs **after scenario tick, before organisms** so trees have current light values for photosynthesis:
 
 ```cpp
 void World::advanceTime(double deltaTime) {

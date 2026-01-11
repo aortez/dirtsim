@@ -10,8 +10,8 @@ namespace DirtSim {
 
 void WorldLightCalculator::calculate(World& world, const LightConfig& config)
 {
-    // Start with material base colors.
-    initializeBaseColors(world);
+    // Clear to black before accumulating light.
+    clearLight(world);
 
     // Add ambient light.
     applyAmbient(world, config.ambient_color);
@@ -26,15 +26,17 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config)
 
     // Diffuse/scatter light.
     applyDiffusion(world, config.diffusion_iterations, config.diffusion_rate);
+
+    // Apply material base colors (multiply light by material color).
+    applyMaterialColors(world);
 }
 
-void WorldLightCalculator::initializeBaseColors(World& world)
+void WorldLightCalculator::clearLight(World& world)
 {
     auto& data = world.getData();
     for (uint32_t y = 0; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
             Cell& cell = data.cells[y * data.width + x];
-            // Start with black (no light).
             cell.setColor(ColorNames::black());
         }
     }
@@ -145,6 +147,51 @@ void WorldLightCalculator::applyDiffusion(World& world, int iterations, float ra
                 float blend = scatter * rate;
                 cell.setColor(ColorNames::lerp(current, neighbor_avg, blend));
             }
+        }
+    }
+}
+
+namespace {
+
+uint32_t getMaterialBaseColor(MaterialType mat)
+{
+    switch (mat) {
+        case MaterialType::AIR:
+            return ColorNames::black(); // AIR stays black (background).
+        case MaterialType::DIRT:
+            return ColorNames::dirt();
+        case MaterialType::LEAF:
+            return ColorNames::leaf();
+        case MaterialType::METAL:
+            return ColorNames::metal();
+        case MaterialType::ROOT:
+            return ColorNames::root();
+        case MaterialType::SAND:
+            return ColorNames::sand();
+        case MaterialType::SEED:
+            return ColorNames::seed();
+        case MaterialType::WALL:
+            return ColorNames::stone();
+        case MaterialType::WATER:
+            return ColorNames::water();
+        case MaterialType::WOOD:
+            return ColorNames::wood();
+        default:
+            return ColorNames::white();
+    }
+}
+
+} // namespace
+
+void WorldLightCalculator::applyMaterialColors(World& world)
+{
+    auto& data = world.getData();
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            Cell& cell = data.cells[y * data.width + x];
+            // Use getRenderMaterial() to respect render_as override.
+            uint32_t base_color = getMaterialBaseColor(cell.getRenderMaterial());
+            cell.setColor(ColorNames::multiply(cell.getColor(), base_color));
         }
     }
 }

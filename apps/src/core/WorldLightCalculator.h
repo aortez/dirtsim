@@ -38,11 +38,12 @@ public:
     std::string lightMapString(const World& world) const;
 
 private:
-    void initializeBaseColors(World& world);
+    void clearLight(World& world);
     void applyAmbient(World& world, uint32_t ambient_color);
     void applySunlight(World& world, uint32_t sun_color, float intensity);
     void applyEmissiveCells(World& world);
     void applyDiffusion(World& world, int iterations, float rate);
+    void applyMaterialColors(World& world);
 
     // Temporary buffer for diffusion double-buffering.
     std::vector<uint32_t> light_buffer_;
