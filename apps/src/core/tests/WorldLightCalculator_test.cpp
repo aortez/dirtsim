@@ -224,8 +224,9 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
         data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
-    // No ambient.
+    // No ambient (disable sky access for uniform ambient test).
     config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
     calc.calculate(world, config);
     float dark_brightness = ColorNames::brightness(data.at(2, 3).getColor());
 
@@ -235,4 +236,106 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
     float ambient_brightness = ColorNames::brightness(data.at(2, 3).getColor());
 
     EXPECT_GT(ambient_brightness, dark_brightness) << "Ambient light should add base illumination";
+}
+
+TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
+{
+    World world(5, 5);
+    WorldData& data = world.getData();
+
+    // Fill with WATER so we can see light.
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Disable sun to isolate ambient.
+    config.sun_enabled = false;
+    config.ambient_color = 0x808080FF; // Mid-gray.
+    config.sky_access_enabled = false; // Uniform ambient for this test.
+
+    // Intensity 1.0.
+    config.ambient_intensity = 1.0f;
+    calc.calculate(world, config);
+    float brightness_1x = ColorNames::brightness(data.at(2, 2).getColor());
+
+    // Intensity 2.0.
+    config.ambient_intensity = 2.0f;
+    calc.calculate(world, config);
+    float brightness_2x = ColorNames::brightness(data.at(2, 2).getColor());
+
+    EXPECT_GT(brightness_2x, brightness_1x) << "Higher ambient intensity should be brighter";
+}
+
+TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
+{
+    World world(5, 10);
+    WorldData& data = world.getData();
+
+    // Fill with WATER (low opacity, visible color).
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Wall at row 3 blocks sky access.
+    for (uint32_t x = 0; x < 5; ++x) {
+        data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // Disable sun, use only ambient with sky access.
+    config.sun_enabled = false;
+    config.ambient_color = 0xFFFFFFFF; // White ambient.
+    config.ambient_intensity = 1.0f;
+    config.sky_access_enabled = true;
+    config.sky_access_falloff = 1.0f;
+
+    calc.calculate(world, config);
+
+    // Cell above wall (row 2) should have decent ambient.
+    float above_wall = ColorNames::brightness(data.at(2, 2).getColor());
+    // Cell below wall (row 5) should have reduced ambient.
+    float below_wall = ColorNames::brightness(data.at(2, 5).getColor());
+
+    EXPECT_GT(above_wall, 0.2f) << "Cell above wall should have some ambient";
+    EXPECT_LT(below_wall, above_wall) << "Cell below wall should have less ambient (sky blocked)";
+}
+
+TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
+{
+    World world(10, 10);
+    WorldData& data = world.getData();
+
+    // Fill with WATER (low opacity, visible color).
+    for (uint32_t y = 0; y < data.height; ++y) {
+        for (uint32_t x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Wall across row 2, but leave a gap at x=5 (vertical shaft).
+    for (uint32_t x = 0; x < 10; ++x) {
+        if (x != 5) {
+            data.at(x, 2).replaceMaterial(MaterialType::WALL, 1.0);
+        }
+    }
+
+    // Disable sun, use only ambient with sky access.
+    config.sun_enabled = false;
+    config.ambient_color = 0xFFFFFFFF;
+    config.ambient_intensity = 1.0f;
+    config.sky_access_enabled = true;
+    config.sky_access_falloff = 1.0f;
+
+    calc.calculate(world, config);
+
+    // Cell below wall (blocked) should be dimmer.
+    float blocked = ColorNames::brightness(data.at(3, 5).getColor());
+    // Cell in vertical shaft should maintain higher ambient.
+    float shaft = ColorNames::brightness(data.at(5, 5).getColor());
+
+    EXPECT_GT(shaft, blocked) << "Cell in shaft should be brighter than blocked cell";
+    EXPECT_GT(shaft, 0.2f) << "Cell in vertical shaft should have decent ambient";
 }

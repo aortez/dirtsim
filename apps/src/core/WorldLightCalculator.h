@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PhysicsSettings.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
 #include <string>
@@ -7,7 +8,6 @@
 
 namespace DirtSim {
 
-struct LightConfig;
 class World;
 
 /**
@@ -39,7 +39,7 @@ public:
 
 private:
     void clearLight(World& world);
-    void applyAmbient(World& world, uint32_t ambient_color);
+    void applyAmbient(World& world, const LightConfig& config);
     void applySunlight(World& world, uint32_t sun_color, float intensity);
     void applyEmissiveCells(World& world);
     void applyDiffusion(World& world, int iterations, float rate);

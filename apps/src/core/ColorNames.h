@@ -70,10 +70,12 @@ inline uint32_t lerp(uint32_t a, uint32_t b, float t)
     return rgbaF(r, g, blue, alpha);
 }
 
-// Multiply color by scalar (for intensity).
+// Multiply color by scalar (for intensity), clamped to prevent overflow.
 inline uint32_t scale(uint32_t color, float s)
 {
-    return rgbaF(getRf(color) * s, getGf(color) * s, getBf(color) * s, getAf(color));
+    auto clamp = [](float v) { return v > 1.0f ? 1.0f : (v < 0.0f ? 0.0f : v); };
+    return rgbaF(
+        clamp(getRf(color) * s), clamp(getGf(color) * s), clamp(getBf(color) * s), getAf(color));
 }
 
 // Multiply two colors component-wise (for tinting).

@@ -406,6 +406,46 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return getAmbientColorIndex(s.light.ambient_color);
                             } },
+                      { .label = "Ambient Intensity",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 300,
+                        .defaultValue = 100,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.ambient_intensity = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.ambient_intensity);
+                            },
+                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
+                                           [[maybe_unused]] bool e) {},
+                        .enableGetter =
+                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                      { .label = "Sky Access Falloff",
+                        .type = ControlType::TOGGLE_SLIDER,
+                        .rangeMin = 0,
+                        .rangeMax = 200,
+                        .defaultValue = 100,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .initiallyEnabled = true,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.sky_access_falloff = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.sky_access_falloff);
+                            },
+                        .enableSetter = [](PhysicsSettings& s,
+                                           bool e) { s.light.sky_access_enabled = e; },
+                        .enableGetter =
+                            [](const PhysicsSettings& s) { return s.light.sky_access_enabled; } },
                       { .label = "Diffusion Iters",
                         .type = ControlType::TOGGLE_SLIDER,
                         .rangeMin = 0,

@@ -12,6 +12,9 @@ namespace DirtSim {
  */
 struct LightConfig {
     uint32_t ambient_color = 0x1A1A1EFF; // dayAmbient default.
+    float ambient_intensity = 1.0f;
+    bool sky_access_enabled = true;
+    float sky_access_falloff = 1.0f;
     bool sun_enabled = true;
     uint32_t sun_color = 0xFFF2D9FF; // warmSunlight default.
     float sun_intensity = 1.0f;

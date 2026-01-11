@@ -13,8 +13,8 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config)
     // Clear to black before accumulating light.
     clearLight(world);
 
-    // Add ambient light.
-    applyAmbient(world, config.ambient_color);
+    // Add ambient light (with optional sky access attenuation).
+    applyAmbient(world, config);
 
     // Add sunlight (top-down).
     if (config.sun_enabled) {
@@ -42,13 +42,39 @@ void WorldLightCalculator::clearLight(World& world)
     }
 }
 
-void WorldLightCalculator::applyAmbient(World& world, uint32_t ambient_color)
+void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
 {
     auto& data = world.getData();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    uint32_t base_ambient = ColorNames::scale(config.ambient_color, config.ambient_intensity);
+
+    if (!config.sky_access_enabled) {
+        // Uniform ambient everywhere.
+        for (uint32_t y = 0; y < data.height; ++y) {
+            for (uint32_t x = 0; x < data.width; ++x) {
+                Cell& cell = data.cells[y * data.width + x];
+                cell.setColor(ColorNames::add(cell.getColor(), base_ambient));
+            }
+        }
+        return;
+    }
+
+    // Sky access attenuation: ambient diminishes with depth based on opacity above.
+    for (uint32_t x = 0; x < data.width; ++x) {
+        float sky_factor = 1.0f;
+
+        for (uint32_t y = 0; y < data.height; ++y) {
             Cell& cell = data.cells[y * data.width + x];
-            cell.setColor(ColorNames::add(cell.getColor(), ambient_color));
+
+            // Apply ambient scaled by sky access.
+            uint32_t ambient = ColorNames::scale(base_ambient, sky_factor);
+            cell.setColor(ColorNames::add(cell.getColor(), ambient));
+
+            // Attenuate sky access by material opacity.
+            float opacity = cell.material().light.opacity;
+            sky_factor *= (1.0f - opacity * config.sky_access_falloff);
+            if (sky_factor < 0.0f) {
+                sky_factor = 0.0f;
+            }
         }
     }
 }
