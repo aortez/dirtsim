@@ -31,11 +31,11 @@ public:
 
     // Blocked transfer data for dynamic pressure accumulation.
     struct BlockedTransfer {
-        int fromX, fromY;       // Source cell coordinates.
-        int toX, toY;           // Target cell coordinates.
-        double transfer_amount; // Amount that was blocked.
-        Vector2d velocity;      // Velocity at time of blocking.
-        double energy;          // Kinetic energy of blocked transfer.
+        int fromX, fromY;      // Source cell coordinates.
+        int toX, toY;          // Target cell coordinates.
+        float transfer_amount; // Amount that was blocked.
+        Vector2f velocity;     // Velocity at time of blocking.
+        float energy;          // Kinetic energy of blocked transfer.
     };
 
     // Pressure-specific constants.
@@ -44,7 +44,7 @@ public:
     static constexpr double DYNAMIC_MULTIPLIER = 1;
     static constexpr double MIN_PRESSURE_THRESHOLD = 0.001; // Ignore pressures below this.
 
-    void injectGravityPressure(World& world, double deltaTime);
+    void injectGravityPressure(World& world, float deltaTime);
 
     /**
      * @brief Queue a blocked transfer for dynamic pressure accumulation.
@@ -73,7 +73,7 @@ public:
      * Calculates the pressure gradient by comparing total pressure (hydrostatic + dynamic)
      * with neighboring cells. The gradient points in the direction of decreasing pressure.
      */
-    Vector2d calculatePressureGradient(const World& world, uint32_t x, uint32_t y) const;
+    Vector2f calculatePressureGradient(const World& world, uint32_t x, uint32_t y) const;
 
     /**
      * @brief Calculate expected gravity gradient at a cell position.
@@ -97,7 +97,7 @@ public:
      * If the downward path is blocked, this gravitational force converts to pressure.
      * This allows dynamic pressure to naturally model hydrostatic-like behavior.
      */
-    void generateVirtualGravityTransfers(World& world, double deltaTime);
+    void generateVirtualGravityTransfers(World& world, float deltaTime);
 
     /**
      * @brief Apply pressure decay to dynamic pressure values.
@@ -107,7 +107,7 @@ public:
      * Decays dynamic pressure over time. Hydrostatic pressure does not decay.
      * This should be called after material moves are complete.
      */
-    void applyPressureDecay(World& world, double deltaTime);
+    void applyPressureDecay(World& world, float deltaTime);
 
     /**
      * @brief Apply pressure diffusion between neighboring cells.
@@ -118,7 +118,7 @@ public:
      * Pressure spreads from high to low pressure regions based on material
      * diffusion coefficients. Walls act as barriers with zero flux.
      */
-    void applyPressureDiffusion(World& world, double deltaTime);
+    void applyPressureDiffusion(World& world, float deltaTime);
 
     /**
      * @brief Calculate material-based reflection coefficient.
@@ -129,7 +129,7 @@ public:
      * Calculates how much energy is reflected when material hits a wall.
      * Takes into account material elasticity and applies energy-dependent damping.
      */
-    double calculateReflectionCoefficient(MaterialType materialType, double impactEnergy) const;
+    float calculateReflectionCoefficient(MaterialType materialType, float impactEnergy) const;
 
     // Queue of blocked transfers.
     std::vector<BlockedTransfer> blocked_transfers_;

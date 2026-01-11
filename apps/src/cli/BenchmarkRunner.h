@@ -51,14 +51,16 @@ public:
         const std::string& serverPath,
         uint32_t steps,
         const std::string& scenario = "Benchmark",
-        int worldSize = 0);
+        int worldSize = 0,
+        const std::string& remoteAddress = "");
 
     BenchmarkResults runWithServerArgs(
         const std::string& serverPath,
         uint32_t steps,
         const std::string& scenario,
         const std::string& serverArgs,
-        int worldSize = 0);
+        int worldSize = 0,
+        const std::string& remoteAddress = "");
 
 private:
     SubprocessManager subprocessManager_;

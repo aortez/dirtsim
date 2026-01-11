@@ -1,31 +1,29 @@
 #include "WorldAirResistanceCalculator.h"
 #include "Cell.h"
 #include "MaterialType.h"
-#include "PhysicsSettings.h"
 #include "World.h"
-#include "WorldData.h"
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 using namespace DirtSim;
 
-Vector2d WorldAirResistanceCalculator::calculateAirResistance(
-    const World& world, uint32_t x, uint32_t y, double strength) const
+Vector2f WorldAirResistanceCalculator::calculateAirResistance(
+    const World& world, uint32_t x, uint32_t y, float strength) const
 {
     const Cell& cell = getCellAt(world, x, y);
 
     // No air resistance for empty or wall cells.
     if (cell.isEmpty() || cell.isWall()) {
-        return Vector2d{ 0.0, 0.0 };
+        return Vector2f{ 0.0f, 0.0f };
     }
 
     // Get cell velocity.
-    Vector2d velocity = cell.velocity;
-    double velocity_magnitude = velocity.mag();
+    Vector2f velocity = cell.velocity;
+    float velocity_magnitude = velocity.mag();
 
     // No resistance if not moving.
     if (velocity_magnitude < MIN_MATTER_THRESHOLD) {
-        return Vector2d{ 0.0, 0.0 };
+        return Vector2f{ 0.0f, 0.0f };
     }
 
     // Get material properties.
@@ -41,12 +39,12 @@ Vector2d WorldAirResistanceCalculator::calculateAirResistance(
     //
     // Material-specific air resistance models shape, surface area, and density effects.
 
-    Vector2d velocity_direction = velocity.normalize();
-    double force_magnitude =
+    Vector2f velocity_direction = velocity.normalize();
+    float force_magnitude =
         strength * props.air_resistance * velocity_magnitude * velocity_magnitude;
 
     // Force opposes motion (negative of velocity direction).
-    Vector2d air_resistance_force = velocity_direction * (-force_magnitude);
+    Vector2f air_resistance_force = velocity_direction * (-force_magnitude);
 
     // Debug logging for significant forces.
     if (force_magnitude > 0.01) {

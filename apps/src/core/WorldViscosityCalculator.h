@@ -1,8 +1,7 @@
 #ifndef WORLDVISCOSITYCALCULATOR_H
 #define WORLDVISCOSITYCALCULATOR_H
 
-#include "MaterialType.h"
-#include "Vector2d.h"
+#include "Vector2.h"
 #include "WorldCalculatorBase.h"
 
 namespace DirtSim {
@@ -30,9 +29,9 @@ class WorldViscosityCalculator : public WorldCalculatorBase {
 public:
     // Data structure for viscous force results.
     struct ViscousForce {
-        Vector2d force;            // Net viscous force from all neighbors.
-        double neighbor_avg_speed; // Average speed of same-material neighbors.
-        int neighbor_count;        // Number of neighbors used in average.
+        Vector2f force;           // Net viscous force from all neighbors.
+        float neighbor_avg_speed; // Average speed of same-material neighbors.
+        int neighbor_count;       // Number of neighbors used in average.
     };
 
     // Default constructor - calculator is stateless.
@@ -49,7 +48,7 @@ public:
         const World& world,
         uint32_t x,
         uint32_t y,
-        double viscosity_strength,
+        float viscosity_strength,
         const GridOfCells* grid = nullptr) const;
 };
 

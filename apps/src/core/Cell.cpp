@@ -12,9 +12,9 @@
 
 using namespace DirtSim;
 
-void Cell::setFillRatio(double ratio)
+void Cell::setFillRatio(float ratio)
 {
-    fill_ratio = std::clamp(ratio, 0.0, 1.0);
+    fill_ratio = std::clamp(ratio, 0.0f, 1.0f);
 
     // If fill ratio becomes effectively zero, convert to empty AIR.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
@@ -23,20 +23,20 @@ void Cell::setFillRatio(double ratio)
                 "Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)", fill_ratio);
         }
         material_type = MaterialType::AIR;
-        fill_ratio = 0.0;
-        velocity = Vector2d{ 0.0, 0.0 };
-        com = Vector2d{ 0.0, 0.0 };
+        fill_ratio = 0.0f;
+        velocity = Vector2f{ 0.0f, 0.0f };
+        com = Vector2f{ 0.0f, 0.0f };
 
         // Clear pressure values when converting to air.
-        pressure = 0.0;
-        pressure_gradient = Vector2d{ 0.0, 0.0 };
+        pressure = 0.0f;
+        pressure_gradient = Vector2f{ 0.0f, 0.0f };
     }
 }
 
-void Cell::setCOM(const Vector2d& newCom)
+void Cell::setCOM(const Vector2f& newCom)
 {
     com =
-        Vector2d{ std::clamp(newCom.x, COM_MIN, COM_MAX), std::clamp(newCom.y, COM_MIN, COM_MAX) };
+        Vector2f{ std::clamp(newCom.x, COM_MIN, COM_MAX), std::clamp(newCom.y, COM_MIN, COM_MAX) };
 }
 
 double Cell::getMass() const
@@ -148,8 +148,8 @@ double Cell::removeMaterial(double amount)
         return 0.0;
     }
 
-    const double removed = std::min(amount, fill_ratio);
-    fill_ratio -= removed;
+    const double removed = std::min(amount, static_cast<double>(fill_ratio));
+    fill_ratio -= static_cast<float>(removed);
 
     // Check if we became empty.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
@@ -166,7 +166,7 @@ double Cell::transferTo(Cell& target, double amount)
     }
 
     // Calculate how much we can actually transfer.
-    const double available = std::min(amount, fill_ratio);
+    const double available = std::min(amount, static_cast<double>(fill_ratio));
     const double accepted = target.addMaterial(material_type, available);
 
     // Remove the accepted amount from this cell.
@@ -184,7 +184,7 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
     }
 
     // Calculate how much we can actually transfer.
-    const double available = std::min(amount, fill_ratio);
+    const double available = std::min(amount, static_cast<double>(fill_ratio));
 
     // Use physics-aware method with current COM and velocity.
     // Note: organism tracking is handled by OrganismManager, not Cell.
@@ -293,8 +293,10 @@ Vector2d Cell::calculateTrajectoryLanding(
     }
 
     // Clamp to valid COM bounds.
-    target_com.x = std::clamp(target_com.x, COM_MIN, COM_MAX);
-    target_com.y = std::clamp(target_com.y, COM_MIN, COM_MAX);
+    target_com.x =
+        std::clamp(target_com.x, static_cast<double>(COM_MIN), static_cast<double>(COM_MAX));
+    target_com.y =
+        std::clamp(target_com.y, static_cast<double>(COM_MIN), static_cast<double>(COM_MAX));
 
     return target_com;
 }
@@ -438,7 +440,7 @@ const MaterialProperties& Cell::material() const
     return getMaterialProperties(material_type);
 }
 
-void Cell::addPendingForce(const Vector2d& force)
+void Cell::addPendingForce(const Vector2f& force)
 {
     pending_force = pending_force + force;
 }
@@ -476,9 +478,9 @@ MaterialType Cell::getRenderMaterial() const
     return material_type;
 }
 
-void Cell::setCOM(double x, double y)
+void Cell::setCOM(float x, float y)
 {
-    setCOM(Vector2d{ x, y });
+    setCOM(Vector2f{ x, y });
 }
 
 void Cell::clearPressure()

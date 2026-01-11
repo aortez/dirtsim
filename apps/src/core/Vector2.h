@@ -24,6 +24,18 @@ struct Vector2 {
     // Custom zpp_bits serialization (2 fields: x, y).
     using serialize = zpp::bits::members<2>;
 
+    // Default constructor.
+    constexpr Vector2() = default;
+
+    // Component constructor.
+    constexpr Vector2(T x_, T y_) : x(x_), y(y_) {}
+
+    // Conversion constructor from other Vector2 types (implicit for convenience).
+    template <typename U, typename = std::enable_if_t<!std::is_same_v<T, U>>>
+    constexpr Vector2(const Vector2<U>& other)
+        : x(static_cast<T>(other.x)), y(static_cast<T>(other.y))
+    {}
+
     // =================================================================
     // BASIC OPERATIONS (work for all types)
     // =================================================================

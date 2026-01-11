@@ -614,8 +614,8 @@ TEST_P(ParameterizedBuoyancyTest, DISABLED_MaterialBuoyancyBehavior)
             spdlog::info("    friction_coeff={:.3f}", debug.cached_friction_coefficient);
         }
 
-        Vector2d vel_before =
-            (current_y >= 0) ? world->getData().at(0, current_y).velocity : Vector2d{};
+        Vector2f vel_before =
+            (current_y >= 0) ? world->getData().at(0, current_y).velocity : Vector2f{};
 
         world->advanceTime(deltaTime);
         steps_taken++;

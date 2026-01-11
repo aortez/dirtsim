@@ -20,10 +20,14 @@ BenchmarkRunner::~BenchmarkRunner()
 {}
 
 BenchmarkResults BenchmarkRunner::run(
-    const std::string& serverPath, uint32_t steps, const std::string& scenario, int worldSize)
+    const std::string& serverPath,
+    uint32_t steps,
+    const std::string& scenario,
+    int worldSize,
+    const std::string& remoteAddress)
 {
     // Delegate to runWithServerArgs with no extra arguments.
-    return runWithServerArgs(serverPath, steps, scenario, "", worldSize);
+    return runWithServerArgs(serverPath, steps, scenario, "", worldSize, remoteAddress);
 }
 
 BenchmarkResults BenchmarkRunner::runWithServerArgs(
@@ -31,27 +35,38 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     uint32_t steps,
     const std::string& scenario,
     const std::string& serverArgs,
-    int worldSize)
+    int worldSize,
+    const std::string& remoteAddress)
 {
     BenchmarkResults results;
     results.scenario = scenario;
     results.steps = steps;
 
-    // Build combined server arguments.
-    std::string combinedArgs = "--log-config benchmark-logging-config.json " + serverArgs;
+    // Determine connection address.
+    std::string connectAddress = remoteAddress.empty() ? "ws://localhost:8080" : remoteAddress;
+    bool isRemote = !remoteAddress.empty();
 
-    // Launch server with custom arguments.
-    if (!subprocessManager_.launchServer(serverPath, combinedArgs)) {
-        spdlog::error("BenchmarkRunner: Failed to launch server with args: {}", serverArgs);
-        return results;
+    // Only launch local server if no remote address specified.
+    if (!isRemote) {
+        // Build combined server arguments.
+        std::string combinedArgs = "--log-config benchmark-logging-config.json " + serverArgs;
+
+        // Launch server with custom arguments.
+        if (!subprocessManager_.launchServer(serverPath, combinedArgs)) {
+            spdlog::error("BenchmarkRunner: Failed to launch server with args: {}", serverArgs);
+            return results;
+        }
+
+        if (!subprocessManager_.waitForServerReady(connectAddress, 10)) {
+            spdlog::error("BenchmarkRunner: Server failed to start");
+            return results;
+        }
+    }
+    else {
+        spdlog::info("BenchmarkRunner: Using remote server at {}", connectAddress);
     }
 
-    if (!subprocessManager_.waitForServerReady("ws://localhost:8080", 10)) {
-        spdlog::error("BenchmarkRunner: Server failed to start");
-        return results;
-    }
-
-    auto connectResult = client_.connect("ws://localhost:8080");
+    auto connectResult = client_.connect(connectAddress);
     if (connectResult.isError()) {
         spdlog::error(
             "BenchmarkRunner: Failed to connect to server: {}", connectResult.errorValue());
@@ -122,8 +137,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     bool benchmarkComplete = false;
 
     while (true) {
-        // Check if server is still alive.
-        if (!subprocessManager_.isServerRunning()) {
+        // Check if server is still alive (only for local server).
+        if (!isRemote && !subprocessManager_.isServerRunning()) {
             spdlog::error("BenchmarkRunner: Server process died during benchmark!");
             spdlog::error("BenchmarkRunner: Check dirtsim.log for crash details");
             break;
@@ -133,7 +148,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
         // Poll current step using lightweight StatusGet (not StateGet).
         Api::StatusGet::Command statusCmd;
-        auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 1000);
+        auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 10);
         if (statusResult.isError()) {
             continue; // Retry on transport error.
         }
@@ -220,11 +235,13 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         spdlog::info("BenchmarkRunner: Received {} timer stats", results.timer_stats.size());
     }
 
-    // Send exit command to cleanly shut down server.
-    spdlog::info("BenchmarkRunner: Sending Exit command to server");
-    Api::Exit::Command exitCmd;
-    client_.sendCommand<std::monostate>(exitCmd, 1000);
-    // Ignore result - server closes connection after receiving exit command.
+    // Send exit command to cleanly shut down server (only for local server).
+    if (!isRemote) {
+        spdlog::info("BenchmarkRunner: Sending Exit command to server");
+        Api::Exit::Command exitCmd;
+        client_.sendCommand<std::monostate>(exitCmd, 1000);
+        // Ignore result - server closes connection after receiving exit command.
+    }
 
     // Disconnect and cleanup.
     client_.disconnect();

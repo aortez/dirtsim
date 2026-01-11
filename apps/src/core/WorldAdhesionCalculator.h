@@ -2,7 +2,7 @@
 #define WORLDBADHESIONCALCULATOR_H
 
 #include "MaterialType.h"
-#include "Vector2d.h"
+#include "Vector2.h"
 #include "WorldCalculatorBase.h"
 #include "bitmaps/MaterialNeighborhood.h"
 
@@ -22,8 +22,8 @@ class WorldAdhesionCalculator : public WorldCalculatorBase {
 public:
     // Data structure for adhesion force results.
     struct AdhesionForce {
-        Vector2d force_direction;     // Direction of adhesive pull/resistance.
-        double force_magnitude;       // Strength of adhesive force.
+        Vector2f force_direction;     // Direction of adhesive pull/resistance.
+        float force_magnitude;        // Strength of adhesive force.
         MaterialType target_material; // Strongest interacting material.
         uint32_t contact_points;      // Number of contact interfaces.
     };

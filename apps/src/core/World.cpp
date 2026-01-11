@@ -846,6 +846,9 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
     pImpl->data_.cells = std::move(interpolatedCells);
     pImpl->data_.debug_info.resize(newWidth * newHeight);
 
+    // Resize light calculator emissive overlay to match new dimensions.
+    pImpl->light_calculator_.resize(newWidth, newHeight);
+
     // Resize organism grid and reposition organisms at new proportional positions.
     // OrganismManager::resizeGrid() handles all repositioning internally.
     if (organism_manager_) {
@@ -1848,7 +1851,7 @@ void World::processMaterialMoves()
         }
 
         // Check if materials should swap instead of colliding (if enabled).
-        if (settings.swap_enabled) {
+        if (settings.swap_enabled && move.collision_type != CollisionType::TRANSFER_ONLY) {
             Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
             bool should_swap = collision_calc.shouldSwapMaterials(
                 *this, move.from.x, move.from.y, fromCell, toCell, direction, move);
@@ -1909,18 +1912,6 @@ void World::processMaterialMoves()
         }
 
         // Handle collision during the move based on collision_type.
-        if (effective_collision_type != CollisionType::TRANSFER_ONLY) {
-            spdlog::debug(
-                "Processing collision: {} vs {} at ({},{}) -> ({},{}) - Type: {}",
-                getMaterialName(move.material),
-                getMaterialName(toCell.material_type),
-                move.from.x,
-                move.from.y,
-                move.to.x,
-                move.to.y,
-                static_cast<int>(effective_collision_type));
-        }
-
         switch (effective_collision_type) {
             case CollisionType::TRANSFER_ONLY:
                 num_transfers++;

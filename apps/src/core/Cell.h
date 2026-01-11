@@ -1,6 +1,7 @@
 #pragma once
 
 #include "MaterialType.h"
+#include "Vector2.h"
 #include "Vector2d.h"
 
 #include <cstdint>
@@ -21,28 +22,28 @@ namespace DirtSim {
 
 struct Cell {
     // Material fill threshold constants.
-    static constexpr double MIN_FILL_THRESHOLD = 0.001; // Minimum matter to consider
-    static constexpr double MAX_FILL_THRESHOLD = 0.999; // Maximum fill before "full"
+    static constexpr float MIN_FILL_THRESHOLD = 0.001f; // Minimum matter to consider
+    static constexpr float MAX_FILL_THRESHOLD = 0.999f; // Maximum fill before "full"
 
     // COM bounds.
-    static constexpr double COM_MIN = -1.0;
-    static constexpr double COM_MAX = 1.0;
+    static constexpr float COM_MIN = -1.0f;
+    static constexpr float COM_MAX = 1.0f;
 
     // Cell rendering dimensions (pixels).
     static constexpr uint32_t WIDTH = 30;
     static constexpr uint32_t HEIGHT = 30;
 
     MaterialType material_type = MaterialType::AIR;
-    double fill_ratio = 0.0;
-    Vector2d com = {};
-    Vector2d velocity = {};
+    float fill_ratio = 0.0f;
+    Vector2f com = {};
+    Vector2f velocity = {};
 
     // Unified pressure system.
-    double pressure = 0.0;
-    Vector2d pressure_gradient = {};
+    float pressure = 0.0f;
+    Vector2f pressure_gradient = {};
 
     // Physics force accumulation.
-    Vector2d pending_force = {};
+    Vector2f pending_force = {};
 
     // Rendering override: -1 = use material_type, 0+ = MaterialType to render as.
     // Allows cells to behave as one material but display as another.
@@ -54,14 +55,10 @@ struct Cell {
     const MaterialProperties& material() const;
 
     // Helper with invariant: clamps fill ratio and auto-converts to AIR.
-    void setFillRatio(double ratio);
-
-    // =================================================================
-    // PHYSICS FORCE ACCUMULATION
-    // =================================================================
+    void setFillRatio(float ratio);
 
     // Helper to add and clear pending forces.
-    void addPendingForce(const Vector2d& force);
+    void addPendingForce(const Vector2f& force);
     void clearPendingForce();
 
     // Convenience queries.
@@ -79,33 +76,18 @@ struct Cell {
     // Set the calculated lit color (packed RGBA).
     void setColor(uint32_t color) { color_ = color; }
 
-    // =================================================================
-    // PHYSICS PROPERTIES
-    // =================================================================
-
     // Center of mass position [-1,1] within cell (has clamping logic).
-    void setCOM(const Vector2d& com);
-    void setCOM(double x, double y);
+    void setCOM(const Vector2f& com);
+    void setCOM(float x, float y);
 
-    // Clear pressure to zero.
     void clearPressure();
-
-    // =================================================================
-    // CALCULATED PROPERTIES
-    // =================================================================
 
     // Available capacity for more material.
     double getCapacity() const;
 
-    // Effective mass (fill_ratio * material_density)
     double getMass() const;
 
-    // Effective density
     double getEffectiveDensity() const;
-
-    // =================================================================
-    // MATERIAL OPERATIONS
-    // =================================================================
 
     // Add material to this cell (returns amount actually added)
     double addMaterial(MaterialType type, double amount);
@@ -133,11 +115,6 @@ struct Cell {
     // Clear cell (set to empty air)
     void clear();
 
-    // =================================================================
-    // PHYSICS UTILITIES
-    // =================================================================
-
-    // Clamp COM to valid bounds
     void clampCOM();
 
     // Check if COM indicates transfer should occur
@@ -145,10 +122,6 @@ struct Cell {
 
     // Get transfer direction based on COM position
     Vector2d getTransferDirection() const;
-
-    // =================================================================
-    // CELLINTERFACE IMPLEMENTATION
-    // =================================================================
 
     // Basic material addition
     void addDirt(double amount);
@@ -158,15 +131,9 @@ struct Cell {
     void addDirtWithVelocity(double amount, const Vector2d& newVel);
     void addDirtWithCOM(double amount, const Vector2d& newCom, const Vector2d& newVel);
 
-    // Material properties.
     double getTotalMaterial() const;
 
-    // ASCII visualization.
     std::string toAsciiCharacter() const;
-
-    // =================================================================
-    // JSON SERIALIZATION
-    // =================================================================
 
     // Debug string representation
     std::string toString() const;
@@ -174,23 +141,15 @@ struct Cell {
     nlohmann::json toJson() const;
     static Cell fromJson(const nlohmann::json& json);
 
-    // =================================================================
-    // HELPER METHODS
-    // =================================================================
-
     // Calculate realistic landing position for transferred material.
     Vector2d calculateTrajectoryLanding(
         const Vector2d& source_com,
         const Vector2d& velocity,
         const Vector2d& boundary_normal) const;
 
-    // Helper to update unified pressure from components.
     void updateUnifiedPressure();
 };
 
-/**
- * ADL (Argument-Dependent Lookup) functions for nlohmann::json automatic conversion.
- */
 inline void to_json(nlohmann::json& j, const Cell& cell)
 {
     j = cell.toJson();

@@ -1,10 +1,8 @@
 #pragma once
 
-#include "MaterialType.h"
-#include "Vector2d.h"
+#include "Vector2.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
-#include <memory>
 
 namespace DirtSim {
 
@@ -27,24 +25,24 @@ public:
 
     // Force calculation structures for cohesion physics (moved from World).
     struct CohesionForce {
-        double resistance_magnitude;  // Strength of cohesive resistance.
+        float resistance_magnitude;   // Strength of cohesive resistance.
         uint32_t connected_neighbors; // Number of same-material neighbors.
     };
 
     struct COMCohesionForce {
-        Vector2d force_direction;     // Net force direction toward neighbors.
-        double force_magnitude;       // Strength of cohesive pull.
-        Vector2d center_of_neighbors; // Average position of connected neighbors.
+        Vector2f force_direction;     // Net force direction toward neighbors.
+        float force_magnitude;        // Strength of cohesive pull.
+        Vector2f center_of_neighbors; // Average position of connected neighbors.
         uint32_t active_connections;  // Number of neighbors contributing.
         // NEW fields for mass-based calculations:
-        double total_neighbor_mass;  // Sum of all neighbor masses.
-        double cell_mass;            // Mass of current cell.
-        bool force_active;           // Whether force should be applied (cutoff check).
-        double resistance_magnitude; // Cohesion resistance (for force blocking in resolveForces).
+        float total_neighbor_mass;  // Sum of all neighbor masses.
+        float cell_mass;            // Mass of current cell.
+        bool force_active;          // Whether force should be applied (cutoff check).
+        float resistance_magnitude; // Cohesion resistance (for force blocking in resolveForces).
     };
 
     // Cohesion-specific constants.
-    static constexpr double MIN_SUPPORT_FACTOR = 0.1; // Minimum cohesion when no support.
+    static constexpr float MIN_SUPPORT_FACTOR = 0.1f; // Minimum cohesion when no support.
 
     CohesionForce calculateCohesionForce(const World& world, uint32_t x, uint32_t y) const;
 

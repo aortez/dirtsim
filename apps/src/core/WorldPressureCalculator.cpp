@@ -20,17 +20,17 @@ using namespace DirtSim;
 // When false, AIR participates in diffusion like any other material.
 static constexpr bool TREAT_AIR_AS_BOUNDARY = false;
 
-void WorldPressureCalculator::injectGravityPressure(World& world, double deltaTime)
+void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTime)
 {
     WorldData& data = world.getData();
     const PhysicsSettings& settings = world.getPhysicsSettings();
-    const double gravity_magnitude = std::abs(settings.gravity);
+    const float gravity_magnitude = std::abs(static_cast<float>(settings.gravity));
 
-    if (gravity_magnitude < 0.0001) {
+    if (gravity_magnitude < 0.0001f) {
         return;
     }
 
-    const double hydrostatic_strength = settings.pressure_hydrostatic_strength;
+    const float hydrostatic_strength = static_cast<float>(settings.pressure_hydrostatic_strength);
 
     // Each cell pushes its weight onto the cell below.
     // Process top-to-bottom so pressure accumulates naturally.
@@ -47,7 +47,7 @@ void WorldPressureCalculator::injectGravityPressure(World& world, double deltaTi
             const MaterialProperties& props = getMaterialProperties(cell.material_type);
 
             // Skip if material doesn't inject pressure (e.g., WALL).
-            if (props.pressure_injection_weight <= 0.0) {
+            if (props.pressure_injection_weight <= 0.0f) {
                 continue;
             }
 
@@ -57,8 +57,8 @@ void WorldPressureCalculator::injectGravityPressure(World& world, double deltaTi
             }
 
             // Inject pressure: weight = density * gravity * injection_weight.
-            double weight = cell.getEffectiveDensity() * gravity_magnitude;
-            double pressure_contribution =
+            float weight = static_cast<float>(cell.getEffectiveDensity()) * gravity_magnitude;
+            float pressure_contribution =
                 weight * props.pressure_injection_weight * hydrostatic_strength * deltaTime;
 
             below.pressure += pressure_contribution;
@@ -93,33 +93,19 @@ void WorldPressureCalculator::processBlockedTransfers(
                     Cell& source_cell = data.at(transfer.fromX, transfer.fromY);
 
                     // Get material-specific dynamic weight for source.
-                    const double material_weight =
+                    const float material_weight =
                         getMaterialProperties(source_cell.material_type).dynamic_weight;
-                    double dynamic_strength = world.getPhysicsSettings().pressure_dynamic_strength;
+                    float dynamic_strength =
+                        static_cast<float>(world.getPhysicsSettings().pressure_dynamic_strength);
 
                     // Calculate material-based reflection coefficient.
-                    double reflection_coefficient =
+                    float reflection_coefficient =
                         calculateReflectionCoefficient(source_cell.material_type, transfer.energy);
 
-                    double reflected_energy = transfer.energy * material_weight * dynamic_strength
+                    float reflected_energy = transfer.energy * material_weight * dynamic_strength
                         * reflection_coefficient;
 
                     source_cell.pressure += reflected_energy;
-
-                    spdlog::debug(
-                        "Blocked transfer from ({},{}) to WALL at ({},{}): amount={:.3f}, "
-                        "energy={:.3f}, "
-                        "reflecting to SOURCE cell with material={}, weight={:.2f}, "
-                        "reflection_coeff={:.2f}",
-                        transfer.fromX,
-                        transfer.fromY,
-                        transfer.toX,
-                        transfer.toY,
-                        transfer.transfer_amount,
-                        transfer.energy,
-                        getMaterialName(source_cell.material_type),
-                        material_weight,
-                        reflection_coefficient);
                 }
                 continue;
             }
@@ -140,15 +126,15 @@ void WorldPressureCalculator::processBlockedTransfers(
         }
 
         // Convert blocked kinetic energy to pressure.
-        double blocked_energy = transfer.energy;
+        float blocked_energy = transfer.energy;
 
         if (apply_to_target) {
             Cell& target_cell = data.at(transfer.toX, transfer.toY);
 
-            double material_weight =
-                getMaterialProperties(target_cell.material_type).dynamic_weight;
-            double dynamic_strength = world.getPhysicsSettings().pressure_dynamic_strength;
-            double weighted_energy = blocked_energy * material_weight * dynamic_strength;
+            float material_weight = getMaterialProperties(target_cell.material_type).dynamic_weight;
+            float dynamic_strength =
+                static_cast<float>(world.getPhysicsSettings().pressure_dynamic_strength);
+            float weighted_energy = blocked_energy * material_weight * dynamic_strength;
 
             target_cell.pressure += weighted_energy;
 
@@ -167,7 +153,7 @@ void WorldPressureCalculator::processBlockedTransfers(
     }
 }
 
-Vector2d WorldPressureCalculator::calculatePressureGradient(
+Vector2f WorldPressureCalculator::calculatePressureGradient(
     const World& world, uint32_t x, uint32_t y) const
 {
     // Component-wise central difference gradient calculation.
@@ -181,14 +167,14 @@ Vector2d WorldPressureCalculator::calculatePressureGradient(
     const WorldData& data = world.getData();
 
     const Cell& center = data.at(x, y);
-    double center_pressure = center.pressure;
+    float center_pressure = center.pressure;
 
-    Vector2d gradient(0, 0);
+    Vector2f gradient(0.0f, 0.0f);
 
     // Calculate HORIZONTAL gradient (∂P/∂x) using left and right neighbors.
     {
-        double p_left = center_pressure; // Default to center if no neighbor.
-        double p_right = center_pressure;
+        float p_left = center_pressure; // Default to center if no neighbor.
+        float p_right = center_pressure;
         bool has_left = false;
         bool has_right = false;
 
@@ -213,7 +199,7 @@ Vector2d WorldPressureCalculator::calculatePressureGradient(
         // Central difference: gradient points from high to low pressure (negate derivative).
         // Convention: negative gradient = pressure increasing in positive direction.
         if (has_left && has_right) {
-            gradient.x = -(p_right - p_left) / 2.0;
+            gradient.x = -(p_right - p_left) / 2.0f;
         }
         else if (has_left) {
             gradient.x = -(center_pressure - p_left);
@@ -226,8 +212,8 @@ Vector2d WorldPressureCalculator::calculatePressureGradient(
 
     // Calculate VERTICAL gradient (∂P/∂y) using up and down neighbors.
     {
-        double p_up = center_pressure;
-        double p_down = center_pressure;
+        float p_up = center_pressure;
+        float p_down = center_pressure;
         bool has_up = false;
         bool has_down = false;
 
@@ -252,7 +238,7 @@ Vector2d WorldPressureCalculator::calculatePressureGradient(
         // Central difference: gradient points from high to low pressure (negate derivative).
         // Convention: negative gradient = pressure increasing in positive direction.
         if (has_up && has_down) {
-            gradient.y = -(p_down - p_up) / 2.0;
+            gradient.y = -(p_down - p_up) / 2.0f;
         }
         else if (has_up) {
             gradient.y = -(center_pressure - p_up);
@@ -335,7 +321,7 @@ Vector2d WorldPressureCalculator::calculateGravityGradient(
     return gravity_gradient;
 }
 
-void WorldPressureCalculator::applyPressureDecay(World& world, double deltaTime)
+void WorldPressureCalculator::applyPressureDecay(World& world, float deltaTime)
 {
     WorldData& data = world.getData();
     const PhysicsSettings& settings = world.getPhysicsSettings();
@@ -345,7 +331,8 @@ void WorldPressureCalculator::applyPressureDecay(World& world, double deltaTime)
             Cell& cell = data.at(x, y);
 
             if (cell.pressure > MIN_PRESSURE_THRESHOLD) {
-                cell.pressure *= (1.0 - settings.pressure_decay_rate * deltaTime);
+                cell.pressure *=
+                    (1.0f - static_cast<float>(settings.pressure_decay_rate * deltaTime));
             }
 
             // Update pressure gradient for visualization.
@@ -354,23 +341,23 @@ void WorldPressureCalculator::applyPressureDecay(World& world, double deltaTime)
                     cell.pressure_gradient = calculatePressureGradient(world, x, y);
                 }
                 else {
-                    cell.pressure_gradient = Vector2d{ 0.0, 0.0 };
+                    cell.pressure_gradient = Vector2f{ 0.0f, 0.0f };
                 }
             }
             else {
-                cell.pressure_gradient = Vector2d{ 0.0, 0.0 };
+                cell.pressure_gradient = Vector2f{ 0.0f, 0.0f };
             }
         }
     }
 }
 
-void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, double deltaTime)
+void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, float deltaTime)
 {
     WorldData& data = world.getData();
-    const Vector2d gravity = Vector2d(0, world.getPhysicsSettings().gravity);
-    const double gravity_magnitude = gravity.magnitude();
+    const Vector2f gravity = Vector2f(0.0f, static_cast<float>(world.getPhysicsSettings().gravity));
+    const float gravity_magnitude = gravity.magnitude();
 
-    if (gravity_magnitude < 0.0001) {
+    if (gravity_magnitude < 0.0001f) {
         return;
     }
 
@@ -385,13 +372,14 @@ void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, doub
             }
 
             // Calculate virtual downward velocity from gravity.
-            Vector2d gravity_velocity = gravity * deltaTime;
+            Vector2f gravity_velocity = gravity * deltaTime;
 
             // Calculate virtual force from gravity, scaled by deltaTime for pressure contribution.
             // Using force-based approach (F = m*g) rather than kinetic energy (½mv²) for stability.
             // This is linear in deltaTime, avoiding Δt² instability with variable timesteps.
-            double virtual_force = cell.getEffectiveDensity() * gravity_magnitude;
-            double virtual_energy = virtual_force * deltaTime;
+            float virtual_force =
+                static_cast<float>(cell.getEffectiveDensity()) * gravity_magnitude;
+            float virtual_energy = virtual_force * deltaTime;
 
             // Check if downward motion would be blocked.
             // For now, assume gravity points down (0, 1).
@@ -436,27 +424,27 @@ void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, doub
     }
 }
 
-double WorldPressureCalculator::calculateReflectionCoefficient(
-    MaterialType materialType, double impactEnergy) const
+float WorldPressureCalculator::calculateReflectionCoefficient(
+    MaterialType materialType, float impactEnergy) const
 {
     // Get material elasticity from properties.
     const MaterialProperties& material_props = getMaterialProperties(materialType);
-    double material_elasticity = material_props.elasticity;
+    float material_elasticity = material_props.elasticity;
 
     // Wall elasticity is fixed at 0.9 (from MaterialType.cpp).
-    const double wall_elasticity = 0.9;
+    const float wall_elasticity = 0.9f;
 
     // Calculate coefficient of restitution using geometric mean.
     // This models the interaction between two materials.
-    double base_restitution = std::sqrt(material_elasticity * wall_elasticity);
+    float base_restitution = std::sqrt(material_elasticity * wall_elasticity);
 
     // Apply energy-dependent damping for more realistic behavior.
     // Higher energy impacts lose more energy due to deformation, heat, sound, etc.
     // Normalize energy to a reasonable scale (10.0 is a high-energy impact).
-    double energy_damping_factor = 1.0 - (0.1 * std::min(1.0, impactEnergy / 10.0));
+    float energy_damping_factor = 1.0f - (0.1f * std::min(1.0f, impactEnergy / 10.0f));
 
     // Final reflection coefficient combines material properties and energy damping.
-    double reflection_coefficient = base_restitution * energy_damping_factor;
+    float reflection_coefficient = base_restitution * energy_damping_factor;
 
     spdlog::trace(
         "Reflection coefficient for {} hitting wall: elasticity={:.2f}, base_restitution={:.2f}, "
@@ -521,14 +509,14 @@ double WorldPressureCalculator::getSurroundingFluidDensity(
     }
 }
 
-void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaTime)
+void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTime)
 {
     // Cache world data and settings to avoid repeated pImpl dereferences.
     WorldData& data = world.getData(); // Cached
     const PhysicsSettings& settings = world.getPhysicsSettings();
     const uint32_t width = data.width;
     const uint32_t height = data.height;
-    std::vector<double> new_pressure(width * height);
+    std::vector<float> new_pressure(width * height);
 
     // Copy current pressure values.
     for (uint32_t y = 0; y < height; ++y) {
@@ -543,7 +531,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
     const int num_iterations = std::max(1, settings.pressure_diffusion_iterations);
 
     for (int iteration = 0; iteration < num_iterations; ++iteration) {
-        std::vector<double> temp_pressure = new_pressure;
+        std::vector<float> temp_pressure = new_pressure;
 
         // Parallelize when OpenMP is enabled. Each cell reads from temp_pressure
         // and writes to its unique index in new_pressure, so no race conditions.
@@ -563,7 +551,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
 
                 // Get material diffusion coefficient.
                 const MaterialProperties& props = getMaterialProperties(cell.material_type);
-                double diffusion_rate =
+                float diffusion_rate =
                     props.pressure_diffusion * settings.pressure_diffusion_strength;
 
                 // Define neighbor offsets based on mode.
@@ -576,15 +564,15 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
                 const int* dy = USE_8_NEIGHBORS ? dy_8 : dy_4;
                 const int num_neighbors = USE_8_NEIGHBORS ? 8 : 4;
 
-                double pressure_flux = 0.0;
-                const double current_pressure = temp_pressure[idx];
+                float pressure_flux = 0.0f;
+                const float current_pressure = temp_pressure[idx];
 
                 for (int i = 0; i < num_neighbors; ++i) {
                     int nx = static_cast<int>(x) + dx[i];
                     int ny = static_cast<int>(y) + dy[i];
 
-                    double neighbor_pressure;
-                    double neighbor_diffusion;
+                    float neighbor_pressure;
+                    float neighbor_diffusion;
 
                     if (nx < 0 || nx >= static_cast<int>(width) || ny < 0
                         || ny >= static_cast<int>(height)) {
@@ -616,13 +604,13 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
                         }
                     }
 
-                    double pressure_diff = neighbor_pressure - current_pressure;
+                    float pressure_diff = neighbor_pressure - current_pressure;
 
-                    double interface_diffusion = 2.0 * diffusion_rate * neighbor_diffusion
-                        / (diffusion_rate + neighbor_diffusion + 1e-10);
+                    float interface_diffusion = 2.0f * diffusion_rate * neighbor_diffusion
+                        / (diffusion_rate + neighbor_diffusion + 1e-10f);
 
                     if (USE_8_NEIGHBORS && dx[i] != 0 && dy[i] != 0) {
-                        interface_diffusion *= 0.707107;
+                        interface_diffusion *= 0.707107f;
                     }
 
                     pressure_flux += interface_diffusion * pressure_diff;
@@ -631,13 +619,13 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
                 // Update pressure with diffusion flux.
                 // Scale by deltaTime for frame-rate independence.
                 // Apply stability limiter to prevent numerical instability.
-                double pressure_change = pressure_flux * deltaTime;
+                float pressure_change = pressure_flux * static_cast<float>(deltaTime);
 
                 new_pressure[idx] = current_pressure + pressure_change;
 
                 // Ensure pressure doesn't go negative.
-                if (new_pressure[idx] < 0.0) {
-                    new_pressure[idx] = 0.0;
+                if (new_pressure[idx] < 0.0f) {
+                    new_pressure[idx] = 0.0f;
                 }
             }
         }
@@ -648,7 +636,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, double deltaT
         for (uint32_t x = 0; x < width; ++x) {
             size_t idx = y * width + x;
             Cell& cell = data.at(x, y);
-            cell.pressure = std::max(0.0, new_pressure[idx]);
+            cell.pressure = std::max(0.0f, new_pressure[idx]);
         }
     }
 }

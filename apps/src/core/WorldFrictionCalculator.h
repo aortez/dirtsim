@@ -1,10 +1,8 @@
 #pragma once
 
 #include "MaterialType.h"
-#include "Vector2d.h"
-#include "Vector2i.h"
+#include "Vector2.h"
 #include "WorldCalculatorBase.h"
-#include <cstdint>
 #include <vector>
 
 namespace DirtSim {
@@ -32,14 +30,14 @@ public:
      * @brief Data structure representing a contact interface between two cells.
      */
     struct ContactInterface {
-        Vector2i cell_A_pos;          // Position of first cell.
-        Vector2i cell_B_pos;          // Position of second cell.
-        Vector2d interface_normal;    // Unit vector pointing from A to B.
-        double contact_area;          // Relative contact area (1.0 cardinal, 0.707 diagonal).
-        double normal_force;          // Force pressing surfaces together.
-        Vector2d relative_velocity;   // Velocity of A relative to B.
-        Vector2d tangential_velocity; // Tangential component of relative velocity.
-        double friction_coefficient;  // Combined friction coefficient (static or kinetic).
+        Vector2s cell_A_pos;          // Position of first cell.
+        Vector2s cell_B_pos;          // Position of second cell.
+        Vector2f interface_normal;    // Unit vector pointing from A to B.
+        float contact_area;           // Relative contact area (1.0 cardinal, 0.707 diagonal).
+        float normal_force;           // Force pressing surfaces together.
+        Vector2f relative_velocity;   // Velocity of A relative to B.
+        Vector2f tangential_velocity; // Tangential component of relative velocity.
+        float friction_coefficient;   // Combined friction coefficient (static or kinetic).
     };
 
     /**
@@ -47,19 +45,19 @@ public:
      * @param world World providing access to grid and cells (non-const for modifications).
      * @param deltaTime Time step for physics integration.
      */
-    void calculateAndApplyFrictionForces(World& world, double deltaTime);
+    void calculateAndApplyFrictionForces(World& world, float deltaTime);
 
     /**
      * @brief Set the global friction strength multiplier.
      * @param strength Multiplier for all friction forces (0.0 = disabled, 1.0 = normal).
      */
-    void setFrictionStrength(double strength) { friction_strength_ = strength; }
+    void setFrictionStrength(float strength) { friction_strength_ = strength; }
 
     /**
      * @brief Get the global friction strength multiplier.
      * @return Current friction strength.
      */
-    double getFrictionStrength() const { return friction_strength_; }
+    float getFrictionStrength() const { return friction_strength_; }
 
 private:
     /**
@@ -85,13 +83,13 @@ private:
      * @param interface_normal Normal vector of interface (A to B).
      * @return Normal force magnitude.
      */
-    double calculateNormalForce(
+    float calculateNormalForce(
         const World& world,
         const Cell& cellA,
         const Cell& cellB,
-        const Vector2i& posA,
-        const Vector2i& posB,
-        const Vector2d& interface_normal) const;
+        const Vector2s& posA,
+        const Vector2s& posB,
+        const Vector2f& interface_normal) const;
 
     /**
      * @brief Calculate friction coefficient based on relative tangential velocity.
@@ -100,8 +98,8 @@ private:
      * @param propsB Material properties of second cell.
      * @return Combined friction coefficient.
      */
-    double calculateFrictionCoefficient(
-        double tangential_speed,
+    float calculateFrictionCoefficient(
+        float tangential_speed,
         const MaterialProperties& propsA,
         const MaterialProperties& propsB) const;
 
@@ -111,8 +109,8 @@ private:
      * @param interface_normal Normal vector of interface.
      * @return Tangential component of relative velocity.
      */
-    Vector2d calculateTangentialVelocity(
-        const Vector2d& relative_velocity, const Vector2d& interface_normal) const;
+    Vector2f calculateTangentialVelocity(
+        const Vector2f& relative_velocity, const Vector2f& interface_normal) const;
 
     /**
      * @brief Accumulate friction forces from pre-detected contacts (reference path).
@@ -125,11 +123,11 @@ private:
     GridOfCells& grid_; // Reference to grid for debug info storage.
 
     // Configuration parameters.
-    double friction_strength_ = 1.0;
+    float friction_strength_ = 1.0f;
 
     // Physical constants.
-    static constexpr double MIN_NORMAL_FORCE = 0.01;     // Minimum normal force for friction.
-    static constexpr double MIN_TANGENTIAL_SPEED = 1e-6; // Minimum speed to apply friction.
+    static constexpr float MIN_NORMAL_FORCE = 0.01f;     // Minimum normal force for friction.
+    static constexpr float MIN_TANGENTIAL_SPEED = 1e-6f; // Minimum speed to apply friction.
 };
 
 } // namespace DirtSim

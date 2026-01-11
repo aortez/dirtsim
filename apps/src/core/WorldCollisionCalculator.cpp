@@ -398,9 +398,9 @@ void WorldCollisionCalculator::handleTransferMove(
                   move.from.y,
                   move.to.x,
                   move.to.y,
-                  transfer_deficit, // transfer_amount.
+                  static_cast<float>(transfer_deficit), // transfer_amount.
                   fromCell.velocity,
-                  energy });
+                  static_cast<float>(energy) });
         }
 
         applyCellBoundaryReflection(fromCell, direction, move.material);
@@ -585,9 +585,9 @@ void WorldCollisionCalculator::handleInelasticCollision(
                                                              move.from.y,
                                                              move.to.x,
                                                              move.to.y,
-                                                             transfer_deficit,
+                                                             static_cast<float>(transfer_deficit),
                                                              fromCell.velocity,
-                                                             energy });
+                                                             static_cast<float>(energy) });
     }
 }
 
@@ -1201,8 +1201,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
-        double opposing_momentum = std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
+        Vector2f dir_vec(static_cast<float>(direction.x), static_cast<float>(direction.y));
+        double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         // Fluids are easier to displace than solids.
         double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
@@ -1296,8 +1296,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2d dir_vec(static_cast<double>(direction.x), static_cast<double>(direction.y));
-        double opposing_momentum = std::max(0.0, -toCell.velocity.dot(dir_vec)) * to_mass;
+        Vector2f dir_vec(static_cast<float>(direction.x), static_cast<float>(direction.y));
+        double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         double to_resistance = to_mass + cohesion_strength + opposing_momentum;
 
@@ -1551,9 +1551,9 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
         }
 
         // Preserve velocity direction, but reduce magnitude.
-        Vector2d velocity_direction =
-            move.momentum.magnitude() > 1e-6 ? move.momentum.normalize() : Vector2d(0.0, 0.0);
-        new_velocity = velocity_direction * velocity_magnitude_new;
+        Vector2f velocity_direction =
+            move.momentum.magnitude() > 1e-6f ? move.momentum.normalize() : Vector2f(0.0f, 0.0f);
+        new_velocity = Vector2d(velocity_direction) * velocity_magnitude_new;
     }
 
     // Swap material types and fill ratios (conserve mass).

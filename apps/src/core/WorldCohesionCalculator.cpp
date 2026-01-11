@@ -2,7 +2,6 @@
 #include "Cell.h"
 #include "GridOfCells.h"
 #include "MaterialType.h"
-#include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
 #include "bitmaps/MaterialNeighborhood.h"
@@ -18,11 +17,11 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
     const Cell& cell = getCellAt(world, x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
-        return { 0.0, 0 };
+        return { 0.0f, 0 };
     }
 
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
-    double material_cohesion = props.cohesion;
+    float material_cohesion = props.cohesion;
     uint32_t connected_neighbors = 0;
 
     // Check 4 cardinal neighbors only.
@@ -61,7 +60,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
                 if (isValidCell(world, nx, ny)) {
                     const Cell& neighbor = getCellAt(world, nx, ny);
                     if (neighbor.material_type == MaterialType::METAL
-                        && neighbor.fill_ratio > 0.5) {
+                        && neighbor.fill_ratio > 0.5f) {
                         metal_neighbors++;
                     }
                 }
@@ -75,7 +74,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 
     // Resistance magnitude = cohesion × connection strength × own fill ratio.
     // (Removed support_factor - let cohesion work at full strength always)
-    double resistance = material_cohesion * connected_neighbors * cell.fill_ratio;
+    float resistance = material_cohesion * connected_neighbors * cell.fill_ratio;
 
     spdlog::trace(
         "Cohesion calculation for {} at ({},{}): neighbors={}, resistance={:.3f}",
@@ -105,26 +104,26 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     const Cell& cell = getCellAt(world, x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
-        return { { 0.0, 0.0 }, 0.0, { 0.0, 0.0 }, 0, 0.0, 0.0, false, 0.0 };
+        return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
     }
 
     // Tunable force balance (adjust these to tune clustering vs stability).
     // Centering is primary (keeps COMs stable), clustering is secondary (gentle aggregation).
-    static constexpr double CLUSTERING_WEIGHT = 0.5; // Weak neighbor attraction (dampening).
-    static constexpr double CENTERING_WEIGHT = 1.0;  // Strong COM centering (stability).
+    static constexpr float CLUSTERING_WEIGHT = 0.5f; // Weak neighbor attraction (dampening).
+    static constexpr float CENTERING_WEIGHT = 1.0f;  // Strong COM centering (stability).
 
-    const double cell_mass = cell.getMass();
-    const Vector2d com = cell.com;
-    const Vector2d cell_world_pos(
-        static_cast<double>(x) + cell.com.x, static_cast<double>(y) + cell.com.y);
+    const float cell_mass = cell.getMass();
+    const Vector2f com = cell.com;
+    const Vector2f cell_world_pos(
+        static_cast<float>(x) + cell.com.x, static_cast<float>(y) + cell.com.y);
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
 
     // ===================================================================
     // FORCE 1: Clustering (attraction toward same-material neighbors)
     // ===================================================================
 
-    Vector2d neighbor_center_sum(0.0, 0.0);
-    double total_weight = 0.0;
+    Vector2f neighbor_center_sum(0.0f, 0.0f);
+    float total_weight = 0.0f;
     uint32_t connection_count = 0;
 
     int range = static_cast<int>(com_cohesion_range);
@@ -143,10 +142,10 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
                 // Count same-material neighbors.
                 if (neighbor.material_type == cell.material_type
                     && neighbor.fill_ratio > MIN_MATTER_THRESHOLD) {
-                    Vector2d neighbor_world_pos(
-                        static_cast<double>(nx) + neighbor.com.x,
-                        static_cast<double>(ny) + neighbor.com.y);
-                    double weight = neighbor.fill_ratio;
+                    Vector2f neighbor_world_pos(
+                        static_cast<float>(nx) + neighbor.com.x,
+                        static_cast<float>(ny) + neighbor.com.y);
+                    float weight = neighbor.fill_ratio;
 
                     neighbor_center_sum += neighbor_world_pos * weight;
                     total_weight += weight;
@@ -156,30 +155,31 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         }
     }
 
-    Vector2d clustering_force(0.0, 0.0);
-    Vector2d neighbor_center(0.0, 0.0);
+    Vector2f clustering_force(0.0f, 0.0f);
+    Vector2f neighbor_center(0.0f, 0.0f);
 
     if (connection_count > 0 && total_weight > MIN_MATTER_THRESHOLD) {
         neighbor_center = neighbor_center_sum / total_weight;
-        Vector2d to_neighbors = neighbor_center - cell_world_pos;
-        double distance_sq = to_neighbors.x * to_neighbors.x + to_neighbors.y * to_neighbors.y;
+        Vector2f to_neighbors = neighbor_center - cell_world_pos;
+        float distance_sq = to_neighbors.x * to_neighbors.x + to_neighbors.y * to_neighbors.y;
 
-        if (distance_sq > 0.000001) {
-            double distance = std::sqrt(distance_sq);
-            Vector2d clustering_direction = to_neighbors * (1.0 / distance);
+        if (distance_sq > 0.000001f) {
+            float distance = std::sqrt(distance_sq);
+            Vector2f clustering_direction = to_neighbors * (1.0f / distance);
 
-            double distance_factor = 1.0 / (distance + 0.1);
-            double max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+            float distance_factor = 1.0f / (distance + 0.1f);
+            float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
 
             // Mass-based factor: Uses total neighbor fill ratios (not just count).
             // This makes larger/fuller clusters pull harder than sparse ones.
-            double mass_factor = total_weight / max_connections;
+            float mass_factor = total_weight / max_connections;
 
-            double clustering_magnitude =
+            float clustering_magnitude =
                 props.cohesion * mass_factor * distance_factor * cell.fill_ratio;
 
             // Cap to prevent excessive forces.
-            clustering_magnitude = std::min(clustering_magnitude, props.cohesion * 10.0);
+            float max_clustering = props.cohesion * 10.0f;
+            clustering_magnitude = std::min(clustering_magnitude, max_clustering);
 
             clustering_force = clustering_direction * clustering_magnitude * CLUSTERING_WEIGHT;
         }
@@ -189,22 +189,22 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     // FORCE 2: Centering (scaled by neighbor connectivity)
     // ===================================================================
 
-    Vector2d centering_force(0.0, 0.0);
-    Vector2d centering_direction(0.0, 0.0);
-    double com_offset_sq = com.x * com.x + com.y * com.y;
-    double com_offset = 0.0;
+    Vector2f centering_force(0.0f, 0.0f);
+    Vector2f centering_direction(0.0f, 0.0f);
+    float com_offset_sq = com.x * com.x + com.y * com.y;
+    float com_offset = 0.0f;
 
     // Only apply centering when particle has same-material neighbors.
     // Isolated particles should move freely without artificial COM drag.
-    if (connection_count > 0 && com_offset_sq > 0.000001) {
+    if (connection_count > 0 && com_offset_sq > 0.000001f) {
         com_offset = std::sqrt(com_offset_sq);
-        centering_direction = com * (-1.0 / com_offset);
+        centering_direction = com * (-1.0f / com_offset);
 
         // Scale by neighbor connectivity - more neighbors = stronger centering.
-        double max_connections = (2 * range + 1) * (2 * range + 1) - 1;
-        double connection_factor = static_cast<double>(connection_count) / max_connections;
+        float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+        float connection_factor = static_cast<float>(connection_count) / max_connections;
 
-        double centering_magnitude =
+        float centering_magnitude =
             props.cohesion * com_offset * cell.fill_ratio * connection_factor;
 
         // EXPERIMENT: Removed support-based centering boost.
@@ -213,18 +213,18 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         centering_force = centering_direction * centering_magnitude * CENTERING_WEIGHT;
     }
 
-    Vector2d final_force = centering_force;
+    Vector2f final_force = centering_force;
 
-    double clustering_force_sq =
+    float clustering_force_sq =
         clustering_force.x * clustering_force.x + clustering_force.y * clustering_force.y;
-    if (clustering_force_sq > 0.000001 && com_offset_sq > 0.000001) {
-        Vector2d cell_grid_pos(static_cast<double>(x), static_cast<double>(y));
-        Vector2d to_neighbors_vec = neighbor_center - cell_grid_pos;
-        double to_neighbors_mag_sq =
+    if (clustering_force_sq > 0.000001f && com_offset_sq > 0.000001f) {
+        Vector2f cell_grid_pos(static_cast<float>(x), static_cast<float>(y));
+        Vector2f to_neighbors_vec = neighbor_center - cell_grid_pos;
+        float to_neighbors_mag_sq =
             to_neighbors_vec.x * to_neighbors_vec.x + to_neighbors_vec.y * to_neighbors_vec.y;
-        Vector2d to_neighbors = to_neighbors_vec * (1.0 / std::sqrt(to_neighbors_mag_sq));
+        Vector2f to_neighbors = to_neighbors_vec * (1.0f / std::sqrt(to_neighbors_mag_sq));
 
-        double alignment = to_neighbors.dot(centering_direction);
+        float alignment = to_neighbors.dot(centering_direction);
 
         spdlog::trace(
             "Alignment check at ({},{}): to_neighbors=({:.3f},{:.3f}), to_center=({:.3f},{:.3f}), "
@@ -237,7 +237,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             centering_direction.y,
             alignment);
 
-        if (alignment > 0.0) {
+        if (alignment > 0.0f) {
             // Clustering helps centering → apply it (weighted by alignment strength).
             final_force = final_force + clustering_force * alignment;
             spdlog::trace(
@@ -251,7 +251,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         }
     }
 
-    double total_force_magnitude =
+    float total_force_magnitude =
         std::sqrt(final_force.x * final_force.x + final_force.y * final_force.y);
 
     spdlog::trace(
@@ -269,15 +269,15 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         total_force_magnitude);
 
     // EXPERIMENT: Calculate resistance without support factor.
-    const double resistance = props.cohesion * connection_count * cell.fill_ratio;
+    const float resistance = props.cohesion * connection_count * cell.fill_ratio;
 
     return { final_force,
              total_force_magnitude,
              neighbor_center,
              connection_count,
-             0.0,
+             0.0f,
              cell_mass,
-             (connection_count > 0 || com_offset_sq > 0.000001),
+             (connection_count > 0 || com_offset_sq > 0.000001f),
              resistance };
 }
 
@@ -291,17 +291,17 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     const Cell& cell = getCellAt(world, x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
-        return { { 0.0, 0.0 }, 0.0, { 0.0, 0.0 }, 0, 0.0, 0.0, false, 0.0 };
+        return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
     }
 
     // Tunable force balance (same as non-cached version).
-    static constexpr double CLUSTERING_WEIGHT = 0.5;
-    static constexpr double CENTERING_WEIGHT = 1.0;
+    static constexpr float CLUSTERING_WEIGHT = 0.5f;
+    static constexpr float CENTERING_WEIGHT = 1.0f;
 
-    const double cell_mass = cell.getMass();
-    const Vector2d com = cell.com;
-    const Vector2d cell_world_pos(
-        static_cast<double>(x) + cell.com.x, static_cast<double>(y) + cell.com.y);
+    const float cell_mass = cell.getMass();
+    const Vector2f com = cell.com;
+    const Vector2f cell_world_pos(
+        static_cast<float>(x) + cell.com.x, static_cast<float>(y) + cell.com.y);
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
 
     // Get center material from cache.
@@ -311,8 +311,8 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     // FORCE 1: Clustering (cache-optimized - use MaterialNeighborhood)
     // ===================================================================
 
-    Vector2d neighbor_center_sum(0.0, 0.0);
-    double total_weight = 0.0;
+    Vector2f neighbor_center_sum(0.0f, 0.0f);
+    float total_weight = 0.0f;
     uint32_t connection_count = 0;
 
     int range = static_cast<int>(com_cohesion_range);
@@ -341,9 +341,9 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             // Fetch cell for physics calculations.
             const Cell& neighbor = getCellAt(world, nx, ny);
 
-            Vector2d neighbor_world_pos(
-                static_cast<double>(nx) + neighbor.com.x, static_cast<double>(ny) + neighbor.com.y);
-            double weight = neighbor.fill_ratio;
+            Vector2f neighbor_world_pos(
+                static_cast<float>(nx) + neighbor.com.x, static_cast<float>(ny) + neighbor.com.y);
+            float weight = neighbor.fill_ratio;
             neighbor_center_sum += neighbor_world_pos * weight;
             total_weight += weight;
             connection_count++;
@@ -351,27 +351,28 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     }
 
     // Calculate clustering force (same logic as non-cached version).
-    Vector2d clustering_force(0.0, 0.0);
-    Vector2d neighbor_center(0.0, 0.0);
+    Vector2f clustering_force(0.0f, 0.0f);
+    Vector2f neighbor_center(0.0f, 0.0f);
 
     if (connection_count > 0 && total_weight > MIN_MATTER_THRESHOLD) {
         neighbor_center = neighbor_center_sum / total_weight;
-        Vector2d to_neighbors = neighbor_center - cell_world_pos;
-        double distance_sq = to_neighbors.x * to_neighbors.x + to_neighbors.y * to_neighbors.y;
+        Vector2f to_neighbors = neighbor_center - cell_world_pos;
+        float distance_sq = to_neighbors.x * to_neighbors.x + to_neighbors.y * to_neighbors.y;
 
-        if (distance_sq > 0.000001) {
-            double distance = std::sqrt(distance_sq);
-            Vector2d clustering_direction = to_neighbors * (1.0 / distance);
+        if (distance_sq > 0.000001f) {
+            float distance = std::sqrt(distance_sq);
+            Vector2f clustering_direction = to_neighbors * (1.0f / distance);
 
-            double distance_factor = 1.0 / (distance + 0.1);
+            float distance_factor = 1.0f / (distance + 0.1f);
             int range = static_cast<int>(com_cohesion_range);
-            double max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+            float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
 
-            double mass_factor = total_weight / max_connections;
-            double clustering_magnitude =
+            float mass_factor = total_weight / max_connections;
+            float clustering_magnitude =
                 props.cohesion * mass_factor * distance_factor * cell.fill_ratio;
 
-            clustering_magnitude = std::min(clustering_magnitude, props.cohesion * 10.0);
+            float max_clustering = props.cohesion * 10.0f;
+            clustering_magnitude = std::min(clustering_magnitude, max_clustering);
             clustering_force = clustering_direction * clustering_magnitude * CLUSTERING_WEIGHT;
         }
     }
@@ -380,51 +381,51 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     // FORCE 2: Centering (scaled by neighbor connectivity)
     // ===================================================================
 
-    Vector2d centering_force(0.0, 0.0);
-    Vector2d centering_direction(0.0, 0.0);
-    double com_offset_sq = com.x * com.x + com.y * com.y;
-    double com_offset = 0.0;
+    Vector2f centering_force(0.0f, 0.0f);
+    Vector2f centering_direction(0.0f, 0.0f);
+    float com_offset_sq = com.x * com.x + com.y * com.y;
+    float com_offset = 0.0f;
 
     // Only apply centering when particle has same-material neighbors.
     // Isolated particles should move freely without artificial COM drag.
-    if (connection_count > 0 && com_offset_sq > 0.000001) {
+    if (connection_count > 0 && com_offset_sq > 0.000001f) {
         com_offset = std::sqrt(com_offset_sq);
-        centering_direction = com * (-1.0 / com_offset);
+        centering_direction = com * (-1.0f / com_offset);
 
         // Scale by neighbor connectivity - more neighbors = stronger centering.
         int range = static_cast<int>(com_cohesion_range);
-        double max_connections = (2 * range + 1) * (2 * range + 1) - 1;
-        double connection_factor = static_cast<double>(connection_count) / max_connections;
+        float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+        float connection_factor = static_cast<float>(connection_count) / max_connections;
 
-        double centering_magnitude =
+        float centering_magnitude =
             props.cohesion * com_offset * cell.fill_ratio * connection_factor;
         centering_force = centering_direction * centering_magnitude * CENTERING_WEIGHT;
     }
 
     // Combine forces with alignment check (matching non-cached version).
-    Vector2d final_force = centering_force;
+    Vector2f final_force = centering_force;
 
-    const double clustering_force_sq =
+    const float clustering_force_sq =
         clustering_force.x * clustering_force.x + clustering_force.y * clustering_force.y;
-    if (clustering_force_sq > 0.000001 && com_offset_sq > 0.000001) {
-        const Vector2d cell_grid_pos(static_cast<double>(x), static_cast<double>(y));
-        const Vector2d to_neighbors_vec = neighbor_center - cell_grid_pos;
-        const double to_neighbors_mag_sq =
+    if (clustering_force_sq > 0.000001f && com_offset_sq > 0.000001f) {
+        const Vector2f cell_grid_pos(static_cast<float>(x), static_cast<float>(y));
+        const Vector2f to_neighbors_vec = neighbor_center - cell_grid_pos;
+        const float to_neighbors_mag_sq =
             to_neighbors_vec.x * to_neighbors_vec.x + to_neighbors_vec.y * to_neighbors_vec.y;
-        const Vector2d to_neighbors = to_neighbors_vec * (1.0 / std::sqrt(to_neighbors_mag_sq));
+        const Vector2f to_neighbors = to_neighbors_vec * (1.0f / std::sqrt(to_neighbors_mag_sq));
 
-        const double alignment = to_neighbors.dot(centering_direction);
-        if (alignment > 0.0) {
+        const float alignment = to_neighbors.dot(centering_direction);
+        if (alignment > 0.0f) {
             // Clustering helps centering → apply it (weighted by alignment strength).
             final_force = final_force + clustering_force * alignment;
         }
     }
 
-    const double total_force_magnitude =
+    const float total_force_magnitude =
         std::sqrt(final_force.x * final_force.x + final_force.y * final_force.y);
 
     // EXPERIMENT: Calculate resistance without support factor (cached path).
-    const double resistance = props.cohesion * connection_count * cell.fill_ratio;
+    const float resistance = props.cohesion * connection_count * cell.fill_ratio;
 
     return { final_force,
              total_force_magnitude,
@@ -432,6 +433,6 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
              connection_count,
              total_weight,
              cell_mass,
-             (connection_count > 0 || com_offset_sq > 0.000001),
+             (connection_count > 0 || com_offset_sq > 0.000001f),
              resistance };
 }

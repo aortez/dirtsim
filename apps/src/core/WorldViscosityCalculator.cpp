@@ -1,7 +1,6 @@
 #include "WorldViscosityCalculator.h"
 #include "Cell.h"
 #include "GridOfCells.h"
-#include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
 #include <cmath>
@@ -13,7 +12,7 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     const World& world,
     uint32_t x,
     uint32_t y,
-    double viscosity_strength,
+    float viscosity_strength,
     const GridOfCells* /*grid*/) const
 {
     const WorldData& data = world.getData();
@@ -21,8 +20,8 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
 
     // Skip empty cells and walls.
     if (cell.isEmpty() || cell.isWall()) {
-        return ViscousForce{ .force = { 0.0, 0.0 },
-                             .neighbor_avg_speed = 0.0,
+        return ViscousForce{ .force = { 0.0f, 0.0f },
+                             .neighbor_avg_speed = 0.0f,
                              .neighbor_count = 0 };
     }
 
@@ -30,15 +29,15 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
 
     // Skip if viscosity is zero.
-    if (props.viscosity <= 0.0) {
-        return ViscousForce{ .force = { 0.0, 0.0 },
-                             .neighbor_avg_speed = 0.0,
+    if (props.viscosity <= 0.0f) {
+        return ViscousForce{ .force = { 0.0f, 0.0f },
+                             .neighbor_avg_speed = 0.0f,
                              .neighbor_count = 0 };
     }
 
     // Calculate weighted average velocity of same-material neighbors.
-    Vector2d velocity_sum{ 0.0, 0.0 };
-    double weight_sum = 0.0;
+    Vector2f velocity_sum{ 0.0f, 0.0f };
+    float weight_sum = 0.0f;
     int neighbor_count = 0;
 
     // Check all 8 neighbors.
@@ -67,13 +66,13 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
             neighbor_count++;
 
             // Distance weighting (diagonal neighbors are farther).
-            double distance_weight = (dx != 0 && dy != 0) ? 0.707 : 1.0;
+            float distance_weight = (dx != 0 && dy != 0) ? 0.707f : 1.0f;
 
             // Fill ratio weighting (more matter = stronger influence).
-            double fill_weight = neighbor.fill_ratio;
+            float fill_weight = neighbor.fill_ratio;
 
             // Combined weight.
-            double weight = distance_weight * fill_weight;
+            float weight = distance_weight * fill_weight;
 
             velocity_sum += neighbor.velocity * weight;
             weight_sum += weight;
@@ -82,29 +81,29 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
 
     // No neighbors = no viscous coupling.
     if (neighbor_count == 0) {
-        return ViscousForce{ .force = { 0.0, 0.0 },
-                             .neighbor_avg_speed = 0.0,
+        return ViscousForce{ .force = { 0.0f, 0.0f },
+                             .neighbor_avg_speed = 0.0f,
                              .neighbor_count = 0 };
     }
 
     // Calculate average neighbor velocity.
-    Vector2d avg_neighbor_velocity =
-        (weight_sum > 0.0) ? (velocity_sum / weight_sum) : Vector2d{ 0.0, 0.0 };
+    Vector2f avg_neighbor_velocity =
+        (weight_sum > 0.0f) ? (velocity_sum / weight_sum) : Vector2f{ 0.0f, 0.0f };
 
     // Velocity difference drives viscous force.
-    Vector2d velocity_difference = avg_neighbor_velocity - cell.velocity;
+    Vector2f velocity_difference = avg_neighbor_velocity - cell.velocity;
 
     // Scale viscosity by connectivity (isolated particles experience less viscous drag).
-    double connectivity_factor = static_cast<double>(neighbor_count) / 8.0;
-    double effective_viscosity = props.viscosity * connectivity_factor;
+    float connectivity_factor = static_cast<float>(neighbor_count) / 8.0f;
+    float effective_viscosity = props.viscosity * connectivity_factor;
 
     // Viscous force tries to eliminate velocity differences.
     // Scale by viscosity strength (UI control) and fill ratio.
-    Vector2d viscous_force =
+    Vector2f viscous_force =
         velocity_difference * effective_viscosity * viscosity_strength * cell.fill_ratio;
 
     // Debug info.
-    double neighbor_avg_speed = avg_neighbor_velocity.magnitude();
+    float neighbor_avg_speed = avg_neighbor_velocity.magnitude();
 
     return ViscousForce{ .force = viscous_force,
                          .neighbor_avg_speed = neighbor_avg_speed,

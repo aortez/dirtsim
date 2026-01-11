@@ -26,31 +26,32 @@ enum class CollisionType : uint8_t {
  * including collision detection, energy calculations, and physics responses.
  * It supports both simple transfers and complex collision interactions.
  *
- * Layout optimized for minimal size (~72 bytes):
+ * Layout optimized for minimal size (~44 bytes):
  * - Coordinates packed as Vector2s (int16_t) - sufficient for grids up to 32767x32767.
  * - boundary_normal removed - computed on-the-fly via getDirection().
  * - CollisionType and MaterialType packed as uint8_t.
+ * - All floating-point values use float (32-bit) instead of double (64-bit).
  */
 struct MaterialMove {
     // Basic transfer data (optimized layout for packing).
-    double amount;         // Amount of material to transfer.
-    Vector2d momentum;     // Velocity/momentum of the moving material.
+    float amount;          // Amount of material to transfer.
+    Vector2f momentum;     // Velocity/momentum of the moving material.
     Vector2s from;         // Source cell coordinates.
     Vector2s to;           // Target cell coordinates.
     MaterialType material; // Type of material being transferred.
     CollisionType collision_type = CollisionType::TRANSFER_ONLY;
 
     // Collision-specific data.
-    double collision_energy = 0.0;        // Calculated impact energy.
-    double restitution_coefficient = 0.0; // Material-specific bounce factor.
-    double material_mass = 0.0;           // Mass of moving material.
-    double target_mass = 0.0;             // Mass of target material (if any).
+    float collision_energy = 0.0f;        // Calculated impact energy.
+    float restitution_coefficient = 0.0f; // Material-specific bounce factor.
+    float material_mass = 0.0f;           // Mass of moving material.
+    float target_mass = 0.0f;             // Mass of target material (if any).
 
     // Pressure from excess material that can't transfer.
-    double pressure_from_excess = 0.0; // Pressure to add to target cell.
+    float pressure_from_excess = 0.0f; // Pressure to add to target cell.
 
     // Compute direction on-the-fly (replaces stored boundary_normal).
-    inline Vector2d getDirection() const { return Vector2d(to.x - from.x, to.y - from.y); }
+    inline Vector2f getDirection() const { return Vector2f(to.x - from.x, to.y - from.y); }
 };
 
 } // namespace DirtSim

@@ -1,6 +1,5 @@
 #include "WorldAdhesionCalculator.h"
 #include "Cell.h"
-#include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
 #include <cmath>
@@ -12,14 +11,14 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 {
     const Cell& cell = getCellAt(world, x, y);
     if (cell.isEmpty()) {
-        return { { 0.0, 0.0 }, 0.0, MaterialType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
     }
 
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
-    Vector2d total_force(0.0, 0.0);
+    Vector2f total_force(0.0f, 0.0f);
     uint32_t contact_count = 0;
     MaterialType strongest_attractor = MaterialType::AIR;
-    double max_adhesion = 0.0;
+    float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
     for (int dx = -1; dx <= 1; dx++) {
@@ -43,16 +42,16 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
                     // Calculate mutual adhesion (geometric mean)
                     const MaterialProperties& neighbor_props =
                         getMaterialProperties(neighbor.material_type);
-                    double mutual_adhesion = std::sqrt(props.adhesion * neighbor_props.adhesion);
+                    float mutual_adhesion = std::sqrt(props.adhesion * neighbor_props.adhesion);
 
                     // Direction vector toward neighbor (normalized)
-                    Vector2d direction(static_cast<double>(dx), static_cast<double>(dy));
+                    Vector2f direction(static_cast<float>(dx), static_cast<float>(dy));
                     direction.normalize();
 
                     // Force strength weighted by fill ratios and distance.
-                    double distance_weight =
-                        (std::abs(dx) + std::abs(dy) == 1) ? 1.0 : 0.707; // Adjacent vs diagonal.
-                    double force_strength =
+                    float distance_weight =
+                        (std::abs(dx) + std::abs(dy) == 1) ? 1.0f : 0.707f; // Adjacent vs diagonal.
+                    float force_strength =
                         mutual_adhesion * neighbor.fill_ratio * cell.fill_ratio * distance_weight;
 
                     total_force += direction * force_strength;
@@ -75,15 +74,15 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 {
     const Cell& cell = getCellAt(world, x, y);
     if (cell.isEmpty()) {
-        return { { 0.0, 0.0 }, 0.0, MaterialType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
     }
 
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
     const MaterialType my_material = mat_n.getCenterMaterial();
-    Vector2d total_force(0.0, 0.0);
+    Vector2f total_force(0.0f, 0.0f);
     uint32_t contact_count = 0;
     MaterialType strongest_attractor = MaterialType::AIR;
-    double max_adhesion = 0.0;
+    float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
     for (int dx = -1; dx <= 1; dx++) {
@@ -112,16 +111,16 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 
             // Calculate mutual adhesion (geometric mean).
             const MaterialProperties& neighbor_props = getMaterialProperties(neighbor_material);
-            double mutual_adhesion = std::sqrt(props.adhesion * neighbor_props.adhesion);
+            float mutual_adhesion = std::sqrt(props.adhesion * neighbor_props.adhesion);
 
             // Direction vector toward neighbor (normalized).
-            Vector2d direction(static_cast<double>(dx), static_cast<double>(dy));
+            Vector2f direction(static_cast<float>(dx), static_cast<float>(dy));
             direction.normalize();
 
             // Force strength weighted by fill ratios and distance.
-            double distance_weight =
-                (std::abs(dx) + std::abs(dy) == 1) ? 1.0 : 0.707; // Adjacent vs diagonal.
-            double force_strength =
+            float distance_weight =
+                (std::abs(dx) + std::abs(dy) == 1) ? 1.0f : 0.707f; // Adjacent vs diagonal.
+            float force_strength =
                 mutual_adhesion * neighbor.fill_ratio * cell.fill_ratio * distance_weight;
 
             total_force += direction * force_strength;

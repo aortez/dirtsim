@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Vector2d.h"
+#include "Vector2.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
 
@@ -30,7 +30,7 @@ public:
      * Controls the overall strength of air resistance in the simulation.
      * Higher values create more drag, lower values allow freer movement.
      */
-    static constexpr double DEFAULT_AIR_RESISTANCE_SCALAR = 0.1;
+    static constexpr float DEFAULT_AIR_RESISTANCE_SCALAR = 0.1f;
 
     /**
      * @brief Calculate air resistance force for a cell.
@@ -40,11 +40,11 @@ public:
      * @param strength Air resistance strength multiplier (optional, uses default if not provided).
      * @return Air resistance force vector opposing motion.
      */
-    Vector2d calculateAirResistance(
+    Vector2f calculateAirResistance(
         const World& world,
         uint32_t x,
         uint32_t y,
-        double strength = DEFAULT_AIR_RESISTANCE_SCALAR) const;
+        float strength = DEFAULT_AIR_RESISTANCE_SCALAR) const;
 };
 
 } // namespace DirtSim
