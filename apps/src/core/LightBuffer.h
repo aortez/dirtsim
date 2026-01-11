@@ -1,21 +1,21 @@
 #pragma once
 
-#include <cstdint>
-#include <vector>
+#include "GridBuffer.h"
 
 namespace DirtSim {
 
-// Buffer storing raw light values before material color multiplication.
-// Used for entity lighting so sprites aren't tinted by cell material.
-struct LightBuffer {
-    uint32_t width = 0;
-    uint32_t height = 0;
-    std::vector<uint32_t> data;
+/**
+ * Buffer storing raw light values before material color multiplication.
+ * Used for entity lighting so sprites aren't tinted by cell material.
+ *
+ * This is a GridBuffer<uint32_t> with light-specific default values.
+ */
+struct LightBuffer : GridBuffer<uint32_t> {
+    // Resize with white default (0xFFFFFFFF) for unlit areas.
+    void resize(uint32_t w, uint32_t h) { GridBuffer<uint32_t>::resize(w, h, 0xFFFFFFFF); }
 
-    void resize(uint32_t w, uint32_t h);
-    void clear(uint32_t value = 0x000000FF);
-    uint32_t at(uint32_t x, uint32_t y) const;
-    void set(uint32_t x, uint32_t y, uint32_t value);
+    // Clear with black opaque default (0x000000FF).
+    void clear(uint32_t value = 0x000000FF) { GridBuffer<uint32_t>::clear(value); }
 };
 
 } // namespace DirtSim

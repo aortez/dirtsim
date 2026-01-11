@@ -636,7 +636,9 @@ void CellRenderer::renderWorldData(
 
                 if (!cell.isEmpty() && cell.material_type != MaterialType::AIR
                     && !is_sprite_organism) {
-                    lv_color_t matColor = getLitColor(cell.getColor());
+                    uint32_t cellColor =
+                        (idx < worldData.colors.size()) ? worldData.colors.data[idx] : 0x000000FF;
+                    lv_color_t matColor = getLitColor(cellColor);
                     // Border opacity varies by debug mode.
                     // Debug mode: full opacity (pronounced border).
                     // Normal mode: 0.85 opacity (subtle/faint border).
@@ -936,7 +938,9 @@ void CellRenderer::renderWorldData(
                 int32_t cellX = renderOffsetX + x * scaledCellWidth_;
                 int32_t cellY = renderOffsetY + y * scaledCellHeight_;
 
-                renderCellLVGL(cell, debug, layer, cellX, cellY, debugDraw);
+                uint32_t cellColor =
+                    (idx < worldData.colors.size()) ? worldData.colors.data[idx] : 0x000000FF;
+                renderCellLVGL(cell, debug, layer, cellX, cellY, debugDraw, cellColor);
             }
         }
 
@@ -1015,7 +1019,8 @@ void CellRenderer::renderCellLVGL(
     lv_layer_t& layer,
     int32_t cellX,
     int32_t cellY,
-    bool debugDraw)
+    bool debugDraw,
+    uint32_t color)
 {
     // Bounds check - skip cells outside canvas.
     if (cellX < 0 || cellY < 0 || cellX + scaledCellWidth_ > canvasWidth_
@@ -1038,7 +1043,7 @@ void CellRenderer::renderCellLVGL(
 
     // Render material if not empty.
     if (!cell.isEmpty() && cell.material_type != MaterialType::AIR) {
-        lv_color_t material_color = getLitColor(cell.getColor());
+        lv_color_t material_color = getLitColor(color);
         lv_opa_t opacity =
             static_cast<lv_opa_t>(cell.fill_ratio * static_cast<double>(LV_OPA_COVER));
 

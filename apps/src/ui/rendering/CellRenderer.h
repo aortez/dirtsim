@@ -94,7 +94,8 @@ private:
         lv_layer_t& layer,
         int32_t cellX,
         int32_t cellY,
-        bool debugDraw);
+        bool debugDraw,
+        uint32_t color);
 };
 
 // Bresenham's line algorithm for fast pixel-based line drawing.

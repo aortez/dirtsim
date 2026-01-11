@@ -54,7 +54,7 @@ TEST_F(WorldLightCalculatorTest, SunlightEmptyColumn)
     // All cells should have some brightness (WATER is blue, attenuates slightly per row).
     for (uint32_t y = 0; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
-            float brightness = ColorNames::brightness(data.at(x, y).getColor());
+            float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_GT(brightness, 0.1f)
                 << "Cell (" << x << "," << y << ") should be lit, got " << brightness;
         }
@@ -83,7 +83,7 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
     // Cells above wall (rows 0-2) should be lit (WATER is blue, ~0.26 brightness).
     for (uint32_t y = 0; y < 3; ++y) {
         for (uint32_t x = 0; x < 10; ++x) {
-            float brightness = ColorNames::brightness(data.at(x, y).getColor());
+            float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_GT(brightness, 0.2f)
                 << "Cell (" << x << "," << y << ") above wall should be lit";
         }
@@ -92,7 +92,7 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
     // Cells below wall (rows 4-9) should be dark (no sun reaches them).
     for (uint32_t y = 4; y < 10; ++y) {
         for (uint32_t x = 0; x < 10; ++x) {
-            float brightness = ColorNames::brightness(data.at(x, y).getColor());
+            float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_LT(brightness, 0.1f)
                 << "Cell (" << x << "," << y << ") below wall should be dark, got " << brightness;
         }
@@ -117,8 +117,8 @@ TEST_F(WorldLightCalculatorTest, LeafPartiallyBlocksSunlight)
     calc.calculate(world, config);
 
     // Cell below leaf should be dimmer than cell in adjacent column.
-    float below_leaf = ColorNames::brightness(data.at(2, 5).getColor());
-    float adjacent = ColorNames::brightness(data.at(3, 5).getColor());
+    float below_leaf = ColorNames::brightness(data.colors.at(2, 5));
+    float adjacent = ColorNames::brightness(data.colors.at(3, 5));
 
     EXPECT_LT(below_leaf, adjacent) << "Light below leaf should be dimmer than adjacent column";
     // Some light should still pass through (leaf opacity is 0.4).
@@ -141,11 +141,11 @@ TEST_F(WorldLightCalculatorTest, EmissiveSeedAddsLight)
     calc.calculate(world, config);
 
     // Seed cell should have some brightness from emission.
-    float seed_brightness = ColorNames::brightness(data.at(2, 2).getColor());
+    float seed_brightness = ColorNames::brightness(data.colors.at(2, 2));
     EXPECT_GT(seed_brightness, 0.05f) << "Seed should emit some light";
 
     // Adjacent dark cell should have no light (no diffusion enabled).
-    float adjacent_brightness = ColorNames::brightness(data.at(3, 3).getColor());
+    float adjacent_brightness = ColorNames::brightness(data.colors.at(3, 3));
     EXPECT_LT(adjacent_brightness, 0.01f) << "Non-emissive dark cell should remain dark";
 }
 
@@ -171,11 +171,11 @@ TEST_F(WorldLightCalculatorTest, WaterTransmitsLight)
     calc.calculate(world, config);
 
     // Water in lit area should have brightness (WATER is blue, ~0.26 brightness).
-    float water_brightness = ColorNames::brightness(data.at(2, 5).getColor());
+    float water_brightness = ColorNames::brightness(data.colors.at(2, 5));
     EXPECT_GT(water_brightness, 0.2f) << "Water should transmit sunlight";
 
     // Water at boundary (x=4) still receives sunlight.
-    float boundary_brightness = ColorNames::brightness(data.at(4, 5).getColor());
+    float boundary_brightness = ColorNames::brightness(data.colors.at(4, 5));
     EXPECT_GT(boundary_brightness, 0.2f) << "Boundary water should be lit";
 }
 
@@ -228,12 +228,12 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
     config.ambient_color = ColorNames::black();
     config.sky_access_enabled = false;
     calc.calculate(world, config);
-    float dark_brightness = ColorNames::brightness(data.at(2, 3).getColor());
+    float dark_brightness = ColorNames::brightness(data.colors.at(2, 3));
 
     // With ambient.
     config.ambient_color = 0x404040FF; // Gray ambient.
     calc.calculate(world, config);
-    float ambient_brightness = ColorNames::brightness(data.at(2, 3).getColor());
+    float ambient_brightness = ColorNames::brightness(data.colors.at(2, 3));
 
     EXPECT_GT(ambient_brightness, dark_brightness) << "Ambient light should add base illumination";
 }
@@ -258,12 +258,12 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
     // Intensity 1.0.
     config.ambient_intensity = 1.0f;
     calc.calculate(world, config);
-    float brightness_1x = ColorNames::brightness(data.at(2, 2).getColor());
+    float brightness_1x = ColorNames::brightness(data.colors.at(2, 2));
 
     // Intensity 2.0.
     config.ambient_intensity = 2.0f;
     calc.calculate(world, config);
-    float brightness_2x = ColorNames::brightness(data.at(2, 2).getColor());
+    float brightness_2x = ColorNames::brightness(data.colors.at(2, 2));
 
     EXPECT_GT(brightness_2x, brightness_1x) << "Higher ambient intensity should be brighter";
 }
@@ -295,9 +295,9 @@ TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
     calc.calculate(world, config);
 
     // Cell above wall (row 2) should have decent ambient.
-    float above_wall = ColorNames::brightness(data.at(2, 2).getColor());
+    float above_wall = ColorNames::brightness(data.colors.at(2, 2));
     // Cell below wall (row 5) should have reduced ambient.
-    float below_wall = ColorNames::brightness(data.at(2, 5).getColor());
+    float below_wall = ColorNames::brightness(data.colors.at(2, 5));
 
     EXPECT_GT(above_wall, 0.2f) << "Cell above wall should have some ambient";
     EXPECT_LT(below_wall, above_wall) << "Cell below wall should have less ambient (sky blocked)";
@@ -332,9 +332,9 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
     calc.calculate(world, config);
 
     // Cell below wall (blocked) should be dimmer.
-    float blocked = ColorNames::brightness(data.at(3, 5).getColor());
+    float blocked = ColorNames::brightness(data.colors.at(3, 5));
     // Cell in vertical shaft should maintain higher ambient.
-    float shaft = ColorNames::brightness(data.at(5, 5).getColor());
+    float shaft = ColorNames::brightness(data.colors.at(5, 5));
 
     EXPECT_GT(shaft, blocked) << "Cell in shaft should be brighter than blocked cell";
     EXPECT_GT(shaft, 0.2f) << "Cell in vertical shaft should have decent ambient";

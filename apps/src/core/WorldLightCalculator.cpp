@@ -10,6 +10,13 @@ namespace DirtSim {
 
 void WorldLightCalculator::calculate(World& world, const LightConfig& config)
 {
+    auto& data = world.getData();
+
+    // Ensure colors buffer is sized correctly.
+    if (data.colors.width != data.width || data.colors.height != data.height) {
+        data.colors.resize(data.width, data.height, ColorNames::black());
+    }
+
     // Clear to black before accumulating light.
     clearLight(world);
 
@@ -32,12 +39,7 @@ void WorldLightCalculator::calculate(World& world, const LightConfig& config)
 void WorldLightCalculator::clearLight(World& world)
 {
     auto& data = world.getData();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
-            Cell& cell = data.cells[y * data.width + x];
-            cell.setColor(ColorNames::black());
-        }
-    }
+    data.colors.clear(ColorNames::black());
 }
 
 void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
@@ -47,11 +49,8 @@ void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
 
     if (!config.sky_access_enabled) {
         // Uniform ambient everywhere.
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
-                Cell& cell = data.cells[y * data.width + x];
-                cell.setColor(ColorNames::add(cell.getColor(), base_ambient));
-            }
+        for (uint32_t* c = data.colors.begin(); c != data.colors.end(); ++c) {
+            *c = ColorNames::add(*c, base_ambient);
         }
         return;
     }
@@ -61,11 +60,11 @@ void WorldLightCalculator::applyAmbient(World& world, const LightConfig& config)
         float sky_factor = 1.0f;
 
         for (uint32_t y = 0; y < data.height; ++y) {
-            Cell& cell = data.cells[y * data.width + x];
+            const Cell& cell = data.cells[y * data.width + x];
 
             // Apply ambient scaled by sky access.
             uint32_t ambient = ColorNames::scale(base_ambient, sky_factor);
-            cell.setColor(ColorNames::add(cell.getColor(), ambient));
+            data.colors.at(x, y) = ColorNames::add(data.colors.at(x, y), ambient);
 
             // Attenuate sky access by material opacity.
             float opacity = cell.material().light.opacity;
@@ -87,10 +86,10 @@ void WorldLightCalculator::applySunlight(World& world, uint32_t sun_color, float
         uint32_t sun = scaled_sun;
 
         for (uint32_t y = 0; y < data.height; ++y) {
-            Cell& cell = data.cells[y * data.width + x];
+            const Cell& cell = data.cells[y * data.width + x];
 
             // Add current sun level to cell.
-            cell.setColor(ColorNames::add(cell.getColor(), sun));
+            data.colors.at(x, y) = ColorNames::add(data.colors.at(x, y), sun);
 
             // Attenuate by material opacity.
             const auto& light_props = cell.material().light;
@@ -108,13 +107,13 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
     auto& data = world.getData();
     for (uint32_t y = 0; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
-            Cell& cell = data.cells[y * data.width + x];
+            const Cell& cell = data.cells[y * data.width + x];
             const auto& light_props = cell.material().light;
 
             if (light_props.emission > 0.0f) {
                 uint32_t emitted =
                     ColorNames::scale(light_props.emission_color, light_props.emission);
-                cell.setColor(ColorNames::add(cell.getColor(), emitted));
+                data.colors.at(x, y) = ColorNames::add(data.colors.at(x, y), emitted);
             }
         }
     }
@@ -131,16 +130,14 @@ void WorldLightCalculator::applyDiffusion(World& world, int iterations, float ra
     light_buffer_.resize(cell_count);
 
     for (int iter = 0; iter < iterations; ++iter) {
-        // Copy current colors to buffer.
-        for (size_t i = 0; i < cell_count; ++i) {
-            light_buffer_[i] = data.cells[i].getColor();
-        }
+        // Copy current colors to buffer (contiguous memory copy).
+        std::copy(data.colors.begin(), data.colors.end(), light_buffer_.begin());
 
         // Apply diffusion.
         for (uint32_t y = 1; y < data.height - 1; ++y) {
             for (uint32_t x = 1; x < data.width - 1; ++x) {
                 size_t idx = y * data.width + x;
-                Cell& cell = data.cells[idx];
+                const Cell& cell = data.cells[idx];
                 float scatter = cell.material().light.scatter;
 
                 if (scatter <= 0.0f) {
@@ -169,7 +166,7 @@ void WorldLightCalculator::applyDiffusion(World& world, int iterations, float ra
 
                 // Blend toward neighbor average based on scatter rate.
                 float blend = scatter * rate;
-                cell.setColor(ColorNames::lerp(current, neighbor_avg, blend));
+                data.colors.data[idx] = ColorNames::lerp(current, neighbor_avg, blend);
             }
         }
     }
@@ -212,10 +209,10 @@ void WorldLightCalculator::applyMaterialColors(World& world)
     auto& data = world.getData();
     for (uint32_t y = 0; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
-            Cell& cell = data.cells[y * data.width + x];
+            const Cell& cell = data.cells[y * data.width + x];
             // Use getRenderMaterial() to respect render_as override.
             uint32_t base_color = getMaterialBaseColor(cell.getRenderMaterial());
-            cell.setColor(ColorNames::multiply(cell.getColor(), base_color));
+            data.colors.at(x, y) = ColorNames::multiply(data.colors.at(x, y), base_color);
         }
     }
 }
@@ -229,7 +226,7 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
 
     for (uint32_t y = 0; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
-            float brightness = ColorNames::brightness(data.cells[y * data.width + x].getColor());
+            float brightness = ColorNames::brightness(data.colors.at(x, y));
             int idx = std::min(9, static_cast<int>(brightness * 10));
             result += shades[idx];
         }
@@ -245,11 +242,8 @@ void WorldLightCalculator::storeRawLight(World& world)
         raw_light_.resize(data.width, data.height);
     }
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
-            raw_light_.set(x, y, data.cells[y * data.width + x].getColor());
-        }
-    }
+    // Direct copy from colors buffer to raw_light buffer.
+    std::copy(data.colors.begin(), data.colors.end(), raw_light_.begin());
 }
 
 const LightBuffer& WorldLightCalculator::getRawLightBuffer() const

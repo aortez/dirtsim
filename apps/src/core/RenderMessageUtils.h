@@ -24,15 +24,15 @@ namespace RenderMessageUtils {
 /**
  * @brief Pack a Cell into BasicCell format (7 bytes).
  *
- * Quantizes fill_ratio to 8-bit precision. Includes lit color.
+ * Quantizes fill_ratio to 8-bit precision. Color passed separately (from WorldData.colors).
  */
-inline BasicCell packBasicCell(const Cell& cell)
+inline BasicCell packBasicCell(const Cell& cell, uint32_t color)
 {
     BasicCell result;
     result.material_type = static_cast<uint8_t>(cell.material_type);
     result.fill_ratio = static_cast<uint8_t>(std::clamp(cell.fill_ratio * 255.0, 0.0, 255.0));
     result.render_as = cell.render_as;
-    result.color = cell.getColor();
+    result.color = color;
     return result;
 }
 
@@ -79,14 +79,16 @@ inline DebugCell packDebugCell(const Cell& cell)
  * @brief Pack all cells from WorldData into BasicCell format.
  *
  * Returns a byte vector suitable for RenderMessage::payload.
+ * Colors are read from WorldData.colors (SoA buffer).
  */
 inline std::vector<std::byte> packBasicCells(const WorldData& data)
 {
     std::vector<BasicCell> cells;
     cells.reserve(data.cells.size());
 
-    for (const auto& cell : data.cells) {
-        cells.push_back(packBasicCell(cell));
+    for (size_t i = 0; i < data.cells.size(); ++i) {
+        uint32_t color = (i < data.colors.size()) ? data.colors.data[i] : 0x000000FF;
+        cells.push_back(packBasicCell(data.cells[i], color));
     }
 
     // Convert to byte vector.

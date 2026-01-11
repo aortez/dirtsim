@@ -262,6 +262,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             // Unpack cells based on format.
             size_t numCells = renderMsg.width * renderMsg.height;
             worldData.cells.resize(numCells);
+            worldData.colors.resize(renderMsg.width, renderMsg.height);
 
             if (renderMsg.format == RenderFormat::DEBUG) {
                 LOG_DEBUG(Network, "RenderMessage UNPACK: DEBUG format, {} cells", numCells);
@@ -298,7 +299,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                     worldData.cells[i].material_type = material;
                     worldData.cells[i].fill_ratio = fill_ratio;
                     worldData.cells[i].render_as = render_as;
-                    worldData.cells[i].setColor(color);
+                    worldData.colors.data[i] = color;
                 }
             }
 
