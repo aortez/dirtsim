@@ -1,8 +1,8 @@
 #include "BenchmarkRunner.h"
 #include "server/api/Exit.h"
 #include "server/api/PerfStatsGet.h"
-#include "server/api/ScenarioSwitch.h"
 #include "server/api/SimRun.h"
+#include "server/api/SimStop.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TimerStatsGet.h"
 #include "server/api/WorldResize.h"
@@ -73,35 +73,46 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         return results;
     }
 
-    // For local server: SimRun with scenario_id will create world with that scenario.
-    // For remote server (already running): Need to switch scenario first, then SimRun.
-    if (isRemote) {
-        // Switch to requested scenario (server already has a world).
-        spdlog::info("BenchmarkRunner: Switching remote server to scenario '{}'", scenario);
-        Api::ScenarioSwitch::Command scenarioCmd;
-        scenarioCmd.scenario_id = scenario;
-
-        auto scenarioResult = client_.sendCommand<Api::ScenarioSwitch::Okay>(scenarioCmd, 5000);
-        if (scenarioResult.isError()) {
-            spdlog::error(
-                "BenchmarkRunner: ScenarioSwitch failed: {}", scenarioResult.errorValue());
-            return results;
-        }
-        if (scenarioResult.value().isError()) {
-            spdlog::error(
-                "BenchmarkRunner: ScenarioSwitch error: {}",
-                scenarioResult.value().errorValue().message);
-            return results;
-        }
-        spdlog::info("BenchmarkRunner: Scenario '{}' loaded on remote server", scenario);
+    // Query server state to determine if we need to stop existing simulation.
+    spdlog::info("BenchmarkRunner: Querying server state");
+    Api::StatusGet::Command statusCmd;
+    auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 2000);
+    if (statusResult.isError()) {
+        spdlog::error("BenchmarkRunner: StatusGet failed: {}", statusResult.errorValue());
+        return results;
+    }
+    if (statusResult.value().isError()) {
+        spdlog::error(
+            "BenchmarkRunner: StatusGet error: {}", statusResult.value().errorValue().message);
+        return results;
     }
 
-    // Start simulation.
+    const auto& status = statusResult.value().value();
+    spdlog::info("BenchmarkRunner: Server state is '{}'", status.state);
+
+    // If server is already running a simulation, stop it first to transition to Idle.
+    if (status.state == "SimRunning") {
+        spdlog::info("BenchmarkRunner: Stopping existing simulation");
+        Api::SimStop::Command stopCmd;
+        auto stopResult = client_.sendCommand<std::monostate>(stopCmd, 2000);
+        if (stopResult.isError()) {
+            spdlog::error("BenchmarkRunner: SimStop failed: {}", stopResult.errorValue());
+            return results;
+        }
+        if (stopResult.value().isError()) {
+            spdlog::error(
+                "BenchmarkRunner: SimStop error: {}", stopResult.value().errorValue().message);
+            return results;
+        }
+        spdlog::info("BenchmarkRunner: Server transitioned to Idle state");
+    }
+
+    // Start simulation with requested scenario (server is now in Idle state).
     spdlog::info("BenchmarkRunner: Starting simulation with scenario '{}'", scenario);
     Api::SimRun::Command simRunCmd;
     simRunCmd.timestep = 0.016;
     simRunCmd.max_steps = static_cast<int>(steps);
-    simRunCmd.scenario_id = isRemote ? "" : scenario; // Only use for local (creates new world).
+    simRunCmd.scenario_id = scenario;
 
     auto simRunResult = client_.sendCommand<Api::SimRun::Okay>(simRunCmd, 5000);
     if (simRunResult.isError()) {
@@ -156,7 +167,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
         // Poll current step using lightweight StatusGet (not StateGet).
         Api::StatusGet::Command statusCmd;
-        auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 10);
+        auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 2000);
         if (statusResult.isError()) {
             continue; // Retry on transport error.
         }

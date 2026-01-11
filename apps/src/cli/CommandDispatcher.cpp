@@ -30,6 +30,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::ScenarioListGet::Command, Api::ScenarioListGet::Okay>(serverHandlers_);
     registerCommand<Api::SeedAdd::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::SimRun::Command, Api::SimRun::Okay>(serverHandlers_);
+    registerCommand<Api::SimStop::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::SpawnDirtBall::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::StateGet::Command, Api::StateGet::Okay>(serverHandlers_);
     registerCommand<Api::StatusGet::Command, Api::StatusGet::Okay>(serverHandlers_);

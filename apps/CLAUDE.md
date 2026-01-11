@@ -182,7 +182,8 @@ Executables (server, UI, CLI, tests) link against these libraries.
 
 ### Core Components
 - **Vector2d**: 2D floating point vector class
-- **Vector2i**: 2D integer vector class
+- **Vector2s**: 2D int16 vector class
+- **Vector2i**: 2D int32 vector class
 - **Server::StateMachine**: Aka DirtSimStateMachine (DSSM). Headless server state machine (Idle → SimRunning ↔ SimPaused → Shutdown)
 - **Ui::StateMachine**: UI client state machine (Disconnected → StartMenu → SimRunning ↔ Paused → Shutdown)
 - **WorldEventGenerator**: Strategy pattern for initial world setup and dynamic particle generation

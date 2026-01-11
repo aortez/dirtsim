@@ -227,6 +227,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::ScenarioConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::SeedAdd);
         DISPATCH_JSON_CMD_WITH_RESP(Api::SimRun);
+        DISPATCH_JSON_CMD_EMPTY(Api::SimStop);
         DISPATCH_JSON_CMD_EMPTY(Api::SpawnDirtBall);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
@@ -345,6 +346,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::ScenarioSwitch::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SeedAdd::Cwc>([this](Api::SeedAdd::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SimRun::Cwc>([this](Api::SimRun::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::SimStop::Cwc>([this](Api::SimStop::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::SpawnDirtBall::Cwc>(
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(

@@ -294,6 +294,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/ScenarioListGet.cpp
     src/server/api/SeedAdd.cpp
     src/server/api/SimRun.cpp
+    src/server/api/SimStop.cpp
     src/server/api/SpawnDirtBall.cpp
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
