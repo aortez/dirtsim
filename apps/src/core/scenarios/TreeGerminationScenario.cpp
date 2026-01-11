@@ -5,6 +5,8 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/organisms/brains/NeuralNetBrain.h"
+#include "core/organisms/brains/RuleBasedBrain.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -57,8 +59,20 @@ void TreeGerminationScenario::setup(World& world)
         }
     }
 
+    // Create brain based on config.
+    std::unique_ptr<TreeBrain> brain;
+    if (config_.brain_type == Config::TreeBrainType::NEURAL_NET) {
+        brain = std::make_unique<NeuralNetBrain>(config_.neural_seed);
+        spdlog::info(
+            "TreeGerminationScenario: Using NeuralNetBrain with seed {}", config_.neural_seed);
+    }
+    else {
+        brain = std::make_unique<RuleBasedBrain>();
+        spdlog::info("TreeGerminationScenario: Using RuleBasedBrain");
+    }
+
     // Plant seed in center for balanced growth demonstration.
-    OrganismId tree_id = world.getOrganismManager().createTree(world, 4, 4);
+    OrganismId tree_id = world.getOrganismManager().createTree(world, 4, 4, std::move(brain));
     spdlog::info("TreeGerminationScenario: Planted seed {} at (4, 4)", tree_id);
 }
 

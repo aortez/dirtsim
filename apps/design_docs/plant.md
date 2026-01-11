@@ -141,23 +141,29 @@ Trees have pluggable brains that make growth decisions. Brain state/memory lives
 // TreeBrain.h
 
 struct TreeSensoryData {
-    // Fixed-size neural grid (scale-invariant)
+    // Fixed-size neural grid (scale-invariant).
     static constexpr int GRID_SIZE = 15;
-    static constexpr int NUM_MATERIALS = 8;
 
-    // Material distribution histograms for each neural cell
-    // Small trees: one-hot encoding [0,0,0,1,0,0,0,0]
-    // Large trees: distributions [0.4,0.1,0,0.3,0,0,0.2,0]
-    std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
-        material_histograms;
+    // Channel indices for sensory_channels array.
+    static constexpr int NUM_MATERIALS = 10;      // AIR, DIRT, LEAF, METAL, ROOT, SAND, SEED, WALL, WATER, WOOD
+    static constexpr int LIGHT_CHANNEL = 10;      // Average brightness (0.0-1.0).
+    static constexpr int OWNERSHIP_CHANNEL = 11;  // Fraction of cells belonging to this tree (0.0-1.0).
+    static constexpr int NUM_CHANNELS = 12;
 
-    // Metadata about mapping
-    int actual_width;       // Real bounding box size
+    // Multi-channel sensory grid: [y][x][channel]
+    // Channels 0-9:  Material distribution (probabilities sum to 1.0).
+    // Channel 10:    Light level (average brightness in region).
+    // Channel 11:    Ownership (fraction of cells belonging to this tree).
+    std::array<std::array<std::array<double, NUM_CHANNELS>, GRID_SIZE>, GRID_SIZE>
+        sensory_channels;
+
+    // Metadata about mapping.
+    int actual_width;       // Real bounding box size.
     int actual_height;
-    double scale_factor;    // Real cells per neural cell
-    Vector2i world_offset;  // Top-left corner in world coords
+    double scale_factor;    // Real cells per neural cell.
+    Vector2i world_offset;  // Top-left corner in world coords.
 
-    // Internal state
+    // Internal state.
     uint32_t age;
     GrowthStage stage;
     double total_energy;
@@ -181,24 +187,31 @@ Trees use a fixed 15×15 neural grid regardless of actual tree size:
 **Small trees (≤15×15 cells)**:
 - Fixed 15×15 world-cell viewing window centered on seed position
 - 1:1 mapping (each neural cell = one world cell)
-- Histograms are one-hot: [0,0,0,1,0,0,0,0,0] for pure materials
+- Material channels are one-hot: [0,0,0,1,0,0,0,0,0,0] for pure materials
 - Viewing window follows seed as it moves (physics-aware)
 
 **Large trees (>15×15 cells)**:
 - Bounding box + 1-cell padding, downsampled to 15×15
 - scale_factor > 1.0, each neural cell aggregates multiple world cells
-- Histograms show distributions: [0.4 WOOD, 0.3 LEAF, 0.2 AIR, 0.1 DIRT]
+- Material channels show distributions: [0.4 WOOD, 0.3 LEAF, 0.2 AIR, 0.1 DIRT, ...]
+
+**Sensory Channels**:
+- Channels 0-9: Material distribution (normalized probabilities)
+- Channel 10 (LIGHT): Average brightness from cell colors (0.0-1.0)
+- Channel 11 (OWNERSHIP): Fraction of cells in region belonging to this tree
 
 **Implementation Notes**:
 - Seed position tracked via Tree.seed_position (updated on transfers)
-- Material histograms populated by sampling world grid (Tree.cpp:275-299)
+- Sensory channels populated by sampling world grid
+- Light values come from cell.getColor() via ColorNames::brightness()
+- Ownership determined by checking organism_id against tree id
 - Visualization in UI via NeuralGridRenderer (50/50 split with world view)
 
 ```cpp
-TreeSensoryData Tree::gatherSensoryData(const WorldB& world) {
+TreeSensoryData Tree::gatherSensoryData(const World& world) {
     TreeSensoryData data;
 
-    // Calculate bounding box + 1 cell padding
+    // Calculate bounding box + 1 cell padding.
     auto bbox = calculateBoundingBox();
     bbox.expand(1);
 
@@ -210,18 +223,48 @@ TreeSensoryData Tree::gatherSensoryData(const WorldB& world) {
         (double)bbox.height / TreeSensoryData::GRID_SIZE
     );
 
-    // Compute histogram for each neural grid cell
+    // Compute channels for each neural grid cell.
     for (int ny = 0; ny < 15; ny++) {
         for (int nx = 0; nx < 15; nx++) {
-            // Map neural coords to world region
+            // Map neural coords to world region.
             int wx_start = bbox.x + (int)(nx * data.scale_factor);
             int wy_start = bbox.y + (int)(ny * data.scale_factor);
             int wx_end = bbox.x + (int)((nx + 1) * data.scale_factor);
             int wy_end = bbox.y + (int)((ny + 1) * data.scale_factor);
 
-            // Count materials in region and normalize
-            data.material_histograms[ny][nx] =
-                computeHistogram(world, wx_start, wy_start, wx_end, wy_end);
+            // Sample cells in region.
+            std::array<int, NUM_MATERIALS> counts = {};
+            double total_brightness = 0.0;
+            int owned_cells = 0;
+            int total_cells = 0;
+
+            for (int wy = wy_start; wy < wy_end; wy++) {
+                for (int wx = wx_start; wx < wx_end; wx++) {
+                    const Cell& cell = world.getData().at(wx, wy);
+
+                    // Material counting.
+                    counts[static_cast<int>(cell.material_type)]++;
+
+                    // Light accumulation.
+                    total_brightness += ColorNames::brightness(cell.getColor());
+
+                    // Ownership check.
+                    if (world.getOrganismManager().at({wx, wy}) == id_) {
+                        owned_cells++;
+                    }
+
+                    total_cells++;
+                }
+            }
+
+            // Normalize and store channels.
+            if (total_cells > 0) {
+                for (int i = 0; i < NUM_MATERIALS; i++) {
+                    data.sensory_channels[ny][nx][i] = counts[i] / (double)total_cells;
+                }
+                data.sensory_channels[ny][nx][LIGHT_CHANNEL] = total_brightness / total_cells;
+                data.sensory_channels[ny][nx][OWNERSHIP_CHANNEL] = owned_cells / (double)total_cells;
+            }
         }
     }
 
@@ -416,16 +459,87 @@ Material displacement multipliers (future):
 ### Phase 2: Growth System
 **Goal**: Intelligent germination and balanced growth with resource constraints
 
-**Status: WIP!???**
+**Status: ✅ COMPLETE**
 
-Need to do a status review of the tests and implementation.
+- Contact-based germination (observe dirt → ROOT → WOOD)
+- TreeCommandProcessor validates energy, adjacency, bounds
+- RuleBasedBrain implements trunk/branch/leaf growth patterns
+- Balanced growth with left/right mass tracking
+- 13 passing tests
 
 ### Phase 3: Resource Economy
-1. Light map calculation
-2. Photosynthesis implementation
-3. Water absorption
-4. Nutrient extraction from DIRT
-5. Testing: Trees survive/die based on resources
+
+**Goal**: Trees produce and consume energy based on light exposure.
+
+**Status: IN PROGRESS**
+
+#### Light System Integration
+
+Light is calculated by WorldLightCalculator **before** organism updates, so trees can query current light values:
+
+```
+World::advanceTime() order:
+1. light_calculator_.calculate()   ← Light computed first
+2. organism_manager_->update()     ← Tree::update() runs here (can read light)
+3. resolveForces()
+4. ...
+```
+
+Trees access light via `cell.getColor()` and `ColorNames::brightness()`.
+
+#### TreePhysiology Helper Functions
+
+New file: `src/core/organisms/TreePhysiology.h/cpp`
+
+Pure functions for testability:
+
+```cpp
+namespace TreePhysiology {
+
+struct PhotosynthesisResult {
+    double energy_produced;
+    double water_consumed;
+};
+
+// Compute energy production from light exposure.
+// leaf_count: Number of LEAF cells.
+// average_light: Average brightness across LEAF cells (0.0-1.0).
+// available_water: Current water reserves.
+// deltaTime: Time step in seconds.
+PhotosynthesisResult computePhotosynthesis(
+    int leaf_count,
+    double average_light,
+    double available_water,
+    double deltaTime);
+
+// Compute energy drain from maintaining tree structure.
+// total_cells: Total number of cells in tree.
+// deltaTime: Time step in seconds.
+double computeMaintenanceCost(
+    int total_cells,
+    double deltaTime);
+
+} // namespace TreePhysiology
+```
+
+#### Energy Flow
+
+```
+Photosynthesis:
+  energy += LEAF_count × average_light × PHOTOSYNTHESIS_RATE × deltaTime
+
+Maintenance:
+  energy -= total_cells × MAINTENANCE_COST × deltaTime
+
+Net energy determines growth capacity and survival.
+```
+
+#### Implementation Steps
+1. ✅ Light system integrated into World (WorldLightCalculator)
+2. Add LIGHT_CHANNEL and OWNERSHIP_CHANNEL to TreeSensoryData
+3. Implement TreePhysiology helper functions with unit tests
+4. Call TreePhysiology from Tree::updateResources()
+5. Test: Trees in light grow, trees in shadow decline
 
 ### Phase 4: Advanced Features
 1. Multiple tree competition
@@ -434,49 +548,67 @@ Need to do a status review of the tests and implementation.
 4. Visual differentiation
 5. Performance optimization
 
-### Phase 5: AI Brains (Future)
+### Phase 5: AI Brains
 
-#### Neural Network Brain
+#### Neural Network Brain (✅ IMPLEMENTED)
 
-**Architecture**:
-- Input layer: ~1806 neurons
-  - 15×15×8 = 1800 for material histograms
-  - 6 for internal state (energy, water, counts, scale_factor)
-- Hidden layers: 32-64 neurons (1-2 layers) - is this big enough?
-- Output layer: 676 neurons
-  - 15×15×3 = 675 for grow commands (WOOD/LEAF/ROOT at each position)
-  - 1 for WAIT command
+**Status**: Basic implementation complete. NeuralNetBrain class with random weights, selectable via TreeGerminationConfig.brain_type.
 
-**Action Space**:
-Output neurons map directly to neural grid positions:
-- Neurons [0-224]: GROW_WOOD at each of 15×15 positions
-- Neurons [225-449]: GROW_LEAF at each of 15×15 positions
-- Neurons [450-674]: GROW_ROOT at each of 15×15 positions
-- Neuron [675]: WAIT
+**Architecture** (factorized outputs):
+```
+Input Layer (2256 neurons)
+├── 15×15×10 = 2250 (material histograms)
+└── 6 (internal state: energy, water, age, stage, scale_factor, reserved)
 
-Brain selects action with highest activation (argmax), maps neural coordinates back to world coordinates using scale_factor.
+Hidden Layer (48 neurons, ReLU activation)
 
-**Genetic Algorithm Evolution**:
-- Population of trees with random initial weights
-- Fitness based on: survival time, growth, resource efficiency
-- Selection, crossover, mutation of network weights
-- Multiple generations evolve successful growth strategies
+Output Layer (231 neurons, linear)
+├── 6 (action logits: WOOD, LEAF, ROOT, REINFORCE, SEED, WAIT)
+└── 225 (position logits: 15×15 grid)
+```
 
-**Benefits of histogram-based input**:
-- Fixed network size regardless of tree size
-- Network learns to interpret "blur" (distributions vs one-hot)
-- Small trees get crisp signals, large trees get aggregated view
-- Smooth transition as tree grows, no discontinuities
+**Key Design Decisions**:
+- Factorized outputs: Action type and position selected independently via argmax.
+- This allows adding new action types cheaply (just add neurons to action head).
+- ~120K parameters total, suitable for genetic algorithm evolution.
+- Xavier weight initialization for stable gradients.
 
-#### LLM Brain
+**Files**:
+- `src/core/organisms/brains/NeuralNetBrain.h/cpp` - Brain implementation.
+- `src/core/organisms/brains/Genome.h/cpp` - Weight vector with serialization.
+
+**Configuration**:
+TreeGerminationConfig has `brain_type` (RULE_BASED or NEURAL_NET) and `neural_seed`.
+
+**Next Steps**:
+- Add light channel (channel 10) to input.
+- Add ownership channel (channel 11) to input.
+- Training harness for genetic algorithm evolution.
+- Genome save/load to file.
+- UI selector for brain type.
+
+#### Genetic Algorithm Evolution (Future)
+
+- Population of trees with random initial weights.
+- Fitness based on: survival time, growth, resource efficiency.
+- Selection, crossover, mutation of network weights.
+- Multiple generations evolve successful growth strategies.
+
+**Benefits of channel-based input**:
+- Fixed network size regardless of tree size.
+- Network learns to interpret "blur" (distributions vs one-hot).
+- Small trees get crisp signals, large trees get aggregated view.
+- Smooth transition as tree grows, no discontinuities.
+
+#### LLM Brain (Future)
 
 Uses Ollama for high-level strategic decision making (see design_docs/ai-integration-ideas.md).
 
-#### Brain Comparison Tools
+#### Brain Comparison Tools (Future)
 
-- Visualize evolved network weights
-- Compare fitness across different architectures
-- Export successful strategies for analysis
+- Visualize evolved network weights.
+- Compare fitness across different architectures.
+- Export successful strategies for analysis.
 
 ## Integration with World
 

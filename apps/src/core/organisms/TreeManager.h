@@ -7,6 +7,7 @@
 
 namespace DirtSim {
 
+class TreeBrain;
 class World;
 
 class TreeManager {
@@ -15,6 +16,7 @@ public:
 
     void update(World& world, double deltaTime);
     TreeId plantSeed(World& world, uint32_t x, uint32_t y);
+    TreeId plantSeed(World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain);
     void removeTree(TreeId id);
     void clear();
 

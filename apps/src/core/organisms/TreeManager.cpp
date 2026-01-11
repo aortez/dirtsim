@@ -1,4 +1,5 @@
 #include "TreeManager.h"
+#include "TreeBrain.h"
 #include "brains/RuleBasedBrain.h"
 #include "core/Cell.h"
 #include "core/GridOfCells.h"
@@ -22,9 +23,14 @@ void TreeManager::update(World& world, double deltaTime)
 
 TreeId TreeManager::plantSeed(World& world, uint32_t x, uint32_t y)
 {
+    return plantSeed(world, x, y, std::make_unique<RuleBasedBrain>());
+}
+
+TreeId TreeManager::plantSeed(
+    World& world, uint32_t x, uint32_t y, std::unique_ptr<TreeBrain> brain)
+{
     TreeId id = next_tree_id_++;
 
-    auto brain = std::make_unique<RuleBasedBrain>();
     Tree tree(id, std::move(brain));
 
     Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
