@@ -366,13 +366,13 @@ AllColumnConfigs createAllColumnConfigs()
                         .enableGetter =
                             [](const PhysicsSettings& s) { return s.light.sun_enabled; } },
                       { .label = "Sun Intensity",
-                        .type = ControlType::TOGGLE_SLIDER,
+                        .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 200,
                         .defaultValue = 100,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
-                        .initiallyEnabled = true,
+                        .step = 5,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.sun_intensity = static_cast<float>(v);
@@ -380,11 +380,7 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.sun_intensity);
-                            },
-                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                           [[maybe_unused]] bool e) {},
-                        .enableGetter =
-                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                            } },
                       { .label = "Sun Color",
                         .type = ControlType::DROPDOWN,
                         .dropdownOptions =
@@ -407,13 +403,13 @@ AllColumnConfigs createAllColumnConfigs()
                                 return getAmbientColorIndex(s.light.ambient_color);
                             } },
                       { .label = "Ambient Intensity",
-                        .type = ControlType::TOGGLE_SLIDER,
+                        .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 300,
                         .defaultValue = 100,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
-                        .initiallyEnabled = true,
+                        .step = 5,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.ambient_intensity = static_cast<float>(v);
@@ -421,19 +417,15 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.ambient_intensity);
-                            },
-                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                           [[maybe_unused]] bool e) {},
-                        .enableGetter =
-                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                            } },
                       { .label = "Sky Access Falloff",
-                        .type = ControlType::TOGGLE_SLIDER,
+                        .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 200,
                         .defaultValue = 100,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
-                        .initiallyEnabled = true,
+                        .step = 5,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.sky_access_falloff = static_cast<float>(v);
@@ -441,19 +433,15 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.sky_access_falloff);
-                            },
-                        .enableSetter = [](PhysicsSettings& s,
-                                           bool e) { s.light.sky_access_enabled = e; },
-                        .enableGetter =
-                            [](const PhysicsSettings& s) { return s.light.sky_access_enabled; } },
+                            } },
                       { .label = "Diffusion Iters",
-                        .type = ControlType::TOGGLE_SLIDER,
+                        .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 10,
                         .defaultValue = 2,
                         .valueScale = 1.0,
                         .valueFormat = "%.0f",
-                        .initiallyEnabled = true,
+                        .step = 1,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.diffusion_iterations = static_cast<int>(v);
@@ -461,19 +449,15 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.diffusion_iterations);
-                            },
-                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                           [[maybe_unused]] bool e) {},
-                        .enableGetter =
-                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } },
+                            } },
                       { .label = "Diffusion Rate",
-                        .type = ControlType::TOGGLE_SLIDER,
+                        .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 100,
                         .defaultValue = 30,
                         .valueScale = 0.01,
                         .valueFormat = "%.2f",
-                        .initiallyEnabled = true,
+                        .step = 5,
                         .valueSetter =
                             [](PhysicsSettings& s, double v) {
                                 s.light.diffusion_rate = static_cast<float>(v);
@@ -481,11 +465,7 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.diffusion_rate);
-                            },
-                        .enableSetter = []([[maybe_unused]] PhysicsSettings& s,
-                                           [[maybe_unused]] bool e) {},
-                        .enableGetter =
-                            []([[maybe_unused]] const PhysicsSettings& s) { return true; } } }
+                            } } }
     };
 
     configs.swapTuning = {
@@ -738,6 +718,23 @@ size_t createControlsFromColumn(
                 widgetToControl[control.switchWidget] = &control;
             }
         }
+        else if (controlConfig.type == ControlType::ACTION_STEPPER) {
+            control.widget = LVGLBuilder::actionStepper(parent)
+                                 .label(controlConfig.label)
+                                 .range(controlConfig.rangeMin, controlConfig.rangeMax)
+                                 .step(controlConfig.step)
+                                 .value(controlConfig.defaultValue)
+                                 .valueFormat(controlConfig.valueFormat)
+                                 .valueScale(controlConfig.valueScale)
+                                 .width(LV_PCT(95))
+                                 .callback(sliderCallback, callbackUserData)
+                                 .buildOrLog();
+
+            if (control.widget) {
+                control.stepperWidget = control.widget;
+                widgetToControl[control.widget] = &control;
+            }
+        }
         else if (controlConfig.type == ControlType::DROPDOWN) {
             control.widget = LVGLBuilder::actionDropdown(parent)
                                  .label(controlConfig.label)
@@ -833,6 +830,16 @@ void updateControlsFromSettings(
 
     for (size_t i = 0; i < controlCount; i++) {
         Control& control = controlsArray[i];
+
+        // Handle ACTION_STEPPER controls.
+        if (control.config.type == ControlType::ACTION_STEPPER) {
+            if (control.config.valueGetter && control.stepperWidget) {
+                double value = control.config.valueGetter(settings);
+                int32_t stepperValue = static_cast<int32_t>(value / control.config.valueScale);
+                LVGLBuilder::ActionStepperBuilder::setValue(control.stepperWidget, stepperValue);
+            }
+            continue;
+        }
 
         // Handle DROPDOWN controls.
         if (control.config.type == ControlType::DROPDOWN) {

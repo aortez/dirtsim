@@ -1,6 +1,6 @@
 #pragma once
 
-#include "PhysicsSettings.h"
+#include "LightConfig.h"
 #include "WorldCalculatorBase.h"
 #include <cstdint>
 #include <string>

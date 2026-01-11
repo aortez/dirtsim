@@ -1,8 +1,8 @@
 #include "WorldLightCalculator.h"
 #include "Cell.h"
 #include "ColorNames.h"
+#include "LightConfig.h"
 #include "MaterialType.h"
-#include "PhysicsSettings.h"
 #include "World.h"
 #include "WorldData.h"
 

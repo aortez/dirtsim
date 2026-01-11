@@ -306,6 +306,23 @@ void PhysicsPanel::onGenericValueChange(lv_event_t* e)
         return;
     }
 
+    // Handle ACTION_STEPPER controls on VALUE_CHANGED.
+    if (control->config.type == PhysicsControlHelpers::ControlType::ACTION_STEPPER) {
+        if (code != LV_EVENT_VALUE_CHANGED) {
+            return;
+        }
+        int32_t stepperValue = LVGLBuilder::ActionStepperBuilder::getValue(control->stepperWidget);
+        double scaledValue = stepperValue * control->config.valueScale;
+        LOG_INFO(
+            Controls, "PhysicsPanel: {} changed to {:.2f}", control->config.label, scaledValue);
+
+        if (control->config.valueSetter) {
+            control->config.valueSetter(self->settings_, scaledValue);
+        }
+        self->syncSettings();
+        return;
+    }
+
     // Handle DROPDOWN controls on VALUE_CHANGED.
     if (control->config.type == PhysicsControlHelpers::ControlType::DROPDOWN) {
         if (code != LV_EVENT_VALUE_CHANGED) {

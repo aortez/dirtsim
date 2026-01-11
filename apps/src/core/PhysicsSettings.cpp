@@ -42,7 +42,7 @@ PhysicsSettings getDefaultPhysicsSettings()
                             .timescale = 1.0,
                             .viscosity_strength = 1.0,
                             .viscosity_enabled = true,
-                            .light = {} };
+                            .light = getDefaultLightConfig() };
 }
 
 } // namespace DirtSim
