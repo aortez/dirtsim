@@ -25,6 +25,7 @@ class WorldPressureCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
 struct LightBuffer;
+struct PointLight;
 } // namespace DirtSim
 
 namespace DirtSim {
@@ -100,6 +101,12 @@ public:
     WorldLightCalculator& getLightCalculator();
     const WorldLightCalculator& getLightCalculator() const;
 
+    // Point light management.
+    void addPointLight(const PointLight& light);
+    void clearPointLights();
+    const std::vector<PointLight>& getPointLights() const;
+    std::vector<PointLight>& getPointLights();
+
     WorldAdhesionCalculator& getAdhesionCalculator();
     const WorldAdhesionCalculator& getAdhesionCalculator() const;
 
@@ -164,7 +171,7 @@ public:
     // COM cohesion mode removed - always uses ORIGINAL implementation
 
     // GRID MANAGEMENT
-    void resizeGrid(uint32_t newWidth, uint32_t newHeight);
+    void resizeGrid(int16_t newWidth, int16_t newHeight);
 
     // PERFORMANCE AND DEBUGGING
     void dumpTimerStats() const;
@@ -228,8 +235,8 @@ public:
     const LightBuffer& getRawLightBuffer() const;
 
     // WorldInterface hook implementations (rarely overridden - can be public).
-    void onPreResize(uint32_t newWidth, uint32_t newHeight);
-    bool shouldResize(uint32_t newWidth, uint32_t newHeight) const;
+    void onPreResize(int16_t newWidth, int16_t newHeight);
+    bool shouldResize(int16_t newWidth, int16_t newHeight) const;
 
     // =================================================================
     // CONFIGURATION (public - direct access preferred)

@@ -24,8 +24,8 @@ void startMeltdown(MeltdownEventState& state, World& world)
     // Convert interior WALL cells (digit display cells) to METAL so they can fall.
     // These are WALL cells with render_as set (indicating they are digit cells).
     int max_digit_y = 0;
-    for (uint32_t y = 1; y < data.height - 1; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = 1; y < data.height - 1; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
 
             // Only convert WALL cells with render_as override (digit cells).
@@ -51,14 +51,14 @@ void updateMeltdown(
     double& remaining_time,
     double event_duration,
     bool drain_open,
-    uint32_t drain_start_x,
-    uint32_t drain_end_x)
+    int16_t drain_start_x,
+    int16_t drain_end_x)
 {
     WorldData& data = world.getData();
     if (data.height < 3) return;
 
-    uint32_t bottom_wall_y = data.height - 1;
-    uint32_t above_bottom_y = data.height - 2;
+    int bottom_wall_y = data.height - 1;
+    int above_bottom_y = data.height - 2;
     MaterialType digit_mat = state.digit_material;
 
     // Fragmentation params for digit material spraying up from drain.
@@ -78,7 +78,7 @@ void updateMeltdown(
     constexpr int NUM_FRAGS = 4;
     constexpr double ARC_WIDTH = M_PI / 2.0;
 
-    for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int x = 1; x < data.width - 1; ++x) {
         // Check cells in drain hole (bottom wall row, if drain is open).
         if (drain_open && x >= drain_start_x && x <= drain_end_x) {
             Cell& drain_cell = data.at(x, bottom_wall_y);
@@ -125,8 +125,8 @@ void updateMeltdown(
     }
 
     // Check if any digit material still exists above the bottom row (still falling).
-    for (uint32_t y = 1; y < above_bottom_y; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = 1; y < above_bottom_y; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             if (data.at(x, y).material_type == digit_mat) {
                 any_digit_material_above_bottom = true;
                 break;
@@ -150,8 +150,8 @@ void endMeltdown(World& world, MaterialType digit_material)
     WorldData& data = world.getData();
 
     // Convert all digit material to water, then redraw fresh digits.
-    for (uint32_t y = 1; y < data.height; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = 1; y < data.height; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == digit_material) {
                 cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);

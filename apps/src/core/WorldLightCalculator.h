@@ -14,6 +14,7 @@ class Timers;
 namespace DirtSim {
 
 class GridOfCells;
+struct PointLight;
 class World;
 
 /**
@@ -42,9 +43,12 @@ private:
     void applyEmissiveCells(World& world);
     void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);
-    void clearLight(World& world);
+    void applyPointLights(World& world, const GridOfCells& grid);
     void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
+    void clearLight(World& world);
     void storeRawLight(World& world);
+    ColorNames::RgbF traceRay(
+        const GridOfCells& grid, int x0, int y0, int x1, int y1, ColorNames::RgbF color) const;
 
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
     std::vector<ColorNames::RgbF> light_buffer_;

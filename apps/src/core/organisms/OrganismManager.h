@@ -37,7 +37,7 @@ public:
     OrganismId at(Vector2i pos) const;
     bool hasOrganism(Vector2i pos) const;
     const std::vector<OrganismId>& getGrid() const;
-    void resizeGrid(uint32_t width, uint32_t height);
+    void resizeGrid(int16_t width, int16_t height);
 
     void update(World& world, double deltaTime);
 
@@ -120,8 +120,8 @@ private:
     OrganismId next_id_{ 1 };
 
     std::vector<OrganismId> grid_;
-    uint32_t width_ = 0;
-    uint32_t height_ = 0;
+    int16_t width_ = 0;
+    int16_t height_ = 0;
 };
 
 } // namespace DirtSim

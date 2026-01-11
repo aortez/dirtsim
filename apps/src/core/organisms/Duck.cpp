@@ -55,9 +55,7 @@ void Duck::update(World& world, double deltaTime)
 
     // INVARIANT CHECKS: Verify duck's anchor_cell_ matches world state.
     const WorldData& data = world.getData();
-    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0
-        && static_cast<uint32_t>(anchor_cell_.x) < data.width
-        && static_cast<uint32_t>(anchor_cell_.y) < data.height) {
+    if (data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
 
         const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
 
@@ -85,9 +83,9 @@ void Duck::update(World& world, double deltaTime)
 
             // Scan entire world to find where our organism actually is.
             spdlog::critical("  Scanning world for duck's actual cells...");
-            for (uint32_t y = 0; y < data.height; ++y) {
-                for (uint32_t x = 0; x < data.width; ++x) {
-                    Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
+            for (int y = 0; y < data.height; ++y) {
+                for (int x = 0; x < data.width; ++x) {
+                    Vector2i pos{ x, y };
                     if (world.getOrganismManager().at(pos) == id_) {
                         const Cell& cell = data.at(x, y);
                         spdlog::critical(
@@ -189,9 +187,7 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
     WorldData& data = world.getData();
 
     // Bounds check.
-    if (anchor_cell_.x < 0 || anchor_cell_.y < 0
-        || static_cast<uint32_t>(anchor_cell_.x) >= data.width
-        || static_cast<uint32_t>(anchor_cell_.y) >= data.height) {
+    if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
         return;
     }
 
@@ -254,9 +250,7 @@ void Duck::logPhysicsState(const World& world)
     const WorldData& data = world.getData();
 
     // Bounds check.
-    if (anchor_cell_.x < 0 || anchor_cell_.y < 0
-        || static_cast<uint32_t>(anchor_cell_.x) >= data.width
-        || static_cast<uint32_t>(anchor_cell_.y) >= data.height) {
+    if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
         LOG_INFO(Brain, "Duck {}: OUT OF BOUNDS at ({}, {})", id_, anchor_cell_.x, anchor_cell_.y);
         return;
     }
@@ -304,9 +298,7 @@ DuckSensoryData Duck::gatherSensoryData(const World& world, double deltaTime) co
 
     // Get velocity from our cell.
     const WorldData& world_data = world.getData();
-    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0
-        && static_cast<uint32_t>(anchor_cell_.x) < world_data.width
-        && static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
+    if (world_data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
         const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
         data.velocity = cell.velocity;
     }
@@ -416,9 +408,7 @@ void Duck::updateSparkles(const World& world, double deltaTime)
     // Spawn or remove sparkles to match desired count based on acceleration.
     // Get duck's current velocity from cell and calculate acceleration.
     const WorldData& world_data = world.getData();
-    if (anchor_cell_.x >= 0 && anchor_cell_.y >= 0
-        && static_cast<uint32_t>(anchor_cell_.x) < world_data.width
-        && static_cast<uint32_t>(anchor_cell_.y) < world_data.height) {
+    if (world_data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
         const Cell& cell = world_data.at(anchor_cell_.x, anchor_cell_.y);
 
         // Calculate instantaneous acceleration components (change in velocity over time).

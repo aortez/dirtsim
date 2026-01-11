@@ -43,8 +43,7 @@ private:
     void clearDirtQuadrant(World& world);
     void refillWaterColumn(World& world);
     void addRainDrops(World& world, double deltaTime);
-    void spawnWaterDrop(
-        World& world, uint32_t centerX, uint32_t centerY, double radius, double fillAmount);
+    void spawnWaterDrop(World& world, int centerX, int centerY, double radius, double fillAmount);
     void throwDirtBalls(World& world);
 };
 

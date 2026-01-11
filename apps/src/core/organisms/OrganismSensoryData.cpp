@@ -179,8 +179,7 @@ void gatherMaterialHistograms(
             int wy = world_offset.y + ny;
 
             // Check bounds.
-            if (wx < 0 || wy < 0 || static_cast<uint32_t>(wx) >= data.width
-                || static_cast<uint32_t>(wy) >= data.height) {
+            if (!data.inBounds(wx, wy)) {
                 // Out of bounds - treat as WALL so organisms can detect world edges.
                 int wall_idx = static_cast<int>(MaterialType::WALL);
                 if (wall_idx >= 0 && wall_idx < NumMaterials) {

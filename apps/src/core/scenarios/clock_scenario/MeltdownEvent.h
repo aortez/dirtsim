@@ -34,8 +34,8 @@ void updateMeltdown(
     double& remaining_time,
     double event_duration,
     bool drain_open,
-    uint32_t drain_start_x,
-    uint32_t drain_end_x);
+    int16_t drain_start_x,
+    int16_t drain_end_x);
 
 /**
  * Converts any remaining digit material to water after meltdown ends.

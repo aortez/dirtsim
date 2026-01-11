@@ -46,8 +46,8 @@ TEST_F(WorldLightCalculatorTest, SunlightEmptyColumn)
     WorldData& data = world.getData();
 
     // Fill with WATER (low opacity 0.05) so light transmits through.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
@@ -55,8 +55,8 @@ TEST_F(WorldLightCalculatorTest, SunlightEmptyColumn)
     calc.calculate(world, world.getGrid(), config, timers);
 
     // All cells should have some brightness (WATER is blue, attenuates slightly per row).
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_GT(brightness, 0.1f)
                 << "Cell (" << x << "," << y << ") should be lit, got " << brightness;
@@ -70,22 +70,22 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
     WorldData& data = world.getData();
 
     // Fill with WATER (low opacity) so we can see light differences.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
 
     // Wall across row 3.
-    for (uint32_t x = 0; x < 10; ++x) {
+    for (int x = 0; x < 10; ++x) {
         data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
     calc.calculate(world, world.getGrid(), config, timers);
 
     // Cells above wall (rows 0-2) should be lit (WATER is blue, ~0.26 brightness).
-    for (uint32_t y = 0; y < 3; ++y) {
-        for (uint32_t x = 0; x < 10; ++x) {
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 10; ++x) {
             float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_GT(brightness, 0.2f)
                 << "Cell (" << x << "," << y << ") above wall should be lit";
@@ -93,8 +93,8 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
     }
 
     // Cells below wall (rows 4-9) should be dark (no sun reaches them).
-    for (uint32_t y = 4; y < 10; ++y) {
-        for (uint32_t x = 0; x < 10; ++x) {
+    for (int y = 4; y < 10; ++y) {
+        for (int x = 0; x < 10; ++x) {
             float brightness = ColorNames::brightness(data.colors.at(x, y));
             EXPECT_LT(brightness, 0.1f)
                 << "Cell (" << x << "," << y << ") below wall should be dark, got " << brightness;
@@ -108,8 +108,8 @@ TEST_F(WorldLightCalculatorTest, LeafPartiallyBlocksSunlight)
     WorldData& data = world.getData();
 
     // Fill with WATER (low opacity) so light transmits through.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
@@ -134,7 +134,7 @@ TEST_F(WorldLightCalculatorTest, EmissiveSeedAddsLight)
     WorldData& data = world.getData();
 
     // Block all sun with a wall at top.
-    for (uint32_t x = 0; x < 5; ++x) {
+    for (int x = 0; x < 5; ++x) {
         data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -158,15 +158,15 @@ TEST_F(WorldLightCalculatorTest, WaterTransmitsLight)
     WorldData& data = world.getData();
 
     // Fill with WATER (opacity=0.05, scatter=0.1) - transparent enough for light.
-    for (uint32_t y = 0; y < 10; ++y) {
-        for (uint32_t x = 0; x < 10; ++x) {
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 0; x < 10; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
 
     // Block sun on right half with wall.
-    for (uint32_t y = 0; y < 10; ++y) {
-        for (uint32_t x = 5; x < 10; ++x) {
+    for (int y = 0; y < 10; ++y) {
+        for (int x = 5; x < 10; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WALL, 1.0);
         }
     }
@@ -188,8 +188,8 @@ TEST_F(WorldLightCalculatorTest, LightMapStringProducesOutput)
     WorldData& data = world.getData();
 
     // Fill with WATER so cells are visible.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
@@ -216,14 +216,14 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
     WorldData& data = world.getData();
 
     // Fill with SAND so we can see light.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::SAND, 1.0);
         }
     }
 
     // Block all sun.
-    for (uint32_t x = 0; x < 5; ++x) {
+    for (int x = 0; x < 5; ++x) {
         data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -252,8 +252,8 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
     WorldData& data = world.getData();
 
     // Fill with WATER so we can see light.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
@@ -282,14 +282,14 @@ TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
     WorldData& data = world.getData();
 
     // Fill with WATER (low opacity, visible color).
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
 
     // Wall at row 3 blocks sky access.
-    for (uint32_t x = 0; x < 5; ++x) {
+    for (int x = 0; x < 5; ++x) {
         data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -317,14 +317,14 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
     WorldData& data = world.getData();
 
     // Fill with WATER (low opacity, visible color).
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
 
     // Wall across row 2, but leave a gap at x=5 (vertical shaft).
-    for (uint32_t x = 0; x < 10; ++x) {
+    for (int x = 0; x < 10; ++x) {
         if (x != 5) {
             data.at(x, 2).replaceMaterial(MaterialType::WALL, 1.0);
         }

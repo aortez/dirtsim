@@ -31,8 +31,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
     Vector2i roof_pos = computeRoofPosition(def, data);
 
     // Validate positions are within bounds.
-    if (door_pos.x < 0 || door_pos.y < 0 || static_cast<uint32_t>(door_pos.x) >= data.width
-        || static_cast<uint32_t>(door_pos.y) >= data.height) {
+    if (!data.inBounds(door_pos.x, door_pos.y)) {
         spdlog::warn(
             "DoorManager: Door {} position ({}, {}) is outside world bounds {}x{}",
             id,
@@ -43,8 +42,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
         return false;
     }
 
-    if (roof_pos.x < 0 || roof_pos.y < 0 || static_cast<uint32_t>(roof_pos.x) >= data.width
-        || static_cast<uint32_t>(roof_pos.y) >= data.height) {
+    if (!data.inBounds(roof_pos.x, roof_pos.y)) {
         spdlog::warn(
             "DoorManager: Door {} roof position ({}, {}) is outside world bounds {}x{}",
             id,
@@ -87,14 +85,12 @@ void DoorManager::closeDoor(DoorId id, World& world)
     Vector2i roof_pos = computeRoofPosition(def, data);
 
     // Validate positions are within bounds before accessing.
-    if (door_pos.x >= 0 && door_pos.y >= 0 && static_cast<uint32_t>(door_pos.x) < data.width
-        && static_cast<uint32_t>(door_pos.y) < data.height) {
+    if (data.inBounds(door_pos.x, door_pos.y)) {
         // Restore wall at door position.
         world.replaceMaterialAtCell(door_pos, MaterialType::WALL);
     }
 
-    if (roof_pos.x >= 0 && roof_pos.y >= 0 && static_cast<uint32_t>(roof_pos.x) < data.width
-        && static_cast<uint32_t>(roof_pos.y) < data.height) {
+    if (data.inBounds(roof_pos.x, roof_pos.y)) {
         // Clear roof cell.
         world.getData().at(roof_pos.x, roof_pos.y) = Cell();
     }

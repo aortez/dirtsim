@@ -39,8 +39,8 @@ void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, floa
     static constexpr float FRICTION_MOMENTUM_TRANSFER_LIMIT = 1.0f;
 
     WorldData& data = world.getData();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.isEmpty() || cell.isWall()) {
                 continue;

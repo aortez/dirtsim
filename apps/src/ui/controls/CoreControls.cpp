@@ -644,8 +644,8 @@ void CoreControls::onWorldSizeChanged(lv_event_t* e)
 
     // Send binary WorldResize API command.
     static std::atomic<uint64_t> nextId{ 1 };
-    const Api::WorldResize::Command cmd{ .width = static_cast<uint32_t>(value),
-                                         .height = static_cast<uint32_t>(value) };
+    const Api::WorldResize::Command cmd{ .width = static_cast<int16_t>(value),
+                                         .height = static_cast<int16_t>(value) };
     auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
     auto result = self->wsService_->sendBinary(Network::serialize_envelope(envelope));
     if (result.isError()) {

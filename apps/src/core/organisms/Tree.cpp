@@ -143,9 +143,9 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     int max_x = INT32_MIN, max_y = INT32_MIN;
     int cell_count = 0;
 
-    for (uint32_t y = 0; y < world.getData().height; y++) {
-        for (uint32_t x = 0; x < world.getData().width; x++) {
-            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
+    for (int16_t y = 0; y < world.getData().height; y++) {
+        for (int16_t x = 0; x < world.getData().width; x++) {
+            Vector2i pos{ x, y };
             if (world.getOrganismManager().at(pos) == id_) {
                 min_x = std::min(min_x, static_cast<int>(x));
                 min_y = std::min(min_y, static_cast<int>(y));

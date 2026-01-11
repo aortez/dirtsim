@@ -5,10 +5,13 @@
 #include "GridOfCells.h"
 #include "LightConfig.h"
 #include "MaterialType.h"
+#include "PointLight.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
 #include "World.h"
 #include "WorldData.h"
+
+#include <cmath>
 
 namespace DirtSim {
 
@@ -18,12 +21,14 @@ void WorldLightCalculator::calculate(
     auto& data = world.getData();
 
     // Ensure colors buffer is sized correctly.
-    if (data.colors.width != data.width || data.colors.height != data.height) {
+    if (data.colors.width != static_cast<uint32_t>(data.width)
+        || data.colors.height != static_cast<uint32_t>(data.height)) {
         data.colors.resize(data.width, data.height, ColorNames::RgbF{});
     }
 
     // Ensure emissive overlay is sized correctly.
-    if (emissive_overlay_.width != data.width || emissive_overlay_.height != data.height) {
+    if (emissive_overlay_.width != static_cast<uint32_t>(data.width)
+        || emissive_overlay_.height != static_cast<uint32_t>(data.height)) {
         emissive_overlay_.resize(data.width, data.height, ColorNames::RgbF{});
     }
 
@@ -55,6 +60,12 @@ void WorldLightCalculator::calculate(
     {
         ScopeTimer t(timers, "light_emissive_overlay");
         applyEmissiveOverlay(world);
+    }
+
+    // Add point light contributions.
+    {
+        ScopeTimer t(timers, "light_point_lights");
+        applyPointLights(world, grid);
     }
 
     {
@@ -355,8 +366,8 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
     std::string result;
     result.reserve((data.width + 1) * data.height);
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             float b = ColorNames::brightness(data.colors.at(x, y));
             int idx = std::min(9, static_cast<int>(b * 10));
             result += shades[idx];
@@ -369,7 +380,8 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
 void WorldLightCalculator::storeRawLight(World& world)
 {
     auto& data = world.getData();
-    if (raw_light_.width != data.width || raw_light_.height != data.height) {
+    if (raw_light_.width != static_cast<uint32_t>(data.width)
+        || raw_light_.height != static_cast<uint32_t>(data.height)) {
         raw_light_.resize(data.width, data.height);
     }
 
@@ -418,11 +430,118 @@ void WorldLightCalculator::applyEmissiveOverlay(World& world)
     auto& data = world.getData();
     resize(data.width, data.height);
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             const ColorNames::RgbF& emission = emissive_overlay_.at(x, y);
             if (emission.r > 0.0f || emission.g > 0.0f || emission.b > 0.0f) {
                 data.colors.at(x, y) += emission;
+            }
+        }
+    }
+}
+
+ColorNames::RgbF WorldLightCalculator::traceRay(
+    const GridOfCells& grid, int x0, int y0, int x1, int y1, ColorNames::RgbF color) const
+{
+    // Bresenham's line algorithm to trace from light source to target.
+    // Accumulates opacity and tinting as light passes through materials.
+    int dx = std::abs(x1 - x0);
+    int dy = std::abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    int x = x0;
+    int y = y0;
+
+    // Skip the source cell itself.
+    while (x != x1 || y != y1) {
+        int e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x += sx;
+        }
+        if (e2 < dx) {
+            err -= dx;
+            y += sy;
+        }
+
+        // Stop if we've reached the target.
+        if (x == x1 && y == y1) {
+            break;
+        }
+
+        // Get material at this cell and apply opacity/tinting.
+        uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+        MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+        const auto& light_props = getMaterialProperties(mat).light;
+
+        float transmittance = 1.0f - light_props.opacity;
+        color *= transmittance;
+        color *= ColorNames::toRgbF(light_props.tint);
+
+        // Early exit if light is fully absorbed.
+        if (color.r < 0.001f && color.g < 0.001f && color.b < 0.001f) {
+            return ColorNames::RgbF{};
+        }
+    }
+
+    return color;
+}
+
+void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& grid)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    const auto& point_lights = world.getPointLights();
+    if (point_lights.empty()) {
+        return;
+    }
+
+    auto& data = world.getData();
+    int width = static_cast<int>(data.width);
+    int height = static_cast<int>(data.height);
+
+    for (const PointLight& light : point_lights) {
+        int light_x = static_cast<int>(light.position.x);
+        int light_y = static_cast<int>(light.position.y);
+
+        // Skip lights outside the world.
+        if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
+            continue;
+        }
+
+        int radius_int = static_cast<int>(std::ceil(light.radius));
+        RgbF light_color = toRgbF(light.color) * light.intensity;
+
+        // Iterate over cells within the light's radius.
+        int min_x = std::max(0, light_x - radius_int);
+        int max_x = std::min(width - 1, light_x + radius_int);
+        int min_y = std::max(0, light_y - radius_int);
+        int max_y = std::min(height - 1, light_y + radius_int);
+
+        for (int y = min_y; y <= max_y; ++y) {
+            for (int x = min_x; x <= max_x; ++x) {
+                // Calculate distance.
+                float dx = static_cast<float>(x - light_x);
+                float dy = static_cast<float>(y - light_y);
+                float dist = std::sqrt(dx * dx + dy * dy);
+
+                // Skip cells outside radius.
+                if (dist > light.radius) {
+                    continue;
+                }
+
+                // Apply distance falloff: 1 / (1 + dist² * attenuation).
+                float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+
+                // Trace ray from light to cell.
+                RgbF received = traceRay(grid, light_x, light_y, x, y, light_color);
+
+                // Apply falloff and add to cell.
+                data.colors.at(static_cast<uint32_t>(x), static_cast<uint32_t>(y)) +=
+                    received * falloff;
             }
         }
     }

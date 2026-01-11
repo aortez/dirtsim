@@ -58,8 +58,8 @@ void SimRunning::onEnter(StateMachine& dsm)
             scenario_id = startupScenarioId;
 
             // Clear world before applying scenario.
-            for (uint32_t y = 0; y < world->getData().height; ++y) {
-                for (uint32_t x = 0; x < world->getData().width; ++x) {
+            for (int y = 0; y < world->getData().height; ++y) {
+                for (int x = 0; x < world->getData().width; ++x) {
                     world->getData().at(x, y) = Cell();
                 }
             }
@@ -408,9 +408,7 @@ State::Any SimRunning::onEvent(const Api::CellGet::Cwc& cwc, StateMachine& /*dsm
         return std::move(*this);
     }
 
-    if (cwc.command.x < 0 || cwc.command.y < 0
-        || static_cast<uint32_t>(cwc.command.x) >= world->getData().width
-        || static_cast<uint32_t>(cwc.command.y) >= world->getData().height) {
+    if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
         cwc.sendResponse(Response::error(ApiError("Invalid coordinates")));
         return std::move(*this);
     }
@@ -448,9 +446,7 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
     }
 
     // Validate coordinates.
-    if (cwc.command.x < 0 || cwc.command.y < 0
-        || static_cast<uint32_t>(cwc.command.x) >= world->getData().width
-        || static_cast<uint32_t>(cwc.command.y) >= world->getData().height) {
+    if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
         cwc.sendResponse(Response::error(ApiError("Invalid coordinates")));
         return std::move(*this);
     }
@@ -694,9 +690,7 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& /*dsm
     using Response = Api::SeedAdd::Response;
 
     // Validate coordinates.
-    if (cwc.command.x < 0 || cwc.command.y < 0
-        || static_cast<uint32_t>(cwc.command.x) >= world->getData().width
-        || static_cast<uint32_t>(cwc.command.y) >= world->getData().height) {
+    if (!world->getData().inBounds(cwc.command.x, cwc.command.y)) {
         cwc.sendResponse(Response::error(ApiError("Invalid coordinates")));
         return std::move(*this);
     }
@@ -814,10 +808,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
 
         // Check what's actually at the anchor position.
         const WorldData& data = world->getData();
-        if (debug.anchor_cell.x >= 0 && debug.anchor_cell.y >= 0
-            && static_cast<uint32_t>(debug.anchor_cell.x) < data.width
-            && static_cast<uint32_t>(debug.anchor_cell.y) < data.height) {
-
+        if (data.inBounds(debug.anchor_cell.x, debug.anchor_cell.y)) {
             const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
             debug.material_at_anchor = getMaterialName(cell.material_type);
             debug.organism_id_at_anchor = world->getOrganismManager().at(debug.anchor_cell);

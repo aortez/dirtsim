@@ -67,15 +67,15 @@ void TreeGerminationScenario::setup(World& world)
     spdlog::info("TreeGerminationScenario::setup - creating 9x9 world with balanced tree growth");
 
     // Clear world to air.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell();
         }
     }
 
     // Dirt at bottom 3 rows.
-    for (uint32_t y = 6; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 6; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
         }

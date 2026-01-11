@@ -102,14 +102,14 @@ protected:
         auto world = std::make_unique<World>(5, 5);
 
         // Clear interior to air.
-        for (uint32_t y = 1; y < 4; ++y) {
-            for (uint32_t x = 1; x < 4; ++x) {
+        for (int y = 1; y < 4; ++y) {
+            for (int x = 1; x < 4; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // Bottom row is already WALL from World constructor, but ensure it.
-        for (uint32_t x = 0; x < 5; ++x) {
+        for (int x = 0; x < 5; ++x) {
             world->getData().at(x, 4).replaceMaterial(MaterialType::WALL, 1.0);
         }
 
@@ -120,9 +120,9 @@ protected:
     {
         spdlog::info("=== {} ===", label);
         const WorldData& data = world.getData();
-        for (uint32_t y = 0; y < data.height; ++y) {
+        for (int y = 0; y < data.height; ++y) {
             std::string row;
-            for (uint32_t x = 0; x < data.width; ++x) {
+            for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL) {
                     row += "W";
@@ -324,8 +324,8 @@ TEST_F(DuckTest, DuckAnchorCellTracksPhysics)
 
     // Find where the WOOD cell actually is.
     Vector2i actual_wood_pos(-1, -1);
-    for (uint32_t y = 0; y < world->getData().height; ++y) {
-        for (uint32_t x = 0; x < world->getData().width; ++x) {
+    for (int y = 0; y < world->getData().height; ++y) {
+        for (int x = 0; x < world->getData().width; ++x) {
             if (world->getData().at(x, y).material_type == MaterialType::WOOD) {
                 actual_wood_pos = Vector2i(x, y);
                 break;
@@ -351,14 +351,14 @@ TEST_F(DuckTest, DuckWalksWhenOnGround)
     auto world = std::make_unique<World>(100, 5);
 
     // Clear interior to air.
-    for (uint32_t y = 1; y < 4; ++y) {
-        for (uint32_t x = 1; x < 99; ++x) {
+    for (int y = 1; y < 4; ++y) {
+        for (int x = 1; x < 99; ++x) {
             world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
         }
     }
 
     // Ensure floor.
-    for (uint32_t x = 0; x < 100; ++x) {
+    for (int x = 0; x < 100; ++x) {
         world->getData().at(x, 4).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -430,14 +430,14 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
         auto world = std::make_unique<World>(100, 10);
 
         // Clear interior to air.
-        for (uint32_t y = 1; y < 9; ++y) {
-            for (uint32_t x = 1; x < 99; ++x) {
+        for (int y = 1; y < 9; ++y) {
+            for (int x = 1; x < 99; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // Set floor material.
-        for (uint32_t x = 0; x < 100; ++x) {
+        for (int x = 0; x < 100; ++x) {
             world->getData().at(x, 9).replaceMaterial(test_case.material, 1.0);
         }
 
@@ -524,14 +524,14 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
         auto world = std::make_unique<World>(100, 10);
 
         // Clear interior to air.
-        for (uint32_t y = 1; y < 9; ++y) {
-            for (uint32_t x = 1; x < 99; ++x) {
+        for (int y = 1; y < 9; ++y) {
+            for (int x = 1; x < 99; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // WALL floor.
-        for (uint32_t x = 0; x < 100; ++x) {
+        for (int x = 0; x < 100; ++x) {
             world->getData().at(x, 9).replaceMaterial(MaterialType::WALL, 1.0);
         }
 
@@ -577,14 +577,14 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
     auto world = std::make_unique<World>(5, 10);
 
     // Clear interior to air.
-    for (uint32_t y = 1; y < 9; ++y) {
-        for (uint32_t x = 1; x < 4; ++x) {
+    for (int y = 1; y < 9; ++y) {
+        for (int x = 1; x < 4; ++x) {
             world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
         }
     }
 
     // Ensure floor.
-    for (uint32_t x = 0; x < 5; ++x) {
+    for (int x = 0; x < 5; ++x) {
         world->getData().at(x, 9).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -1252,8 +1252,8 @@ std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_en
     auto world = std::make_unique<World>(width, 10);
 
     // Clear interior to air (rows 1-8).
-    for (uint32_t y = 1; y < 9; ++y) {
-        for (uint32_t x = 1; x < static_cast<uint32_t>(width - 1); ++x) {
+    for (int y = 1; y < 9; ++y) {
+        for (int x = 1; x < width - 1; ++x) {
             world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
         }
     }
@@ -1457,20 +1457,20 @@ protected:
         auto world = std::make_unique<World>(WIDTH, HEIGHT);
 
         // Clear everything to air first.
-        for (uint32_t y = 0; y < HEIGHT; ++y) {
-            for (uint32_t x = 0; x < WIDTH; ++x) {
+        for (int y = 0; y < HEIGHT; ++y) {
+            for (int x = 0; x < WIDTH; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // Add outer walls manually.
         // Top and bottom rows.
-        for (uint32_t x = 0; x < WIDTH; ++x) {
+        for (int x = 0; x < WIDTH; ++x) {
             world->getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
             world->getData().at(x, HEIGHT - 1).replaceMaterial(MaterialType::WALL, 1.0);
         }
         // Left and right columns.
-        for (uint32_t y = 0; y < HEIGHT; ++y) {
+        for (int y = 0; y < HEIGHT; ++y) {
             world->getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
             world->getData().at(WIDTH - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
         }
@@ -1491,9 +1491,9 @@ protected:
     {
         spdlog::info("=== {} ===", label);
         const WorldData& data = world.getData();
-        for (uint32_t y = 0; y < data.height; ++y) {
+        for (int y = 0; y < data.height; ++y) {
             std::string row;
-            for (uint32_t x = 0; x < data.width; ++x) {
+            for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL) {
                     row += "W";

@@ -56,20 +56,20 @@ void BenchmarkScenario::setup(World& world)
         world.getData().height);
 
     // Clear world first.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
 
     // Create boundary walls.
-    for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int x = 0; x < world.getData().width; ++x) {
         world.getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0); // Top wall.
         world.getData()
             .at(x, world.getData().height - 1)
             .replaceMaterial(MaterialType::WALL, 1.0); // Bottom wall.
     }
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
+    for (int y = 0; y < world.getData().height; ++y) {
         world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0); // Left wall.
         world.getData()
             .at(world.getData().width - 1, y)
@@ -77,9 +77,9 @@ void BenchmarkScenario::setup(World& world)
     }
 
     // Fill bottom 1/3 with water.
-    uint32_t waterStartY = world.getData().height - (world.getData().height / 3);
-    for (uint32_t y = waterStartY; y < world.getData().height - 1; ++y) {
-        for (uint32_t x = 1; x < world.getData().width - 1; ++x) {
+    int waterStartY = world.getData().height - (world.getData().height / 3);
+    for (int y = waterStartY; y < world.getData().height - 1; ++y) {
+        for (int x = 1; x < world.getData().width - 1; ++x) {
             world.getData().at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
         }
     }
@@ -135,8 +135,8 @@ void BenchmarkScenario::addBall(
     World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material)
 {
     // Create a circular ball of material.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             // Calculate distance from center.
             int dx = static_cast<int>(x) - static_cast<int>(centerX);
             int dy = static_cast<int>(y) - static_cast<int>(centerY);

@@ -30,9 +30,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "Not enough energy for WOOD growth" };
                 }
 
-                if (command.target_pos.x < 0 || command.target_pos.y < 0
-                    || static_cast<uint32_t>(command.target_pos.x) >= world.getData().width
-                    || static_cast<uint32_t>(command.target_pos.y) >= world.getData().height) {
+                if (!world.getData().inBounds(command.target_pos.x, command.target_pos.y)) {
                     return { CommandResult::INVALID_TARGET, "WOOD target out of bounds" };
                 }
 
@@ -41,9 +39,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 bool has_structural_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
-                        && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
-                        && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
+                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
@@ -88,9 +84,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "Not enough energy for LEAF growth" };
                 }
 
-                if (command.target_pos.x < 0 || command.target_pos.y < 0
-                    || static_cast<uint32_t>(command.target_pos.x) >= world.getData().width
-                    || static_cast<uint32_t>(command.target_pos.y) >= world.getData().height) {
+                if (!world.getData().inBounds(command.target_pos.x, command.target_pos.y)) {
                     return { CommandResult::INVALID_TARGET, "LEAF target out of bounds" };
                 }
 
@@ -99,9 +93,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 bool has_wood_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
-                        && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
-                        && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
+                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
@@ -140,9 +132,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "Not enough energy for ROOT growth" };
                 }
 
-                if (command.target_pos.x < 0 || command.target_pos.y < 0
-                    || static_cast<uint32_t>(command.target_pos.x) >= world.getData().width
-                    || static_cast<uint32_t>(command.target_pos.y) >= world.getData().height) {
+                if (!world.getData().inBounds(command.target_pos.x, command.target_pos.y)) {
                     return { CommandResult::INVALID_TARGET, "ROOT target out of bounds" };
                 }
 
@@ -151,9 +141,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 bool has_root_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
-                        && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
-                        && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
+                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
@@ -214,9 +202,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "Not enough energy for seed production" };
                 }
 
-                if (command.position.x < 0 || command.position.y < 0
-                    || static_cast<uint32_t>(command.position.x) >= world.getData().width
-                    || static_cast<uint32_t>(command.position.y) >= world.getData().height) {
+                if (!world.getData().inBounds(command.position.x, command.position.y)) {
                     return { CommandResult::INVALID_TARGET, "Seed position out of bounds" };
                 }
 
@@ -225,9 +211,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 bool has_branch_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.position + dir;
-                    if (neighbor_pos.x >= 0 && neighbor_pos.y >= 0
-                        && static_cast<uint32_t>(neighbor_pos.x) < world.getData().width
-                        && static_cast<uint32_t>(neighbor_pos.y) < world.getData().height) {
+                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);

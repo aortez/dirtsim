@@ -23,8 +23,8 @@ namespace DirtSim {
 struct WorldData {
     // ===== Fields 1-9: Binary serialized (zpp_bits) =====
     // Grid dimensions and cells (1D storage for performance).
-    uint32_t width = 0;
-    uint32_t height = 0;
+    int16_t width = 0;
+    int16_t height = 0;
     std::vector<Cell> cells;              // Flat array: cells[y * width + x]
     std::vector<OrganismId> organism_ids; // Parallel to cells: organism_ids[y * width + x]
 
@@ -62,18 +62,26 @@ struct WorldData {
     // Cell colors computed by light calculator (float RGB for efficient computation).
     GridBuffer<ColorNames::RgbF> colors;
 
+    // Bounds checking.
+    inline bool inBounds(int x, int y) const { return x >= 0 && y >= 0 && x < width && y < height; }
+
+    inline bool inBounds(Vector2s pos) const { return inBounds(pos.x, pos.y); }
+
     // Direct cell access methods (inline for performance).
-    inline Cell& at(uint32_t x, uint32_t y)
+    inline Cell& at(int x, int y)
     {
-        assert(x < width && y < height);
-        return cells[y * width + x];
+        assert(inBounds(x, y));
+        return cells[static_cast<size_t>(y) * width + x];
     }
 
-    inline const Cell& at(uint32_t x, uint32_t y) const
+    inline const Cell& at(int x, int y) const
     {
-        assert(x < width && y < height);
-        return cells[y * width + x];
+        assert(inBounds(x, y));
+        return cells[static_cast<size_t>(y) * width + x];
     }
+
+    inline Cell& at(Vector2s pos) { return at(pos.x, pos.y); }
+    inline const Cell& at(Vector2s pos) const { return at(pos.x, pos.y); }
 
     // Custom zpp_bits serialization (excludes debug_info and bones).
     constexpr static auto serialize(auto& archive, auto& self)
@@ -150,8 +158,9 @@ inline void from_json(const nlohmann::json& j, WorldData& data)
 {
     data = ReflectSerializer::from_json<WorldData>(j);
     // Ensure debug_info is sized correctly after deserialization.
-    if (data.debug_info.size() != data.width * data.height) {
-        data.debug_info.resize(data.width * data.height);
+    size_t cell_count = static_cast<size_t>(data.width) * data.height;
+    if (data.debug_info.size() != cell_count) {
+        data.debug_info.resize(cell_count);
     }
 }
 

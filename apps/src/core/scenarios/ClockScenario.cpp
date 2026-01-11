@@ -427,8 +427,8 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
             // Clear stray WALL cells from interior (old boundaries may now be inside).
             WorldData& data = world.getData();
-            for (uint32_t y = 1; y < data.height - 1; ++y) {
-                for (uint32_t x = 1; x < data.width - 1; ++x) {
+            for (int y = 1; y < data.height - 1; ++y) {
+                for (int x = 1; x < data.width - 1; ++x) {
                     if (data.at(x, y).material_type == MaterialType::WALL) {
                         data.at(x, y) = Cell();
                     }
@@ -586,8 +586,8 @@ void ClockScenario::setup(World& world)
     spdlog::info("ClockScenario::setup - initializing clock display");
 
     // Clear world to empty state.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell();
         }
     }
@@ -641,8 +641,8 @@ void ClockScenario::tick(World& world, double deltaTime)
     // WOOD cells only come from ducks in this scenario, so orphaned WOOD is a bug.
     const WorldData& data = world.getData();
     const auto& org_grid = world.getOrganismManager().getGrid();
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             size_t idx = y * data.width + x;
             if (data.cells[idx].material_type == MaterialType::WOOD) {
                 if (org_grid[idx] == INVALID_ORGANISM_ID) {
@@ -687,8 +687,8 @@ void ClockScenario::clearDigits(World& world)
     // - Boundary cells (x=0, x=width-1, y=0, y=height-1).
     // - Door roof cells.
     // - Hurdle obstacle cells.
-    for (uint32_t y = 1; y < data.height - 1; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = 1; y < data.height - 1; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type != MaterialType::WALL) {
                 continue;
@@ -1348,8 +1348,7 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
             int nx = spawn_pos.x + dx;
             int ny = spawn_pos.y + dy;
 
-            if (nx < 0 || ny < 0 || static_cast<uint32_t>(nx) >= world.getData().width
-                || static_cast<uint32_t>(ny) >= world.getData().height) {
+            if (!world.getData().inBounds(nx, ny)) {
                 continue;
             }
 
@@ -1462,8 +1461,7 @@ void ClockScenario::updateDuckEvent(
     // Get duck's cell COM for sub-cell positioning.
     const WorldData& data = world.getData();
     Vector2d duck_com{ 0.0, 0.0 };
-    if (duck_cell.x >= 0 && duck_cell.y >= 0 && static_cast<uint32_t>(duck_cell.x) < data.width
-        && static_cast<uint32_t>(duck_cell.y) < data.height) {
+    if (data.inBounds(duck_cell.x, duck_cell.y)) {
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
     }
 
@@ -1658,11 +1656,11 @@ double ClockScenario::countWaterInBottomThird(const World& world) const
     const WorldData& data = world.getData();
 
     // Count water in the bottom 1/3 of the world.
-    uint32_t bottom_third_start = (data.height * 2) / 3;
+    int bottom_third_start = (data.height * 2) / 3;
     double total_water = 0.0;
 
-    for (uint32_t y = bottom_third_start; y < data.height - 1; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = bottom_third_start; y < data.height - 1; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             const Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::WATER) {
                 total_water += cell.fill_ratio;
@@ -1688,7 +1686,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
 
     // Calculate target drain size based on water level (odd numbers only: 3, 5, 7).
     // Size 1 is only used as an animation transition step, not a sustained state.
-    uint32_t target_drain_size = 0;
+    int16_t target_drain_size = 0;
     if (water_amount >= FULL_OPEN_THRESHOLD) {
         target_drain_size = MAX_DRAIN_SIZE;
     }
@@ -1711,8 +1709,8 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     // If there's any water on the bottom playable row, ensure drain opens at least one cell.
     // This prevents water from pooling at the bottom with no way to drain.
     if (target_drain_size == 0) {
-        uint32_t bottom_row = data.height - 2;
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+        int bottom_row = data.height - 2;
+        for (int x = 1; x < data.width - 1; ++x) {
             if (data.at(x, bottom_row).material_type == MaterialType::WATER) {
                 target_drain_size = 1;
                 break;
@@ -1726,7 +1724,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         std::chrono::duration_cast<std::chrono::milliseconds>(now - last_drain_size_change_)
             .count();
 
-    uint32_t actual_drain_size = current_drain_size_;
+    int16_t actual_drain_size = current_drain_size_;
     if (target_drain_size != current_drain_size_ && elapsed >= 1000) {
         // Step one size at a time (0 <-> 1 <-> 3 <-> 5 <-> 7).
         if (target_drain_size > current_drain_size_) {
@@ -1735,7 +1733,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
                 actual_drain_size = 1;
             }
             else {
-                actual_drain_size = current_drain_size_ + 2;
+                actual_drain_size = static_cast<int16_t>(current_drain_size_ + 2);
             }
         }
         else {
@@ -1744,40 +1742,43 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
                 actual_drain_size = 0;
             }
             else {
-                actual_drain_size = current_drain_size_ - 2;
+                actual_drain_size = static_cast<int16_t>(current_drain_size_ - 2);
             }
         }
         current_drain_size_ = actual_drain_size;
         last_drain_size_change_ = now;
     }
 
-    uint32_t center_x = data.width / 2;
-    uint32_t drain_y = data.height - 1; // Bottom wall row.
+    int center_x = data.width / 2;
+    int drain_y = data.height - 1; // Bottom wall row.
 
     // Calculate new drain bounds based on actual size (centered).
-    uint32_t half_drain = actual_drain_size / 2;
-    uint32_t new_start_x =
+    int half_drain = static_cast<int>(actual_drain_size / 2);
+    int new_start_x =
         (actual_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
-    uint32_t new_end_x =
-        (actual_drain_size > 0) ? std::min(new_start_x + actual_drain_size - 1, data.width - 2) : 0;
+    int new_end_x = (actual_drain_size > 0)
+        ? std::min(
+              new_start_x + static_cast<int>(actual_drain_size) - 1,
+              static_cast<int>(data.width) - 2)
+        : 0;
 
     // Ensure start doesn't go below 1 (keep wall border).
     if (new_start_x < 1) new_start_x = 1;
 
     // Track if drain size changed.
     bool drain_was_open = drain_open_;
-    uint32_t old_start_x = drain_start_x_;
-    uint32_t old_end_x = drain_end_x_;
+    int old_start_x = static_cast<int>(drain_start_x_);
+    int old_end_x = static_cast<int>(drain_end_x_);
 
     drain_open_ = (actual_drain_size > 0);
-    drain_start_x_ = new_start_x;
-    drain_end_x_ = new_end_x;
+    drain_start_x_ = static_cast<int16_t>(new_start_x);
+    drain_end_x_ = static_cast<int16_t>(new_end_x);
 
     // Update drain cells if size changed.
     if (drain_was_open || drain_open_) {
         // Restore wall on cells that are no longer in the drain.
         if (drain_was_open) {
-            for (uint32_t x = old_start_x; x <= old_end_x; ++x) {
+            for (int x = old_start_x; x <= old_end_x; ++x) {
                 bool still_open = drain_open_ && x >= new_start_x && x <= new_end_x;
                 if (!still_open) {
                     world.replaceMaterialAtCell(
@@ -1790,7 +1791,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         // Ensure drain cells are clear (always, not just when newly opened).
         // This handles cases where obstacle clearing may have restored floor over drain.
         if (drain_open_) {
-            for (uint32_t x = new_start_x; x <= new_end_x; ++x) {
+            for (int x = new_start_x; x <= new_end_x; ++x) {
                 Cell& cell = data.at(x, drain_y);
                 if (cell.material_type == MaterialType::WALL) {
                     cell = Cell();
@@ -1812,7 +1813,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
 
     // If drain is open, handle material in drain cells.
     if (drain_open_) {
-        uint32_t center_x = (drain_start_x_ + drain_end_x_) / 2;
+        int16_t center_x = static_cast<int16_t>((drain_start_x_ + drain_end_x_) / 2);
 
         // Get the digit material if a meltdown is active.
         MaterialType melt_digit_material = MaterialType::AIR; // Default (won't match anything).
@@ -1823,7 +1824,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             }
         }
 
-        for (uint32_t x = drain_start_x_; x <= drain_end_x_; ++x) {
+        for (int16_t x = drain_start_x_; x <= drain_end_x_; ++x) {
             Cell& cell = data.at(x, drain_y);
 
             // Digit material falls through the drain during meltdown - convert to water and spray.
@@ -1866,8 +1867,8 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         // Apply global gravity-like pull toward drain for all water in the world.
         constexpr double DRAIN_GRAVITY = 1.0; // Gentle pull toward drain.
 
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 Cell& cell = data.at(x, y);
                 if (cell.material_type != MaterialType::WATER) {
                     continue;
@@ -1892,7 +1893,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         double max_distance = static_cast<double>(data.width) / 2.0;
         constexpr double MAX_FORCE = 5.0; // Maximum suction force.
 
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, bottom_row);
             if (cell.material_type != MaterialType::WATER) {
                 continue;
@@ -1930,7 +1931,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     }
 }
 
-void ClockScenario::sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_t y)
+void ClockScenario::sprayDrainCell(World& world, Cell& cell, int16_t x, int16_t y)
 {
     static const FragmentationParams drain_frag_params{
         .radial_bias = 0.2,
@@ -1953,8 +1954,8 @@ void ClockScenario::sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_
 
 std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const WorldData& data) const
 {
-    uint32_t width = data.width;
-    uint32_t height = data.height;
+    int16_t width = data.width;
+    int16_t height = data.height;
 
     // Pre-allocate for efficiency: border cells + potential hurdles + roof cells.
     std::vector<WallSpec> walls;
@@ -1963,54 +1964,54 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     // No top border - allows sunlight to illuminate the world.
 
     // Bottom border (dirt floor).
-    for (uint32_t x = 0; x < width; ++x) {
-        Vector2i pos{ static_cast<int>(x), static_cast<int>(height - 1) };
+    for (int16_t x = 0; x < width; ++x) {
+        Vector2i pos{ x, static_cast<int>(height - 1) };
 
         // Skip open doors, drain cells, and pit cells.
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
         if (!door_manager_.isOpenDoorAt(pos, data) && !is_drain_cell && !is_pit_cell) {
-            walls.push_back({ x, height - 1, MaterialType::DIRT });
+            walls.push_back({ x, static_cast<int16_t>(height - 1), MaterialType::DIRT });
         }
     }
 
     // Left border (wooden frame).
-    for (uint32_t y = 0; y < height; ++y) {
-        Vector2i pos{ 0, static_cast<int>(y) };
+    for (int16_t y = 0; y < height; ++y) {
+        Vector2i pos{ 0, y };
         if (!door_manager_.isOpenDoorAt(pos, data)) {
             walls.push_back({ 0, y, MaterialType::WOOD });
         }
     }
 
     // Right border (wooden frame).
-    for (uint32_t y = 0; y < height; ++y) {
-        Vector2i pos{ static_cast<int>(width - 1), static_cast<int>(y) };
+    for (int16_t y = 0; y < height; ++y) {
+        Vector2i pos{ width - 1, y };
         if (!door_manager_.isOpenDoorAt(pos, data)) {
-            walls.push_back({ width - 1, y, MaterialType::WOOD });
+            walls.push_back({ static_cast<int16_t>(width - 1), y, MaterialType::WOOD });
         }
     }
 
     // Hurdle obstacles (one row above floor, render as wall/gray).
     if (height > 2) {
-        for (uint32_t x = 0; x < width; ++x) {
+        for (int16_t x = 0; x < width; ++x) {
             if (obstacle_manager_.isHurdleAt(x)) {
-                walls.push_back({ x, height - 2, MaterialType::WALL });
+                walls.push_back({ x, static_cast<int16_t>(height - 2), MaterialType::WALL });
             }
         }
     }
 
     // Door roof cells (structural, render as wall/gray).
     for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
-        walls.push_back({ static_cast<uint32_t>(roof_pos.x),
-                          static_cast<uint32_t>(roof_pos.y),
+        walls.push_back({ static_cast<int16_t>(roof_pos.x),
+                          static_cast<int16_t>(roof_pos.y),
                           MaterialType::WALL });
     }
 
     // Door frame cells (wall above door, floor at door - render as wall/gray).
     for (const auto& frame_pos : door_manager_.getFramePositions(data)) {
-        walls.push_back({ static_cast<uint32_t>(frame_pos.x),
-                          static_cast<uint32_t>(frame_pos.y),
+        walls.push_back({ static_cast<int16_t>(frame_pos.x),
+                          static_cast<int16_t>(frame_pos.y),
                           MaterialType::WALL });
     }
 
@@ -2020,8 +2021,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 void ClockScenario::applyWalls(World& world, const std::vector<WallSpec>& walls)
 {
     for (const auto& wall : walls) {
-        world.replaceMaterialAtCell(
-            { static_cast<int16_t>(wall.x), static_cast<int16_t>(wall.y) }, MaterialType::WALL);
+        world.replaceMaterialAtCell({ wall.x, wall.y }, MaterialType::WALL);
         world.getData().at(wall.x, wall.y).render_as = static_cast<int8_t>(wall.render_as);
     }
 }
@@ -2035,8 +2035,8 @@ void ClockScenario::redrawWalls(World& world)
     applyWalls(world, walls);
 
     // Clear pit cells that shouldn't have walls.
-    uint32_t height = data.height;
-    for (uint32_t x = 0; x < data.width; ++x) {
+    int16_t height = data.height;
+    for (int16_t x = 0; x < data.width; ++x) {
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
         bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
 

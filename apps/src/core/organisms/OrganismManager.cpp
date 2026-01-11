@@ -23,8 +23,7 @@ namespace DirtSim {
 
 OrganismId OrganismManager::at(Vector2i pos) const
 {
-    if (pos.x < 0 || pos.y < 0 || static_cast<uint32_t>(pos.x) >= width_
-        || static_cast<uint32_t>(pos.y) >= height_) {
+    if (pos.x < 0 || pos.y < 0 || pos.x >= width_ || pos.y >= height_) {
         return INVALID_ORGANISM_ID;
     }
     return grid_[pos.y * width_ + pos.x];
@@ -40,15 +39,15 @@ const std::vector<OrganismId>& OrganismManager::getGrid() const
     return grid_;
 }
 
-void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
+void OrganismManager::resizeGrid(int16_t newWidth, int16_t newHeight)
 {
     // Early return if no resize needed.
     if (width_ == newWidth && height_ == newHeight) {
         return;
     }
 
-    uint32_t oldWidth = width_;
-    uint32_t oldHeight = height_;
+    int16_t oldWidth = width_;
+    int16_t oldHeight = height_;
 
     spdlog::info(
         "OrganismManager::resizeGrid: {}x{} -> {}x{}, repositioning {} organisms",
@@ -97,8 +96,7 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
             Vector2i newPos = oldPos + offset;
 
             // Bounds check - clip cells outside new world.
-            if (newPos.x >= 0 && newPos.y >= 0 && static_cast<uint32_t>(newPos.x) < newWidth
-                && static_cast<uint32_t>(newPos.y) < newHeight) {
+            if (newPos.x >= 0 && newPos.y >= 0 && newPos.x < newWidth && newPos.y < newHeight) {
                 newCells.insert(newPos);
             }
         }
@@ -133,8 +131,7 @@ void OrganismManager::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 
 void OrganismManager::setOrganismAt(Vector2i pos, OrganismId id)
 {
-    if (pos.x < 0 || pos.y < 0 || static_cast<uint32_t>(pos.x) >= width_
-        || static_cast<uint32_t>(pos.y) >= height_) {
+    if (pos.x < 0 || pos.y < 0 || pos.x >= width_ || pos.y >= height_) {
         return;
     }
     grid_[pos.y * width_ + pos.x] = id;
@@ -295,8 +292,7 @@ void OrganismManager::removeOrganismFromWorld(World& world, OrganismId id)
 
     // Clear all cells owned by this organism from the world.
     for (const auto& pos : organism->getCells()) {
-        if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < data.width
-            && static_cast<uint32_t>(pos.y) < data.height) {
+        if (data.inBounds(pos.x, pos.y)) {
             data.at(pos.x, pos.y) = Cell();
         }
     }
@@ -550,8 +546,7 @@ void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
     // Clear bone force debug info for all organism cells.
     for (auto& [id, organism] : organisms_) {
         for (const auto& pos : organism->getCells()) {
-            if (static_cast<uint32_t>(pos.x) < data.width
-                && static_cast<uint32_t>(pos.y) < data.height) {
+            if (data.inBounds(pos.x, pos.y)) {
                 grid.debugAt(pos.x, pos.y).accumulated_bone_force = {};
             }
         }
@@ -559,10 +554,8 @@ void OrganismManager::applyBoneForces(World& world, double /*deltaTime*/)
 
     for (auto& [organism_id, organism] : organisms_) {
         for (const Bone& bone : organism->getBones()) {
-            if (static_cast<uint32_t>(bone.cell_a.x) >= data.width
-                || static_cast<uint32_t>(bone.cell_a.y) >= data.height
-                || static_cast<uint32_t>(bone.cell_b.x) >= data.width
-                || static_cast<uint32_t>(bone.cell_b.y) >= data.height) {
+            if (!data.inBounds(bone.cell_a.x, bone.cell_a.y)
+                || !data.inBounds(bone.cell_b.x, bone.cell_b.y)) {
                 continue;
             }
 
@@ -665,8 +658,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.position =
                 Vector2<float>{ static_cast<float>(anchor.x), static_cast<float>(anchor.y) };
 
-            if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
-                && static_cast<uint32_t>(anchor.y) < data.height) {
+            if (data.inBounds(anchor.x, anchor.y)) {
                 const Cell& cell = data.at(anchor.x, anchor.y);
                 entity.com = Vector2<float>{ static_cast<float>(cell.com.x),
                                              static_cast<float>(cell.com.y) };
@@ -714,8 +706,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.facing = goose->getFacing();
             entity.mass = static_cast<float>(goose->mass);
 
-            if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
-                && static_cast<uint32_t>(anchor.y) < data.height) {
+            if (data.inBounds(anchor.x, anchor.y)) {
                 entity.light_color = light.at(anchor.x, anchor.y);
             }
 

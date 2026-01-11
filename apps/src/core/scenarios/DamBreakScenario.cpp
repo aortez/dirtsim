@@ -50,8 +50,8 @@ void DamBreakScenario::setup(World& world)
     spdlog::info("DamBreakScenario::setup - initializing world");
 
     // Clear world first.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
@@ -70,15 +70,15 @@ void DamBreakScenario::setup(World& world)
     world.getPhysicsSettings().pressure_scale = 1.0;
 
     // Create water column on left side - full height.
-    for (uint32_t x = 0; x < 2; x++) {
-        for (uint32_t y = 0; y < 6; y++) {
+    for (int x = 0; x < 2; x++) {
+        for (int y = 0; y < 6; y++) {
             world.addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
         }
     }
 
     // Create dam (wall) at x=2 - full height.
-    for (uint32_t y = 0; y < 6; y++) {
+    for (int y = 0; y < 6; y++) {
         world.addMaterialAtCell({ 2, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
     }
 

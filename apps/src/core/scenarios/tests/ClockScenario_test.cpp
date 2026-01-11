@@ -54,19 +54,19 @@ TEST_F(ClockScenarioTest, Setup_HasWallBorders)
     // Only the corner cells (x=0 and x=width-1) have walls from the left/right borders.
 
     // Verify bottom border is all walls.
-    for (uint32_t x = 0; x < data.width; ++x) {
+    for (int x = 0; x < data.width; ++x) {
         EXPECT_EQ(data.at(x, data.height - 1).material_type, MaterialType::WALL)
             << "Bottom border missing WALL at x=" << x;
     }
 
     // Verify left border is all walls.
-    for (uint32_t y = 0; y < data.height; ++y) {
+    for (int y = 0; y < data.height; ++y) {
         EXPECT_EQ(data.at(0, y).material_type, MaterialType::WALL)
             << "Left border missing WALL at y=" << y;
     }
 
     // Verify right border is all walls.
-    for (uint32_t y = 0; y < data.height; ++y) {
+    for (int y = 0; y < data.height; ++y) {
         EXPECT_EQ(data.at(data.width - 1, y).material_type, MaterialType::WALL)
             << "Right border missing WALL at y=" << y;
     }
@@ -78,8 +78,8 @@ TEST_F(ClockScenarioTest, Setup_HasMinimumDigitBlocks)
 
     // Count cells that are WALL with render_as set to METAL (digit cells).
     int digit_cell_count = 0;
-    for (uint32_t y = 1; y < data.height - 1; ++y) {
-        for (uint32_t x = 1; x < data.width - 1; ++x) {
+    for (int y = 1; y < data.height - 1; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
             const Cell& cell = data.at(x, y);
             if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                 digit_cell_count++;
@@ -401,8 +401,8 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
            && elapsed < event_duration + 1.0) {
         // Sample current material from digit cells.
         const WorldData& data = world_->getData();
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     MaterialType render_material = static_cast<MaterialType>(cell.render_as);
@@ -454,8 +454,8 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
     // Helper to find digit Y positions.
     auto getDigitYPositions = [](const WorldData& data) {
         std::vector<int> y_positions;
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     y_positions.push_back(static_cast<int>(y));
@@ -528,8 +528,8 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
     // Helper to find digit cell positions (WALL cells with render_as set).
     auto getDigitPositions = [](const WorldData& data) {
         std::vector<std::pair<uint32_t, uint32_t>> positions;
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     positions.emplace_back(x, y);
@@ -604,8 +604,8 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     // Helper to get all digit cell materials.
     auto getDigitMaterials = [](const WorldData& data) {
         std::vector<MaterialType> materials;
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     materials.push_back(static_cast<MaterialType>(cell.render_as));
@@ -689,8 +689,8 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
 
     auto getDigitMaterials = [](const WorldData& data) {
         std::vector<MaterialType> materials;
-        for (uint32_t y = 1; y < data.height - 1; ++y) {
-            for (uint32_t x = 1; x < data.width - 1; ++x) {
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
                     materials.push_back(static_cast<MaterialType>(cell.render_as));

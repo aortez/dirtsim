@@ -16,8 +16,8 @@ namespace WorldResize {
 DEFINE_API_NAME(WorldResize);
 
 struct Command {
-    uint32_t width = 28;
-    uint32_t height = 28;
+    int16_t width = 28;
+    int16_t height = 28;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

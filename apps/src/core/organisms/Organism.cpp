@@ -104,8 +104,7 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
             int nx = new_cell.x + dx;
             int ny = new_cell.y + dy;
 
-            if (nx < 0 || ny < 0 || static_cast<uint32_t>(nx) >= data.width
-                || static_cast<uint32_t>(ny) >= data.height) {
+            if (!data.inBounds(nx, ny)) {
                 continue;
             }
 
@@ -211,15 +210,14 @@ CollisionInfo Organism::detectCollisions(
 
     for (const auto& cell_pos : target_cells) {
         // Check world boundaries.
-        if (cell_pos.x < 0 || cell_pos.y < 0 || static_cast<uint32_t>(cell_pos.x) >= data.width
-            || static_cast<uint32_t>(cell_pos.y) >= data.height) {
+        if (!data.inBounds(cell_pos.x, cell_pos.y)) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             // Boundary normal points inward.
             if (cell_pos.x < 0) normal_sum.x += 1.0;
-            if (cell_pos.x >= static_cast<int>(data.width)) normal_sum.x -= 1.0;
+            if (cell_pos.x >= data.width) normal_sum.x -= 1.0;
             if (cell_pos.y < 0) normal_sum.y += 1.0;
-            if (cell_pos.y >= static_cast<int>(data.height)) normal_sum.y -= 1.0;
+            if (cell_pos.y >= data.height) normal_sum.y -= 1.0;
             continue;
         }
 

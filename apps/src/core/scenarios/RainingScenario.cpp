@@ -48,15 +48,15 @@ void RainingScenario::setup(World& world)
     spdlog::info("RainingScenario::setup - initializing world");
 
     // Clear world first.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
 
     // Add a solid floor of walls.
     uint32_t bottomY = world.getData().height - 1;
-    for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int x = 0; x < world.getData().width; ++x) {
         world.getData().at(x, bottomY).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
@@ -81,8 +81,8 @@ void RainingScenario::tick(World& world, double deltaTime)
         double totalFill = 0.0;
         uint32_t totalCells = world.getData().width * world.getData().height;
 
-        for (uint32_t y = 0; y < world.getData().height; ++y) {
-            for (uint32_t x = 0; x < world.getData().width; ++x) {
+        for (int y = 0; y < world.getData().height; ++y) {
+            for (int x = 0; x < world.getData().width; ++x) {
                 const Cell& cell = world.getData().at(x, y);
                 if (cell.material_type != MaterialType::AIR) {
                     totalFill += cell.fill_ratio;
@@ -98,8 +98,8 @@ void RainingScenario::tick(World& world, double deltaTime)
             double overage = fillPercent - config_.maxFillPercent;
             double evaporationRate = 0.01 + (overage * 0.005); // Base rate + proportional.
 
-            for (uint32_t y = 0; y < world.getData().height; ++y) {
-                for (uint32_t x = 0; x < world.getData().width; ++x) {
+            for (int y = 0; y < world.getData().height; ++y) {
+                for (int x = 0; x < world.getData().width; ++x) {
                     Cell& cell = world.getData().at(x, y);
                     if (cell.material_type == MaterialType::WATER) {
                         cell.fill_ratio -= evaporationRate * deltaTime;
@@ -126,16 +126,16 @@ void RainingScenario::tick(World& world, double deltaTime)
     }
 
     // Manage drain opening in the floor and evaporate water in the drain.
-    uint32_t bottomY = world.getData().height - 1;
-    uint32_t centerX = world.getData().width / 2;
-    uint32_t drainSize = static_cast<uint32_t>(config_.drainSize);
-    uint32_t halfDrain = drainSize / 2;
+    int bottomY = world.getData().height - 1;
+    int centerX = world.getData().width / 2;
+    int drainSize = config_.drainSize;
+    int halfDrain = drainSize / 2;
 
     // Calculate drain boundaries (centered).
-    uint32_t drainStart = (centerX > halfDrain) ? centerX - halfDrain : 0;
-    uint32_t drainEnd = std::min(centerX + halfDrain, world.getData().width - 1);
+    int drainStart = (centerX > halfDrain) ? centerX - halfDrain : 0;
+    int drainEnd = std::min(centerX + halfDrain, static_cast<int>(world.getData().width) - 1);
 
-    for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int x = 0; x < world.getData().width; ++x) {
         Cell& cell = world.getData().at(x, bottomY);
         bool inDrain = (x >= drainStart && x <= drainEnd && drainSize > 0);
 

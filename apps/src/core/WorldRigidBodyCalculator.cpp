@@ -94,9 +94,9 @@ std::vector<RigidStructure> WorldRigidBodyCalculator::findAllStructures(const Wo
     const auto& data = world.getData();
     std::unordered_set<Vector2i, Vector2iHash> processed;
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
-            Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            Vector2i pos{ x, y };
             if (processed.count(pos)) {
                 continue;
             }

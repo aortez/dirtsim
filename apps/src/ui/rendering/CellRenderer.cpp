@@ -246,7 +246,7 @@ CellRenderer::~CellRenderer()
     cleanup();
 }
 
-void CellRenderer::calculateScaling(uint32_t worldWidth, uint32_t worldHeight)
+void CellRenderer::calculateScaling(int16_t worldWidth, int16_t worldHeight)
 {
     // With fixed-size canvas, calculate how many pixels each cell gets
     if (canvasWidth_ == 0 || canvasHeight_ == 0) {
@@ -300,7 +300,7 @@ void CellRenderer::setCanvasCreatedCallback(CanvasCreatedCallback callback)
     canvasCreatedCallback_ = std::move(callback);
 }
 
-void CellRenderer::initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)
+void CellRenderer::initialize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight)
 {
     // Force LVGL to calculate actual layout dimensions before measuring.
     // Without this, flex containers may report stale/zero dimensions.
@@ -319,7 +319,7 @@ void CellRenderer::initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t wo
 }
 
 void CellRenderer::initializeWithPixelSize(
-    lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight, uint32_t pixelsPerCell)
+    lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight, uint32_t pixelsPerCell)
 {
     spdlog::info(
         "CellRenderer: Initializing canvas with transform scaling ({}px/cell)", pixelsPerCell);
@@ -449,7 +449,7 @@ void CellRenderer::initializeWithPixelSize(
     }
 }
 
-void CellRenderer::resize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight)
+void CellRenderer::resize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight)
 {
     spdlog::info(
         "CellRenderer: Updating world size from {}x{} to {}x{}",
@@ -607,14 +607,14 @@ void CellRenderer::renderWorldData(
             sprite_organism_ids.insert(OrganismId{ static_cast<int>(entity.id) });
         }
 
-        for (uint32_t y = 0; y < worldData.height; ++y) {
-            for (uint32_t x = 0; x < worldData.width; ++x) {
-                uint32_t idx = y * worldData.width + x;
+        for (int16_t y = 0; y < worldData.height; ++y) {
+            for (int16_t x = 0; x < worldData.width; ++x) {
+                size_t idx = static_cast<size_t>(y) * worldData.width + x;
                 if (idx >= worldData.cells.size()) break;
 
                 const Cell& cell = worldData.cells[idx];
-                int32_t cellX = renderOffsetX + x * scaledCellWidth_;
-                int32_t cellY = renderOffsetY + y * scaledCellHeight_;
+                int32_t cellX = renderOffsetX + static_cast<int32_t>(x) * scaledCellWidth_;
+                int32_t cellY = renderOffsetY + static_cast<int32_t>(y) * scaledCellHeight_;
 
                 // Bounds check
                 if (cellX < 0 || cellY < 0 || cellX + scaledCellWidth_ > canvasWidth_
@@ -792,32 +792,28 @@ void CellRenderer::renderWorldData(
 
         // Debug draw: Vectors and COM.
         if (debugDraw) {
-            uint32_t non_air_cells = 0;
-
             // First pass: Draw cell details.
-            for (uint32_t y = 0; y < worldData.height; ++y) {
-                for (uint32_t x = 0; x < worldData.width; ++x) {
-                    uint32_t idx = y * worldData.width + x;
+            for (int16_t y = 0; y < worldData.height; ++y) {
+                for (int16_t x = 0; x < worldData.width; ++x) {
+                    size_t idx = static_cast<size_t>(y) * worldData.width + x;
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
                     if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
-
-                    non_air_cells++;
                 }
             }
 
             // Second pass: Draw pressure gradient vectors.
-            for (uint32_t y = 0; y < worldData.height; ++y) {
-                for (uint32_t x = 0; x < worldData.width; ++x) {
-                    uint32_t idx = y * worldData.width + x;
+            for (int16_t y = 0; y < worldData.height; ++y) {
+                for (int16_t x = 0; x < worldData.width; ++x) {
+                    size_t idx = static_cast<size_t>(y) * worldData.width + x;
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
                     if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
 
-                    int32_t cellX = x * scaledCellWidth_;
-                    int32_t cellY = y * scaledCellHeight_;
+                    int32_t cellX = static_cast<int32_t>(x) * scaledCellWidth_;
+                    int32_t cellY = static_cast<int32_t>(y) * scaledCellHeight_;
 
                     // Calculate COM position in pixel coordinates.
                     // COM ranges from [-1, 1] where -1 is top/left and +1 is bottom/right.
@@ -847,16 +843,16 @@ void CellRenderer::renderWorldData(
             }
 
             // Third pass: Draw COM indicators (absolute last, never obscured).
-            for (uint32_t y = 0; y < worldData.height; ++y) {
-                for (uint32_t x = 0; x < worldData.width; ++x) {
-                    uint32_t idx = y * worldData.width + x;
+            for (int16_t y = 0; y < worldData.height; ++y) {
+                for (int16_t x = 0; x < worldData.width; ++x) {
+                    size_t idx = static_cast<size_t>(y) * worldData.width + x;
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
                     if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
 
-                    int32_t cellX = x * scaledCellWidth_;
-                    int32_t cellY = y * scaledCellHeight_;
+                    int32_t cellX = static_cast<int32_t>(x) * scaledCellWidth_;
+                    int32_t cellY = static_cast<int32_t>(y) * scaledCellHeight_;
 
                     // Calculate COM position in pixel coordinates.
                     // COM ranges from [-1, 1] where -1 is top/left and +1 is bottom/right.
@@ -922,9 +918,9 @@ void CellRenderer::renderWorldData(
         lv_layer_t layer;
         lv_canvas_init_layer(worldCanvas_, &layer);
 
-        for (uint32_t y = 0; y < worldData.height; ++y) {
-            for (uint32_t x = 0; x < worldData.width; ++x) {
-                uint32_t idx = y * worldData.width + x;
+        for (int16_t y = 0; y < worldData.height; ++y) {
+            for (int16_t x = 0; x < worldData.width; ++x) {
+                size_t idx = static_cast<size_t>(y) * worldData.width + x;
                 if (idx >= worldData.cells.size()) {
                     spdlog::error(
                         "CellRenderer: Cell index out of bounds (idx={}, size={})",
@@ -935,9 +931,9 @@ void CellRenderer::renderWorldData(
                 const Cell& cell = worldData.cells[idx];
                 const CellDebug& debug = worldData.debug_info[idx];
 
-                // Calculate cell position with pre-computed offset
-                int32_t cellX = renderOffsetX + x * scaledCellWidth_;
-                int32_t cellY = renderOffsetY + y * scaledCellHeight_;
+                // Calculate cell position with pre-computed offset.
+                int32_t cellX = renderOffsetX + static_cast<int32_t>(x) * scaledCellWidth_;
+                int32_t cellY = renderOffsetY + static_cast<int32_t>(y) * scaledCellHeight_;
 
                 uint32_t cellColor = (idx < worldData.colors.size())
                     ? ColorNames::toRgba(worldData.colors.data[idx])

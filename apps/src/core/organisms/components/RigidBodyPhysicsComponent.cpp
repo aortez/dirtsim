@@ -42,10 +42,7 @@ void RigidBodyPhysicsComponent::gatherForces(World& world, const std::vector<Vec
     const auto& data = world.getData();
 
     for (const auto& pos : cells) {
-        assert(pos.x >= 0 && "Cell position x must be non-negative.");
-        assert(pos.y >= 0 && "Cell position y must be non-negative.");
-        assert(static_cast<uint32_t>(pos.x) < data.width && "Cell position x out of bounds.");
-        assert(static_cast<uint32_t>(pos.y) < data.height && "Cell position y out of bounds.");
+        assert(data.inBounds(pos.x, pos.y) && "Cell position out of bounds.");
 
         const auto& cell = data.at(pos.x, pos.y);
         pendingForce.x += cell.pending_force.x;

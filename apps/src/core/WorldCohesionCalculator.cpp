@@ -326,8 +326,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             int ny = static_cast<int>(y) + dy;
 
             // Explicit bounds check - skip out-of-bounds neighbors.
-            if (nx < 0 || ny < 0 || static_cast<uint32_t>(nx) >= world.getData().width
-                || static_cast<uint32_t>(ny) >= world.getData().height) {
+            if (!world.getData().inBounds(nx, ny)) {
                 continue;
             }
 

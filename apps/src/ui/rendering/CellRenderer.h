@@ -29,8 +29,8 @@ public:
      */
     void setCanvasCreatedCallback(CanvasCreatedCallback callback);
 
-    void initialize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight);
-    void resize(lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight);
+    void initialize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight);
+    void resize(lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight);
     void renderWorldData(
         const WorldData& worldData,
         lv_obj_t* parent,
@@ -63,8 +63,8 @@ private:
     uint32_t canvasHeight_ = 0;
 
     // World dimensions (variable)
-    uint32_t width_ = 0;
-    uint32_t height_ = 0;
+    int16_t width_ = 0;
+    int16_t height_ = 0;
     lv_obj_t* parent_ = nullptr;
 
     // Track container size for resize detection.
@@ -83,9 +83,9 @@ private:
     // Display scale factor (visual size / buffer size) for coordinate transformation.
     double displayScale_ = 1.0;
 
-    void calculateScaling(uint32_t worldWidth, uint32_t worldHeight);
+    void calculateScaling(int16_t worldWidth, int16_t worldHeight);
     void initializeWithPixelSize(
-        lv_obj_t* parent, uint32_t worldWidth, uint32_t worldHeight, uint32_t pixelsPerCell);
+        lv_obj_t* parent, int16_t worldWidth, int16_t worldHeight, uint32_t pixelsPerCell);
 
     // LVGL-based cell rendering (used for LVGL_DEBUG mode).
     void renderCellLVGL(

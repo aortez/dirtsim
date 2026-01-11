@@ -73,7 +73,7 @@ public:
      * Calculates the pressure gradient by comparing total pressure (hydrostatic + dynamic)
      * with neighboring cells. The gradient points in the direction of decreasing pressure.
      */
-    Vector2f calculatePressureGradient(const World& world, uint32_t x, uint32_t y) const;
+    Vector2f calculatePressureGradient(const World& world, int x, int y) const;
 
     /**
      * @brief Calculate expected gravity gradient at a cell position.

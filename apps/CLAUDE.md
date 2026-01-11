@@ -184,11 +184,9 @@ Executables (server, UI, CLI, tests) link against these libraries.
 - **Vector2d**: 2D floating point vector class
 - **Vector2s**: 2D int16 vector class
 - **Vector2i**: 2D int32 vector class
-- **Server::StateMachine**: Aka DirtSimStateMachine (DSSM). Headless server state machine (Idle → SimRunning ↔ SimPaused → Shutdown)
+- **Server::StateMachine**: Aka DirtSimStateMachine (DSSM). Headless server state machine (Idle ↔ SimRunning ↔ SimPaused → Shutdown)
 - **Ui::StateMachine**: UI client state machine (Disconnected → StartMenu → SimRunning ↔ Paused → Shutdown)
-- **WorldEventGenerator**: Strategy pattern for initial world setup and dynamic particle generation
-- **ScenarioRegistry**: Registry of available scenarios (owned by each StateMachine)
-- **EventSink**: Interface pattern for clean event routing
+- **ScenarioRegistry**: Registry of available scenarios
 
 ### UI Framework
 - **PanelViewController**: Manages modal view switching within panels
@@ -558,5 +556,6 @@ See design_docs/plant.md and design_docs/ai-integration-ideas.md for details.
 - ✅ Binary serialization (zpp_bits)
 - ✅ Per-client format selection with render_format_set API
 
-## Interaction Guidelines
-Let me know if you have any questions!
+## Git
+
+Never use stash.  Never checkout files unless asked to.  Be careful not to mess up WIP that you might not be aware of.

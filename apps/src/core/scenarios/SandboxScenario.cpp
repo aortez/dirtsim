@@ -85,20 +85,20 @@ void SandboxScenario::setup(World& world)
     LOG_INFO(Scenario, "setup - initializing world");
 
     // Clear world first (cells and trees).
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
     world.getOrganismManager().clear();
 
     // Create boundary walls (no top wall - allows sunlight to illuminate the world).
-    for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int x = 0; x < world.getData().width; ++x) {
         world.getData()
             .at(x, world.getData().height - 1)
             .replaceMaterial(MaterialType::WALL, 1.0); // Bottom wall.
     }
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
+    for (int y = 0; y < world.getData().height; ++y) {
         world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0); // Left wall.
         world.getData()
             .at(world.getData().width - 1, y)
@@ -185,12 +185,12 @@ void SandboxScenario::tick(World& world, double deltaTime)
 void SandboxScenario::addWaterColumn(World& world)
 {
     // Scale water column dimensions based on world size.
-    uint32_t columnWidth = std::max(3u, std::min(8u, world.getData().width / 20));
-    uint32_t columnHeight = world.getData().height / 3;
+    int columnWidth = std::max(3, std::min(8, static_cast<int>(world.getData().width) / 20));
+    int columnHeight = world.getData().height / 3;
 
     // Add water column on left side.
-    for (uint32_t y = 0; y < columnHeight && y < world.getData().height; ++y) {
-        for (uint32_t x = 1; x <= columnWidth && x < world.getData().width; ++x) {
+    for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
+        for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             world.getData().at(x, y).addWater(1.0);
         }
     }
@@ -200,12 +200,12 @@ void SandboxScenario::addWaterColumn(World& world)
 void SandboxScenario::clearWaterColumn(World& world)
 {
     // Scale water column dimensions based on world size.
-    uint32_t columnWidth = std::max(3u, std::min(8u, world.getData().width / 20));
-    uint32_t columnHeight = world.getData().height / 3;
+    int columnWidth = std::max(3, std::min(8, static_cast<int>(world.getData().width) / 20));
+    int columnHeight = world.getData().height / 3;
 
     // Clear water from the water column area.
-    for (uint32_t y = 0; y < columnHeight && y < world.getData().height; ++y) {
-        for (uint32_t x = 1; x <= columnWidth && x < world.getData().width; ++x) {
+    for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
+        for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             Cell& cell = world.getData().at(x, y);
             if (cell.material_type == MaterialType::WATER) {
                 cell.replaceMaterial(MaterialType::AIR, 0.0);
@@ -218,10 +218,10 @@ void SandboxScenario::clearWaterColumn(World& world)
 void SandboxScenario::addDirtQuadrant(World& world)
 {
     // Fill lower-right quadrant with dirt.
-    uint32_t startX = world.getData().width / 2;
-    uint32_t startY = world.getData().height / 2;
-    for (uint32_t y = startY; y < world.getData().height - 1; ++y) {
-        for (uint32_t x = startX; x < world.getData().width - 1; ++x) {
+    int startX = world.getData().width / 2;
+    int startY = world.getData().height / 2;
+    for (int y = startY; y < world.getData().height - 1; ++y) {
+        for (int x = startX; x < world.getData().width - 1; ++x) {
             world.getData().at(x, y).addDirt(1.0);
         }
     }
@@ -232,10 +232,10 @@ void SandboxScenario::addDirtQuadrant(World& world)
 void SandboxScenario::clearDirtQuadrant(World& world)
 {
     // Clear dirt from lower-right quadrant.
-    uint32_t startX = world.getData().width / 2;
-    uint32_t startY = world.getData().height / 2;
-    for (uint32_t y = startY; y < world.getData().height - 1; ++y) {
-        for (uint32_t x = startX; x < world.getData().width - 1; ++x) {
+    int startX = world.getData().width / 2;
+    int startY = world.getData().height / 2;
+    for (int y = startY; y < world.getData().height - 1; ++y) {
+        for (int x = startX; x < world.getData().width - 1; ++x) {
             Cell& cell = world.getData().at(x, y);
             if (cell.material_type == MaterialType::DIRT) {
                 cell.replaceMaterial(MaterialType::AIR, 0.0);
@@ -248,12 +248,12 @@ void SandboxScenario::clearDirtQuadrant(World& world)
 void SandboxScenario::refillWaterColumn(World& world)
 {
     // Scale water column dimensions based on world size.
-    uint32_t columnWidth = std::max(3u, std::min(8u, world.getData().width / 20));
-    uint32_t columnHeight = world.getData().height / 3;
+    int columnWidth = std::max(3, std::min(8, static_cast<int>(world.getData().width) / 20));
+    int columnHeight = world.getData().height / 3;
 
     // Refill any empty or water cells in the water column area.
-    for (uint32_t y = 0; y < columnHeight && y < world.getData().height; ++y) {
-        for (uint32_t x = 1; x <= columnWidth && x < world.getData().width; ++x) {
+    for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
+        for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             Cell& cell = world.getData().at(x, y);
             // Only refill if cell is air or water, and not already full.
             if ((cell.material_type == MaterialType::AIR
@@ -320,16 +320,16 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
         deltaTime);
 
     // Uniform distributions for position.
-    std::uniform_int_distribution<uint32_t> xDist(1, world.getData().width - 2);
+    std::uniform_int_distribution<int> xDist(1, world.getData().width - 2);
 
     // Top 15% of world for vertical spawning (minimum 3 cells).
-    uint32_t maxY = std::max(3u, static_cast<uint32_t>(world.getData().height * 0.15));
-    std::uniform_int_distribution<uint32_t> yDist(1, maxY);
+    int maxY = std::max(3, static_cast<int>(world.getData().height * 0.15));
+    std::uniform_int_distribution<int> yDist(1, maxY);
 
     // Spawn drops with varying sizes.
     for (int i = 0; i < numDrops; i++) {
-        uint32_t x = xDist(rng_);
-        uint32_t y = yDist(rng_);
+        int x = xDist(rng_);
+        int y = yDist(rng_);
 
         // Sample radius from normal distribution (each drop varies).
         double dropRadius = radiusDist(rng_);
@@ -341,24 +341,24 @@ void SandboxScenario::addRainDrops(World& world, double deltaTime)
 }
 
 void SandboxScenario::spawnWaterDrop(
-    World& world, uint32_t centerX, uint32_t centerY, double radius, double fillAmount)
+    World& world, int centerX, int centerY, double radius, double fillAmount)
 {
     // Spawn a circular water drop with specified fill amount.
     // Tiny drops (radius < 1) create misting effect with partial fills.
     // Large drops (radius ≥ 1) fill cells completely.
 
     // Calculate bounding box (only scan area that could be affected).
-    uint32_t radiusInt = static_cast<uint32_t>(std::ceil(radius));
-    uint32_t minX = centerX > radiusInt ? centerX - radiusInt : 0;
-    uint32_t maxX = std::min(centerX + radiusInt, world.getData().width - 1);
-    uint32_t minY = centerY > radiusInt ? centerY - radiusInt : 0;
-    uint32_t maxY = std::min(centerY + radiusInt, world.getData().height - 1);
+    int radiusInt = static_cast<int>(std::ceil(radius));
+    int minX = std::max(0, centerX - radiusInt);
+    int maxX = std::min(centerX + radiusInt, static_cast<int>(world.getData().width) - 1);
+    int minY = std::max(0, centerY - radiusInt);
+    int maxY = std::min(centerY + radiusInt, static_cast<int>(world.getData().height) - 1);
 
-    for (uint32_t y = minY; y <= maxY; ++y) {
-        for (uint32_t x = minX; x <= maxX; ++x) {
+    for (int y = minY; y <= maxY; ++y) {
+        for (int x = minX; x <= maxX; ++x) {
             // Calculate distance from center.
-            int dx = static_cast<int>(x) - static_cast<int>(centerX);
-            int dy = static_cast<int>(y) - static_cast<int>(centerY);
+            int dx = x - centerX;
+            int dy = y - centerY;
             double distance = std::sqrt(dx * dx + dy * dy);
 
             // If within radius, add water with specified fill amount.
@@ -372,10 +372,9 @@ void SandboxScenario::spawnWaterDrop(
 void SandboxScenario::throwDirtBalls(World& world)
 {
     spdlog::debug("Adding right periodic throw");
-    uint32_t rightX = world.getData().width - 3;
-    int32_t centerYSigned = static_cast<int32_t>(world.getData().height) / 2 - 2;
-    if (rightX < world.getData().width && centerYSigned >= 0) {
-        uint32_t centerY = static_cast<uint32_t>(centerYSigned);
+    int rightX = world.getData().width - 3;
+    int centerY = world.getData().height / 2 - 2;
+    if (world.getData().inBounds(rightX, centerY)) {
         Cell& cell = world.getData().at(rightX, centerY);
         cell.addDirtWithVelocity(1.0, Vector2d{ -10, -10 });
     }

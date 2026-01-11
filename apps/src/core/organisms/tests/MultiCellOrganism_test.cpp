@@ -32,19 +32,19 @@ class MultiCellOrganismTest : public ::testing::Test {
 protected:
     void SetUp() override { spdlog::set_level(spdlog::level::info); }
 
-    std::unique_ptr<World> createTestWorld(uint32_t width = 20, uint32_t height = 15)
+    std::unique_ptr<World> createTestWorld(int width = 20, int height = 15)
     {
         auto world = std::make_unique<World>(width, height);
 
         // Clear interior to air.
-        for (uint32_t y = 1; y < height - 1; ++y) {
-            for (uint32_t x = 1; x < width - 1; ++x) {
+        for (int y = 1; y < height - 1; ++y) {
+            for (int x = 1; x < width - 1; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // Ensure floor is WALL.
-        for (uint32_t x = 0; x < width; ++x) {
+        for (int x = 0; x < width; ++x) {
             world->getData().at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
         }
 
@@ -277,7 +277,7 @@ TEST_F(MultiCellOrganismTest, LShapeCollidesWithWall)
 
     // Add a vertical wall.
     int wall_x = 15;
-    for (uint32_t y = 1; y < world->getData().height - 1; ++y) {
+    for (int y = 1; y < world->getData().height - 1; ++y) {
         world->getData().at(wall_x, y).replaceMaterial(MaterialType::WALL, 1.0);
     }
 

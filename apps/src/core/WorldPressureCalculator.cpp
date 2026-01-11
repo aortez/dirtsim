@@ -34,8 +34,8 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
 
     // Each cell pushes its weight onto the cell below.
     // Process top-to-bottom so pressure accumulates naturally.
-    for (uint32_t x = 0; x < data.width; ++x) {
-        for (uint32_t y = 0; y < data.height - 1; ++y) {
+    for (int x = 0; x < data.width; ++x) {
+        for (int y = 0; y < data.height - 1; ++y) {
             Cell& cell = data.at(x, y);
 
             if (cell.isEmpty() || cell.isWall()) {
@@ -153,8 +153,7 @@ void WorldPressureCalculator::processBlockedTransfers(
     }
 }
 
-Vector2f WorldPressureCalculator::calculatePressureGradient(
-    const World& world, uint32_t x, uint32_t y) const
+Vector2f WorldPressureCalculator::calculatePressureGradient(const World& world, int x, int y) const
 {
     // Component-wise central difference gradient calculation.
     // This is the standard CFD approach: calculate each dimension independently
@@ -326,8 +325,8 @@ void WorldPressureCalculator::applyPressureDecay(World& world, float deltaTime)
     WorldData& data = world.getData();
     const PhysicsSettings& settings = world.getPhysicsSettings();
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
 
             if (cell.pressure > MIN_PRESSURE_THRESHOLD) {
@@ -362,8 +361,8 @@ void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, floa
     }
 
     // Process all cells to generate virtual gravity transfers.
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
 
             // Skip empty cells and walls.
@@ -514,13 +513,13 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
     // Cache world data and settings to avoid repeated pImpl dereferences.
     WorldData& data = world.getData(); // Cached
     const PhysicsSettings& settings = world.getPhysicsSettings();
-    const uint32_t width = data.width;
-    const uint32_t height = data.height;
+    const int width = data.width;
+    const int height = data.height;
     std::vector<float> new_pressure(width * height);
 
     // Copy current pressure values.
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
             size_t idx = y * width + x;
             const Cell& cell = data.at(x, y);
             new_pressure[idx] = cell.pressure;
@@ -539,8 +538,8 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
 #pragma omp parallel for collapse(2) \
     schedule(static) if (GridOfCells::USE_OPENMP && height * width >= 2500)
 #endif
-        for (uint32_t y = 0; y < height; ++y) {
-            for (uint32_t x = 0; x < width; ++x) {
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
                 size_t idx = y * width + x;
                 const Cell& cell = data.at(x, y);
 
@@ -632,8 +631,8 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
     }
 
     // Apply the new pressure values.
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
             size_t idx = y * width + x;
             Cell& cell = data.at(x, y);
             cell.pressure = std::max(0.0f, new_pressure[idx]);

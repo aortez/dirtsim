@@ -55,8 +55,7 @@ CollisionResult RigidBodyCollisionComponent::detect(
 
     for (const auto& cellPos : predictedCells) {
         // Check world boundaries.
-        if (cellPos.x < 0 || cellPos.y < 0 || static_cast<uint32_t>(cellPos.x) >= data.width
-            || static_cast<uint32_t>(cellPos.y) >= data.height) {
+        if (!data.inBounds(cellPos.x, cellPos.y)) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
 
@@ -64,13 +63,13 @@ CollisionResult RigidBodyCollisionComponent::detect(
             if (cellPos.x < 0) {
                 normalSum.x += 1.0;
             }
-            if (cellPos.x >= static_cast<int>(data.width)) {
+            if (cellPos.x >= data.width) {
                 normalSum.x -= 1.0;
             }
             if (cellPos.y < 0) {
                 normalSum.y += 1.0;
             }
-            if (cellPos.y >= static_cast<int>(data.height)) {
+            if (cellPos.y >= data.height) {
                 normalSum.y -= 1.0;
             }
             continue;
@@ -170,8 +169,7 @@ Vector2d RigidBodyCollisionComponent::computeSupportForce(
         int groundY = pos.y + static_cast<int>(gravityDir.y);
 
         // World boundary = full support.
-        if (groundX < 0 || groundY < 0 || static_cast<uint32_t>(groundX) >= data.width
-            || static_cast<uint32_t>(groundY) >= data.height) {
+        if (!data.inBounds(groundX, groundY)) {
             return { -gravityDir.x * weight, -gravityDir.y * weight };
         }
 
@@ -254,8 +252,7 @@ Vector2d RigidBodyCollisionComponent::computeGroundFriction(
         int groundY = pos.y + static_cast<int>(gravityDir.y);
 
         // World boundary = treat as WALL (provides full support and friction).
-        if (groundX < 0 || groundY < 0 || static_cast<uint32_t>(groundX) >= data.width
-            || static_cast<uint32_t>(groundY) >= data.height) {
+        if (!data.inBounds(groundX, groundY)) {
             groundMaterials.push_back(MaterialType::WALL);
             continue;
         }

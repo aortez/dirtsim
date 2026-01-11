@@ -20,8 +20,7 @@ void LocalShapeProjection::clear(World& world)
     auto& data = world.getData();
 
     for (const auto& oldPos : occupiedCells) {
-        if (oldPos.x < 0 || oldPos.y < 0 || static_cast<uint32_t>(oldPos.x) >= data.width
-            || static_cast<uint32_t>(oldPos.y) >= data.height) {
+        if (!data.inBounds(oldPos.x, oldPos.y)) {
             continue;
         }
 
@@ -68,8 +67,7 @@ void LocalShapeProjection::project(
                                 static_cast<int>(std::floor(worldPos.y)) };
 
         // Bounds check.
-        if (gridPos.x < 0 || gridPos.y < 0 || static_cast<uint32_t>(gridPos.x) >= data.width
-            || static_cast<uint32_t>(gridPos.y) >= data.height) {
+        if (!data.inBounds(gridPos.x, gridPos.y)) {
             continue;
         }
 

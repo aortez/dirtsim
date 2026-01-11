@@ -62,8 +62,7 @@ protected:
                   << goose->velocity.y << ") | " << "ground=" << (goose->isOnGround() ? "Y" : "N");
 
         // Print cell forces if valid position.
-        if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
-            && static_cast<uint32_t>(anchor.y) < data.height) {
+        if (anchor.x >= 0 && anchor.y >= 0 && anchor.x < data.width && anchor.y < data.height) {
             const Cell& cell = data.at(anchor.x, anchor.y);
             const auto& debug = world.getGrid().debugAt(anchor.x, anchor.y);
             std::cout << " | pend=(" << std::setw(5) << cell.pending_force.x << "," << std::setw(5)
@@ -84,19 +83,19 @@ protected:
      *   Row 1-8: AIR
      *   Row 9: WALL floor
      */
-    std::unique_ptr<World> createTestWorld(uint32_t width = 20, uint32_t height = 10)
+    std::unique_ptr<World> createTestWorld(int width = 20, int height = 10)
     {
         auto world = std::make_unique<World>(width, height);
 
         // Clear interior to air.
-        for (uint32_t y = 1; y < height - 1; ++y) {
-            for (uint32_t x = 1; x < width - 1; ++x) {
+        for (int y = 1; y < height - 1; ++y) {
+            for (int x = 1; x < width - 1; ++x) {
                 world->getData().at(x, y).replaceMaterial(MaterialType::AIR, 0.0);
             }
         }
 
         // Ensure floor is WALL.
-        for (uint32_t x = 0; x < width; ++x) {
+        for (int x = 0; x < width; ++x) {
             world->getData().at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
         }
 
@@ -107,9 +106,9 @@ protected:
     {
         spdlog::info("=== {} ===", label);
         const WorldData& data = world.getData();
-        for (uint32_t y = 0; y < data.height; ++y) {
+        for (int y = 0; y < data.height; ++y) {
             std::string row;
-            for (uint32_t x = 0; x < data.width; ++x) {
+            for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
                 if (cell.material_type == MaterialType::WALL) {
                     row += "W";

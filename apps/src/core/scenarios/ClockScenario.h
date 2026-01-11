@@ -55,8 +55,8 @@ public:
 
     // Specifies a wall cell's position and visual appearance.
     struct WallSpec {
-        uint32_t x;
-        uint32_t y;
+        int16_t x;
+        int16_t y;
         MaterialType render_as; // Visual appearance (WOOD for frame, DIRT for floor, etc.).
     };
 
@@ -98,9 +98,9 @@ private:
 
     // Floor drain state.
     bool drain_open_ = false;
-    uint32_t drain_start_x_ = 0;
-    uint32_t drain_end_x_ = 0;
-    uint32_t current_drain_size_ = 0; // Current drain size (0, 1, 3, 5, or 7).
+    int16_t drain_start_x_ = 0;
+    int16_t drain_end_x_ = 0;
+    int16_t current_drain_size_ = 0; // Current drain size (0, 1, 3, 5, or 7).
     std::chrono::steady_clock::time_point last_drain_size_change_;
 
     std::mt19937 rng_{ std::random_device{}() };
@@ -139,7 +139,7 @@ private:
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
     void updateDrain(World& world, double deltaTime);
-    void sprayDrainCell(World& world, Cell& cell, uint32_t x, uint32_t y);
+    void sprayDrainCell(World& world, Cell& cell, int16_t x, int16_t y);
 
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);

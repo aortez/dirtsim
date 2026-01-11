@@ -38,12 +38,12 @@ protected:
     void setupUTube()
     {
         // Left column: fill with water.
-        for (uint32_t y = 0; y < 6; y++) {
+        for (int y = 0; y < 6; y++) {
             world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
         }
 
         // Middle column: wall barrier with bottom cell open for flow.
-        for (uint32_t y = 0; y < 5; y++) { // Only y=0 to y=4 (leave y=5 open).
+        for (int y = 0; y < 5; y++) { // Only y=0 to y=4 (leave y=5 open).
             world->addMaterialAtCell({ 1, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
         }
         // Bottom cell at (1, 5) is left empty for water to flow through.
@@ -57,7 +57,7 @@ protected:
     uint32_t countWaterInColumn(uint32_t x) const
     {
         uint32_t count = 0;
-        for (uint32_t y = 0; y < world->getData().height; ++y) {
+        for (int y = 0; y < world->getData().height; ++y) {
             const Cell& cell = world->getData().at(x, y);
             if (cell.material_type == MaterialType::WATER && cell.fill_ratio > 0.5) {
                 count++;
@@ -72,9 +72,9 @@ protected:
     void printWorld() const
     {
         spdlog::info("World state:");
-        for (uint32_t y = 0; y < world->getData().height; ++y) {
+        for (int y = 0; y < world->getData().height; ++y) {
             std::string row = "  y=" + std::to_string(y) + ": ";
-            for (uint32_t x = 0; x < world->getData().width; ++x) {
+            for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
                 if (cell.material_type == MaterialType::WATER) {
                     row += "[W]";

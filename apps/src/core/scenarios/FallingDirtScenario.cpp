@@ -47,8 +47,8 @@ void FallingDirtScenario::setup(World& world)
     spdlog::info("FallingDirtScenario::setup - initializing world");
 
     // Clear world first.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
@@ -58,7 +58,7 @@ void FallingDirtScenario::setup(World& world)
     world.setWallsEnabled(false);
 
     // Add floor.
-    for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int x = 0; x < world.getData().width; ++x) {
         world.getData().at(x, world.getData().height - 1).replaceMaterial(MaterialType::WALL, 1.0);
     }
 

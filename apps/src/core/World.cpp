@@ -6,6 +6,7 @@
 #include "GridOfCells.h"
 #include "LightConfig.h"
 #include "PhysicsSettings.h"
+#include "PointLight.h"
 #include "ReflectSerializer.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
@@ -76,6 +77,9 @@ struct World::Impl {
 
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
+
+    // Point light sources.
+    std::vector<PointLight> point_lights_;
 
     // Performance timing.
     mutable Timers timers_;
@@ -200,6 +204,26 @@ const WorldLightCalculator& World::getLightCalculator() const
 const LightBuffer& World::getRawLightBuffer() const
 {
     return pImpl->light_calculator_.getRawLightBuffer();
+}
+
+void World::addPointLight(const PointLight& light)
+{
+    pImpl->point_lights_.push_back(light);
+}
+
+void World::clearPointLights()
+{
+    pImpl->point_lights_.clear();
+}
+
+const std::vector<PointLight>& World::getPointLights() const
+{
+    return pImpl->point_lights_;
+}
+
+std::vector<PointLight>& World::getPointLights()
+{
+    return pImpl->point_lights_;
 }
 
 Timers& World::getTimers()
@@ -792,7 +816,7 @@ void World::clearCellAtPosition(Vector2s pos)
 // GRID MANAGEMENT.
 // =================================================================.
 
-void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
+void World::resizeGrid(int16_t newWidth, int16_t newHeight)
 {
     if (!shouldResize(newWidth, newHeight)) {
         return;
@@ -808,9 +832,7 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
 
             // Read COM from world cell to get full continuous position.
             Vector2d com{ 0.0, 0.0 };
-            if (anchor.x >= 0 && anchor.y >= 0
-                && static_cast<uint32_t>(anchor.x) < pImpl->data_.width
-                && static_cast<uint32_t>(anchor.y) < pImpl->data_.height) {
+            if (pImpl->data_.inBounds(anchor.x, anchor.y)) {
                 const Cell& cell = pImpl->data_.at(anchor.x, anchor.y);
                 com = cell.com;
             }
@@ -823,8 +845,7 @@ void World::resizeGrid(uint32_t newWidth, uint32_t newHeight)
         // Now clear organism cells from world grid before interpolation.
         organism_manager_->forEachOrganism([this](Organism& organism) {
             for (const auto& pos : organism.getCells()) {
-                if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < pImpl->data_.width
-                    && static_cast<uint32_t>(pos.y) < pImpl->data_.height) {
+                if (pImpl->data_.inBounds(pos.x, pos.y)) {
                     pImpl->data_.at(pos.x, pos.y) = Cell(); // Clear to AIR.
                 }
             }
@@ -908,8 +929,8 @@ void World::applyAirResistance()
 
     WorldAirResistanceCalculator air_resistance_calculator{};
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
 
             if (!cell.isEmpty() && !cell.isWall()) {
@@ -954,8 +975,8 @@ void World::applyCohesionForces(const GridOfCells& grid)
 #pragma omp parallel for collapse(2) schedule(static) if ( \
         GridOfCells::USE_CACHE && GridOfCells::USE_OPENMP && data.height * data.width >= 2500)
 #endif
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
                 Cell& cell = data.at(x, y);
 
                 if (cell.isEmpty() || cell.isWall()) {
@@ -1000,8 +1021,8 @@ void World::applyCohesionForces(const GridOfCells& grid)
 #pragma omp parallel for collapse(2) schedule(static) if ( \
         GridOfCells::USE_CACHE && GridOfCells::USE_OPENMP && data.height * data.width >= 2500)
 #endif
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
                 Cell& cell = data.at(x, y);
 
                 if (cell.isEmpty() || cell.isWall()) {
@@ -1041,8 +1062,8 @@ void World::applyPressureForces()
 #pragma omp parallel for collapse(2) schedule(static) if ( \
         GridOfCells::USE_CACHE && GridOfCells::USE_OPENMP && data.height * data.width >= 2500)
 #endif
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
 
             // Skip empty cells and walls.
@@ -1164,8 +1185,8 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
 #pragma omp parallel for collapse(2) \
     schedule(static) if (GridOfCells::USE_CACHE && data.height * data.width >= 2500)
 #endif
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
                 Cell& cell = data.at(x, y);
 
                 if (cell.isEmpty() || cell.isWall()) {
@@ -1192,8 +1213,8 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
         const CellBitmap& empty_bitmap = grid.emptyCells();
         const CellBitmap& wall_bitmap = grid.wallCells();
 
-        for (uint32_t y = 0; y < data.height; ++y) {
-            for (uint32_t x = 0; x < data.width; ++x) {
+        for (int y = 0; y < data.height; ++y) {
+            for (int x = 0; x < data.width; ++x) {
                 // Fast bitmap checks - skip without dereferencing cell.
                 if (empty_bitmap.isSet(x, y) || wall_bitmap.isSet(x, y)) {
                     continue;
@@ -1497,8 +1518,7 @@ Vector2d World::computeOrganismSupportForce(
     // Calculate total organism weight.
     double total_weight = 0.0;
     for (const auto& pos : organism_cells) {
-        if (pos.x >= 0 && pos.y >= 0 && static_cast<uint32_t>(pos.x) < data.width
-            && static_cast<uint32_t>(pos.y) < data.height) {
+        if (data.inBounds(pos.x, pos.y)) {
             const Cell& cell = data.at(pos.x, pos.y);
             total_weight += cell.getMass() * gravity;
         }
@@ -1519,8 +1539,7 @@ Vector2d World::computeOrganismSupportForce(
         int ground_y = pos.y + static_cast<int>(gravity_dir.y);
 
         // World boundary = automatic full support.
-        if (ground_x < 0 || ground_y < 0 || static_cast<uint32_t>(ground_x) >= data.width
-            || static_cast<uint32_t>(ground_y) >= data.height) {
+        if (!data.inBounds(ground_x, ground_y)) {
             // At world boundary - provide full support.
             return { 0.0, -total_weight }; // Cancel all gravity.
         }
@@ -1621,8 +1640,8 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
     size_t num_transfers_generated = 0;
     size_t num_collisions_generated = 0;
 
-    for (uint32_t y = 0; y < data.height; ++y) {
-        for (uint32_t x = 0; x < data.width; ++x) {
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
             Cell& cell = data.at(x, y);
 
             // Skip empty, wall, and air cells - they don't generate material moves.
@@ -1974,13 +1993,13 @@ void World::setupBoundaryWalls()
     spdlog::info("Setting up boundary walls for World");
 
     // Top and bottom walls.
-    for (uint32_t x = 0; x < pImpl->data_.width; ++x) {
+    for (int x = 0; x < pImpl->data_.width; ++x) {
         pImpl->data_.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
         pImpl->data_.at(x, pImpl->data_.height - 1).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
     // Left and right walls.
-    for (uint32_t y = 0; y < pImpl->data_.height; ++y) {
+    for (int y = 0; y < pImpl->data_.height; ++y) {
         pImpl->data_.at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
         pImpl->data_.at(pImpl->data_.width - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
     }
@@ -2002,8 +2021,7 @@ void World::pixelToCell(int pixelX, int pixelY, int& cellX, int& cellY) const
 
 bool World::isValidCell(int x, int y) const
 {
-    return x >= 0 && y >= 0 && static_cast<uint32_t>(x) < pImpl->data_.width
-        && static_cast<uint32_t>(y) < pImpl->data_.height;
+    return pImpl->data_.inBounds(x, y);
 }
 
 Vector2i World::pixelToCell(int pixelX, int pixelY) const
@@ -2029,11 +2047,11 @@ void World::setWallsEnabled(bool enabled)
     }
     else {
         // Clear existing walls by resetting boundary cells to air.
-        for (uint32_t x = 0; x < pImpl->data_.width; ++x) {
+        for (int x = 0; x < pImpl->data_.width; ++x) {
             pImpl->data_.at(x, 0).clear();                       // Top wall.
             pImpl->data_.at(x, pImpl->data_.height - 1).clear(); // Bottom wall.
         }
-        for (uint32_t y = 0; y < pImpl->data_.height; ++y) {
+        for (int y = 0; y < pImpl->data_.height; ++y) {
             pImpl->data_.at(0, y).clear();                      // Left wall.
             pImpl->data_.at(pImpl->data_.width - 1, y).clear(); // Right wall.
         }
@@ -2087,7 +2105,7 @@ void World::fromJSON(const nlohmann::json& doc)
 }
 
 // Stub implementations for WorldInterface methods.
-void World::onPreResize(uint32_t newWidth, uint32_t newHeight)
+void World::onPreResize(int16_t newWidth, int16_t newHeight)
 {
     spdlog::debug(
         "World::onPreResize: {}x{} -> {}x{}",
@@ -2097,7 +2115,7 @@ void World::onPreResize(uint32_t newWidth, uint32_t newHeight)
         newHeight);
 }
 
-bool World::shouldResize(uint32_t newWidth, uint32_t newHeight) const
+bool World::shouldResize(int16_t newWidth, int16_t newHeight) const
 {
     return pImpl->data_.width != newWidth || pImpl->data_.height != newHeight;
 }

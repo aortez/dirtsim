@@ -13,8 +13,8 @@ void CellTracker::trackCell(const Vector2i& pos, MaterialType material, int fram
 void CellTracker::recordFrame(int /*frame*/)
 {
     for (const auto& [pos, tracked] : tracked_cells_) {
-        if (static_cast<uint32_t>(pos.x) < world_.getData().width
-            && static_cast<uint32_t>(pos.y) < world_.getData().height) {
+        if (pos.x >= 0 && pos.x < world_.getData().width && pos.y >= 0
+            && pos.y < world_.getData().height) {
             const Cell& cell = world_.getData().at(pos.x, pos.y);
             const auto& debug = world_.getGrid().debugAt(pos.x, pos.y);
 

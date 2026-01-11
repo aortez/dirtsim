@@ -53,9 +53,9 @@ protected:
     void printWorld(int step) const
     {
         spdlog::info("=== Step {} ===", step);
-        for (uint32_t y = 0; y < world->getData().height; ++y) {
+        for (int y = 0; y < world->getData().height; ++y) {
             std::string row = "  y=" + std::to_string(y) + ": ";
-            for (uint32_t x = 0; x < world->getData().width; ++x) {
+            for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
                 if (cell.material_type == MaterialType::DIRT) {
                     row += "[D]";
@@ -127,8 +127,8 @@ TEST_F(HorizontalMomentumTest, DirtMaintainsHorizontalVelocity)
 
         // Find dirt cell.
         bool found = false;
-        for (uint32_t y = 0; y < world->getData().height; ++y) {
-            for (uint32_t x = 0; x < world->getData().width; ++x) {
+        for (int y = 0; y < world->getData().height; ++y) {
+            for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
                 if (cell.material_type == MaterialType::DIRT && cell.fill_ratio > 0.5) {
                     dirtX = x;

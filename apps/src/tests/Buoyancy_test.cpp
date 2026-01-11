@@ -55,7 +55,8 @@ protected:
      */
     void setupColumn(const std::vector<MaterialType>& materials)
     {
-        for (size_t y = 0; y < materials.size() && y < world->getData().height; ++y) {
+        for (size_t y = 0; y < materials.size() && y < static_cast<size_t>(world->getData().height);
+             ++y) {
             Cell& cell = world->getData().at(0, y); // Only one column (x=0).
             if (materials[y] != MaterialType::AIR) {
                 cell.addMaterial(materials[y], 1.0); // Fill completely.

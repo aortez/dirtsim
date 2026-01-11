@@ -41,8 +41,8 @@ void EmptyScenario::setup(World& world)
     spdlog::info("EmptyScenario::setup - clearing world");
 
     // Clear world to empty state.
-    for (uint32_t y = 0; y < world.getData().height; ++y) {
-        for (uint32_t x = 0; x < world.getData().width; ++x) {
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell(); // Reset to empty cell.
         }
     }
