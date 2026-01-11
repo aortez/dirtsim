@@ -132,9 +132,9 @@ TEST(CacheCorrectnessTest, DeterminismCheck)
         world.setRandomSeed(42); // Same seed both times.
 
         // Add some materials.
-        for (int y = 20; y < 26; ++y) {
-            for (int x = 10; x < 18; ++x) {
-                world.addMaterialAtCell(x, y, MaterialType::DIRT, 1.0);
+        for (int16_t y = 20; y < 26; ++y) {
+            for (int16_t x = 10; x < 18; ++x) {
+                world.addMaterialAtCell({ x, y }, MaterialType::DIRT, 1.0f);
             }
         }
 

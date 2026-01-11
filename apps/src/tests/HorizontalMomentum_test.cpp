@@ -100,7 +100,8 @@ TEST_F(HorizontalMomentumTest, DirtMaintainsHorizontalVelocity)
     const uint32_t startX = 2;
     const uint32_t startY = 2;
 
-    world->addMaterialAtCell(startX, startY, MaterialType::DIRT, 1.0);
+    world->addMaterialAtCell(
+        { static_cast<int16_t>(startX), static_cast<int16_t>(startY) }, MaterialType::DIRT, 1.0);
 
     // Give dirt horizontal velocity to the right.
     Cell& dirtCell = world->getData().at(startX, startY);

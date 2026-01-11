@@ -2170,9 +2170,9 @@ TEST_F(DuckTest, DuckFloatsInWater)
     //   . D .   y=3 (duck starts here, submerged)
     //   . W .   y=4
     //   . W .   y=5
-    for (int y = 0; y < 6; ++y) {
+    for (int16_t y = 0; y < 6; ++y) {
         if (y != 3) {
-            world->addMaterialAtCell(1, y, MaterialType::WATER, 1.0);
+            world->addMaterialAtCell({ 1, y }, MaterialType::WATER, 1.0f);
         }
     }
 

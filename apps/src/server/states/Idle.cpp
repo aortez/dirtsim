@@ -37,8 +37,11 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 {
     assert(dsm.serverConfig && "serverConfig must be loaded");
 
-    std::string scenarioId = getScenarioId(dsm.serverConfig->startupConfig);
-    LOG_INFO(State, "SimRun command received, using configured scenario '{}'", scenarioId);
+    // Use scenario_id from command if provided, otherwise fall back to server config.
+    std::string scenarioId = !cwc.command.scenario_id.empty()
+        ? cwc.command.scenario_id
+        : getScenarioId(dsm.serverConfig->startupConfig);
+    LOG_INFO(State, "SimRun command received, using scenario '{}'", scenarioId);
 
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {

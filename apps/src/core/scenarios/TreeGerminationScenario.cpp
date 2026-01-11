@@ -76,7 +76,8 @@ void TreeGerminationScenario::setup(World& world)
     // Dirt at bottom 3 rows.
     for (uint32_t y = 6; y < world.getData().height; ++y) {
         for (uint32_t x = 0; x < world.getData().width; ++x) {
-            world.addMaterialAtCell(x, y, MaterialType::DIRT, 1.0);
+            world.addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
         }
     }
 

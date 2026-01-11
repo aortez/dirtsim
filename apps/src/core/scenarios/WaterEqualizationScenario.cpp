@@ -59,12 +59,12 @@ void WaterEqualizationScenario::setup(World& world)
     // 3x6 world with water on left, wall separator in middle, air on right.
     // Left column (x=0): fill with water.
     for (uint32_t y = 0; y < 6; y++) {
-        world.addMaterialAtCell(0, y, MaterialType::WATER, 1.0);
+        world.addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
     }
 
     // Middle column (x=1): wall barrier with bottom cell open for flow.
     for (uint32_t y = 0; y < 5; y++) { // Only y=0 to y=4 (leave y=5 open).
-        world.addMaterialAtCell(1, y, MaterialType::WALL, 1.0);
+        world.addMaterialAtCell({ 1, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
     }
     // Bottom cell at (1, 5) is left empty for water to flow through.
 

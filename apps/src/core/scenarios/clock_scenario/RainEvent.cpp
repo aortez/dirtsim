@@ -21,7 +21,8 @@ void updateRain(
         uint32_t x = x_dist(rng);
         uint32_t y = 2;
 
-        world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
+        world.addMaterialAtCell(
+            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 0.5);
     }
 
     // Water drainage is handled by updateDrain() in ClockScenario::tick().

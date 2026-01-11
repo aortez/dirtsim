@@ -121,7 +121,8 @@ void RainingScenario::tick(World& world, double deltaTime)
         uint32_t y = 1; // Start near top.
 
         // Add water at the position.
-        world.addMaterialAtCell(x, y, MaterialType::WATER, 0.5);
+        world.addMaterialAtCell(
+            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 0.5);
     }
 
     // Manage drain opening in the floor and evaporate water in the drain.

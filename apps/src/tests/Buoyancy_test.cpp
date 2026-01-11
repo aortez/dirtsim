@@ -519,8 +519,8 @@ protected:
     void setupMaterialInWater(MaterialType material)
     {
         // Fill entire column with water.
-        for (int y = 0; y < 5; ++y) {
-            world->addMaterialAtCell(0, y, MaterialType::WATER, 1.0);
+        for (int16_t y = 0; y < 5; ++y) {
+            world->addMaterialAtCell({ 0, y }, MaterialType::WATER, 1.0f);
         }
 
         // Place test material in middle (y=2).
@@ -814,10 +814,12 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
     for (uint32_t y = 0; y < 3; ++y) {
         for (uint32_t x = 0; x < 3; ++x) {
             if (x == 1 && y == 1) {
-                world->addMaterialAtCell(x, y, MaterialType::WOOD, 1.0);
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WOOD, 1.0);
             }
             else {
-                world->addMaterialAtCell(x, y, MaterialType::WATER, 1.0);
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
             }
         }
     }
@@ -1007,7 +1009,8 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
     // Setup: Water in top 2x2, empty below.
     for (uint32_t y = 0; y < 2; ++y) {
         for (uint32_t x = 0; x < 2; ++x) {
-            world->addMaterialAtCell(x, y, MaterialType::WATER, 1.0);
+            world->addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
         }
     }
 
@@ -1110,9 +1113,9 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
     world->getPhysicsSettings().gravity = 9.81;      // Realistic gravity (sandbox default).
 
     // Setup: Dirt at top (y=0), water below.
-    world->addMaterialAtCell(0, 0, MaterialType::DIRT, 1.0);
+    world->addMaterialAtCell({ 0, 0 }, MaterialType::DIRT, 1.0);
     for (uint32_t y = 1; y < 6; ++y) {
-        world->addMaterialAtCell(0, y, MaterialType::WATER, 1.0);
+        world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
     }
 
     spdlog::info("  Initial setup:");
@@ -1234,9 +1237,9 @@ TEST_F(BuoyancyTest, DirtShouldSinkNotFloat)
     world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
     world->getPhysicsSettings().gravity = 9.81;
 
-    world->addMaterialAtCell(0, 0, MaterialType::WATER, 1.0);
-    world->addMaterialAtCell(0, 1, MaterialType::DIRT, 1.0);
-    world->addMaterialAtCell(0, 2, MaterialType::WATER, 1.0);
+    world->addMaterialAtCell({ 0, 0 }, MaterialType::WATER, 1.0);
+    world->addMaterialAtCell({ 0, 1 }, MaterialType::DIRT, 1.0);
+    world->addMaterialAtCell({ 0, 2 }, MaterialType::WATER, 1.0);
 
     // Calculate pressure.
     calculatePressure();

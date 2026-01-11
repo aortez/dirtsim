@@ -31,11 +31,11 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
     }
 
     // Place known materials at specific positions.
-    world->addMaterialAtCell(7, 7, MaterialType::DIRT, 1.0);  // Center.
-    world->addMaterialAtCell(5, 7, MaterialType::WATER, 0.8); // Left of center.
-    world->addMaterialAtCell(9, 7, MaterialType::SAND, 0.6);  // Right of center.
-    world->addMaterialAtCell(7, 5, MaterialType::WOOD, 1.0);  // Above center.
-    world->addMaterialAtCell(7, 9, MaterialType::METAL, 1.0); // Below center.
+    world->addMaterialAtCell({ 7, 7 }, MaterialType::DIRT, 1.0);  // Center.
+    world->addMaterialAtCell({ 5, 7 }, MaterialType::WATER, 0.8); // Left of center.
+    world->addMaterialAtCell({ 9, 7 }, MaterialType::SAND, 0.6);  // Right of center.
+    world->addMaterialAtCell({ 7, 5 }, MaterialType::WOOD, 1.0);  // Above center.
+    world->addMaterialAtCell({ 7, 9 }, MaterialType::METAL, 1.0); // Below center.
 
     // Gather histograms centered at (7,7) with 9x9 grid.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
@@ -112,7 +112,8 @@ TEST(SensoryUtilsTest, GatherHistogramsAtWorldEdge)
     for (uint32_t y = 0; y < 10; y++) {
         for (uint32_t x = 0; x < 10; x++) {
             if (x == 0 || x == 9 || y == 0 || y == 9) {
-                world->addMaterialAtCell(x, y, MaterialType::WALL, 1.0);
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
             }
             else {
                 world->getData().at(x, y) = Cell();
@@ -323,7 +324,8 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
     for (uint32_t y = 0; y < 15; y++) {
         for (uint32_t x = 0; x < 15; x++) {
             if (y == 14) {
-                world->addMaterialAtCell(x, y, MaterialType::WALL, 1.0);
+                world->addMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
             }
             else {
                 world->getData().at(x, y) = Cell();
@@ -372,16 +374,16 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
 
     // Add floor at y=13.
     for (uint32_t x = 0; x < 15; x++) {
-        world->addMaterialAtCell(x, 13, MaterialType::DIRT, 1.0);
+        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, MaterialType::DIRT, 1.0);
     }
 
     // Add wall to the right at x=10.
     for (uint32_t y = 0; y < 13; y++) {
-        world->addMaterialAtCell(10, y, MaterialType::WALL, 1.0);
+        world->addMaterialAtCell({ 10, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
     }
 
     // Add water pool to the left.
-    world->addMaterialAtCell(4, 12, MaterialType::WATER, 1.0);
+    world->addMaterialAtCell({ 4, 12 }, MaterialType::WATER, 1.0);
 
     // Create duck at (7, 12).
     OrganismId duck_id = world->getOrganismManager().createDuck(*world, 7, 12);
@@ -437,11 +439,11 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
 
     // Add floor.
     for (uint32_t x = 0; x < 15; x++) {
-        world->addMaterialAtCell(x, 13, MaterialType::DIRT, 1.0);
+        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, MaterialType::DIRT, 1.0);
     }
 
     // Add wall 2 cells to the right of where duck will be.
-    world->addMaterialAtCell(9, 12, MaterialType::WALL, 1.0);
+    world->addMaterialAtCell({ 9, 12 }, MaterialType::WALL, 1.0);
 
     // Create duck at (7, 12) facing right.
     OrganismId duck_id = world->getOrganismManager().createDuck(*world, 7, 12);

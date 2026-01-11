@@ -2,7 +2,7 @@
 
 #include "MaterialType.h"
 #include "Pimpl.h"
-#include "Vector2i.h"
+#include "Vector2.h"
 #include "organisms/OrganismType.h"
 
 #include <cstdint>
@@ -14,8 +14,6 @@ class Timers;
 
 namespace DirtSim {
 class Cell;
-// Vector2d is now a template alias, include instead of forward declare.
-#include "Vector2d.h"
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
@@ -68,9 +66,9 @@ public:
     // Organism tracking is owned by OrganismManager (single source of truth).
     // These methods maintain the invariant between cells and organism tracking.
     //
-    void swapCells(Vector2i pos1, Vector2i pos2);
-    void replaceMaterialAtCell(int x, int y, MaterialType material);
-    void clearCellAtPosition(int x, int y);
+    void swapCells(Vector2s pos1, Vector2s pos2);
+    void replaceMaterialAtCell(Vector2s pos, MaterialType material);
+    void clearCellAtPosition(Vector2s pos);
 
     // =================================================================
     // MATERIAL ADDITION
@@ -180,7 +178,7 @@ public:
     // =================================================================
 
     // Add material at specific cell coordinates.
-    void addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double amount = 1.0);
+    void addMaterialAtCell(Vector2s pos, MaterialType type, float amount = 1.0f);
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // Minimum matter to process.
 
@@ -213,7 +211,7 @@ public:
 
     std::string toAsciiDiagram() const;
 
-    void spawnMaterialBall(MaterialType material, uint32_t centerX, uint32_t centerY);
+    void spawnMaterialBall(MaterialType material, Vector2s center);
 
     // World state data - public accessors for Pimpl-stored state.
     WorldData& getData();

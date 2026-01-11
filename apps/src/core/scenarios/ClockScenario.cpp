@@ -773,7 +773,8 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
 
             if (pixel) {
                 // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(x, y, MaterialType::WALL);
+                world.replaceMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL);
                 world.getData().at(x, y).render_as = static_cast<int8_t>(config_.digitMaterial);
 
                 // Make digit cells emissive so they glow in darkness.
@@ -811,13 +812,15 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
 
             if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
                 // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(x, y1, MaterialType::WALL);
+                world.replaceMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y1) }, MaterialType::WALL);
                 world.getData().at(x, y1).render_as = static_cast<int8_t>(config_.digitMaterial);
                 world.getLightCalculator().setEmissive(x, y1, color, DIGIT_EMISSION_INTENSITY);
             }
             if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
                 // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(x, y2, MaterialType::WALL);
+                world.replaceMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y2) }, MaterialType::WALL);
                 world.getData().at(x, y2).render_as = static_cast<int8_t>(config_.digitMaterial);
                 world.getLightCalculator().setEmissive(x, y2, color, DIGIT_EMISSION_INTENSITY);
             }
@@ -1777,7 +1780,9 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
             for (uint32_t x = old_start_x; x <= old_end_x; ++x) {
                 bool still_open = drain_open_ && x >= new_start_x && x <= new_end_x;
                 if (!still_open) {
-                    world.replaceMaterialAtCell(x, drain_y, MaterialType::WALL);
+                    world.replaceMaterialAtCell(
+                        { static_cast<int16_t>(x), static_cast<int16_t>(drain_y) },
+                        MaterialType::WALL);
                 }
             }
         }
@@ -2015,7 +2020,8 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 void ClockScenario::applyWalls(World& world, const std::vector<WallSpec>& walls)
 {
     for (const auto& wall : walls) {
-        world.replaceMaterialAtCell(wall.x, wall.y, MaterialType::WALL);
+        world.replaceMaterialAtCell(
+            { static_cast<int16_t>(wall.x), static_cast<int16_t>(wall.y) }, MaterialType::WALL);
         world.getData().at(wall.x, wall.y).render_as = static_cast<int8_t>(wall.render_as);
     }
 }

@@ -546,17 +546,18 @@ void World::setup()
 // MATERIAL ADDITION METHODS.
 // =================================================================.
 
-void World::addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double amount)
+void World::addMaterialAtCell(Vector2s pos, MaterialType type, float amount)
 {
-    if (!isValidCell(x, y)) {
+    if (!isValidCell(pos)) {
         return;
     }
 
-    Cell& cell = pImpl->data_.at(x, y);
-    const double added = cell.addMaterial(type, amount);
+    Cell& cell = pImpl->data_.at(pos.x, pos.y);
+    const float added = cell.addMaterial(type, amount);
 
-    if (added > 0.0) {
-        spdlog::trace("Added {:.3f} {} at cell ({},{})", added, getMaterialName(type), x, y);
+    if (added > 0.0f) {
+        spdlog::trace(
+            "Added {:.3f} {} at cell ({},{})", added, getMaterialName(type), pos.x, pos.y);
     }
 }
 
@@ -564,7 +565,7 @@ void World::addMaterialAtCell(uint32_t x, uint32_t y, MaterialType type, double 
 // BLESSED API - Cell Manipulation with Organism Tracking.
 // =================================================================.
 
-void World::swapCells(Vector2i pos1, Vector2i pos2)
+void World::swapCells(Vector2s pos1, Vector2s pos2)
 {
     // Validate positions.
     if (!isValidCell(pos1) || !isValidCell(pos2)) {
@@ -599,30 +600,29 @@ void World::swapCells(Vector2i pos1, Vector2i pos2)
     }
 }
 
-void World::replaceMaterialAtCell(int x, int y, MaterialType material)
+void World::replaceMaterialAtCell(Vector2s pos, MaterialType material)
 {
     const WorldData& data = pImpl->data_;
 
-    if (!isValidCell(x, y)) {
+    if (!isValidCell(pos)) {
         return;
     }
 
     // AIR means "clear this cell" - delegate to clearCellAtPosition.
     if (material == MaterialType::AIR) {
-        clearCellAtPosition(x, y);
+        clearCellAtPosition(pos);
         return;
     }
 
-    Cell& cell = pImpl->data_.at(x, y);
+    Cell& cell = pImpl->data_.at(pos.x, pos.y);
 
     if (cell.isEmpty() || cell.material_type == material) {
-        Vector2i pos{ x, y };
         OrganismId org_id = organism_manager_->at(pos);
         if (org_id != INVALID_ORGANISM_ID) {
             spdlog::critical(
                 "replaceMaterialAtCell({},{},{}): Empty cell has organism_id={}!",
-                x,
-                y,
+                pos.x,
+                pos.y,
                 getMaterialName(material),
                 org_id);
             spdlog::critical(
@@ -650,52 +650,50 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     }
 
     // Find best adjacent cell to displace existing material (prefer empty, then least-filled).
-    Vector2i best_dir{ 0, 0 };
-    double best_score = -999.0;
-    double best_fill = 2.0; // Track fill ratio of best neighbor (2.0 = no valid neighbor yet).
+    Vector2s best_dir{ 0, 0 };
+    float best_score = -999.0f;
+    float best_fill = 2.0f; // Track fill ratio of best neighbor (2.0 = no valid neighbor yet).
 
-    static constexpr std::array<std::pair<int, int>, 4> directions = {
+    static constexpr std::array<std::pair<int16_t, int16_t>, 4> directions = {
         { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }
     };
 
     for (auto [dx, dy] : directions) {
-        int nx = x + dx;
-        int ny = y + dy;
+        Vector2s neighbor_pos{ static_cast<int16_t>(pos.x + dx), static_cast<int16_t>(pos.y + dy) };
 
-        if (!isValidCell(nx, ny)) {
+        if (!isValidCell(neighbor_pos)) {
             continue;
         }
 
         // Never displace into cells that belong to an organism.
-        Vector2i neighbor_pos{ nx, ny };
         if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
             continue;
         }
 
-        const Cell& neighbor = data.at(nx, ny);
-        double com_score = cell.com.x * dx + cell.com.y * dy;
+        const Cell& neighbor = data.at(neighbor_pos.x, neighbor_pos.y);
+        float com_score = cell.com.x * dx + cell.com.y * dy;
 
         // Prefer empty cells, but consider filled cells as fallback.
         if (neighbor.isEmpty()) {
             // Empty cell - high priority.
-            if (com_score > best_score || best_fill > 0.5) {
+            if (com_score > best_score || best_fill > 0.5f) {
                 best_score = com_score;
-                best_dir = { dx, dy };
-                best_fill = 0.0;
+                best_dir = { static_cast<int16_t>(dx), static_cast<int16_t>(dy) };
+                best_fill = 0.0f;
             }
         }
-        else if (best_fill > 0.5) {
+        else if (best_fill > 0.5f) {
             // No empty found yet - track least-filled option.
             if (neighbor.fill_ratio < best_fill) {
                 best_score = com_score;
-                best_dir = { dx, dy };
+                best_dir = { static_cast<int16_t>(dx), static_cast<int16_t>(dy) };
                 best_fill = neighbor.fill_ratio;
             }
         }
     }
 
     // Expand search radius if still no good option (prefer empty, fallback to least-filled).
-    if (best_fill > 0.5) {
+    if (best_fill > 0.5f) {
         for (int radius = 2; radius <= 4; ++radius) {
             for (int dy = -radius; dy <= radius; ++dy) {
                 for (int dx = -radius; dx <= radius; ++dx) {
@@ -703,32 +701,31 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
                         continue;
                     }
 
-                    int nx = x + dx;
-                    int ny = y + dy;
+                    Vector2s neighbor_pos{ static_cast<int16_t>(pos.x + dx),
+                                           static_cast<int16_t>(pos.y + dy) };
 
-                    if (!isValidCell(nx, ny)) {
+                    if (!isValidCell(neighbor_pos)) {
                         continue;
                     }
 
                     // Never displace into cells that belong to an organism.
-                    Vector2i neighbor_pos{ nx, ny };
                     if (organism_manager_->at(neighbor_pos) != INVALID_ORGANISM_ID) {
                         continue;
                     }
 
-                    const Cell& neighbor = data.at(nx, ny);
-                    double score = cell.com.x * dx + cell.com.y * dy;
+                    const Cell& neighbor = data.at(neighbor_pos.x, neighbor_pos.y);
+                    float score = cell.com.x * dx + cell.com.y * dy;
 
                     if (neighbor.isEmpty()) {
-                        if (score > best_score || best_fill > 0.5) {
+                        if (score > best_score || best_fill > 0.5f) {
                             best_score = score;
-                            best_dir = { dx, dy };
-                            best_fill = 0.0;
+                            best_dir = { static_cast<int16_t>(dx), static_cast<int16_t>(dy) };
+                            best_fill = 0.0f;
                         }
                     }
-                    else if (best_fill > 0.5 && neighbor.fill_ratio < best_fill) {
+                    else if (best_fill > 0.5f && neighbor.fill_ratio < best_fill) {
                         best_score = score;
-                        best_dir = { dx, dy };
+                        best_dir = { static_cast<int16_t>(dx), static_cast<int16_t>(dy) };
                         best_fill = neighbor.fill_ratio;
                     }
                 }
@@ -738,13 +735,12 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
 
     // Last resort: if completely surrounded, just overwrite in place.
     if (best_dir.x == 0 && best_dir.y == 0) {
-        Vector2i pos{ x, y };
         OrganismId org_id = organism_manager_->at(pos);
         if (org_id != INVALID_ORGANISM_ID) {
             spdlog::warn(
                 "World: replaceMaterialAtCell({},{},{}) destroying trapped organism {}",
-                x,
-                y,
+                pos.x,
+                pos.y,
                 getMaterialName(material),
                 org_id);
             organism_manager_->removeOrganismFromWorld(*this, org_id);
@@ -754,43 +750,42 @@ void World::replaceMaterialAtCell(int x, int y, MaterialType material)
     }
 
     // Displace existing material to empty neighbor.
-    Vector2i empty_pos{ x + best_dir.x, y + best_dir.y };
-    Vector2i target_pos{ x, y };
+    Vector2s empty_pos{ static_cast<int16_t>(pos.x + best_dir.x),
+                        static_cast<int16_t>(pos.y + best_dir.y) };
 
     DIRTSIM_ASSERT(
         organism_manager_->at(empty_pos) == INVALID_ORGANISM_ID,
         "replaceMaterialAtCell: Cannot displace into organism cell");
 
-    OrganismId displaced_org = organism_manager_->at(target_pos);
+    OrganismId displaced_org = organism_manager_->at(pos);
     if (displaced_org != INVALID_ORGANISM_ID) {
         spdlog::info(
             "World: replaceMaterialAtCell displacing organism {} from ({},{}) to ({},{})",
             displaced_org,
-            x,
-            y,
+            pos.x,
+            pos.y,
             empty_pos.x,
             empty_pos.y);
     }
 
-    swapCells(empty_pos, target_pos);
+    swapCells(empty_pos, pos);
 
     // Now target is empty (displaced material moved to empty_pos). Place new material.
-    pImpl->data_.at(target_pos.x, target_pos.y) = Cell{ material, 1.0 };
+    pImpl->data_.at(pos.x, pos.y) = Cell{ material, 1.0 };
 }
 
-void World::clearCellAtPosition(int x, int y)
+void World::clearCellAtPosition(Vector2s pos)
 {
-    if (!isValidCell(x, y)) {
+    if (!isValidCell(pos)) {
         return;
     }
 
     // Skip cells that belong to an organism.
-    Vector2i pos{ x, y };
     if (organism_manager_->at(pos) != INVALID_ORGANISM_ID) {
         return;
     }
 
-    pImpl->data_.at(x, y).clear();
+    pImpl->data_.at(pos.x, pos.y).clear();
 }
 
 // =================================================================.
@@ -2146,14 +2141,14 @@ void from_json(const nlohmann::json& j, World::MotionState& state)
     }
 }
 
-void World::spawnMaterialBall(MaterialType material, uint32_t centerX, uint32_t centerY)
+void World::spawnMaterialBall(MaterialType material, Vector2s center)
 {
     // Calculate radius as 15% of world width (diameter = 15% of width).
-    double diameter = pImpl->data_.width * 0.15;
-    double radius = diameter / 2.0;
+    float diameter = pImpl->data_.width * 0.15f;
+    float radius = diameter / 2.0f;
 
     // Round up to ensure at least 1 cell for very small worlds.
-    uint32_t radiusInt = static_cast<uint32_t>(std::ceil(radius));
+    int16_t radiusInt = static_cast<int16_t>(std::ceil(radius));
     if (radiusInt < 1) {
         radiusInt = 1;
     }
@@ -2161,32 +2156,38 @@ void World::spawnMaterialBall(MaterialType material, uint32_t centerX, uint32_t 
     // Clamp center position to ensure ball fits within walls.
     // Walls occupy the outermost layer (x=0, x=width-1, y=0, y=height-1).
     // Valid interior range: [1, width-2] for x, [1, height-2] for y.
-    uint32_t minX = 1 + radiusInt;
-    uint32_t maxX = pImpl->data_.width >= 2 + radiusInt ? pImpl->data_.width - 1 - radiusInt : 1;
-    uint32_t minY = 1 + radiusInt;
-    uint32_t maxY = pImpl->data_.height >= 2 + radiusInt ? pImpl->data_.height - 1 - radiusInt : 1;
+    int16_t minX = 1 + radiusInt;
+    int16_t maxX = static_cast<int16_t>(pImpl->data_.width) >= 2 + radiusInt
+        ? static_cast<int16_t>(pImpl->data_.width - 1 - radiusInt)
+        : 1;
+    int16_t minY = 1 + radiusInt;
+    int16_t maxY = static_cast<int16_t>(pImpl->data_.height) >= 2 + radiusInt
+        ? static_cast<int16_t>(pImpl->data_.height - 1 - radiusInt)
+        : 1;
 
     // Clamp the provided center to valid range.
-    uint32_t clampedCenterX = std::max(minX, std::min(centerX, maxX));
-    uint32_t clampedCenterY = std::max(minY, std::min(centerY, maxY));
+    int16_t clampedCenterX = std::max(minX, std::min(center.x, maxX));
+    int16_t clampedCenterY = std::max(minY, std::min(center.y, maxY));
 
     // Only scan bounding box for efficiency.
-    uint32_t scanMinX = clampedCenterX > radiusInt ? clampedCenterX - radiusInt : 0;
-    uint32_t scanMaxX = std::min(clampedCenterX + radiusInt, pImpl->data_.width - 1);
-    uint32_t scanMinY = clampedCenterY > radiusInt ? clampedCenterY - radiusInt : 0;
-    uint32_t scanMaxY = std::min(clampedCenterY + radiusInt, pImpl->data_.height - 1);
+    int16_t scanMinX = clampedCenterX > radiusInt ? clampedCenterX - radiusInt : 0;
+    int16_t scanMaxX =
+        std::min<int16_t>(clampedCenterX + radiusInt, static_cast<int16_t>(pImpl->data_.width - 1));
+    int16_t scanMinY = clampedCenterY > radiusInt ? clampedCenterY - radiusInt : 0;
+    int16_t scanMaxY = std::min<int16_t>(
+        clampedCenterY + radiusInt, static_cast<int16_t>(pImpl->data_.height - 1));
 
     // Spawn a ball of material centered at the clamped position.
-    for (uint32_t y = scanMinY; y <= scanMaxY; ++y) {
-        for (uint32_t x = scanMinX; x <= scanMaxX; ++x) {
+    for (int16_t y = scanMinY; y <= scanMaxY; ++y) {
+        for (int16_t x = scanMinX; x <= scanMaxX; ++x) {
             // Calculate distance from center.
-            int dx = static_cast<int>(x) - static_cast<int>(clampedCenterX);
-            int dy = static_cast<int>(y) - static_cast<int>(clampedCenterY);
-            double distance = std::sqrt(dx * dx + dy * dy);
+            int16_t dx = x - clampedCenterX;
+            int16_t dy = y - clampedCenterY;
+            float distance = std::sqrt(static_cast<float>(dx * dx + dy * dy));
 
             // If within radius, fill the cell.
             if (distance <= radius) {
-                addMaterialAtCell(x, y, material, 1.0);
+                addMaterialAtCell({ x, y }, material, 1.0f);
             }
         }
     }

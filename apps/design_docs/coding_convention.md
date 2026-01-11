@@ -82,9 +82,11 @@ SLOG_INFO("Cleaning up processes");
 
 **Available channels:** `State`, `Network`, `Render`, `Controls`, `Physics`, `Scenario`, `Tree`, `Swap`, `Collision`, `Cohesion`, `Pressure`, `Friction`, `Support`, `Viscosity`, `Ui`.
 
+## Mantra
+Make illegal states impossible to represent (e.g. ASSERT rather than returning early).
+
 ## Misc
 - don't use std::move unless required, just make a copy
-- make illegal states impossible to represent (e.g. use std::optional over a sentinel value)
 - switches: strategy is to handle every case and try to assert if they're missed
 - designated initializers please
 - Exit early to reduce scope and nesting! It makes things easier to understand, due to less nesting and shorter variable lifespans.

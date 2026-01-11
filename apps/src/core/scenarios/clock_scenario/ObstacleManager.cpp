@@ -98,7 +98,9 @@ void ObstacleManager::clearAll(World& world)
             }
             else {
                 // Restore floor at height-1 for pit.
-                world.replaceMaterialAtCell(x, height - 1, MaterialType::WALL);
+                world.replaceMaterialAtCell(
+                    { static_cast<int16_t>(x), static_cast<int16_t>(height - 1) },
+                    MaterialType::WALL);
             }
         }
     }

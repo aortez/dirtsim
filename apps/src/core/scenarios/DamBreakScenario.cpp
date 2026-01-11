@@ -72,13 +72,14 @@ void DamBreakScenario::setup(World& world)
     // Create water column on left side - full height.
     for (uint32_t x = 0; x < 2; x++) {
         for (uint32_t y = 0; y < 6; y++) {
-            world.addMaterialAtCell(x, y, MaterialType::WATER, 1.0);
+            world.addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
         }
     }
 
     // Create dam (wall) at x=2 - full height.
     for (uint32_t y = 0; y < 6; y++) {
-        world.addMaterialAtCell(2, y, MaterialType::WALL, 1.0);
+        world.addMaterialAtCell({ 2, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
     }
 
     spdlog::info("DamBreakScenario::setup complete - water at x=0-1, dam at x=2");

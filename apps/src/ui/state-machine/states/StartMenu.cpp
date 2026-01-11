@@ -295,7 +295,9 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
         return StartMenu{};
     }
 
-    const Api::SimRun::Command cmd{ .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16 };
+    const Api::SimRun::Command cmd{
+        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = ""
+    };
 
     // Retry logic for autoRun to handle server startup race condition.
     const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
@@ -370,9 +372,9 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     }
 
     // Send sim_run command to DSSM server via binary protocol.
-    const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
-                                             .max_steps = -1,
-                                             .max_frame_ms = 16 };
+    const DirtSim::Api::SimRun::Command cmd{
+        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = ""
+    };
 
     const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);
     if (result.isError()) {

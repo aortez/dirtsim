@@ -65,13 +65,15 @@ protected:
 
         // Top and bottom walls.
         for (uint32_t x = 0; x < world_size; ++x) {
-            world->addMaterialAtCell(x, 0, MaterialType::WALL, 1.0);
-            world->addMaterialAtCell(x, last, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell({ static_cast<int16_t>(x), 0 }, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(last) }, MaterialType::WALL, 1.0);
         }
         // Left and right walls.
         for (uint32_t y = 0; y < world_size; ++y) {
-            world->addMaterialAtCell(0, y, MaterialType::WALL, 1.0);
-            world->addMaterialAtCell(last, y, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell(
+                { static_cast<int16_t>(last), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
         }
     }
 
@@ -91,7 +93,10 @@ protected:
 
                 // Fill bottom-left triangle: y > x (below diagonal).
                 if (interior_y > interior_x) {
-                    world->addMaterialAtCell(x, y, MaterialType::WATER, 1.0);
+                    world->addMaterialAtCell(
+                        { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                        MaterialType::WATER,
+                        1.0);
                     ++water_count;
                 }
             }

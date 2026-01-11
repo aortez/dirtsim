@@ -30,7 +30,8 @@ TEST(TreeSensoryTest, OOBCellsHaveEmptyHistograms)
     // Add dirt at bottom.
     for (uint32_t y = 6; y < 9; y++) {
         for (uint32_t x = 0; x < 9; x++) {
-            world->addMaterialAtCell(x, y, MaterialType::DIRT, 1.0);
+            world->addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
         }
     }
 
@@ -114,7 +115,8 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     // Add dirt at bottom.
     for (uint32_t y = 6; y < 9; y++) {
         for (uint32_t x = 0; x < 9; x++) {
-            world->addMaterialAtCell(x, y, MaterialType::DIRT, 1.0);
+            world->addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
         }
     }
 

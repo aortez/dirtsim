@@ -20,6 +20,7 @@
 #include "api/ScenarioSwitch.h"
 #include "api/SeedAdd.h"
 #include "api/SimRun.h"
+#include "api/SimStop.h"
 #include "api/SpawnDirtBall.h"
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
@@ -423,6 +424,7 @@ public:
         DirtSim::Api::ScenarioSwitch::Cwc,
         DirtSim::Api::SeedAdd::Cwc,
         DirtSim::Api::SimRun::Cwc,
+        DirtSim::Api::SimStop::Cwc,
         DirtSim::Api::SpawnDirtBall::Cwc,
         DirtSim::Api::StateGet::Cwc,
         DirtSim::Api::StatusGet::Cwc,

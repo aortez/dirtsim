@@ -19,6 +19,7 @@
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/ScenarioSwitch.h"
+#include "server/api/SimStop.h"
 #include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
 #include <cmath>
@@ -455,7 +456,9 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
     }
 
     // Replace material (organism-aware). AIR clears the cell.
-    world->replaceMaterialAtCell(cwc.command.x, cwc.command.y, cwc.command.material);
+    world->replaceMaterialAtCell(
+        { static_cast<int16_t>(cwc.command.x), static_cast<int16_t>(cwc.command.y) },
+        cwc.command.material);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -718,15 +721,15 @@ State::Any SimRunning::onEvent(const Api::SpawnDirtBall::Cwc& cwc, StateMachine&
     }
 
     // Spawn a dirt ball at top center.
-    uint32_t centerX = world->getData().width / 2;
-    uint32_t topY = 2; // Start at row 2 to avoid the very top edge.
+    int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
+    int16_t topY = 2; // Start at row 2 to avoid the very top edge.
 
     spdlog::info("SpawnDirtBall: Spawning dirt ball at ({}, {})", centerX, topY);
 
     // Spawn a ball of the currently selected material.
     // Radius is calculated automatically as 15% of world width.
     MaterialType selectedMaterial = world->getSelectedMaterial();
-    world->spawnMaterialBall(selectedMaterial, centerX, topY);
+    world->spawnMaterialBall(selectedMaterial, { centerX, topY });
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
@@ -865,6 +868,20 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& /*dsm*
     // Send response indicating simulation is running.
     cwc.sendResponse(Response::okay({ true, stepCount }));
     return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::SimStop::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::SimStop::Response;
+
+    spdlog::info("SimRunning: SimStop command received, stopping simulation (step {})", stepCount);
+
+    // Send success response before transitioning.
+    cwc.sendResponse(Response::okay(std::monostate{}));
+
+    // Transition back to Idle state.
+    // World and scenario are destroyed when SimRunning is replaced.
+    return Idle{};
 }
 
 State::Any SimRunning::onEvent(const PauseCommand& /*cmd*/, StateMachine& /*dsm. */)
@@ -1113,13 +1130,13 @@ State::Any SimRunning::onEvent(const SpawnDirtBallCommand& /*cmd*/, StateMachine
     // Get the current world and spawn a ball at top center.
     if (world) {
         // Calculate the top center position.
-        uint32_t centerX = world->getData().width / 2;
-        uint32_t topY = 2; // Start at row 2 to avoid the very top edge.
+        int16_t centerX = static_cast<int16_t>(world->getData().width / 2);
+        int16_t topY = 2; // Start at row 2 to avoid the very top edge.
 
         // Spawn a ball of the currently selected material.
         // Radius is calculated automatically as 15% of world width.
         MaterialType selectedMaterial = world->getSelectedMaterial();
-        world->spawnMaterialBall(selectedMaterial, centerX, topY);
+        world->spawnMaterialBall(selectedMaterial, { centerX, topY });
     }
     else {
         spdlog::warn("SpawnDirtBallCommand: No world available");

@@ -37,7 +37,8 @@ TreeId TreeManager::plantSeed(
     tree.seed_position = pos;
     tree.total_energy = 150.0; // Starting energy for tree growth.
 
-    world.addMaterialAtCell(x, y, MaterialType::SEED, 1.0);
+    world.addMaterialAtCell(
+        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::SEED, 1.0);
 
     tree.cells.insert(pos);
     cell_to_tree_[pos] = id;

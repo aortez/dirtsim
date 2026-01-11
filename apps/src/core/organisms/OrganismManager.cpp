@@ -181,7 +181,8 @@ OrganismId OrganismManager::createTree(
     tree->setEnergy(150.0); // Starting energy for tree growth.
 
     // Place seed material in world.
-    world.addMaterialAtCell(x, y, MaterialType::SEED, 1.0);
+    world.addMaterialAtCell(
+        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::SEED, 1.0);
 
     // Track cell ownership.
     tree->getCells().insert(pos);

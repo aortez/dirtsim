@@ -20,6 +20,7 @@
 #include "ScenarioListGet.h"
 #include "SeedAdd.h"
 #include "SimRun.h"
+#include "SimStop.h"
 #include "SpawnDirtBall.h"
 #include "StateGet.h"
 #include "StatusGet.h"
@@ -71,6 +72,7 @@ using ApiCommand = std::variant<
     Api::ScenarioListGet::Command,
     Api::SeedAdd::Command,
     Api::SimRun::Command,
+    Api::SimStop::Command,
     Api::SpawnDirtBall::Command,
     Api::StateGet::Command,
     Api::StatusGet::Command,

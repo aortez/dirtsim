@@ -17,6 +17,7 @@
 #include "server/api/ScenarioConfigSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/SimStop.h"
 #include "server/api/SpawnDirtBall.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"
@@ -109,6 +110,9 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::SimRun::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SimRun::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::SimStop::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::SimStop::Command::fromJson(cmd));
         }
         else if (commandName == Api::SpawnDirtBall::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::SpawnDirtBall::Command::fromJson(cmd));

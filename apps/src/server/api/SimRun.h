@@ -19,12 +19,13 @@ struct Command {
     double timestep = 0.016;
     int max_steps = -1;
     int max_frame_ms = 0;
+    std::string scenario_id; // Optional scenario to load (empty = use server config default).
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 struct Okay {

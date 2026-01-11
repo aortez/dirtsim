@@ -21,8 +21,7 @@ struct CanopySector {
     int cell_count = 0;
 };
 
-// Tree structure metrics, re-derived from sensory data each frame.
-// No cached state - always reflects current physical positions.
+// Tree structure metrics, derived from sensory data.
 struct TreeMetrics {
     double left_mass = 0.0;
     double right_mass = 0.0;

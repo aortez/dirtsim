@@ -73,12 +73,35 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         return results;
     }
 
-    // Start simulation.
-    auto benchmarkStart = std::chrono::steady_clock::now();
+    // For local server: SimRun with scenario_id will create world with that scenario.
+    // For remote server (already running): Need to switch scenario first, then SimRun.
+    if (isRemote) {
+        // Switch to requested scenario (server already has a world).
+        spdlog::info("BenchmarkRunner: Switching remote server to scenario '{}'", scenario);
+        Api::ScenarioSwitch::Command scenarioCmd;
+        scenarioCmd.scenario_id = scenario;
 
+        auto scenarioResult = client_.sendCommand<Api::ScenarioSwitch::Okay>(scenarioCmd, 5000);
+        if (scenarioResult.isError()) {
+            spdlog::error(
+                "BenchmarkRunner: ScenarioSwitch failed: {}", scenarioResult.errorValue());
+            return results;
+        }
+        if (scenarioResult.value().isError()) {
+            spdlog::error(
+                "BenchmarkRunner: ScenarioSwitch error: {}",
+                scenarioResult.value().errorValue().message);
+            return results;
+        }
+        spdlog::info("BenchmarkRunner: Scenario '{}' loaded on remote server", scenario);
+    }
+
+    // Start simulation.
+    spdlog::info("BenchmarkRunner: Starting simulation with scenario '{}'", scenario);
     Api::SimRun::Command simRunCmd;
     simRunCmd.timestep = 0.016;
     simRunCmd.max_steps = static_cast<int>(steps);
+    simRunCmd.scenario_id = isRemote ? "" : scenario; // Only use for local (creates new world).
 
     auto simRunResult = client_.sendCommand<Api::SimRun::Okay>(simRunCmd, 5000);
     if (simRunResult.isError()) {
@@ -91,27 +114,9 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         return results;
     }
 
-    spdlog::info("BenchmarkRunner: Started simulation ({} steps)", steps);
+    spdlog::info("BenchmarkRunner: Simulation started ({} steps, scenario '{}')", steps, scenario);
 
-    // Switch to requested scenario.
-    spdlog::info("BenchmarkRunner: Switching to scenario '{}'", scenario);
-    Api::ScenarioSwitch::Command scenarioCmd;
-    scenarioCmd.scenario_id = scenario;
-
-    auto scenarioResult = client_.sendCommand<Api::ScenarioSwitch::Okay>(scenarioCmd, 5000);
-    if (scenarioResult.isError()) {
-        spdlog::error("BenchmarkRunner: ScenarioSwitch failed: {}", scenarioResult.errorValue());
-        return results;
-    }
-    if (scenarioResult.value().isError()) {
-        spdlog::error(
-            "BenchmarkRunner: ScenarioSwitch error: {}",
-            scenarioResult.value().errorValue().message);
-        return results;
-    }
-    spdlog::info("BenchmarkRunner: Scenario '{}' loaded", scenario);
-
-    // Resize world if size specified (must be done after ScenarioSwitch).
+    // Resize world if size specified (must be done after SimRun creates the world).
     if (worldSize > 0) {
         spdlog::info("BenchmarkRunner: Resizing world to {}x{}", worldSize, worldSize);
         Api::WorldResize::Command resizeCmd;
@@ -132,6 +137,9 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         spdlog::info("BenchmarkRunner: World resized successfully");
     }
 
+    // Start benchmark timer after all setup is complete.
+    auto benchmarkStart = std::chrono::steady_clock::now();
+
     // Poll StatusGet until simulation completes.
     int timeoutSec = (steps * 50) / 1000 + 10;
     bool benchmarkComplete = false;
@@ -144,7 +152,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
             break;
         }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Poll current step using lightweight StatusGet (not StateGet).
         Api::StatusGet::Command statusCmd;

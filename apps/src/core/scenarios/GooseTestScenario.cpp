@@ -50,7 +50,8 @@ void GooseTestScenario::setup(World& world)
     // Create ground at bottom 5 rows.
     for (uint32_t y = data.height - 5; y < data.height; ++y) {
         for (uint32_t x = 0; x < data.width; ++x) {
-            world.addMaterialAtCell(x, y, MaterialType::DIRT, 1.0);
+            world.addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
         }
     }
 
