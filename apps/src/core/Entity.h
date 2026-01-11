@@ -72,10 +72,14 @@ struct Entity {
     Vector2<float> facing{ 1.0f, 0.0f };   // Direction (normalized).
     float mass = 1.0f;
 
+    // Light color at entity position (RGBA format, sampled from world lighting).
+    // Used to modulate sprite rendering so entities match world lighting.
+    uint32_t light_color = 0xFFFFFFFF;
+
     // Attached sparkle particles (used by DUCK entities).
     std::vector<SparkleParticle> sparkles;
 
-    using serialize = zpp::bits::members<9>;
+    using serialize = zpp::bits::members<10>;
 };
 
 // JSON serialization via ReflectSerializer (declared in Entity.cpp).

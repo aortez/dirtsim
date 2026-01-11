@@ -54,6 +54,11 @@ void GooseTestScenario::setup(World& world)
         }
     }
 
+    // Remove top wall so light can shine down onto the goose.
+    for (uint32_t x = 1; x < data.width - 1; ++x) {
+        data.at(x, 0) = Cell(); // Clear to air.
+    }
+
     // Create goose in the middle, above ground.
     uint32_t goose_x = data.width / 2;
     uint32_t goose_y = data.height - 6; // Just above ground.

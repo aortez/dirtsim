@@ -660,7 +660,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.position =
                 Vector2<float>{ static_cast<float>(anchor.x), static_cast<float>(anchor.y) };
 
-            // Get COM from the duck's cell.
+            // Get COM and light from the duck's cell.
             if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
                 && static_cast<uint32_t>(anchor.y) < data.height) {
                 const Cell& cell = data.at(anchor.x, anchor.y);
@@ -669,6 +669,8 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
                                              static_cast<float>(cell.com.y) };
                 entity.velocity = Vector2<float>{ static_cast<float>(cell.velocity.x),
                                                   static_cast<float>(cell.velocity.y) };
+                // Sample light for rendering.
+                entity.light_color = cell.getColor();
             }
 
             entity.facing = duck->getFacing();
@@ -709,6 +711,12 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
 
             entity.facing = goose->getFacing();
             entity.mass = static_cast<float>(goose->mass);
+
+            // Sample light for rendering.
+            if (anchor.x >= 0 && anchor.y >= 0 && static_cast<uint32_t>(anchor.x) < data.width
+                && static_cast<uint32_t>(anchor.y) < data.height) {
+                entity.light_color = data.at(anchor.x, anchor.y).getColor();
+            }
 
             data.entities.push_back(std::move(entity));
         }

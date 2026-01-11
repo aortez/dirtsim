@@ -7,6 +7,15 @@
 namespace DirtSim {
 namespace Ui {
 
+// Extract light multipliers from RGBA color (ColorNames format: R<<24|G<<16|B<<8|A).
+// Returns normalized values [0.0, 1.0] for each channel.
+static void extractLightMultipliers(uint32_t light_color, float& r, float& g, float& b)
+{
+    r = static_cast<float>((light_color >> 24) & 0xFF) / 255.0f;
+    g = static_cast<float>((light_color >> 16) & 0xFF) / 255.0f;
+    b = static_cast<float>((light_color >> 8) & 0xFF) / 255.0f;
+}
+
 void renderEntities(
     const std::vector<Entity>& entities,
     uint32_t* pixels,
@@ -96,6 +105,10 @@ void renderEntities(
             // Flip horizontally if facing vector points left.
             const uint8_t* duckData = duck_img_data;
 
+            // Extract light multipliers for this entity.
+            float lightR, lightG, lightB;
+            extractLightMultipliers(entity.light_color, lightR, lightG, lightB);
+
             for (int32_t dy = 0; dy < duckPixelHeight; dy++) {
                 // Source Y in original duck image.
                 int32_t srcY = static_cast<int32_t>(dy / scaleY);
@@ -126,6 +139,11 @@ void renderEntities(
 
                     // Skip fully transparent pixels.
                     if (a == 0) continue;
+
+                    // Apply lighting to sprite colors.
+                    r = static_cast<uint8_t>(r * lightR);
+                    g = static_cast<uint8_t>(g * lightG);
+                    b = static_cast<uint8_t>(b * lightB);
 
                     uint32_t destIdx = destY * canvasWidth + destX;
 
@@ -167,6 +185,10 @@ void renderEntities(
             // Draw goose sprite with scaling.
             const uint8_t* gooseData = goose_img_data;
 
+            // Extract light multipliers for this entity.
+            float lightR, lightG, lightB;
+            extractLightMultipliers(entity.light_color, lightR, lightG, lightB);
+
             for (int32_t dy = 0; dy < goosePixelHeight; dy++) {
                 int32_t srcY = static_cast<int32_t>(dy / scaleY);
                 if (srcY >= GOOSE_IMG_HEIGHT) srcY = GOOSE_IMG_HEIGHT - 1;
@@ -194,6 +216,11 @@ void renderEntities(
                     uint8_t a = gooseData[srcIdx + 3];
 
                     if (a == 0) continue;
+
+                    // Apply lighting to sprite colors.
+                    r = static_cast<uint8_t>(r * lightR);
+                    g = static_cast<uint8_t>(g * lightG);
+                    b = static_cast<uint8_t>(b * lightB);
 
                     uint32_t destIdx = destY * canvasWidth + destX;
 
