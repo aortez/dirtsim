@@ -1,5 +1,7 @@
 #include "PeersGet.h"
 
+#include "core/Assert.h"
+
 namespace DirtSim {
 namespace Api {
 namespace PeersGet {
@@ -22,9 +24,11 @@ std::string roleToString(Server::PeerRole role)
             return "physics";
         case Server::PeerRole::Ui:
             return "ui";
-        default:
+        case Server::PeerRole::Unknown:
             return "unknown";
     }
+    DIRTSIM_ASSERT(false, "Unhandled PeerRole");
+    return "unknown";
 }
 } // namespace
 

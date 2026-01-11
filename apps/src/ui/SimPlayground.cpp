@@ -125,8 +125,12 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::PHYSICS:
             createPhysicsPanel(container);
             break;
-        default:
-            LOG_WARN(Controls, "Unknown panel id: {}", static_cast<int>(panelId));
+        case IconId::TREE:
+            // Tree panel not yet implemented.
+            LOG_WARN(Controls, "Tree panel not yet implemented");
+            return;
+        case IconId::COUNT:
+            DIRTSIM_ASSERT(false, "COUNT is not a valid panel id");
             return;
     }
 

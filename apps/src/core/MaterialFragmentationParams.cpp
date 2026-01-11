@@ -43,7 +43,12 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.base_speed = 0.8;
             break;
 
-        default:
+        case MaterialType::AIR:
+        case MaterialType::LEAF:
+        case MaterialType::ROOT:
+        case MaterialType::SEED:
+        case MaterialType::WALL:
+        case MaterialType::WOOD:
             // Use struct defaults.
             break;
     }

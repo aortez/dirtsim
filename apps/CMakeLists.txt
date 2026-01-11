@@ -108,6 +108,9 @@ set(CMAKE_CXX_STANDARD 23) #C++23
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(EXECUTABLE_OUTPUT_PATH ${CMAKE_BINARY_DIR}/bin)
 
+# Common warning flags for all dirtsim targets.
+set(DIRTSIM_WARNINGS -Wall -Wextra -Werror -Wswitch-enum)
+
 # Find SDL2 for gamepad support and display backend.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
@@ -190,6 +193,10 @@ target_link_libraries(lvgl PUBLIC ${PKG_CONFIG_LIB})
 
 add_subdirectory(./spdlog ${CMAKE_BINARY_DIR}/spdlog)
 
+# Mark spdlog includes as SYSTEM to suppress third-party warnings.
+get_target_property(SPDLOG_INC spdlog INTERFACE_INCLUDE_DIRECTORIES)
+set_target_properties(spdlog PROPERTIES INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${SPDLOG_INC}")
+
 # Add args header-only library
 set(ARGS_BUILD_EXAMPLE OFF CACHE BOOL "Build examples" FORCE)
 set(ARGS_BUILD_UNITTESTS OFF CACHE BOOL "Build unit tests" FORCE)
@@ -250,7 +257,7 @@ target_link_libraries(dirtsim-core PUBLIC ${SDL2_LIBRARIES})
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     target_compile_definitions(dirtsim-core PUBLIC DIRTSIM_PRODUCTION_BUILD)
 endif()
-target_compile_options(dirtsim-core PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-core PRIVATE ${DIRTSIM_WARNINGS})
 
 # Server library - physics engine and server logic.
 add_library(dirtsim-server-lib STATIC
@@ -317,6 +324,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/WaterEqualizationScenario.cpp
 
     # Font sampling for cell-based text rendering.
+    src/core/ColorMaterialMapper.cpp
     src/core/FontSampler.cpp
 
     # Physics engine.
@@ -357,10 +365,11 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/components/RigidBodyComponent.cpp
     src/core/organisms/components/RigidBodyPhysicsComponent.cpp
 )
-target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
 target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${AVAHI_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
-target_compile_options(dirtsim-server-lib PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-server-lib PRIVATE ${DIRTSIM_WARNINGS})
 
 # Link OpenMP for parallel physics calculations (cohesion, adhesion loops).
 if(OpenMP_CXX_FOUND)
@@ -434,7 +443,7 @@ add_library(dirtsim-ui-lib STATIC
 )
 target_include_directories(dirtsim-ui-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
 target_link_libraries(dirtsim-ui-lib PUBLIC dirtsim-core dirtsim-server-lib lvgl_linux lvgl)
-target_compile_options(dirtsim-ui-lib PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-ui-lib PRIVATE ${DIRTSIM_WARNINGS})
 
 add_executable(dirtsim-ui
     src/ui/main.cpp
@@ -455,8 +464,7 @@ target_link_libraries(dirtsim-ui PRIVATE
 )
 target_include_directories(dirtsim-ui PRIVATE ${CMAKE_SOURCE_DIR}/src ${SDL2_INCLUDE_DIRS} ${SDL2_IMAGE_INCLUDE_DIRS} ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
 
-# Enable warnings and treat them as errors for UI executable.
-target_compile_options(dirtsim-ui PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-ui PRIVATE ${DIRTSIM_WARNINGS})
 
 # Install the lvgl_linux library and its headers
 install(DIRECTORY src/lib/
@@ -478,8 +486,7 @@ add_executable(dirtsim-server
 target_link_libraries(dirtsim-server PRIVATE dirtsim-server-lib m pthread)
 target_include_directories(dirtsim-server PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
 
-# Enable warnings and treat them as errors for server executable.
-target_compile_options(dirtsim-server PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-server PRIVATE ${DIRTSIM_WARNINGS})
 
 add_custom_target (run-server COMMAND ${EXECUTABLE_OUTPUT_PATH}/dirtsim-server DEPENDS dirtsim-server)
 
@@ -496,8 +503,7 @@ add_executable(cli
 target_link_libraries(cli PRIVATE dirtsim-server-lib dirtsim-ui-lib datachannel-static pthread)
 target_include_directories(cli PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
 
-# Enable warnings and treat them as errors for CLI executable.
-target_compile_options(cli PRIVATE -Wall -Wextra -Werror)
+target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
@@ -566,7 +572,7 @@ target_link_libraries(dirtsim-tests
     pthread
 )
 target_include_directories(dirtsim-tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR})
-target_compile_options(dirtsim-tests PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-tests PRIVATE ${DIRTSIM_WARNINGS})
 
 # Slow test executable (integration/stress tests that take a long time).
 add_executable(dirtsim-tests-slow
@@ -582,7 +588,7 @@ target_link_libraries(dirtsim-tests-slow
     pthread
 )
 target_include_directories(dirtsim-tests-slow PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR})
-target_compile_options(dirtsim-tests-slow PRIVATE -Wall -Wextra -Werror)
+target_compile_options(dirtsim-tests-slow PRIVATE ${DIRTSIM_WARNINGS})
 
 # Enable testing.
 enable_testing()

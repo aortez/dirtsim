@@ -153,11 +153,6 @@ double Cell::removeMaterial(double amount)
 
     // Check if we became empty.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
-        if (material_type == MaterialType::WOOD) {
-            spdlog::info(
-                "Cell::removeMaterial - clearing WOOD cell (fill {:.3f} -> 0.0)",
-                fill_ratio + removed);
-        }
         clear();
     }
 
@@ -197,16 +192,7 @@ double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& 
         target.addMaterialWithPhysics(material_type, available, com, velocity, boundary_normal);
 
     if (accepted > 0.0) {
-        if (material_type == MaterialType::WOOD) {
-            spdlog::info(
-                "Cell::transferToWithPhysics - removing {:.3f} WOOD (accepted by target)",
-                accepted);
-        }
         removeMaterial(accepted);
-    }
-    else if (material_type == MaterialType::WOOD && available > 0.0) {
-        spdlog::info(
-            "Cell::transferToWithPhysics - WOOD transfer REJECTED (target couldn't accept)");
     }
 
     return accepted;
@@ -402,7 +388,7 @@ std::string Cell::toAsciiCharacter() const
     }
 
     // Choose character based on material type.
-    char material_char;
+    char material_char = '?';
     switch (material_type) {
         case MaterialType::AIR:
             return "  "; // Two spaces for air.
@@ -427,8 +413,11 @@ std::string Cell::toAsciiCharacter() const
         case MaterialType::WALL:
             material_char = '|';
             break;
-        default:
-            material_char = '?';
+        case MaterialType::ROOT:
+            material_char = 'R';
+            break;
+        case MaterialType::SEED:
+            material_char = 'S';
             break;
     }
 

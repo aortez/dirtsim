@@ -1,4 +1,5 @@
 #include "NeuralGridRenderer.h"
+#include "core/Assert.h"
 #include "core/MaterialType.h"
 #include <algorithm>
 #include <cmath>
@@ -239,9 +240,11 @@ lv_color_t NeuralGridRenderer::getMaterialColor(int materialIndex) const
             return lv_color_hex(0x00BFFF); // Deep sky blue.
         case MaterialType::WOOD:
             return lv_color_hex(0xDEB887); // Burlywood.
-        default:
-            return lv_color_hex(0xFF00FF); // Magenta for unknown.
+        case MaterialType::ROOT:
+            return lv_color_hex(0x8B4513); // Saddle brown.
     }
+    DIRTSIM_ASSERT(false, "Unhandled MaterialType");
+    return lv_color_hex(0xFF00FF); // Magenta for unknown.
 }
 
 } // namespace Ui
