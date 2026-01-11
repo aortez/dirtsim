@@ -1129,8 +1129,10 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
     }
 
     // Apply organism bone forces.
-    ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
-    organism_manager_->applyBoneForces(*this, deltaTime);
+    {
+        ScopeTimer boneTimer(timers, "resolve_forces_apply_bones");
+        organism_manager_->applyBoneForces(*this, deltaTime);
+    }
 
     // Apply viscous forces (momentum diffusion between same-material neighbors).
     if (settings.viscosity_strength > 0.0) {
