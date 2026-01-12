@@ -6,7 +6,6 @@
 #include "GridOfCells.h"
 #include "LightManager.h"
 #include "PhysicsSettings.h"
-#include "PointLight.h"
 #include "ReflectSerializer.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
