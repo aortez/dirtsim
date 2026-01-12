@@ -85,7 +85,7 @@ public:
      * Calculates the expected pressure gradient due to gravity based on material density
      * differences with neighbors. In equilibrium, this should balance the pressure gradient.
      */
-    Vector2d calculateGravityGradient(const World& world, uint32_t x, uint32_t y) const;
+    Vector2d calculateGravityGradient(const World& world, int x, int y) const;
 
     /**
      * @brief Generate virtual gravity transfers for pressure accumulation.
@@ -153,7 +153,7 @@ private:
      * Used when USE_COLUMN_BASED_BUOYANCY = false for more accurate buoyancy at
      * horizontal fluid boundaries. Returns 1.0 (water density) if no fluid neighbors found.
      */
-    double getSurroundingFluidDensity(const World& world, uint32_t x, uint32_t y) const;
+    double getSurroundingFluidDensity(const World& world, int x, int y) const;
 };
 
 } // namespace DirtSim

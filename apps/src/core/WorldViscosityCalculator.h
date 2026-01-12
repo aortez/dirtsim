@@ -46,8 +46,8 @@ public:
      */
     ViscousForce calculateViscousForce(
         const World& world,
-        uint32_t x,
-        uint32_t y,
+        int x,
+        int y,
         float viscosity_strength,
         const GridOfCells* grid = nullptr) const;
 };

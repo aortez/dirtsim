@@ -32,10 +32,10 @@ public:
     const LightBuffer& getRawLightBuffer() const;
 
     // Emissive overlay for scenario-controlled per-cell emission.
-    void setEmissive(uint32_t x, uint32_t y, uint32_t color, float intensity = 1.0f);
-    void clearEmissive(uint32_t x, uint32_t y);
+    void setEmissive(int x, int y, uint32_t color, float intensity = 1.0f);
+    void clearEmissive(int x, int y);
     void clearAllEmissive();
-    void resize(uint32_t width, uint32_t height);
+    void resize(int width, int height);
 
 private:
     void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);

@@ -1,8 +1,6 @@
 #include "core/Cell.h"
 #include "core/GridOfCells.h"
-#include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
-#include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 

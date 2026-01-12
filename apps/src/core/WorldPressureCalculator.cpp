@@ -259,8 +259,7 @@ Vector2f WorldPressureCalculator::calculatePressureGradient(const World& world, 
     return gradient;
 }
 
-Vector2d WorldPressureCalculator::calculateGravityGradient(
-    const World& world, uint32_t x, uint32_t y) const
+Vector2d WorldPressureCalculator::calculateGravityGradient(const World& world, int x, int y) const
 {
     // Cache data reference.
     const WorldData& data = world.getData();
@@ -285,8 +284,8 @@ Vector2d WorldPressureCalculator::calculateGravityGradient(
     };
 
     for (const auto& [dx, dy] : directions) {
-        int nx = static_cast<int>(x) + dx;
-        int ny = static_cast<int>(y) + dy;
+        int nx = x + dx;
+        int ny = y + dy;
 
         if (data.inBounds(nx, ny)) {
             const Cell& neighbor = data.at(nx, ny);
@@ -458,8 +457,7 @@ float WorldPressureCalculator::calculateReflectionCoefficient(
     return reflection_coefficient;
 }
 
-double WorldPressureCalculator::getSurroundingFluidDensity(
-    const World& world, uint32_t x, uint32_t y) const
+double WorldPressureCalculator::getSurroundingFluidDensity(const World& world, int x, int y) const
 {
     // Cache data reference.
     const WorldData& data = world.getData();
@@ -475,13 +473,12 @@ double WorldPressureCalculator::getSurroundingFluidDensity(
     const int dy[] = { -1, -1, -1, 0, 0, 1, 1, 1 };
 
     for (int i = 0; i < 8; ++i) {
-        int nx = static_cast<int>(x) + dx[i];
-        int ny = static_cast<int>(y) + dy[i];
+        int nx = x + dx[i];
+        int ny = y + dy[i];
 
         // Check bounds.
-        if (nx < 0 || nx >= static_cast<int>(data.width) || ny < 0
-            || ny >= static_cast<int>(data.height)) {
-            continue; // Out of bounds.
+        if (!data.inBounds(nx, ny)) {
+            continue;
         }
 
         const Cell& neighbor = data.at(nx, ny);
@@ -567,14 +564,13 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                 const float current_pressure = temp_pressure[idx];
 
                 for (int i = 0; i < num_neighbors; ++i) {
-                    int nx = static_cast<int>(x) + dx[i];
-                    int ny = static_cast<int>(y) + dy[i];
+                    int nx = x + dx[i];
+                    int ny = y + dy[i];
 
                     float neighbor_pressure;
                     float neighbor_diffusion;
 
-                    if (nx < 0 || nx >= static_cast<int>(width) || ny < 0
-                        || ny >= static_cast<int>(height)) {
+                    if (!data.inBounds(nx, ny)) {
                         neighbor_pressure = current_pressure;
                         neighbor_diffusion = diffusion_rate;
                     }

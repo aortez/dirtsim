@@ -9,11 +9,7 @@
 namespace DirtSim {
 
 WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscousForce(
-    const World& world,
-    uint32_t x,
-    uint32_t y,
-    float viscosity_strength,
-    const GridOfCells* /*grid*/) const
+    const World& world, int x, int y, float viscosity_strength, const GridOfCells* /*grid*/) const
 {
     const WorldData& data = world.getData();
     const Cell& cell = data.at(x, y);
@@ -47,16 +43,15 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
                 continue;
             }
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
             // Bounds check.
-            if (nx < 0 || ny < 0 || nx >= static_cast<int>(data.width)
-                || ny >= static_cast<int>(data.height)) {
+            if (!data.inBounds(nx, ny)) {
                 continue;
             }
 
-            const Cell& neighbor = data.at(static_cast<uint32_t>(nx), static_cast<uint32_t>(ny));
+            const Cell& neighbor = data.at(nx, ny);
 
             // Only couple with same-material neighbors.
             if (neighbor.material_type != cell.material_type || neighbor.isEmpty()) {

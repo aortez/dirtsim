@@ -63,28 +63,19 @@ void FallingDirtScenario::setup(World& world)
     }
 
     // Add some initial dirt piles to make it interesting.
-    uint32_t width = world.getData().width;
-    uint32_t height = world.getData().height;
+    int width = world.getData().width;
+    int height = world.getData().height;
 
     if (width >= 7 && height >= 7) {
         // Left mound.
-        world.addMaterialAtCell({ 1, static_cast<int16_t>(height - 2) }, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell({ 2, static_cast<int16_t>(height - 2) }, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell({ 1, static_cast<int16_t>(height - 3) }, MaterialType::DIRT, 0.5);
+        world.addMaterialAtCell(1, height - 2, MaterialType::DIRT, 1.0);
+        world.addMaterialAtCell(2, height - 2, MaterialType::DIRT, 1.0);
+        world.addMaterialAtCell(1, height - 3, MaterialType::DIRT, 0.5);
 
         // Right mound.
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(width - 3), static_cast<int16_t>(height - 2) },
-            MaterialType::DIRT,
-            1.0);
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(width - 2), static_cast<int16_t>(height - 2) },
-            MaterialType::DIRT,
-            1.0);
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(width - 2), static_cast<int16_t>(height - 3) },
-            MaterialType::DIRT,
-            0.5);
+        world.addMaterialAtCell(width - 3, height - 2, MaterialType::DIRT, 1.0);
+        world.addMaterialAtCell(width - 2, height - 2, MaterialType::DIRT, 1.0);
+        world.addMaterialAtCell(width - 2, height - 3, MaterialType::DIRT, 0.5);
     }
 
     spdlog::info("FallingDirtScenario::setup complete");
@@ -102,13 +93,12 @@ void FallingDirtScenario::tick(World& world, double deltaTime)
     const double drop_probability = config_.dropRate * deltaTime;
 
     if (drop_dist_(rng_) < drop_probability) {
-        std::uniform_int_distribution<uint32_t> x_dist(1, world.getData().width - 2);
-        uint32_t x = x_dist(rng_);
-        uint32_t y = 1; // Start near top.
+        std::uniform_int_distribution<int> x_dist(1, world.getData().width - 2);
+        int x = x_dist(rng_);
+        int y = 1; // Start near top.
 
         // Add dirt at the position.
-        world.addMaterialAtCell(
-            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 0.7);
+        world.addMaterialAtCell(x, y, MaterialType::DIRT, 0.7);
     }
 }
 

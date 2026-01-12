@@ -1,7 +1,5 @@
 #include "CellTrackerUtil.h"
 #include "core/GridOfCells.h"
-#include "core/LoggingChannels.h"
-#include "core/PhysicsSettings.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/Goose.h"

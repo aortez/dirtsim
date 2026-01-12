@@ -585,6 +585,11 @@ void World::addMaterialAtCell(Vector2s pos, MaterialType type, float amount)
     }
 }
 
+void World::addMaterialAtCell(int x, int y, MaterialType type, float amount)
+{
+    addMaterialAtCell(Vector2s{ static_cast<int16_t>(x), static_cast<int16_t>(y) }, type, amount);
+}
+
 // =================================================================.
 // BLESSED API - Cell Manipulation with Organism Tracking.
 // =================================================================.

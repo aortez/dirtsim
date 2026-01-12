@@ -638,10 +638,10 @@ struct FragTarget {
 double WorldCollisionCalculator::fragmentSingleCell(
     World& world,
     Cell& sourceCell,
-    uint32_t sourceX,
-    uint32_t sourceY,
-    uint32_t avoidX,
-    uint32_t avoidY,
+    int sourceX,
+    int sourceY,
+    int avoidX,
+    int avoidY,
     const Vector2d& spray_direction,
     int num_frags,
     double arc_width,
@@ -1094,8 +1094,8 @@ bool WorldCollisionCalculator::densitySupportsSwap(
 
 bool WorldCollisionCalculator::shouldSwapMaterials(
     const World& world,
-    uint32_t fromX,
-    uint32_t fromY,
+    int fromX,
+    int fromY,
     const Cell& fromCell,
     const Cell& toCell,
     const Vector2i& direction,
@@ -1108,7 +1108,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
     // Rigid body organisms resist displacement (they manage their own physics).
     // Single-cell organisms (like Duck) participate in normal cell physics including swaps.
-    Vector2i toPos{ static_cast<int>(fromX + direction.x), static_cast<int>(fromY + direction.y) };
+    Vector2i toPos{ fromX + direction.x, fromY + direction.y };
     OrganismId toOrgId = world.getOrganismManager().at(toPos);
     if (toOrgId != INVALID_ORGANISM_ID) {
         const Organism* organism = world.getOrganismManager().getOrganism(toOrgId);
@@ -1133,12 +1133,12 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     const MaterialProperties& from_props = getMaterialProperties(fromCell.material_type);
     if (direction.y != 0 && to_props.is_fluid && toCell.material_type != MaterialType::AIR) {
         const WorldData& data = world.getData();
-        const uint32_t toX = fromX + direction.x;
-        const uint32_t toY = fromY + direction.y;
+        const int toX = fromX + direction.x;
+        const int toY = fromY + direction.y;
 
         for (int dx : { -1, 1 }) {
-            int nx = static_cast<int>(toX) + dx;
-            if (nx < 0 || nx >= static_cast<int>(data.width)) {
+            int nx = toX + dx;
+            if (!data.inBounds(nx, toY)) {
                 continue;
             }
 
@@ -1660,7 +1660,7 @@ WorldCollisionCalculator::VelocityComponents WorldCollisionCalculator::decompose
 }
 
 double WorldCollisionCalculator::calculateCohesionStrength(
-    const Cell& cell, const World& world, uint32_t x, uint32_t y) const
+    const Cell& cell, const World& world, int x, int y) const
 {
     if (cell.isEmpty()) {
         return 0.0;

@@ -175,10 +175,10 @@ public:
     double fragmentSingleCell(
         World& world,
         Cell& sourceCell,
-        uint32_t sourceX,
-        uint32_t sourceY,
-        uint32_t avoidX,
-        uint32_t avoidY,
+        int sourceX,
+        int sourceY,
+        int avoidX,
+        int avoidY,
         const Vector2d& spray_direction,
         int num_frags,
         double arc_width,
@@ -230,8 +230,8 @@ public:
 
     bool shouldSwapMaterials(
         const World& world,
-        uint32_t fromX,
-        uint32_t fromY,
+        int fromX,
+        int fromY,
         const Cell& fromCell,
         const Cell& toCell,
         const Vector2i& direction,
@@ -271,8 +271,7 @@ public:
     VelocityComponents decomposeVelocity(
         const Vector2d& velocity, const Vector2d& surface_normal) const;
 
-    double calculateCohesionStrength(
-        const Cell& cell, const World& world, uint32_t x, uint32_t y) const;
+    double calculateCohesionStrength(const Cell& cell, const World& world, int x, int y) const;
 
 private:
     static constexpr double FRAGMENTATION_THRESHOLD = 15.0;

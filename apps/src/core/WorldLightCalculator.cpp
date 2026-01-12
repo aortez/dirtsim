@@ -398,15 +398,21 @@ const LightBuffer& WorldLightCalculator::getRawLightBuffer() const
     return raw_light_;
 }
 
-void WorldLightCalculator::setEmissive(uint32_t x, uint32_t y, uint32_t color, float intensity)
+void WorldLightCalculator::setEmissive(int x, int y, uint32_t color, float intensity)
 {
-    DIRTSIM_ASSERT(x < emissive_overlay_.width && y < emissive_overlay_.height, "Out of bounds");
+    DIRTSIM_ASSERT(
+        x >= 0 && y >= 0 && x < static_cast<int>(emissive_overlay_.width)
+            && y < static_cast<int>(emissive_overlay_.height),
+        "Out of bounds");
     emissive_overlay_.at(x, y) = ColorNames::toRgbF(color) * intensity;
 }
 
-void WorldLightCalculator::clearEmissive(uint32_t x, uint32_t y)
+void WorldLightCalculator::clearEmissive(int x, int y)
 {
-    DIRTSIM_ASSERT(x < emissive_overlay_.width && y < emissive_overlay_.height, "Out of bounds");
+    DIRTSIM_ASSERT(
+        x >= 0 && y >= 0 && x < static_cast<int>(emissive_overlay_.width)
+            && y < static_cast<int>(emissive_overlay_.height),
+        "Out of bounds");
     emissive_overlay_.at(x, y) = ColorNames::RgbF{};
 }
 
@@ -415,13 +421,16 @@ void WorldLightCalculator::clearAllEmissive()
     emissive_overlay_.clear(ColorNames::RgbF{});
 }
 
-void WorldLightCalculator::resize(uint32_t width, uint32_t height)
+void WorldLightCalculator::resize(int width, int height)
 {
-    if (emissive_overlay_.width != width || emissive_overlay_.height != height) {
-        emissive_overlay_.resize(width, height, ColorNames::RgbF{});
+    DIRTSIM_ASSERT(width >= 0 && height >= 0, "Dimensions must be non-negative");
+    auto w = static_cast<uint32_t>(width);
+    auto h = static_cast<uint32_t>(height);
+    if (emissive_overlay_.width != w || emissive_overlay_.height != h) {
+        emissive_overlay_.resize(w, h, ColorNames::RgbF{});
     }
-    if (raw_light_.width != width || raw_light_.height != height) {
-        raw_light_.resize(width, height);
+    if (raw_light_.width != w || raw_light_.height != h) {
+        raw_light_.resize(w, h);
     }
 }
 
@@ -500,8 +509,8 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
     }
 
     auto& data = world.getData();
-    int width = static_cast<int>(data.width);
-    int height = static_cast<int>(data.height);
+    int width = data.width;
+    int height = data.height;
 
     for (const PointLight& light : point_lights) {
         int light_x = static_cast<int>(light.position.x);

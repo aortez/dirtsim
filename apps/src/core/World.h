@@ -186,6 +186,7 @@ public:
 
     // Add material at specific cell coordinates.
     void addMaterialAtCell(Vector2s pos, MaterialType type, float amount = 1.0f);
+    void addMaterialAtCell(int x, int y, MaterialType type, float amount = 1.0f);
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // Minimum matter to process.
 
