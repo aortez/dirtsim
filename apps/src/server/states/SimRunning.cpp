@@ -1308,9 +1308,9 @@ State::Any SimRunning::onEvent(const Api::FingerMove::Cwc& cwc, StateMachine& /*
 
         // Clamp to world bounds.
         min_x = std::max(0, min_x);
-        max_x = std::min(static_cast<int>(grid.width) - 1, max_x);
+        max_x = std::min(grid.width - 1, max_x);
         min_y = std::max(0, min_y);
-        max_y = std::min(static_cast<int>(grid.height) - 1, max_y);
+        max_y = std::min(grid.height - 1, max_y);
 
         int cells_affected = 0;
         for (int cy = min_y; cy <= max_y; ++cy) {

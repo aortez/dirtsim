@@ -18,7 +18,7 @@ bool ObstacleManager::spawnObstacle(
 
     // Require minimum world size for obstacles.
     int min_x = MARGIN;
-    int max_x = static_cast<int>(data.width) - MARGIN - 1;
+    int max_x = data.width - MARGIN - 1;
 
     if (max_x <= min_x) {
         spdlog::info(
@@ -83,7 +83,7 @@ void ObstacleManager::clearAll(World& world)
     for (const auto& obs : obstacles_) {
         for (int i = 0; i < obs.width; ++i) {
             int x = obs.start_x + i;
-            if (x < 0 || x >= static_cast<int>(data.width)) {
+            if (x < 0 || x >= data.width) {
                 continue;
             }
 

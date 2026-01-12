@@ -154,7 +154,7 @@ void Duck::updateGroundDetection(const World& world)
     // Check if there's solid ground below us.
     int below_y = anchor_cell_.y + 1;
 
-    if (below_y >= static_cast<int>(data.height)) {
+    if (below_y >= data.height) {
         // At bottom of world - consider this as ground (wall border).
         on_ground_ = true;
         return;
@@ -479,7 +479,7 @@ bool Duck::isSolidCell(const World& world, int x, int y) const
     const WorldData& data = world.getData();
 
     // Out of bounds is solid (prevents escape).
-    if (x < 0 || y < 0 || x >= static_cast<int>(data.width) || y >= static_cast<int>(data.height)) {
+    if (x < 0 || y < 0 || x >= data.width || y >= data.height) {
         return true;
     }
 

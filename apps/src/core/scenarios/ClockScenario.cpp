@@ -726,8 +726,7 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             int y = start_y + row;
 
             // Bounds check.
-            if (x < 0 || x >= static_cast<int>(world.getData().width) || y < 0
-                || y >= static_cast<int>(world.getData().height)) {
+            if (x < 0 || x >= world.getData().width || y < 0 || y >= world.getData().height) {
                 continue;
             }
 
@@ -797,7 +796,7 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
     // Draw colon dots (size depends on font).
     for (int dx = 0; dx < cw; ++dx) {
         int x = start_x + dx;
-        if (x < 0 || x >= static_cast<int>(world.getData().width)) {
+        if (x < 0 || x >= world.getData().width) {
             continue;
         }
 
@@ -810,14 +809,14 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
             int y1 = dot1_y + dy;
             int y2 = dot2_y + dy;
 
-            if (y1 >= 0 && y1 < static_cast<int>(world.getData().height)) {
+            if (y1 >= 0 && y1 < world.getData().height) {
                 // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(
                     { static_cast<int16_t>(x), static_cast<int16_t>(y1) }, MaterialType::WALL);
                 world.getData().at(x, y1).render_as = static_cast<int8_t>(config_.digitMaterial);
                 world.getLightCalculator().setEmissive(x, y1, color, DIGIT_EMISSION_INTENSITY);
             }
-            if (y2 >= 0 && y2 < static_cast<int>(world.getData().height)) {
+            if (y2 >= 0 && y2 < world.getData().height) {
                 // Use WALL (immobile) but render as the configured digit material.
                 world.replaceMaterialAtCell(
                     { static_cast<int16_t>(x), static_cast<int16_t>(y2) }, MaterialType::WALL);
@@ -854,8 +853,8 @@ void ClockScenario::drawTimeString(World& world, const std::string& time_str)
     }
 
     // Calculate centered position.
-    int start_x = (static_cast<int>(world.getData().width) - total_width) / 2;
-    int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
+    int start_x = (world.getData().width - total_width) / 2;
+    int start_y = (world.getData().height - dh) / 2;
 
     int cursor_x = start_x;
 
@@ -1247,8 +1246,8 @@ void ClockScenario::updateDigitSlideEvent(
 
         // Calculate centering (same as drawTimeString).
         int content_width = calculateStringWidth(current_time, dw, getDigitGap(), getColonWidth());
-        int start_x = (static_cast<int>(world.getData().width) - content_width) / 2;
-        int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
+        int start_x = (world.getData().width - content_width) / 2;
+        int start_y = (world.getData().height - dh) / 2;
 
         // Draw each digit from the frame.
         for (const auto& placement : frame.digits) {
@@ -1257,10 +1256,10 @@ void ClockScenario::updateDigitSlideEvent(
             int y = start_y + static_cast<int>(placement.y);
 
             // Skip if off-screen (clipping).
-            if (y + dh < 0 || y >= static_cast<int>(world.getData().height)) {
+            if (y + dh < 0 || y >= world.getData().height) {
                 continue;
             }
-            if (x + dw < 0 || x >= static_cast<int>(world.getData().width)) {
+            if (x + dw < 0 || x >= world.getData().width) {
                 continue;
             }
 
@@ -1301,8 +1300,8 @@ void ClockScenario::updateMarqueeEvent(
 
     // Calculate centering (same as drawTimeString).
     int content_width = static_cast<int>(state.scroll_state.content_width);
-    int start_x = (static_cast<int>(world.getData().width) - content_width) / 2;
-    int start_y = (static_cast<int>(world.getData().height) - dh) / 2;
+    int start_x = (world.getData().width - content_width) / 2;
+    int start_y = (world.getData().height - dh) / 2;
 
     // Draw each digit from the frame, offset by viewport and centering.
     for (const auto& placement : frame.digits) {
@@ -1756,11 +1755,8 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     int half_drain = static_cast<int>(actual_drain_size / 2);
     int new_start_x =
         (actual_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
-    int new_end_x = (actual_drain_size > 0)
-        ? std::min(
-              new_start_x + static_cast<int>(actual_drain_size) - 1,
-              static_cast<int>(data.width) - 2)
-        : 0;
+    int new_end_x =
+        (actual_drain_size > 0) ? std::min(new_start_x + actual_drain_size - 1, data.width - 2) : 0;
 
     // Ensure start doesn't go below 1 (keep wall border).
     if (new_start_x < 1) new_start_x = 1;

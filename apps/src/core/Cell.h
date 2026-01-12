@@ -2,12 +2,10 @@
 
 #include "MaterialType.h"
 #include "Vector2.h"
-#include "Vector2d.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
-#include <vector>
 
 namespace DirtSim {
 
@@ -83,34 +81,34 @@ struct Cell {
     void clearPressure();
 
     // Available capacity for more material.
-    double getCapacity() const;
+    float getCapacity() const;
 
-    double getMass() const;
+    float getMass() const;
 
-    double getEffectiveDensity() const;
+    float getEffectiveDensity() const;
 
-    // Add material to this cell (returns amount actually added)
-    double addMaterial(MaterialType type, double amount);
+    // Add material to this cell (returns amount actually added).
+    float addMaterial(MaterialType type, float amount);
 
-    // Add material with physics context for realistic COM placement
-    double addMaterialWithPhysics(
+    // Add material with physics context for realistic COM placement.
+    float addMaterialWithPhysics(
         MaterialType type,
-        double amount,
-        const Vector2d& source_com,
-        const Vector2d& newVel,
-        const Vector2d& boundary_normal);
+        float amount,
+        const Vector2f& source_com,
+        const Vector2f& newVel,
+        const Vector2f& boundary_normal);
 
-    // Remove material from this cell (returns amount actually removed)
-    double removeMaterial(double amount);
+    // Remove material from this cell (returns amount actually removed).
+    float removeMaterial(float amount);
 
-    // Transfer material to another cell (returns amount transferred)
-    double transferTo(Cell& target, double amount);
+    // Transfer material to another cell (returns amount transferred).
+    float transferTo(Cell& target, float amount);
 
-    // Physics-aware transfer with boundary crossing information
-    double transferToWithPhysics(Cell& target, double amount, const Vector2d& boundary_normal);
+    // Physics-aware transfer with boundary crossing information.
+    float transferToWithPhysics(Cell& target, float amount, const Vector2f& boundary_normal);
 
-    // Replace all material with new type and amount
-    void replaceMaterial(MaterialType type, double fill_ratio = 1.0);
+    // Replace all material with new type and amount.
+    void replaceMaterial(MaterialType type, float fill_ratio = 1.0f);
 
     // Clear cell (set to empty air)
     void clear();
@@ -120,18 +118,18 @@ struct Cell {
     // Check if COM indicates transfer should occur
     bool shouldTransfer() const;
 
-    // Get transfer direction based on COM position
-    Vector2d getTransferDirection() const;
+    // Get transfer direction based on COM position.
+    Vector2f getTransferDirection() const;
 
-    // Basic material addition
-    void addDirt(double amount);
-    void addWater(double amount);
+    // Basic material addition.
+    void addDirt(float amount);
+    void addWater(float amount);
 
     // Advanced material addition with physics.
-    void addDirtWithVelocity(double amount, const Vector2d& newVel);
-    void addDirtWithCOM(double amount, const Vector2d& newCom, const Vector2d& newVel);
+    void addDirtWithVelocity(float amount, const Vector2f& newVel);
+    void addDirtWithCOM(float amount, const Vector2f& newCom, const Vector2f& newVel);
 
-    double getTotalMaterial() const;
+    float getTotalMaterial() const;
 
     std::string toAsciiCharacter() const;
 
@@ -142,10 +140,10 @@ struct Cell {
     static Cell fromJson(const nlohmann::json& json);
 
     // Calculate realistic landing position for transferred material.
-    Vector2d calculateTrajectoryLanding(
-        const Vector2d& source_com,
-        const Vector2d& velocity,
-        const Vector2d& boundary_normal) const;
+    Vector2f calculateTrajectoryLanding(
+        const Vector2f& source_com,
+        const Vector2f& velocity,
+        const Vector2f& boundary_normal) const;
 
     void updateUnifiedPressure();
 };

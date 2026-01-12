@@ -1281,8 +1281,7 @@ void World::resolveRigidBodies(double deltaTime)
         // For single-cell organisms (like ducks), apply simple F=ma physics.
         if (organism.getType() != OrganismType::TREE) {
             Vector2i anchor = organism.getAnchorCell();
-            if (anchor.x >= 0 && anchor.y >= 0 && anchor.x < static_cast<int>(data.width)
-                && anchor.y < static_cast<int>(data.height)) {
+            if (anchor.x >= 0 && anchor.y >= 0 && anchor.x < data.width && anchor.y < data.height) {
                 Cell& cell = data.at(anchor.x, anchor.y);
                 double mass = cell.getMass();
                 if (mass > 0.0001) {
@@ -1307,8 +1306,7 @@ void World::resolveRigidBodies(double deltaTime)
             frontier.pop();
 
             // Bounds check.
-            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
-                || pos.y >= static_cast<int>(data.height)) {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
                 continue;
             }
 
@@ -1424,8 +1422,7 @@ void World::pruneDisconnectedFragments()
             frontier.pop();
 
             // Bounds check.
-            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
-                || pos.y >= static_cast<int>(data.height)) {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
                 continue;
             }
 
@@ -1459,8 +1456,7 @@ void World::pruneDisconnectedFragments()
         // Prune disconnected and empty cells.
         std::vector<Vector2i> to_remove;
         for (const auto& pos : organism.getCells()) {
-            if (pos.x < 0 || pos.y < 0 || pos.x >= static_cast<int>(data.width)
-                || pos.y >= static_cast<int>(data.height)) {
+            if (pos.x < 0 || pos.y < 0 || pos.x >= data.width || pos.y >= data.height) {
                 to_remove.push_back(pos); // Out of bounds.
                 continue;
             }

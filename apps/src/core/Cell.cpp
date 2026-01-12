@@ -1,6 +1,5 @@
 #include "Cell.h"
 #include "World.h"
-#include "organisms/OrganismType.h"
 
 #include <algorithm>
 #include <cctype>
@@ -39,55 +38,55 @@ void Cell::setCOM(const Vector2f& newCom)
         Vector2f{ std::clamp(newCom.x, COM_MIN, COM_MAX), std::clamp(newCom.y, COM_MIN, COM_MAX) };
 }
 
-double Cell::getMass() const
+float Cell::getMass() const
 {
     if (isEmpty()) {
-        return 0.0;
+        return 0.0f;
     }
-    return fill_ratio * getMaterialDensity(material_type);
+    return fill_ratio * static_cast<float>(getMaterialDensity(material_type));
 }
 
-double Cell::getEffectiveDensity() const
+float Cell::getEffectiveDensity() const
 {
-    return fill_ratio * getMaterialDensity(material_type);
+    return fill_ratio * static_cast<float>(getMaterialDensity(material_type));
 }
 
-double Cell::addMaterial(MaterialType type, double amount)
+float Cell::addMaterial(MaterialType type, float amount)
 {
-    if (amount <= 0.0) {
-        return 0.0;
+    if (amount <= 0.0f) {
+        return 0.0f;
     }
 
     // Empty cells accept any material type.
     if (isEmpty()) {
         material_type = type;
-        const double added = std::min(amount, 1.0);
+        const float added = std::min(amount, 1.0f);
         fill_ratio = added;
         return added;
     }
 
     // If different material type, no mixing allowed.
     if (material_type != type) {
-        return 0.0;
+        return 0.0f;
     }
 
     // Add to existing material.
-    const double capacity = getCapacity();
-    const double added = std::min(amount, capacity);
+    const float capacity = getCapacity();
+    const float added = std::min(amount, capacity);
     fill_ratio += added;
 
     return added;
 }
 
-double Cell::addMaterialWithPhysics(
+float Cell::addMaterialWithPhysics(
     MaterialType type,
-    double amount,
-    const Vector2d& source_com,
-    const Vector2d& newVel,
-    const Vector2d& boundary_normal)
+    float amount,
+    const Vector2f& source_com,
+    const Vector2f& newVel,
+    const Vector2f& boundary_normal)
 {
-    if (amount <= 0.0) {
-        return 0.0;
+    if (amount <= 0.0f) {
+        return 0.0f;
     }
 
     // If we're empty, accept any material type with trajectory-based COM.
@@ -100,7 +99,7 @@ double Cell::addMaterialWithPhysics(
                 fill_ratio);
         }
         material_type = type;
-        const double added = std::min(amount, 1.0);
+        const float added = std::min(amount, 1.0f);
         fill_ratio = added;
 
         // Calculate realistic landing position based on boundary crossing.
@@ -112,21 +111,21 @@ double Cell::addMaterialWithPhysics(
 
     // If different material type, no mixing allowed.
     if (material_type != type) {
-        return 0.0;
+        return 0.0f;
     }
 
     // Add to existing material with momentum conservation.
-    const double capacity = getCapacity();
-    const double added = std::min(amount, capacity);
+    const float capacity = getCapacity();
+    const float added = std::min(amount, capacity);
 
-    if (added > 0.0) {
+    if (added > 0.0f) {
         // Enhanced momentum conservation: new_COM = (m1*COM1 + m2*COM2)/(m1+m2).
-        const double existing_mass = getMass();
-        const double added_mass = added * material().density;
-        const double total_mass = existing_mass + added_mass;
+        const float existing_mass = getMass();
+        const float added_mass = added * static_cast<float>(material().density);
+        const float total_mass = existing_mass + added_mass;
 
         // Calculate incoming material's COM in target cell space.
-        Vector2d incoming_com = calculateTrajectoryLanding(source_com, newVel, boundary_normal);
+        Vector2f incoming_com = calculateTrajectoryLanding(source_com, newVel, boundary_normal);
 
         if (total_mass > World::MIN_MATTER_THRESHOLD) {
             // Weighted average of COM positions.
@@ -142,14 +141,14 @@ double Cell::addMaterialWithPhysics(
     return added;
 }
 
-double Cell::removeMaterial(double amount)
+float Cell::removeMaterial(float amount)
 {
-    if (isEmpty() || amount <= 0.0) {
-        return 0.0;
+    if (isEmpty() || amount <= 0.0f) {
+        return 0.0f;
     }
 
-    const double removed = std::min(amount, static_cast<double>(fill_ratio));
-    fill_ratio -= static_cast<float>(removed);
+    const float removed = std::min(amount, fill_ratio);
+    fill_ratio -= removed;
 
     // Check if we became empty.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
@@ -159,46 +158,46 @@ double Cell::removeMaterial(double amount)
     return removed;
 }
 
-double Cell::transferTo(Cell& target, double amount)
+float Cell::transferTo(Cell& target, float amount)
 {
-    if (isEmpty() || amount <= 0.0) {
-        return 0.0;
+    if (isEmpty() || amount <= 0.0f) {
+        return 0.0f;
     }
 
     // Calculate how much we can actually transfer.
-    const double available = std::min(amount, static_cast<double>(fill_ratio));
-    const double accepted = target.addMaterial(material_type, available);
+    const float available = std::min(amount, fill_ratio);
+    const float accepted = target.addMaterial(material_type, available);
 
     // Remove the accepted amount from this cell.
-    if (accepted > 0.0) {
+    if (accepted > 0.0f) {
         removeMaterial(accepted);
     }
 
     return accepted;
 }
 
-double Cell::transferToWithPhysics(Cell& target, double amount, const Vector2d& boundary_normal)
+float Cell::transferToWithPhysics(Cell& target, float amount, const Vector2f& boundary_normal)
 {
-    if (isEmpty() || amount <= 0.0) {
-        return 0.0;
+    if (isEmpty() || amount <= 0.0f) {
+        return 0.0f;
     }
 
     // Calculate how much we can actually transfer.
-    const double available = std::min(amount, static_cast<double>(fill_ratio));
+    const float available = std::min(amount, fill_ratio);
 
     // Use physics-aware method with current COM and velocity.
     // Note: organism tracking is handled by OrganismManager, not Cell.
-    const double accepted =
+    const float accepted =
         target.addMaterialWithPhysics(material_type, available, com, velocity, boundary_normal);
 
-    if (accepted > 0.0) {
+    if (accepted > 0.0f) {
         removeMaterial(accepted);
     }
 
     return accepted;
 }
 
-void Cell::replaceMaterial(MaterialType type, double new_fill_ratio)
+void Cell::replaceMaterial(MaterialType type, float new_fill_ratio)
 {
     // Reset to default state, then set the new material.
     // This ensures all fields (render_as, pressure, pending_force, etc.) are cleared.
@@ -228,75 +227,73 @@ bool Cell::shouldTransfer() const
     return std::abs(com.x) >= 1.0 || std::abs(com.y) >= 1.0;
 }
 
-Vector2d Cell::getTransferDirection() const
+Vector2f Cell::getTransferDirection() const
 {
     // Determine primary transfer direction based on COM position at boundaries.
-    Vector2d direction(0.0, 0.0);
+    Vector2f direction(0.0f, 0.0f);
 
-    if (com.x >= 1.0) {
-        direction.x = 1.0; // Transfer right when COM reaches right boundary.
+    if (com.x >= 1.0f) {
+        direction.x = 1.0f; // Transfer right when COM reaches right boundary.
     }
-    else if (com.x <= -1.0) {
-        direction.x = -1.0; // Transfer left when COM reaches left boundary.
+    else if (com.x <= -1.0f) {
+        direction.x = -1.0f; // Transfer left when COM reaches left boundary.
     }
 
-    if (com.y >= 1.0) {
-        direction.y = 1.0; // Transfer down when COM reaches bottom boundary.
+    if (com.y >= 1.0f) {
+        direction.y = 1.0f; // Transfer down when COM reaches bottom boundary.
     }
-    else if (com.y <= -1.0) {
-        direction.y = -1.0; // Transfer up when COM reaches top boundary.
+    else if (com.y <= -1.0f) {
+        direction.y = -1.0f; // Transfer up when COM reaches top boundary.
     }
 
     return direction;
 }
 
-Vector2d Cell::calculateTrajectoryLanding(
-    const Vector2d& source_com, const Vector2d& velocity, const Vector2d& boundary_normal) const
+Vector2f Cell::calculateTrajectoryLanding(
+    const Vector2f& source_com, const Vector2f& velocity, const Vector2f& boundary_normal) const
 {
     // Calculate where material actually crosses the boundary.
-    Vector2d boundary_crossing_point = source_com;
+    Vector2f boundary_crossing_point = source_com;
 
     // Determine which boundary was crossed and calculate intersection.
-    if (std::abs(boundary_normal.x) > 0.5) {
+    if (std::abs(boundary_normal.x) > 0.5f) {
         // Crossing left/right boundary.
-        double boundary_x = (boundary_normal.x > 0) ? 1.0 : -1.0;
-        double crossing_ratio = (boundary_x - source_com.x) / velocity.x;
-        if (std::abs(velocity.x) > 1e-6) {
+        float boundary_x = (boundary_normal.x > 0) ? 1.0f : -1.0f;
+        float crossing_ratio = (boundary_x - source_com.x) / velocity.x;
+        if (std::abs(velocity.x) > 1e-6f) {
             boundary_crossing_point.x = boundary_x;
             boundary_crossing_point.y = source_com.y + velocity.y * crossing_ratio;
         }
     }
-    else if (std::abs(boundary_normal.y) > 0.5) {
+    else if (std::abs(boundary_normal.y) > 0.5f) {
         // Crossing top/bottom boundary.
-        double boundary_y = (boundary_normal.y > 0) ? 1.0 : -1.0;
-        double crossing_ratio = (boundary_y - source_com.y) / velocity.y;
-        if (std::abs(velocity.y) > 1e-6) {
+        float boundary_y = (boundary_normal.y > 0) ? 1.0f : -1.0f;
+        float crossing_ratio = (boundary_y - source_com.y) / velocity.y;
+        if (std::abs(velocity.y) > 1e-6f) {
             boundary_crossing_point.y = boundary_y;
             boundary_crossing_point.x = source_com.x + velocity.x * crossing_ratio;
         }
     }
 
     // Transform crossing point to target cell coordinate space.
-    Vector2d target_com = boundary_crossing_point;
+    Vector2f target_com = boundary_crossing_point;
 
     // Wrap coordinates across boundary.
     // Use 0.99 instead of 1.0 to avoid immediate re-crossing on next frame.
-    constexpr double BOUNDARY_EPSILON = 0.99;
-    if (std::abs(boundary_normal.x) > 0.5) {
+    constexpr float BOUNDARY_EPSILON = 0.99f;
+    if (std::abs(boundary_normal.x) > 0.5f) {
         // Material crossed left/right - wrap X coordinate.
         target_com.x = (boundary_normal.x > 0) ? -BOUNDARY_EPSILON : BOUNDARY_EPSILON;
     }
-    if (std::abs(boundary_normal.y) > 0.5) {
+    if (std::abs(boundary_normal.y) > 0.5f) {
         // Material crossed top/bottom - wrap Y coordinate.
         // DOWN (y > 0): appear at top edge (-0.99), UP (y < 0): appear at bottom edge (0.99).
         target_com.y = (boundary_normal.y > 0) ? -BOUNDARY_EPSILON : BOUNDARY_EPSILON;
     }
 
     // Clamp to valid COM bounds.
-    target_com.x =
-        std::clamp(target_com.x, static_cast<double>(COM_MIN), static_cast<double>(COM_MAX));
-    target_com.y =
-        std::clamp(target_com.y, static_cast<double>(COM_MIN), static_cast<double>(COM_MAX));
+    target_com.x = std::clamp(target_com.x, COM_MIN, COM_MAX);
+    target_com.y = std::clamp(target_com.y, COM_MIN, COM_MAX);
 
     return target_com;
 }
@@ -313,30 +310,30 @@ std::string Cell::toString() const
 // CELLINTERFACE IMPLEMENTATION.
 // =================================================================.
 
-void Cell::addDirt(double amount)
+void Cell::addDirt(float amount)
 {
-    if (amount <= 0.0) return;
+    if (amount <= 0.0f) return;
     addMaterial(MaterialType::DIRT, amount);
 }
 
-void Cell::addWater(double amount)
+void Cell::addWater(float amount)
 {
-    if (amount <= 0.0) return;
+    if (amount <= 0.0f) return;
     addMaterial(MaterialType::WATER, amount);
 }
 
-void Cell::addDirtWithVelocity(double amount, const Vector2d& newVel)
+void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
 {
-    if (amount <= 0.0) return;
+    if (amount <= 0.0f) return;
 
     // Store current fill ratio to calculate momentum.
-    double oldFill = fill_ratio;
-    double actualAdded = addMaterial(MaterialType::DIRT, amount);
+    float oldFill = fill_ratio;
+    float actualAdded = addMaterial(MaterialType::DIRT, amount);
 
-    if (actualAdded > 0.0) {
+    if (actualAdded > 0.0f) {
         // Update velocity based on momentum conservation.
-        double newFill = fill_ratio;
-        if (newFill > 0.0) {
+        float newFill = fill_ratio;
+        if (newFill > 0.0f) {
             // Weighted average of existing velocity and new velocity.
             velocity = (velocity * oldFill + newVel * actualAdded) / newFill;
         }
@@ -346,20 +343,20 @@ void Cell::addDirtWithVelocity(double amount, const Vector2d& newVel)
     }
 }
 
-void Cell::addDirtWithCOM(double amount, const Vector2d& newCom, const Vector2d& newVel)
+void Cell::addDirtWithCOM(float amount, const Vector2f& newCom, const Vector2f& newVel)
 {
-    if (amount <= 0.0) return;
+    if (amount <= 0.0f) return;
 
     // Store current state to calculate weighted averages.
-    double oldFill = fill_ratio;
-    Vector2d oldCOM = com;
-    Vector2d oldVelocity = velocity;
+    float oldFill = fill_ratio;
+    Vector2f oldCOM = com;
+    Vector2f oldVelocity = velocity;
 
-    double actualAdded = addMaterial(MaterialType::DIRT, amount);
+    float actualAdded = addMaterial(MaterialType::DIRT, amount);
 
-    if (actualAdded > 0.0) {
-        double newFill = fill_ratio;
-        if (newFill > 0.0) {
+    if (actualAdded > 0.0f) {
+        float newFill = fill_ratio;
+        if (newFill > 0.0f) {
             // Weighted average of existing COM and new COM.
             com = (oldCOM * oldFill + newCom * actualAdded) / newFill;
             clampCOM(); // Ensure COM stays in bounds.
@@ -374,7 +371,7 @@ void Cell::addDirtWithCOM(double amount, const Vector2d& newCom, const Vector2d&
     }
 }
 
-double Cell::getTotalMaterial() const
+float Cell::getTotalMaterial() const
 {
     return fill_ratio;
 }
@@ -485,12 +482,12 @@ void Cell::setCOM(float x, float y)
 
 void Cell::clearPressure()
 {
-    pressure = 0.0;
+    pressure = 0.0f;
 }
 
-double Cell::getCapacity() const
+float Cell::getCapacity() const
 {
-    return 1.0 - fill_ratio;
+    return 1.0f - fill_ratio;
 }
 
 // =================================================================

@@ -151,7 +151,8 @@ TEST_F(RigidBodyCalculatorTest, CalculateMassIsSumOfCellMasses)
 
     double expected = getMaterialProperties(MaterialType::SEED).density
         + getMaterialProperties(MaterialType::WOOD).density;
-    EXPECT_DOUBLE_EQ(mass, expected);
+    // Use EXPECT_NEAR because Cell::getMass() returns float, accumulating float precision.
+    EXPECT_NEAR(mass, expected, 1e-6);
 }
 
 TEST_F(RigidBodyCalculatorTest, CalculateCOMIsWeightedCenter)

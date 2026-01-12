@@ -229,7 +229,7 @@ void SimPlayground::updateFromWorldData(
     double uiFPS)
 {
     // Capture world size from server.
-    coreControlsState_.worldSize = static_cast<int>(data.width);
+    coreControlsState_.worldSize = data.width;
 
     // Sync core controls if panel is active.
     if (coreControls_) {
