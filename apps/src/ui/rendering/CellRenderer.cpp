@@ -483,35 +483,6 @@ void CellRenderer::renderWorldData(
         return;
     }
 
-    static int debug_frame = 0;
-    if (++debug_frame % 100 == 0) {
-        float max_b = 0;
-        float sample_r = 0, sample_g = 0, sample_b = 0;
-        int air_count = 0;
-        for (size_t i = 0; i < worldData.colors.size(); i++) {
-            if (worldData.cells[i].isEmpty()) {
-                air_count++;
-                auto& c = worldData.colors.data[i];
-                float b = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
-                if (b > max_b) {
-                    max_b = b;
-                    sample_r = c.r;
-                    sample_g = c.g;
-                    sample_b = c.b;
-                }
-            }
-        }
-        uint32_t rgba = ColorNames::toRgba(ColorNames::RgbF{ sample_r, sample_g, sample_b });
-        spdlog::info(
-            "RenderDebug: air_count={} max_bright={:.3f} rgb=({:.2f},{:.2f},{:.2f}) rgba=0x{:08X}",
-            air_count,
-            max_b,
-            sample_r,
-            sample_g,
-            sample_b,
-            rgba);
-    }
-
     // Resolve adaptive mode to concrete mode based on cell size.
     RenderMode effectiveMode = mode;
     if (mode == RenderMode::ADAPTIVE) {

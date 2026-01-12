@@ -7,6 +7,7 @@
 namespace DirtSim {
 
 struct LightConfig {
+    float air_scatter_rate;
     uint32_t ambient_color;
     float ambient_intensity;
     int diffusion_iterations;

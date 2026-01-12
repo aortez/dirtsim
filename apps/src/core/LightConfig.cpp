@@ -6,6 +6,7 @@ namespace DirtSim {
 LightConfig getDefaultLightConfig()
 {
     return LightConfig{
+        .air_scatter_rate = 0.15f,
         .ambient_color = ColorNames::dayAmbient(),
         .ambient_intensity = 5.0f,
         .diffusion_iterations = 2,

@@ -39,7 +39,8 @@ public:
 
 private:
     void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);
-    void applyDiffusion(World& world, const GridOfCells& grid, int iterations, float rate);
+    void applyDiffusion(
+        World& world, const GridOfCells& grid, int iterations, float rate, float air_scatter_rate);
     void applyEmissiveCells(World& world);
     void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);

@@ -277,12 +277,12 @@ AllColumnConfigs createAllColumnConfigs()
 
     configs.light = {
         .title = "Light",
-        .controls = { { .label = "Sun Enabled",
+        .controls = { { .label = "Sun On",
                         .type = ControlType::SWITCH_ONLY,
                         .enableSetter = [](PhysicsSettings& s, bool e) { s.light.sun_enabled = e; },
                         .enableGetter =
                             [](const PhysicsSettings& s) { return s.light.sun_enabled; } },
-                      { .label = "Sun Intensity",
+                      { .label = "Sun",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,
@@ -298,7 +298,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.sun_intensity);
                             } },
-                      { .label = "Sun Color",
+                      { .label = "SunC",
                         .type = ControlType::DROPDOWN,
                         .dropdownOptions =
                             "Warm Sunlight\nCool Moonlight\nTorch Orange\nCandle Yellow\nWhite",
@@ -308,7 +308,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return getSunColorIndex(s.light.sun_color);
                             } },
-                      { .label = "Ambient Color",
+                      { .label = "Ambient",
                         .type = ControlType::DROPDOWN,
                         .dropdownOptions = "Day\nDusk\nNight\nCave",
                         .indexSetter =
@@ -319,7 +319,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return getAmbientColorIndex(s.light.ambient_color);
                             } },
-                      { .label = "Ambient Intensity",
+                      { .label = "Ambient",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 1000,
@@ -335,7 +335,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.ambient_intensity);
                             } },
-                      { .label = "Sky Access Falloff",
+                      { .label = "Sky Falloff",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 200,
@@ -351,7 +351,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.sky_access_falloff);
                             } },
-                      { .label = "Diffusion Iters",
+                      { .label = "D Iters",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 10,
@@ -367,7 +367,7 @@ AllColumnConfigs createAllColumnConfigs()
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.diffusion_iterations);
                             } },
-                      { .label = "Diffusion Rate",
+                      { .label = "Diffusion",
                         .type = ControlType::ACTION_STEPPER,
                         .rangeMin = 0,
                         .rangeMax = 100,
@@ -382,6 +382,22 @@ AllColumnConfigs createAllColumnConfigs()
                         .valueGetter =
                             [](const PhysicsSettings& s) {
                                 return static_cast<double>(s.light.diffusion_rate);
+                            } },
+                      { .label = "Air Scatter",
+                        .type = ControlType::ACTION_STEPPER,
+                        .rangeMin = 0,
+                        .rangeMax = 100,
+                        .defaultValue = 15,
+                        .valueScale = 0.01,
+                        .valueFormat = "%.2f",
+                        .step = 5,
+                        .valueSetter =
+                            [](PhysicsSettings& s, double v) {
+                                s.light.air_scatter_rate = static_cast<float>(v);
+                            },
+                        .valueGetter =
+                            [](const PhysicsSettings& s) {
+                                return static_cast<double>(s.light.air_scatter_rate);
                             } } }
     };
 
