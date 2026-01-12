@@ -624,12 +624,9 @@ TreeGerminationConfig has `brain_type` (RULE_BASED or NEURAL_NET) and `neural_se
 - Genome save/load to file.
 - UI selector for brain type.
 
-#### Genetic Algorithm Evolution (Future)
+#### Genetic Algorithm Evolution
 
-- Population of trees with random initial weights.
-- Fitness based on: survival time, growth, resource efficiency.
-- Selection, crossover, mutation of network weights.
-- Multiple generations evolve successful growth strategies.
+See `genetic-evolution.md` for algorithm details and `evolution-framework.md` for system architecture.
 
 **Benefits of channel-based input**:
 - Fixed network size regardless of tree size.

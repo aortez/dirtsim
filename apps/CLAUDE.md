@@ -50,10 +50,10 @@ make -C build-debug -j12
 # Easy clean of up all dirtsim processes.
 ./build-debug/bin/cli cleanup
 
-# Run benchmark and output results to file.
-./build-release/bin/cli benchmark > benchmark.json && cat benchmark.json | jq .server_fps
+# Run benchmark on a remote.
+ssh dirtsim2.local "dirtsim-cli benchmark"
 
-# Sending commands (new fluent syntax: cli [target] [command] [params]).
+# Sending commands (syntax: cli [target] [command] [params]).
 ./build-debug/bin/cli server StateGet
 ./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 1}'
 ./build-debug/bin/cli server DiagramGet
@@ -403,10 +403,12 @@ https://docs.lvgl.io/master/details/widgets/index.html
 ### Design docs
 
 Can be found here:
-- @design_docs/GridMechanics.md           #<-- Physics system foundations (pressure, friction, cohesion, etc.)
-- design_docs/WebRTC-test-driver.md       #<-- Client/Server architecture (DSSM server + UI client)
 - design_docs/coding_convention.md        #<-- Code style guidelines
+- design_docs/evolution-framework.md      #<-- Evolution system architecture (states, repository, API)
+- design_docs/genetic-evolution.md        #<-- Genetic algorithm details (selection, mutation, fitness)
+- @design_docs/GridMechanics.md           #<-- Physics system foundations (pressure, friction, cohesion, etc.)
 - design_docs/plant.md                    #<-- Tree/organism feature (Phase 1 in progress)
+- design_docs/WebRTC-test-driver.md       #<-- Client/Server architecture (DSSM server + UI client)
 
 ## Project Directory Structure
 

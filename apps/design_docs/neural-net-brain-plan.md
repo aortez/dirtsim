@@ -323,7 +323,7 @@ class NeuralTreeScenario : public Scenario { ... };
 3. Add cell count inputs (root/leaf/wood counts)
 4. Softmax sampling instead of argmax for exploration
 5. Genome save/load to JSON or binary
-6. Training harness with fitness evaluation
+6. Training harness (see `evolution-framework.md` and `genetic-evolution.md`)
 
 ## Task Checklist
 
