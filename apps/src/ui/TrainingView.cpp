@@ -1,14 +1,20 @@
 #include "TrainingView.h"
 #include "UiComponentManager.h"
+#include "controls/EvolutionControls.h"
+#include "controls/ExpandablePanel.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "server/api/EvolutionProgress.h"
+#include "state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <lvgl/lvgl.h>
+#include <memory>
 
 namespace DirtSim {
 namespace Ui {
 
-TrainingView::TrainingView(UiComponentManager* uiManager) : uiManager_(uiManager)
+TrainingView::TrainingView(UiComponentManager* uiManager, EventSink& eventSink)
+    : uiManager_(uiManager), eventSink_(eventSink)
 {
     createUI();
 }
@@ -20,18 +26,11 @@ TrainingView::~TrainingView()
 
 void TrainingView::createUI()
 {
-    if (!uiManager_) {
-        LOG_ERROR(Controls, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager_, "TrainingView requires valid UiComponentManager");
 
-    container_ = uiManager_->getMainMenuContainer();
-    if (!container_) {
-        LOG_ERROR(Controls, "Failed to get main menu container");
-        return;
-    }
+    container_ = uiManager_->getWorldDisplayArea();
+    DIRTSIM_ASSERT(container_, "Failed to get world display area");
 
-    // Clean any existing widgets from previous state.
     lv_obj_clean(container_);
 
     // Create centered content container.
@@ -111,15 +110,6 @@ void TrainingView::createUI()
     lv_label_set_text(averageLabel_, "Average:          --");
     lv_obj_set_style_text_color(averageLabel_, lv_color_hex(0xAAAACC), 0);
 
-    // Stop button using ActionButton style.
-    stopButton_ = LVGLBuilder::ActionButtonBuilder(content)
-                      .text("Stop")
-                      .icon(LV_SYMBOL_STOP)
-                      .width(120)
-                      .height(50)
-                      .backgroundColor(0x882222)
-                      .buildOrLog();
-
     LOG_INFO(Controls, "Training UI created");
 }
 
@@ -137,7 +127,6 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
-    stopButton_ = nullptr;
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
@@ -180,11 +169,90 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
-void TrainingView::setStopCallback(void (*callback)(lv_event_t*), void* userData)
+void TrainingView::connectToIconRail()
 {
-    if (stopButton_) {
-        lv_obj_add_event_cb(stopButton_, callback, LV_EVENT_CLICKED, userData);
+    IconRail* iconRail = uiManager_->getIconRail();
+    if (iconRail) {
+        iconRail->setSecondaryCallback([this](IconId selectedId, IconId previousId) {
+            onIconSelected(selectedId, previousId);
+        });
+
+        LOG_INFO(Controls, "TrainingView: Connected to IconRail selection callback");
     }
+    else {
+        LOG_ERROR(Controls, "TrainingView: No IconRail available to connect to");
+    }
+}
+
+void TrainingView::onIconSelected(IconId selectedId, IconId previousId)
+{
+    LOG_INFO(
+        Controls,
+        "TrainingView: Icon selection {} -> {}",
+        static_cast<int>(previousId),
+        static_cast<int>(selectedId));
+
+    // Show panel content for selected icon.
+    if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
+        showPanelContent(selectedId);
+    }
+    else if (selectedId == IconId::COUNT) {
+        // No icon selected - clear panel.
+        clearPanelContent();
+    }
+}
+
+void TrainingView::showPanelContent(IconId panelId)
+{
+    if (panelId == activePanel_) return; // Already showing this panel.
+
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+        return;
+    }
+
+    // Clear existing content.
+    clearPanelContent();
+
+    // Get content area.
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        return;
+    }
+
+    // Create content for the selected panel.
+    switch (panelId) {
+        case IconId::EVOLUTION:
+            createEvolutionPanel(container);
+            break;
+
+        case IconId::CORE:
+        case IconId::PHYSICS:
+        case IconId::SCENARIO:
+        case IconId::TREE:
+        case IconId::COUNT:
+            LOG_WARN(Controls, "TrainingView: Unhandled panel id {}", static_cast<int>(panelId));
+            break;
+    }
+
+    // Show panel to display content.
+    panel->show();
+
+    activePanel_ = panelId;
+}
+
+void TrainingView::clearPanelContent()
+{
+    evolutionControls_.reset();
+    activePanel_ = IconId::COUNT;
+}
+
+void TrainingView::createEvolutionPanel(lv_obj_t* container)
+{
+    evolutionControls_ = std::make_unique<EvolutionControls>(container, eventSink_);
+    LOG_INFO(Controls, "TrainingView: Created Evolution controls panel");
 }
 
 } // namespace Ui

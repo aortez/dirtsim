@@ -125,6 +125,10 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::PHYSICS:
             createPhysicsPanel(container);
             break;
+        case IconId::EVOLUTION:
+            // Evolution panel is only available in Training state.
+            LOG_WARN(Controls, "Evolution panel not available in SimRunning state");
+            return;
         case IconId::TREE:
             // Tree panel not yet implemented.
             LOG_WARN(Controls, "Tree panel not yet implemented");

@@ -11,7 +11,7 @@ namespace Ui {
 /**
  * @brief Identifiers for icons in an IconRail.
  */
-enum class IconId { CORE = 0, SCENARIO, PHYSICS, TREE, COUNT };
+enum class IconId { CORE = 0, EVOLUTION, PHYSICS, SCENARIO, TREE, COUNT };
 
 enum class RailMode {
     Normal,   // Full width with all icon buttons.
@@ -61,6 +61,7 @@ public:
      * @brief Show or hide the tree icon based on tree presence.
      */
     void setTreeIconVisible(bool visible);
+    void setVisibleIcons(const std::vector<IconId>& visibleIcons);
 
     /**
      * @brief Get the currently selected icon.

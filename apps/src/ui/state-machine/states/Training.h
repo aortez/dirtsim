@@ -33,9 +33,6 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     StateMachine* sm_ = nullptr;
-
-private:
-    static void onStopClicked(lv_event_t* e);
 };
 
 } // namespace State

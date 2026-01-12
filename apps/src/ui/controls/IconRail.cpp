@@ -12,10 +12,11 @@ IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect)
 {
     // Define our icon configuration with per-icon colors.
     iconConfigs_ = {
-        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },   // Light blue.
-        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },   // Orange.
-        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },  // Silver.
-        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 }, // Lime green.
+        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },     // Light blue.
+        { IconId::EVOLUTION, LV_SYMBOL_REFRESH, "Evolution", 0xDA70D6 }, // Orchid/purple.
+        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },    // Silver.
+        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },     // Orange.
+        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },   // Lime green.
     };
 
     createIcons(parent);
@@ -189,6 +190,33 @@ void IconRail::setTreeIconVisible(bool visible)
     }
 
     LOG_DEBUG(Controls, "Tree icon visibility: {}", visible);
+}
+
+void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
+{
+    for (size_t i = 0; i < iconConfigs_.size() && i < buttons_.size(); i++) {
+        if (!buttons_[i]) continue;
+
+        const IconId id = iconConfigs_[i].id;
+        const bool shouldBeVisible =
+            std::find(visibleIcons.begin(), visibleIcons.end(), id) != visibleIcons.end();
+
+        if (shouldBeVisible) {
+            lv_obj_clear_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+
+            if (selectedId_ == id) {
+                const IconId previousId = selectedId_;
+                selectedId_ = IconId::COUNT;
+                updateButtonVisuals();
+                if (onSelectCallback_) {
+                    onSelectCallback_(selectedId_, previousId);
+                }
+            }
+        }
+    }
 }
 
 void IconRail::selectIcon(IconId id)

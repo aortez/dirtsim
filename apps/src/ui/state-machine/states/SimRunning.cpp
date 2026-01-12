@@ -46,17 +46,35 @@ void SimRunning::onEnter(StateMachine& sm)
         }
     }
 
-    // Create playground if not already created.
     if (!playground_) {
-        // Ensure simulation layout is created first (this creates the IconRail).
-        sm.getUiComponentManager()->getSimulationContainer();
+        auto* uiManager = sm.getUiComponentManager();
+        uiManager->getSimulationContainer();
 
-        // Now create playground and connect to IconRail.
-        playground_ = std::make_unique<SimPlayground>(
-            sm.getUiComponentManager(), &sm.getWebSocketService(), sm);
+        playground_ = std::make_unique<SimPlayground>(uiManager, &sm.getWebSocketService(), sm);
         playground_->connectToIconRail();
+
+        IconRail* iconRail = uiManager->getIconRail();
+        DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+        iconRail->setVisibleIcons(
+            { IconId::CORE, IconId::PHYSICS, IconId::SCENARIO, IconId::TREE });
+
         LOG_INFO(State, "Created simulation playground");
     }
+}
+
+void SimRunning::onExit(StateMachine& sm)
+{
+    LOG_INFO(State, "Exiting SimRunning state");
+
+    // Clear panel content before playground is destroyed.
+    if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+        }
+    }
+
+    playground_.reset();
 }
 
 State::Any SimRunning::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)

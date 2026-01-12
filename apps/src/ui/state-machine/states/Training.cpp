@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
@@ -47,45 +48,28 @@ void Training::onEnter(StateMachine& sm)
         return;
     }
 
-    view_ = std::make_unique<TrainingView>(uiManager);
-    view_->setStopCallback(onStopClicked, this);
+    view_ = std::make_unique<TrainingView>(uiManager, sm);
+    view_->connectToIconRail();
+
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setVisibleIcons({ IconId::EVOLUTION });
 }
 
-void Training::onExit(StateMachine& /*sm*/)
+void Training::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting Training state");
-    view_.reset();
-    sm_ = nullptr;
-}
 
-void Training::onStopClicked(lv_event_t* e)
-{
-    auto* self = static_cast<Training*>(lv_event_get_user_data(e));
-    if (!self || !self->sm_) return;
-
-    LOG_INFO(State, "Stop button clicked, sending EvolutionStop");
-
-    // Send EvolutionStop to server.
-    if (self->sm_->hasWebSocketService()) {
-        auto& wsService = self->sm_->getWebSocketService();
-        if (wsService.isConnected()) {
-            Api::EvolutionStop::Command cmd;
-            const auto result = wsService.sendCommand<Api::EvolutionStop::OkayType>(cmd, 2000);
-            if (result.isError()) {
-                LOG_ERROR(State, "Failed to send EvolutionStop: {}", result.errorValue());
-            }
-            else if (result.value().isError()) {
-                LOG_ERROR(
-                    State, "Server EvolutionStop error: {}", result.value().errorValue().message);
-            }
-            else {
-                LOG_INFO(State, "Evolution stopped on server");
-            }
+    // Clear panel content before view is destroyed.
+    if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
         }
     }
 
-    // Queue transition back to StartMenu.
-    self->sm_->queueEvent(StopButtonClickedEvent{});
+    view_.reset();
+    sm_ = nullptr;
 }
 
 State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
@@ -108,11 +92,26 @@ State::Any Training::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /
     return Disconnected{};
 }
 
-State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
-    LOG_INFO(State, "Stop button clicked, returning to StartMenu");
+    LOG_INFO(State, "Stop button clicked, stopping evolution");
 
-    // Transition back to start menu.
+    DIRTSIM_ASSERT(sm.hasWebSocketService(), "WebSocketService must exist");
+    auto& wsService = sm.getWebSocketService();
+    DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected to reach Training state");
+
+    Api::EvolutionStop::Command cmd;
+    const auto result = wsService.sendCommand<Api::EvolutionStop::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "Failed to send EvolutionStop: {}", result.errorValue());
+    }
+    else if (result.value().isError()) {
+        LOG_ERROR(State, "Server EvolutionStop error: {}", result.value().errorValue().message);
+    }
+    else {
+        LOG_INFO(State, "Evolution stopped on server");
+    }
+
     return StartMenu{};
 }
 

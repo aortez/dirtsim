@@ -39,6 +39,7 @@ struct SimRunning {
     bool stateGetPending = false;
 
     void onEnter(StateMachine& sm);
+    void onExit(StateMachine& sm);
 
     Any onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
