@@ -3,6 +3,8 @@
 #include "api/CellGet.h"
 #include "api/CellSet.h"
 #include "api/DiagramGet.h"
+#include "api/EvolutionStart.h"
+#include "api/EvolutionStop.h"
 #include "api/Exit.h"
 #include "api/FingerDown.h"
 #include "api/FingerMove.h"
@@ -407,6 +409,8 @@ public:
         DirtSim::Api::CellGet::Cwc,
         DirtSim::Api::CellSet::Cwc,
         DirtSim::Api::DiagramGet::Cwc,
+        DirtSim::Api::EvolutionStart::Cwc,
+        DirtSim::Api::EvolutionStop::Cwc,
         DirtSim::Api::Exit::Cwc,
         DirtSim::Api::FingerDown::Cwc,
         DirtSim::Api::FingerMove::Cwc,

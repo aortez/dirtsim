@@ -9,12 +9,13 @@ namespace State {
 
 // Forward declarations.
 struct Error;
-struct PreStartup;
-struct Startup;
+struct Evolution;
 struct Idle;
-struct SimRunning;
-struct SimPaused;
+struct PreStartup;
 struct Shutdown;
+struct SimPaused;
+struct SimRunning;
+struct Startup;
 
 // Forward declaration of wrapper (definition in State.h after state includes).
 class Any;

@@ -4,6 +4,7 @@
 // Each state has its own header file for better organization.
 
 #include "Error.h"
+#include "Evolution.h"
 #include "Idle.h"
 #include "PreStartup.h"
 #include "Shutdown.h"
@@ -27,7 +28,8 @@ namespace State {
  */
 class Any {
 public:
-    using Variant = std::variant<PreStartup, Error, Startup, Idle, SimRunning, SimPaused, Shutdown>;
+    using Variant =
+        std::variant<PreStartup, Error, Startup, Idle, SimRunning, SimPaused, Evolution, Shutdown>;
 
     // Constructor from any state type.
     template <typename T>

@@ -16,6 +16,7 @@
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/Scenario.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/PeerAdvertisement.h"
@@ -43,6 +44,7 @@ struct SubscribedClient {
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     std::unique_ptr<GamepadManager> gamepadManager_;
+    GenomeRepository genomeRepository_;
     ScenarioRegistry scenarioRegistry_;
     SystemMetrics systemMetrics_;
     Timers timers_;
@@ -415,6 +417,16 @@ const GamepadManager& StateMachine::getGamepadManager() const
     return *pImpl->gamepadManager_;
 }
 
+GenomeRepository& StateMachine::getGenomeRepository()
+{
+    return pImpl->genomeRepository_;
+}
+
+const GenomeRepository& StateMachine::getGenomeRepository() const
+{
+    return pImpl->genomeRepository_;
+}
+
 void StateMachine::mainLoopRun()
 {
     // Initialize GamepadManager now that server is listening.
@@ -511,6 +523,11 @@ void StateMachine::mainLoopRun()
             }
 
             // If frameLimit == 0, no sleep (run as fast as possible).
+        }
+        else if (std::holds_alternative<State::Evolution>(pImpl->fsmState_.getVariant())) {
+            // Tick evolution state (evaluates one organism per tick).
+            auto& evolution = std::get<State::Evolution>(pImpl->fsmState_.getVariant());
+            evolution.tick(*this);
         }
         else {
             // Small sleep when not running to prevent busy waiting.

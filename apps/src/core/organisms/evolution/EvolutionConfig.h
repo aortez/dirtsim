@@ -1,5 +1,8 @@
 #pragma once
 
+#include "core/ReflectSerializer.h"
+#include <nlohmann/json.hpp>
+
 namespace DirtSim {
 
 /**
@@ -23,5 +26,25 @@ struct MutationConfig {
     double sigma = 0.05;       // Gaussian noise standard deviation.
     double resetRate = 0.0005; // Probability of full weight reset (escapes local optima).
 };
+
+inline void to_json(nlohmann::json& j, const EvolutionConfig& config)
+{
+    j = ReflectSerializer::to_json(config);
+}
+
+inline void from_json(const nlohmann::json& j, EvolutionConfig& config)
+{
+    config = ReflectSerializer::from_json<EvolutionConfig>(j);
+}
+
+inline void to_json(nlohmann::json& j, const MutationConfig& config)
+{
+    j = ReflectSerializer::to_json(config);
+}
+
+inline void from_json(const nlohmann::json& j, MutationConfig& config)
+{
+    config = ReflectSerializer::from_json<MutationConfig>(j);
+}
 
 } // namespace DirtSim

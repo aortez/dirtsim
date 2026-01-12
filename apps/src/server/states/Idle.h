@@ -20,6 +20,7 @@ struct Idle {
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
 
+    Any onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::PeersGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm);

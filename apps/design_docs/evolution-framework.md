@@ -605,35 +605,36 @@ src/ui/state-machine/states/
 - Tournament with k=population_size returns best. ✅
 - Elitist replace keeps top genomes sorted by fitness. ✅
 
-### Phase 4: Server StateEvolution
+### Phase 4: Server StateEvolution 🚧
 
 **Files:**
-- `src/server/states/Evolution.h/cpp`
-- `src/server/states/EvolutionPaused.h/cpp`
-- `src/server/tests/StateEvolution_test.cpp`
+- `src/server/states/Evolution.h/cpp` ✅
+- `src/server/states/EvolutionPaused.h/cpp` ❌ (deferred - no pause/resume yet)
+- `src/server/api/EvolutionStart.h/cpp` ✅
+- `src/server/api/EvolutionStop.h/cpp` ✅
+- `src/server/api/EvolutionProgress.h/cpp` ✅
+- `src/server/tests/StateEvolution_test.cpp` ❌ (TODO)
 
 **Work:**
-- StateEvolution:
-  - Initialize random population on enter.
-  - Run evaluation loop (one organism per update tick).
-  - Create fresh World with tree_germination scenario for each eval.
-  - Run simulation for up to 10 minutes sim time.
-  - Collect FitnessResult, compute fitness.
-  - After full generation: select, mutate, replace.
-  - Store best genome in repository periodically.
-  - Broadcast EvolutionProgress.
-  - Transition to Idle on completion.
-- StateEvolutionPaused:
-  - Preserve state, resume on command.
-- Hook GenomeRepository into Server class (member, lives across states).
+- StateEvolution: ✅
+  - Initialize random population on enter. ✅
+  - Run evaluation loop (one organism per tick, blocking). ✅
+  - Create fresh World (9x9) for each eval. ✅
+  - Run simulation for up to 10 minutes sim time. ✅
+  - Collect FitnessResult, compute fitness. ✅
+  - After full generation: select, mutate, replace. ✅
+  - Store best genome in repository periodically. ✅
+  - Broadcast EvolutionProgress. ✅ (hooks in place, TODO: extend broadcast for data)
+  - Transition to Idle on completion or EvolutionStop. ✅
+- StateEvolutionPaused: ❌ (deferred)
+- Hook GenomeRepository into Server class (member, lives across states). ✅
 
-**Tests:**
+**Tests:** ❌ (TODO)
 - EvolutionStart transitions Idle → Evolution.
-- EvolutionPause transitions Evolution → EvolutionPaused.
-- EvolutionResume transitions EvolutionPaused → Evolution.
 - EvolutionStop transitions Evolution → Idle.
-- Progress broadcast contains expected fields.
+- Tick evaluates organisms, advances generation.
 - Best genome stored in repository after generation.
+- Completes all generations.
 
 ### Phase 5: API Commands
 

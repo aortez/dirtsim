@@ -22,6 +22,26 @@ void Idle::onExit(StateMachine& /*dsm*/)
     LOG_INFO(State, "Exiting");
 }
 
+State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    LOG_INFO(State, "EvolutionStart command received");
+
+    Evolution newState;
+    newState.evolutionConfig = cwc.command.evolution;
+    newState.mutationConfig = cwc.command.mutation;
+    newState.scenarioId = cwc.command.scenarioId;
+
+    LOG_INFO(
+        State,
+        "Starting evolution: population={}, generations={}, scenario={}",
+        cwc.command.evolution.populationSize,
+        cwc.command.evolution.maxGenerations,
+        cwc.command.scenarioId);
+
+    cwc.sendResponse(Api::EvolutionStart::Response::okay({ .started = true }));
+    return newState;
+}
+
 State::Any Idle::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 {
     LOG_INFO(State, "Exit command received, shutting down");

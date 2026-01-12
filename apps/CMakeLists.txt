@@ -268,6 +268,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/StateMachine.cpp
     src/server/EventProcessor.cpp
     src/server/states/Error.cpp
+    src/server/states/Evolution.cpp
     src/server/states/Idle.cpp
     src/server/states/Shutdown.cpp
     src/server/states/SimPaused.cpp
@@ -278,6 +279,9 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/CellGet.cpp
     src/server/api/CellSet.cpp
     src/server/api/DiagramGet.cpp
+    src/server/api/EvolutionProgress.cpp
+    src/server/api/EvolutionStart.cpp
+    src/server/api/EvolutionStop.cpp
     src/server/api/Exit.cpp
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
