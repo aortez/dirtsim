@@ -24,13 +24,14 @@ That's it! Now read below for details...
 
 ## Overview
 
-The CLI provides five modes of operation:
+The CLI provides six modes of operation:
 
 1. **Command Mode**: Send individual commands to server or UI
 2. **Run-All Mode**: Launch both server and UI with one command
 3. **Benchmark Mode**: Automated performance testing with metrics collection
-4. **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
-5. **Integration Test Mode**: Automated server + UI lifecycle testing
+4. **Train Mode**: Run evolution training with JSON configuration
+5. **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
+6. **Integration Test Mode**: Automated server + UI lifecycle testing
 
 ## Usage
 
@@ -144,6 +145,64 @@ Automated performance testing with server auto-launch:
 # Compare specific subsystems
 jq '.timer_stats.cohesion_calculation.avg_ms' baseline.json optimized.json
 ```
+
+### Train Mode
+
+Run evolution training with JSON configuration:
+
+```bash
+# Train with default config (100 generations, 50 population)
+./build-debug/bin/cli train
+
+# Train with custom config
+./build-debug/bin/cli train '{
+  "evolution": {
+    "maxGenerations": 10,
+    "populationSize": 20,
+    "tournamentSize": 3
+  },
+  "scenarioId": "TreeGermination"
+}'
+
+# Train on remote server
+./build-debug/bin/cli train --address ws://dirtsim.local:8080 '{"evolution": {"maxGenerations": 5}}'
+```
+
+**Config JSON** maps to `EvolutionStart::Command`:
+```json
+{
+  "evolution": {
+    "populationSize": 50,
+    "tournamentSize": 3,
+    "maxGenerations": 100,
+    "maxSimulationTime": 600.0,
+    "energyReference": 100.0
+  },
+  "mutation": {
+    "rate": 0.015,
+    "sigma": 0.05,
+    "resetRate": 0.0005
+  },
+  "scenarioId": "TreeGermination"
+}
+```
+
+**Output**: Progress bars during training, JSON results on completion:
+```json
+{
+  "completed": true,
+  "totalGenerations": 10,
+  "populationSize": 20,
+  "bestFitnessAllTime": 2.5,
+  "durationSec": 45.2,
+  "bestGenomeId": 42
+}
+```
+
+**Features**:
+- Real-time progress bar showing generation and evaluation progress.
+- Auto-launches server if no `--address` specified.
+- Clean JSON output for scripting.
 
 ### Cleanup Mode
 

@@ -4,18 +4,21 @@
 #include "CommandRegistry.h"
 #include "IntegrationTest.h"
 #include "RunAllRunner.h"
+#include "TrainRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
 #include <args.hxx>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -110,6 +113,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
+    { "train", "Run evolution training with JSON config" },
     { "watch", "Subscribe to server broadcasts and dump to stdout" },
 };
 
@@ -749,11 +753,88 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    // Handle train command - run evolution training with JSON config.
+    if (targetName == "train") {
+        // Show progress output unless explicitly verbose (then show debug too).
+        if (!verbose) {
+            spdlog::set_level(spdlog::level::info);
+        }
+
+        // Find server binary.
+        std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
+        std::filesystem::path binDir = exePath.parent_path();
+        std::filesystem::path serverPath = binDir / "dirtsim-server";
+
+        std::string remoteAddress = addressOverride ? args::get(addressOverride) : "";
+
+        if (remoteAddress.empty() && !std::filesystem::exists(serverPath)) {
+            std::cerr << "Error: Cannot find server binary at " << serverPath << std::endl;
+            return 1;
+        }
+
+        // Parse JSON config if provided, otherwise use defaults.
+        Api::EvolutionStart::Command config;
+        if (command) {
+            try {
+                nlohmann::json configJson = nlohmann::json::parse(args::get(command));
+                config = Api::EvolutionStart::Command::fromJson(configJson);
+            }
+            catch (const nlohmann::json::parse_error& e) {
+                std::cerr << "Error parsing JSON config: " << e.what() << std::endl;
+                std::cerr << "\nExample config:\n";
+                std::cerr << R"({
+  "evolution": {
+    "populationSize": 50,
+    "tournamentSize": 3,
+    "maxGenerations": 100,
+    "maxSimulationTime": 600.0
+  },
+  "mutation": {
+    "rate": 0.015,
+    "sigma": 0.05,
+    "resetRate": 0.0005
+  },
+  "scenarioId": "TreeGermination"
+})" << std::endl;
+                return 1;
+            }
+        }
+
+        // Run training with signal handling for graceful Ctrl+C shutdown.
+        Client::TrainRunner runner;
+
+        // Install SIGINT handler for graceful shutdown.
+        // Note: Must use C-style function pointer, not lambda.
+        static Client::TrainRunner* g_runner = nullptr;
+        static auto sigintHandler = +[](int) -> void {
+            if (g_runner) {
+                std::cerr << "\n[Ctrl+C detected - stopping training gracefully...]\n"
+                          << std::flush;
+                g_runner->requestStop();
+            }
+        };
+
+        g_runner = &runner;
+        auto oldHandler = std::signal(SIGINT, sigintHandler);
+
+        auto results = runner.run(serverPath.string(), config, remoteAddress);
+
+        // Restore old signal handler.
+        std::signal(SIGINT, oldHandler);
+        g_runner = nullptr;
+
+        // Output results as JSON to stdout.
+        nlohmann::json output = ReflectSerializer::to_json(results);
+        std::cout << output.dump(2) << std::endl;
+
+        return results.completed ? 0 : 1;
+    }
+
     // Handle server/ui targets - normal command mode.
     if (targetName != "server" && targetName != "ui") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "integration_test, run-all, test_binary\n\n";
+                     "integration_test, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
