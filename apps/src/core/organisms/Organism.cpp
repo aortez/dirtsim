@@ -263,4 +263,58 @@ CollisionInfo Organism::detectCollisions(
     return info;
 }
 
+void Organism::attachLight(LightHandle handle, bool follows_facing)
+{
+    attached_lights_.push_back({ std::move(handle), follows_facing });
+}
+
+void Organism::detachLight(LightId id)
+{
+    auto it = std::remove_if(
+        attached_lights_.begin(), attached_lights_.end(), [id](const LightAttachment& attachment) {
+            return attachment.handle.id() == id;
+        });
+    attached_lights_.erase(it, attached_lights_.end());
+}
+
+void Organism::updateAttachedLights(World& world, double deltaTime)
+{
+    if (attached_lights_.empty()) {
+        return;
+    }
+
+    Vector2i anchor = getAnchorCell();
+    Vector2d anchor_pos{ static_cast<double>(anchor.x), static_cast<double>(anchor.y) };
+    LightManager& lights = world.getLightManager();
+
+    for (auto& attachment : attached_lights_) {
+        LightId light_id = attachment.handle.id();
+
+        if (auto* spot = lights.getLight<SpotLight>(light_id)) {
+            spot->position = anchor_pos;
+            if (attachment.follows_facing) {
+                spot->direction = std::atan2(facing_.y, facing_.x);
+            }
+        }
+        else if (auto* rotating = lights.getLight<RotatingLight>(light_id)) {
+            rotating->position = anchor_pos;
+            if (rotating->rotation_speed == 0.0f && attachment.follows_facing) {
+                rotating->direction = std::atan2(facing_.y, facing_.x);
+            }
+            else if (rotating->rotation_speed != 0.0f) {
+                rotating->direction += rotating->rotation_speed * static_cast<float>(deltaTime);
+                while (rotating->direction >= 2.0f * static_cast<float>(M_PI)) {
+                    rotating->direction -= 2.0f * static_cast<float>(M_PI);
+                }
+                while (rotating->direction < 0.0f) {
+                    rotating->direction += 2.0f * static_cast<float>(M_PI);
+                }
+            }
+        }
+        else if (auto* point = lights.getLight<PointLight>(light_id)) {
+            point->position = anchor_pos;
+        }
+    }
+}
+
 } // namespace DirtSim

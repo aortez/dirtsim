@@ -1,16 +1,14 @@
 #pragma once
 
 #include "OrganismType.h"
+#include "core/LightManager.h"
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
-#include "core/Vector2d.h"
-#include "core/Vector2i.h"
 #include <unordered_set>
 #include <vector>
 
 namespace DirtSim {
 
-// Forward declarations.
 class World;
 
 /**
@@ -66,6 +64,11 @@ struct Bone {
  */
 double getBoneStiffness(MaterialType a, MaterialType b);
 
+struct LightAttachment {
+    LightHandle handle;
+    bool follows_facing = true;
+};
+
 /**
  * Abstract base class for all organisms.
  *
@@ -115,6 +118,10 @@ public:
     // Age tracking.
     double getAge() const { return age_seconds_; }
 
+    void attachLight(LightHandle handle, bool follows_facing = true);
+    void detachLight(LightId id);
+    const std::vector<LightAttachment>& getAttachedLights() const { return attached_lights_; }
+
     // Main update - called each tick for behavior/brain logic.
     // For cell-based organisms (Duck), this also handles physics.
     // For rigid body organisms (Goose), physics is handled in advanceTime().
@@ -157,6 +164,9 @@ protected:
     std::vector<Bone> bones_;
     Vector2<float> facing_{ 1.0f, 0.0f };
     double age_seconds_ = 0.0;
+    std::vector<LightAttachment> attached_lights_;
+
+    void updateAttachedLights(World& world, double deltaTime);
 };
 
 } // namespace DirtSim

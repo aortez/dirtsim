@@ -1501,6 +1501,21 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
         spawn_pos.x,
         spawn_pos.y);
 
+    Duck* duck = world.getOrganismManager().getDuck(state.organism_id);
+    if (duck) {
+        LightHandle flashlight = world.getLightManager().createLight(
+            SpotLight{ .position = Vector2d{ static_cast<double>(spawn_pos.x),
+                                             static_cast<double>(spawn_pos.y) },
+                       .color = ColorNames::warmSunlight(),
+                       .intensity = 1.0f,
+                       .radius = 15.0f,
+                       .attenuation = 0.1f,
+                       .direction = 0.0f,
+                       .arc_width = static_cast<float>(M_PI / 3.0) });
+        duck->attachLight(std::move(flashlight), true);
+        spdlog::info("ClockScenario: Attached flashlight to duck {}", state.organism_id);
+    }
+
     state.phase = DuckEventPhase::DUCK_ACTIVE;
 }
 

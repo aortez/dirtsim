@@ -168,8 +168,8 @@ lv_obj_t* UiComponentManager::ensureScreen(lv_obj_t*& screen, const char* name)
     if (!screen) {
         screen = lv_obj_create(NULL);
         if (screen) {
-            // Set medium gray background color.
-            lv_obj_set_style_bg_color(screen, lv_color_hex(0x808080), 0);
+            // Set black background color.
+            lv_obj_set_style_bg_color(screen, lv_color_hex(0x000000), 0);
             spdlog::debug("Created {} screen", name);
         }
         else {

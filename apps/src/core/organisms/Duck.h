@@ -4,9 +4,7 @@
 #include "DuckInput.h"
 #include "DuckSensoryData.h"
 #include "Organism.h"
-#include "core/LightManager.h"
 #include <memory>
-#include <optional>
 #include <random>
 #include <vector>
 
@@ -81,12 +79,7 @@ public:
         return static_cast<float>(sparkles_.size()) / static_cast<float>(MAX_SPARKLES);
     }
 
-    // Sensory data gathering for brain decisions.
     DuckSensoryData gatherSensoryData(const World& world, double deltaTime) const;
-
-    void attachFlashlight(LightHandle handle);
-    void detachFlashlight();
-    bool hasFlashlight() const;
 
 private:
     Vector2i anchor_cell_{ 0, 0 };
@@ -104,14 +97,11 @@ private:
     Vector2d previous_velocity_{ 0.0, 0.0 };
     Vector2d smoothed_acceleration_{ 0.0, 0.0 };
 
-    std::optional<LightHandle> flashlight_;
-
     void applyMovementToCell(World& world, double deltaTime);
     int getDesiredSparkleCount(float acceleration) const;
     bool isSolidCell(const World& world, int x, int y) const;
     void logPhysicsState(const World& world);
     void spawnSparkle(const Vector2d& duck_velocity);
-    void updateFlashlightPosition(World& world, double deltaTime);
     void updateGroundDetection(const World& world);
     void updateSparkles(const World& world, double deltaTime);
 };
