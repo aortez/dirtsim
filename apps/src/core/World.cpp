@@ -4,7 +4,6 @@
 #include "Assert.h"
 #include "Cell.h"
 #include "GridOfCells.h"
-#include "LightConfig.h"
 #include "PhysicsSettings.h"
 #include "PointLight.h"
 #include "ReflectSerializer.h"
@@ -71,9 +70,6 @@ struct World::Impl {
     WorldLightCalculator light_calculator_;
     WorldPressureCalculator pressure_calculator_;
     WorldViscosityCalculator viscosity_calculator_;
-
-    // Light configuration.
-    LightConfig light_config_ = getDefaultLightConfig();
 
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
@@ -551,7 +547,7 @@ void World::advanceTime(double deltaTimeSeconds)
     {
         ScopeTimer lightTimer(pImpl->timers_, "light_calculation");
         pImpl->light_calculator_.calculate(
-            *this, *pImpl->grid_, pImpl->light_config_, pImpl->timers_);
+            *this, *pImpl->grid_, pImpl->physicsSettings_.light, pImpl->timers_);
     }
 
     // Sync organism render data to WorldData.entities for UI.
