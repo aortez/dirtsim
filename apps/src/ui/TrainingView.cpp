@@ -246,6 +246,12 @@ void TrainingView::showPanelContent(IconId panelId)
 void TrainingView::clearPanelContent()
 {
     evolutionControls_.reset();
+
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (panel) {
+        panel->clearContent();
+    }
+
     activePanel_ = IconId::COUNT;
 }
 

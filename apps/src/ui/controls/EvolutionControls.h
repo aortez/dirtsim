@@ -1,11 +1,12 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
+#include "ui/PanelViewController.h"
+#include <memory>
 
 namespace DirtSim {
 namespace Ui {
 
-// Forward declaration.
 class EventSink;
 
 /**
@@ -26,9 +27,10 @@ private:
     lv_obj_t* container_;
     EventSink& eventSink_;
 
+    std::unique_ptr<PanelViewController> viewController_;
+
     bool liveDisplayEnabled_ = false;
 
-    // Widgets.
     lv_obj_t* liveDisplayToggle_ = nullptr;
     lv_obj_t* stopButton_ = nullptr;
 

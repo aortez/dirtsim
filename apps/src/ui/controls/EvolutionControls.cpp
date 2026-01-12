@@ -11,7 +11,12 @@ namespace Ui {
 EvolutionControls::EvolutionControls(lv_obj_t* container, EventSink& eventSink)
     : container_(container), eventSink_(eventSink)
 {
-    createMainView(container_);
+    viewController_ = std::make_unique<PanelViewController>(container_);
+
+    lv_obj_t* mainView = viewController_->createView("main");
+    createMainView(mainView);
+    viewController_->showView("main");
+
     spdlog::info("EvolutionControls: Initialized");
 }
 
