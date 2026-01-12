@@ -1,8 +1,11 @@
 #pragma once
 
 #include "reflect.h"
+
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
+#include <type_traits>
 
 /**
  * Generic reflection-based JSON serialization for aggregate types.
@@ -18,6 +21,14 @@
  */
 namespace ReflectSerializer {
 
+// Type trait to detect std::optional.
+template <typename T>
+struct is_optional : std::false_type {};
+template <typename T>
+struct is_optional<std::optional<T>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_optional_v = is_optional<T>::value;
+
 /**
  * Serialize any aggregate type to nlohmann::json.
  */
@@ -31,7 +42,18 @@ nlohmann::json to_json(const T& obj)
         [&](auto I) {
             auto name = std::string(reflect::member_name<I>(obj));
             const auto& value = reflect::get<I>(obj);
-            j[name] = value;
+
+            using MemberType = std::remove_cvref_t<decltype(value)>;
+
+            if constexpr (is_optional_v<MemberType>) {
+                // Only include optional fields if they have a value.
+                if (value.has_value()) {
+                    j[name] = *value;
+                }
+            }
+            else {
+                j[name] = value;
+            }
         },
         obj);
 
@@ -50,9 +72,21 @@ T from_json(const nlohmann::json& j)
     reflect::for_each(
         [&](auto I) {
             auto name = std::string(reflect::member_name<I>(obj));
-            if (j.contains(name)) {
-                using MemberType = std::remove_reference_t<decltype(reflect::get<I>(obj))>;
-                reflect::get<I>(obj) = j[name].get<MemberType>();
+
+            using MemberType = std::remove_reference_t<decltype(reflect::get<I>(obj))>;
+
+            if constexpr (is_optional_v<MemberType>) {
+                // Optional fields: only set if present in JSON.
+                if (j.contains(name) && !j[name].is_null()) {
+                    using InnerType = typename MemberType::value_type;
+                    reflect::get<I>(obj) = j[name].get<InnerType>();
+                }
+            }
+            else {
+                // Non-optional fields: set if present.
+                if (j.contains(name)) {
+                    reflect::get<I>(obj) = j[name].get<MemberType>();
+                }
             }
         },
         obj);

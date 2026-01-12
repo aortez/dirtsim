@@ -43,7 +43,7 @@ TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     cmd.evolution.populationSize = 2;
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1; // Very short for testing.
-    cmd.scenarioId = "TreeGermination";
+    cmd.scenarioId = ScenarioId::TreeGermination;
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
         callbackInvoked = true;
@@ -61,7 +61,7 @@ TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     Evolution& evolution = std::get<Evolution>(newState.getVariant());
     EXPECT_EQ(evolution.evolutionConfig.populationSize, 2);
     EXPECT_EQ(evolution.evolutionConfig.maxGenerations, 1);
-    EXPECT_EQ(evolution.scenarioId, "TreeGermination");
+    EXPECT_EQ(evolution.scenarioId, ScenarioId::TreeGermination);
 
     // Verify: Response callback was invoked.
     ASSERT_TRUE(callbackInvoked) << "Response callback should be invoked";
@@ -185,7 +185,7 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.scenarioId = "TestScenario";
+    evolutionState.scenarioId = ScenarioId::TreeGermination;
 
     // Initialize and run through one generation.
     evolutionState.onEnter(*stateMachine);
@@ -209,7 +209,7 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
     // Verify: Metadata is correct.
     auto metadata = repo.getMetadata(*bestId);
     ASSERT_TRUE(metadata.has_value());
-    EXPECT_EQ(metadata->scenarioId, "TestScenario");
+    EXPECT_EQ(metadata->scenarioId, ScenarioId::TreeGermination);
     EXPECT_GE(metadata->fitness, 0.0) << "Fitness should be non-negative";
 }
 

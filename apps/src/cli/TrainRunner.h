@@ -1,6 +1,7 @@
 #pragma once
 
 #include "SubprocessManager.h"
+#include "core/ScenarioId.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/EvolutionStart.h"
@@ -15,7 +16,7 @@ namespace Client {
  * Results from a completed training run.
  */
 struct TrainResults {
-    std::string scenarioId;
+    ScenarioId scenarioId = ScenarioId::TreeGermination;
     int totalGenerations = 0;
     int populationSize = 0;
     double durationSec = 0.0;

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/ScenarioId.h"
 #include "core/scenarios/Scenario.h"
+
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 /**
@@ -25,19 +27,19 @@ public:
     // Register a scenario factory function with the given ID.
     using ScenarioFactory = std::function<std::unique_ptr<DirtSim::Scenario>()>;
     void registerScenario(
-        const std::string& id, const DirtSim::ScenarioMetadata& metadata, ScenarioFactory factory);
+        DirtSim::ScenarioId id, const DirtSim::ScenarioMetadata& metadata, ScenarioFactory factory);
 
     // Create a new scenario instance by ID (factory pattern).
-    std::unique_ptr<DirtSim::Scenario> createScenario(const std::string& id) const;
+    std::unique_ptr<DirtSim::Scenario> createScenario(DirtSim::ScenarioId id) const;
 
     // Get metadata for a scenario by ID (no instance created).
-    const DirtSim::ScenarioMetadata* getMetadata(const std::string& id) const;
+    const DirtSim::ScenarioMetadata* getMetadata(DirtSim::ScenarioId id) const;
 
     // Get all registered scenario IDs.
-    std::vector<std::string> getScenarioIds() const;
+    std::vector<DirtSim::ScenarioId> getScenarioIds() const;
 
     // Get scenarios filtered by category.
-    std::vector<std::string> getScenariosByCategory(const std::string& category) const;
+    std::vector<DirtSim::ScenarioId> getScenariosByCategory(const std::string& category) const;
 
     // Clear all registered scenarios (mainly for testing).
     void clear();
@@ -48,5 +50,5 @@ private:
         DirtSim::ScenarioMetadata metadata;
         ScenarioFactory factory;
     };
-    std::unordered_map<std::string, ScenarioEntry> scenarios_;
+    std::map<DirtSim::ScenarioId, ScenarioEntry> scenarios_;
 };

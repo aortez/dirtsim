@@ -1,5 +1,6 @@
 #include "State.h"
 #include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "server/ServerConfig.h"
@@ -36,7 +37,7 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& /*ds
         "Starting evolution: population={}, generations={}, scenario={}",
         cwc.command.evolution.populationSize,
         cwc.command.evolution.maxGenerations,
-        cwc.command.scenarioId);
+        toString(cwc.command.scenarioId));
 
     cwc.sendResponse(Api::EvolutionStart::Response::okay({ .started = true }));
     return newState;
@@ -58,10 +59,10 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     assert(dsm.serverConfig && "serverConfig must be loaded");
 
     // Use scenario_id from command if provided, otherwise fall back to server config.
-    std::string scenarioId = !cwc.command.scenario_id.empty()
-        ? cwc.command.scenario_id
+    ScenarioId scenarioId = cwc.command.scenario_id.has_value()
+        ? cwc.command.scenario_id.value()
         : getScenarioId(dsm.serverConfig->startupConfig);
-    LOG_INFO(State, "SimRun command received, using scenario '{}'", scenarioId);
+    LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));
 
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
@@ -79,9 +80,9 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     const ScenarioMetadata* metadata = registry.getMetadata(scenarioId);
 
     if (!metadata) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", scenarioId);
-        cwc.sendResponse(
-            Api::SimRun::Response::error(ApiError("Scenario not found: " + scenarioId)));
+        LOG_ERROR(State, "Scenario '{}' not found in registry", toString(scenarioId));
+        cwc.sendResponse(Api::SimRun::Response::error(
+            ApiError(std::string("Scenario not found: ") + std::string(toString(scenarioId)))));
         return Idle{};
     }
 
@@ -110,7 +111,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     // Register scenario with World for tick during advanceTime.
     newState.world->setScenario(newState.scenario.get());
 
-    LOG_INFO(State, "Scenario '{}' applied to new world", scenarioId);
+    LOG_INFO(State, "Scenario '{}' applied to new world", toString(scenarioId));
 
     // Set run parameters.
     newState.stepDurationMs = cwc.command.timestep * 1000.0; // Convert seconds to milliseconds.

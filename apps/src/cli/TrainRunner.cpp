@@ -97,7 +97,7 @@ TrainResults TrainRunner::run(
 
     // Send EvolutionStart command.
     SLOG_INFO("Starting evolution training:");
-    SLOG_INFO("  Scenario: {}", config.scenarioId);
+    SLOG_INFO("  Scenario: {}", toString(config.scenarioId));
     SLOG_INFO("  Generations: {}", config.evolution.maxGenerations);
     SLOG_INFO("  Population: {}", config.evolution.populationSize);
     SLOG_INFO("  Tournament size: {}", config.evolution.tournamentSize);

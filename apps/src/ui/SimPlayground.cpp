@@ -228,7 +228,7 @@ void SimPlayground::updatePhysicsPanels(const PhysicsSettings& settings)
 
 void SimPlayground::updateFromWorldData(
     const WorldData& data,
-    const std::string& scenario_id,
+    ScenarioId scenario_id,
     const ScenarioConfig& scenario_config,
     double uiFPS)
 {

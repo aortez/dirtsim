@@ -117,7 +117,7 @@ struct ResetSimulationCommand {
  * @brief Apply a scenario to the world.
  */
 struct ApplyScenarioCommand {
-    std::string scenarioName;
+    DirtSim::ScenarioId scenarioId;
     static constexpr const char* name() { return "ApplyScenarioCommand"; }
 };
 

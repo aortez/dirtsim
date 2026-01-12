@@ -4,8 +4,11 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/ScenarioId.h"
+
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
 #include <zpp_bits.h>
 
@@ -28,7 +31,7 @@ struct Okay {
     std::string state;         // Current state machine state (always present).
     std::string error_message; // Populated when state is "Error".
     int32_t timestep = 0;
-    std::string scenario_id;
+    std::optional<ScenarioId> scenario_id; // Present when simulation is running.
     int16_t width = 0;
     int16_t height = 0;
 

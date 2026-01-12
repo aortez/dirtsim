@@ -2,9 +2,9 @@
 
 #include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
+
 #include <chrono>
 #include <cstdint>
-#include <string>
 
 namespace DirtSim {
 
@@ -17,7 +17,7 @@ struct UiUpdateEvent {
     std::chrono::steady_clock::time_point timestamp;
 
     // Scenario metadata (sent alongside world data).
-    std::string scenario_id = "Empty";
+    ScenarioId scenario_id = ScenarioId::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
 
     static constexpr const char* name() { return "UiUpdateEvent"; }

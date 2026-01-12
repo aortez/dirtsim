@@ -32,12 +32,12 @@ public:
     /**
      * @brief Map dropdown index to scenario ID.
      */
-    static std::string scenarioIdFromIndex(uint16_t index);
+    static ScenarioId scenarioIdFromIndex(uint16_t index);
 
     /**
      * @brief Map scenario ID to dropdown index.
      */
-    static uint16_t indexFromScenarioId(const std::string& id);
+    static uint16_t indexFromScenarioId(ScenarioId id);
 
 private:
     static std::vector<Api::ScenarioListGet::ScenarioInfo> scenarios_;

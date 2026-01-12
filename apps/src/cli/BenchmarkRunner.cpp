@@ -109,10 +109,17 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
     // Start simulation with requested scenario (server is now in Idle state).
     spdlog::info("BenchmarkRunner: Starting simulation with scenario '{}'", scenario);
+
+    auto scenarioId = fromString(scenario);
+    if (!scenarioId.has_value()) {
+        spdlog::error("BenchmarkRunner: Invalid scenario name: {}", scenario);
+        return results;
+    }
+
     Api::SimRun::Command simRunCmd;
     simRunCmd.timestep = 0.016;
     simRunCmd.max_steps = steps;
-    simRunCmd.scenario_id = scenario;
+    simRunCmd.scenario_id = scenarioId;
 
     auto simRunResult = client_.sendCommand<Api::SimRun::Okay>(simRunCmd, 5000);
     if (simRunResult.isError()) {

@@ -26,7 +26,7 @@ public:
      * @brief Create controls for the given scenario config.
      * @param parent Parent LVGL container.
      * @param wsService WebSocket service for server communication.
-     * @param scenarioId The scenario ID string.
+     * @param scenarioId The scenario identifier.
      * @param config The scenario configuration variant.
      * @param dimensionsGetter Optional callback for display dimensions (used by Clock).
      * @return Unique pointer to controls, or nullptr if scenario has no UI.
@@ -34,7 +34,7 @@ public:
     static std::unique_ptr<ScenarioControlsBase> create(
         lv_obj_t* parent,
         Network::WebSocketService* wsService,
-        const std::string& scenarioId,
+        ScenarioId scenarioId,
         const ScenarioConfig& config,
         DisplayDimensionsGetter dimensionsGetter = nullptr);
 };

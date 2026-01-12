@@ -322,7 +322,7 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
     }
 
     const Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = ""
+        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = std::nullopt
     };
 
     // Retry logic for autoRun to handle server startup race condition.
@@ -406,7 +406,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 
     // Send sim_run command to DSSM server via binary protocol.
     const DirtSim::Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = ""
+        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = std::nullopt
     };
 
     const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);

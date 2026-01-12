@@ -800,7 +800,7 @@ State::Any StateMachine::onEvent(const GetSimStatsCommand& /*cmd.*/)
 void StateMachine::broadcastRenderMessage(
     const WorldData& data,
     const std::vector<OrganismId>& organism_grid,
-    const std::string& scenario_id,
+    ScenarioId scenario_id,
     const ScenarioConfig& scenario_config)
 {
     if (pImpl->subscribedClients_.empty()) {

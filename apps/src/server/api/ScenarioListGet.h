@@ -4,6 +4,8 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/ScenarioId.h"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -33,7 +35,7 @@ struct Command {
  * @brief Info about a single scenario.
  */
 struct ScenarioInfo {
-    std::string id;          // Scenario ID (e.g., "sandbox", "dam_break").
+    ScenarioId id;           // Scenario identifier.
     std::string name;        // Display name (e.g., "Sandbox", "Dam Break").
     std::string description; // Tooltip/help text.
     std::string category;    // Category (sandbox, demo, organisms, benchmark).

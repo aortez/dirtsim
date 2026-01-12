@@ -3,6 +3,7 @@
 #include "core/Cell.h"
 #include "core/GridOfCells.h"
 #include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldFrictionCalculator.h"
@@ -47,9 +48,9 @@ void SimRunning::onEnter(StateMachine& dsm)
     }
 
     // Apply startup scenario if no scenario is set.
-    if (world && scenario_id == "empty" && dsm.serverConfig) {
-        std::string startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
-        spdlog::info("SimRunning: Applying startup scenario '{}'", startupScenarioId);
+    if (world && scenario_id == ScenarioId::Empty && dsm.serverConfig) {
+        ScenarioId startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
+        spdlog::info("SimRunning: Applying startup scenario '{}'", toString(startupScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
         scenario = registry.createScenario(startupScenarioId);
@@ -74,7 +75,8 @@ void SimRunning::onEnter(StateMachine& dsm)
             world->setScenario(scenario.get());
 
             spdlog::info(
-                "SimRunning: Startup scenario '{}' applied with config", startupScenarioId);
+                "SimRunning: Startup scenario '{}' applied with config",
+                toString(startupScenarioId));
         }
     }
 
@@ -376,24 +378,24 @@ void SimRunning::tick(StateMachine& dsm)
 
 State::Any SimRunning::onEvent(const ApplyScenarioCommand& cmd, StateMachine& dsm)
 {
-    spdlog::info("SimRunning: Applying scenario: {}", cmd.scenarioName);
+    spdlog::info("SimRunning: Applying scenario: {}", toString(cmd.scenarioId));
 
     auto& registry = dsm.getScenarioRegistry();
-    scenario = registry.createScenario(cmd.scenarioName);
+    scenario = registry.createScenario(cmd.scenarioId);
 
     if (!scenario) {
-        spdlog::error("Scenario not found: {}", cmd.scenarioName);
+        spdlog::error("Scenario not found: {}", toString(cmd.scenarioId));
         return std::move(*this);
     }
 
     if (world) {
         // Update scenario ID.
-        scenario_id = cmd.scenarioName;
+        scenario_id = cmd.scenarioId;
 
         // Register scenario with World for tick during advanceTime.
         world->setScenario(scenario.get());
 
-        spdlog::info("SimRunning: Scenario '{}' applied", cmd.scenarioName);
+        spdlog::info("SimRunning: Scenario '{}' applied", toString(cmd.scenarioId));
     }
 
     return std::move(*this);
@@ -604,7 +606,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     // Update scenario's config (scenario is source of truth).
     scenario->setConfig(cwc.command.config, *world);
 
-    LOG_INFO(State, "Scenario config updated for '{}'", scenario_id);
+    LOG_INFO(State, "Scenario config updated for '{}'", toString(scenario_id));
 
     cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);
@@ -616,16 +618,21 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     assert(world && "World must exist in SimRunning");
 
-    const std::string& newScenarioId = cwc.command.scenario_id;
-    LOG_INFO(State, "Switching scenario from '{}' to '{}'", scenario_id, newScenarioId);
+    ScenarioId newScenarioId = cwc.command.scenario_id;
+    LOG_INFO(
+        State,
+        "Switching scenario from '{}' to '{}'",
+        toString(scenario_id),
+        toString(newScenarioId));
 
     // Create new scenario instance from registry.
     auto& registry = dsm.getScenarioRegistry();
     auto newScenario = registry.createScenario(newScenarioId);
 
     if (!newScenario) {
-        LOG_ERROR(State, "Scenario '{}' not found in registry", newScenarioId);
-        cwc.sendResponse(Response::error(ApiError("Scenario not found: " + newScenarioId)));
+        LOG_ERROR(State, "Scenario '{}' not found in registry", toString(newScenarioId));
+        cwc.sendResponse(Response::error(
+            ApiError(std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
         return std::move(*this);
     }
 
@@ -657,7 +664,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
     // Reset step counter.
     stepCount = 0;
 
-    LOG_INFO(State, "Switched to scenario '{}' successfully", scenario_id);
+    LOG_INFO(State, "Switched to scenario '{}' successfully", toString(scenario_id));
 
     cwc.sendResponse(Response::okay({ true }));
     return std::move(*this);

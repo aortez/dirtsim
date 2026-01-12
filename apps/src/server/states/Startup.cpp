@@ -1,6 +1,7 @@
 #include "State.h"
 #include "core/ConfigLoader.h"
 #include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 
@@ -20,8 +21,8 @@ Any Startup::onEnter(StateMachine& dsm)
 
     dsm.serverConfig = std::make_unique<ServerConfig>(configResult.value());
 
-    const std::string startupScenario = getScenarioId(dsm.serverConfig->startupConfig);
-    LOG_INFO(State, "Startup scenario: {}", startupScenario);
+    ScenarioId startupScenario = getScenarioId(dsm.serverConfig->startupConfig);
+    LOG_INFO(State, "Startup scenario: {}", toString(startupScenario));
     LOG_INFO(State, "Transitioning to Idle");
 
     return Idle{};

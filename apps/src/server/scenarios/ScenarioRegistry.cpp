@@ -11,7 +11,6 @@
 #include "core/scenarios/SandboxScenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
 #include "core/scenarios/WaterEqualizationScenario.h"
-#include <algorithm>
 
 using namespace DirtSim;
 
@@ -22,107 +21,78 @@ ScenarioRegistry ScenarioRegistry::createDefault()
     // Register all scenarios with metadata and factory functions.
     // Each registration creates a lambda that produces fresh instances.
 
-    {
-        auto temp = std::make_unique<BenchmarkScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<BenchmarkScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::Benchmark, BenchmarkScenario{}.getMetadata(), []() {
+        return std::make_unique<BenchmarkScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<ClockScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<ClockScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::Clock, ClockScenario{}.getMetadata(), []() {
+        return std::make_unique<ClockScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<DamBreakScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<DamBreakScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::DamBreak, DamBreakScenario{}.getMetadata(), []() {
+        return std::make_unique<DamBreakScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<EmptyScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<EmptyScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::Empty, EmptyScenario{}.getMetadata(), []() {
+        return std::make_unique<EmptyScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<FallingDirtScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<FallingDirtScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::FallingDirt, FallingDirtScenario{}.getMetadata(), []() {
+        return std::make_unique<FallingDirtScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<GooseTestScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<GooseTestScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::GooseTest, GooseTestScenario{}.getMetadata(), []() {
+        return std::make_unique<GooseTestScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<RainingScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<RainingScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::Raining, RainingScenario{}.getMetadata(), []() {
+        return std::make_unique<RainingScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<SandboxScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<SandboxScenario>(); });
-    }
+    registry.registerScenario(ScenarioId::Sandbox, SandboxScenario{}.getMetadata(), []() {
+        return std::make_unique<SandboxScenario>();
+    });
 
-    {
-        auto temp = std::make_unique<TreeGerminationScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(
-            id, temp->getMetadata(), []() { return std::make_unique<TreeGerminationScenario>(); });
-    }
+    registry.registerScenario(
+        ScenarioId::TreeGermination, TreeGerminationScenario{}.getMetadata(), []() {
+            return std::make_unique<TreeGerminationScenario>();
+        });
 
-    {
-        auto temp = std::make_unique<WaterEqualizationScenario>();
-        std::string id = getScenarioId(temp->getConfig());
-        registry.registerScenario(id, temp->getMetadata(), []() {
+    registry.registerScenario(
+        ScenarioId::WaterEqualization, WaterEqualizationScenario{}.getMetadata(), []() {
             return std::make_unique<WaterEqualizationScenario>();
         });
-    }
 
     return registry;
 }
 
 void ScenarioRegistry::registerScenario(
-    const std::string& id, const ScenarioMetadata& metadata, ScenarioFactory factory)
+    ScenarioId id, const ScenarioMetadata& metadata, ScenarioFactory factory)
 {
     if (!factory) {
-        spdlog::error("Attempted to register null factory for scenario ID: {}", id);
+        spdlog::error("Attempted to register null factory for scenario ID: {}", toString(id));
         return;
     }
 
     if (scenarios_.find(id) != scenarios_.end()) {
-        spdlog::warn("Scenario with ID '{}' already registered, overwriting", id);
+        spdlog::warn("Scenario with ID '{}' already registered, overwriting", toString(id));
     }
 
-    spdlog::info("Registering scenario '{}' - {}", id, metadata.name);
+    spdlog::info("Registering scenario '{}' - {}", toString(id), metadata.name);
     scenarios_[id] = ScenarioEntry{ metadata, std::move(factory) };
 }
 
-std::unique_ptr<Scenario> ScenarioRegistry::createScenario(const std::string& id) const
+std::unique_ptr<Scenario> ScenarioRegistry::createScenario(ScenarioId id) const
 {
     auto it = scenarios_.find(id);
     if (it != scenarios_.end()) {
         return it->second.factory();
     }
-    spdlog::error("Scenario '{}' not found in registry", id);
+    spdlog::error("Scenario '{}' not found in registry", toString(id));
     return nullptr;
 }
 
-const ScenarioMetadata* ScenarioRegistry::getMetadata(const std::string& id) const
+const ScenarioMetadata* ScenarioRegistry::getMetadata(ScenarioId id) const
 {
     auto it = scenarios_.find(id);
     if (it != scenarios_.end()) {
@@ -131,23 +101,22 @@ const ScenarioMetadata* ScenarioRegistry::getMetadata(const std::string& id) con
     return nullptr;
 }
 
-std::vector<std::string> ScenarioRegistry::getScenarioIds() const
+std::vector<ScenarioId> ScenarioRegistry::getScenarioIds() const
 {
-    std::vector<std::string> ids;
+    std::vector<ScenarioId> ids;
     ids.reserve(scenarios_.size());
 
     for (const auto& [id, entry] : scenarios_) {
         ids.push_back(id);
     }
 
-    // Sort alphabetically for consistent UI display.
-    std::sort(ids.begin(), ids.end());
+    // std::map keeps keys sorted, so no explicit sort needed.
     return ids;
 }
 
-std::vector<std::string> ScenarioRegistry::getScenariosByCategory(const std::string& category) const
+std::vector<ScenarioId> ScenarioRegistry::getScenariosByCategory(const std::string& category) const
 {
-    std::vector<std::string> ids;
+    std::vector<ScenarioId> ids;
 
     for (const auto& [id, entry] : scenarios_) {
         if (entry.metadata.category == category) {
@@ -155,7 +124,7 @@ std::vector<std::string> ScenarioRegistry::getScenariosByCategory(const std::str
         }
     }
 
-    std::sort(ids.begin(), ids.end());
+    // std::map keeps keys sorted, so no explicit sort needed.
     return ids;
 }
 

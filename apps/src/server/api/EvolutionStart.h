@@ -4,9 +4,10 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/ScenarioId.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+
 #include <nlohmann/json.hpp>
-#include <string>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -19,7 +20,7 @@ DEFINE_API_NAME(EvolutionStart);
 struct Command {
     EvolutionConfig evolution;
     MutationConfig mutation;
-    std::string scenarioId = "TreeGermination";
+    ScenarioId scenarioId = ScenarioId::TreeGermination;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

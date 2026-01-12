@@ -4,8 +4,11 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/ScenarioId.h"
+
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -19,7 +22,8 @@ struct Command {
     double timestep = 0.016;
     int max_steps = -1;
     int max_frame_ms = 0;
-    std::string scenario_id; // Optional scenario to load (empty = use server config default).
+    std::optional<ScenarioId>
+        scenario_id; // Optional scenario (nullopt = use server config default).
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

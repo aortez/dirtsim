@@ -1,13 +1,14 @@
 #pragma once
 
 #include "StateForward.h"
+#include "core/ScenarioId.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/Event.h"
+
 #include <optional>
 #include <random>
-#include <string>
 #include <vector>
 
 namespace DirtSim {
@@ -25,7 +26,7 @@ struct Evolution {
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
-    std::string scenarioId = "TreeGermination";
+    ScenarioId scenarioId = ScenarioId::TreeGermination;
 
     // Population.
     std::vector<Genome> population;

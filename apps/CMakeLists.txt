@@ -225,6 +225,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
     src/core/RenderMessage.cpp
+    src/core/ScenarioId.cpp
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
     src/core/Timers.cpp

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "StateForward.h"
+#include "core/ScenarioId.h"
 #include "core/Vector2d.h"
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
@@ -8,6 +9,7 @@
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
+
 #include <chrono>
 #include <cstdint>
 #include <map>
@@ -35,8 +37,8 @@ struct FingerSession {
  */
 struct SimRunning {
     std::unique_ptr<World> world;
-    std::unique_ptr<Scenario> scenario; // Owns scenario instance (not singleton).
-    std::string scenario_id = "empty";  // Current scenario ID.
+    std::unique_ptr<Scenario> scenario;         // Owns scenario instance (not singleton).
+    ScenarioId scenario_id = ScenarioId::Empty; // Current scenario ID.
     uint32_t stepCount = 0;
     uint32_t targetSteps = 0;     // Steps to execute before pausing.
     double stepDurationMs = 16.0; // Physics timestep in milliseconds.

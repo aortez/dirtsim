@@ -12,9 +12,7 @@ Add documentation to files, structs, and classes but skip it for members.  Inste
 
 Documentation in headers should be sparse, with most of it focused on the file and class/struct scopes.
 
-Documenation in code is fine - comment blocks if what they are doing is not obvious.  Sometimes its ok to add obvious comment if they follow an existing local narrative flow.
-
-Describe how things work in centralized places, not in whatever random fucking piece of code you happen to be editing.
+Documenation in code - should be rare and only to explain strange things.  Instead prefer to add docs to the top of headers.
 
 Don't number sections in code "phase 3" etc, just say "next phase", as the numbers just end up being wrong and or noise in diffs.
 

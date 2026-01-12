@@ -745,7 +745,9 @@ int main(int argc, char** argv)
 
         // Human-readable success message to stderr.
         std::cerr << "✓ Binary protocol test PASSED" << std::endl;
-        std::cerr << "  Scenario: " << status.scenario_id << std::endl;
+        if (status.scenario_id.has_value()) {
+            std::cerr << "  Scenario: " << toString(status.scenario_id.value()) << std::endl;
+        }
         std::cerr << "  Grid: " << status.width << "x" << status.height << std::endl;
         std::cerr << "  Timestep: " << status.timestep << std::endl;
 

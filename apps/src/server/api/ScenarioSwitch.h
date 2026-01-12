@@ -4,7 +4,8 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include <string>
+#include "core/ScenarioId.h"
+
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -15,7 +16,7 @@ namespace ScenarioSwitch {
 DEFINE_API_NAME(ScenarioSwitch);
 
 struct Command {
-    std::string scenario_id;
+    ScenarioId scenario_id;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Command);

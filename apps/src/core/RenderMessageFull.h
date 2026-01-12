@@ -2,7 +2,7 @@
 
 #include "RenderMessage.h"
 #include "ScenarioConfig.h"
-#include <string>
+
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -19,7 +19,7 @@ struct RenderMessageFull {
     RenderMessage render_data;
 
     // Scenario metadata (sent alongside render data).
-    std::string scenario_id = "empty";
+    ScenarioId scenario_id = ScenarioId::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
 
     using serialize = zpp::bits::members<3>;

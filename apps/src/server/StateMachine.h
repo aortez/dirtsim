@@ -95,7 +95,7 @@ public:
     void broadcastRenderMessage(
         const WorldData& data,
         const std::vector<OrganismId>& organism_grid,
-        const std::string& scenario_id,
+        ScenarioId scenario_id,
         const ScenarioConfig& scenario_config);
 
     void broadcastCommand(const std::string& messageType);
