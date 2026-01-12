@@ -647,15 +647,17 @@ void WorldLightCalculator::applySpotLight(
                 continue;
             }
 
-            if (!isInSpotCone(
-                    light.position,
-                    light.direction,
-                    light.arc_width,
-                    Vector2d{ static_cast<double>(x), static_cast<double>(y) })) {
+            const float angular_factor = getSpotAngularFactor(
+                light.position,
+                light.direction,
+                light.arc_width,
+                light.focus,
+                Vector2d{ static_cast<double>(x), static_cast<double>(y) });
+            if (angular_factor <= 0.0f) {
                 continue;
             }
 
-            const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+            const float falloff = angular_factor / (1.0f + dist * dist * light.attenuation);
             const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
             data.colors.at(x, y) += received * falloff;
         }
@@ -666,19 +668,24 @@ void WorldLightCalculator::applyRotatingLight(
     const RotatingLight& light, World& world, const GridOfCells& grid)
 {
     applySpotLight(
-        SpotLight{ light.position,
-                   light.color,
-                   light.intensity,
-                   light.radius,
-                   light.attenuation,
-                   light.direction,
-                   light.arc_width },
+        SpotLight{ .position = light.position,
+                   .color = light.color,
+                   .intensity = light.intensity,
+                   .radius = light.radius,
+                   .attenuation = light.attenuation,
+                   .direction = light.direction,
+                   .arc_width = light.arc_width,
+                   .focus = light.focus },
         world,
         grid);
 }
 
-bool WorldLightCalculator::isInSpotCone(
-    const Vector2d& light_pos, float direction, float arc_width, const Vector2d& target_pos) const
+float WorldLightCalculator::getSpotAngularFactor(
+    const Vector2d& light_pos,
+    float direction,
+    float arc_width,
+    float focus,
+    const Vector2d& target_pos) const
 {
     const Vector2d to_target = target_pos - light_pos;
     const float target_angle = std::atan2(to_target.y, to_target.x);
@@ -691,7 +698,16 @@ bool WorldLightCalculator::isInSpotCone(
         angle_diff += 2.0f * static_cast<float>(M_PI);
     }
 
-    return std::abs(angle_diff) <= arc_width / 2.0f;
+    const float half_arc = arc_width / 2.0f;
+    const float abs_diff = std::abs(angle_diff);
+    if (abs_diff > half_arc) {
+        return 0.0f;
+    }
+
+    // Normalized angle: 0 at center, 1 at edge.
+    const float norm_angle = abs_diff / half_arc;
+    // focus=0 gives uniform, higher values concentrate toward center.
+    return std::pow(1.0f - norm_angle, focus);
 }
 
 void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& grid)

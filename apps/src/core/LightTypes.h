@@ -35,6 +35,7 @@ struct SpotLight {
     float attenuation = 0.1f;
     float direction = 0.0f;
     float arc_width = 1.0f;
+    float focus = 0.0f;
 };
 
 /**
@@ -51,6 +52,7 @@ struct RotatingLight {
     float attenuation = 0.1f;
     float direction = 0.0f;
     float arc_width = 1.0f;
+    float focus = 0.0f;
     float rotation_speed = 0.0f;
 };
 

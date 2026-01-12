@@ -56,10 +56,11 @@ private:
     void applySpotLight(const SpotLight& light, World& world, const GridOfCells& grid);
     void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
     void clearLight(World& world);
-    bool isInSpotCone(
+    float getSpotAngularFactor(
         const Vector2d& light_pos,
         float direction,
         float arc_width,
+        float focus,
         const Vector2d& target_pos) const;
     void storeRawLight(World& world);
     ColorNames::RgbF traceRay(
