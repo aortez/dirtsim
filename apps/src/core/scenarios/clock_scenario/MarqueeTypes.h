@@ -47,11 +47,6 @@ struct HorizontalScrollState {
     double visible_width = 0.0; // Width of visible area.
     double speed = 100.0;       // Scroll speed in units per second.
     bool scrolling_out = true;  // True = scrolling out left, false = scrolling in from right.
-
-    // Layout parameters (stored at start).
-    int digit_width = 0;
-    int digit_gap = 0;
-    int colon_width = 0;
 };
 
 /**
@@ -76,12 +71,7 @@ struct VerticalSlideState {
     std::string new_time_str;                // Current time string.
     double speed = 2.0;                      // Animation speed (progress per second).
     bool active = false;                     // True while animation is in progress.
-
-    // Layout parameters (stored at start).
-    int digit_width = 0;
-    int digit_gap = 0;
-    int digit_height = 0;
-    int colon_width = 0;
+    int digit_height = 0;                    // Needed for Y animation calculations.
 };
 
 using MarqueeEffectState = std::variant<HorizontalScrollState, VerticalSlideState>;
@@ -104,26 +94,21 @@ void startHorizontalScroll(
     const std::string& content,
     double visible_width,
     double speed,
-    int digit_width,
-    int digit_gap,
-    int colon_width);
+    const std::function<int(const std::string&)>& getWidth);
 
 // Update the horizontal scroll effect and return the frame to render.
 MarqueeFrame updateHorizontalScroll(
-    HorizontalScrollState& state, const std::string& content, double deltaTime);
+    HorizontalScrollState& state,
+    const std::string& content,
+    double deltaTime,
+    const std::function<int(const std::string&)>& getWidth);
 
 // ============================================================================
 // Vertical Slide Effect Functions
 // ============================================================================
 
 // Initialize vertical slide state with layout parameters.
-void initVerticalSlide(
-    VerticalSlideState& state,
-    double speed,
-    int digit_width,
-    int digit_gap,
-    int digit_height,
-    int colon_width);
+void initVerticalSlide(VerticalSlideState& state, double speed, int digit_height);
 
 // Check if time changed and start a new slide animation if needed.
 // Returns true if a new animation was started.
@@ -132,6 +117,9 @@ bool checkAndStartSlide(
 
 // Update the vertical slide animation and return the frame to render.
 // Returns a frame with digits at their animated Y positions.
-MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime);
+MarqueeFrame updateVerticalSlide(
+    VerticalSlideState& state,
+    double deltaTime,
+    const std::function<int(const std::string&)>& getWidth);
 
 } // namespace DirtSim

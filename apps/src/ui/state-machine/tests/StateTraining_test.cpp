@@ -85,8 +85,60 @@ TEST_F(StateTrainingTest, HasCorrectStateName)
     EXPECT_STREQ(trainingState.name(), "Training");
 }
 
-// TODO: Add more tests as we implement Training features:
-// - EvolutionProgress updates state
-// - Stop button transitions to StartMenu
-// - Pause/Resume behavior
-// - ServerDisconnected transitions to Disconnected
+/**
+ * @brief Test that EvolutionProgress event updates Training state.
+ */
+TEST_F(StateTrainingTest, EvolutionProgressUpdatesState)
+{
+    // Setup: Create Training state.
+    Training trainingState;
+
+    // Setup: Create EvolutionProgress event.
+    EvolutionProgressReceivedEvent evt;
+    evt.progress.generation = 5;
+    evt.progress.maxGenerations = 100;
+    evt.progress.currentEval = 10;
+    evt.progress.populationSize = 50;
+    evt.progress.bestFitnessThisGen = 2.5;
+    evt.progress.bestFitnessAllTime = 3.0;
+    evt.progress.averageFitness = 1.5;
+
+    // Execute: Send event to Training state.
+    State::Any result = trainingState.onEvent(evt, *stateMachine);
+
+    // Verify: State did not transition (nullopt means stay).
+    EXPECT_FALSE(result.getVariant().index() != 6)
+        << "Training + EvolutionProgress should not transition";
+
+    // Verify: Progress was captured.
+    EXPECT_EQ(trainingState.progress.generation, 5);
+    EXPECT_EQ(trainingState.progress.maxGenerations, 100);
+    EXPECT_EQ(trainingState.progress.currentEval, 10);
+    EXPECT_EQ(trainingState.progress.populationSize, 50);
+    EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessThisGen, 2.5);
+    EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessAllTime, 3.0);
+    EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
+}
+
+/**
+ * @brief Test that ServerDisconnected transitions to Disconnected.
+ */
+TEST_F(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
+{
+    // Setup: Create Training state.
+    Training trainingState;
+
+    // Setup: Create disconnect event.
+    ServerDisconnectedEvent evt{ "Connection lost" };
+
+    // Execute: Send event to Training state.
+    State::Any newState = trainingState.onEvent(evt, *stateMachine);
+
+    // Verify: State transitioned to Disconnected.
+    ASSERT_TRUE(std::holds_alternative<Disconnected>(newState.getVariant()))
+        << "Training + ServerDisconnected should transition to Disconnected";
+}
+
+// TODO: Add tests requiring mock WebSocket:
+// - onEnter sends EvolutionStart to server
+// - Stop button sends EvolutionStop and transitions to StartMenu

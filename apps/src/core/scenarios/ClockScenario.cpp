@@ -5,7 +5,6 @@
 #include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
 #include "core/LightManager.h"
-#include "core/MaterialMove.h"
 #include "core/MaterialType.h"
 #include "core/PhysicsSettings.h"
 #include "core/PointLight.h"
@@ -72,6 +71,8 @@ ClockScenario::ClockScenario(ClockEventConfigs event_configs)
 
     recalculateDimensions();
 }
+
+ClockScenario::~ClockScenario() = default;
 
 bool ClockScenario::isEventActive(ClockEventType type) const
 {
@@ -220,7 +221,7 @@ int ClockScenario::getColonPadding() const
     return ClockFonts::SEGMENT7_COLON_PADDING;
 }
 
-void ClockScenario::ensureFontSamplerInitialized()
+void ClockScenario::ensureFontSamplerInitialized() const
 {
     // Check if we need to create or recreate the sampler for a different font.
     bool needs_sampler_fonts =
@@ -278,12 +279,27 @@ void ClockScenario::ensureFontSamplerInitialized()
     }
 }
 
-const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int digit)
+const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int digit) const
 {
     ensureFontSamplerInitialized();
 
     char c = static_cast<char>('0' + digit);
     return font_sampler_->getCachedPatternTrimmed(c);
+}
+
+const CharacterMetrics& ClockScenario::getMetrics() const
+{
+    // Recreate metrics if font changed.
+    if (metrics_cache_ && metrics_cache_font_ != config_.font) {
+        metrics_cache_.reset();
+    }
+
+    if (!metrics_cache_) {
+        metrics_cache_ = std::make_unique<CharacterMetrics>(config_.font);
+        metrics_cache_font_ = config_.font;
+    }
+
+    return *metrics_cache_;
 }
 
 void ClockScenario::recalculateDimensions()
@@ -764,44 +780,13 @@ void ClockScenario::drawCharacterBinary(
         return;
     }
 
-    // Colon has special rendering (two dots at 1/3 and 2/3 height).
-    if (utf8Char == ":") {
-        int dh = getDigitHeight();
-        int cw = getColonWidth();
+    // Determine character dimensions based on type.
+    int width = (utf8Char == ":") ? getColonWidth() : getDigitWidth();
+    int height = getDigitHeight();
 
-        int dot1_y = start_y + dh / 3;
-        int dot2_y = start_y + (2 * dh) / 3;
-
-        for (int dx = 0; dx < cw; ++dx) {
-            int x = start_x + dx;
-            if (x < 0 || x >= world.getData().width) {
-                continue;
-            }
-
-            // For large font, draw 2x2 dots; otherwise single pixels.
-            int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
-
-            for (int dy = 0; dy < dot_height; ++dy) {
-                int y1 = dot1_y + dy;
-                int y2 = dot2_y + dy;
-
-                if (y1 >= 0 && y1 < world.getData().height) {
-                    placeDigitPixel(world, x, y1, config_.digitMaterial);
-                }
-                if (y2 >= 0 && y2 < world.getData().height) {
-                    placeDigitPixel(world, x, y2, config_.digitMaterial);
-                }
-            }
-        }
-        return;
-    }
-
-    // Standard character rendering using pixel patterns.
-    int dw = getDigitWidth();
-    int dh = getDigitHeight();
-
-    for (int row = 0; row < dh; ++row) {
-        for (int col = 0; col < dw; ++col) {
+    // Render character using pixel patterns.
+    for (int row = 0; row < height; ++row) {
+        for (int col = 0; col < width; ++col) {
             int x = start_x + col;
             int y = start_y + row;
 
@@ -818,6 +803,30 @@ void ClockScenario::drawCharacterBinary(
 
 bool ClockScenario::getCharacterPixel(const std::string& utf8Char, int row, int col) const
 {
+    // Handle colon - two dots at 1/3 and 2/3 height.
+    if (utf8Char == ":") {
+        int dh = getDigitHeight();
+        int cw = getColonWidth();
+
+        // Check if column is within colon width.
+        if (col >= cw) {
+            return false;
+        }
+
+        // Calculate dot positions.
+        int dot1_row = dh / 3;
+        int dot2_row = (2 * dh) / 3;
+
+        // For large font, draw 2x2 dots; otherwise single pixels.
+        int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
+
+        // Check if row matches either dot position.
+        bool is_dot1 = (row >= dot1_row && row < dot1_row + dot_height);
+        bool is_dot2 = (row >= dot2_row && row < dot2_row + dot_height);
+
+        return is_dot1 || is_dot2;
+    }
+
     // Handle digits 0-9.
     if (utf8Char.size() == 1 && utf8Char[0] >= '0' && utf8Char[0] <= '9') {
         int digit = utf8Char[0] - '0';
@@ -827,9 +836,7 @@ bool ClockScenario::getCharacterPixel(const std::string& utf8Char, int row, int 
                 return ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
 
             case Config::ClockFont::Montserrat24: {
-                // Use const_cast since getSampledDigitPattern may initialize cache.
-                auto* self = const_cast<ClockScenario*>(this);
-                const auto& pattern = self->getSampledDigitPattern(digit);
+                const auto& pattern = getSampledDigitPattern(digit);
                 if (row < static_cast<int>(pattern.size())
                     && col < static_cast<int>(pattern[row].size())) {
                     return pattern[row][col];
@@ -918,28 +925,20 @@ void ClockScenario::drawTimeString(World& world, const std::string& time_str)
     // Clear previous digits.
     clearDigits(world);
 
-    // Create width function for layout calculations.
-    CharacterMetrics metrics(config_.font);
+    // Use layoutString for proper UTF-8 handling and positioning.
+    const CharacterMetrics& metrics = getMetrics();
     auto getWidth = metrics.widthFunction();
 
-    // Calculate total width and centered position.
     int total_width = calculateStringWidth(time_str, getWidth);
     int dh = metrics.getHeight();
     int start_x = (world.getData().width - total_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
-    int cursor_x = start_x;
-
-    // Draw each character in the string.
-    for (size_t i = 0; i < time_str.size(); ++i) {
-        std::string charStr(1, time_str[i]);
-        int charWidth = getWidth(charStr);
-
-        // Draw non-space characters.
-        if (charStr != " ") {
-            drawCharacter(world, charStr, cursor_x, start_y);
-        }
-        cursor_x += charWidth;
+    // Layout and draw characters.
+    auto placements = layoutString(time_str, getWidth);
+    for (const auto& placement : placements) {
+        int x = start_x + static_cast<int>(placement.x);
+        drawCharacter(world, placement.text, x, start_y);
     }
 }
 
@@ -1186,10 +1185,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         initVerticalSlide(
             slide_event_state.slide_state,
             event_configs_.digit_slide.animation_speed,
-            getDigitWidth(),
-            getDigitGap(),
-            getDigitHeight(),
-            getColonWidth());
+            getDigitHeight());
         // Initialize with current time so the next change triggers animation.
         slide_event_state.slide_state.new_time_str = getCurrentTimeString();
         event.state = slide_event_state;
@@ -1202,14 +1198,13 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         MarqueeEventState marquee_state;
         std::string time_str = getCurrentTimeString();
         double visible_width = static_cast<double>(world.getData().width);
+        const CharacterMetrics& metrics = getMetrics();
         startHorizontalScroll(
             marquee_state.scroll_state,
             time_str,
             visible_width,
             event_configs_.marquee.scroll_speed,
-            getDigitWidth(),
-            getDigitGap(),
-            getColonWidth());
+            metrics.widthFunction());
         event.state = marquee_state;
         config_.marqueeEnabled = true; // Sync config flag.
         spdlog::info(
@@ -1342,14 +1337,14 @@ void ClockScenario::updateDigitSlideEvent(
 
     // Update animation and render if active.
     if (state.slide_state.active) {
-        MarqueeFrame frame = updateVerticalSlide(state.slide_state, deltaTime);
+        const CharacterMetrics& metrics = getMetrics();
+        auto getWidth = metrics.widthFunction();
+        MarqueeFrame frame = updateVerticalSlide(state.slide_state, deltaTime, getWidth);
 
         // Clear previous digits.
         clearDigits(world);
 
         // Get font dimensions.
-        CharacterMetrics metrics(config_.font);
-        auto getWidth = metrics.widthFunction();
         int dh = metrics.getHeight();
 
         // Calculate centering (same as drawTimeString).
@@ -1393,14 +1388,14 @@ void ClockScenario::updateMarqueeEvent(
     World& world, MarqueeEventState& state, double& remaining_time, double deltaTime)
 {
     std::string time_str = getCurrentTimeString();
-    MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime);
+    const CharacterMetrics& metrics = getMetrics();
+    auto getWidth = metrics.widthFunction();
+    MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime, getWidth);
 
     // Clear previous digits.
     clearDigits(world);
 
     // Get font dimensions.
-    CharacterMetrics metrics(config_.font);
-    auto getWidth = metrics.widthFunction();
     int dh = metrics.getHeight();
 
     // Calculate centering (same as drawTimeString).

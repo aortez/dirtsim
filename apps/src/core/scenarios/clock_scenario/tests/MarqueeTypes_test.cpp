@@ -126,6 +126,19 @@ TEST(MarqueeTypesTest, LayoutString_AllDigits)
     }
 }
 
+TEST(MarqueeTypesTest, LayoutString_Utf8MultiByteEmoji)
+{
+    // Test UTF-8 multi-byte character handling with emoji.
+    // "🌞1" contains a 4-byte emoji followed by ASCII '1'.
+    auto placements = layoutString("🌞1", makeTestWidthFunc(10, 2, 5));
+
+    ASSERT_EQ(placements.size(), 2u);
+    EXPECT_EQ(placements[0].text, "🌞"); // 4-byte UTF-8 sequence.
+    EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
+    EXPECT_EQ(placements[1].text, "1");
+    EXPECT_DOUBLE_EQ(placements[1].x, 10.0); // After emoji width.
+}
+
 // =============================================================================
 // calculateStringWidth Tests
 // =============================================================================
@@ -174,6 +187,13 @@ TEST(MarqueeTypesTest, CalculateWidth_OnlySpaces)
     EXPECT_EQ(width, 6); // 3 gaps of 2 each.
 }
 
+TEST(MarqueeTypesTest, CalculateWidth_Utf8MultiByteEmoji)
+{
+    // "🌞1" = emoji (10) + digit (10) = 20.
+    int width = calculateStringWidth("🌞1", makeTestWidthFunc(10, 2, 5));
+    EXPECT_EQ(width, 20);
+}
+
 // =============================================================================
 // HorizontalScroll Tests
 // =============================================================================
@@ -181,15 +201,13 @@ TEST(MarqueeTypesTest, CalculateWidth_OnlySpaces)
 TEST(MarqueeTypesTest, HorizontalScroll_StartInitializesState)
 {
     HorizontalScrollState state;
-    startHorizontalScroll(state, "12:34", 100.0, 50.0, 10, 2, 5);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    startHorizontalScroll(state, "12:34", 100.0, 50.0, getWidth);
 
     EXPECT_DOUBLE_EQ(state.viewport_x, 0.0);
     EXPECT_DOUBLE_EQ(state.visible_width, 100.0);
     EXPECT_DOUBLE_EQ(state.speed, 50.0);
     EXPECT_TRUE(state.scrolling_out);
-    EXPECT_EQ(state.digit_width, 10);
-    EXPECT_EQ(state.digit_gap, 2);
-    EXPECT_EQ(state.colon_width, 5);
     // Content width: 10 + 10 + 5 + 10 + 10 = 45.
     EXPECT_DOUBLE_EQ(state.content_width, 45.0);
 }
@@ -197,9 +215,10 @@ TEST(MarqueeTypesTest, HorizontalScroll_StartInitializesState)
 TEST(MarqueeTypesTest, HorizontalScroll_UpdateAdvancesViewport)
 {
     HorizontalScrollState state;
-    startHorizontalScroll(state, "12", 100.0, 50.0, 10, 2, 5);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    startHorizontalScroll(state, "12", 100.0, 50.0, getWidth);
 
-    auto frame = updateHorizontalScroll(state, "12", 0.1);
+    auto frame = updateHorizontalScroll(state, "12", 0.1, getWidth);
 
     // After 0.1s at 50 units/s, viewport should advance 5 units.
     EXPECT_DOUBLE_EQ(state.viewport_x, 5.0);
@@ -211,11 +230,12 @@ TEST(MarqueeTypesTest, HorizontalScroll_UpdateAdvancesViewport)
 TEST(MarqueeTypesTest, HorizontalScroll_TransitionsToScrollingIn)
 {
     HorizontalScrollState state;
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
     // Content "12" = 10 + 10 = 20 width. Speed 100, so 0.2s to scroll out.
-    startHorizontalScroll(state, "12", 50.0, 100.0, 10, 2, 5);
+    startHorizontalScroll(state, "12", 50.0, 100.0, getWidth);
 
     // After 0.25s, viewport_x would be 25, which exceeds content_width (20).
-    auto frame = updateHorizontalScroll(state, "12", 0.25);
+    auto frame = updateHorizontalScroll(state, "12", 0.25, getWidth);
 
     EXPECT_FALSE(state.scrolling_out);
     // Should teleport to -visible_width.
@@ -226,15 +246,16 @@ TEST(MarqueeTypesTest, HorizontalScroll_TransitionsToScrollingIn)
 TEST(MarqueeTypesTest, HorizontalScroll_FinishesWhenBackToZero)
 {
     HorizontalScrollState state;
-    startHorizontalScroll(state, "12", 50.0, 100.0, 10, 2, 5);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    startHorizontalScroll(state, "12", 50.0, 100.0, getWidth);
 
     // Scroll out phase.
-    updateHorizontalScroll(state, "12", 0.25);
+    updateHorizontalScroll(state, "12", 0.25, getWidth);
     EXPECT_FALSE(state.scrolling_out);
     EXPECT_DOUBLE_EQ(state.viewport_x, -50.0);
 
     // Scroll in phase: need to go from -50 to 0 at speed 100, so 0.5s.
-    auto frame = updateHorizontalScroll(state, "12", 0.5);
+    auto frame = updateHorizontalScroll(state, "12", 0.5, getWidth);
 
     EXPECT_DOUBLE_EQ(state.viewport_x, 0.0);
     EXPECT_TRUE(frame.finished);
@@ -243,9 +264,10 @@ TEST(MarqueeTypesTest, HorizontalScroll_FinishesWhenBackToZero)
 TEST(MarqueeTypesTest, HorizontalScroll_FrameContainsDigits)
 {
     HorizontalScrollState state;
-    startHorizontalScroll(state, "12", 100.0, 50.0, 10, 2, 5);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    startHorizontalScroll(state, "12", 100.0, 50.0, getWidth);
 
-    auto frame = updateHorizontalScroll(state, "12", 0.0);
+    auto frame = updateHorizontalScroll(state, "12", 0.0, getWidth);
 
     ASSERT_EQ(frame.placements.size(), 2u);
     EXPECT_EQ(frame.placements[0].text, "1");
@@ -255,14 +277,16 @@ TEST(MarqueeTypesTest, HorizontalScroll_FrameContainsDigits)
 TEST(MarqueeTypesTest, HorizontalScroll_ClampsToZeroOnFinish)
 {
     HorizontalScrollState state;
-    startHorizontalScroll(state, "1", 10.0, 100.0, 5, 1, 1);
+    auto getWidth = makeTestWidthFunc(5, 1, 1);
+    startHorizontalScroll(state, "1", 10.0, 100.0, getWidth);
 
     // Force into scroll-in phase.
-    updateHorizontalScroll(state, "1", 0.1); // Passes content_width (5), teleports to -10.
+    updateHorizontalScroll(
+        state, "1", 0.1, getWidth); // Passes content_width (5), teleports to -10.
     EXPECT_FALSE(state.scrolling_out);
 
     // Overshoot: 0.2s at 100 = 20 units, from -10 would be +10, but should clamp to 0.
-    auto frame = updateHorizontalScroll(state, "1", 0.2);
+    auto frame = updateHorizontalScroll(state, "1", 0.2, getWidth);
 
     EXPECT_DOUBLE_EQ(state.viewport_x, 0.0);
     EXPECT_DOUBLE_EQ(frame.viewportX, 0.0);
@@ -276,13 +300,10 @@ TEST(MarqueeTypesTest, HorizontalScroll_ClampsToZeroOnFinish)
 TEST(MarqueeTypesTest, VerticalSlide_InitializesState)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     EXPECT_DOUBLE_EQ(state.speed, 2.0);
-    EXPECT_EQ(state.digit_width, 10);
-    EXPECT_EQ(state.digit_gap, 2);
     EXPECT_EQ(state.digit_height, 15);
-    EXPECT_EQ(state.colon_width, 5);
     EXPECT_FALSE(state.active);
     EXPECT_TRUE(state.changing_digits.empty());
 }
@@ -290,7 +311,7 @@ TEST(MarqueeTypesTest, VerticalSlide_InitializesState)
 TEST(MarqueeTypesTest, VerticalSlide_NoChangeDoesNotStartAnimation)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 4");
 
@@ -301,7 +322,7 @@ TEST(MarqueeTypesTest, VerticalSlide_NoChangeDoesNotStartAnimation)
 TEST(MarqueeTypesTest, VerticalSlide_ChangeStartsAnimation)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
 
@@ -313,7 +334,7 @@ TEST(MarqueeTypesTest, VerticalSlide_ChangeStartsAnimation)
 TEST(MarqueeTypesTest, VerticalSlide_TracksCorrectChangingDigits)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     // Change from "1 2 : 3 4" to "1 2 : 4 5" (two digits change).
     bool started = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 4 5");
@@ -339,7 +360,7 @@ TEST(MarqueeTypesTest, VerticalSlide_TracksCorrectChangingDigits)
 TEST(MarqueeTypesTest, VerticalSlide_UpdateAdvancesProgress)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
     ASSERT_TRUE(state.active);
@@ -347,7 +368,8 @@ TEST(MarqueeTypesTest, VerticalSlide_UpdateAdvancesProgress)
     EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 0.0);
 
     // Update with 0.25s at speed 2.0 = 0.5 progress.
-    auto frame = updateVerticalSlide(state, 0.25);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    auto frame = updateVerticalSlide(state, 0.25, getWidth);
 
     EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 0.5);
     EXPECT_FALSE(frame.finished);
@@ -357,12 +379,13 @@ TEST(MarqueeTypesTest, VerticalSlide_UpdateAdvancesProgress)
 TEST(MarqueeTypesTest, VerticalSlide_CompletesWhenProgressReachesOne)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
 
     // Update with 0.6s at speed 2.0 = 1.2 progress (clamped to 1.0).
-    auto frame = updateVerticalSlide(state, 0.6);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    auto frame = updateVerticalSlide(state, 0.6, getWidth);
 
     EXPECT_DOUBLE_EQ(state.changing_digits[0].progress, 1.0);
     EXPECT_TRUE(frame.finished);
@@ -372,7 +395,7 @@ TEST(MarqueeTypesTest, VerticalSlide_CompletesWhenProgressReachesOne)
 TEST(MarqueeTypesTest, VerticalSlide_DoesNotInterruptOngoingAnimation)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     // Start first animation.
     bool started1 = checkAndStartSlide(state, "1 2 : 3 4", "1 2 : 3 5");
@@ -391,12 +414,13 @@ TEST(MarqueeTypesTest, VerticalSlide_DoesNotInterruptOngoingAnimation)
 TEST(MarqueeTypesTest, VerticalSlide_FrameContainsStaticAndAnimatingDigits)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     // "1 2" -> "1 3" (only second digit changes).
     checkAndStartSlide(state, "1 2", "1 3");
 
-    auto frame = updateVerticalSlide(state, 0.0);
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
+    auto frame = updateVerticalSlide(state, 0.0, getWidth);
 
     // Should contain: static '1', animating '2' (old) and '3' (new).
     // Total: 3 placements.
@@ -415,14 +439,15 @@ TEST(MarqueeTypesTest, VerticalSlide_FrameContainsStaticAndAnimatingDigits)
 TEST(MarqueeTypesTest, VerticalSlide_AnimatingDigitsHaveOffsetY)
 {
     VerticalSlideState state;
-    initVerticalSlide(state, 2.0, 10, 2, 15, 5);
+    initVerticalSlide(state, 2.0, 15);
 
     checkAndStartSlide(state, "1 2", "1 3");
 
+    auto getWidth = makeTestWidthFunc(10, 2, 5);
     // At progress 0.5, old digit should be halfway down, new digit halfway in.
-    updateVerticalSlide(state, 0.25); // 0.5 progress.
+    updateVerticalSlide(state, 0.25, getWidth); // 0.5 progress.
 
-    auto frame = updateVerticalSlide(state, 0.0); // Don't advance, just get frame.
+    auto frame = updateVerticalSlide(state, 0.0, getWidth); // Don't advance, just get frame.
 
     // Look for the animating digits.
     bool found_old_at_offset = false;

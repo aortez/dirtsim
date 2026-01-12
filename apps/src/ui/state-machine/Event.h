@@ -17,6 +17,7 @@
 #include "api/WebRtcCandidate.h"
 #include "core/PhysicsSettings.h"
 #include "core/api/UiUpdateEvent.h"
+#include "server/api/EvolutionProgress.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -105,11 +106,26 @@ struct TrainButtonClickedEvent {
 };
 
 /**
+ * @brief User clicked Stop button in Training state.
+ */
+struct StopButtonClickedEvent {
+    static constexpr const char* name() { return "StopButtonClickedEvent"; }
+};
+
+/**
  * @brief Physics settings received from server.
  */
 struct PhysicsSettingsReceivedEvent {
     PhysicsSettings settings;
     static constexpr const char* name() { return "PhysicsSettingsReceivedEvent"; }
+};
+
+/**
+ * @brief Evolution progress received from server (broadcast during training).
+ */
+struct EvolutionProgressReceivedEvent {
+    Api::EvolutionProgress progress;
+    static constexpr const char* name() { return "EvolutionProgressReceivedEvent"; }
 };
 
 // =================================================================
@@ -128,11 +144,13 @@ using Event = std::variant<
     ServerConnectedEvent,
     ServerDisconnectedEvent,
     StartButtonClickedEvent,
+    StopButtonClickedEvent,
     TrainButtonClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates
     DirtSim::UiUpdateEvent,
+    EvolutionProgressReceivedEvent,
     PhysicsSettingsReceivedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)

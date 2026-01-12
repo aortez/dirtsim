@@ -5,21 +5,74 @@
 
 namespace DirtSim {
 
+namespace {
+
+/**
+ * Extracts the next UTF-8 character from a string.
+ *
+ * Returns the character as a string and advances the index.
+ * Handles 1-4 byte UTF-8 sequences correctly.
+ */
+std::string extractUtf8Char(const std::string& str, size_t& index)
+{
+    if (index >= str.size()) {
+        return "";
+    }
+
+    unsigned char firstByte = static_cast<unsigned char>(str[index]);
+    size_t numBytes = 1;
+
+    // Determine UTF-8 sequence length from first byte.
+    if ((firstByte & 0x80) == 0) {
+        // 1-byte sequence (0xxxxxxx).
+        numBytes = 1;
+    }
+    else if ((firstByte & 0xE0) == 0xC0) {
+        // 2-byte sequence (110xxxxx).
+        numBytes = 2;
+    }
+    else if ((firstByte & 0xF0) == 0xE0) {
+        // 3-byte sequence (1110xxxx).
+        numBytes = 3;
+    }
+    else if ((firstByte & 0xF8) == 0xF0) {
+        // 4-byte sequence (11110xxx).
+        numBytes = 4;
+    }
+    else {
+        // Invalid UTF-8 start byte - treat as single byte.
+        numBytes = 1;
+    }
+
+    // Extract character (bounded by string length).
+    size_t endIndex = std::min(index + numBytes, str.size());
+    std::string result = str.substr(index, endIndex - index);
+    index = endIndex;
+
+    return result;
+}
+
+} // namespace
+
 std::vector<CharacterPlacement> layoutString(
     const std::string& content, const std::function<int(const std::string&)>& getWidth)
 {
     std::vector<CharacterPlacement> placements;
     double x = 0.0;
 
-    // Iterate through content character by character.
-    // For now, assumes single-byte characters. UTF-8 multi-byte support can be added later.
-    for (size_t i = 0; i < content.size(); ++i) {
-        std::string charStr(1, content[i]);
-        int charWidth = getWidth(charStr);
+    // Iterate through UTF-8 characters.
+    size_t i = 0;
+    while (i < content.size()) {
+        std::string utf8Char = extractUtf8Char(content, i);
+        if (utf8Char.empty()) {
+            break;
+        }
+
+        int charWidth = getWidth(utf8Char);
 
         // Spaces advance position but aren't drawn.
-        if (charStr != " ") {
-            placements.push_back({ .text = charStr, .x = x, .y = 0.0 });
+        if (utf8Char != " ") {
+            placements.push_back({ .text = utf8Char, .x = x, .y = 0.0 });
         }
         x += charWidth;
     }
@@ -32,9 +85,13 @@ int calculateStringWidth(
 {
     int width = 0;
 
-    for (size_t i = 0; i < content.size(); ++i) {
-        std::string charStr(1, content[i]);
-        width += getWidth(charStr);
+    size_t i = 0;
+    while (i < content.size()) {
+        std::string utf8Char = extractUtf8Char(content, i);
+        if (utf8Char.empty()) {
+            break;
+        }
+        width += getWidth(utf8Char);
     }
 
     return width;
@@ -44,47 +101,25 @@ int calculateStringWidth(
 // Effect Functions
 // ============================================================================
 
-namespace {
-
-// Creates a width function from stored dimension parameters.
-std::function<int(const std::string&)> makeWidthFunction(
-    int digitWidth, int digitGap, int colonWidth)
-{
-    return [=](const std::string& utf8Char) -> int {
-        if (utf8Char == ":") {
-            return colonWidth;
-        }
-        if (utf8Char == " ") {
-            return digitGap;
-        }
-        return digitWidth;
-    };
-}
-
-} // namespace
-
 void startHorizontalScroll(
     HorizontalScrollState& state,
     const std::string& content,
     double visible_width,
     double speed,
-    int digit_width,
-    int digit_gap,
-    int colon_width)
+    const std::function<int(const std::string&)>& getWidth)
 {
     state.viewport_x = 0.0;
-    auto getWidth = makeWidthFunction(digit_width, digit_gap, colon_width);
     state.content_width = calculateStringWidth(content, getWidth);
     state.visible_width = visible_width;
     state.speed = speed;
     state.scrolling_out = true;
-    state.digit_width = digit_width;
-    state.digit_gap = digit_gap;
-    state.colon_width = colon_width;
 }
 
 MarqueeFrame updateHorizontalScroll(
-    HorizontalScrollState& state, const std::string& content, double deltaTime)
+    HorizontalScrollState& state,
+    const std::string& content,
+    double deltaTime,
+    const std::function<int(const std::string&)>& getWidth)
 {
     // Advance viewport.
     state.viewport_x += state.speed * deltaTime;
@@ -105,7 +140,6 @@ MarqueeFrame updateHorizontalScroll(
     }
 
     MarqueeFrame frame;
-    auto getWidth = makeWidthFunction(state.digit_width, state.digit_gap, state.colon_width);
     frame.placements = layoutString(content, getWidth);
     frame.viewportX = state.viewport_x;
     frame.finished = !state.scrolling_out && state.viewport_x >= 0.0;
@@ -117,19 +151,10 @@ MarqueeFrame updateHorizontalScroll(
 // Vertical Slide Effect Functions
 // ============================================================================
 
-void initVerticalSlide(
-    VerticalSlideState& state,
-    double speed,
-    int digit_width,
-    int digit_gap,
-    int digit_height,
-    int colon_width)
+void initVerticalSlide(VerticalSlideState& state, double speed, int digit_height)
 {
     state.speed = speed;
-    state.digit_width = digit_width;
-    state.digit_gap = digit_gap;
     state.digit_height = digit_height;
-    state.colon_width = colon_width;
     state.active = false;
     state.changing_digits.clear();
     state.old_time_str.clear();
@@ -177,10 +202,12 @@ bool checkAndStartSlide(
     return true;
 }
 
-MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
+MarqueeFrame updateVerticalSlide(
+    VerticalSlideState& state,
+    double deltaTime,
+    const std::function<int(const std::string&)>& getWidth)
 {
     MarqueeFrame frame;
-    auto getWidth = makeWidthFunction(state.digit_width, state.digit_gap, state.colon_width);
 
     if (!state.active) {
         // Not animating - just return the current time string normally.

@@ -1,10 +1,9 @@
 #pragma once
 
-#include "core/ReflectSerializer.h"
 #include "core/StrongType.h"
 
 #include <cstdint>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 
 namespace DirtSim {
@@ -25,14 +24,7 @@ struct GenomeMetadata {
     std::string notes;             // Optional user notes.
 };
 
-inline void to_json(nlohmann::json& j, const GenomeMetadata& meta)
-{
-    j = ReflectSerializer::to_json(meta);
-}
-
-inline void from_json(const nlohmann::json& j, GenomeMetadata& meta)
-{
-    meta = ReflectSerializer::from_json<GenomeMetadata>(j);
-}
+void to_json(nlohmann::json& j, const GenomeMetadata& meta);
+void from_json(const nlohmann::json& j, GenomeMetadata& meta);
 
 } // namespace DirtSim

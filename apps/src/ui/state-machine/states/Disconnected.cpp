@@ -6,7 +6,9 @@
 #include "core/ScenarioConfig.h"
 #include "core/WorldData.h"
 #include "core/api/UiUpdateEvent.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/EvolutionProgress.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -229,11 +231,28 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 
     // Setup callback for server-pushed commands (e.g., DrawDebugToggle from gamepad).
     wsService.onServerCommand(
-        [&sm](const std::string& messageType, const std::vector<std::byte>& /*payload*/) {
+        [&sm](const std::string& messageType, const std::vector<std::byte>& payload) {
             if (messageType == "DrawDebugToggle") {
                 LOG_INFO(Network, "Received DrawDebugToggle command from server");
                 UiApi::DrawDebugToggle::Cwc cwc;
                 sm.queueEvent(std::move(cwc));
+            }
+            else if (messageType == "EvolutionProgress") {
+                // Deserialize evolution progress broadcast.
+                try {
+                    auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                    LOG_DEBUG(
+                        Network,
+                        "Received EvolutionProgress: gen {}/{}, eval {}/{}",
+                        progress.generation,
+                        progress.maxGenerations,
+                        progress.currentEval,
+                        progress.populationSize);
+                    sm.queueEvent(EvolutionProgressReceivedEvent{ progress });
+                }
+                catch (const std::exception& e) {
+                    LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
+                }
             }
             else {
                 LOG_WARN(Network, "Unknown server command: {}", messageType);

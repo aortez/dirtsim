@@ -21,6 +21,7 @@
 
 namespace DirtSim {
 
+class CharacterMetrics;
 class World;
 struct WorldData;
 
@@ -61,6 +62,7 @@ public:
     };
 
     explicit ClockScenario(ClockEventConfigs event_configs = {});
+    ~ClockScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -109,10 +111,16 @@ private:
 
     // FontSampler for LVGL-based fonts (lazy-initialized).
     // Recreated if config_.font changes.
-    std::unique_ptr<FontSampler> font_sampler_;
-    Config::ClockFont font_sampler_font_ = Config::ClockFont::DotMatrix; // Track sampler's font.
-    void ensureFontSamplerInitialized();
-    const std::vector<std::vector<bool>>& getSampledDigitPattern(int digit);
+    // Mutable to allow lazy initialization in const methods.
+    mutable std::unique_ptr<FontSampler> font_sampler_;
+    mutable Config::ClockFont font_sampler_font_ = Config::ClockFont::DotMatrix;
+    void ensureFontSamplerInitialized() const;
+    const std::vector<std::vector<bool>>& getSampledDigitPattern(int digit) const;
+
+    // CharacterMetrics cache (lazy-initialized, recreated if font changes).
+    mutable std::unique_ptr<CharacterMetrics> metrics_cache_;
+    mutable Config::ClockFont metrics_cache_font_ = Config::ClockFont::DotMatrix;
+    const CharacterMetrics& getMetrics() const;
 
     // Font dimension helpers.
     int getDigitWidth() const;

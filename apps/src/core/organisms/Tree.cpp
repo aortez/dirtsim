@@ -3,6 +3,7 @@
 #include "TreeCommandProcessor.h"
 #include "components/RigidBodyComponent.h"
 #include "core/Cell.h"
+#include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -81,7 +82,7 @@ void Tree::executeCommand(World& world)
     CommandExecutionResult result = processor->execute(*this, world, *current_command_);
 
     if (!result.succeeded()) {
-        spdlog::warn("Tree {}: Command failed - {}", id_, result.message);
+        LOG_INFO(Brain, "Tree {}: {}", id_, result.message);
     }
 }
 

@@ -10,7 +10,9 @@
 #include "FingerDown.h"
 #include "FingerMove.h"
 #include "FingerUp.h"
+#include "GenomeGet.h"
 #include "GenomeGetBest.h"
+#include "GenomeList.h"
 #include "GravitySet.h"
 #include "PeersGet.h"
 #include "PerfStatsGet.h"
@@ -65,7 +67,9 @@ using ApiCommand = std::variant<
     Api::FingerDown::Command,
     Api::FingerMove::Command,
     Api::FingerUp::Command,
+    Api::GenomeGet::Command,
     Api::GenomeGetBest::Command,
+    Api::GenomeList::Command,
     Api::GravitySet::Command,
     Api::PeersGet::Command,
     Api::PerfStatsGet::Command,

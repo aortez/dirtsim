@@ -6,6 +6,7 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/CellSet.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/SimStop.h"
 #include "ui/InteractionMode.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/SimPlayground.h"
@@ -241,9 +242,25 @@ State::Any SimRunning::onEvent(const UiApi::SimPause::Cwc& cwc, StateMachine& /*
     return Paused{ std::move(worldData) };
 }
 
-State::Any SimRunning::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
+State::Any SimRunning::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm)
 {
-    LOG_INFO(State, "SimStop command received, returning to start menu");
+    LOG_INFO(State, "SimStop command received, stopping server simulation");
+
+    // Tell the server to stop the simulation.
+    auto& wsService = sm.getWebSocketService();
+    if (wsService.isConnected()) {
+        Api::SimStop::Command cmd;
+        const auto result = wsService.sendCommand<Api::SimStop::OkayType>(cmd, 2000);
+        if (result.isError()) {
+            LOG_ERROR(State, "Failed to send SimStop to server: {}", result.errorValue());
+        }
+        else if (result.value().isError()) {
+            LOG_ERROR(State, "Server SimStop error: {}", result.value().errorValue().message);
+        }
+        else {
+            LOG_INFO(State, "Server simulation stopped");
+        }
+    }
 
     cwc.sendResponse(UiApi::SimStop::Response::okay({ true }));
 

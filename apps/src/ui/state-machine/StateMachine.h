@@ -73,6 +73,7 @@ public:
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
 
     Network::WebSocketService& getWebSocketService();
+    bool hasWebSocketService() const { return wsService_ != nullptr; }
 
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }
 

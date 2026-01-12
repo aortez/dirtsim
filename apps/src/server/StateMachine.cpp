@@ -335,8 +335,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::FingerMove::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::FingerUp::Cwc>(
         [this](Api::FingerUp::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::GenomeGet::Cwc>(
+        [this](Api::GenomeGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeGetBest::Cwc>(
         [this](Api::GenomeGetBest::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::GenomeList::Cwc>(
+        [this](Api::GenomeList::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
@@ -611,6 +615,44 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         cwc.sendResponse(Api::GenomeGetBest::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle GenomeGet globally (read-only, works in any state).
+    if (std::holds_alternative<Api::GenomeGet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::GenomeGet::Cwc>(event.getVariant());
+        auto& repo = getGenomeRepository();
+
+        Api::GenomeGet::Okay response;
+
+        if (auto genome = repo.get(cwc.command.id)) {
+            response.found = true;
+            response.id = cwc.command.id;
+            response.weights = genome->weights;
+
+            if (auto meta = repo.getMetadata(cwc.command.id)) {
+                response.metadata = *meta;
+            }
+        }
+        else {
+            response.found = false;
+        }
+
+        cwc.sendResponse(Api::GenomeGet::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle GenomeList globally (read-only, works in any state).
+    if (std::holds_alternative<Api::GenomeList::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::GenomeList::Cwc>(event.getVariant());
+        auto& repo = getGenomeRepository();
+
+        Api::GenomeList::Okay response;
+        for (const auto& [id, meta] : repo.list()) {
+            response.genomes.push_back(Api::GenomeList::GenomeEntry{ .id = id, .metadata = meta });
+        }
+
+        cwc.sendResponse(Api::GenomeList::Response::okay(std::move(response)));
         return;
     }
 
