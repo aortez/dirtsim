@@ -79,12 +79,12 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
 {
     // Cache data reference to avoid Pimpl indirection in inner loop.
     WorldData& data = world.getData();
-    const uint32_t width = data.width;
-    const uint32_t height = data.height;
+    const int width = data.width;
+    const int height = data.height;
 
     // Iterate over all cells.
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
             Cell& cellA = data.at(x, y);
 
             // Skip empty cells, walls, and fluids.
@@ -102,14 +102,14 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     bool is_diagonal = (dx != 0 && dy != 0);
                     if (is_diagonal) continue;
 
-                    int nx = static_cast<int>(x) + dx;
-                    int ny = static_cast<int>(y) + dy;
+                    int nx = x + dx;
+                    int ny = y + dy;
 
                     // Only process each pair once (avoid double-counting).
-                    if (nx < static_cast<int>(x)) continue;
-                    if (nx == static_cast<int>(x) && ny <= static_cast<int>(y)) continue;
+                    if (nx < x) continue;
+                    if (nx == x && ny <= y) continue;
 
-                    if (!isValidCell(world, nx, ny)) continue;
+                    if (!data.inBounds(nx, ny)) continue;
 
                     const Cell& cellB = data.at(nx, ny);
 
@@ -191,13 +191,14 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
 {
     std::vector<ContactInterface> contacts;
 
-    const uint32_t width = world.getData().width;
-    const uint32_t height = world.getData().height;
+    const auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
 
     // Iterate over all cells.
-    for (uint32_t y = 0; y < height; ++y) {
-        for (uint32_t x = 0; x < width; ++x) {
-            const Cell& cellA = getCellAt(world, x, y);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            const Cell& cellA = data.at(x, y);
 
             // Skip empty cells, walls, and fluids.
             // Fluids don't have Coulomb friction - they have viscosity instead.
@@ -217,17 +218,17 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
                     const bool is_diagonal = (dx != 0 && dy != 0);
                     if (is_diagonal) continue;
 
-                    const int nx = static_cast<int>(x) + dx;
-                    const int ny = static_cast<int>(y) + dy;
+                    const int nx = x + dx;
+                    const int ny = y + dy;
 
                     // Only process each pair once (avoid double-counting).
                     // Process only if neighbor is to the right or below.
-                    if (nx < static_cast<int>(x)) continue;
-                    if (nx == static_cast<int>(x) && ny <= static_cast<int>(y)) continue;
+                    if (nx < x) continue;
+                    if (nx == x && ny <= y) continue;
 
-                    if (!isValidCell(world, nx, ny)) continue;
+                    if (!data.inBounds(nx, ny)) continue;
 
-                    const Cell& cellB = getCellAt(world, nx, ny);
+                    const Cell& cellB = data.at(nx, ny);
 
                     // Skip if neighbor is empty or fluid.
                     // Walls can provide friction - their friction coefficients control the amount.

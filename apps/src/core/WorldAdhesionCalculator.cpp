@@ -7,16 +7,17 @@
 using namespace DirtSim;
 
 WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesionForce(
-    const World& world, uint32_t x, uint32_t y) const
+    const World& world, int x, int y) const
 {
-    const Cell& cell = getCellAt(world, x, y);
+    const auto& data = world.getData();
+    const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
         return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
     }
 
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
     Vector2f total_force(0.0f, 0.0f);
-    uint32_t contact_count = 0;
+    int contact_count = 0;
     MaterialType strongest_attractor = MaterialType::AIR;
     float max_adhesion = 0.0f;
 
@@ -25,11 +26,11 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
         for (int dy = -1; dy <= 1; dy++) {
             if (dx == 0 && dy == 0) continue;
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
-            if (isValidCell(world, nx, ny)) {
-                const Cell& neighbor = getCellAt(world, nx, ny);
+            if (data.inBounds(nx, ny)) {
+                const Cell& neighbor = data.at(nx, ny);
 
                 // Skip same material and AIR neighbors (AIR has adhesion=0.0).
                 if (neighbor.material_type == cell.material_type
@@ -70,9 +71,10 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 }
 
 WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesionForce(
-    const World& world, uint32_t x, uint32_t y, const MaterialNeighborhood& mat_n) const
+    const World& world, int x, int y, const MaterialNeighborhood& mat_n) const
 {
-    const Cell& cell = getCellAt(world, x, y);
+    const auto& data = world.getData();
+    const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
         return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
     }
@@ -80,7 +82,7 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
     const MaterialType my_material = mat_n.getCenterMaterial();
     Vector2f total_force(0.0f, 0.0f);
-    uint32_t contact_count = 0;
+    int contact_count = 0;
     MaterialType strongest_attractor = MaterialType::AIR;
     float max_adhesion = 0.0f;
 
@@ -89,11 +91,11 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
         for (int dy = -1; dy <= 1; dy++) {
             if (dx == 0 && dy == 0) continue;
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
             // Explicit bounds check - skip out-of-bounds neighbors.
-            if (!world.getData().inBounds(nx, ny)) {
+            if (!data.inBounds(nx, ny)) {
                 continue;
             }
 
@@ -106,7 +108,7 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 
             // At this point: different material type, guaranteed non-empty due to AIR conversion.
             // Fetch cell only when we know we need it.
-            const Cell& neighbor = getCellAt(world, nx, ny);
+            const Cell& neighbor = data.at(nx, ny);
 
             // Calculate mutual adhesion (geometric mean).
             const MaterialProperties& neighbor_props = getMaterialProperties(neighbor_material);

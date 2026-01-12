@@ -12,9 +12,10 @@
 using namespace DirtSim;
 
 WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesionForce(
-    const World& world, uint32_t x, uint32_t y) const
+    const World& world, int x, int y) const
 {
-    const Cell& cell = getCellAt(world, x, y);
+    const auto& data = world.getData();
+    const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
         return { 0.0f, 0 };
@@ -22,7 +23,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 
     const MaterialProperties& props = getMaterialProperties(cell.material_type);
     float material_cohesion = props.cohesion;
-    uint32_t connected_neighbors = 0;
+    int connected_neighbors = 0;
 
     // Check 4 cardinal neighbors only.
     for (int dx = -1; dx <= 1; dx++) {
@@ -30,11 +31,11 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
             if (dx == 0 && dy == 0) continue; // Skip self.
             if (dx != 0 && dy != 0) continue; // Skip diagonals - only cardinal directions.
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
-            if (isValidCell(world, nx, ny)) {
-                const Cell& neighbor = getCellAt(world, nx, ny);
+            if (data.inBounds(nx, ny)) {
+                const Cell& neighbor = data.at(nx, ny);
 
                 // Count same-material neighbors.
                 if (neighbor.material_type == cell.material_type
@@ -46,7 +47,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
     }
 
     // Check for metal neighbors that provide structural support.
-    uint32_t metal_neighbors = 0;
+    int metal_neighbors = 0;
     if (cell.material_type == MaterialType::METAL) {
         // Count metal neighbors for structural support.
         for (int dx = -1; dx <= 1; dx++) {
@@ -54,11 +55,11 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
                 if (dx == 0 && dy == 0) continue; // Skip self.
                 if (dx != 0 && dy != 0) continue; // Skip diagonals - only cardinal directions.
 
-                int nx = static_cast<int>(x) + dx;
-                int ny = static_cast<int>(y) + dy;
+                int nx = x + dx;
+                int ny = y + dy;
 
-                if (isValidCell(world, nx, ny)) {
-                    const Cell& neighbor = getCellAt(world, nx, ny);
+                if (data.inBounds(nx, ny)) {
+                    const Cell& neighbor = data.at(nx, ny);
                     if (neighbor.material_type == MaterialType::METAL
                         && neighbor.fill_ratio > 0.5f) {
                         metal_neighbors++;
@@ -88,12 +89,10 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 }
 
 WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMCohesionForce(
-    const World& world,
-    uint32_t x,
-    uint32_t y,
-    uint32_t com_cohesion_range,
-    const GridOfCells* grid) const
+    const World& world, int x, int y, int com_cohesion_range, const GridOfCells* grid) const
 {
+    const auto& data = world.getData();
+
     // Use cache-optimized path if available.
     if (GridOfCells::USE_CACHE && grid) {
         const MaterialNeighborhood mat_n = grid->getMaterialNeighborhood(x, y);
@@ -101,7 +100,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     }
 
     // Fallback to direct cell access.
-    const Cell& cell = getCellAt(world, x, y);
+    const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
         return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
@@ -124,20 +123,18 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
 
     Vector2f neighbor_center_sum(0.0f, 0.0f);
     float total_weight = 0.0f;
-    uint32_t connection_count = 0;
+    int connection_count = 0;
 
-    int range = static_cast<int>(com_cohesion_range);
-
-    for (int dx = -range; dx <= range; dx++) {
-        for (int dy = -range; dy <= range; dy++) {
+    for (int dx = -com_cohesion_range; dx <= com_cohesion_range; dx++) {
+        for (int dy = -com_cohesion_range; dy <= com_cohesion_range; dy++) {
             if (dx == 0 && dy == 0) continue;
             if (dx != 0 && dy != 0) continue; // Skip diagonals - only cardinal directions.
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
-            if (isValidCell(world, nx, ny)) {
-                const Cell& neighbor = getCellAt(world, nx, ny);
+            if (data.inBounds(nx, ny)) {
+                const Cell& neighbor = data.at(nx, ny);
 
                 // Count same-material neighbors.
                 if (neighbor.material_type == cell.material_type
@@ -168,7 +165,8 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             Vector2f clustering_direction = to_neighbors * (1.0f / distance);
 
             float distance_factor = 1.0f / (distance + 0.1f);
-            float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+            float max_connections =
+                static_cast<float>((2 * com_cohesion_range + 1) * (2 * com_cohesion_range + 1) - 1);
 
             // Mass-based factor: Uses total neighbor fill ratios (not just count).
             // This makes larger/fuller clusters pull harder than sparse ones.
@@ -201,7 +199,8 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         centering_direction = com * (-1.0f / com_offset);
 
         // Scale by neighbor connectivity - more neighbors = stronger centering.
-        float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+        float max_connections =
+            static_cast<float>((2 * com_cohesion_range + 1) * (2 * com_cohesion_range + 1) - 1);
         float connection_factor = static_cast<float>(connection_count) / max_connections;
 
         float centering_magnitude =
@@ -283,12 +282,13 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
 
 WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMCohesionForceCached(
     const World& world,
-    uint32_t x,
-    uint32_t y,
-    uint32_t com_cohesion_range,
+    int x,
+    int y,
+    int com_cohesion_range,
     const MaterialNeighborhood& mat_n) const
 {
-    const Cell& cell = getCellAt(world, x, y);
+    const auto& data = world.getData();
+    const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
     if (cell.material_type == MaterialType::AIR) {
         return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
@@ -313,20 +313,18 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
 
     Vector2f neighbor_center_sum(0.0f, 0.0f);
     float total_weight = 0.0f;
-    uint32_t connection_count = 0;
+    int connection_count = 0;
 
-    int range = static_cast<int>(com_cohesion_range);
-
-    for (int dx = -range; dx <= range; dx++) {
-        for (int dy = -range; dy <= range; dy++) {
+    for (int dx = -com_cohesion_range; dx <= com_cohesion_range; dx++) {
+        for (int dy = -com_cohesion_range; dy <= com_cohesion_range; dy++) {
             if (dx == 0 && dy == 0) continue;
             if (dx != 0 && dy != 0) continue; // Cardinals only.
 
-            int nx = static_cast<int>(x) + dx;
-            int ny = static_cast<int>(y) + dy;
+            int nx = x + dx;
+            int ny = y + dy;
 
             // Explicit bounds check - skip out-of-bounds neighbors.
-            if (!world.getData().inBounds(nx, ny)) {
+            if (!data.inBounds(nx, ny)) {
                 continue;
             }
 
@@ -338,7 +336,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
 
             // At this point: same material, guaranteed non-empty.
             // Fetch cell for physics calculations.
-            const Cell& neighbor = getCellAt(world, nx, ny);
+            const Cell& neighbor = data.at(nx, ny);
 
             Vector2f neighbor_world_pos(
                 static_cast<float>(nx) + neighbor.com.x, static_cast<float>(ny) + neighbor.com.y);
@@ -363,8 +361,8 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
             Vector2f clustering_direction = to_neighbors * (1.0f / distance);
 
             float distance_factor = 1.0f / (distance + 0.1f);
-            int range = static_cast<int>(com_cohesion_range);
-            float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+            float max_connections =
+                static_cast<float>((2 * com_cohesion_range + 1) * (2 * com_cohesion_range + 1) - 1);
 
             float mass_factor = total_weight / max_connections;
             float clustering_magnitude =
@@ -392,8 +390,8 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
         centering_direction = com * (-1.0f / com_offset);
 
         // Scale by neighbor connectivity - more neighbors = stronger centering.
-        int range = static_cast<int>(com_cohesion_range);
-        float max_connections = (2 * range + 1) * (2 * range + 1) - 1;
+        float max_connections =
+            static_cast<float>((2 * com_cohesion_range + 1) * (2 * com_cohesion_range + 1) - 1);
         float connection_factor = static_cast<float>(connection_count) / max_connections;
 
         float centering_magnitude =

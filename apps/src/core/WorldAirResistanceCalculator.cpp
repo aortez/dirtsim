@@ -2,15 +2,16 @@
 #include "Cell.h"
 #include "MaterialType.h"
 #include "World.h"
+#include "WorldData.h"
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 using namespace DirtSim;
 
 Vector2f WorldAirResistanceCalculator::calculateAirResistance(
-    const World& world, uint32_t x, uint32_t y, float strength) const
+    const World& world, int x, int y, float strength) const
 {
-    const Cell& cell = getCellAt(world, x, y);
+    const Cell& cell = world.getData().at(x, y);
 
     // No air resistance for empty or wall cells.
     if (cell.isEmpty() || cell.isWall()) {

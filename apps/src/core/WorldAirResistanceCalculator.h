@@ -2,7 +2,6 @@
 
 #include "Vector2.h"
 #include "WorldCalculatorBase.h"
-#include <cstdint>
 
 namespace DirtSim {
 
@@ -41,10 +40,7 @@ public:
      * @return Air resistance force vector opposing motion.
      */
     Vector2f calculateAirResistance(
-        const World& world,
-        uint32_t x,
-        uint32_t y,
-        float strength = DEFAULT_AIR_RESISTANCE_SCALAR) const;
+        const World& world, int x, int y, float strength = DEFAULT_AIR_RESISTANCE_SCALAR) const;
 };
 
 } // namespace DirtSim

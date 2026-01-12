@@ -2,7 +2,6 @@
 
 #include "Vector2.h"
 #include "WorldCalculatorBase.h"
-#include <cstdint>
 
 namespace DirtSim {
 
@@ -25,15 +24,15 @@ public:
 
     // Force calculation structures for cohesion physics (moved from World).
     struct CohesionForce {
-        float resistance_magnitude;   // Strength of cohesive resistance.
-        uint32_t connected_neighbors; // Number of same-material neighbors.
+        float resistance_magnitude; // Strength of cohesive resistance.
+        int connected_neighbors;    // Number of same-material neighbors.
     };
 
     struct COMCohesionForce {
         Vector2f force_direction;     // Net force direction toward neighbors.
         float force_magnitude;        // Strength of cohesive pull.
         Vector2f center_of_neighbors; // Average position of connected neighbors.
-        uint32_t active_connections;  // Number of neighbors contributing.
+        int active_connections;       // Number of neighbors contributing.
         // NEW fields for mass-based calculations:
         float total_neighbor_mass;  // Sum of all neighbor masses.
         float cell_mass;            // Mass of current cell.
@@ -44,22 +43,22 @@ public:
     // Cohesion-specific constants.
     static constexpr float MIN_SUPPORT_FACTOR = 0.1f; // Minimum cohesion when no support.
 
-    CohesionForce calculateCohesionForce(const World& world, uint32_t x, uint32_t y) const;
+    CohesionForce calculateCohesionForce(const World& world, int x, int y) const;
 
     COMCohesionForce calculateCOMCohesionForce(
         const World& world,
-        uint32_t x,
-        uint32_t y,
-        uint32_t com_cohesion_range,
+        int x,
+        int y,
+        int com_cohesion_range,
         const GridOfCells* grid = nullptr) const;
 
 private:
     // Cache-optimized version using MaterialNeighborhood.
     COMCohesionForce calculateCOMCohesionForceCached(
         const World& world,
-        uint32_t x,
-        uint32_t y,
-        uint32_t com_cohesion_range,
+        int x,
+        int y,
+        int com_cohesion_range,
         const MaterialNeighborhood& mat_n) const;
 };
 

@@ -23,8 +23,9 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
     const World& world, Vector2i start, OrganismId organism_id) const
 {
     RigidStructure result;
+    const auto& data = world.getData();
 
-    if (!isValidCell(world, start.x, start.y)) {
+    if (!data.inBounds(start.x, start.y)) {
         return result;
     }
 
@@ -57,7 +58,7 @@ RigidStructure WorldRigidBodyCalculator::findConnectedStructure(
         for (const auto& dir : directions) {
             Vector2i neighbor = { pos.x + dir.x, pos.y + dir.y };
 
-            if (!isValidCell(world, neighbor.x, neighbor.y)) {
+            if (!data.inBounds(neighbor.x, neighbor.y)) {
                 continue;
             }
             if (visited.count(neighbor)) {

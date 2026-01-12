@@ -25,18 +25,18 @@ public:
         Vector2f force_direction;     // Direction of adhesive pull/resistance.
         float force_magnitude;        // Strength of adhesive force.
         MaterialType target_material; // Strongest interacting material.
-        uint32_t contact_points;      // Number of contact interfaces.
+        int contact_points;           // Number of contact interfaces.
     };
 
     // Default constructor - calculator is stateless.
     WorldAdhesionCalculator() = default;
 
     // Main calculation method.
-    AdhesionForce calculateAdhesionForce(const World& world, uint32_t x, uint32_t y) const;
+    AdhesionForce calculateAdhesionForce(const World& world, int x, int y) const;
 
     // Cache-optimized version using MaterialNeighborhood.
     AdhesionForce calculateAdhesionForce(
-        const World& world, uint32_t x, uint32_t y, const MaterialNeighborhood& mat_n) const;
+        const World& world, int x, int y, const MaterialNeighborhood& mat_n) const;
 
     // Adhesion parameters - NOTE: Now uses World.physicsSettings, these are legacy wrappers.
     // These methods are kept for backward compatibility but delegate to World.physicsSettings.

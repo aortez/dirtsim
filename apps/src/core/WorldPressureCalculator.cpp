@@ -83,13 +83,13 @@ void WorldPressureCalculator::processBlockedTransfers(
         bool apply_to_target = false;
 
         // Check if target cell is valid for pressure transmission.
-        if (isValidCell(world, transfer.toX, transfer.toY)) {
+        if (data.inBounds(transfer.toX, transfer.toY)) {
             Cell& target_cell = data.at(transfer.toX, transfer.toY);
 
             // Check target cell type.
             if (target_cell.isWall()) {
                 // Walls reflect pressure back to source.
-                if (isValidCell(world, transfer.fromX, transfer.fromY)) {
+                if (data.inBounds(transfer.fromX, transfer.fromY)) {
                     Cell& source_cell = data.at(transfer.fromX, transfer.fromY);
 
                     // Get material-specific dynamic weight for source.
@@ -288,7 +288,7 @@ Vector2d WorldPressureCalculator::calculateGravityGradient(
         int nx = static_cast<int>(x) + dx;
         int ny = static_cast<int>(y) + dy;
 
-        if (isValidCell(world, nx, ny)) {
+        if (data.inBounds(nx, ny)) {
             const Cell& neighbor = data.at(nx, ny);
 
             // Skip walls - they don't contribute to gravity gradient.
@@ -386,7 +386,7 @@ void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, floa
             int below_y = y + 1;
 
             bool would_be_blocked = false;
-            if (isValidCell(world, below_x, below_y)) {
+            if (data.inBounds(below_x, below_y)) {
                 const Cell& cell_below = data.at(below_x, below_y);
                 // Consider blocked if cell below is nearly full or is a wall.
                 if (cell_below.fill_ratio > 0.8 || cell_below.isWall()) {

@@ -263,11 +263,12 @@ double WorldCollisionCalculator::calculateMaterialMass(const Cell& cell) const
 bool WorldCollisionCalculator::checkFloatingParticleCollision(
     const World& world, int cellX, int cellY, const Cell& floating_particle) const
 {
-    if (!isValidCell(world, cellX, cellY)) {
+    const auto& data = world.getData();
+    if (!data.inBounds(cellX, cellY)) {
         return false;
     }
 
-    const Cell& targetCell = getCellAt(world, cellX, cellY);
+    const Cell& targetCell = data.at(cellX, cellY);
 
     // Check if there's material to collide with.
     if (!targetCell.isEmpty()) {
