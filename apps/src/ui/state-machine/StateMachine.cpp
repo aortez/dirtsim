@@ -21,6 +21,13 @@
 namespace DirtSim {
 namespace Ui {
 
+StateMachine::StateMachine(TestMode) : display(nullptr)
+{
+    // Minimal initialization for unit testing.
+    // No WebSocket, no UI components, no WebRTC - just the state machine core.
+    LOG_INFO(State, "StateMachine created in test mode");
+}
+
 StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());

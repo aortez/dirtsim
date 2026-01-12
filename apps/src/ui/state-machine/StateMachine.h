@@ -44,6 +44,10 @@ public:
     explicit StateMachine(_lv_display_t* display, uint16_t wsPort = 7070);
     ~StateMachine();
 
+    // Test-only constructor: creates minimal StateMachine without display or networking.
+    struct TestMode {};
+    explicit StateMachine(TestMode);
+
     void mainLoopRun();
 
     void queueEvent(const Event& event) override;

@@ -639,15 +639,15 @@ src/ui/state-machine/states/
 - Completes all generations and transitions to Idle. ✅
 - Exit command transitions to Shutdown. ✅
 
-### Phase 5: API Commands 🚧
+### Phase 5: API Commands ✅
 
 **Files:**
 - `src/server/api/EvolutionStart.h` ✅
 - `src/server/api/EvolutionPause.h` ❌ (deferred with pause/resume)
 - `src/server/api/EvolutionResume.h` ❌ (deferred with pause/resume)
 - `src/server/api/EvolutionStop.h` ✅
-- `src/server/api/GenomeList.h` ❌ (TODO)
-- `src/server/api/GenomeGet.h` ❌ (TODO)
+- `src/server/api/GenomeList.h` ✅
+- `src/server/api/GenomeGet.h` ✅
 - `src/server/api/GenomeGetBest.h` ✅
 
 **Work:**
@@ -655,34 +655,40 @@ src/ui/state-machine/states/
 - Wire into server command dispatch. ✅
 - Evolution commands route to StateEvolution. ✅
 - Genome commands access GenomeRepository (available from any state). ✅
-- GenomeGetBest implemented as global handler. ✅
+- All genome commands implemented as global handlers. ✅
 
 **Tests:**
 - Covered by StateEvolution tests. ✅
-- Additional: GenomeList/Get work from Idle state. ❌ (TODO)
 
-### Phase 6: UI StateTraining
+### Phase 6: UI StateTraining (in progress)
 
 **Files:**
-- `src/ui/state-machine/states/Training.h/cpp`
-- `src/ui/state-machine/tests/StateTraining_test.cpp` (new pattern for UI)
+- `src/ui/state-machine/states/Training.h/cpp` ✅
+- `src/ui/state-machine/tests/StateTraining_test.cpp` ✅ (3 tests)
 
 **Work:**
-- New UI state entered via "Train" from StartMenu.
-- Subscribe to EvolutionProgress broadcasts from server.
-- Render training UI:
+- New UI state entered via "Train" from StartMenu. ✅
+  - Added Train button (ActionButton style) to StartMenu center-right.
+  - Added TrainButtonClickedEvent to UI event system.
+  - StartMenu transitions to Training on button click.
+- Added StateMachine::TestMode for unit testing UI states. ✅
+- Subscribe to EvolutionProgress broadcasts from server. ❌
+- Render training UI: ❌
   - Generation progress bar.
   - Current evaluation progress bar.
   - Best fitness (this gen, all time).
   - Average fitness.
   - Mini preview of best tree (optional, can defer).
-- Controls: Pause, Resume, Stop buttons.
-- "View Best" button (pauses evolution, transitions to SimRunning with genome).
+- Controls: Pause, Resume, Stop buttons. ❌
+- "View Best" button (pauses evolution, transitions to SimRunning with genome). ❌
 
 **Tests:**
-- State transitions correctly on server events.
-- Progress display updates on EvolutionProgress.
-- Pause/Stop send correct commands.
+- State transitions correctly on server events. ✅ (3 tests)
+  - TrainButtonClicked transitions StartMenu → Training.
+  - Exit command transitions Training → Shutdown.
+  - State has correct name "Training".
+- Progress display updates on EvolutionProgress. ❌
+- Pause/Stop send correct commands. ❌
 
 ### Phase 7: Persistence
 

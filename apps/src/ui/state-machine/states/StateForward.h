@@ -14,6 +14,7 @@ struct Shutdown;
 struct SimRunning;
 struct StartMenu;
 struct Startup;
+struct Training;
 
 // Forward declaration of wrapper (definition in State.h after state includes).
 class Any;

@@ -367,11 +367,9 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
 
 State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
 {
-    LOG_INFO(State, "Train button clicked - Training state not yet implemented");
+    LOG_INFO(State, "Train button clicked, transitioning to Training");
 
-    // TODO: Transition to Training state once it exists.
-    // return Training{};
-    return std::move(*this);
+    return Training{};
 }
 
 State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)

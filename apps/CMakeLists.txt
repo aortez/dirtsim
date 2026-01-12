@@ -286,7 +286,9 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
+    src/server/api/GenomeGet.cpp
     src/server/api/GenomeGetBest.cpp
+    src/server/api/GenomeList.cpp
     src/server/api/GravitySet.cpp
     src/server/api/PeersGet.cpp
     src/server/api/PerfStatsGet.cpp
@@ -316,6 +318,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/scenarios/ScenarioRegistry.cpp
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockScenario.cpp
+    src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
@@ -368,6 +371,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/Genome.cpp
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
+    src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
     src/core/organisms/evolution/Selection.cpp
@@ -399,6 +403,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/states/SimRunning.cpp
     src/ui/state-machine/states/StartMenu.cpp
     src/ui/state-machine/states/Startup.cpp
+    src/ui/state-machine/states/Training.cpp
 
     # UI API commands.
     src/ui/state-machine/api/DrawDebugToggle.cpp
@@ -522,6 +527,7 @@ add_executable(dirtsim-tests
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
+    src/ui/state-machine/tests/StateTraining_test.cpp
     src/tests/BinaryProtocol_test.cpp
     src/tests/BresenhamLine_test.cpp
     src/tests/Buoyancy_test.cpp

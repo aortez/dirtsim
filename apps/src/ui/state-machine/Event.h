@@ -98,6 +98,13 @@ struct StartButtonClickedEvent {
 };
 
 /**
+ * @brief User clicked Train button in StartMenu.
+ */
+struct TrainButtonClickedEvent {
+    static constexpr const char* name() { return "TrainButtonClickedEvent"; }
+};
+
+/**
  * @brief Physics settings received from server.
  */
 struct PhysicsSettingsReceivedEvent {
@@ -121,6 +128,7 @@ using Event = std::variant<
     ServerConnectedEvent,
     ServerDisconnectedEvent,
     StartButtonClickedEvent,
+    TrainButtonClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates

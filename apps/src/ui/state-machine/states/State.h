@@ -10,6 +10,7 @@
 #include "StartMenu.h"
 #include "Startup.h"
 #include "StateForward.h"
+#include "Training.h"
 
 namespace DirtSim {
 namespace Ui {
@@ -23,7 +24,8 @@ namespace State {
  */
 class Any {
 public:
-    using Variant = std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup>;
+    using Variant =
+        std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup, Training>;
 
     template <typename T>
     Any(T&& state) : variant_(std::forward<T>(state))
