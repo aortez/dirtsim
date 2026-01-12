@@ -97,7 +97,7 @@ struct World::Impl {
 World::World() : World(1, 1)
 {}
 
-World::World(uint32_t width, uint32_t height)
+World::World(int width, int height)
     : cohesion_bind_force_enabled_(false),
       cohesion_bind_force_strength_(1.0),
       com_cohesion_range_(1),
@@ -109,8 +109,8 @@ World::World(uint32_t width, uint32_t height)
       rng_(std::make_unique<std::mt19937>(std::random_device{}()))
 {
     // Set dimensions (other WorldData members use defaults from struct declaration).
-    pImpl->data_.width = width;
-    pImpl->data_.height = height;
+    pImpl->data_.width = static_cast<int16_t>(width);
+    pImpl->data_.height = static_cast<int16_t>(height);
 
     spdlog::info(
         "Creating World: {}x{} grid with pure-material physics",
@@ -411,12 +411,12 @@ double World::getFrictionStrength() const
     return pImpl->physicsSettings_.friction_strength;
 }
 
-void World::setCOMCohesionRange(uint32_t range)
+void World::setCOMCohesionRange(int range)
 {
     com_cohesion_range_ = range;
 }
 
-uint32_t World::getCOMCohesionRange() const
+int World::getCOMCohesionRange() const
 {
     return com_cohesion_range_;
 }

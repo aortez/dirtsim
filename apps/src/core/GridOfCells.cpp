@@ -12,15 +12,15 @@ bool GridOfCells::USE_CACHE = true;
 bool GridOfCells::USE_OPENMP = true;
 
 GridOfCells::GridOfCells(
-    std::vector<Cell>& cells, std::vector<CellDebug>& debug_info, uint32_t width, uint32_t height)
+    std::vector<Cell>& cells, std::vector<CellDebug>& debug_info, int width, int height)
     : cells_(cells),
       debug_info_(debug_info),
       empty_cells_(width, height),
       wall_cells_(width, height),
-      empty_neighborhoods_(width * height, 0),
-      material_neighborhoods_(width * height, 0),
-      width_(width),
-      height_(height)
+      empty_neighborhoods_(static_cast<size_t>(width * height), 0),
+      material_neighborhoods_(static_cast<size_t>(width * height), 0),
+      width_(static_cast<int16_t>(width)),
+      height_(static_cast<int16_t>(height))
 {
     spdlog::debug("GridOfCells: Constructing cache ({}x{})", width, height);
     populateMaps();
@@ -32,8 +32,8 @@ GridOfCells::GridOfCells(
 void GridOfCells::populateMaps()
 {
     // Single pass over all cells to build all bitmaps.
-    for (uint32_t y = 0; y < height_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
             const Cell& cell = cells_[y * width_ + x];
 
             // Build empty cell bitmap.
@@ -53,8 +53,8 @@ void GridOfCells::buildEmptyCellMap()
 {
     // Legacy method - kept for compatibility.
     // Consider removing if not called directly.
-    for (uint32_t y = 0; y < height_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
             const Cell& cell = cells_[y * width_ + x];
 
             if (cell.isEmpty()) {
@@ -67,8 +67,8 @@ void GridOfCells::buildEmptyCellMap()
 void GridOfCells::buildWallCellMap()
 {
     // Scan all cells and mark walls in bitmap.
-    for (uint32_t y = 0; y < height_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
             const Cell& cell = cells_[y * width_ + x];
 
             if (cell.isWall()) {
@@ -81,8 +81,8 @@ void GridOfCells::buildWallCellMap()
 void GridOfCells::precomputeEmptyNeighborhoods()
 {
     // Precompute 3×3 neighborhood for every cell.
-    for (uint32_t y = 0; y < height_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
             Neighborhood3x3 n = empty_cells_.getNeighborhood3x3(x, y);
             empty_neighborhoods_[y * width_ + x] = n.data;
         }
@@ -92,20 +92,19 @@ void GridOfCells::precomputeEmptyNeighborhoods()
 void GridOfCells::precomputeMaterialNeighborhoods()
 {
     // Precompute 3×3 material neighborhood for every cell.
-    for (uint32_t y = 0; y < height_; ++y) {
-        for (uint32_t x = 0; x < width_; ++x) {
+    for (int y = 0; y < height_; ++y) {
+        for (int x = 0; x < width_; ++x) {
             uint64_t packed = 0;
 
             // Pack 9 material types (4 bits each) into uint64_t.
             for (int dy = -1; dy <= 1; ++dy) {
                 for (int dx = -1; dx <= 1; ++dx) {
                     int bit_group = (dy + 1) * 3 + (dx + 1); // 0-8
-                    int nx = static_cast<int>(x) + dx;
-                    int ny = static_cast<int>(y) + dy;
+                    int nx = x + dx;
+                    int ny = y + dy;
 
                     MaterialType mat = MaterialType::AIR; // Default for OOB.
-                    if (nx >= 0 && nx < static_cast<int>(width_) && ny >= 0
-                        && ny < static_cast<int>(height_)) {
+                    if (nx >= 0 && nx < width_ && ny >= 0 && ny < height_) {
                         const Cell& cell = cells_[ny * width_ + nx];
                         mat = cell.material_type;
                     }

@@ -19,8 +19,8 @@ void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, floa
     }
 
     // Clear friction forces from previous frame.
-    for (uint32_t y = 0; y < grid_.getHeight(); ++y) {
-        for (uint32_t x = 0; x < grid_.getWidth(); ++x) {
+    for (int y = 0; y < grid_.getHeight(); ++y) {
+        for (int x = 0; x < grid_.getWidth(); ++x) {
             grid_.debugAt(x, y).accumulated_friction_force = Vector2f{};
         }
     }

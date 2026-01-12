@@ -44,7 +44,7 @@ public:
     };
 
     World();
-    World(uint32_t width, uint32_t height);
+    World(int width, int height);
     ~World();
 
     World(const World& other) = default;
@@ -157,8 +157,8 @@ public:
     void setFrictionStrength(double strength);
     double getFrictionStrength() const;
 
-    void setCOMCohesionRange(uint32_t range);
-    uint32_t getCOMCohesionRange() const;
+    void setCOMCohesionRange(int range);
+    int getCOMCohesionRange() const;
 
     // Motion state multiplier calculation (for viscosity and other systems).
 
@@ -247,7 +247,7 @@ public:
     // NOTE: Most physics parameters now use physicsSettings as single source of truth.
     bool cohesion_bind_force_enabled_;
     double cohesion_bind_force_strength_;
-    uint32_t com_cohesion_range_;
+    int com_cohesion_range_;
     bool air_resistance_enabled_;
     double air_resistance_strength_;
     MaterialType selected_material_;

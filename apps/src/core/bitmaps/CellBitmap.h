@@ -21,38 +21,38 @@ namespace DirtSim {
  */
 class CellBitmap {
 private:
-    uint32_t grid_width_;
-    uint32_t grid_height_;
-    uint32_t blocks_x_; // Number of 8×8 blocks horizontally.
-    uint32_t blocks_y_; // Number of 8×8 blocks vertically.
+    int16_t grid_width_;
+    int16_t grid_height_;
+    int16_t blocks_x_; // Number of 8×8 blocks horizontally.
+    int16_t blocks_y_; // Number of 8×8 blocks vertically.
     std::vector<uint64_t> blocks_;
 
     static constexpr int BLOCK_SIZE = 8;
 
     // Convert cell coordinates to block index and bit index.
-    inline void cellToBlockAndBit(uint32_t x, uint32_t y, uint32_t& block_idx, int& bit_idx) const;
+    inline void cellToBlockAndBit(int x, int y, int& block_idx, int& bit_idx) const;
 
 public:
-    CellBitmap(uint32_t width, uint32_t height);
+    CellBitmap(int width, int height);
 
     // Core bit operations.
-    void set(uint32_t x, uint32_t y);
-    void clear(uint32_t x, uint32_t y);
-    bool isSet(uint32_t x, uint32_t y) const;
+    void set(int x, int y);
+    void clear(int x, int y);
+    bool isSet(int x, int y) const;
 
     // Block-level operations.
-    uint64_t getBlock(uint32_t block_x, uint32_t block_y) const;
-    bool isBlockAllSet(uint32_t block_x, uint32_t block_y) const;   // All bits = 1.
-    bool isBlockAllClear(uint32_t block_x, uint32_t block_y) const; // All bits = 0.
+    uint64_t getBlock(int block_x, int block_y) const;
+    bool isBlockAllSet(int block_x, int block_y) const;   // All bits = 1.
+    bool isBlockAllClear(int block_x, int block_y) const; // All bits = 0.
 
     // Neighborhood extraction.
-    Neighborhood3x3 getNeighborhood3x3(uint32_t x, uint32_t y) const;
+    Neighborhood3x3 getNeighborhood3x3(int x, int y) const;
 
     // Grid dimensions.
-    uint32_t getWidth() const { return grid_width_; }
-    uint32_t getHeight() const { return grid_height_; }
-    uint32_t getBlocksX() const { return blocks_x_; }
-    uint32_t getBlocksY() const { return blocks_y_; }
+    int getWidth() const { return grid_width_; }
+    int getHeight() const { return grid_height_; }
+    int getBlocksX() const { return blocks_x_; }
+    int getBlocksY() const { return blocks_y_; }
 };
 
 } // namespace DirtSim

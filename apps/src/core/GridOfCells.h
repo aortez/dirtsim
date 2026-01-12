@@ -47,8 +47,8 @@ private:
     CellBitmap wall_cells_;
     std::vector<uint64_t> empty_neighborhoods_;
     std::vector<uint64_t> material_neighborhoods_;
-    uint32_t width_;
-    uint32_t height_;
+    int16_t width_;
+    int16_t height_;
 
     void populateMaps();
     void buildEmptyCellMap();
@@ -58,56 +58,50 @@ private:
 
 public:
     GridOfCells(
-        std::vector<Cell>& cells,
-        std::vector<CellDebug>& debug_info,
-        uint32_t width,
-        uint32_t height);
+        std::vector<Cell>& cells, std::vector<CellDebug>& debug_info, int width, int height);
 
     inline const CellBitmap& emptyCells() const { return empty_cells_; }
     inline const CellBitmap& wallCells() const { return wall_cells_; }
 
-    inline EmptyNeighborhood getEmptyNeighborhood(uint32_t x, uint32_t y) const
+    inline EmptyNeighborhood getEmptyNeighborhood(int x, int y) const
     {
         return EmptyNeighborhood{ Neighborhood3x3{ empty_neighborhoods_[y * width_ + x] } };
     }
 
-    inline MaterialNeighborhood getMaterialNeighborhood(uint32_t x, uint32_t y) const
+    inline MaterialNeighborhood getMaterialNeighborhood(int x, int y) const
     {
         return MaterialNeighborhood{ material_neighborhoods_[y * width_ + x] };
     }
 
     // Debug info access.
-    inline CellDebug& debugAt(uint32_t x, uint32_t y) { return debug_info_[y * width_ + x]; }
+    inline CellDebug& debugAt(int x, int y) { return debug_info_[y * width_ + x]; }
 
-    inline const CellDebug& debugAt(uint32_t x, uint32_t y) const
-    {
-        return debug_info_[y * width_ + x];
-    }
+    inline const CellDebug& debugAt(int x, int y) const { return debug_info_[y * width_ + x]; }
 
     // Legacy cohesion resistance access (for compatibility).
-    void setCohesionResistance(uint32_t x, uint32_t y, double resistance)
+    void setCohesionResistance(int x, int y, double resistance)
     {
         debug_info_[y * width_ + x].cohesion_resistance = resistance;
     }
 
-    double getCohesionResistance(uint32_t x, uint32_t y) const
+    double getCohesionResistance(int x, int y) const
     {
         return debug_info_[y * width_ + x].cohesion_resistance;
     }
 
-    inline Cell& at(uint32_t x, uint32_t y) { return cells_[y * width_ + x]; }
+    inline Cell& at(int x, int y) { return cells_[y * width_ + x]; }
 
-    inline const Cell& at(uint32_t x, uint32_t y) const { return cells_[y * width_ + x]; }
+    inline const Cell& at(int x, int y) const { return cells_[y * width_ + x]; }
 
     inline std::vector<Cell>& getCells() { return cells_; }
 
     inline const std::vector<Cell>& getCells() const { return cells_; }
 
     // Grid dimensions.
-    inline uint32_t getWidth() const { return width_; }
-    inline uint32_t getHeight() const { return height_; }
-    inline uint32_t getBlocksX() const { return empty_cells_.getBlocksX(); }
-    inline uint32_t getBlocksY() const { return empty_cells_.getBlocksY(); }
+    inline int getWidth() const { return width_; }
+    inline int getHeight() const { return height_; }
+    inline int getBlocksX() const { return empty_cells_.getBlocksX(); }
+    inline int getBlocksY() const { return empty_cells_.getBlocksY(); }
 };
 
 } // namespace DirtSim
