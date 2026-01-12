@@ -1511,7 +1511,8 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
                        .radius = 15.0f,
                        .attenuation = 0.1f,
                        .direction = 0.0f,
-                       .arc_width = static_cast<float>(M_PI / 3.0) });
+                       .arc_width = static_cast<float>(M_PI / 3.0),
+                       .focus = 1.0f });
         duck->attachLight(std::move(flashlight), true);
         spdlog::info("ClockScenario: Attached flashlight to duck {}", state.organism_id);
     }
