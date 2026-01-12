@@ -16,6 +16,7 @@ namespace DirtSim {
 class GridOfCells;
 struct PointLight;
 class World;
+struct WorldData;
 
 /**
  * Calculates illumination across the world grid from multiple light sources:
@@ -49,7 +50,13 @@ private:
     void clearLight(World& world);
     void storeRawLight(World& world);
     ColorNames::RgbF traceRay(
-        const GridOfCells& grid, int x0, int y0, int x1, int y1, ColorNames::RgbF color) const;
+        const GridOfCells& grid,
+        const WorldData& data,
+        int x0,
+        int y0,
+        int x1,
+        int y1,
+        ColorNames::RgbF color) const;
 
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
     std::vector<ColorNames::RgbF> light_buffer_;

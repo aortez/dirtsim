@@ -119,12 +119,16 @@ void WorldLightCalculator::applyAmbient(
     const int height = data.height;
     const float falloff = config.sky_access_falloff;
 
-    // Helper to apply ambient with sky attenuation for a single material.
+    // Helper to apply ambient with sky attenuation for a single cell.
+    // Opacity scales with fill ratio - partially filled cells are more transparent.
     auto processCell =
-        [&data, &base_ambient, falloff](MaterialType mat, int x, int y, float& sky_factor) {
+        [&data, &base_ambient, falloff, width](MaterialType mat, int x, int y, float& sky_factor) {
             data.colors.at(x, y) += base_ambient * sky_factor;
-            const float opacity = getMaterialProperties(mat).light.opacity;
-            sky_factor *= (1.0f - opacity * falloff);
+            const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+            const float fill = cell.fill_ratio;
+            const float base_opacity = getMaterialProperties(mat).light.opacity;
+            const float effective_opacity = base_opacity * fill;
+            sky_factor *= (1.0f - effective_opacity * falloff);
             if (sky_factor < 0.0f) {
                 sky_factor = 0.0f;
             }
@@ -178,14 +182,25 @@ void WorldLightCalculator::applySunlight(
     const RgbF scaled_sun = toRgbF(sun_color) * intensity;
     const int width = data.width;
     const int height = data.height;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
 
-    // Helper to apply sunlight attenuation for a single material.
-    auto processCell = [&data](MaterialType mat, int x, int y, RgbF& sun) {
+    // Helper to apply sunlight attenuation for a single cell.
+    // Opacity and tinting scale with fill ratio - partially filled cells are more transparent.
+    auto processCell = [&data, &white, width](MaterialType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
         const auto& light_props = getMaterialProperties(mat).light;
-        const float transmittance = 1.0f - light_props.opacity;
+        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const float fill = cell.fill_ratio;
+
+        // Scale opacity by fill ratio - a 50% filled cell blocks 50% as much light.
+        const float effective_opacity = light_props.opacity * fill;
+        const float transmittance = 1.0f - effective_opacity;
         sun *= transmittance;
-        sun *= ColorNames::toRgbF(light_props.tint);
+
+        // Scale tinting by fill ratio - a 50% filled cell tints 50% as much.
+        const RgbF base_tint = toRgbF(light_props.tint);
+        const RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+        sun *= effective_tint;
     };
 
     // Cast sunlight from top of world downward per column.
@@ -486,7 +501,13 @@ void WorldLightCalculator::applyEmissiveOverlay(World& world)
 }
 
 ColorNames::RgbF WorldLightCalculator::traceRay(
-    const GridOfCells& grid, int x0, int y0, int x1, int y1, ColorNames::RgbF color) const
+    const GridOfCells& grid,
+    const WorldData& data,
+    int x0,
+    int y0,
+    int x1,
+    int y1,
+    ColorNames::RgbF color) const
 {
     // Bresenham's line algorithm to trace from light source to target.
     // Accumulates opacity and tinting as light passes through materials.
@@ -500,6 +521,7 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
     int y = y0;
     const int width = grid.getWidth();
     const int height = grid.getHeight();
+    const ColorNames::RgbF white{ 1.0f, 1.0f, 1.0f };
 
     // Skip the source cell itself.
     while (x != x1 || y != y1) {
@@ -523,14 +545,22 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
             return ColorNames::RgbF{};
         }
 
-        // Get material at this cell and apply opacity/tinting.
+        // Get material and fill ratio at this cell.
         const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
         const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
         const auto& light_props = getMaterialProperties(mat).light;
+        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const float fill = cell.fill_ratio;
 
-        const float transmittance = 1.0f - light_props.opacity;
+        // Scale opacity by fill ratio - partially filled cells are more transparent.
+        const float effective_opacity = light_props.opacity * fill;
+        const float transmittance = 1.0f - effective_opacity;
         color *= transmittance;
-        color *= ColorNames::toRgbF(light_props.tint);
+
+        // Scale tinting by fill ratio - partially filled cells tint less.
+        const ColorNames::RgbF base_tint = ColorNames::toRgbF(light_props.tint);
+        const ColorNames::RgbF effective_tint = ColorNames::lerp(white, base_tint, fill);
+        color *= effective_tint;
 
         // Early exit if light is fully absorbed.
         if (color.r < 0.001f && color.g < 0.001f && color.b < 0.001f) {
@@ -589,7 +619,7 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
                 const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
 
                 // Trace ray from light to cell.
-                const RgbF received = traceRay(grid, light_x, light_y, x, y, light_color);
+                const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
 
                 // Apply falloff and add to cell.
                 data.colors.at(x, y) += received * falloff;

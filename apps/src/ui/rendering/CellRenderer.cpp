@@ -644,9 +644,22 @@ void CellRenderer::renderWorldData(
                     && !is_sprite_organism;
                 if (is_material) {
                     double borderOpacityFactor = debugDraw ? 1.0 : 0.85;
-                    uint8_t borderAlpha =
-                        static_cast<uint8_t>(cell.fill_ratio * 255.0 * borderOpacityFactor);
-                    uint8_t interiorAlpha = static_cast<uint8_t>(cell.fill_ratio * 255.0 * 0.7);
+
+                    // For transparent materials (low opacity), lighting already accounts for fill
+                    // ratio. Scaling alpha here would double-penalize and make them too dark. For
+                    // opaque materials, scale alpha by fill ratio for visual consistency.
+                    const auto& material_props = cell.material();
+                    const float material_opacity = material_props.light.opacity;
+                    constexpr float TRANSPARENCY_THRESHOLD = 0.1f;
+                    const bool is_transparent = material_opacity < TRANSPARENCY_THRESHOLD;
+
+                    uint8_t borderAlpha = is_transparent
+                        ? static_cast<uint8_t>(255.0 * borderOpacityFactor)
+                        : static_cast<uint8_t>(cell.fill_ratio * 255.0 * borderOpacityFactor);
+
+                    uint8_t interiorAlpha = is_transparent
+                        ? static_cast<uint8_t>(255.0 * 0.7)
+                        : static_cast<uint8_t>(cell.fill_ratio * 255.0 * 0.7);
 
                     borderColor = (borderAlpha << 24) | (matColor.red << 16) | (matColor.green << 8)
                         | matColor.blue;
