@@ -14,6 +14,7 @@
 #include "core/GridOfCells.h"
 #include "core/LightConfig.h"
 #include "core/MaterialType.h"
+#include "core/PointLight.h"
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -346,4 +347,192 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
 
     EXPECT_GT(shaft, blocked) << "Cell in shaft should be brighter than blocked cell";
     EXPECT_GT(shaft, 0.2f) << "Cell in vertical shaft should have decent ambient";
+}
+
+// =============================================================================
+// Point Light Tests
+// =============================================================================
+
+TEST_F(WorldLightCalculatorTest, PointLightIlluminatesDarkRoom)
+{
+    World world(20, 20);
+    WorldData& data = world.getData();
+
+    // Fill with WATER so cells are visible.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Wall at top blocks all sun.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // Disable sun and ambient.
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
+
+    // Add a point light in the center.
+    PointLight torch;
+    torch.position = Vector2d{ 10.0, 10.0 };
+    torch.color = ColorNames::white();
+    torch.intensity = 1.0f;
+    torch.radius = 8.0f;
+    torch.attenuation = 0.1f;
+    world.addPointLight(torch);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Cell at light source should be bright.
+    float center_brightness = ColorNames::brightness(data.colors.at(10, 10));
+    EXPECT_GT(center_brightness, 0.5f) << "Cell at light source should be bright";
+
+    // Cell at edge of radius should be dimmer.
+    float edge_brightness = ColorNames::brightness(data.colors.at(17, 10));
+    EXPECT_LT(edge_brightness, center_brightness) << "Edge should be dimmer than center";
+    EXPECT_GT(edge_brightness, 0.01f) << "Edge should still have some light";
+
+    // Cell outside radius should be dark.
+    float outside_brightness = ColorNames::brightness(data.colors.at(1, 10));
+    EXPECT_LT(outside_brightness, 0.01f) << "Cell outside radius should be dark";
+}
+
+TEST_F(WorldLightCalculatorTest, PointLightFalloffWithDistance)
+{
+    World world(20, 10);
+    WorldData& data = world.getData();
+
+    // Fill with WATER.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Block sun.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
+
+    // Point light at left side.
+    PointLight light;
+    light.position = Vector2d{ 5.0, 5.0 };
+    light.color = ColorNames::white();
+    light.intensity = 1.0f;
+    light.radius = 15.0f;
+    light.attenuation = 0.1f;
+    world.addPointLight(light);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Measure brightness at increasing distances.
+    float dist_0 = ColorNames::brightness(data.colors.at(5, 5));
+    float dist_3 = ColorNames::brightness(data.colors.at(8, 5));
+    float dist_6 = ColorNames::brightness(data.colors.at(11, 5));
+
+    EXPECT_GT(dist_0, dist_3) << "Brightness should decrease with distance";
+    EXPECT_GT(dist_3, dist_6) << "Brightness should continue decreasing";
+}
+
+TEST_F(WorldLightCalculatorTest, PointLightBlockedByWall)
+{
+    World world(20, 10);
+    WorldData& data = world.getData();
+
+    // Fill with WATER.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Block sun.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // Vertical wall in the middle.
+    for (int y = 2; y < 8; ++y) {
+        data.at(10, y).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
+
+    // Point light on left side of wall.
+    PointLight light;
+    light.position = Vector2d{ 5.0, 5.0 };
+    light.color = ColorNames::white();
+    light.intensity = 1.0f;
+    light.radius = 15.0f;
+    light.attenuation = 0.05f;
+    world.addPointLight(light);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Cell on same side as light should be lit.
+    float same_side = ColorNames::brightness(data.colors.at(8, 5));
+    EXPECT_GT(same_side, 0.1f) << "Cell on same side as light should be lit";
+
+    // Cell behind wall should be dark (shadow).
+    float behind_wall = ColorNames::brightness(data.colors.at(12, 5));
+    EXPECT_LT(behind_wall, same_side * 0.1f) << "Cell behind wall should be in shadow";
+}
+
+TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
+{
+    World world(20, 10);
+    WorldData& data = world.getData();
+
+    // Fill with WATER.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Block sun.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
+
+    // Single light.
+    PointLight light1;
+    light1.position = Vector2d{ 5.0, 5.0 };
+    light1.color = ColorNames::white();
+    light1.intensity = 1.0f;
+    light1.radius = 10.0f;
+    light1.attenuation = 0.1f;
+    world.addPointLight(light1);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+    float one_light = ColorNames::brightness(data.colors.at(10, 5));
+
+    // Clear and add two lights.
+    world.clearPointLights();
+    world.addPointLight(light1);
+    PointLight light2;
+    light2.position = Vector2d{ 15.0, 5.0 };
+    light2.color = ColorNames::white();
+    light2.intensity = 1.0f;
+    light2.radius = 10.0f;
+    light2.attenuation = 0.1f;
+    world.addPointLight(light2);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+    float two_lights = ColorNames::brightness(data.colors.at(10, 5));
+
+    EXPECT_GT(two_lights, one_light) << "Two lights should be brighter than one";
 }

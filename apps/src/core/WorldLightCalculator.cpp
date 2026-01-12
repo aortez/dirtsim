@@ -455,6 +455,8 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
 
     int x = x0;
     int y = y0;
+    int width = grid.getWidth();
+    int height = grid.getHeight();
 
     // Skip the source cell itself.
     while (x != x1 || y != y1) {
@@ -471,6 +473,11 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
         // Stop if we've reached the target.
         if (x == x1 && y == y1) {
             break;
+        }
+
+        // Bounds check - if we step outside the grid, stop tracing.
+        if (x < 0 || x >= width || y < 0 || y >= height) {
+            return ColorNames::RgbF{};
         }
 
         // Get material at this cell and apply opacity/tinting.

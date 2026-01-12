@@ -312,12 +312,14 @@ Expose in a LightPanel or PhysicsPanel section:
 4. Add basic UI controls (sun toggle, intensity)
 5. Tune material light properties for good visuals
 
-### Phase 3: Point Lights
+### Phase 3: Point Lights (In Progress)
 
-1. Implement PointLight struct and storage in World
-2. Implement ray tracing for point lights
-3. Add API commands for adding/removing point lights
-4. Test with a few point lights
+1. ✓ Implement PointLight struct and storage in World
+2. ✓ Implement ray tracing for point lights (Bresenham with opacity/tinting)
+3. ✓ Add World::addPointLight(), clearPointLights(), getPointLights()
+4. ✓ Integrate applyPointLights() into calculate() sequence
+5. Unit tests added (need advanceTime(0) call to rebuild grid cache before testing)
+6. Add API commands for adding/removing point lights
 
 ### Phase 4: Tree Integration
 
