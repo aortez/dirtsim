@@ -302,7 +302,7 @@ void WorldCollisionCalculator::handleTransferMove(
 {
     // Single-cell organisms must not fragment.
     // Re-check target is empty at execution time (moves are shuffled).
-    Vector2i from_pos{ static_cast<int>(move.from.x), static_cast<int>(move.from.y) };
+    Vector2i from_pos{ move.from.x, move.from.y };
     OrganismId org_id = world.getOrganismManager().at(from_pos);
     if (org_id != INVALID_ORGANISM_ID && !toCell.isEmpty()) {
         spdlog::info(
@@ -735,17 +735,16 @@ double WorldCollisionCalculator::fragmentSingleCell(
     double total_sprayed = 0.0;
 
     for (auto& [key, frag] : merged_targets) {
-        int target_x = static_cast<int>(sourceX) + frag.offset.x;
-        int target_y = static_cast<int>(sourceY) + frag.offset.y;
+        int target_x = sourceX + frag.offset.x;
+        int target_y = sourceY + frag.offset.y;
 
         // Skip if out of bounds.
-        if (target_x < 0 || target_x >= static_cast<int>(data.width) || target_y < 0
-            || target_y >= static_cast<int>(data.height)) {
+        if (target_x < 0 || target_x >= data.width || target_y < 0 || target_y >= data.height) {
             continue;
         }
 
         // Skip if this is the cell we're avoiding (the collision partner).
-        if (target_x == static_cast<int>(avoidX) && target_y == static_cast<int>(avoidY)) {
+        if (target_x == avoidX && target_y == avoidY) {
             continue;
         }
 
@@ -1197,12 +1196,12 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double to_mass = to_props.density * toCell.fill_ratio;
 
         // Use cached neighbor-based cohesion (computed during applyCohesionForces).
-        uint32_t toX = fromX + direction.x;
-        uint32_t toY = fromY + direction.y;
+        int toX = fromX + direction.x;
+        int toY = fromY + direction.y;
         double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2f dir_vec(static_cast<float>(direction.x), static_cast<float>(direction.y));
+        Vector2f dir_vec(direction.x, direction.y);
         double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         // Fluids are easier to displace than solids.
@@ -1292,12 +1291,12 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         double to_mass = to_props.density * toCell.fill_ratio;
 
         // Use cached neighbor-based cohesion (computed during applyCohesionForces).
-        uint32_t toX = fromX + direction.x;
-        uint32_t toY = fromY + direction.y;
+        int toX = fromX + direction.x;
+        int toY = fromY + direction.y;
         double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2f dir_vec(static_cast<float>(direction.x), static_cast<float>(direction.y));
+        Vector2f dir_vec(direction.x, direction.y);
         double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         double to_resistance = to_mass + cohesion_strength + opposing_momentum;
@@ -1594,7 +1593,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // Scale tuned so displaced material resists cascading swaps.
     constexpr double BUOYANCY_VELOCITY_SCALE = 10.0;
     double buoyancy_velocity = density_diff * BUOYANCY_VELOCITY_SCALE;
-    Vector2d opposing_dir(static_cast<double>(-direction.x), static_cast<double>(-direction.y));
+    Vector2d opposing_dir(-direction.x, -direction.y);
     fromCell.velocity = opposing_dir * buoyancy_velocity;
 
     // Log with full details, INFO for non-air swaps, DEBUG for air swaps.

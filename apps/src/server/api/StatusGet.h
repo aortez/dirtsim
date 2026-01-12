@@ -27,10 +27,10 @@ struct Command {
 struct Okay {
     std::string state;         // Current state machine state (always present).
     std::string error_message; // Populated when state is "Error".
-    uint64_t timestep = 0;
+    int32_t timestep = 0;
     std::string scenario_id;
-    uint32_t width = 0;
-    uint32_t height = 0;
+    int16_t width = 0;
+    int16_t height = 0;
 
     // System health metrics.
     double cpu_percent = 0.0;

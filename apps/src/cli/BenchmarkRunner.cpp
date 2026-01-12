@@ -21,7 +21,7 @@ BenchmarkRunner::~BenchmarkRunner()
 
 BenchmarkResults BenchmarkRunner::run(
     const std::string& serverPath,
-    uint32_t steps,
+    int steps,
     const std::string& scenario,
     int worldSize,
     const std::string& remoteAddress)
@@ -32,7 +32,7 @@ BenchmarkResults BenchmarkRunner::run(
 
 BenchmarkResults BenchmarkRunner::runWithServerArgs(
     const std::string& serverPath,
-    uint32_t steps,
+    int steps,
     const std::string& scenario,
     const std::string& serverArgs,
     int worldSize,
@@ -111,7 +111,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     spdlog::info("BenchmarkRunner: Starting simulation with scenario '{}'", scenario);
     Api::SimRun::Command simRunCmd;
     simRunCmd.timestep = 0.016;
-    simRunCmd.max_steps = static_cast<int>(steps);
+    simRunCmd.max_steps = steps;
     simRunCmd.scenario_id = scenario;
 
     auto simRunResult = client_.sendCommand<Api::SimRun::Okay>(simRunCmd, 5000);
@@ -131,8 +131,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     if (worldSize > 0) {
         spdlog::info("BenchmarkRunner: Resizing world to {}x{}", worldSize, worldSize);
         Api::WorldResize::Command resizeCmd;
-        resizeCmd.width = static_cast<uint32_t>(worldSize);
-        resizeCmd.height = static_cast<uint32_t>(worldSize);
+        resizeCmd.width = static_cast<int16_t>(worldSize);
+        resizeCmd.height = static_cast<int16_t>(worldSize);
 
         auto resizeResult = client_.sendCommand<std::monostate>(resizeCmd, 5000);
         if (resizeResult.isError()) {

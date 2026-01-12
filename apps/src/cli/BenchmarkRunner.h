@@ -18,17 +18,17 @@ namespace Client {
 struct BenchmarkResults {
     std::string scenario = "Benchmark";
     std::string grid_size = "28x28";
-    uint32_t steps = 0;
+    int steps = 0;
     double duration_sec = 0.0;
 
     // Server metrics.
     double server_fps = 0.0;
     double server_physics_avg_ms = 0.0;
     double server_physics_total_ms = 0.0;
-    uint32_t server_physics_calls = 0;
+    int server_physics_calls = 0;
     double server_serialization_avg_ms = 0.0;
     double server_serialization_total_ms = 0.0;
-    uint32_t server_serialization_calls = 0;
+    int server_serialization_calls = 0;
     double server_cache_update_avg_ms = 0.0;
     double server_network_send_avg_ms = 0.0;
 
@@ -49,14 +49,14 @@ public:
 
     BenchmarkResults run(
         const std::string& serverPath,
-        uint32_t steps,
+        int steps,
         const std::string& scenario = "Benchmark",
         int worldSize = 0,
         const std::string& remoteAddress = "");
 
     BenchmarkResults runWithServerArgs(
         const std::string& serverPath,
-        uint32_t steps,
+        int steps,
         const std::string& scenario,
         const std::string& serverArgs,
         int worldSize = 0,

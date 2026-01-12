@@ -29,7 +29,7 @@ struct WorldData {
     std::vector<OrganismId> organism_ids; // Parallel to cells: organism_ids[y * width + x]
 
     // Simulation state.
-    uint32_t timestep = 0;
+    int32_t timestep = 0;
     double removed_mass = 0.0;
     double fps_server = 0.0;
 

@@ -393,7 +393,7 @@ http://dirtsim.local:8081/garden
 **Key design choice:** Server sends WebRTC offer (not browser) because the sender of media should be the offerer per WebRTC spec.
 
 **Remote UI control:**
-Mouse events (MouseDown/Move/Up) from the browser are injected into LVGL's input device system via `RemoteInputDevice`, enabling full remote control of all LVGL widgets (buttons, sliders, toggles) in all UI states. The dashboard captures mouse events on the WebRTC video stream, maps coordinates accounting for letterboxing, and forwards them via WebSocket. `RemoteInputDevice` applies inverse rotation transforms to convert logical (video) coordinates to physical display coordinates before LVGL processes them.
+Mouse events (MouseDown/Move/Up) from the browser are injected into LVGL's input device system via `RemoteInputDevice`, enabling remote control of all LVGL widgets (buttons, sliders, toggles) in all UI states. The dashboard captures mouse events on the WebRTC video stream, maps coordinates accounting for letterboxing, and forwards them via WebSocket. `RemoteInputDevice` applies inverse rotation transforms to convert logical (video) coordinates to physical display coordinates before LVGL processes them.
 
 ## References
 ### Lvgl reference:
@@ -407,7 +407,6 @@ Can be found here:
 - design_docs/WebRTC-test-driver.md       #<-- Client/Server architecture (DSSM server + UI client)
 - design_docs/coding_convention.md        #<-- Code style guidelines
 - design_docs/plant.md                    #<-- Tree/organism feature (Phase 1 in progress)
-- design_docs/ai-integration-ideas.md     #<-- AI/LLM integration ideas for future
 
 ## Project Directory Structure
 
@@ -417,7 +416,7 @@ Can be found here:
   │   │   ├── World.{cpp,h}                  # Grid-based physics simulation
   │   │   ├── Cell.{cpp,h}                   # Pure-material cell implementation
   │   │   ├── WorldEventGenerator.{cpp,h}    # World initialization and particle generation
-  │   │   ├── World*Calculator.{cpp,h}       # Physics calculators (8 files)
+  │   │   ├── World*Calculator.{cpp,h}       # Physics calculators
   │   │   ├── Vector2d.{cpp,h}               # 2D floating point vectors
   │   │   ├── ScenarioConfig.h               # Scenario configuration types
   │   │   ├── WorldData.h                    # Serializable world state
@@ -467,94 +466,14 @@ Can be found here:
   └── CMakeLists.txt                         # CMake configuration
 
 
-## Development Status
-
-### Current Focus: Icon-Based UI for HyperPixel 4.0 (Complete)
-
-**Completed:**
-- ✅ IconRail component (48px wide vertical icon column)
-- ✅ ExpandablePanel component (250px slide-out panel)
-- ✅ UiComponentManager refactored for icon-based layout
-- ✅ PanelViewController for unified modal navigation
-- ✅ ActionButton with flexible layouts (row/column) and trough styling
-- ✅ CoreControls panel - Quit, Reset, Debug, Render Mode (modal selection)
-- ✅ ScenarioPanel - Scenario selection with modal navigation
-- ✅ PhysicsPanel - 7 sections with modal navigation (General, Pressure, Forces, Light, Swap Tuning, Swap2, Frag)
-- ✅ ClockControls - Font and Timezone selectors with modal navigation
-- ✅ Tree icon (🌳) - Shows/hides based on tree presence, toggles neural grid
-- ✅ All buttons use uniform 80px height (ACTION_SIZE)
-
-**Layout:**
-```
-Collapsed (default):              Panel Open (e.g., Physics):
-┌───┬─────────────────────┐     ┌───┬────────┬──────────┐
-│[⚙]│                     │     │ ⚙ │ Back   │          │
-│ 🎬 │                     │     │ 🎬 │General │  World   │
-│[🌍]│   World Display     │     │[🌍]│Pressure│  ~500px  │
-│ 💧 │   (~750 x 480)      │     │ 💧 │Forces  │          │
-│ 🌳 │                     │     │ 🌳 │Swap... │          │
-└───┴─────────────────────┘     └───┴────────┴──────────┘
-
-Clicking any section → Full panel with controls
-```
-
-### Tree Organisms (Phase 2 Complete, Phase 3 Next)
-
-**Phase 2 Completed:**
-- ✅ ROOT material type (grips soil, can bend)
-- ✅ Continuous time system (real deltaTime, all timing in seconds)
-- ✅ Contact-based germination (observe dirt 2s → ROOT 2s → WOOD 3s)
-- ✅ SEED stays permanent as tree core
-- ✅ TreeCommandProcessor (validates energy, adjacency, bounds)
-- ✅ Adjacency validation (respects WALL/METAL/WATER boundaries)
-- ✅ Balanced growth (maintains ROOT/WOOD/LEAF ratios based on water access)
-- ✅ Water-seeking behavior (roots adjust target ratios when water found)
-- ✅ LEAF restrictions (air-only, grows from WOOD, cardinal directions)
-- ✅ Swap physics integration (organism tracking works with material swaps)
-- ✅ UI displays (energy level, current thought)
-- ✅ Test coverage (6 passing tests with emoji visualization)
-
-**Known Limitations:**
-- No energy regeneration (trees deplete and stop)
-- No MATURE stage transition
-
-**Next Steps:**
-- Fix growth topology (extend from tree edges for realistic branching)
-- Add basic energy regeneration (LEAFs produce energy over time)
-- Phase 3: Resource systems (light ray-casting, photosynthesis, water/nutrient absorption)
-- Performance testing and optimization
-
-Awesome Ideas to do soon:
+## Awesome Ideas to do soon
 - refactor javascript, async vs promises and let vs var.
-- Each process should have it's own logger/log level
-- WorldEventGenerator methods should be moved into the Scenarios.
-- Add label to tree's view saying which layer it is from.
 - Centralize labels on tree's view to one side (top or bottom).
 - Implement fragmentation on high energy impacts (see WorldCollisionCalculator).
-- Improve some of the scenarios - like the dam break and water equalization ones.
-- Fractal world generator?  Or Start from fractal?
 - mass as a gravity source!  allan.pizza but in a grid!!!
-- quad-tree or quantization or other spatial optimization applied to the grid?
-- cli send/receive any command/response automatically.
-- ✅ DONE: WebSocketClient library - General-purpose binary protocol client in `src/core/network/`. CLI migrated, all commands support zpp_bits. **Remaining:** UI client still uses old pattern (should migrate), JSON protocol uses snake_case names (binary uses CamelCase - should unify). See design_docs/websocket-client-library.md for status and technical debt notes.
-- Review CLI and CLAUDE README/md files for accuracy and gross omission.  Test things
-to see if they work.
-- Instrument build to figure out which parts take the longest.
-- Add light tracing and illumination! (from top down)
-- Per-cell neighborhood cache: 64-bit bitmap in each Cell for instant neighbor queries (see design_docs/optimization-ideas.md Section 10).
-- Go to http://dirtsim.local and see a monitor page that shows all the dirt sims on the network.  The beginning of a web-based control panel!
-- on start menu, q to quit, enter to start?
-- **TODO: Unit tests for Finger API** - Brainstorm and implement tests for FingerDown/Move/Up commands. Should verify: (1) session tracking, (2) force application to cells within radius, (3) force magnitude/direction from drag delta, (4) falloff behavior, (5) multi-finger support.
 - reinstall lottie - it would be sweet to mess with these animations.
-- LVGL should not be included in application header files!  Let's find them and fix them.
 
-See design_docs/plant.md and design_docs/ai-integration-ideas.md for details.
-
-### Client/Server Architecture (DSSM + UI Client)
-- ✅ Headless server with WebSocket API
-- ✅ UI client with controls and rendering
-- ✅ Binary serialization (zpp_bits)
-- ✅ Per-client format selection with render_format_set API
+See design_docs/plant.md and design_docs/neural-net-brain.md for more.
 
 ## Git
 

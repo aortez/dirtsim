@@ -114,9 +114,9 @@ struct RenderMessage {
     RenderFormat format; // Which format is payload encoded in?
 
     // Grid dimensions and simulation state.
-    uint32_t width = 0;
-    uint32_t height = 0;
-    uint32_t timestep = 0;
+    int16_t width = 0;
+    int16_t height = 0;
+    int32_t timestep = 0;
     double fps_server = 0.0;
 
     // Format-specific cell data (either BasicCell[] or DebugCell[]).
