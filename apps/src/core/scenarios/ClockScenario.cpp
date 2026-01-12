@@ -5,9 +5,9 @@
 #include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
 #include "core/LightManager.h"
+#include "core/LightTypes.h"
 #include "core/MaterialType.h"
 #include "core/PhysicsSettings.h"
-#include "core/PointLight.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldCollisionCalculator.h"
@@ -1554,6 +1554,7 @@ void ClockScenario::updateDuckEvent(
 
     // Get duck's cell COM for sub-cell positioning.
     const WorldData& data = world.getData();
+    LightManager& lights = world.getLightManager();
     Vector2d duck_com{ 0.0, 0.0 };
     if (data.inBounds(duck_cell.x, duck_cell.y)) {
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
@@ -1571,7 +1572,9 @@ void ClockScenario::updateDuckEvent(
 
         // Dim the entrance door light.
         if (state.entrance_light) {
-            state.entrance_light->get().intensity = kDoorLightClosedIntensity;
+            if (auto* light = lights.getLight<PointLight>(state.entrance_light->id())) {
+                light->intensity = kDoorLightClosedIntensity;
+            }
         }
     }
 
@@ -1581,7 +1584,9 @@ void ClockScenario::updateDuckEvent(
 
         // Brighten the exit door light.
         if (state.exit_light) {
-            state.exit_light->get().intensity = kDoorLightOpenIntensity;
+            if (auto* light = lights.getLight<PointLight>(state.exit_light->id())) {
+                light->intensity = kDoorLightOpenIntensity;
+            }
         }
 
         // Log world state when exit door opens.

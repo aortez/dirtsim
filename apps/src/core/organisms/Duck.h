@@ -4,7 +4,9 @@
 #include "DuckInput.h"
 #include "DuckSensoryData.h"
 #include "Organism.h"
+#include "core/LightManager.h"
 #include <memory>
+#include <optional>
 #include <random>
 #include <vector>
 
@@ -82,6 +84,10 @@ public:
     // Sensory data gathering for brain decisions.
     DuckSensoryData gatherSensoryData(const World& world, double deltaTime) const;
 
+    void attachFlashlight(LightHandle handle);
+    void detachFlashlight();
+    bool hasFlashlight() const;
+
 private:
     Vector2i anchor_cell_{ 0, 0 };
     bool on_ground_ = false;
@@ -93,19 +99,21 @@ private:
 
     std::unique_ptr<DuckBrain> brain_;
 
-    // Sparkle particle system.
     std::vector<DuckSparkle> sparkles_;
     std::mt19937 sparkle_rng_{ std::random_device{}() };
-    Vector2d previous_velocity_{ 0.0, 0.0 };     // For acceleration calculation.
-    Vector2d smoothed_acceleration_{ 0.0, 0.0 }; // Smoothed X/Y acceleration for sparkle emission.
+    Vector2d previous_velocity_{ 0.0, 0.0 };
+    Vector2d smoothed_acceleration_{ 0.0, 0.0 };
 
-    void updateGroundDetection(const World& world);
+    std::optional<LightHandle> flashlight_;
+
     void applyMovementToCell(World& world, double deltaTime);
-    void logPhysicsState(const World& world);
-    void updateSparkles(const World& world, double deltaTime);
-    void spawnSparkle(const Vector2d& duck_velocity);
-    bool isSolidCell(const World& world, int x, int y) const;
     int getDesiredSparkleCount(float acceleration) const;
+    bool isSolidCell(const World& world, int x, int y) const;
+    void logPhysicsState(const World& world);
+    void spawnSparkle(const Vector2d& duck_velocity);
+    void updateFlashlightPosition(World& world, double deltaTime);
+    void updateGroundDetection(const World& world);
+    void updateSparkles(const World& world, double deltaTime);
 };
 
 } // namespace DirtSim

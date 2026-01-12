@@ -15,6 +15,11 @@ namespace DirtSim {
 
 class GridOfCells;
 struct PointLight;
+struct SpotLight;
+struct RotatingLight;
+template <typename T>
+struct Vector2;
+using Vector2d = Vector2<double>;
 class World;
 struct WorldData;
 
@@ -45,9 +50,17 @@ private:
     void applyEmissiveCells(World& world);
     void applyEmissiveOverlay(World& world);
     void applyMaterialColors(World& world);
+    void applyPointLight(const PointLight& light, World& world, const GridOfCells& grid);
     void applyPointLights(World& world, const GridOfCells& grid);
+    void applyRotatingLight(const RotatingLight& light, World& world, const GridOfCells& grid);
+    void applySpotLight(const SpotLight& light, World& world, const GridOfCells& grid);
     void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
     void clearLight(World& world);
+    bool isInSpotCone(
+        const Vector2d& light_pos,
+        float direction,
+        float arc_width,
+        const Vector2d& target_pos) const;
     void storeRawLight(World& world);
     ColorNames::RgbF traceRay(
         const GridOfCells& grid,

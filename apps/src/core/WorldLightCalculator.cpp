@@ -6,7 +6,6 @@
 #include "LightConfig.h"
 #include "LightManager.h"
 #include "MaterialType.h"
-#include "PointLight.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
 #include "World.h"
@@ -571,60 +570,152 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
     return color;
 }
 
-void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& grid)
+void WorldLightCalculator::applyPointLight(
+    const PointLight& light, World& world, const GridOfCells& grid)
 {
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
-
-    const LightManager& lights = world.getLightManager();
-    if (lights.count() == 0) {
-        return;
-    }
 
     auto& data = world.getData();
     const int width = data.width;
     const int height = data.height;
 
-    lights.forEachLight([&](const PointLight& light) {
-        const int light_x = static_cast<int>(light.position.x);
-        const int light_y = static_cast<int>(light.position.y);
+    const int light_x = static_cast<int>(light.position.x);
+    const int light_y = static_cast<int>(light.position.y);
 
-        // Skip lights outside the world.
-        if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
-            return;
-        }
+    if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
+        return;
+    }
 
-        const int radius_int = static_cast<int>(std::ceil(light.radius));
-        const RgbF light_color = toRgbF(light.color) * light.intensity;
+    const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const RgbF light_color = toRgbF(light.color) * light.intensity;
 
-        // Iterate over cells within the light's radius.
-        const int min_x = std::max(0, light_x - radius_int);
-        const int max_x = std::min(width - 1, light_x + radius_int);
-        const int min_y = std::max(0, light_y - radius_int);
-        const int max_y = std::min(height - 1, light_y + radius_int);
+    const int min_x = std::max(0, light_x - radius_int);
+    const int max_x = std::min(width - 1, light_x + radius_int);
+    const int min_y = std::max(0, light_y - radius_int);
+    const int max_y = std::min(height - 1, light_y + radius_int);
 
-        for (int y = min_y; y <= max_y; ++y) {
-            for (int x = min_x; x <= max_x; ++x) {
-                // Calculate distance.
-                const float dx = static_cast<float>(x - light_x);
-                const float dy = static_cast<float>(y - light_y);
-                const float dist = std::sqrt(dx * dx + dy * dy);
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            const float dx = static_cast<float>(x - light_x);
+            const float dy = static_cast<float>(y - light_y);
+            const float dist = std::sqrt(dx * dx + dy * dy);
 
-                // Skip cells outside radius.
-                if (dist > light.radius) {
-                    continue;
-                }
-
-                // Apply distance falloff: 1 / (1 + dist² * attenuation).
-                const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
-
-                // Trace ray from light to cell.
-                const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
-
-                // Apply falloff and add to cell.
-                data.colors.at(x, y) += received * falloff;
+            if (dist > light.radius) {
+                continue;
             }
+
+            const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            data.colors.at(x, y) += received * falloff;
         }
+    }
+}
+
+void WorldLightCalculator::applySpotLight(
+    const SpotLight& light, World& world, const GridOfCells& grid)
+{
+    using ColorNames::RgbF;
+    using ColorNames::toRgbF;
+
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+
+    const int light_x = static_cast<int>(light.position.x);
+    const int light_y = static_cast<int>(light.position.y);
+
+    if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
+        return;
+    }
+
+    const int radius_int = static_cast<int>(std::ceil(light.radius));
+    const RgbF light_color = toRgbF(light.color) * light.intensity;
+
+    const int min_x = std::max(0, light_x - radius_int);
+    const int max_x = std::min(width - 1, light_x + radius_int);
+    const int min_y = std::max(0, light_y - radius_int);
+    const int max_y = std::min(height - 1, light_y + radius_int);
+
+    for (int y = min_y; y <= max_y; ++y) {
+        for (int x = min_x; x <= max_x; ++x) {
+            const float dx = static_cast<float>(x - light_x);
+            const float dy = static_cast<float>(y - light_y);
+            const float dist = std::sqrt(dx * dx + dy * dy);
+
+            if (dist > light.radius) {
+                continue;
+            }
+
+            if (!isInSpotCone(
+                    light.position,
+                    light.direction,
+                    light.arc_width,
+                    Vector2d{ static_cast<double>(x), static_cast<double>(y) })) {
+                continue;
+            }
+
+            const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+            const RgbF received = traceRay(grid, data, light_x, light_y, x, y, light_color);
+            data.colors.at(x, y) += received * falloff;
+        }
+    }
+}
+
+void WorldLightCalculator::applyRotatingLight(
+    const RotatingLight& light, World& world, const GridOfCells& grid)
+{
+    applySpotLight(
+        SpotLight{ light.position,
+                   light.color,
+                   light.intensity,
+                   light.radius,
+                   light.attenuation,
+                   light.direction,
+                   light.arc_width },
+        world,
+        grid);
+}
+
+bool WorldLightCalculator::isInSpotCone(
+    const Vector2d& light_pos, float direction, float arc_width, const Vector2d& target_pos) const
+{
+    const Vector2d to_target = target_pos - light_pos;
+    const float target_angle = std::atan2(to_target.y, to_target.x);
+
+    float angle_diff = target_angle - direction;
+    while (angle_diff > M_PI) {
+        angle_diff -= 2.0f * static_cast<float>(M_PI);
+    }
+    while (angle_diff < -M_PI) {
+        angle_diff += 2.0f * static_cast<float>(M_PI);
+    }
+
+    return std::abs(angle_diff) <= arc_width / 2.0f;
+}
+
+void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& grid)
+{
+    const LightManager& lights = world.getLightManager();
+    if (lights.count() == 0) {
+        return;
+    }
+
+    lights.forEachLight([&](LightId, const Light& light) {
+        std::visit(
+            [&](const auto& typed_light) {
+                using T = std::decay_t<decltype(typed_light)>;
+                if constexpr (std::is_same_v<T, PointLight>) {
+                    applyPointLight(typed_light, world, grid);
+                }
+                else if constexpr (std::is_same_v<T, SpotLight>) {
+                    applySpotLight(typed_light, world, grid);
+                }
+                else if constexpr (std::is_same_v<T, RotatingLight>) {
+                    applyRotatingLight(typed_light, world, grid);
+                }
+            },
+            light.getVariant());
     });
 }
 

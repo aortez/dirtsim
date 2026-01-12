@@ -4,7 +4,7 @@
  */
 
 #include "core/LightManager.h"
-#include "core/PointLight.h"
+#include "core/LightTypes.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
@@ -50,19 +50,24 @@ TEST_F(LightManagerTest, GetLightReturnsCorrectLight)
 {
     LightId id = manager.addLight(makeLight(7.0, 8.0));
 
-    PointLight& light = manager.getLight(id);
+    PointLight* light = manager.getLight<PointLight>(id);
+    ASSERT_NE(light, nullptr);
 
-    EXPECT_DOUBLE_EQ(light.position.x, 7.0);
-    EXPECT_DOUBLE_EQ(light.position.y, 8.0);
+    EXPECT_DOUBLE_EQ(light->position.x, 7.0);
+    EXPECT_DOUBLE_EQ(light->position.y, 8.0);
 }
 
 TEST_F(LightManagerTest, GetLightAllowsModification)
 {
     LightId id = manager.addLight(makeLight(0.0, 0.0));
 
-    manager.getLight(id).intensity = 0.5f;
+    PointLight* light = manager.getLight<PointLight>(id);
+    ASSERT_NE(light, nullptr);
+    light->intensity = 0.5f;
 
-    EXPECT_FLOAT_EQ(manager.getLight(id).intensity, 0.5f);
+    PointLight* updated = manager.getLight<PointLight>(id);
+    ASSERT_NE(updated, nullptr);
+    EXPECT_FLOAT_EQ(updated->intensity, 0.5f);
 }
 
 TEST_F(LightManagerTest, RemoveLightMakesIdInvalid)
@@ -106,7 +111,11 @@ TEST_F(LightManagerTest, ForEachLightIteratesAllLights)
     manager.addLight(makeLight(3.0, 0.0));
 
     double sum = 0.0;
-    manager.forEachLight([&sum](const PointLight& light) { sum += light.position.x; });
+    manager.forEachLight([&sum](LightId /*id*/, const Light& light) {
+        if (const auto* point = std::get_if<PointLight>(&light.getVariant())) {
+            sum += point->position.x;
+        }
+    });
 
     EXPECT_DOUBLE_EQ(sum, 6.0);
 }
@@ -135,23 +144,28 @@ TEST_F(LightManagerTest, HandleDestructorRemovesLight)
     EXPECT_EQ(manager.count(), 0);
 }
 
-TEST_F(LightManagerTest, HandleGetReturnsLight)
+TEST_F(LightManagerTest, HandleIdAccessesLight)
 {
     LightHandle handle = manager.createLight(makeLight(7.0, 8.0));
 
-    PointLight& light = handle.get();
+    PointLight* light = manager.getLight<PointLight>(handle.id());
+    ASSERT_NE(light, nullptr);
 
-    EXPECT_DOUBLE_EQ(light.position.x, 7.0);
-    EXPECT_DOUBLE_EQ(light.position.y, 8.0);
+    EXPECT_DOUBLE_EQ(light->position.x, 7.0);
+    EXPECT_DOUBLE_EQ(light->position.y, 8.0);
 }
 
-TEST_F(LightManagerTest, HandleGetAllowsModification)
+TEST_F(LightManagerTest, HandleIdAllowsModification)
 {
     LightHandle handle = manager.createLight(makeLight(0.0, 0.0));
 
-    handle.get().intensity = 0.25f;
+    PointLight* light = manager.getLight<PointLight>(handle.id());
+    ASSERT_NE(light, nullptr);
+    light->intensity = 0.25f;
 
-    EXPECT_FLOAT_EQ(manager.getLight(handle.id()).intensity, 0.25f);
+    PointLight* updated = manager.getLight<PointLight>(handle.id());
+    ASSERT_NE(updated, nullptr);
+    EXPECT_FLOAT_EQ(updated->intensity, 0.25f);
 }
 
 TEST_F(LightManagerTest, HandleMoveTransfersOwnership)

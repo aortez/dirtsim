@@ -341,6 +341,7 @@ add_library(dirtsim-server-lib STATIC
 
     # Physics engine.
     src/core/LightManager.cpp
+    src/core/LightTypes.cpp
     src/core/World.cpp
     src/core/WorldAdhesionCalculator.cpp
     src/core/WorldAirResistanceCalculator.cpp
@@ -517,6 +518,7 @@ add_executable(cli
     src/cli/IntegrationTest.cpp
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp
+    src/cli/TrainRunner.cpp
 )
 target_link_libraries(cli PRIVATE dirtsim-server-lib dirtsim-ui-lib datachannel-static pthread)
 target_include_directories(cli PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})

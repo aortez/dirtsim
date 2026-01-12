@@ -1,5 +1,4 @@
 #include "LightManager.h"
-#include "Assert.h"
 
 namespace DirtSim {
 
@@ -7,14 +6,14 @@ namespace DirtSim {
 // LightManager
 // ============================================================================
 
-LightId LightManager::addLight(const PointLight& light)
+LightId LightManager::addLight(const Light& light)
 {
     LightId id = next_id_++;
     lights_[id] = light;
     return id;
 }
 
-LightHandle LightManager::createLight(const PointLight& light)
+LightHandle LightManager::createLight(const Light& light)
 {
     LightId id = addLight(light);
     return LightHandle(this, id);
@@ -23,20 +22,6 @@ LightHandle LightManager::createLight(const PointLight& light)
 void LightManager::removeLight(LightId id)
 {
     lights_.erase(id);
-}
-
-PointLight& LightManager::getLight(LightId id)
-{
-    auto it = lights_.find(id);
-    DIRTSIM_ASSERT(it != lights_.end(), "Invalid light ID");
-    return it->second;
-}
-
-const PointLight& LightManager::getLight(LightId id) const
-{
-    auto it = lights_.find(id);
-    DIRTSIM_ASSERT(it != lights_.end(), "Invalid light ID");
-    return it->second;
 }
 
 bool LightManager::isValid(LightId id) const
@@ -54,10 +39,10 @@ void LightManager::clear()
     lights_.clear();
 }
 
-void LightManager::forEachLight(const std::function<void(const PointLight&)>& callback) const
+void LightManager::forEachLight(const std::function<void(LightId, const Light&)>& callback) const
 {
     for (const auto& [id, light] : lights_) {
-        callback(light);
+        callback(id, light);
     }
 }
 
@@ -100,20 +85,6 @@ LightHandle& LightHandle::operator=(LightHandle&& other) noexcept
 bool LightHandle::isValid() const
 {
     return manager_ != nullptr && id_ != INVALID_LIGHT_ID && manager_->isValid(id_);
-}
-
-PointLight& LightHandle::get()
-{
-    DIRTSIM_ASSERT(manager_ != nullptr, "LightHandle has no manager");
-    DIRTSIM_ASSERT(id_ != INVALID_LIGHT_ID, "LightHandle has invalid ID");
-    return manager_->getLight(id_);
-}
-
-const PointLight& LightHandle::get() const
-{
-    DIRTSIM_ASSERT(manager_ != nullptr, "LightHandle has no manager");
-    DIRTSIM_ASSERT(id_ != INVALID_LIGHT_ID, "LightHandle has invalid ID");
-    return manager_->getLight(id_);
 }
 
 LightId LightHandle::release()

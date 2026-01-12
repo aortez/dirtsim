@@ -130,6 +130,9 @@ void Duck::update(World& world, double deltaTime)
     // Update sparkle particle system.
     updateSparkles(world, deltaTime);
 
+    // Update flashlight position and direction.
+    updateFlashlightPosition(world, deltaTime);
+
     // Log physics state every 60 frames.
     if (frame_counter_ % 60 == 0) {
         logPhysicsState(world);
@@ -544,6 +547,58 @@ void Duck::spawnSparkle(const Vector2d& duck_velocity)
     sparkle.max_lifetime = sparkle.lifetime;
 
     sparkles_.push_back(sparkle);
+}
+
+void Duck::attachFlashlight(LightHandle handle)
+{
+    flashlight_ = std::move(handle);
+}
+
+void Duck::detachFlashlight()
+{
+    flashlight_.reset();
+}
+
+bool Duck::hasFlashlight() const
+{
+    return flashlight_.has_value();
+}
+
+void Duck::updateFlashlightPosition(World& world, double deltaTime)
+{
+    if (!flashlight_) {
+        return;
+    }
+
+    LightManager& lights = world.getLightManager();
+
+    if (auto* spot = lights.getLight<SpotLight>(flashlight_->id())) {
+        spot->position =
+            Vector2d{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
+        spot->direction = std::atan2(facing_.y, facing_.x);
+    }
+    else if (auto* rot = lights.getLight<RotatingLight>(flashlight_->id())) {
+        rot->position =
+            Vector2d{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
+
+        if (rot->rotation_speed == 0.0f) {
+            rot->direction = std::atan2(facing_.y, facing_.x);
+        }
+        else {
+            rot->direction += rot->rotation_speed * static_cast<float>(deltaTime);
+
+            while (rot->direction >= 2.0f * static_cast<float>(M_PI)) {
+                rot->direction -= 2.0f * static_cast<float>(M_PI);
+            }
+            while (rot->direction < 0.0f) {
+                rot->direction += 2.0f * static_cast<float>(M_PI);
+            }
+        }
+    }
+    else if (auto* point = lights.getLight<PointLight>(flashlight_->id())) {
+        point->position =
+            Vector2d{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
+    }
 }
 
 } // namespace DirtSim
