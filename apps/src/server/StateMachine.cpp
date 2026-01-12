@@ -335,6 +335,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::FingerMove::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::FingerUp::Cwc>(
         [this](Api::FingerUp::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::GenomeGetBest::Cwc>(
+        [this](Api::GenomeGetBest::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
@@ -531,7 +533,9 @@ void StateMachine::mainLoopRun()
         else if (std::holds_alternative<State::Evolution>(pImpl->fsmState_.getVariant())) {
             // Tick evolution state (evaluates one organism per tick).
             auto& evolution = std::get<State::Evolution>(pImpl->fsmState_.getVariant());
-            evolution.tick(*this);
+            if (auto nextState = evolution.tick(*this)) {
+                transitionTo(std::move(*nextState));
+            }
         }
         else {
             // Small sleep when not running to prevent busy waiting.
@@ -580,6 +584,33 @@ void StateMachine::handleEvent(const Event& event)
 
         LOG_DEBUG(State, "ScenarioListGet returning {} scenarios", response.scenarios.size());
         cwc.sendResponse(Api::ScenarioListGet::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle GenomeGetBest globally (read-only, works in any state).
+    if (std::holds_alternative<Api::GenomeGetBest::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::GenomeGetBest::Cwc>(event.getVariant());
+        auto& repo = getGenomeRepository();
+
+        Api::GenomeGetBest::Okay response;
+
+        if (auto bestId = repo.getBestId()) {
+            response.found = true;
+            response.id = *bestId;
+
+            if (auto genome = repo.get(*bestId)) {
+                response.weights = genome->weights;
+            }
+
+            if (auto meta = repo.getMetadata(*bestId)) {
+                response.metadata = *meta;
+            }
+        }
+        else {
+            response.found = false;
+        }
+
+        cwc.sendResponse(Api::GenomeGetBest::Response::okay(std::move(response)));
         return;
     }
 

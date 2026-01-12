@@ -286,6 +286,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
+    src/server/api/GenomeGetBest.cpp
     src/server/api/GravitySet.cpp
     src/server/api/PeersGet.cpp
     src/server/api/PerfStatsGet.cpp
@@ -518,6 +519,7 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
+    src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/tests/BinaryProtocol_test.cpp

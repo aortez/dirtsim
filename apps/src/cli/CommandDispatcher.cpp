@@ -19,6 +19,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::FingerDown::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerMove::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerUp::Command, std::monostate>(serverHandlers_);
+    registerCommand<Api::GenomeGetBest::Command, Api::GenomeGetBest::Okay>(serverHandlers_);
     registerCommand<Api::GravitySet::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::PeersGet::Command, Api::PeersGet::Okay>(serverHandlers_);
     registerCommand<Api::PerfStatsGet::Command, Api::PerfStatsGet::Okay>(serverHandlers_);

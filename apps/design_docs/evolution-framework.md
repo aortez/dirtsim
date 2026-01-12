@@ -605,7 +605,7 @@ src/ui/state-machine/states/
 - Tournament with k=population_size returns best. ✅
 - Elitist replace keeps top genomes sorted by fitness. ✅
 
-### Phase 4: Server StateEvolution 🚧
+### Phase 4: Server StateEvolution ✅
 
 **Files:**
 - `src/server/states/Evolution.h/cpp` ✅
@@ -613,7 +613,7 @@ src/ui/state-machine/states/
 - `src/server/api/EvolutionStart.h/cpp` ✅
 - `src/server/api/EvolutionStop.h/cpp` ✅
 - `src/server/api/EvolutionProgress.h/cpp` ✅
-- `src/server/tests/StateEvolution_test.cpp` ❌ (TODO)
+- `src/server/tests/StateEvolution_test.cpp` ✅ (6 tests)
 
 **Work:**
 - StateEvolution: ✅
@@ -631,33 +631,35 @@ src/ui/state-machine/states/
 - CLI watch command for monitoring broadcasts. ✅
 - EvolutionStart/Stop wired to CLI dispatcher and StateMachine handlers. ✅
 
-**Tests:** ❌ (TODO)
-- EvolutionStart transitions Idle → Evolution.
-- EvolutionStop transitions Evolution → Idle.
-- Tick evaluates organisms, advances generation.
-- Best genome stored in repository after generation.
-- Completes all generations.
+**Tests:** ✅
+- EvolutionStart transitions Idle → Evolution. ✅
+- EvolutionStop transitions Evolution → Idle. ✅
+- Tick evaluates organisms, advances generation. ✅
+- Best genome stored in repository after generation. ✅
+- Completes all generations and transitions to Idle. ✅
+- Exit command transitions to Shutdown. ✅
 
-### Phase 5: API Commands
+### Phase 5: API Commands 🚧
 
 **Files:**
-- `src/server/api/EvolutionStart.h`
-- `src/server/api/EvolutionPause.h`
-- `src/server/api/EvolutionResume.h`
-- `src/server/api/EvolutionStop.h`
-- `src/server/api/GenomeList.h`
-- `src/server/api/GenomeGet.h`
-- `src/server/api/GenomeGetBest.h`
+- `src/server/api/EvolutionStart.h` ✅
+- `src/server/api/EvolutionPause.h` ❌ (deferred with pause/resume)
+- `src/server/api/EvolutionResume.h` ❌ (deferred with pause/resume)
+- `src/server/api/EvolutionStop.h` ✅
+- `src/server/api/GenomeList.h` ❌ (TODO)
+- `src/server/api/GenomeGet.h` ❌ (TODO)
+- `src/server/api/GenomeGetBest.h` ✅
 
 **Work:**
-- Define command/response structs following existing API pattern.
-- Wire into server command dispatch.
-- Evolution commands route to StateEvolution.
-- Genome commands access GenomeRepository (available from any state).
+- Define command/response structs following existing API pattern. ✅
+- Wire into server command dispatch. ✅
+- Evolution commands route to StateEvolution. ✅
+- Genome commands access GenomeRepository (available from any state). ✅
+- GenomeGetBest implemented as global handler. ✅
 
 **Tests:**
-- Covered by StateEvolution tests.
-- Additional: GenomeList/Get/GetBest work from Idle state.
+- Covered by StateEvolution tests. ✅
+- Additional: GenomeList/Get work from Idle state. ❌ (TODO)
 
 ### Phase 6: UI StateTraining
 

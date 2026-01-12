@@ -46,16 +46,13 @@ void Evolution::onExit(StateMachine& dsm)
     storeBestGenome(dsm);
 }
 
-void Evolution::tick(StateMachine& dsm)
+std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
     // Check if evolution complete.
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
         storeBestGenome(dsm);
-
-        // Transition to Idle by queueing an internal stop.
-        // The state machine will handle transition on next event.
-        return;
+        return Idle{};
     }
 
     DIRTSIM_ASSERT(!population.empty(), "Population must not be empty");
@@ -112,6 +109,8 @@ void Evolution::tick(StateMachine& dsm)
 
     // Broadcast progress.
     broadcastProgress(dsm);
+
+    return std::nullopt;
 }
 
 Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)

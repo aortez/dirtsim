@@ -5,6 +5,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/Event.h"
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -45,7 +46,8 @@ struct Evolution {
     void onExit(StateMachine& dsm);
 
     // Called each frame by main loop to advance evolution.
-    void tick(StateMachine& dsm);
+    // Returns a state to transition to, or nullopt to stay in Evolution.
+    std::optional<Any> tick(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
