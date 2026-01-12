@@ -296,6 +296,87 @@ ReflectEnumJson uses qlibs/reflect's compile-time enum reflection. Sequential en
 
 For C++ APIs, always start with the C++ object, populate it with designated initializers when possible, then convert it as needed in the sending later.
 
+### Adding a New API Command
+
+To add a new server API command (e.g., `MyCommand`), update these files:
+
+**1. Create the API header and cpp** (`src/server/api/MyCommand.h`):
+```cpp
+#pragma once
+#include "ApiError.h"
+#include "ApiMacros.h"
+#include "core/CommandWithCallback.h"
+#include "core/Result.h"
+#include <nlohmann/json.hpp>
+#include <zpp_bits.h>
+
+namespace DirtSim::Api::MyCommand {
+
+DEFINE_API_NAME(MyCommand);
+
+struct Command {
+    int someField = 0;
+    API_COMMAND_NAME();
+    nlohmann::json toJson() const;
+    static Command fromJson(const nlohmann::json& j);
+    using serialize = zpp::bits::members<1>;
+};
+
+struct Okay {
+    bool success = true;
+    API_COMMAND_NAME();
+    nlohmann::json toJson() const;
+    using serialize = zpp::bits::members<1>;
+};
+
+using Response = Result<Okay, ApiError>;
+using Cwc = CommandWithCallback<Command, Response>;
+
+} // namespace DirtSim::Api::MyCommand
+```
+
+**2. Add to ApiCommand.h** (`src/server/api/ApiCommand.h`):
+```cpp
+#include "MyCommand.h"  // Add include (alphabetical).
+
+using ApiCommand = std::variant<
+    // ...
+    Api::MyCommand::Command,  // Add to variant (alphabetical).
+    // ...
+>;
+```
+
+**3. Add to Event.h variant** (`src/server/Event.h`):
+```cpp
+using ServerEvent = std::variant<
+    // ...
+    DirtSim::Api::MyCommand::Cwc,  // Add to variant.
+    // ...
+>;
+```
+
+**4. Register handler in StateMachine** (`src/server/StateMachine.cpp`):
+```cpp
+service.registerHandler<Api::MyCommand::Cwc>(
+    [this](Api::MyCommand::Cwc cwc) { queueEvent(cwc); });
+```
+
+**5. Add state handler** (e.g., `src/server/states/Idle.cpp`):
+```cpp
+State::Any Idle::onEvent(const Api::MyCommand::Cwc& cwc, StateMachine& dsm) {
+    // Handle command, send response.
+    cwc.sendResponse(Api::MyCommand::Response::okay(Api::MyCommand::Okay{}));
+    return std::nullopt;  // Stay in current state.
+}
+```
+
+**6. Register in CLI dispatcher** (`src/cli/CommandDispatcher.cpp`):
+```cpp
+registerCommand<Api::MyCommand::Command, Api::MyCommand::Okay>(serverHandlers_);
+```
+
+After these changes, `./build-debug/bin/cli server MyCommand '{}'` will work.
+
 ## Development Environment
 
 ### Display Backends
@@ -473,12 +554,11 @@ Can be found here:
 - Centralize labels on tree's view to one side (top or bottom).
 - Implement fragmentation on high energy impacts (see WorldCollisionCalculator).
 - mass as a gravity source!  allan.pizza but in a grid!!!
-- reinstall lottie - it would be sweet to mess with these animations.
+- reinstall lottie - it would be sweet to mess with these animations. Or sample them for quantized display.
+- scenarioId's shouldn't be strings!!! just use an enum please.
 
 See design_docs/plant.md and design_docs/neural-net-brain.md for more.
 
 ## Git
 
 Never use stash.  Never checkout files unless asked to.  Be careful not to mess up WIP that you might not be aware of.
-
-

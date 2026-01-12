@@ -4,6 +4,8 @@
 #include "CellGet.h"
 #include "CellSet.h"
 #include "DiagramGet.h"
+#include "EvolutionStart.h"
+#include "EvolutionStop.h"
 #include "Exit.h"
 #include "FingerDown.h"
 #include "FingerMove.h"
@@ -56,6 +58,8 @@ using ApiCommand = std::variant<
     Api::CellGet::Command,
     Api::CellSet::Command,
     Api::DiagramGet::Command,
+    Api::EvolutionStart::Command,
+    Api::EvolutionStop::Command,
     Api::Exit::Command,
     Api::FingerDown::Command,
     Api::FingerMove::Command,

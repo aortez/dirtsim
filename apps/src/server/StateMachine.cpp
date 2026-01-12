@@ -324,6 +324,10 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     service.registerHandler<Api::CellSet::Cwc>([this](Api::CellSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::DiagramGet::Cwc>(
         [this](Api::DiagramGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::EvolutionStart::Cwc>(
+        [this](Api::EvolutionStart::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::EvolutionStop::Cwc>(
+        [this](Api::EvolutionStop::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::Exit::Cwc>([this](Api::Exit::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::FingerDown::Cwc>(
         [this](Api::FingerDown::Cwc cwc) { queueEvent(cwc); });
@@ -770,17 +774,27 @@ void StateMachine::broadcastRenderMessage(
 
 void StateMachine::broadcastCommand(const std::string& messageType)
 {
+    broadcastEventData(messageType, {});
+}
+
+void StateMachine::broadcastEventData(
+    const std::string& messageType, const std::vector<std::byte>& payload)
+{
     if (pImpl->subscribedClients_.empty()) {
         return;
     }
 
     spdlog::debug(
-        "StateMachine: Broadcasting command '{}' to {} clients",
+        "StateMachine: Broadcasting '{}' ({} bytes) to {} clients",
         messageType,
+        payload.size(),
         pImpl->subscribedClients_.size());
 
-    // Create envelope with no payload.
-    Network::MessageEnvelope envelope{ .id = 0, .message_type = messageType, .payload = {} };
+    Network::MessageEnvelope envelope{
+        .id = 0,
+        .message_type = messageType,
+        .payload = payload,
+    };
 
     std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
 

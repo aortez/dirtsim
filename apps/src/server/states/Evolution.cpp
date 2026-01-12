@@ -4,6 +4,7 @@
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
@@ -262,11 +263,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .bestGenomeId = bestGenomeId,
     };
 
-    // Broadcast to connected clients.
-    dsm.broadcastCommand("EvolutionProgress");
-
-    // TODO: Extend broadcast mechanism to send structured data, not just message type.
-    (void)progress;
+    dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
 }
 
 void Evolution::storeBestGenome(StateMachine& dsm)

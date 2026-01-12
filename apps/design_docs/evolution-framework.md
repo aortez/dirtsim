@@ -624,10 +624,12 @@ src/ui/state-machine/states/
   - Collect FitnessResult, compute fitness. ✅
   - After full generation: select, mutate, replace. ✅
   - Store best genome in repository periodically. ✅
-  - Broadcast EvolutionProgress. ✅ (hooks in place, TODO: extend broadcast for data)
+  - Broadcast EvolutionProgress with serialized data. ✅
   - Transition to Idle on completion or EvolutionStop. ✅
 - StateEvolutionPaused: ❌ (deferred)
 - Hook GenomeRepository into Server class (member, lives across states). ✅
+- CLI watch command for monitoring broadcasts. ✅
+- EvolutionStart/Stop wired to CLI dispatcher and StateMachine handlers. ✅
 
 **Tests:** ❌ (TODO)
 - EvolutionStart transitions Idle → Evolution.

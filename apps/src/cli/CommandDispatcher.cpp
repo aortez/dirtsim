@@ -13,6 +13,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::CellGet::Command, Api::CellGet::Okay>(serverHandlers_);
     registerCommand<Api::CellSet::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::DiagramGet::Command, Api::DiagramGet::Okay>(serverHandlers_);
+    registerCommand<Api::EvolutionStart::Command, Api::EvolutionStart::Okay>(serverHandlers_);
+    registerCommand<Api::EvolutionStop::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::Exit::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerDown::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerMove::Command, std::monostate>(serverHandlers_);

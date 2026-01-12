@@ -7,9 +7,13 @@
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
 #include "core/input/GamepadManager.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "server/api/EvolutionProgress.h"
+#include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
 #include <args.hxx>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -106,6 +110,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
+    { "watch", "Subscribe to server broadcasts and dump to stdout" },
 };
 
 std::string getCommandListHelp()
@@ -590,6 +595,85 @@ int main(int argc, char** argv)
             std::cerr << "Error processing screenshot: " << e.what() << std::endl;
             client.disconnect();
             return 1;
+        }
+
+        client.disconnect();
+        return 0;
+    }
+
+    // Handle watch command - subscribe to server broadcasts and dump to stdout.
+    if (targetName == "watch") {
+        std::string serverAddress;
+        if (addressOverride) {
+            serverAddress = args::get(addressOverride);
+        }
+        else {
+            serverAddress = "ws://localhost:8080";
+        }
+
+        std::cerr << "Connecting to " << serverAddress << " to watch broadcasts..." << std::endl;
+        std::cerr << "Press Ctrl+C to exit.\n" << std::endl;
+
+        Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
+
+        // Set up binary message handler.
+        std::atomic<bool> connected{ false };
+        client.onBinary([](const std::vector<std::byte>& data) {
+            try {
+                auto envelope = Network::deserialize_envelope(data);
+
+                // Check for EvolutionProgress messages.
+                if (envelope.message_type == "EvolutionProgress") {
+                    auto progress =
+                        Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+                    nlohmann::json output = progress.toJson();
+                    output["_type"] = envelope.message_type;
+                    std::cout << output.dump() << std::endl;
+                }
+                else {
+                    // Generic output for other message types.
+                    nlohmann::json output;
+                    output["_type"] = envelope.message_type;
+                    output["_payload_size"] = envelope.payload.size();
+                    std::cout << output.dump() << std::endl;
+                }
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error parsing message: " << e.what() << std::endl;
+            }
+        });
+
+        client.onDisconnected([&connected]() {
+            std::cerr << "Disconnected from server." << std::endl;
+            connected = false;
+        });
+
+        // Connect.
+        auto connectResult = client.connect(serverAddress, 5000);
+        if (connectResult.isError()) {
+            std::cerr << "Failed to connect: " << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        // Subscribe to broadcasts by sending RenderFormatSet.
+        Api::RenderFormatSet::Command subCmd{
+            .format = RenderFormat::BASIC,
+            .connectionId = "", // Server fills this in.
+        };
+        auto subResult = client.sendCommand<Api::RenderFormatSet::Okay>(subCmd, 5000);
+        if (subResult.isError()) {
+            std::cerr << "Failed to subscribe: " << subResult.errorValue() << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        connected = true;
+        std::cerr << "Connected and subscribed. Watching for broadcasts..." << std::endl;
+
+        // Block until disconnected or interrupted.
+        while (connected) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
         client.disconnect();
