@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -9,19 +10,19 @@ namespace DirtSim {
 /**
  * Types for the marquee effect system.
  *
- * DigitPlacement positions a character in virtual space.
+ * CharacterPlacement positions a character in virtual space.
  * MarqueeFrame contains all placements plus viewport transform.
  * The renderer clips to visible area after applying the viewport.
  */
 
-struct DigitPlacement {
-    char c = ' ';
+struct CharacterPlacement {
+    std::string text; // UTF-8 character (e.g., "0", ":", "🌞").
     double x = 0.0;
     double y = 0.0;
 };
 
 struct MarqueeFrame {
-    std::vector<DigitPlacement> digits;
+    std::vector<CharacterPlacement> placements;
     double viewportX = 0.0;
     double viewportY = 0.0;
     double zoom = 1.0;
@@ -85,12 +86,13 @@ struct VerticalSlideState {
 
 using MarqueeEffectState = std::variant<HorizontalScrollState, VerticalSlideState>;
 
-// Lays out a string into digit placements at y=0.
-std::vector<DigitPlacement> layoutString(
-    const std::string& content, int digitWidth, int digitGap, int colonWidth);
+// Lays out a string into character placements at y=0.
+std::vector<CharacterPlacement> layoutString(
+    const std::string& content, const std::function<int(const std::string&)>& getWidth);
 
 // Calculates the total width of a laid-out string.
-int calculateStringWidth(const std::string& content, int digitWidth, int digitGap, int colonWidth);
+int calculateStringWidth(
+    const std::string& content, const std::function<int(const std::string&)>& getWidth);
 
 // ============================================================================
 // Effect Functions

@@ -17,6 +17,7 @@ class Cell;
 struct MaterialMove;
 struct WorldData;
 struct PhysicsSettings;
+class LightManager;
 class WorldAdhesionCalculator;
 class WorldCollisionCalculator;
 class WorldFrictionCalculator;
@@ -25,7 +26,6 @@ class WorldPressureCalculator;
 class WorldViscosityCalculator;
 class GridOfCells;
 struct LightBuffer;
-struct PointLight;
 } // namespace DirtSim
 
 namespace DirtSim {
@@ -101,11 +101,9 @@ public:
     WorldLightCalculator& getLightCalculator();
     const WorldLightCalculator& getLightCalculator() const;
 
-    // Point light management.
-    void addPointLight(const PointLight& light);
-    void clearPointLights();
-    const std::vector<PointLight>& getPointLights() const;
-    std::vector<PointLight>& getPointLights();
+    // Light management.
+    LightManager& getLightManager();
+    const LightManager& getLightManager() const;
 
     WorldAdhesionCalculator& getAdhesionCalculator();
     const WorldAdhesionCalculator& getAdhesionCalculator() const;

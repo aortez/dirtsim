@@ -1,47 +1,40 @@
 #include "MarqueeTypes.h"
 
 #include <cstdint>
+#include <functional>
 
 namespace DirtSim {
 
-std::vector<DigitPlacement> layoutString(
-    const std::string& content, int digitWidth, int digitGap, int colonWidth)
+std::vector<CharacterPlacement> layoutString(
+    const std::string& content, const std::function<int(const std::string&)>& getWidth)
 {
-    std::vector<DigitPlacement> placements;
+    std::vector<CharacterPlacement> placements;
     double x = 0.0;
 
-    for (const char c : content) {
-        if (c >= '0' && c <= '9') {
-            placements.push_back({ .c = c, .x = x, .y = 0.0 });
-            x += digitWidth;
+    // Iterate through content character by character.
+    // For now, assumes single-byte characters. UTF-8 multi-byte support can be added later.
+    for (size_t i = 0; i < content.size(); ++i) {
+        std::string charStr(1, content[i]);
+        int charWidth = getWidth(charStr);
+
+        // Spaces advance position but aren't drawn.
+        if (charStr != " ") {
+            placements.push_back({ .text = charStr, .x = x, .y = 0.0 });
         }
-        else if (c == ':') {
-            placements.push_back({ .c = c, .x = x, .y = 0.0 });
-            x += colonWidth;
-        }
-        else if (c == ' ') {
-            // Spaces create gaps but aren't drawn.
-            x += digitGap;
-        }
+        x += charWidth;
     }
 
     return placements;
 }
 
-int calculateStringWidth(const std::string& content, int digitWidth, int digitGap, int colonWidth)
+int calculateStringWidth(
+    const std::string& content, const std::function<int(const std::string&)>& getWidth)
 {
     int width = 0;
 
-    for (const char c : content) {
-        if (c >= '0' && c <= '9') {
-            width += digitWidth;
-        }
-        else if (c == ':') {
-            width += colonWidth;
-        }
-        else if (c == ' ') {
-            width += digitGap;
-        }
+    for (size_t i = 0; i < content.size(); ++i) {
+        std::string charStr(1, content[i]);
+        width += getWidth(charStr);
     }
 
     return width;
@@ -50,6 +43,25 @@ int calculateStringWidth(const std::string& content, int digitWidth, int digitGa
 // ============================================================================
 // Effect Functions
 // ============================================================================
+
+namespace {
+
+// Creates a width function from stored dimension parameters.
+std::function<int(const std::string&)> makeWidthFunction(
+    int digitWidth, int digitGap, int colonWidth)
+{
+    return [=](const std::string& utf8Char) -> int {
+        if (utf8Char == ":") {
+            return colonWidth;
+        }
+        if (utf8Char == " ") {
+            return digitGap;
+        }
+        return digitWidth;
+    };
+}
+
+} // namespace
 
 void startHorizontalScroll(
     HorizontalScrollState& state,
@@ -61,7 +73,8 @@ void startHorizontalScroll(
     int colon_width)
 {
     state.viewport_x = 0.0;
-    state.content_width = calculateStringWidth(content, digit_width, digit_gap, colon_width);
+    auto getWidth = makeWidthFunction(digit_width, digit_gap, colon_width);
+    state.content_width = calculateStringWidth(content, getWidth);
     state.visible_width = visible_width;
     state.speed = speed;
     state.scrolling_out = true;
@@ -92,7 +105,8 @@ MarqueeFrame updateHorizontalScroll(
     }
 
     MarqueeFrame frame;
-    frame.digits = layoutString(content, state.digit_width, state.digit_gap, state.colon_width);
+    auto getWidth = makeWidthFunction(state.digit_width, state.digit_gap, state.colon_width);
+    frame.placements = layoutString(content, getWidth);
     frame.viewportX = state.viewport_x;
     frame.finished = !state.scrolling_out && state.viewport_x >= 0.0;
 
@@ -166,11 +180,11 @@ bool checkAndStartSlide(
 MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
 {
     MarqueeFrame frame;
+    auto getWidth = makeWidthFunction(state.digit_width, state.digit_gap, state.colon_width);
 
     if (!state.active) {
         // Not animating - just return the current time string normally.
-        frame.digits =
-            layoutString(state.new_time_str, state.digit_width, state.digit_gap, state.colon_width);
+        frame.placements = layoutString(state.new_time_str, getWidth);
         frame.finished = true;
         return frame;
     }
@@ -189,8 +203,7 @@ MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
 
     // Build the frame with animated digit positions.
     // Start with the new time string layout as the base.
-    auto base_layout =
-        layoutString(state.new_time_str, state.digit_width, state.digit_gap, state.colon_width);
+    auto base_layout = layoutString(state.new_time_str, getWidth);
 
     // Create a set of changing string indices for quick lookup.
     std::vector<bool> is_changing(state.new_time_str.size(), false);
@@ -223,7 +236,7 @@ MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
 
         if (!is_changing[str_idx]) {
             // Not changing - use normal position.
-            frame.digits.push_back(base_layout[layout_i]);
+            frame.placements.push_back(base_layout[layout_i]);
         }
     }
 
@@ -246,12 +259,14 @@ MarqueeFrame updateVerticalSlide(VerticalSlideState& state, double deltaTime)
 
         // Add old character (sliding out) if still visible.
         if (slide.old_char != ' ' && old_y < dh) {
-            frame.digits.push_back({ .c = slide.old_char, .x = base_x, .y = old_y });
+            frame.placements.push_back(
+                { .text = std::string(1, slide.old_char), .x = base_x, .y = old_y });
         }
 
         // Add new character (sliding in) if visible.
         if (slide.new_char != ' ' && new_y > -dh) {
-            frame.digits.push_back({ .c = slide.new_char, .x = base_x, .y = new_y });
+            frame.placements.push_back(
+                { .text = std::string(1, slide.new_char), .x = base_x, .y = new_y });
         }
     }
 

@@ -4,6 +4,7 @@
 #include "ColorNames.h"
 #include "GridOfCells.h"
 #include "LightConfig.h"
+#include "LightManager.h"
 #include "MaterialType.h"
 #include "PointLight.h"
 #include "ScopeTimer.h"
@@ -545,8 +546,8 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
     using ColorNames::RgbF;
     using ColorNames::toRgbF;
 
-    const auto& point_lights = world.getPointLights();
-    if (point_lights.empty()) {
+    const LightManager& lights = world.getLightManager();
+    if (lights.count() == 0) {
         return;
     }
 
@@ -554,13 +555,13 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
     const int width = data.width;
     const int height = data.height;
 
-    for (const PointLight& light : point_lights) {
+    lights.forEachLight([&](const PointLight& light) {
         const int light_x = static_cast<int>(light.position.x);
         const int light_y = static_cast<int>(light.position.y);
 
         // Skip lights outside the world.
         if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
-            continue;
+            return;
         }
 
         const int radius_int = static_cast<int>(std::ceil(light.radius));
@@ -594,7 +595,7 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
                 data.colors.at(x, y) += received * falloff;
             }
         }
-    }
+    });
 }
 
 } // namespace DirtSim

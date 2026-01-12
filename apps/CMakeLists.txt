@@ -340,6 +340,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/FontSampler.cpp
 
     # Physics engine.
+    src/core/LightManager.cpp
     src/core/World.cpp
     src/core/WorldAdhesionCalculator.cpp
     src/core/WorldAirResistanceCalculator.cpp
@@ -553,6 +554,7 @@ add_executable(dirtsim-tests
     src/core/bitmaps/tests/Neighborhood3x3_test.cpp
 
     # World light and resize tests.
+    src/core/tests/LightManager_test.cpp
     src/core/tests/WorldLightCalculator_test.cpp
     src/core/tests/WorldResize_test.cpp
 

@@ -124,11 +124,12 @@ private:
     int calculateTotalWidth() const;
     void recalculateDimensions();
     void clearDigits(World& world);
-    void drawDigit(World& world, int digit, int start_x, int start_y);
+    void drawCharacter(World& world, const std::string& utf8Char, int start_x, int start_y);
+    void drawCharacterBinary(World& world, const std::string& utf8Char, int start_x, int start_y);
     void drawCharacterWithMaterials(
         World& world, const std::string& utf8Char, int start_x, int start_y);
+    bool getCharacterPixel(const std::string& utf8Char, int row, int col) const;
     void placeDigitPixel(World& world, int x, int y, MaterialType renderMaterial);
-    void drawColon(World& world, int x, int start_y);
     void drawTimeString(World& world, const std::string& time_str);
     void drawTime(World& world);
     std::string getCurrentTimeString() const;

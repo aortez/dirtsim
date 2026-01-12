@@ -1,8 +1,10 @@
 #include "ClockScenario.h"
+#include "clock_scenario/CharacterMetrics.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
+#include "core/LightManager.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
 #include "core/PhysicsSettings.h"
@@ -610,17 +612,17 @@ void ClockScenario::setup(World& world)
     // Draw initial time (emissive will be set on first tick).
     drawTime(world);
 
-    // Add a warm point light on the right side, 1/3 up from the floor.
-    world.clearPointLights();
+    // Add static torch lights at corners.
+    world.getLightManager().clear();
     const WorldData& data = world.getData();
-    world.addPointLight(PointLight{
+    world.getLightManager().addLight(PointLight{
         .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
         .color = ColorNames::torchOrange(),
         .intensity = 0.1f,
         .radius = 15.0f,
         .attenuation = 0.05f });
 
-    world.addPointLight(
+    world.getLightManager().addLight(
         PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
                     .color = ColorNames::torchOrange(),
                     .intensity = 0.1f,
@@ -738,19 +740,63 @@ void ClockScenario::clearDigits(World& world)
     }
 }
 
-void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
+void ClockScenario::drawCharacter(
+    World& world, const std::string& utf8Char, int start_x, int start_y)
 {
-    if (digit < 0 || digit > 9) {
+    if (utf8Char.empty() || utf8Char == " ") {
         return;
     }
 
-    // NotoColorEmoji uses color materials - handle separately.
+    // Color fonts use material grid rendering for all characters.
     if (config_.font == Config::ClockFont::NotoColorEmoji) {
-        std::string digitStr(1, static_cast<char>('0' + digit));
-        drawCharacterWithMaterials(world, digitStr, start_x, start_y);
+        drawCharacterWithMaterials(world, utf8Char, start_x, start_y);
         return;
     }
 
+    // Binary fonts use pattern-based rendering.
+    drawCharacterBinary(world, utf8Char, start_x, start_y);
+}
+
+void ClockScenario::drawCharacterBinary(
+    World& world, const std::string& utf8Char, int start_x, int start_y)
+{
+    if (utf8Char.empty() || utf8Char == " ") {
+        return;
+    }
+
+    // Colon has special rendering (two dots at 1/3 and 2/3 height).
+    if (utf8Char == ":") {
+        int dh = getDigitHeight();
+        int cw = getColonWidth();
+
+        int dot1_y = start_y + dh / 3;
+        int dot2_y = start_y + (2 * dh) / 3;
+
+        for (int dx = 0; dx < cw; ++dx) {
+            int x = start_x + dx;
+            if (x < 0 || x >= world.getData().width) {
+                continue;
+            }
+
+            // For large font, draw 2x2 dots; otherwise single pixels.
+            int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
+
+            for (int dy = 0; dy < dot_height; ++dy) {
+                int y1 = dot1_y + dy;
+                int y2 = dot2_y + dy;
+
+                if (y1 >= 0 && y1 < world.getData().height) {
+                    placeDigitPixel(world, x, y1, config_.digitMaterial);
+                }
+                if (y2 >= 0 && y2 < world.getData().height) {
+                    placeDigitPixel(world, x, y2, config_.digitMaterial);
+                }
+            }
+        }
+        return;
+    }
+
+    // Standard character rendering using pixel patterns.
     int dw = getDigitWidth();
     int dh = getDigitHeight();
 
@@ -759,50 +805,61 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             int x = start_x + col;
             int y = start_y + row;
 
-            // Bounds check.
             if (x < 0 || x >= world.getData().width || y < 0 || y >= world.getData().height) {
                 continue;
             }
 
-            // Get the pixel value from the appropriate pattern.
-            bool pixel = false;
-            switch (config_.font) {
-                case Config::ClockFont::DotMatrix:
-                    pixel = ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
-                    break;
-                case Config::ClockFont::Montserrat24: {
-                    const auto& pattern = getSampledDigitPattern(digit);
-                    if (row < static_cast<int>(pattern.size())
-                        && col < static_cast<int>(pattern[row].size())) {
-                        pixel = pattern[row][col];
-                    }
-                    break;
-                }
-                case Config::ClockFont::NotoColorEmoji:
-                    // Handled above with early return.
-                    break;
-                case Config::ClockFont::Segment7:
-                    pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
-                    break;
-                case Config::ClockFont::Segment7ExtraTall:
-                    pixel = ClockFonts::SEGMENT7_EXTRA_TALL_PATTERNS[digit][row][col];
-                    break;
-                case Config::ClockFont::Segment7Jumbo:
-                    pixel = ClockFonts::SEGMENT7_JUMBO_PATTERNS[digit][row][col];
-                    break;
-                case Config::ClockFont::Segment7Large:
-                    pixel = ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];
-                    break;
-                case Config::ClockFont::Segment7Tall:
-                    pixel = ClockFonts::SEGMENT7_TALL_PATTERNS[digit][row][col];
-                    break;
-            }
-
-            if (pixel) {
+            if (getCharacterPixel(utf8Char, row, col)) {
                 placeDigitPixel(world, x, y, config_.digitMaterial);
             }
         }
     }
+}
+
+bool ClockScenario::getCharacterPixel(const std::string& utf8Char, int row, int col) const
+{
+    // Handle digits 0-9.
+    if (utf8Char.size() == 1 && utf8Char[0] >= '0' && utf8Char[0] <= '9') {
+        int digit = utf8Char[0] - '0';
+
+        switch (config_.font) {
+            case Config::ClockFont::DotMatrix:
+                return ClockFonts::DOT_MATRIX_PATTERNS[digit][row][col];
+
+            case Config::ClockFont::Montserrat24: {
+                // Use const_cast since getSampledDigitPattern may initialize cache.
+                auto* self = const_cast<ClockScenario*>(this);
+                const auto& pattern = self->getSampledDigitPattern(digit);
+                if (row < static_cast<int>(pattern.size())
+                    && col < static_cast<int>(pattern[row].size())) {
+                    return pattern[row][col];
+                }
+                return false;
+            }
+
+            case Config::ClockFont::NotoColorEmoji:
+                // Color fonts don't use binary pixel lookup.
+                return false;
+
+            case Config::ClockFont::Segment7:
+                return ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
+
+            case Config::ClockFont::Segment7ExtraTall:
+                return ClockFonts::SEGMENT7_EXTRA_TALL_PATTERNS[digit][row][col];
+
+            case Config::ClockFont::Segment7Jumbo:
+                return ClockFonts::SEGMENT7_JUMBO_PATTERNS[digit][row][col];
+
+            case Config::ClockFont::Segment7Large:
+                return ClockFonts::SEGMENT7_LARGE_PATTERNS[digit][row][col];
+
+            case Config::ClockFont::Segment7Tall:
+                return ClockFonts::SEGMENT7_TALL_PATTERNS[digit][row][col];
+        }
+    }
+
+    // Unknown character - no pixel.
+    return false;
 }
 
 void ClockScenario::drawCharacterWithMaterials(
@@ -856,84 +913,33 @@ void ClockScenario::placeDigitPixel(World& world, int x, int y, MaterialType ren
     world.getLightCalculator().setEmissive(x, y, color, intensity);
 }
 
-void ClockScenario::drawColon(World& world, int start_x, int start_y)
-{
-    int dh = getDigitHeight();
-    int cw = getColonWidth();
-
-    // Calculate dot positions at roughly 1/3 and 2/3 of digit height.
-    int dot1_y = start_y + dh / 3;
-    int dot2_y = start_y + (2 * dh) / 3;
-
-    // Draw colon dots (size depends on font).
-    for (int dx = 0; dx < cw; ++dx) {
-        int x = start_x + dx;
-        if (x < 0 || x >= world.getData().width) {
-            continue;
-        }
-
-        // For large font, draw 2x2 dots; otherwise single pixels.
-        int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
-
-        for (int dy = 0; dy < dot_height; ++dy) {
-            int y1 = dot1_y + dy;
-            int y2 = dot2_y + dy;
-
-            if (y1 >= 0 && y1 < world.getData().height) {
-                placeDigitPixel(world, x, y1, config_.digitMaterial);
-            }
-            if (y2 >= 0 && y2 < world.getData().height) {
-                placeDigitPixel(world, x, y2, config_.digitMaterial);
-            }
-        }
-    }
-}
-
 void ClockScenario::drawTimeString(World& world, const std::string& time_str)
 {
     // Clear previous digits.
     clearDigits(world);
 
-    // Get font dimensions.
-    int dw = getDigitWidth();
-    int dh = getDigitHeight();
-    int dg = getDigitGap();
-    int cw = getColonWidth();
+    // Create width function for layout calculations.
+    CharacterMetrics metrics(config_.font);
+    auto getWidth = metrics.widthFunction();
 
-    // Calculate total width by counting characters in the string.
-    int total_width = 0;
-    for (char c : time_str) {
-        if (c >= '0' && c <= '9') {
-            total_width += dw;
-        }
-        else if (c == ':') {
-            total_width += cw;
-        }
-        else if (c == ' ') {
-            total_width += dg;
-        }
-    }
-
-    // Calculate centered position.
+    // Calculate total width and centered position.
+    int total_width = calculateStringWidth(time_str, getWidth);
+    int dh = metrics.getHeight();
     int start_x = (world.getData().width - total_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
     int cursor_x = start_x;
 
     // Draw each character in the string.
-    for (char c : time_str) {
-        if (c >= '0' && c <= '9') {
-            drawDigit(world, c - '0', cursor_x, start_y);
-            cursor_x += dw;
+    for (size_t i = 0; i < time_str.size(); ++i) {
+        std::string charStr(1, time_str[i]);
+        int charWidth = getWidth(charStr);
+
+        // Draw non-space characters.
+        if (charStr != " ") {
+            drawCharacter(world, charStr, cursor_x, start_y);
         }
-        else if (c == ':') {
-            drawColon(world, cursor_x, start_y);
-            cursor_x += cw;
-        }
-        else if (c == ' ') {
-            // Space advances cursor by digit gap (no drawing).
-            cursor_x += dg;
-        }
+        cursor_x += charWidth;
     }
 }
 
@@ -1235,13 +1241,12 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         constexpr float kDoorLightClosedIntensity = 0.08f;
 
         const WorldData& data = world.getData();
-        auto& lights = world.getPointLights();
+        LightManager& lights = world.getLightManager();
 
         // Entrance door light (will be bright since door opens immediately).
         Vector2i entrance_light_pos =
             door_manager_.getLightPosition(duck_state.entrance_door_id, data);
-        duck_state.entrance_light_idx = lights.size();
-        lights.push_back(
+        duck_state.entrance_light = lights.createLight(
             PointLight{ .position = Vector2d{ static_cast<double>(entrance_light_pos.x),
                                               static_cast<double>(entrance_light_pos.y) },
                         .color = ColorNames::torchOrange(),
@@ -1251,13 +1256,13 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
         // Exit door light (starts dim since door is closed).
         Vector2i exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
-        duck_state.exit_light_idx = lights.size();
-        lights.push_back(PointLight{ .position = Vector2d{ static_cast<double>(exit_light_pos.x),
-                                                           static_cast<double>(exit_light_pos.y) },
-                                     .color = ColorNames::torchOrange(),
-                                     .intensity = kDoorLightClosedIntensity,
-                                     .radius = kDoorLightRadius,
-                                     .attenuation = kDoorLightAttenuation });
+        duck_state.exit_light = lights.createLight(
+            PointLight{ .position = Vector2d{ static_cast<double>(exit_light_pos.x),
+                                              static_cast<double>(exit_light_pos.y) },
+                        .color = ColorNames::torchOrange(),
+                        .intensity = kDoorLightClosedIntensity,
+                        .radius = kDoorLightRadius,
+                        .attenuation = kDoorLightAttenuation });
 
         // Open entrance door via DoorManager. Duck spawns after delay.
         door_manager_.openDoor(duck_state.entrance_door_id, world);
@@ -1268,7 +1273,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             "ClockScenario: Opening {} door for duck entrance",
             duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT");
 
-        event.state = duck_state;
+        event.state = std::move(duck_state);
         config_.duckEnabled = true; // Sync config flag.
         spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventTiming.duration);
     }
@@ -1343,16 +1348,17 @@ void ClockScenario::updateDigitSlideEvent(
         clearDigits(world);
 
         // Get font dimensions.
-        int dw = getDigitWidth();
-        int dh = getDigitHeight();
+        CharacterMetrics metrics(config_.font);
+        auto getWidth = metrics.widthFunction();
+        int dh = metrics.getHeight();
 
         // Calculate centering (same as drawTimeString).
-        int content_width = calculateStringWidth(current_time, dw, getDigitGap(), getColonWidth());
+        int content_width = calculateStringWidth(current_time, getWidth);
         int start_x = (world.getData().width - content_width) / 2;
         int start_y = (world.getData().height - dh) / 2;
 
-        // Draw each digit from the frame.
-        for (const auto& placement : frame.digits) {
+        // Draw each character from the frame.
+        for (const auto& placement : frame.placements) {
             // Apply centering.
             int x = start_x + static_cast<int>(placement.x);
             int y = start_y + static_cast<int>(placement.y);
@@ -1361,16 +1367,12 @@ void ClockScenario::updateDigitSlideEvent(
             if (y + dh < 0 || y >= world.getData().height) {
                 continue;
             }
-            if (x + dw < 0 || x >= world.getData().width) {
+            int charWidth = getWidth(placement.text);
+            if (x + charWidth < 0 || x >= world.getData().width) {
                 continue;
             }
 
-            if (placement.c >= '0' && placement.c <= '9') {
-                drawDigit(world, placement.c - '0', x, y);
-            }
-            else if (placement.c == ':') {
-                drawColon(world, x, y);
-            }
+            drawCharacter(world, placement.text, x, y);
         }
     }
 
@@ -1397,32 +1399,28 @@ void ClockScenario::updateMarqueeEvent(
     clearDigits(world);
 
     // Get font dimensions.
-    int dw = getDigitWidth();
-    int dh = getDigitHeight();
+    CharacterMetrics metrics(config_.font);
+    auto getWidth = metrics.widthFunction();
+    int dh = metrics.getHeight();
 
     // Calculate centering (same as drawTimeString).
     int content_width = static_cast<int>(state.scroll_state.content_width);
     int start_x = (world.getData().width - content_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
-    // Draw each digit from the frame, offset by viewport and centering.
-    for (const auto& placement : frame.digits) {
+    // Draw each character from the frame, offset by viewport and centering.
+    for (const auto& placement : frame.placements) {
         // Apply centering and viewport offset.
         double screen_x = start_x + placement.x - frame.viewportX;
+        int charWidth = getWidth(placement.text);
 
         // Skip if off-screen.
-        if (screen_x + dw < 0 || screen_x >= static_cast<double>(world.getData().width)) {
+        if (screen_x + charWidth < 0 || screen_x >= static_cast<double>(world.getData().width)) {
             continue;
         }
 
         int x = static_cast<int>(screen_x);
-
-        if (placement.c >= '0' && placement.c <= '9') {
-            drawDigit(world, placement.c - '0', x, start_y);
-        }
-        else if (placement.c == ':') {
-            drawColon(world, x, start_y);
-        }
+        drawCharacter(world, placement.text, x, start_y);
     }
 
     // Signal event completion after drawing the final frame.
@@ -1569,7 +1567,6 @@ void ClockScenario::updateDuckEvent(
     // Door light intensity constants.
     constexpr float kDoorLightOpenIntensity = 1.0f;
     constexpr float kDoorLightClosedIntensity = 0.08f;
-    auto& lights = world.getPointLights();
 
     // Close entrance door once duck moves away from it and schedule removal.
     Vector2i entrance_pos = door_manager_.getDoorPosition(state.entrance_door_id, data);
@@ -1578,8 +1575,8 @@ void ClockScenario::updateDuckEvent(
         door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
 
         // Dim the entrance door light.
-        if (state.entrance_light_idx < lights.size()) {
-            lights[state.entrance_light_idx].intensity = kDoorLightClosedIntensity;
+        if (state.entrance_light) {
+            state.entrance_light->get().intensity = kDoorLightClosedIntensity;
         }
     }
 
@@ -1588,8 +1585,8 @@ void ClockScenario::updateDuckEvent(
         door_manager_.openDoor(state.exit_door_id, world);
 
         // Brighten the exit door light.
-        if (state.exit_light_idx < lights.size()) {
-            lights[state.exit_light_idx].intensity = kDoorLightOpenIntensity;
+        if (state.exit_light) {
+            state.exit_light->get().intensity = kDoorLightOpenIntensity;
         }
 
         // Log world state when exit door opens.
@@ -1688,14 +1685,9 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         // Clear any floor obstacles.
         obstacle_manager_.clearAll(world);
 
-        // Disable door lights (set intensity to 0 - keeps indices stable).
-        auto& lights = world.getPointLights();
-        if (state.entrance_light_idx < lights.size()) {
-            lights[state.entrance_light_idx].intensity = 0.0f;
-        }
-        if (state.exit_light_idx < lights.size()) {
-            lights[state.exit_light_idx].intensity = 0.0f;
-        }
+        // Remove door lights (RAII handles auto-cleanup).
+        state.entrance_light.reset();
+        state.exit_light.reset();
 
         // Close doors and schedule removal after a delay.
         door_manager_.closeDoor(state.entrance_door_id, world);
@@ -1732,14 +1724,9 @@ void ClockScenario::cancelAllEvents(World& world)
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             }
 
-            // Disable door lights.
-            auto& lights = world.getPointLights();
-            if (state.entrance_light_idx < lights.size()) {
-                lights[state.entrance_light_idx].intensity = 0.0f;
-            }
-            if (state.exit_light_idx < lights.size()) {
-                lights[state.exit_light_idx].intensity = 0.0f;
-            }
+            // Remove door lights (RAII handles auto-cleanup).
+            state.entrance_light.reset();
+            state.exit_light.reset();
         }
         else if (type == ClockEventType::MELTDOWN) {
             // Clean up any stray digit material from interrupted meltdown.

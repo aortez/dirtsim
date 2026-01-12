@@ -1,10 +1,12 @@
 #pragma once
 
 #include "MarqueeTypes.h"
+#include "core/LightManager.h"
 #include "core/MaterialType.h"
 #include "core/StrongType.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
+#include <optional>
 #include <variant>
 #include <vector>
 
@@ -145,10 +147,9 @@ struct DuckEventState {
     double door_close_timer = 0.0;
     double obstacle_spawn_timer = 0.0;
 
-    // Indices into World's point light vector for door indicator lights.
-    // SIZE_MAX means no light assigned yet.
-    size_t entrance_light_idx = SIZE_MAX;
-    size_t exit_light_idx = SIZE_MAX;
+    // RAII handles for door indicator lights. Auto-removed when event ends.
+    std::optional<LightHandle> entrance_light;
+    std::optional<LightHandle> exit_light;
 };
 
 using EventState = std::variant<

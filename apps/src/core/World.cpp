@@ -4,6 +4,7 @@
 #include "Assert.h"
 #include "Cell.h"
 #include "GridOfCells.h"
+#include "LightManager.h"
 #include "PhysicsSettings.h"
 #include "PointLight.h"
 #include "ReflectSerializer.h"
@@ -74,8 +75,8 @@ struct World::Impl {
     // Material transfer queue (internal simulation state).
     std::vector<MaterialMove> pending_moves_;
 
-    // Point light sources.
-    std::vector<PointLight> point_lights_;
+    // Light sources.
+    LightManager light_manager_;
 
     // Performance timing.
     mutable Timers timers_;
@@ -202,24 +203,14 @@ const LightBuffer& World::getRawLightBuffer() const
     return pImpl->light_calculator_.getRawLightBuffer();
 }
 
-void World::addPointLight(const PointLight& light)
+LightManager& World::getLightManager()
 {
-    pImpl->point_lights_.push_back(light);
+    return pImpl->light_manager_;
 }
 
-void World::clearPointLights()
+const LightManager& World::getLightManager() const
 {
-    pImpl->point_lights_.clear();
-}
-
-const std::vector<PointLight>& World::getPointLights() const
-{
-    return pImpl->point_lights_;
-}
-
-std::vector<PointLight>& World::getPointLights()
-{
-    return pImpl->point_lights_;
+    return pImpl->light_manager_;
 }
 
 Timers& World::getTimers()

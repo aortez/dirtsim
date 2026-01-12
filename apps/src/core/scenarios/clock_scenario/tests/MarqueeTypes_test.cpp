@@ -1,8 +1,27 @@
 #include "core/scenarios/clock_scenario/MarqueeTypes.h"
 #include <cmath>
+#include <functional>
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
+
+namespace {
+
+// Helper to create a width function for testing.
+std::function<int(const std::string&)> makeTestWidthFunc(int digitWidth, int gap, int colonWidth)
+{
+    return [=](const std::string& c) -> int {
+        if (c == ":") {
+            return colonWidth;
+        }
+        if (c == " ") {
+            return gap;
+        }
+        return digitWidth;
+    };
+}
+
+} // namespace
 
 // =============================================================================
 // layoutString Tests
@@ -10,87 +29,87 @@ using namespace DirtSim;
 
 TEST(MarqueeTypesTest, LayoutString_SingleDigit)
 {
-    auto placements = layoutString("5", 5, 1, 1);
+    auto placements = layoutString("5", makeTestWidthFunc(5, 1, 1));
 
     ASSERT_EQ(placements.size(), 1u);
-    EXPECT_EQ(placements[0].c, '5');
+    EXPECT_EQ(placements[0].text, "5");
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
     EXPECT_DOUBLE_EQ(placements[0].y, 0.0);
 }
 
 TEST(MarqueeTypesTest, LayoutString_TwoDigits)
 {
-    auto placements = layoutString("12", 5, 1, 1);
+    auto placements = layoutString("12", makeTestWidthFunc(5, 1, 1));
 
     ASSERT_EQ(placements.size(), 2u);
-    EXPECT_EQ(placements[0].c, '1');
+    EXPECT_EQ(placements[0].text, "1");
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
-    EXPECT_EQ(placements[1].c, '2');
+    EXPECT_EQ(placements[1].text, "2");
     EXPECT_DOUBLE_EQ(placements[1].x, 5.0); // After first digit.
 }
 
 TEST(MarqueeTypesTest, LayoutString_DigitsWithSpace)
 {
-    auto placements = layoutString("1 2", 5, 2, 1);
+    auto placements = layoutString("1 2", makeTestWidthFunc(5, 2, 1));
 
     ASSERT_EQ(placements.size(), 2u);
-    EXPECT_EQ(placements[0].c, '1');
+    EXPECT_EQ(placements[0].text, "1");
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
-    EXPECT_EQ(placements[1].c, '2');
+    EXPECT_EQ(placements[1].text, "2");
     EXPECT_DOUBLE_EQ(placements[1].x, 7.0); // 5 (digit) + 2 (gap).
 }
 
 TEST(MarqueeTypesTest, LayoutString_WithColon)
 {
-    auto placements = layoutString("1:2", 5, 1, 3);
+    auto placements = layoutString("1:2", makeTestWidthFunc(5, 1, 3));
 
     ASSERT_EQ(placements.size(), 3u);
-    EXPECT_EQ(placements[0].c, '1');
+    EXPECT_EQ(placements[0].text, "1");
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
-    EXPECT_EQ(placements[1].c, ':');
+    EXPECT_EQ(placements[1].text, ":");
     EXPECT_DOUBLE_EQ(placements[1].x, 5.0);
-    EXPECT_EQ(placements[2].c, '2');
+    EXPECT_EQ(placements[2].text, "2");
     EXPECT_DOUBLE_EQ(placements[2].x, 8.0); // 5 + 3 (colon).
 }
 
 TEST(MarqueeTypesTest, LayoutString_TimeFormat)
 {
     // Typical time format: "1 2 : 3 4".
-    auto placements = layoutString("1 2 : 3 4", 5, 1, 2);
+    auto placements = layoutString("1 2 : 3 4", makeTestWidthFunc(5, 1, 2));
 
     ASSERT_EQ(placements.size(), 5u);
 
     // '1' at x=0.
-    EXPECT_EQ(placements[0].c, '1');
+    EXPECT_EQ(placements[0].text, "1");
     EXPECT_DOUBLE_EQ(placements[0].x, 0.0);
 
     // '2' at x=6 (digit=5 + gap=1).
-    EXPECT_EQ(placements[1].c, '2');
+    EXPECT_EQ(placements[1].text, "2");
     EXPECT_DOUBLE_EQ(placements[1].x, 6.0);
 
     // ':' at x=12 (6 + digit=5 + gap=1).
-    EXPECT_EQ(placements[2].c, ':');
+    EXPECT_EQ(placements[2].text, ":");
     EXPECT_DOUBLE_EQ(placements[2].x, 12.0);
 
     // '3' at x=15 (12 + colon=2 + gap=1).
-    EXPECT_EQ(placements[3].c, '3');
+    EXPECT_EQ(placements[3].text, "3");
     EXPECT_DOUBLE_EQ(placements[3].x, 15.0);
 
     // '4' at x=21 (15 + digit=5 + gap=1).
-    EXPECT_EQ(placements[4].c, '4');
+    EXPECT_EQ(placements[4].text, "4");
     EXPECT_DOUBLE_EQ(placements[4].x, 21.0);
 }
 
 TEST(MarqueeTypesTest, LayoutString_EmptyString)
 {
-    auto placements = layoutString("", 5, 1, 1);
+    auto placements = layoutString("", makeTestWidthFunc(5, 1, 1));
 
     EXPECT_TRUE(placements.empty());
 }
 
 TEST(MarqueeTypesTest, LayoutString_OnlySpaces)
 {
-    auto placements = layoutString("   ", 5, 2, 1);
+    auto placements = layoutString("   ", makeTestWidthFunc(5, 2, 1));
 
     // Spaces don't produce placements, just advance position.
     EXPECT_TRUE(placements.empty());
@@ -98,11 +117,11 @@ TEST(MarqueeTypesTest, LayoutString_OnlySpaces)
 
 TEST(MarqueeTypesTest, LayoutString_AllDigits)
 {
-    auto placements = layoutString("0123456789", 5, 1, 1);
+    auto placements = layoutString("0123456789", makeTestWidthFunc(5, 1, 1));
 
     ASSERT_EQ(placements.size(), 10u);
     for (int i = 0; i < 10; ++i) {
-        EXPECT_EQ(placements[i].c, '0' + i);
+        EXPECT_EQ(placements[i].text, std::string(1, '0' + i));
         EXPECT_DOUBLE_EQ(placements[i].x, i * 5.0);
     }
 }
@@ -113,25 +132,25 @@ TEST(MarqueeTypesTest, LayoutString_AllDigits)
 
 TEST(MarqueeTypesTest, CalculateWidth_SingleDigit)
 {
-    int width = calculateStringWidth("5", 5, 1, 1);
+    int width = calculateStringWidth("5", makeTestWidthFunc(5, 1, 1));
     EXPECT_EQ(width, 5);
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_TwoDigits)
 {
-    int width = calculateStringWidth("12", 5, 1, 1);
+    int width = calculateStringWidth("12", makeTestWidthFunc(5, 1, 1));
     EXPECT_EQ(width, 10);
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_DigitsWithSpace)
 {
-    int width = calculateStringWidth("1 2", 5, 2, 1);
+    int width = calculateStringWidth("1 2", makeTestWidthFunc(5, 2, 1));
     EXPECT_EQ(width, 12); // 5 + 2 + 5.
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_WithColon)
 {
-    int width = calculateStringWidth("1:2", 5, 1, 3);
+    int width = calculateStringWidth("1:2", makeTestWidthFunc(5, 1, 3));
     EXPECT_EQ(width, 13); // 5 + 3 + 5.
 }
 
@@ -139,19 +158,19 @@ TEST(MarqueeTypesTest, CalculateWidth_TimeFormat)
 {
     // "1 2 : 3 4" = d + g + d + g + c + g + d + g + d.
     // = 5 + 1 + 5 + 1 + 2 + 1 + 5 + 1 + 5 = 26.
-    int width = calculateStringWidth("1 2 : 3 4", 5, 1, 2);
+    int width = calculateStringWidth("1 2 : 3 4", makeTestWidthFunc(5, 1, 2));
     EXPECT_EQ(width, 26);
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_EmptyString)
 {
-    int width = calculateStringWidth("", 5, 1, 1);
+    int width = calculateStringWidth("", makeTestWidthFunc(5, 1, 1));
     EXPECT_EQ(width, 0);
 }
 
 TEST(MarqueeTypesTest, CalculateWidth_OnlySpaces)
 {
-    int width = calculateStringWidth("   ", 5, 2, 1);
+    int width = calculateStringWidth("   ", makeTestWidthFunc(5, 2, 1));
     EXPECT_EQ(width, 6); // 3 gaps of 2 each.
 }
 
@@ -228,9 +247,9 @@ TEST(MarqueeTypesTest, HorizontalScroll_FrameContainsDigits)
 
     auto frame = updateHorizontalScroll(state, "12", 0.0);
 
-    ASSERT_EQ(frame.digits.size(), 2u);
-    EXPECT_EQ(frame.digits[0].c, '1');
-    EXPECT_EQ(frame.digits[1].c, '2');
+    ASSERT_EQ(frame.placements.size(), 2u);
+    EXPECT_EQ(frame.placements[0].text, "1");
+    EXPECT_EQ(frame.placements[1].text, "2");
 }
 
 TEST(MarqueeTypesTest, HorizontalScroll_ClampsToZeroOnFinish)
@@ -381,12 +400,12 @@ TEST(MarqueeTypesTest, VerticalSlide_FrameContainsStaticAndAnimatingDigits)
 
     // Should contain: static '1', animating '2' (old) and '3' (new).
     // Total: 3 placements.
-    EXPECT_GE(frame.digits.size(), 2u); // At least static '1' and new '3'.
+    EXPECT_GE(frame.placements.size(), 2u); // At least static '1' and new '3'.
 
     // Find the static digit.
     bool found_static_1 = false;
-    for (const auto& p : frame.digits) {
-        if (p.c == '1' && p.y == 0.0) {
+    for (const auto& p : frame.placements) {
+        if (p.text == "1" && p.y == 0.0) {
             found_static_1 = true;
         }
     }
@@ -412,11 +431,11 @@ TEST(MarqueeTypesTest, VerticalSlide_AnimatingDigitsHaveOffsetY)
     double expected_old_y = 0.5 * digit_height;                 // 7.5
     double expected_new_y = -digit_height + 0.5 * digit_height; // -7.5
 
-    for (const auto& p : frame.digits) {
-        if (p.c == '2' && std::abs(p.y - expected_old_y) < 0.01) {
+    for (const auto& p : frame.placements) {
+        if (p.text == "2" && std::abs(p.y - expected_old_y) < 0.01) {
             found_old_at_offset = true;
         }
-        if (p.c == '3' && std::abs(p.y - expected_new_y) < 0.01) {
+        if (p.text == "3" && std::abs(p.y - expected_new_y) < 0.01) {
             found_new_at_offset = true;
         }
     }

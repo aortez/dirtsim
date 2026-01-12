@@ -13,6 +13,7 @@
 #include "core/ColorNames.h"
 #include "core/GridOfCells.h"
 #include "core/LightConfig.h"
+#include "core/LightManager.h"
 #include "core/MaterialType.h"
 #include "core/PointLight.h"
 #include "core/Timers.h"
@@ -403,7 +404,7 @@ TEST_F(WorldLightCalculatorTest, PointLightIlluminatesDarkRoom)
     torch.intensity = 1.0f;
     torch.radius = 8.0f;
     torch.attenuation = 0.1f;
-    world.addPointLight(torch);
+    world.getLightManager().addLight(torch);
 
     calc.calculate(world, world.getGrid(), config, timers);
 
@@ -449,7 +450,7 @@ TEST_F(WorldLightCalculatorTest, PointLightFalloffWithDistance)
     light.intensity = 1.0f;
     light.radius = 15.0f;
     light.attenuation = 0.1f;
-    world.addPointLight(light);
+    world.getLightManager().addLight(light);
 
     calc.calculate(world, world.getGrid(), config, timers);
 
@@ -498,7 +499,7 @@ TEST_F(WorldLightCalculatorTest, PointLightBlockedByWall)
     light.intensity = 1.0f;
     light.radius = 15.0f;
     light.attenuation = 0.05f;
-    world.addPointLight(light);
+    world.getLightManager().addLight(light);
 
     calc.calculate(world, world.getGrid(), config, timers);
 
@@ -539,21 +540,21 @@ TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
     light1.intensity = 1.0f;
     light1.radius = 10.0f;
     light1.attenuation = 0.1f;
-    world.addPointLight(light1);
+    world.getLightManager().addLight(light1);
 
     calc.calculate(world, world.getGrid(), config, timers);
     float one_light = ColorNames::brightness(data.colors.at(10, 5));
 
     // Clear and add two lights.
-    world.clearPointLights();
-    world.addPointLight(light1);
+    world.getLightManager().clear();
+    world.getLightManager().addLight(light1);
     PointLight light2;
     light2.position = Vector2d{ 15.0, 5.0 };
     light2.color = ColorNames::white();
     light2.intensity = 1.0f;
     light2.radius = 10.0f;
     light2.attenuation = 0.1f;
-    world.addPointLight(light2);
+    world.getLightManager().addLight(light2);
 
     calc.calculate(world, world.getGrid(), config, timers);
     float two_lights = ColorNames::brightness(data.colors.at(10, 5));
@@ -594,7 +595,7 @@ TEST_F(WorldLightCalculatorTest, PointLightSpreadIsCircular)
     light.intensity = 1.0f;
     light.radius = 10.0f;
     light.attenuation = 0.1f;
-    world.addPointLight(light);
+    world.getLightManager().addLight(light);
 
     // Rebuild grid cache.
     world.advanceTime(0.0001);
