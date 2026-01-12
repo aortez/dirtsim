@@ -33,6 +33,7 @@ protected:
     {
         // Explicit config for testing - no ambient, pure sunlight, no diffusion.
         config = {
+            .air_scatter_rate = 0.15f,
             .ambient_color = ColorNames::black(),
             .ambient_intensity = 0.0f,
             .diffusion_iterations = 0,
@@ -87,6 +88,9 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
         data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
     calc.calculate(world, world.getGrid(), config, timers);
 
     // Cells above wall (rows 0-2) should be lit (WATER is blue, ~0.26 brightness).
@@ -123,6 +127,9 @@ TEST_F(WorldLightCalculatorTest, LeafPartiallyBlocksSunlight)
     // Single leaf cell at x=2, y=0.
     data.at(2, 0).replaceMaterial(MaterialType::LEAF, 1.0);
 
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
     calc.calculate(world, world.getGrid(), config, timers);
 
     // Cell below leaf should be dimmer than cell in adjacent column.
@@ -146,6 +153,9 @@ TEST_F(WorldLightCalculatorTest, EmissiveSeedAddsLight)
 
     // Place a seed in the dark area.
     data.at(2, 2).replaceMaterial(MaterialType::SEED, 1.0);
+
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
 
     calc.calculate(world, world.getGrid(), config, timers);
 
@@ -299,6 +309,9 @@ TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
         data.at(x, 3).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
     // Disable sun, use only ambient with sky access.
     config.sun_enabled = false;
     config.ambient_color = 0xFFFFFFFF; // White ambient.
@@ -335,6 +348,9 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
             data.at(x, 2).replaceMaterial(MaterialType::WALL, 1.0);
         }
     }
+
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
 
     // Disable sun, use only ambient with sky access.
     config.sun_enabled = false;
@@ -468,6 +484,9 @@ TEST_F(WorldLightCalculatorTest, PointLightBlockedByWall)
         data.at(10, y).replaceMaterial(MaterialType::WALL, 1.0);
     }
 
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
     config.sun_enabled = false;
     config.ambient_color = ColorNames::black();
     config.sky_access_enabled = false;
@@ -561,6 +580,9 @@ TEST_F(WorldLightCalculatorTest, AirScatteringDiffusesLightSideways)
     // SAND marker in shadow (x=10, just past shadow boundary).
     data.at(10, 5).replaceMaterial(MaterialType::SAND, 1.0);
 
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
     // First: calculate WITHOUT diffusion.
     config.diffusion_iterations = 0;
     config.diffusion_rate = 0.0f;
@@ -596,6 +618,9 @@ TEST_F(WorldLightCalculatorTest, AirScatteringSoftensOverhangShadow)
 
     // WATER marker under overhang (x=10, y=6).
     data.at(10, 6).replaceMaterial(MaterialType::WATER, 1.0);
+
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
 
     // First: calculate WITHOUT diffusion.
     config.diffusion_iterations = 0;
