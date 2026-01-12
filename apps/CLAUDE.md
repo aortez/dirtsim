@@ -555,7 +555,6 @@ Can be found here:
 - Implement fragmentation on high energy impacts (see WorldCollisionCalculator).
 - mass as a gravity source!  allan.pizza but in a grid!!!
 - reinstall lottie - it would be sweet to mess with these animations. Or sample them for quantized display.
-- scenarioId's shouldn't be strings!!! just use an enum please.
 - make training UI have option to show current training run and also picture from end of best run so far.
 
 See design_docs/plant.md and design_docs/neural-net-brain.md for more.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ReflectEnumJson.h"
 #include "reflect.h"
 
 #include <nlohmann/json.hpp>

@@ -3,7 +3,6 @@
 
 #include <array>
 #include <cassert>
-#include <stdexcept>
 
 namespace DirtSim {
 
@@ -240,27 +239,6 @@ const std::vector<MaterialType>& getAllMaterialTypes()
         return result;
     }();
     return materials;
-}
-
-void to_json(nlohmann::json& j, MaterialType type)
-{
-    j = toString(type);
-}
-
-void from_json(const nlohmann::json& j, MaterialType& type)
-{
-    if (!j.is_string()) {
-        throw std::runtime_error("MaterialType::from_json: JSON value must be a string");
-    }
-
-    std::string name = j.get<std::string>();
-    auto result = fromString(name);
-    if (result) {
-        type = *result;
-        return;
-    }
-
-    throw std::runtime_error("MaterialType::from_json: Unknown material type '" + name + "'");
 }
 
 void setMaterialCohesion(MaterialType type, double cohesion)

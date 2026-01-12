@@ -1,7 +1,8 @@
 #pragma once
 
+#include "LightProperties.h"
+
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 #include <vector>
@@ -13,18 +14,6 @@ namespace DirtSim {
  * Material type definitions for the pure-material World physics system.
  * Each cell contains one material type with a fill ratio [0,1].
  */
-
-/**
- * Light interaction properties for materials.
- * Used by WorldLightCalculator to compute illumination.
- */
-struct LightProperties {
-    float opacity = 0.0f;                 // Blocks direct light [0-1].
-    float scatter = 0.0f;                 // Re-emits light to neighbors [0-1].
-    uint32_t tint = 0xFFFFFFFF;           // Color filter for transmitted light (RGBA).
-    float emission = 0.0f;                // Self-illumination intensity [0-1].
-    uint32_t emission_color = 0xFFFFFFFF; // Color of emitted light (RGBA).
-};
 
 enum class MaterialType : uint8_t {
     AIR = 0, // Empty space (default).
@@ -81,8 +70,5 @@ void setMaterialCohesion(MaterialType type, double cohesion);
  * Returns a value between kinetic and static friction coefficients based on velocity.
  */
 double getFrictionCoefficient(double velocity_magnitude, const MaterialProperties& props);
-
-void to_json(nlohmann::json& j, MaterialType type);
-void from_json(const nlohmann::json& j, MaterialType& type);
 
 } // namespace DirtSim
