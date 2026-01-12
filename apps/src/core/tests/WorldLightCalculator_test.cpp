@@ -31,13 +31,18 @@ protected:
 
     void SetUp() override
     {
-        // Default config with no ambient (so we can test sun clearly).
-        config.ambient_color = ColorNames::black();
-        config.sun_enabled = true;
-        config.sun_color = ColorNames::white();
-        config.sun_intensity = 1.0f;
-        config.diffusion_iterations = 0;
-        config.diffusion_rate = 0.0f;
+        // Explicit config for testing - no ambient, pure sunlight, no diffusion.
+        config = {
+            .ambient_color = ColorNames::black(),
+            .ambient_intensity = 0.0f,
+            .diffusion_iterations = 0,
+            .diffusion_rate = 0.0f,
+            .sky_access_enabled = false,
+            .sky_access_falloff = 0.0f,
+            .sun_color = ColorNames::white(),
+            .sun_enabled = true,
+            .sun_intensity = 1.0f,
+        };
     }
 };
 
@@ -535,4 +540,80 @@ TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
     float two_lights = ColorNames::brightness(data.colors.at(10, 5));
 
     EXPECT_GT(two_lights, one_light) << "Two lights should be brighter than one";
+}
+
+// =============================================================================
+// Air Scattering Tests
+// =============================================================================
+
+TEST_F(WorldLightCalculatorTest, AirScatteringDiffusesLightSideways)
+{
+    // Test that air scattering allows light to reach shadowed areas.
+    // Compare with/without diffusion to prove air scattering works.
+    World world(20, 10);
+    WorldData& data = world.getData();
+
+    // Wall covering right side at row 0 (blocks sun for x >= 8).
+    for (int x = 8; x < 20; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // SAND marker in shadow (x=10, just past shadow boundary).
+    data.at(10, 5).replaceMaterial(MaterialType::SAND, 1.0);
+
+    // First: calculate WITHOUT diffusion.
+    config.diffusion_iterations = 0;
+    config.diffusion_rate = 0.0f;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    float no_diffusion = ColorNames::brightness(data.colors.at(10, 5));
+
+    // Second: calculate WITH diffusion (air scattering).
+    config.diffusion_iterations = 5;
+    config.diffusion_rate = 0.5f;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    float with_diffusion = ColorNames::brightness(data.colors.at(10, 5));
+
+    // Without diffusion, shadow should be dark (wall blocks direct sun).
+    EXPECT_LT(no_diffusion, 0.1f) << "Without diffusion, shadow should be dark";
+
+    // With diffusion (air scattering), shadow should receive some light.
+    EXPECT_GT(with_diffusion, no_diffusion) << "Air scattering should bring more light into shadow";
+}
+
+TEST_F(WorldLightCalculatorTest, AirScatteringSoftensOverhangShadow)
+{
+    // Test that air scattering brings light under an overhang.
+    // Compare with/without diffusion.
+    World world(15, 12);
+    WorldData& data = world.getData();
+
+    // Create an overhang: wall at y=4, extending from x=6 to edge.
+    for (int x = 6; x < 15; ++x) {
+        data.at(x, 4).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // WATER marker under overhang (x=10, y=6).
+    data.at(10, 6).replaceMaterial(MaterialType::WATER, 1.0);
+
+    // First: calculate WITHOUT diffusion.
+    config.diffusion_iterations = 0;
+    config.diffusion_rate = 0.0f;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    float no_diffusion = ColorNames::brightness(data.colors.at(10, 6));
+
+    // Second: calculate WITH diffusion (air scattering).
+    config.diffusion_iterations = 5;
+    config.diffusion_rate = 0.5f;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    float with_diffusion = ColorNames::brightness(data.colors.at(10, 6));
+
+    // Without diffusion, under overhang should be dark.
+    EXPECT_LT(no_diffusion, 0.1f) << "Without diffusion, under overhang should be dark";
+
+    // With diffusion (air scattering), light should reach under overhang.
+    EXPECT_GT(with_diffusion, no_diffusion) << "Air scattering should bring light under overhang";
 }

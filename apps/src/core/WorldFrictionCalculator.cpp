@@ -46,19 +46,20 @@ void WorldFrictionCalculator::calculateAndApplyFrictionForces(World& world, floa
                 continue;
             }
 
-            Vector2f friction_force = grid_.debugAt(x, y).accumulated_friction_force;
+            Vector2f friction_force =
+                grid_.debugAt(x, y).accumulated_friction_force; // May be modified.
 
             // CONSTRAINT: Friction should primarily oppose motion.
             // Allow limited momentum transfer when friction aids motion.
-            float dot_product = friction_force.dot(cell.velocity);
+            const float dot_product = friction_force.dot(cell.velocity);
             if (dot_product > 0.0f) {
                 // Friction aids motion - limit to prevent oscillations.
-                float friction_mag = friction_force.magnitude();
-                float velocity_mag = cell.velocity.magnitude();
+                const float friction_mag = friction_force.magnitude();
+                const float velocity_mag = cell.velocity.magnitude();
 
                 if (velocity_mag > 0.001f) {
                     // Limit aiding friction to small fraction of velocity.
-                    float max_aiding = velocity_mag * FRICTION_MOMENTUM_TRANSFER_LIMIT;
+                    const float max_aiding = velocity_mag * FRICTION_MOMENTUM_TRANSFER_LIMIT;
 
                     if (friction_mag > max_aiding) {
                         friction_force = friction_force.normalize() * max_aiding;
@@ -99,11 +100,11 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     if (dx == 0 && dy == 0) continue;
 
                     // Skip diagonal neighbors - only cardinal contacts.
-                    bool is_diagonal = (dx != 0 && dy != 0);
+                    const bool is_diagonal = (dx != 0 && dy != 0);
                     if (is_diagonal) continue;
 
-                    int nx = x + dx;
-                    int ny = y + dy;
+                    const int nx = x + dx;
+                    const int ny = y + dy;
 
                     // Only process each pair once (avoid double-counting).
                     if (nx < x) continue;
@@ -150,15 +151,15 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     // Calculate friction coefficient.
                     const MaterialProperties& propsA = getMaterialProperties(cellA.material_type);
                     const MaterialProperties& propsB = getMaterialProperties(cellB.material_type);
-                    float friction_coefficient =
+                    const float friction_coefficient =
                         calculateFrictionCoefficient(tangential_speed, propsA, propsB);
 
                     // Calculate and apply friction force immediately.
-                    float accumulated_friction_force_magnitude =
+                    const float accumulated_friction_force_magnitude =
                         friction_coefficient * normal_force * friction_strength_;
 
-                    Vector2f friction_direction = tangential_velocity.normalize() * -1.0f;
-                    Vector2f accumulated_friction_force =
+                    const Vector2f friction_direction = tangential_velocity.normalize() * -1.0f;
+                    const Vector2f accumulated_friction_force =
                         friction_direction * accumulated_friction_force_magnitude;
 
                     // STEP 1: Calculate and accumulate friction forces (don't apply yet).
@@ -270,7 +271,7 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
                     contact.tangential_velocity = calculateTangentialVelocity(
                         contact.relative_velocity, contact.interface_normal);
 
-                    float tangential_speed = contact.tangential_velocity.magnitude();
+                    const float tangential_speed = contact.tangential_velocity.magnitude();
 
                     // Skip if tangential velocity is negligible.
                     if (tangential_speed < MIN_TANGENTIAL_SPEED) {
@@ -300,13 +301,13 @@ float WorldFrictionCalculator::calculateNormalForce(
     const Vector2s& /* posB */,
     const Vector2f& interface_normal) const
 {
-    float normal_force = 0.0f;
+    float normal_force = 0.0f; // Accumulated from multiple sources.
 
     // Source 1: Pressure difference across interface.
     // Higher pressure in A pushes against B.
-    float pressureA = cellA.pressure;
-    float pressureB = cellB.pressure;
-    float pressure_difference = pressureA - pressureB;
+    const float pressureA = cellA.pressure;
+    const float pressureB = cellB.pressure;
+    const float pressure_difference = pressureA - pressureB;
 
     if (pressure_difference > 0.0f) {
         // Scale pressure to force (pressure is already in force-like units in our system).
@@ -315,16 +316,16 @@ float WorldFrictionCalculator::calculateNormalForce(
 
     // Source 2: Weight for vertical contacts.
     // If B is below A (interface normal points downward), weight of A creates normal force.
-    float gravity_magnitude = world.getPhysicsSettings().gravity;
+    const float gravity_magnitude = world.getPhysicsSettings().gravity;
 
     if (interface_normal.y > 0.5f) { // B is below A (normal points down).
-        float massA = cellA.getMass();
-        float weight = massA * gravity_magnitude;
+        const float massA = cellA.getMass();
+        const float weight = massA * gravity_magnitude;
         normal_force += weight;
     }
     else if (interface_normal.y < -0.5f) { // A is below B (normal points up).
-        float massB = cellB.getMass();
-        float weight = massB * gravity_magnitude;
+        const float massB = cellB.getMass();
+        const float weight = massB * gravity_magnitude;
         normal_force += weight;
     }
 
@@ -337,14 +338,14 @@ float WorldFrictionCalculator::calculateFrictionCoefficient(
     const MaterialProperties& propsB) const
 {
     // Use geometric mean for inter-material friction coefficients.
-    float static_friction =
+    const float static_friction =
         std::sqrt(propsA.static_friction_coefficient * propsB.static_friction_coefficient);
-    float kinetic_friction =
+    const float kinetic_friction =
         std::sqrt(propsA.kinetic_friction_coefficient * propsB.kinetic_friction_coefficient);
 
     // Use average for velocity thresholds.
-    float stick_velocity = (propsA.stick_velocity + propsB.stick_velocity) / 2.0f;
-    float transition_width =
+    const float stick_velocity = (propsA.stick_velocity + propsB.stick_velocity) / 2.0f;
+    const float transition_width =
         (propsA.friction_transition_width + propsB.friction_transition_width) / 2.0f;
 
     // Below stick velocity, use full static friction.
@@ -372,9 +373,9 @@ Vector2f WorldFrictionCalculator::calculateTangentialVelocity(
     // Decompose relative velocity into normal and tangential components.
     // Tangential = relative_velocity - (relative_velocity · normal) * normal.
 
-    float normal_component = relative_velocity.dot(interface_normal);
-    Vector2f normal_velocity = interface_normal * normal_component;
-    Vector2f tangential_velocity = relative_velocity - normal_velocity;
+    const float normal_component = relative_velocity.dot(interface_normal);
+    const Vector2f normal_velocity = interface_normal * normal_component;
+    const Vector2f tangential_velocity = relative_velocity - normal_velocity;
 
     return tangential_velocity;
 }
@@ -385,13 +386,13 @@ void WorldFrictionCalculator::accumulateFrictionFromContacts(
     (void)world;
     for (const ContactInterface& contact : contacts) {
         // Calculate friction force magnitude.
-        float accumulated_friction_force_magnitude =
+        const float accumulated_friction_force_magnitude =
             contact.friction_coefficient * contact.normal_force * friction_strength_;
 
         // Direction: opposite to tangential relative velocity.
-        Vector2f friction_direction = contact.tangential_velocity.normalize() * -1.0f;
+        const Vector2f friction_direction = contact.tangential_velocity.normalize() * -1.0f;
 
-        Vector2f accumulated_friction_force =
+        const Vector2f accumulated_friction_force =
             friction_direction * accumulated_friction_force_magnitude;
 
         // STEP 1: Accumulate friction forces (don't apply yet).

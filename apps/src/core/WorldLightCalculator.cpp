@@ -15,6 +15,11 @@
 
 namespace DirtSim {
 
+// When enabled, AIR cells participate in light diffusion, allowing light to scatter
+// through the atmosphere. This softens shadows and makes outdoor scenes less cave-like.
+constexpr bool kEnableAirScattering = true;
+constexpr float kAirScatterRate = 0.15f;
+
 void WorldLightCalculator::calculate(
     World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
 {
@@ -95,11 +100,11 @@ void WorldLightCalculator::applyAmbient(
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
-    RgbF base_ambient = toRgbF(config.ambient_color) * config.ambient_intensity;
+    const RgbF base_ambient = toRgbF(config.ambient_color) * config.ambient_intensity;
 
     if (!config.sky_access_enabled) {
         // Simple uniform ambient - parallelize.
-        size_t count = data.colors.size();
+        const size_t count = data.colors.size();
 #ifdef _OPENMP
 #pragma omp parallel for schedule(static) if (GridOfCells::USE_OPENMP && count >= 2500)
 #endif
@@ -109,15 +114,15 @@ void WorldLightCalculator::applyAmbient(
         return;
     }
 
-    int width = data.width;
-    int height = data.height;
-    float falloff = config.sky_access_falloff;
+    const int width = data.width;
+    const int height = data.height;
+    const float falloff = config.sky_access_falloff;
 
     // Helper to apply ambient with sky attenuation for a single material.
     auto processCell =
         [&data, &base_ambient, falloff](MaterialType mat, int x, int y, float& sky_factor) {
             data.colors.at(x, y) += base_ambient * sky_factor;
-            float opacity = getMaterialProperties(mat).light.opacity;
+            const float opacity = getMaterialProperties(mat).light.opacity;
             sky_factor *= (1.0f - opacity * falloff);
             if (sky_factor < 0.0f) {
                 sky_factor = 0.0f;
@@ -135,18 +140,18 @@ void WorldLightCalculator::applyAmbient(
 
         // Process row 0 separately (top edge).
         {
-            uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
-            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
+            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
             processCell(mat, x, 0, sky_factor);
         }
 
         // Process 3 cells at a time using the column from each neighborhood lookup.
-        int y = 1;
+        int y = 1; // Loop variable, incremented.
         for (; y + 2 < height; y += 3) {
-            uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
-            MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
-            MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
-            MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
+            const MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
+            const MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
+            const MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
 
             processCell(mat0, x, y, sky_factor);
             processCell(mat1, x, y + 1, sky_factor);
@@ -155,8 +160,8 @@ void WorldLightCalculator::applyAmbient(
 
         // Handle remaining rows.
         for (; y < height; ++y) {
-            uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
             processCell(mat, x, y, sky_factor);
         }
     }
@@ -169,15 +174,15 @@ void WorldLightCalculator::applySunlight(
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
-    RgbF scaled_sun = toRgbF(sun_color) * intensity;
-    int width = data.width;
-    int height = data.height;
+    const RgbF scaled_sun = toRgbF(sun_color) * intensity;
+    const int width = data.width;
+    const int height = data.height;
 
     // Helper to apply sunlight attenuation for a single material.
     auto processCell = [&data](MaterialType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
         const auto& light_props = getMaterialProperties(mat).light;
-        float transmittance = 1.0f - light_props.opacity;
+        const float transmittance = 1.0f - light_props.opacity;
         sun *= transmittance;
         sun *= ColorNames::toRgbF(light_props.tint);
     };
@@ -193,20 +198,20 @@ void WorldLightCalculator::applySunlight(
 
         // Process row 0 separately (top edge).
         {
-            uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
-            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
+            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
             processCell(mat, x, 0, sun);
         }
 
         // Process 3 cells at a time using the column from each neighborhood lookup.
         // Neighborhood at (x, y) contains: y-1 at bits 4-7, y at bits 16-19, y+1 at bits 28-31.
-        int y = 1;
+        int y = 1; // Loop variable, incremented.
         for (; y + 2 < height; y += 3) {
             // Fetch neighborhood centered at y+1 to get y, y+1, y+2.
-            uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
-            MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
-            MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
-            MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
+            const MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
+            const MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
+            const MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
 
             processCell(mat0, x, y, sun);
             processCell(mat1, x, y + 1, sun);
@@ -215,8 +220,8 @@ void WorldLightCalculator::applySunlight(
 
         // Handle remaining rows (0-2 cells).
         for (; y < height; ++y) {
-            uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-            MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
             processCell(mat, x, y, sun);
         }
     }
@@ -228,8 +233,8 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
-    int width = data.width;
-    int height = data.height;
+    const int width = data.width;
+    const int height = data.height;
 
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2) \
@@ -241,7 +246,7 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
             const auto& light_props = cell.material().light;
 
             if (light_props.emission > 0.0f) {
-                RgbF emitted = toRgbF(light_props.emission_color) * light_props.emission;
+                const RgbF emitted = toRgbF(light_props.emission_color) * light_props.emission;
                 data.colors.at(x, y) += emitted;
             }
         }
@@ -258,12 +263,12 @@ void WorldLightCalculator::applyDiffusion(
     }
 
     auto& data = world.getData();
-    size_t cell_count = static_cast<size_t>(data.width) * data.height;
+    const size_t cell_count = static_cast<size_t>(data.width) * data.height;
     light_buffer_.resize(cell_count);
 
     const CellBitmap& empty = grid.emptyCells();
-    int width = data.width;
-    int height = data.height;
+    const int width = data.width;
+    const int height = data.height;
 
     for (int iter = 0; iter < iterations; ++iter) {
         std::copy(data.colors.begin(), data.colors.end(), light_buffer_.begin());
@@ -275,31 +280,39 @@ void WorldLightCalculator::applyDiffusion(
 #endif
         for (int y = 1; y < height - 1; ++y) {
             for (int x = 1; x < width - 1; ++x) {
-                // Skip empty (AIR) cells - they have scatter = 0.
+                float scatter;
+
                 if (empty.isSet(x, y)) {
-                    continue;
+                    // AIR cell - use air scattering if enabled.
+                    if constexpr (kEnableAirScattering) {
+                        scatter = kAirScatterRate;
+                    }
+                    else {
+                        continue;
+                    }
+                }
+                else {
+                    // Get material from neighborhood cache instead of Cell struct.
+                    const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+                    const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+                    scatter = getMaterialProperties(mat).light.scatter;
+
+                    if (scatter <= 0.0f) {
+                        continue;
+                    }
                 }
 
-                // Get material from neighborhood cache instead of Cell struct.
-                uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-                MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
-                float scatter = getMaterialProperties(mat).light.scatter;
-
-                if (scatter <= 0.0f) {
-                    continue;
-                }
-
-                size_t idx = static_cast<size_t>(y) * width + x;
+                const size_t idx = static_cast<size_t>(y) * width + x;
                 const RgbF& up = light_buffer_[static_cast<size_t>(y - 1) * width + x];
                 const RgbF& down = light_buffer_[static_cast<size_t>(y + 1) * width + x];
                 const RgbF& left = light_buffer_[static_cast<size_t>(y) * width + (x - 1)];
                 const RgbF& right = light_buffer_[static_cast<size_t>(y) * width + (x + 1)];
 
-                RgbF neighbor_avg{ (up.r + down.r + left.r + right.r) * 0.25f,
-                                   (up.g + down.g + left.g + right.g) * 0.25f,
-                                   (up.b + down.b + left.b + right.b) * 0.25f };
+                const RgbF neighbor_avg{ (up.r + down.r + left.r + right.r) * 0.25f,
+                                         (up.g + down.g + left.g + right.g) * 0.25f,
+                                         (up.b + down.b + left.b + right.b) * 0.25f };
 
-                float blend = scatter * rate;
+                const float blend = scatter * rate;
                 data.colors.data[idx] = ColorNames::lerp(light_buffer_[idx], neighbor_avg, blend);
             }
         }
@@ -342,8 +355,8 @@ ColorNames::RgbF getMaterialBaseColor(MaterialType mat)
 void WorldLightCalculator::applyMaterialColors(World& world)
 {
     auto& data = world.getData();
-    int width = data.width;
-    int height = data.height;
+    const int width = data.width;
+    const int height = data.height;
 
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2) \
@@ -366,8 +379,8 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            float b = ColorNames::brightness(data.colors.at(x, y));
-            int idx = std::min(9, static_cast<int>(b * 10));
+            const float b = ColorNames::brightness(data.colors.at(x, y));
+            const int idx = std::min(9, static_cast<int>(b * 10));
             result += shades[idx];
         }
         result += '\n';
@@ -447,20 +460,20 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
 {
     // Bresenham's line algorithm to trace from light source to target.
     // Accumulates opacity and tinting as light passes through materials.
-    int dx = std::abs(x1 - x0);
-    int dy = std::abs(y1 - y0);
-    int sx = (x0 < x1) ? 1 : -1;
-    int sy = (y0 < y1) ? 1 : -1;
-    int err = dx - dy;
+    const int dx = std::abs(x1 - x0);
+    const int dy = std::abs(y1 - y0);
+    const int sx = (x0 < x1) ? 1 : -1;
+    const int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy; // Modified during line stepping.
 
-    int x = x0;
+    int x = x0; // Current position, modified during stepping.
     int y = y0;
-    int width = grid.getWidth();
-    int height = grid.getHeight();
+    const int width = grid.getWidth();
+    const int height = grid.getHeight();
 
     // Skip the source cell itself.
     while (x != x1 || y != y1) {
-        int e2 = 2 * err;
+        const int e2 = 2 * err;
         if (e2 > -dy) {
             err -= dy;
             x += sx;
@@ -481,11 +494,11 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
         }
 
         // Get material at this cell and apply opacity/tinting.
-        uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-        MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+        const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+        const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
         const auto& light_props = getMaterialProperties(mat).light;
 
-        float transmittance = 1.0f - light_props.opacity;
+        const float transmittance = 1.0f - light_props.opacity;
         color *= transmittance;
         color *= ColorNames::toRgbF(light_props.tint);
 
@@ -509,33 +522,33 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
     }
 
     auto& data = world.getData();
-    int width = data.width;
-    int height = data.height;
+    const int width = data.width;
+    const int height = data.height;
 
     for (const PointLight& light : point_lights) {
-        int light_x = static_cast<int>(light.position.x);
-        int light_y = static_cast<int>(light.position.y);
+        const int light_x = static_cast<int>(light.position.x);
+        const int light_y = static_cast<int>(light.position.y);
 
         // Skip lights outside the world.
         if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
             continue;
         }
 
-        int radius_int = static_cast<int>(std::ceil(light.radius));
-        RgbF light_color = toRgbF(light.color) * light.intensity;
+        const int radius_int = static_cast<int>(std::ceil(light.radius));
+        const RgbF light_color = toRgbF(light.color) * light.intensity;
 
         // Iterate over cells within the light's radius.
-        int min_x = std::max(0, light_x - radius_int);
-        int max_x = std::min(width - 1, light_x + radius_int);
-        int min_y = std::max(0, light_y - radius_int);
-        int max_y = std::min(height - 1, light_y + radius_int);
+        const int min_x = std::max(0, light_x - radius_int);
+        const int max_x = std::min(width - 1, light_x + radius_int);
+        const int min_y = std::max(0, light_y - radius_int);
+        const int max_y = std::min(height - 1, light_y + radius_int);
 
         for (int y = min_y; y <= max_y; ++y) {
             for (int x = min_x; x <= max_x; ++x) {
                 // Calculate distance.
-                float dx = static_cast<float>(x - light_x);
-                float dy = static_cast<float>(y - light_y);
-                float dist = std::sqrt(dx * dx + dy * dy);
+                const float dx = static_cast<float>(x - light_x);
+                const float dy = static_cast<float>(y - light_y);
+                const float dist = std::sqrt(dx * dx + dy * dy);
 
                 // Skip cells outside radius.
                 if (dist > light.radius) {
@@ -543,10 +556,10 @@ void WorldLightCalculator::applyPointLights(World& world, const GridOfCells& gri
                 }
 
                 // Apply distance falloff: 1 / (1 + dist² * attenuation).
-                float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
+                const float falloff = 1.0f / (1.0f + dist * dist * light.attenuation);
 
                 // Trace ray from light to cell.
-                RgbF received = traceRay(grid, light_x, light_y, x, y, light_color);
+                const RgbF received = traceRay(grid, light_x, light_y, x, y, light_color);
 
                 // Apply falloff and add to cell.
                 data.colors.at(x, y) += received * falloff;

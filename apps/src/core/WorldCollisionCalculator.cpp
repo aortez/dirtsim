@@ -62,21 +62,21 @@ MaterialMove WorldCollisionCalculator::createCollisionAwareMove(
     move.material = fromCell.material_type;
 
     // Calculate how much wants to transfer vs what can transfer.
-    double wants_to_transfer = fromCell.fill_ratio;
-    double capacity = toCell.getCapacity();
+    const double wants_to_transfer = fromCell.fill_ratio;
+    const double capacity = toCell.getCapacity();
 
     // Queue only what will actually succeed.
     move.amount = std::min(wants_to_transfer, capacity);
 
     // Calculate excess that won't fit (for pressure generation).
-    double excess = wants_to_transfer - move.amount;
+    const double excess = wants_to_transfer - move.amount;
     move.pressure_from_excess = 0.0;
 
     if (excess > MIN_MATTER_THRESHOLD && world.getPhysicsSettings().pressure_dynamic_strength > 0) {
-        double blocked_mass = excess * getMaterialDensity(fromCell.material_type);
-        double energy = fromCell.velocity.magnitude() * blocked_mass;
-        double dynamic_strength = world.getPhysicsSettings().pressure_dynamic_strength;
-        double pressure_increase =
+        const double blocked_mass = excess * getMaterialDensity(fromCell.material_type);
+        const double energy = fromCell.velocity.magnitude() * blocked_mass;
+        const double dynamic_strength = world.getPhysicsSettings().pressure_dynamic_strength;
+        const double pressure_increase =
             energy * 0.1 * dynamic_strength; // Apply dynamic pressure strength.
 
         // Store pressure to be applied to target cell when processing moves.
@@ -194,7 +194,7 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
 
     // Rigid-to-rigid collisions based on elasticity.
     if (isCollisionRigid(from) && isCollisionRigid(to)) {
-        double avg_elasticity = (fromProps.elasticity + toProps.elasticity) / 2.0;
+        const double avg_elasticity = (fromProps.elasticity + toProps.elasticity) / 2.0;
         return (avg_elasticity > 0.5) ? CollisionType::ELASTIC_REFLECTION
                                       : CollisionType::INELASTIC_COLLISION;
     }
@@ -220,13 +220,13 @@ double WorldCollisionCalculator::calculateCollisionEnergy(
     // Kinetic energy: KE = 0.5 × m × v²
     // Use FULL cell mass for collision energy, not just transferable amount.
     // This is needed for swap decisions when target cell is full (move.amount = 0).
-    double movingMass = calculateMaterialMass(fromCell);
+    const double movingMass = calculateMaterialMass(fromCell);
 
     // IMPORTANT: Use velocity component in direction of movement, not total magnitude.
     // For swaps, only energy in the swap direction matters.
     // If falling vertically with little horizontal velocity, horizontal swaps should be hard.
-    Vector2d direction_vector(move.to.x - move.from.x, move.to.y - move.from.y);
-    double velocity_in_direction = std::abs(move.momentum.dot(direction_vector));
+    const Vector2d direction_vector(move.to.x - move.from.x, move.to.y - move.from.y);
+    const double velocity_in_direction = std::abs(move.momentum.dot(direction_vector));
 
     LOG_DEBUG(
         Swap,
@@ -238,8 +238,8 @@ double WorldCollisionCalculator::calculateCollisionEnergy(
         velocity_in_direction);
 
     // If target cell has material, include reduced mass for collision.
-    double targetMass = calculateMaterialMass(toCell);
-    double effective_mass = movingMass;
+    const double targetMass = calculateMaterialMass(toCell);
+    double effective_mass = movingMass; // Modified when target has mass.
 
     if (targetMass > 0.0) {
         // Reduced mass formula: μ = (m1 × m2) / (m1 + m2)
@@ -255,8 +255,8 @@ double WorldCollisionCalculator::calculateMaterialMass(const Cell& cell) const
 
     // Mass = density × volume.
     // Volume = fill_ratio (since cell volume is normalized to 1.0)
-    double density = getMaterialDensity(cell.material_type);
-    double volume = cell.fill_ratio;
+    const double density = getMaterialDensity(cell.material_type);
+    const double volume = cell.fill_ratio;
     return density * volume;
 }
 
@@ -302,8 +302,8 @@ void WorldCollisionCalculator::handleTransferMove(
 {
     // Single-cell organisms must not fragment.
     // Re-check target is empty at execution time (moves are shuffled).
-    Vector2i from_pos{ move.from.x, move.from.y };
-    OrganismId org_id = world.getOrganismManager().at(from_pos);
+    const Vector2i from_pos{ move.from.x, move.from.y };
+    const OrganismId org_id = world.getOrganismManager().at(from_pos);
     if (org_id != INVALID_ORGANISM_ID && !toCell.isEmpty()) {
         spdlog::info(
             "handleTransferMove: Organism at ({},{}) - target became non-empty (fill={:.2f}), "
@@ -312,7 +312,7 @@ void WorldCollisionCalculator::handleTransferMove(
             move.from.y,
             toCell.fill_ratio);
         // Apply bounce instead.
-        Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
+        const Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
         handleElasticCollision(fromCell, toCell, move);
         return;
     }
@@ -364,12 +364,12 @@ void WorldCollisionCalculator::handleTransferMove(
             move.getDirection().y);
     }
 
-    // Check if transfer was incomplete (target full or couldn't accept all material)
+    // Check if transfer was incomplete (target full or couldn't accept all material).
     const double transfer_deficit = move.amount - transferred;
     if (transfer_deficit > MIN_MATTER_THRESHOLD) {
         // Transfer failed partially or completely - apply elastic reflection for remaining
         // material.
-        Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
+        const Vector2i direction(move.to.x - move.from.x, move.to.y - move.from.y);
 
         spdlog::debug(
             "Transfer incomplete: requested={:.3f}, transferred={:.3f}, deficit={:.3f} - applying "
@@ -381,9 +381,9 @@ void WorldCollisionCalculator::handleTransferMove(
         // Queue blocked transfer for dynamic pressure accumulation.
         if (world.getPhysicsSettings().pressure_dynamic_strength > 0) {
             // Calculate energy with proper mass consideration.
-            double material_density = getMaterialDensity(move.material);
-            double blocked_mass = transfer_deficit * material_density;
-            double energy = fromCell.velocity.magnitude() * blocked_mass;
+            const double material_density = getMaterialDensity(move.material);
+            const double blocked_mass = transfer_deficit * material_density;
+            const double energy = fromCell.velocity.magnitude() * blocked_mass;
 
             spdlog::debug(
                 "Blocked transfer energy calculation: material={}, density={:.2f}, "
@@ -411,18 +411,18 @@ void WorldCollisionCalculator::handleTransferMove(
 void WorldCollisionCalculator::handleElasticCollision(
     Cell& fromCell, Cell& toCell, const MaterialMove& move)
 {
-    Vector2d incident_velocity = move.momentum;
-    Vector2d surface_normal = move.getDirection().normalize();
+    const Vector2d incident_velocity = move.momentum;
+    const Vector2d surface_normal = move.getDirection().normalize();
 
     if (move.target_mass > 0.0 && !toCell.isEmpty()) {
         // Two-body elastic collision with proper normal/tangential decomposition.
-        Vector2d target_velocity = toCell.velocity;
-        double m1 = move.material_mass;
-        double m2 = move.target_mass;
+        const Vector2d target_velocity = toCell.velocity;
+        const double m1 = move.material_mass;
+        const double m2 = move.target_mass;
 
         // Decompose both velocities into normal and tangential components.
-        auto v1_comp = decomposeVelocity(incident_velocity, surface_normal);
-        auto v2_comp = decomposeVelocity(target_velocity, surface_normal);
+        const auto v1_comp = decomposeVelocity(incident_velocity, surface_normal);
+        const auto v2_comp = decomposeVelocity(target_velocity, surface_normal);
 
         // Apply 1D elastic collision formulas ONLY to normal components.
         // v1_normal' = ((m1-m2)*v1_normal + 2*m2*v2_normal)/(m1+m2)
@@ -437,16 +437,16 @@ void WorldCollisionCalculator::handleElasticCollision(
         v2_normal_new_scalar *= move.restitution_coefficient;
 
         // Recombine: final velocity = tangential (preserved) + normal (modified).
-        Vector2d new_v1 = v1_comp.tangential + surface_normal * v1_normal_new_scalar;
-        Vector2d new_v2 = v2_comp.tangential + surface_normal * v2_normal_new_scalar;
+        const Vector2d new_v1 = v1_comp.tangential + surface_normal * v1_normal_new_scalar;
+        const Vector2d new_v2 = v2_comp.tangential + surface_normal * v2_normal_new_scalar;
 
         fromCell.velocity = new_v1;
         toCell.velocity = new_v2;
 
         // Separate particles to prevent repeated collisions.
         // Move the particle that crossed the boundary back slightly.
-        double separation_distance = 0.02; // Small separation to ensure clean separation.
-        Vector2d fromCOM = fromCell.com;
+        constexpr double separation_distance = 0.02; // Small separation to ensure clean separation.
+        Vector2d fromCOM = fromCell.com;             // Modified based on boundary crossing.
 
         // Check which boundary was crossed and apply separation.
         if (move.getDirection().x > 0.5) { // Crossed right boundary (normal points left)
@@ -484,17 +484,17 @@ void WorldCollisionCalculator::handleElasticCollision(
     }
     else {
         // Empty target or zero mass - reflect off surface with proper decomposition.
-        auto v_comp = decomposeVelocity(incident_velocity, surface_normal);
+        const auto v_comp = decomposeVelocity(incident_velocity, surface_normal);
 
         // Apply restitution only to normal component, preserve tangential.
-        Vector2d v_normal_reflected = v_comp.normal * (-move.restitution_coefficient);
-        Vector2d reflected_velocity = v_comp.tangential + v_normal_reflected;
+        const Vector2d v_normal_reflected = v_comp.normal * (-move.restitution_coefficient);
+        const Vector2d reflected_velocity = v_comp.tangential + v_normal_reflected;
 
         fromCell.velocity = reflected_velocity;
 
         // Also apply separation for reflections.
-        double separation_distance = 0.02;
-        Vector2d fromCOM = fromCell.com;
+        constexpr double separation_distance = 0.02;
+        Vector2d fromCOM = fromCell.com; // Modified based on boundary crossing.
 
         if (surface_normal.x > 0.5) {
             fromCOM.x = std::min(fromCOM.x, 1.0 - separation_distance);
@@ -521,16 +521,17 @@ void WorldCollisionCalculator::handleInelasticCollision(
     World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move)
 {
     // Physics-correct component-based collision handling.
-    Vector2d incident_velocity = move.momentum;
-    Vector2d surface_normal = move.getDirection().normalize();
+    const Vector2d incident_velocity = move.momentum;
+    const Vector2d surface_normal = move.getDirection().normalize();
 
     // Decompose velocity into normal and tangential components.
-    auto v_comp = decomposeVelocity(incident_velocity, surface_normal);
+    const auto v_comp = decomposeVelocity(incident_velocity, surface_normal);
 
     // Apply restitution only to normal component, preserve tangential.
-    double inelastic_restitution = move.restitution_coefficient * INELASTIC_RESTITUTION_FACTOR;
-    Vector2d v_normal_reflected = v_comp.normal * (-inelastic_restitution);
-    Vector2d final_velocity = v_comp.tangential + v_normal_reflected;
+    const double inelastic_restitution =
+        move.restitution_coefficient * INELASTIC_RESTITUTION_FACTOR;
+    const Vector2d v_normal_reflected = v_comp.normal * (-inelastic_restitution);
+    const Vector2d final_velocity = v_comp.tangential + v_normal_reflected;
 
     // Apply the corrected velocity to the incident particle.
     fromCell.velocity = final_velocity;
@@ -538,9 +539,9 @@ void WorldCollisionCalculator::handleInelasticCollision(
     // Transfer momentum to target cell (Newton's 3rd law).
     // Even if material transfer fails, momentum must be conserved.
     if (move.target_mass > 0.0) {
-        Vector2d momentum_transferred =
+        const Vector2d momentum_transferred =
             v_comp.normal * (1.0 + inelastic_restitution) * move.material_mass;
-        Vector2d target_velocity_change = momentum_transferred / move.target_mass;
+        const Vector2d target_velocity_change = momentum_transferred / move.target_mass;
         toCell.velocity = toCell.velocity + target_velocity_change;
 
         spdlog::debug(
@@ -555,23 +556,23 @@ void WorldCollisionCalculator::handleInelasticCollision(
     }
 
     // Allow material transfer based on natural capacity limits.
-    double transfer_amount = move.amount; // Full amount, let capacity decide.
+    const double transfer_amount = move.amount; // Full amount, let capacity decide.
 
     // Attempt direct material transfer and measure actual amount transferred.
-    double actual_transfer =
+    const double actual_transfer =
         fromCell.transferToWithPhysics(toCell, transfer_amount, move.getDirection());
 
     // Check for blocked transfer and queue for dynamic pressure accumulation.
-    double transfer_deficit = transfer_amount - actual_transfer;
+    const double transfer_deficit = transfer_amount - actual_transfer;
 
     if (transfer_deficit > MIN_MATTER_THRESHOLD
         && world.getPhysicsSettings().pressure_dynamic_strength > 0) {
 
         // Queue blocked transfer for dynamic pressure accumulation.
         // Calculate energy with proper mass consideration.
-        double material_density = getMaterialDensity(move.material);
-        double blocked_mass = transfer_deficit * material_density;
-        double energy = fromCell.velocity.magnitude() * blocked_mass;
+        const double material_density = getMaterialDensity(move.material);
+        const double blocked_mass = transfer_deficit * material_density;
+        const double energy = fromCell.velocity.magnitude() * blocked_mass;
 
         spdlog::debug(
             "Inelastic collision blocked energy: material={}, density={:.2f}, "
@@ -650,7 +651,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
     // Calculate frag angles spread evenly across the arc, centered on spray direction.
     // Fragments are distributed from -half_arc to +half_arc.
     std::vector<double> frag_angles;
-    double half_arc = arc_width / 2.0;
+    const double half_arc = arc_width / 2.0;
     if (num_frags == 2) {
         // Two fragments at the edges of the arc.
         frag_angles = { -half_arc, half_arc };
@@ -661,29 +662,31 @@ double WorldCollisionCalculator::fragmentSingleCell(
         //       4 frags: -half, -half/3, +half/3, +half
         //       5 frags: -half, -half/2, 0, +half/2, +half
         for (int i = 0; i < num_frags; i++) {
-            double t = static_cast<double>(i) / (num_frags - 1); // 0.0 to 1.0
-            double angle = -half_arc + t * arc_width;
+            const double t = static_cast<double>(i) / (num_frags - 1); // 0.0 to 1.0
+            const double angle = -half_arc + t * arc_width;
             frag_angles.push_back(angle);
         }
     }
 
     // Calculate base angle of spray direction.
-    double base_angle = std::atan2(spray_direction.y, spray_direction.x);
+    const double base_angle = std::atan2(spray_direction.y, spray_direction.x);
 
     std::vector<FragTarget> frag_targets;
-    double frag_amount_each = (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
+    const double frag_amount_each =
+        (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
 
-    for (double angle_offset : frag_angles) {
-        double frag_angle = base_angle + angle_offset;
+    for (const double angle_offset : frag_angles) {
+        const double frag_angle = base_angle + angle_offset;
 
         // Convert angle to unit vector.
-        Vector2d frag_dir(std::cos(frag_angle), std::sin(frag_angle));
+        const Vector2d frag_dir(std::cos(frag_angle), std::sin(frag_angle));
 
         // Calculate speed: edge fragments are faster to avoid self-collision.
         // Speed scales from 1.0 at center to edge_speed_factor at edges.
-        double edge_factor = std::abs(angle_offset) / half_arc; // 0.0 at center, 1.0 at edges.
-        double speed_multiplier = 1.0 + (frag_params.edge_speed_factor - 1.0) * edge_factor;
-        double frag_speed = frag_params.base_speed * speed_multiplier;
+        const double edge_factor =
+            std::abs(angle_offset) / half_arc; // 0.0 at center, 1.0 at edges.
+        const double speed_multiplier = 1.0 + (frag_params.edge_speed_factor - 1.0) * edge_factor;
+        const double frag_speed = frag_params.base_speed * speed_multiplier;
 
         // Map to nearest of 8 neighbor directions.
         // Neighbors are at angles: 0, 45, 90, 135, 180, 225, 270, 315 degrees.
@@ -706,8 +709,8 @@ double WorldCollisionCalculator::fragmentSingleCell(
             }
         }
 
-        Vector2i offset(best_dx, best_dy);
-        Vector2d velocity = frag_dir * frag_speed;
+        const Vector2i offset(best_dx, best_dy);
+        const Vector2d velocity = frag_dir * frag_speed;
 
         frag_targets.push_back({ offset, velocity, frag_amount_each });
     }
@@ -735,8 +738,8 @@ double WorldCollisionCalculator::fragmentSingleCell(
     double total_sprayed = 0.0;
 
     for (auto& [key, frag] : merged_targets) {
-        int target_x = sourceX + frag.offset.x;
-        int target_y = sourceY + frag.offset.y;
+        const int target_x = sourceX + frag.offset.x;
+        const int target_y = sourceY + frag.offset.y;
 
         // Skip if out of bounds.
         if (target_x < 0 || target_x >= data.width || target_y < 0 || target_y >= data.height) {
@@ -751,7 +754,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
         Cell& target = world.getData().at(target_x, target_y);
 
         // Check capacity.
-        double capacity = target.getCapacity();
+        const double capacity = target.getCapacity();
         if (capacity < MIN_MATTER_THRESHOLD) {
             continue; // No room.
         }
@@ -767,7 +770,7 @@ double WorldCollisionCalculator::fragmentSingleCell(
 
         // Place the fragment at the edge of the destination cell, facing inward.
         // COM should be at the edge nearest the source cell.
-        Vector2d landing_com(-frag.offset.x * 0.9, -frag.offset.y * 0.9);
+        const Vector2d landing_com(-frag.offset.x * 0.9, -frag.offset.y * 0.9);
 
         // Add material to target cell.
         if (target.isEmpty()) {
@@ -778,9 +781,9 @@ double WorldCollisionCalculator::fragmentSingleCell(
         }
         else if (target.material_type == MaterialType::WATER) {
             // Merge with existing water.
-            double old_mass = target.fill_ratio;
-            double new_mass = to_transfer;
-            double total_mass = old_mass + new_mass;
+            const double old_mass = target.fill_ratio;
+            const double new_mass = to_transfer;
+            const double total_mass = old_mass + new_mass;
 
             target.velocity = (target.velocity * old_mass + frag.velocity * new_mass) / total_mass;
             target.setCOM((target.com * old_mass + landing_com * new_mass) / total_mass);
@@ -815,8 +818,8 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     }
 
     // At least one cell must be water to fragment.
-    const bool from_is_water = (fromCell.material_type == MaterialType::WATER);
-    const bool to_is_water = (toCell.material_type == MaterialType::WATER);
+    const bool from_is_water = fromCell.material_type == MaterialType::WATER;
+    const bool to_is_water = toCell.material_type == MaterialType::WATER;
 
     if (!from_is_water && !to_is_water) {
         return false;
@@ -835,9 +838,9 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
 
     // Determine number of fragments (2-5) based on energy.
     // Higher energy = more fragments to fill the arc.
-    int num_frags = 1;
-    double energy = move.collision_energy;
-    double full = settings.fragmentation_full_threshold;
+    int num_frags = 1; // Modified based on energy level.
+    const double energy = move.collision_energy;
+    const double full = settings.fragmentation_full_threshold;
     if (energy > full * 2.0) {
         num_frags = 5; // Extreme energy: full hemisphere coverage.
     }
@@ -857,30 +860,32 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     }
 
     // Get fragmentation params for each cell's material type.
-    FragmentationParams from_params = getMaterialFragmentationParams(fromCell.material_type);
-    FragmentationParams to_params = getMaterialFragmentationParams(toCell.material_type);
+    const FragmentationParams from_params = getMaterialFragmentationParams(fromCell.material_type);
+    const FragmentationParams to_params = getMaterialFragmentationParams(toCell.material_type);
 
     // =================================================================
     // Calculate spray directions for both cells.
     // Blend between radial (explosion-like) and reflection (momentum-preserving).
     // =================================================================
 
-    Vector2d surface_normal = move.getDirection().normalize();
+    const Vector2d surface_normal = move.getDirection().normalize();
 
     // Radial directions: simply away from collision partner.
-    Vector2d from_radial_dir = surface_normal * -1.0; // FROM sprays away from TO.
-    Vector2d to_radial_dir = surface_normal;          // TO sprays away from FROM.
+    const Vector2d from_radial_dir = surface_normal * -1.0; // FROM sprays away from TO.
+    const Vector2d to_radial_dir = surface_normal;          // TO sprays away from FROM.
 
     // Reflection direction for FROM cell (using FROM's momentum).
-    auto from_v_comp = decomposeVelocity(move.momentum, surface_normal);
-    Vector2d from_reflect_dir = (from_v_comp.tangential - from_v_comp.normal).normalize();
+    const auto from_v_comp = decomposeVelocity(move.momentum, surface_normal);
+    Vector2d from_reflect_dir =
+        (from_v_comp.tangential - from_v_comp.normal).normalize(); // May be replaced.
     if (from_reflect_dir.magnitude() < 0.01) {
         from_reflect_dir = from_radial_dir;
     }
 
     // Reflection direction for TO cell (using TO's own velocity for correctness).
-    auto to_v_comp = decomposeVelocity(toCell.velocity, surface_normal);
-    Vector2d to_reflect_dir = (to_v_comp.tangential + to_v_comp.normal).normalize();
+    const auto to_v_comp = decomposeVelocity(toCell.velocity, surface_normal);
+    Vector2d to_reflect_dir =
+        (to_v_comp.tangential + to_v_comp.normal).normalize(); // May be replaced.
     if (to_reflect_dir.magnitude() < 0.01) {
         to_reflect_dir = to_radial_dir;
     }
@@ -919,7 +924,7 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     to_arc_width = std::min(to_arc_width, to_params.max_arc);
 
     // Compute base speeds from collision momentum.
-    double momentum_magnitude = move.momentum.magnitude();
+    const double momentum_magnitude = move.momentum.magnitude();
 
     // Fragment FROM cell if it's water.
     double from_sprayed = 0.0;
@@ -963,10 +968,11 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     }
 
     // Handle remaining material in both cells with inelastic reflection.
-    double inelastic_restitution = move.restitution_coefficient * INELASTIC_RESTITUTION_FACTOR;
+    const double inelastic_restitution =
+        move.restitution_coefficient * INELASTIC_RESTITUTION_FACTOR;
 
     if (from_is_water && fromCell.fill_ratio > MIN_MATTER_THRESHOLD) {
-        Vector2d v_normal_reflected = from_v_comp.normal * (-inelastic_restitution);
+        const Vector2d v_normal_reflected = from_v_comp.normal * (-inelastic_restitution);
         fromCell.velocity = from_v_comp.tangential + v_normal_reflected;
     }
     else if (from_is_water) {
@@ -975,9 +981,9 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
 
     // Transfer momentum between cells.
     if (move.target_mass > 0.0 && !toCell.isEmpty() && from_is_water) {
-        Vector2d momentum_transferred =
+        const Vector2d momentum_transferred =
             from_v_comp.normal * (1.0 + inelastic_restitution) * move.material_mass;
-        Vector2d target_velocity_change = momentum_transferred / move.target_mass;
+        const Vector2d target_velocity_change = momentum_transferred / move.target_mass;
         toCell.velocity = toCell.velocity + target_velocity_change;
     }
 
@@ -999,9 +1005,9 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
 
 void WorldCollisionCalculator::applyBoundaryReflection(Cell& cell, const Vector2i& direction)
 {
-    Vector2d velocity = cell.velocity;
-    Vector2d com = cell.com;
-    double elasticity = getMaterialProperties(cell.material_type).elasticity;
+    Vector2d velocity = cell.velocity; // Modified based on direction.
+    Vector2d com = cell.com;           // Modified based on direction.
+    const double elasticity = getMaterialProperties(cell.material_type).elasticity;
 
     spdlog::debug(
         "Applying boundary reflection: material={} direction=({},{}) elasticity={:.2f} "
@@ -1040,9 +1046,9 @@ void WorldCollisionCalculator::applyBoundaryReflection(Cell& cell, const Vector2
 void WorldCollisionCalculator::applyCellBoundaryReflection(
     Cell& cell, const Vector2i& direction, MaterialType material)
 {
-    Vector2d velocity = cell.velocity;
-    Vector2d com = cell.com;
-    double elasticity = getMaterialProperties(material).elasticity;
+    Vector2d velocity = cell.velocity; // Modified based on direction.
+    Vector2d com = cell.com;           // Modified based on direction.
+    const double elasticity = getMaterialProperties(material).elasticity;
 
     spdlog::debug(
         "Applying cell boundary reflection: material={} direction=({},{}) elasticity={:.2f}",
@@ -1135,8 +1141,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         const int toX = fromX + direction.x;
         const int toY = fromY + direction.y;
 
-        for (int dx : { -1, 1 }) {
-            int nx = toX + dx;
+        for (const int dx : { -1, 1 }) {
+            const int nx = toX + dx;
             if (!data.inBounds(nx, toY)) {
                 continue;
             }
@@ -1159,8 +1165,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             }
 
             // Lower pressure laterally means easier escape for the displaced fluid.
-            double lateral_pressure = lateral.pressure;
-            double target_pressure = toCell.pressure;
+            const double lateral_pressure = lateral.pressure;
+            const double target_pressure = toCell.pressure;
             if (lateral_pressure < target_pressure * 0.5) {
                 LOG_INFO(
                     Swap,
@@ -1183,9 +1189,9 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     if (direction.y == 0) {
         // Horizontal swap: momentum-based displacement.
         // FROM cell needs enough momentum to push TO cell out of the way.
-        double from_mass = from_props.density * fromCell.fill_ratio;
-        double from_velocity = std::abs(fromCell.velocity.x);
-        double from_momentum = from_mass * from_velocity;
+        const double from_mass = from_props.density * fromCell.fill_ratio;
+        const double from_velocity = std::abs(fromCell.velocity.x);
+        double from_momentum = from_mass * from_velocity; // Modified for fluids pushing solids.
 
         // Fluids pushing solids sideways is harder - they flow around instead.
         if (from_props.is_fluid && !to_props.is_fluid) {
@@ -1193,21 +1199,22 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         }
 
         // TO: resistance to being displaced.
-        double to_mass = to_props.density * toCell.fill_ratio;
+        const double to_mass = to_props.density * toCell.fill_ratio;
 
         // Use cached neighbor-based cohesion (computed during applyCohesionForces).
-        int toX = fromX + direction.x;
-        int toY = fromY + direction.y;
-        double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
+        const int toX = fromX + direction.x;
+        const int toY = fromY + direction.y;
+        const double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2f dir_vec(direction.x, direction.y);
-        double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
+        const Vector2f dir_vec(direction.x, direction.y);
+        const double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
         // Fluids are easier to displace than solids.
-        double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
+        const double fluid_factor = 1; // to_props.is_fluid ? 0.2 : 1.0;
 
-        double to_resistance = (to_mass + cohesion_strength + opposing_momentum) * fluid_factor;
+        double to_resistance = (to_mass + cohesion_strength + opposing_momentum)
+            * fluid_factor; // Modified by COM factor.
 
         // COM distance factor: swaps are harder when COMs are far from shared boundary.
         double com_distance = 0.0;
@@ -1226,10 +1233,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
         // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
         // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
-        double com_resistance_multiplier = 1.0;
-        if (com_distance > 0.3) {
-            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0; // 1x at 0.3, ~11x at 1.0
-        }
+        const double com_resistance_multiplier =
+            com_distance > 0.3 ? 1.0 + (com_distance - 0.3) * 14.0 : 1.0; // 1x at 0.3, ~11x at 1.0
         to_resistance *= com_resistance_multiplier;
 
         // Swap if momentum overcomes resistance.
@@ -1276,30 +1281,32 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         }
 
         // FROM: momentum in direction of movement.
-        double from_mass = from_props.density * fromCell.fill_ratio;
-        double from_velocity = std::abs(fromCell.velocity.y);
-        double from_momentum = from_mass * from_velocity;
+        const double from_mass = from_props.density * fromCell.fill_ratio;
+        const double from_velocity = std::abs(fromCell.velocity.y);
+        const double from_momentum = from_mass * from_velocity;
 
         // Buoyancy adds "free" momentum based on density difference.
         // Larger density differences create stronger buoyancy forces.
-        double density_diff = std::abs(from_density - to_density);
-        double buoyancy_boost = density_diff * world.getPhysicsSettings().buoyancy_energy_scale;
-        double effective_momentum = from_momentum + buoyancy_boost;
+        const double density_diff = std::abs(from_density - to_density);
+        const double buoyancy_boost =
+            density_diff * world.getPhysicsSettings().buoyancy_energy_scale;
+        const double effective_momentum = from_momentum + buoyancy_boost;
 
         // TO: resistance to being displaced.
         // For vertical swaps, no fluid_factor - must move the mass regardless of fluidity.
-        double to_mass = to_props.density * toCell.fill_ratio;
+        const double to_mass = to_props.density * toCell.fill_ratio;
 
         // Use cached neighbor-based cohesion (computed during applyCohesionForces).
-        int toX = fromX + direction.x;
-        int toY = fromY + direction.y;
-        double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
+        const int toX = fromX + direction.x;
+        const int toY = fromY + direction.y;
+        const double cohesion_strength = world.getGrid().getCohesionResistance(toX, toY);
 
         // Opposing momentum: target velocity against swap direction increases resistance.
-        Vector2f dir_vec(direction.x, direction.y);
-        double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
+        const Vector2f dir_vec(direction.x, direction.y);
+        const double opposing_momentum = std::max(0.0f, -toCell.velocity.dot(dir_vec)) * to_mass;
 
-        double to_resistance = to_mass + cohesion_strength + opposing_momentum;
+        double to_resistance =
+            to_mass + cohesion_strength + opposing_momentum; // Modified by COM factor.
 
         // COM distance factor: swaps are harder when COMs are far from shared boundary.
         // This prevents cascading swaps where freshly-displaced material hasn't
@@ -1320,10 +1327,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
         // Apply resistance multiplier: 1x at distance <= 0.3, scaling up at higher distances.
         // Threshold lowered to 0.3 so displaced material (COM at far edge) blocks cascades.
-        double com_resistance_multiplier = 1.0;
-        if (com_distance > 0.3) {
-            com_resistance_multiplier = 1.0 + (com_distance - 0.3) * 14.0; // 1x at 0.3, ~11x at 1.0
-        }
+        const double com_resistance_multiplier =
+            com_distance > 0.3 ? 1.0 + (com_distance - 0.3) * 14.0 : 1.0; // 1x at 0.3, ~11x at 1.0
         to_resistance *= com_resistance_multiplier;
 
         // Swap if effective momentum overcomes resistance.
@@ -1389,9 +1394,9 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     }
 
     // Check cohesion resistance.
-    double cohesion_strength = calculateCohesionStrength(fromCell, world, fromX, fromY);
-    double bond_breaking_cost =
-        cohesion_strength * world.getPhysicsSettings().cohesion_resistance_factor;
+    const double cohesion_strength = calculateCohesionStrength(fromCell, world, fromX, fromY);
+    double bond_breaking_cost = cohesion_strength
+        * world.getPhysicsSettings().cohesion_resistance_factor; // Modified for fluids.
 
     // Reduce bond cost for fluid interactions (fluids help separate materials).
     if (from_props.is_fluid || to_props.is_fluid) {
@@ -1411,8 +1416,9 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
     // Calculate swap cost: energy to accelerate target cell's contents to 1 cell/second.
     const double target_mass = toCell.getEffectiveDensity();
-    const double SWAP_COST_SCALAR = 1;
-    double swap_cost = SWAP_COST_SCALAR * 0.5 * target_mass * 1.0; // KE = 0.5 * m * v^2, v = 1.0
+    constexpr double SWAP_COST_SCALAR = 1;
+    double swap_cost = SWAP_COST_SCALAR * 0.5 * target_mass
+        * 1.0; // KE = 0.5 * m * v^2, v = 1.0. Modified for horizontal non-fluids.
 
     // Horizontal non-fluid swaps require more energy (prevents dirt from flowing sideways too
     // easily). Vertical swaps (buoyancy) should NOT be penalized - density difference drives those.
@@ -1422,17 +1428,17 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
 
     // Total cost includes base swap cost + bond breaking cost.
     const double total_cost = swap_cost + bond_breaking_cost;
-    double available_energy = move.collision_energy;
+    double available_energy = move.collision_energy; // Modified by buoyancy.
 
     // Add buoyancy energy for vertical swaps driven by density differences.
     // Light materials rising or heavy materials sinking get "free" energy from buoyancy.
     if (direction.y != 0) {
-        const double density_diff = std::abs(from_props.density - to_props.density);
+        const double vert_density_diff = std::abs(from_props.density - to_props.density);
         const bool is_buoyancy_driven = densitySupportsSwap(fromCell, toCell, direction);
 
-        if (is_buoyancy_driven && density_diff > 0.1) {
+        if (is_buoyancy_driven && vert_density_diff > 0.1) {
             const double buoyancy_energy =
-                density_diff * world.getPhysicsSettings().buoyancy_energy_scale;
+                vert_density_diff * world.getPhysicsSettings().buoyancy_energy_scale;
             available_energy += buoyancy_energy;
 
             LOG_DEBUG(
@@ -1441,7 +1447,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 "{:.3f}",
                 getMaterialName(fromCell.material_type),
                 getMaterialName(toCell.material_type),
-                density_diff,
+                vert_density_diff,
                 buoyancy_energy,
                 available_energy);
         }
@@ -1521,7 +1527,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
 
     // AIR swaps preserve momentum - no real collision occurred.
     // Moving through air should not cost energy (air resistance handled elsewhere).
-    const bool involves_air = (from_type == MaterialType::AIR || to_type == MaterialType::AIR);
+    const bool involves_air = from_type == MaterialType::AIR || to_type == MaterialType::AIR;
 
     Vector2d new_velocity;
     double swap_cost = 0.0;
@@ -1551,15 +1557,15 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
         }
 
         // Preserve velocity direction, but reduce magnitude.
-        Vector2f velocity_direction =
+        const Vector2f velocity_direction =
             move.momentum.magnitude() > 1e-6f ? move.momentum.normalize() : Vector2f(0.0f, 0.0f);
         new_velocity = Vector2d(velocity_direction) * velocity_magnitude_new;
     }
 
     // Swap material types and fill ratios (conserve mass).
     // Note: organism tracking is handled by OrganismManager, not Cell.
-    MaterialType temp_type = fromCell.material_type;
-    double temp_fill = fromCell.fill_ratio;
+    const MaterialType temp_type = fromCell.material_type;
+    const double temp_fill = fromCell.fill_ratio;
 
     fromCell.material_type = toCell.material_type;
     fromCell.fill_ratio = toCell.fill_ratio;
@@ -1569,7 +1575,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
 
     // Moving material (now in toCell) continues trajectory with reduced velocity.
     // Calculate landing position based on boundary crossing trajectory.
-    Vector2d landing_com =
+    const Vector2d landing_com =
         fromCell.calculateTrajectoryLanding(fromCell.com, move.momentum, move.getDirection());
     toCell.setCOM(landing_com);
     toCell.velocity = new_velocity;
@@ -1579,25 +1585,25 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // Place COM at the entering edge - displaced material crossed from the swap direction.
     // This ensures COM distance factor blocks immediate re-swaps.
     constexpr double BOUNDARY_OFFSET = 0.95;
-    Vector2d displaced_com(
+    const Vector2d displaced_com(
         direction.x != 0 ? direction.x * BOUNDARY_OFFSET : 0.0,
         direction.y != 0 ? direction.y * BOUNDARY_OFFSET : 0.0);
     fromCell.setCOM(displaced_com);
 
     const MaterialProperties& displaced_props = getMaterialProperties(to_type);
     const MaterialProperties& pusher_props = getMaterialProperties(from_type);
-    double density_diff = std::abs(pusher_props.density - displaced_props.density);
+    const double density_diff = std::abs(pusher_props.density - displaced_props.density);
 
     // Buoyancy gives the displaced material velocity opposing the swap direction.
     // Use density difference directly as a simple buoyancy model.
     // Scale tuned so displaced material resists cascading swaps.
     constexpr double BUOYANCY_VELOCITY_SCALE = 10.0;
-    double buoyancy_velocity = density_diff * BUOYANCY_VELOCITY_SCALE;
-    Vector2d opposing_dir(-direction.x, -direction.y);
+    const double buoyancy_velocity = density_diff * BUOYANCY_VELOCITY_SCALE;
+    const Vector2d opposing_dir(-direction.x, -direction.y);
     fromCell.velocity = opposing_dir * buoyancy_velocity;
 
     // Log with full details, INFO for non-air swaps, DEBUG for air swaps.
-    const char* direction_str =
+    const char* const direction_str =
         direction.y > 0 ? "DOWN" : (direction.y < 0 ? "UP" : (direction.x > 0 ? "RIGHT" : "LEFT"));
 
     if (involves_air) {
@@ -1651,7 +1657,7 @@ WorldCollisionCalculator::VelocityComponents WorldCollisionCalculator::decompose
     const Vector2d& velocity, const Vector2d& surface_normal) const
 {
     VelocityComponents components;
-    Vector2d normalized_normal = surface_normal.normalize();
+    const Vector2d normalized_normal = surface_normal.normalize();
     components.normal_scalar = velocity.dot(normalized_normal);
     components.normal = normalized_normal * components.normal_scalar;
     components.tangential = velocity - components.normal;
@@ -1666,7 +1672,7 @@ double WorldCollisionCalculator::calculateCohesionStrength(
     }
 
     // Reuse existing cohesion calculation that includes support factor.
-    WorldCohesionCalculator cohesion_calc;
+    const WorldCohesionCalculator cohesion_calc;
     const auto cohesion_force = cohesion_calc.calculateCohesionForce(world, x, y);
 
     // Return the resistance magnitude (includes neighbors, fill ratio, and support factor).

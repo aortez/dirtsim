@@ -19,8 +19,8 @@ Vector2f WorldAirResistanceCalculator::calculateAirResistance(
     }
 
     // Get cell velocity.
-    Vector2f velocity = cell.velocity;
-    float velocity_magnitude = velocity.mag();
+    const Vector2f velocity = cell.velocity;
+    const float velocity_magnitude = velocity.mag();
 
     // No resistance if not moving.
     if (velocity_magnitude < MIN_MATTER_THRESHOLD) {
@@ -28,7 +28,7 @@ Vector2f WorldAirResistanceCalculator::calculateAirResistance(
     }
 
     // Get material properties.
-    MaterialType material = cell.material_type;
+    const MaterialType material = cell.material_type;
     const MaterialProperties& props = getMaterialProperties(material);
 
     // Calculate air resistance force using proper physics.
@@ -40,12 +40,12 @@ Vector2f WorldAirResistanceCalculator::calculateAirResistance(
     //
     // Material-specific air resistance models shape, surface area, and density effects.
 
-    Vector2f velocity_direction = velocity.normalize();
-    float force_magnitude =
+    const Vector2f velocity_direction = velocity.normalize();
+    const float force_magnitude =
         strength * props.air_resistance * velocity_magnitude * velocity_magnitude;
 
     // Force opposes motion (negative of velocity direction).
-    Vector2f air_resistance_force = velocity_direction * (-force_magnitude);
+    const Vector2f air_resistance_force = velocity_direction * (-force_magnitude);
 
     // Debug logging for significant forces.
     if (force_magnitude > 0.01) {
