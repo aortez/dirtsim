@@ -2,6 +2,8 @@
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <string>
 #include <vector>
 
 namespace DirtSim {
@@ -64,7 +66,9 @@ const MaterialProperties& getMaterialProperties(MaterialType type);
 
 double getMaterialDensity(MaterialType type);
 
-const char* getMaterialName(MaterialType type);
+std::string toString(MaterialType type);
+
+std::optional<MaterialType> fromString(const std::string& str);
 
 const std::vector<MaterialType>& getAllMaterialTypes();
 

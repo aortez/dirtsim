@@ -64,7 +64,7 @@ public:
 
     void updateFromWorldData(
         const WorldData& data,
-        ScenarioId scenario_id,
+        Scenario::EnumType scenario_id,
         const ScenarioConfig& scenario_config,
         double uiFPS = 0.0);
 
@@ -114,7 +114,7 @@ private:
     IconId activePanel_ = IconId::COUNT;
 
     // Current scenario ID (to detect changes).
-    ScenarioId currentScenarioId_ = ScenarioId::Empty;
+    Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;
 
     // Current scenario config (to detect changes).
     ScenarioConfig currentScenarioConfig_;

@@ -9,11 +9,10 @@
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <string_view>
 
-namespace DirtSim {
+namespace DirtSim::Scenario {
 
-enum class ScenarioId : uint8_t {
+enum class EnumType : uint8_t {
     Benchmark = 0,
     Clock,
     DamBreak,
@@ -26,8 +25,8 @@ enum class ScenarioId : uint8_t {
     WaterEqualization,
 };
 
-std::string toString(ScenarioId id);
+std::string toString(EnumType id);
 
-std::optional<ScenarioId> fromString(std::string_view str);
+std::optional<EnumType> fromString(const std::string& str);
 
-} // namespace DirtSim
+} // namespace DirtSim::Scenario

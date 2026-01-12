@@ -1,22 +1,21 @@
 #include "ScenarioId.h"
-#include "ReflectEnumJson.h"
 #include "reflect.h"
 
-namespace DirtSim {
+namespace DirtSim::Scenario {
 
-std::string toString(ScenarioId id)
+std::string toString(EnumType id)
 {
     return std::string(reflect::enum_name(id));
 }
 
-std::optional<ScenarioId> fromString(std::string_view str)
+std::optional<EnumType> fromString(const std::string& str)
 {
-    for (const auto& [value, name] : reflect::enumerators<ScenarioId>) {
+    for (const auto& [value, name] : reflect::enumerators<EnumType>) {
         if (name == str) {
-            return static_cast<ScenarioId>(value);
+            return static_cast<EnumType>(value);
         }
     }
     return std::nullopt;
 }
 
-} // namespace DirtSim
+} // namespace DirtSim::Scenario

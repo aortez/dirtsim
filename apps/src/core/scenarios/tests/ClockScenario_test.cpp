@@ -430,7 +430,7 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
     std::cout << "\n=== Material Counts ===\n";
     int total_samples = 0;
     for (const auto& [mat, count] : material_counts) {
-        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples\n";
+        std::cout << "  " << toString(mat) << ": " << count << " samples\n";
         total_samples += count;
     }
     std::cout << "Total samples: " << total_samples << "\n";
@@ -441,9 +441,9 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
 
     // Verify no single material dominates (none should have > 60% of samples).
     for (const auto& [mat, count] : material_counts) {
-        EXPECT_GE(count, 1) << getMaterialName(mat) << " should have at least 1 sample";
+        EXPECT_GE(count, 1) << toString(mat) << " should have at least 1 sample";
         EXPECT_LE(count, total_samples * 0.6)
-            << getMaterialName(mat) << " should not dominate (have more than 60% of samples)";
+            << toString(mat) << " should not dominate (have more than 60% of samples)";
     }
 
     // Verify event ended.
@@ -644,7 +644,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
 
     MaterialType initial_showcase = initial_materials[0];
-    std::cout << "Initial showcase material: " << getMaterialName(initial_showcase) << "\n";
+    std::cout << "Initial showcase material: " << toString(initial_showcase) << "\n";
 
     // Change the time to trigger slide animation.
     // Showcase will change color once (expected), then stay consistent.
@@ -672,7 +672,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     std::cout << "\n=== Material Distribution During Animation ===\n";
     for (const auto& [mat, count] : material_counts) {
         double pct = 100.0 * count / num_samples;
-        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples (" << pct << "%)\n";
+        std::cout << "  " << toString(mat) << ": " << count << " samples (" << pct << "%)\n";
     }
 
     // METAL should NOT appear during showcase+slide (that indicates showcase reset bug).
@@ -725,7 +725,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
 
     MaterialType showcase_material = initial_materials[0];
-    std::cout << "Showcase material: " << getMaterialName(showcase_material) << "\n";
+    std::cout << "Showcase material: " << toString(showcase_material) << "\n";
 
     // Sample materials during marquee animation.
     std::map<MaterialType, int> material_counts;
@@ -746,14 +746,14 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     std::cout << "\n=== Material Distribution During Marquee ===\n";
     for (const auto& [mat, count] : material_counts) {
         double pct = 100.0 * count / num_samples;
-        std::cout << "  " << getMaterialName(mat) << ": " << count << " samples (" << pct << "%)\n";
+        std::cout << "  " << toString(mat) << ": " << count << " samples (" << pct << "%)\n";
     }
 
     // METAL should NOT appear during showcase+marquee.
     auto metal_it = material_counts.find(MaterialType::METAL);
     if (metal_it != material_counts.end() && showcase_material != MaterialType::METAL) {
         FAIL() << "Found METAL material during marquee when showcase material was "
-               << getMaterialName(showcase_material) << ". METAL appeared " << metal_it->second
+               << toString(showcase_material) << ". METAL appeared " << metal_it->second
                << " times out of " << num_samples << " samples.";
     }
 

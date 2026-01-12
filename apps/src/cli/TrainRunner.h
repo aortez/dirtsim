@@ -16,7 +16,7 @@ namespace Client {
  * Results from a completed training run.
  */
 struct TrainResults {
-    ScenarioId scenarioId = ScenarioId::TreeGermination;
+    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
     int totalGenerations = 0;
     int populationSize = 0;
     double durationSec = 0.0;

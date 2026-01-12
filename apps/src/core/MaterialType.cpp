@@ -3,9 +3,7 @@
 
 #include <array>
 #include <cassert>
-#include <cstddef>
 #include <stdexcept>
-#include <string>
 
 namespace DirtSim {
 
@@ -199,11 +197,6 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .light = { .opacity = 0.6f, .scatter = 0.2f, .tint = 0xDEB887FF } } }
 };
 
-// Material name lookup table.
-static const std::array<const char*, 10> MATERIAL_NAMES = {
-    { "AIR", "DIRT", "LEAF", "METAL", "ROOT", "SAND", "SEED", "WALL", "WATER", "WOOD" }
-};
-
 const MaterialProperties& getMaterialProperties(MaterialType type)
 {
     const auto index = static_cast<size_t>(type);
@@ -221,11 +214,19 @@ bool isMaterialFluid(MaterialType type)
     return getMaterialProperties(type).is_fluid;
 }
 
-const char* getMaterialName(MaterialType type)
+std::string toString(MaterialType type)
 {
-    const auto index = static_cast<size_t>(type);
-    assert(index < MATERIAL_NAMES.size());
-    return MATERIAL_NAMES[index];
+    return std::string(reflect::enum_name(type));
+}
+
+std::optional<MaterialType> fromString(const std::string& str)
+{
+    for (const auto& [value, name] : reflect::enumerators<MaterialType>) {
+        if (name == str) {
+            return static_cast<MaterialType>(value);
+        }
+    }
+    return std::nullopt;
 }
 
 const std::vector<MaterialType>& getAllMaterialTypes()
@@ -243,7 +244,7 @@ const std::vector<MaterialType>& getAllMaterialTypes()
 
 void to_json(nlohmann::json& j, MaterialType type)
 {
-    j = getMaterialName(type);
+    j = toString(type);
 }
 
 void from_json(const nlohmann::json& j, MaterialType& type)
@@ -253,13 +254,10 @@ void from_json(const nlohmann::json& j, MaterialType& type)
     }
 
     std::string name = j.get<std::string>();
-
-    // Linear search through material names.
-    for (size_t i = 0; i < MATERIAL_NAMES.size(); ++i) {
-        if (name == MATERIAL_NAMES[i]) {
-            type = static_cast<MaterialType>(i);
-            return;
-        }
+    auto result = fromString(name);
+    if (result) {
+        type = *result;
+        return;
     }
 
     throw std::runtime_error("MaterialType::from_json: Unknown material type '" + name + "'");

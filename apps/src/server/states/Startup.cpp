@@ -21,7 +21,7 @@ Any Startup::onEnter(StateMachine& dsm)
 
     dsm.serverConfig = std::make_unique<ServerConfig>(configResult.value());
 
-    ScenarioId startupScenario = getScenarioId(dsm.serverConfig->startupConfig);
+    Scenario::EnumType startupScenario = getScenarioId(dsm.serverConfig->startupConfig);
     LOG_INFO(State, "Startup scenario: {}", toString(startupScenario));
     LOG_INFO(State, "Transitioning to Idle");
 

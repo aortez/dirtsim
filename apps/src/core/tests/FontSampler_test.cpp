@@ -435,7 +435,7 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
         // Print distribution.
         for (const auto& [mat, count] : counts) {
             if (mat != MaterialType::AIR && count > 0) {
-                spdlog::info("  {}: {} pixels", getMaterialName(mat), count);
+                spdlog::info("  {}: {} pixels", toString(mat), count);
             }
         }
 

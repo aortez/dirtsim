@@ -8,7 +8,7 @@ namespace DirtSim {
 /**
  * Goose Test scenario - simple world with a goose to test rigid body physics.
  */
-class GooseTestScenario : public Scenario {
+class GooseTestScenario : public ScenarioRunner {
 public:
     GooseTestScenario();
 

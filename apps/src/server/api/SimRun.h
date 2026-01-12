@@ -22,7 +22,7 @@ struct Command {
     double timestep = 0.016;
     int max_steps = -1;
     int max_frame_ms = 0;
-    std::optional<ScenarioId>
+    std::optional<Scenario::EnumType>
         scenario_id; // Optional scenario (nullopt = use server config default).
 
     API_COMMAND_NAME();

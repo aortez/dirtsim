@@ -62,15 +62,15 @@ bool CellTracker::checkForDisplacements(int frame)
             any_displaced = true;
             std::cout << "\n⚠️  CELL MOVED at frame " << frame << " (added at frame "
                       << tracked.frame_added << ")\n";
-            std::cout << "  Expected: " << getMaterialName(tracked.material) << " at (" << pos.x
-                      << ", " << pos.y << ")\n";
+            std::cout << "  Expected: " << toString(tracked.material) << " at (" << pos.x << ", "
+                      << pos.y << ")\n";
 
             printHistory(pos, frame);
 
             // Print current cell stats.
             const auto& debug = world_.getGrid().debugAt(pos.x, pos.y);
             std::cout << "  Current cell stats:\n";
-            std::cout << "    Material: " << getMaterialName(cell.material_type) << "\n";
+            std::cout << "    Material: " << toString(cell.material_type) << "\n";
             std::cout << "    Fill: " << std::setprecision(2) << std::fixed << cell.fill_ratio
                       << "\n";
             std::cout << "    COM: (" << cell.com.x << ", " << cell.com.y << ")\n";
@@ -112,9 +112,8 @@ void CellTracker::detectNewCells(
         if (is_new) {
             const Cell& cell = world_.getData().at(pos.x, pos.y);
             trackCell(pos, cell.material_type, frame);
-            std::cout << "\n🌱 NEW CELL at frame " << frame << ": "
-                      << getMaterialName(cell.material_type) << " at (" << pos.x << ", " << pos.y
-                      << ")\n";
+            std::cout << "\n🌱 NEW CELL at frame " << frame << ": " << toString(cell.material_type)
+                      << " at (" << pos.x << ", " << pos.y << ")\n";
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(world_) << "\n";
         }
     }
@@ -129,9 +128,8 @@ void CellTracker::detectNewCells(
         if (cells_before.find(pos) == cells_before.end()) {
             const Cell& cell = world_.getData().at(pos.x, pos.y);
             trackCell(pos, cell.material_type, frame);
-            std::cout << "\n🌱 NEW CELL at frame " << frame << ": "
-                      << getMaterialName(cell.material_type) << " at (" << pos.x << ", " << pos.y
-                      << ")\n";
+            std::cout << "\n🌱 NEW CELL at frame " << frame << ": " << toString(cell.material_type)
+                      << " at (" << pos.x << ", " << pos.y << ")\n";
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(world_) << "\n";
         }
     }
@@ -198,13 +196,13 @@ void CellTracker::printTableRow(int frame, bool force_print) const
         const Cell& cell = world_.getData().at(pos.x, pos.y);
         const auto& debug = world_.getGrid().debugAt(pos.x, pos.y);
 
-        std::cout << std::setw(5) << frame << " | " << getMaterialName(tracked.material)[0] << "("
-                  << pos.x << "," << pos.y << ") | (" << std::setw(5) << std::fixed
-                  << std::setprecision(2) << cell.com.x << "," << std::setw(5) << cell.com.y
-                  << ") | (" << std::setw(5) << cell.velocity.x << "," << std::setw(5)
-                  << cell.velocity.y << ") | " << std::setw(4) << debug.accumulated_gravity_force.y
-                  << " | " << std::setw(4) << debug.accumulated_com_cohesion_force.y << " | "
-                  << std::setw(4) << debug.accumulated_adhesion_force.y << " | " << std::setw(5)
+        std::cout << std::setw(5) << frame << " | " << toString(tracked.material)[0] << "(" << pos.x
+                  << "," << pos.y << ") | (" << std::setw(5) << std::fixed << std::setprecision(2)
+                  << cell.com.x << "," << std::setw(5) << cell.com.y << ") | (" << std::setw(5)
+                  << cell.velocity.x << "," << std::setw(5) << cell.velocity.y << ") | "
+                  << std::setw(4) << debug.accumulated_gravity_force.y << " | " << std::setw(4)
+                  << debug.accumulated_com_cohesion_force.y << " | " << std::setw(4)
+                  << debug.accumulated_adhesion_force.y << " | " << std::setw(5)
                   << cell.pending_force.y << "\n";
     }
 }

@@ -10,7 +10,7 @@ namespace DirtSim {
 /**
  * Falling Dirt scenario - Dirt particles falling and accumulating.
  */
-class FallingDirtScenario : public Scenario {
+class FallingDirtScenario : public ScenarioRunner {
 public:
     FallingDirtScenario();
 

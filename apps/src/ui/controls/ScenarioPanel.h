@@ -29,12 +29,12 @@ public:
     ScenarioPanel(
         lv_obj_t* container,
         Network::WebSocketService* wsService,
-        ScenarioId initialScenarioId,
+        Scenario::EnumType initialScenarioId,
         const ScenarioConfig& initialConfig,
         DisplayDimensionsGetter dimensionsGetter);
     ~ScenarioPanel();
 
-    void updateFromConfig(ScenarioId scenarioId, const ScenarioConfig& config);
+    void updateFromConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config);
 
 private:
     lv_obj_t* container_;
@@ -45,7 +45,7 @@ private:
     std::unique_ptr<PanelViewController> viewController_;
 
     // Current scenario state.
-    ScenarioId currentScenarioId_ = ScenarioId::Empty;
+    Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;
     ScenarioConfig currentScenarioConfig_;
 
     // Scenario-specific controls.

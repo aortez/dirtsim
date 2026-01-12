@@ -10,7 +10,7 @@ namespace DirtSim {
  * Dam Break scenario - Classic fluid dynamics demonstration.
  * Water held by a wall dam that breaks after pressure builds up.
  */
-class DamBreakScenario : public Scenario {
+class DamBreakScenario : public ScenarioRunner {
 public:
     DamBreakScenario();
 

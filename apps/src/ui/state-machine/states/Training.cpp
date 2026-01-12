@@ -22,7 +22,7 @@ void Training::onEnter(StateMachine& sm)
         auto& wsService = sm.getWebSocketService();
         if (wsService.isConnected()) {
             Api::EvolutionStart::Command cmd;
-            cmd.scenarioId = ScenarioId::TreeGermination;
+            cmd.scenarioId = Scenario::EnumType::TreeGermination;
 
             const auto result = wsService.sendCommand<Api::EvolutionStart::OkayType>(cmd, 5000);
             if (result.isError()) {

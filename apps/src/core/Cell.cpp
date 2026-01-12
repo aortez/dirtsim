@@ -95,7 +95,7 @@ float Cell::addMaterialWithPhysics(
             spdlog::info(
                 "Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell "
                 "(old_fill={:.3f})",
-                getMaterialName(type),
+                ::toString(type),
                 fill_ratio);
         }
         material_type = type;
@@ -301,8 +301,8 @@ Vector2f Cell::calculateTrajectoryLanding(
 std::string Cell::toString() const
 {
     std::ostringstream oss;
-    oss << getMaterialName(material_type) << "(fill=" << fill_ratio << ", com=[" << com.x << ","
-        << com.y << "]" << ", vel=[" << velocity.x << "," << velocity.y << "]" << ")";
+    oss << ::toString(material_type) << "(fill=" << fill_ratio << ", com=[" << com.x << "," << com.y
+        << "]" << ", vel=[" << velocity.x << "," << velocity.y << "]" << ")";
     return oss.str();
 }
 

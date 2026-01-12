@@ -42,7 +42,7 @@ void startMeltdown(MeltdownEventState& state, World& world)
     spdlog::info(
         "ClockScenario: MELTDOWN started (digit_bottom_y: {}, material: {})",
         state.digit_bottom_y,
-        getMaterialName(state.digit_material));
+        toString(state.digit_material));
 }
 
 void updateMeltdown(

@@ -29,35 +29,35 @@ using ScenarioConfig = std::variant<
     Config::TreeGermination,
     Config::WaterEqualization>;
 
-// Map variant index to ScenarioId enum (must stay in sync with variant order).
-inline ScenarioId getScenarioId(const ScenarioConfig& config)
+// Map variant index to Scenario::EnumType enum (must stay in sync with variant order).
+inline Scenario::EnumType getScenarioId(const ScenarioConfig& config)
 {
-    return static_cast<ScenarioId>(config.index());
+    return static_cast<Scenario::EnumType>(config.index());
 }
 
-// Map ScenarioId to default config instance.
-inline ScenarioConfig makeDefaultConfig(ScenarioId id)
+// Map Scenario::EnumType to default config instance.
+inline ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
 {
     switch (id) {
-        case ScenarioId::Benchmark:
+        case Scenario::EnumType::Benchmark:
             return Config::Benchmark{};
-        case ScenarioId::Clock:
+        case Scenario::EnumType::Clock:
             return Config::Clock{};
-        case ScenarioId::DamBreak:
+        case Scenario::EnumType::DamBreak:
             return Config::DamBreak{};
-        case ScenarioId::Empty:
+        case Scenario::EnumType::Empty:
             return Config::Empty{};
-        case ScenarioId::FallingDirt:
+        case Scenario::EnumType::FallingDirt:
             return Config::FallingDirt{};
-        case ScenarioId::GooseTest:
+        case Scenario::EnumType::GooseTest:
             return Config::GooseTest{};
-        case ScenarioId::Raining:
+        case Scenario::EnumType::Raining:
             return Config::Raining{};
-        case ScenarioId::Sandbox:
+        case Scenario::EnumType::Sandbox:
             return Config::Sandbox{};
-        case ScenarioId::TreeGermination:
+        case Scenario::EnumType::TreeGermination:
             return Config::TreeGermination{};
-        case ScenarioId::WaterEqualization:
+        case Scenario::EnumType::WaterEqualization:
             return Config::WaterEqualization{};
     }
     return Config::Empty{};

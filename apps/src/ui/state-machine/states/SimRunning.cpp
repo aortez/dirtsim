@@ -189,8 +189,7 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
             auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
             sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
 
-            LOG_INFO(
-                State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, getMaterialName(material));
+            LOG_INFO(State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, toString(material));
         }
         else {
             LOG_WARN(

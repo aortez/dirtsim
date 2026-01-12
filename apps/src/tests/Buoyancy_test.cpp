@@ -189,7 +189,7 @@ TEST_F(BuoyancyTest, SolidInFluidColumn)
         spdlog::info(
             "  Cell y={}: material={}, pressure={:.6f}",
             y,
-            getMaterialName(cell.material_type),
+            toString(cell.material_type),
             cell.pressure);
 
         // Pressure should increase with depth.
@@ -445,7 +445,7 @@ TEST_F(BuoyancyTest, WoodDevelopsUpwardVelocity)
         spdlog::info(
             "    y={}: {} vel=({:.4f},{:.4f})",
             y,
-            getMaterialName(c.material_type),
+            toString(c.material_type),
             c.velocity.x,
             c.velocity.y);
     }
@@ -587,7 +587,7 @@ TEST_P(ParameterizedBuoyancyTest, DISABLED_MaterialBuoyancyBehavior)
             spdlog::info(
                 "  Step {}: {} at y={}, vel=({:.3f},{:.3f}), com=({:.3f},{:.3f}), fill={:.3f}",
                 step,
-                getMaterialName(params.material),
+                toString(params.material),
                 current_y,
                 cell.velocity.x,
                 cell.velocity.y,
@@ -649,7 +649,7 @@ TEST_P(ParameterizedBuoyancyTest, DISABLED_MaterialBuoyancyBehavior)
                 "  SWAP #{} at step {}: {} moved y={} -> y={}",
                 swap_count,
                 step,
-                getMaterialName(params.material),
+                toString(params.material),
                 current_y,
                 new_y);
             final_y = new_y;
@@ -676,7 +676,7 @@ TEST_P(ParameterizedBuoyancyTest, DISABLED_MaterialBuoyancyBehavior)
     // Final results.
     spdlog::info(
         "Final: {} at y={} (started at y={}) after {} steps, {} swaps",
-        getMaterialName(params.material),
+        toString(params.material),
         final_y,
         START_Y,
         steps_taken,

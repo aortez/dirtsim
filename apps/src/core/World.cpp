@@ -571,8 +571,7 @@ void World::addMaterialAtCell(Vector2s pos, MaterialType type, float amount)
     const float added = cell.addMaterial(type, amount);
 
     if (added > 0.0f) {
-        spdlog::trace(
-            "Added {:.3f} {} at cell ({},{})", added, getMaterialName(type), pos.x, pos.y);
+        spdlog::trace("Added {:.3f} {} at cell ({},{})", added, toString(type), pos.x, pos.y);
     }
 }
 
@@ -643,12 +642,10 @@ void World::replaceMaterialAtCell(Vector2s pos, MaterialType material)
                 "replaceMaterialAtCell({},{},{}): Empty cell has organism_id={}!",
                 pos.x,
                 pos.y,
-                getMaterialName(material),
+                toString(material),
                 org_id);
             spdlog::critical(
-                "  Cell: material={}, fill={:.2f}",
-                getMaterialName(cell.material_type),
-                cell.fill_ratio);
+                "  Cell: material={}, fill={:.2f}", toString(cell.material_type), cell.fill_ratio);
 
             auto* organism = organism_manager_->getOrganism(org_id);
             if (organism) {
@@ -761,7 +758,7 @@ void World::replaceMaterialAtCell(Vector2s pos, MaterialType material)
                 "World: replaceMaterialAtCell({},{},{}) destroying trapped organism {}",
                 pos.x,
                 pos.y,
-                getMaterialName(material),
+                toString(material),
                 org_id);
             organism_manager_->removeOrganismFromWorld(*this, org_id);
         }
@@ -1248,7 +1245,7 @@ void World::resolveForces(double deltaTime, const GridOfCells& grid)
                         "new_vel: ({:.3f},{:.3f})",
                         x,
                         y,
-                        getMaterialName(cell.material_type),
+                        toString(cell.material_type),
                         net_force.x,
                         net_force.y,
                         velocity_change.x,
@@ -1660,7 +1657,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                     "Cell ({},{}) {} - Velocity: ({:.3f},{:.3f}), COM: ({:.3f},{:.3f})",
                     x,
                     y,
-                    getMaterialName(cell.material_type),
+                    toString(cell.material_type),
                     current_velocity.x,
                     current_velocity.y,
                     oldCOM.x,
@@ -1680,7 +1677,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                 spdlog::debug(
                     "Boundary crossings detected for {} at ({},{}) with COM ({:.2f},{:.2f}) -> {} "
                     "crossings",
-                    getMaterialName(cell.material_type),
+                    toString(cell.material_type),
                     x,
                     y,
                     newCOM.x,
@@ -1727,8 +1724,8 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                         spdlog::debug(
                             "Collision detected: {} vs {} at ({},{}) -> ({},{}) - Type: {}, "
                             "Energy: {:.3f}",
-                            getMaterialName(move.material),
-                            getMaterialName(data.at(targetPos.x, targetPos.y).material_type),
+                            toString(move.material),
+                            toString(data.at(targetPos.x, targetPos.y).material_type),
                             x,
                             y,
                             targetPos.x,
@@ -1743,7 +1740,7 @@ std::vector<MaterialMove> World::computeMaterialMoves(double deltaTime)
                     // Hit world boundary - apply elastic reflection immediately.
                     spdlog::debug(
                         "World boundary hit: {} at ({},{}) direction=({},{}) - applying reflection",
-                        getMaterialName(cell.material_type),
+                        toString(cell.material_type),
                         x,
                         y,
                         direction.x,

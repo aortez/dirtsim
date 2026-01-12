@@ -148,7 +148,7 @@ void WorldPressureCalculator::processBlockedTransfers(
                 transfer.toY,
                 transfer.transfer_amount,
                 blocked_energy,
-                getMaterialName(target_cell.material_type),
+                toString(target_cell.material_type),
                 material_weight);
         }
     }
@@ -448,7 +448,7 @@ float WorldPressureCalculator::calculateReflectionCoefficient(
     spdlog::trace(
         "Reflection coefficient for {} hitting wall: elasticity={:.2f}, base_restitution={:.2f}, "
         "energy={:.3f}, energy_damping={:.2f}, final_coefficient={:.2f}",
-        getMaterialName(materialType),
+        toString(materialType),
         material_elasticity,
         base_restitution,
         impactEnergy,

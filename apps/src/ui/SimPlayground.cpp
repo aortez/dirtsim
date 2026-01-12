@@ -228,7 +228,7 @@ void SimPlayground::updatePhysicsPanels(const PhysicsSettings& settings)
 
 void SimPlayground::updateFromWorldData(
     const WorldData& data,
-    ScenarioId scenario_id,
+    Scenario::EnumType scenario_id,
     const ScenarioConfig& scenario_config,
     double uiFPS)
 {
@@ -483,7 +483,7 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
         (mode == InteractionMode::ERASE) ? "Erase" : "Draw",
         cell->x,
         cell->y,
-        getMaterialName(material));
+        toString(material));
 }
 
 } // namespace Ui

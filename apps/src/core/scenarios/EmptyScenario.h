@@ -9,7 +9,7 @@ namespace DirtSim {
 /**
  * Empty scenario - A truly empty world with no particles.
  */
-class EmptyScenario : public Scenario {
+class EmptyScenario : public ScenarioRunner {
 public:
     EmptyScenario();
 

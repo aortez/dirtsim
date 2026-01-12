@@ -16,7 +16,7 @@ namespace ScenarioSwitch {
 DEFINE_API_NAME(ScenarioSwitch);
 
 struct Command {
-    ScenarioId scenario_id;
+    Scenario::EnumType scenario_id;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Command);

@@ -37,7 +37,7 @@ std::vector<std::string> ScenarioMetadataCache::buildOptionsList()
     return options;
 }
 
-ScenarioId ScenarioMetadataCache::scenarioIdFromIndex(uint16_t index)
+Scenario::EnumType ScenarioMetadataCache::scenarioIdFromIndex(uint16_t index)
 {
     assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");
     assert(index < scenarios_.size() && "Scenario index out of range");
@@ -45,7 +45,7 @@ ScenarioId ScenarioMetadataCache::scenarioIdFromIndex(uint16_t index)
     return scenarios_[index].id;
 }
 
-uint16_t ScenarioMetadataCache::indexFromScenarioId(ScenarioId id)
+uint16_t ScenarioMetadataCache::indexFromScenarioId(Scenario::EnumType id)
 {
     for (size_t i = 0; i < scenarios_.size(); ++i) {
         if (scenarios_[i].id == id) {

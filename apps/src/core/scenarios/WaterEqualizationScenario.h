@@ -10,7 +10,7 @@ namespace DirtSim {
  * Water Equalization scenario - Demonstrates hydrostatic pressure and flow.
  * Water flows through a small opening at the bottom to achieve equilibrium between two columns.
  */
-class WaterEqualizationScenario : public Scenario {
+class WaterEqualizationScenario : public ScenarioRunner {
 public:
     WaterEqualizationScenario();
 

@@ -59,7 +59,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     assert(dsm.serverConfig && "serverConfig must be loaded");
 
     // Use scenario_id from command if provided, otherwise fall back to server config.
-    ScenarioId scenarioId = cwc.command.scenario_id.has_value()
+    Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
         : getScenarioId(dsm.serverConfig->startupConfig);
     LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));

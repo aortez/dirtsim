@@ -19,7 +19,7 @@ struct RenderMessageFull {
     RenderMessage render_data;
 
     // Scenario metadata (sent alongside render data).
-    ScenarioId scenario_id = ScenarioId::Empty;
+    Scenario::EnumType scenario_id = Scenario::EnumType::Empty;
     ScenarioConfig scenario_config = Config::Empty{};
 
     using serialize = zpp::bits::members<3>;

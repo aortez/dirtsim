@@ -187,7 +187,7 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
             spdlog::debug(
                 "Interpolation fix: AIR with fill {:.3f} -> {} to preserve material",
                 fillRatio,
-                getMaterialName(materialType));
+                toString(materialType));
         }
         else {
             // All corners are AIR, so fill_ratio should be 0.

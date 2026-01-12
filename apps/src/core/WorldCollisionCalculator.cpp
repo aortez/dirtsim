@@ -355,7 +355,7 @@ void WorldCollisionCalculator::handleTransferMove(
         spdlog::trace(
             "Transferred {:.3f} {} from ({},{}) to ({},{}) with boundary normal ({:.2f},{:.2f})",
             transferred,
-            getMaterialName(move.material),
+            toString(move.material),
             move.from.x,
             move.from.y,
             move.to.x,
@@ -388,7 +388,7 @@ void WorldCollisionCalculator::handleTransferMove(
             spdlog::debug(
                 "Blocked transfer energy calculation: material={}, density={:.2f}, "
                 "blocked_mass={:.4f}, velocity={:.2f}, energy={:.4f}",
-                getMaterialName(move.material),
+                toString(move.material),
                 material_density,
                 blocked_mass,
                 fromCell.velocity.magnitude(),
@@ -470,8 +470,8 @@ void WorldCollisionCalculator::handleElasticCollision(
         spdlog::trace(
             "Elastic collision: {} vs {} at ({},{}) -> ({},{}) - masses: {:.2f}, {:.2f}, "
             "restitution: {:.2f}, COM adjusted to ({:.3f},{:.3f})",
-            getMaterialName(move.material),
-            getMaterialName(toCell.material_type),
+            toString(move.material),
+            toString(toCell.material_type),
             move.from.x,
             move.from.y,
             move.to.x,
@@ -577,7 +577,7 @@ void WorldCollisionCalculator::handleInelasticCollision(
         spdlog::debug(
             "Inelastic collision blocked energy: material={}, density={:.2f}, "
             "blocked_mass={:.4f}, velocity={:.2f}, energy={:.4f}",
-            getMaterialName(move.material),
+            toString(move.material),
             material_density,
             blocked_mass,
             fromCell.velocity.magnitude(),
@@ -600,7 +600,7 @@ void WorldCollisionCalculator::handleFragmentation(
     // For now, treat as inelastic collision with complete material transfer.
     spdlog::debug(
         "Fragmentation collision: {} at ({},{}) - treating as inelastic for now",
-        getMaterialName(move.material),
+        toString(move.material),
         move.from.x,
         move.from.y);
 
@@ -1012,7 +1012,7 @@ void WorldCollisionCalculator::applyBoundaryReflection(Cell& cell, const Vector2
     spdlog::debug(
         "Applying boundary reflection: material={} direction=({},{}) elasticity={:.2f} "
         "velocity=({:.2f},{:.2f})",
-        getMaterialName(cell.material_type),
+        toString(cell.material_type),
         direction.x,
         direction.y,
         elasticity,
@@ -1052,7 +1052,7 @@ void WorldCollisionCalculator::applyCellBoundaryReflection(
 
     spdlog::debug(
         "Applying cell boundary reflection: material={} direction=({},{}) elasticity={:.2f}",
-        getMaterialName(material),
+        toString(material),
         direction.x,
         direction.y,
         elasticity);
@@ -1121,7 +1121,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             LOG_DEBUG(
                 Swap,
                 "Swap denied: cannot displace rigid body organism cell {} (organism_id={})",
-                getMaterialName(toCell.material_type),
+                toString(toCell.material_type),
                 toOrgId);
             return false;
         }
@@ -1156,7 +1156,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                     Swap,
                     "Swap denied (path of least resistance): "
                     "{} at ({},{}) can escape to empty lateral at ({},{})",
-                    getMaterialName(toCell.material_type),
+                    toString(toCell.material_type),
                     toX,
                     toY,
                     nx,
@@ -1172,7 +1172,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                     Swap,
                     "Swap denied (path of least resistance): "
                     "{} at ({},{}) can escape to lower pressure ({:.2f} vs {:.2f}) at ({},{})",
-                    getMaterialName(toCell.material_type),
+                    toString(toCell.material_type),
                     toX,
                     toY,
                     lateral_pressure,
@@ -1252,8 +1252,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             //     "vel: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, cohesion: {:.3f}, support: "
             //     "{:.1f}, "
             //     "fluid: {:.1f}) | threshold: {:.3f}",
-            //     getMaterialName(fromCell.material_type),
-            //     getMaterialName(toCell.material_type),
+            //     toString(fromCell.material_type),
+            //     toString(toCell.material_type),
             //     fromX,
             //     fromY,
             //     fromX + direction.x,
@@ -1342,8 +1342,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 "{:.3f}, vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, "
                 "cohesion: {:.3f}, opposing: {:.3f}, com_dist: {:.2f}, com_mult: {:.1f}) | "
                 "threshold: {:.3f} | dir.y: {} ({})",
-                getMaterialName(fromCell.material_type),
-                getMaterialName(toCell.material_type),
+                toString(fromCell.material_type),
+                toString(toCell.material_type),
                 fromX,
                 fromY,
                 toX,
@@ -1371,8 +1371,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 "{:.3f}, vel: {:.3f}, buoyancy: {:.3f}) | resistance: {:.3f} (mass: {:.3f}, "
                 "cohesion: {:.3f}, opposing: {:.3f}, com_dist: {:.2f}, com_mult: {:.1f}) | "
                 "threshold: {:.3f} | dir.y: {} ({})",
-                getMaterialName(fromCell.material_type),
-                getMaterialName(toCell.material_type),
+                toString(fromCell.material_type),
+                toString(toCell.material_type),
                 fromX,
                 fromY,
                 toX,
@@ -1407,7 +1407,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         LOG_DEBUG(
             Swap,
             "Cohesion check: {} at ({},{}) | strength: {:.3f}, bond_cost: {:.3f} (fluid_adjusted)",
-            getMaterialName(fromCell.material_type),
+            toString(fromCell.material_type),
             fromX,
             fromY,
             cohesion_strength,
@@ -1445,8 +1445,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
                 Swap,
                 "Buoyancy boost: {} <-> {} | density_diff: {:.3f}, buoyancy_energy: {:.3f}, total: "
                 "{:.3f}",
-                getMaterialName(fromCell.material_type),
-                getMaterialName(toCell.material_type),
+                toString(fromCell.material_type),
+                toString(toCell.material_type),
                 vert_density_diff,
                 buoyancy_energy,
                 available_energy);
@@ -1478,8 +1478,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             Swap,
             "Swap approved: {} -> {} at ({},{}) -> ({},{}) | Energy: {:.3f} >= {:.3f} (base: "
             "{:.3f}, bonds: {:.3f}) | Dir: ({},{}) {}",
-            getMaterialName(fromCell.material_type),
-            getMaterialName(toCell.material_type),
+            toString(fromCell.material_type),
+            toString(toCell.material_type),
             fromX,
             fromY,
             fromX + direction.x,
@@ -1499,8 +1499,8 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             Swap,
             "Swap approved: {} -> {} at ({},{}) -> ({},{}) | Energy: {:.3f} >= {:.3f} (base: "
             "{:.3f}, bonds: {:.3f}) | Dir: ({},{}) {}",
-            getMaterialName(fromCell.material_type),
-            getMaterialName(toCell.material_type),
+            toString(fromCell.material_type),
+            toString(toCell.material_type),
             fromX,
             fromY,
             fromX + direction.x,
@@ -1611,8 +1611,8 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
             Swap,
             "SWAP: {} <-> {} at ({},{}) <-> ({},{}) Dir:({},{}) {} | Vel: {:.3f} -> {:.3f} "
             "(air swap, momentum preserved) | landing_com: ({:.2f},{:.2f})",
-            getMaterialName(from_type),
-            getMaterialName(to_type),
+            toString(from_type),
+            toString(to_type),
             move.from.x,
             move.from.y,
             move.to.x,
@@ -1630,8 +1630,8 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
             Swap,
             "SWAP: {} <-> {} at ({},{}) <-> ({},{}) Dir:({},{}) {} | Energy: {:.3f} - {:.3f} = "
             "{:.3f} | Vel: {:.3f} -> {:.3f} | landing_com: ({:.2f},{:.2f})",
-            getMaterialName(from_type),
-            getMaterialName(to_type),
+            toString(from_type),
+            toString(to_type),
             move.from.x,
             move.from.y,
             move.to.x,

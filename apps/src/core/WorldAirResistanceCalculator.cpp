@@ -54,7 +54,7 @@ Vector2f WorldAirResistanceCalculator::calculateAirResistance(
             "magnitude={:.3f}, air_resist={:.2f}, force=({:.3f},{:.3f})",
             x,
             y,
-            getMaterialName(material),
+            toString(material),
             velocity.x,
             velocity.y,
             velocity_magnitude,

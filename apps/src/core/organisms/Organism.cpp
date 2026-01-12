@@ -89,7 +89,7 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
     spdlog::debug(
         "Organism {}: createBonesForCell for {} at ({},{})",
         id_,
-        getMaterialName(material),
+        toString(material),
         new_cell.x,
         new_cell.y);
 
@@ -151,7 +151,7 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
         spdlog::debug(
             "Organism {}: No bones created for {} at ({},{}) - no adjacent organism cells",
             id_,
-            getMaterialName(material),
+            toString(material),
             new_cell.x,
             new_cell.y);
     }

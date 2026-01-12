@@ -33,7 +33,7 @@ struct WorldData;
  *
  * Event system allows multiple concurrent events (rain, duck, etc.).
  */
-class ClockScenario : public Scenario {
+class ClockScenario : public ScenarioRunner {
 public:
     struct TimezoneInfo {
         const char* name;

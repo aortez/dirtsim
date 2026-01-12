@@ -24,11 +24,11 @@ protected:
     {
         world = std::make_unique<World>(9, 9);
         ScenarioRegistry registry = ScenarioRegistry::createDefault();
-        scenario = registry.createScenario(ScenarioId::TreeGermination);
+        scenario = registry.createScenario(Scenario::EnumType::TreeGermination);
     }
 
     std::unique_ptr<World> world;
-    std::unique_ptr<Scenario> scenario;
+    std::unique_ptr<ScenarioRunner> scenario;
 };
 
 TEST_F(TreeGerminationTest, SeedFallsOntoGround)
@@ -377,14 +377,14 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
             OrganismId org_at_wood = world->getOrganismManager().at(second_wood_pos);
             std::cout << "Frame " << frame << " (" << tree->getAge() << "s):\n";
             std::cout << "  WOOD[1] at (" << second_wood_pos.x << ", " << second_wood_pos.y
-                      << "): material=" << getMaterialName(cell.material_type)
+                      << "): material=" << toString(cell.material_type)
                       << ", fill=" << cell.fill_ratio << ", organism_id=" << org_at_wood << "\n";
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
         }
 
         EXPECT_EQ(cell.material_type, MaterialType::WOOD)
             << "Frame " << frame << ": WOOD cell at (" << second_wood_pos.x << ", "
-            << second_wood_pos.y << ") changed to " << getMaterialName(cell.material_type);
+            << second_wood_pos.y << ") changed to " << toString(cell.material_type);
         EXPECT_EQ(world->getOrganismManager().at(second_wood_pos), tree->getId())
             << "Frame " << frame << ": WOOD cell lost organism_id";
     }
@@ -713,7 +713,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 
             // WOOD[0] details.
             std::cout << "WOOD[0] at (" << wood0_pos.x << ", " << wood0_pos.y << "):\n";
-            std::cout << "  material: " << getMaterialName(wood0.material_type) << "\n";
+            std::cout << "  material: " << toString(wood0.material_type) << "\n";
             std::cout << "  fill_ratio: " << wood0.fill_ratio << "\n";
             std::cout << "  organism_id: " << world->getOrganismManager().at(wood0_pos) << "\n";
             std::cout << "  com: (" << wood0.com.x << ", " << wood0.com.y << ")\n";
@@ -726,7 +726,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 
             // WOOD[1] details.
             std::cout << "WOOD[1] at (" << wood1_pos.x << ", " << wood1_pos.y << "):\n";
-            std::cout << "  material: " << getMaterialName(wood1.material_type) << "\n";
+            std::cout << "  material: " << toString(wood1.material_type) << "\n";
             std::cout << "  fill_ratio: " << wood1.fill_ratio << "\n";
             std::cout << "  organism_id: " << world->getOrganismManager().at(wood1_pos) << "\n";
             std::cout << "  com: (" << wood1.com.x << ", " << wood1.com.y << ")\n";
@@ -936,8 +936,8 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
                 if (cells_before.find(pos) == cells_before.end()) {
                     const Cell& cell = world->getData().at(pos.x, pos.y);
                     tracker.trackCell(pos, cell.material_type, frame);
-                    std::cout << "New cell: " << getMaterialName(cell.material_type) << " at ("
-                              << pos.x << ", " << pos.y << ")\n";
+                    std::cout << "New cell: " << toString(cell.material_type) << " at (" << pos.x
+                              << ", " << pos.y << ")\n";
                 }
             }
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";

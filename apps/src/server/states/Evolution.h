@@ -26,7 +26,7 @@ struct Evolution {
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
-    ScenarioId scenarioId = ScenarioId::TreeGermination;
+    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
 
     // Population.
     std::vector<Genome> population;

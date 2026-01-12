@@ -87,13 +87,14 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 
     // Verify: World exists and scenario already applied by Idle.
     ASSERT_NE(simRunning.world, nullptr);
-    EXPECT_EQ(simRunning.scenario_id, ScenarioId::Sandbox) << "Scenario applied by Idle";
+    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox) << "Scenario applied by Idle";
 
     // Execute: Call onEnter (should not change scenario since it's already set).
     simRunning.onEnter(*stateMachine);
 
     // Verify: Sandbox scenario is still applied.
-    EXPECT_EQ(simRunning.scenario_id, ScenarioId::Sandbox) << "Scenario should remain Sandbox";
+    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox)
+        << "Scenario should remain Sandbox";
 
     // Verify: Walls exist (basic scenario setup check).
     const Cell& topLeft = simRunning.world->getData().at(0, 0);
@@ -229,7 +230,7 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
     EXPECT_EQ(worldData.width, stateMachine->defaultWidth);
     EXPECT_EQ(worldData.height, stateMachine->defaultHeight);
     // Scenario ID is now in SimRunning state, not WorldData.
-    EXPECT_EQ(updatedState.scenario_id, ScenarioId::Sandbox);
+    EXPECT_EQ(updatedState.scenario_id, Scenario::EnumType::Sandbox);
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
 }
 
@@ -618,7 +619,7 @@ TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     // Execute: Switch to Benchmark scenario.
     bool callbackInvoked = false;
     Api::ScenarioSwitch::Command cmd;
-    cmd.scenario_id = ScenarioId::Benchmark;
+    cmd.scenario_id = Scenario::EnumType::Benchmark;
     Api::ScenarioSwitch::Cwc cwc(cmd, [&](Api::ScenarioSwitch::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
@@ -632,7 +633,7 @@ TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
 
     // Verify: Callback invoked and organisms cleared.
     ASSERT_TRUE(callbackInvoked);
-    EXPECT_EQ(simRunning.scenario_id, ScenarioId::Benchmark);
+    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Benchmark);
     EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 0u)
         << "Organisms should be cleared on scenario switch";
 }

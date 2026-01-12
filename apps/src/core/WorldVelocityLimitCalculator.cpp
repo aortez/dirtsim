@@ -29,7 +29,7 @@ void WorldVelocityLimitCalculator::limitVelocity(Cell& cell, double /* deltaTime
         cell.velocity = cell.velocity * (1.0 - DAMPING_FACTOR_PER_TIMESTEP);
         spdlog::debug(
             "{} velocity damped: {:.3f} -> {:.3f} (above threshold {:.1f})",
-            getMaterialName(cell.material_type),
+            toString(cell.material_type),
             old_velocity.magnitude(),
             cell.velocity.magnitude(),
             DAMPING_THRESHOLD_PER_TIMESTEP);

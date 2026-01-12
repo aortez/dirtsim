@@ -10,7 +10,7 @@ namespace DirtSim {
 /**
  * Raining scenario - Rain falling from the sky.
  */
-class RainingScenario : public Scenario {
+class RainingScenario : public ScenarioRunner {
 public:
     RainingScenario();
 

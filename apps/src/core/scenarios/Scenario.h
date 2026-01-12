@@ -17,9 +17,9 @@ struct ScenarioMetadata {
     uint32_t requiredHeight = 0;
 };
 
-class Scenario {
+class ScenarioRunner {
 public:
-    virtual ~Scenario() = default;
+    virtual ~ScenarioRunner() = default;
 
     virtual const ScenarioMetadata& getMetadata() const = 0;
     virtual ScenarioConfig getConfig() const = 0;

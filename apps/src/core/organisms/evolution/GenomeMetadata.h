@@ -17,12 +17,13 @@ const GenomeId INVALID_GENOME_ID{};
  * Tracks provenance and performance for selection and display.
  */
 struct GenomeMetadata {
-    std::string name;                                    // User-provided or auto-generated.
-    double fitness = 0.0;                                // Best fitness achieved.
-    int generation = 0;                                  // Generation it came from.
-    uint64_t createdTimestamp = 0;                       // Unix timestamp.
-    ScenarioId scenarioId = ScenarioId::TreeGermination; // Which scenario it was trained on.
-    std::string notes;                                   // Optional user notes.
+    std::string name;              // User-provided or auto-generated.
+    double fitness = 0.0;          // Best fitness achieved.
+    int generation = 0;            // Generation it came from.
+    uint64_t createdTimestamp = 0; // Unix timestamp.
+    Scenario::EnumType scenarioId =
+        Scenario::EnumType::TreeGermination; // Which scenario it was trained on.
+    std::string notes;                       // Optional user notes.
 };
 
 void to_json(nlohmann::json& j, const GenomeMetadata& meta);

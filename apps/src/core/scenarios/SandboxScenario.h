@@ -10,7 +10,7 @@ namespace DirtSim {
 /**
  * Sandbox scenario - The default world setup without walls.
  */
-class SandboxScenario : public Scenario {
+class SandboxScenario : public ScenarioRunner {
 public:
     SandboxScenario();
 

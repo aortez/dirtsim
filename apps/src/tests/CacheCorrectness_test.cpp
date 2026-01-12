@@ -43,7 +43,7 @@ TEST(CacheCorrectnessTest, CachedAndNonCachedProduceIdenticalResults)
 
         // Get benchmark scenario metadata to determine world size.
         ScenarioRegistry registry = ScenarioRegistry::createDefault();
-        const ScenarioMetadata* metadata = registry.getMetadata(ScenarioId::Benchmark);
+        const ScenarioMetadata* metadata = registry.getMetadata(Scenario::EnumType::Benchmark);
         if (!metadata) {
             spdlog::error("Benchmark scenario not found!");
             return nlohmann::json::object();
@@ -56,7 +56,7 @@ TEST(CacheCorrectnessTest, CachedAndNonCachedProduceIdenticalResults)
         world.setRandomSeed(42); // Deterministic RNG.
 
         // Create and set up benchmark scenario.
-        auto scenario = registry.createScenario(ScenarioId::Benchmark);
+        auto scenario = registry.createScenario(Scenario::EnumType::Benchmark);
         if (!scenario) {
             spdlog::error("Failed to create benchmark scenario!");
             return nlohmann::json::object();

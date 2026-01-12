@@ -29,7 +29,7 @@ std::optional<MaterialType> updateColorCycle(ColorCycleEventState& state, double
 
         spdlog::debug(
             "ClockScenario: COLOR_CYCLE advanced to {} (index {})",
-            getMaterialName(new_material),
+            toString(new_material),
             state.current_index);
 
         return new_material;

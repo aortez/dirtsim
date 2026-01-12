@@ -110,7 +110,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     // Start simulation with requested scenario (server is now in Idle state).
     spdlog::info("BenchmarkRunner: Starting simulation with scenario '{}'", scenario);
 
-    auto scenarioId = fromString(scenario);
+    auto scenarioId = Scenario::fromString(scenario);
     if (!scenarioId.has_value()) {
         spdlog::error("BenchmarkRunner: Invalid scenario name: {}", scenario);
         return results;

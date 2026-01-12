@@ -2225,7 +2225,7 @@ TEST_F(DuckTest, DISABLED_DuckFloatsInWater)
             std::string above_vel = "-";
             if (y_after > 0) {
                 const Cell& above = world->getData().at(1, y_after - 1);
-                above_mat = getMaterialName(above.material_type);
+                above_mat = toString(above.material_type);
                 above_com = fmt::format("{:.2f}", above.com.y);
                 above_vel = fmt::format("{:.2f}", above.velocity.y);
             }

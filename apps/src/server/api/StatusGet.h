@@ -31,7 +31,7 @@ struct Okay {
     std::string state;         // Current state machine state (always present).
     std::string error_message; // Populated when state is "Error".
     int32_t timestep = 0;
-    std::optional<ScenarioId> scenario_id; // Present when simulation is running.
+    std::optional<Scenario::EnumType> scenario_id; // Present when simulation is running.
     int16_t width = 0;
     int16_t height = 0;
 

@@ -19,7 +19,7 @@ protected:
             .fitness = fitness,
             .generation = 1,
             .createdTimestamp = 1234567890,
-            .scenarioId = ScenarioId::TreeGermination,
+            .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "",
         };
     }

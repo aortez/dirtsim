@@ -25,21 +25,24 @@ public:
     static ScenarioRegistry createDefault();
 
     // Register a scenario factory function with the given ID.
-    using ScenarioFactory = std::function<std::unique_ptr<DirtSim::Scenario>()>;
+    using ScenarioFactory = std::function<std::unique_ptr<DirtSim::ScenarioRunner>()>;
     void registerScenario(
-        DirtSim::ScenarioId id, const DirtSim::ScenarioMetadata& metadata, ScenarioFactory factory);
+        DirtSim::Scenario::EnumType id,
+        const DirtSim::ScenarioMetadata& metadata,
+        ScenarioFactory factory);
 
     // Create a new scenario instance by ID (factory pattern).
-    std::unique_ptr<DirtSim::Scenario> createScenario(DirtSim::ScenarioId id) const;
+    std::unique_ptr<DirtSim::ScenarioRunner> createScenario(DirtSim::Scenario::EnumType id) const;
 
     // Get metadata for a scenario by ID (no instance created).
-    const DirtSim::ScenarioMetadata* getMetadata(DirtSim::ScenarioId id) const;
+    const DirtSim::ScenarioMetadata* getMetadata(DirtSim::Scenario::EnumType id) const;
 
     // Get all registered scenario IDs.
-    std::vector<DirtSim::ScenarioId> getScenarioIds() const;
+    std::vector<DirtSim::Scenario::EnumType> getScenarioIds() const;
 
     // Get scenarios filtered by category.
-    std::vector<DirtSim::ScenarioId> getScenariosByCategory(const std::string& category) const;
+    std::vector<DirtSim::Scenario::EnumType> getScenariosByCategory(
+        const std::string& category) const;
 
     // Clear all registered scenarios (mainly for testing).
     void clear();
@@ -50,5 +53,5 @@ private:
         DirtSim::ScenarioMetadata metadata;
         ScenarioFactory factory;
     };
-    std::map<DirtSim::ScenarioId, ScenarioEntry> scenarios_;
+    std::map<DirtSim::Scenario::EnumType, ScenarioEntry> scenarios_;
 };

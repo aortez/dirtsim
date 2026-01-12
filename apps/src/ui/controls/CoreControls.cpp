@@ -308,7 +308,7 @@ void CoreControls::createDrawMaterialView(lv_obj_t* view)
 
     for (MaterialType material : drawableMaterials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(getMaterialName(material))
+                                  .text(toString(material).c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -359,7 +359,7 @@ void CoreControls::updateFromState()
                 std::string text;
                 if (state_.interactionMode == InteractionMode::DRAW) {
                     // Show material name when in draw mode.
-                    text = std::string("Draw: ") + getMaterialName(state_.drawMaterial);
+                    text = std::string("Draw: ") + toString(state_.drawMaterial);
                 }
                 else {
                     text = "Interaction: " + interactionModeToString(state_.interactionMode);
@@ -521,7 +521,7 @@ void CoreControls::onDrawMaterialSelected(lv_event_t* e)
 
     MaterialType material = it->second;
 
-    spdlog::info("CoreControls: Draw mode enabled with material {}", getMaterialName(material));
+    spdlog::info("CoreControls: Draw mode enabled with material {}", toString(material));
 
     // Set both the interaction mode and the draw material.
     self->state_.interactionMode = InteractionMode::DRAW;

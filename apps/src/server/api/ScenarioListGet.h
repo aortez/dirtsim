@@ -35,7 +35,7 @@ struct Command {
  * @brief Info about a single scenario.
  */
 struct ScenarioInfo {
-    ScenarioId id;           // Scenario identifier.
+    Scenario::EnumType id;   // Scenario identifier.
     std::string name;        // Display name (e.g., "Sandbox", "Dam Break").
     std::string description; // Tooltip/help text.
     std::string category;    // Category (sandbox, demo, organisms, benchmark).

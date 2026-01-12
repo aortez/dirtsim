@@ -90,8 +90,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                           .buildOrLog();
 
     // Digit material selector button.
-    std::string materialText = std::string("Digit Color: ")
-        + getMaterialName(static_cast<MaterialType>(currentMaterialIndex_));
+    std::string materialText =
+        std::string("Digit Color: ") + toString(static_cast<MaterialType>(currentMaterialIndex_));
 
     digitMaterialButton_ = LVGLBuilder::actionButton(view)
                                .text(materialText.c_str())
@@ -361,7 +361,7 @@ void ClockControls::createDigitMaterialSelectionView(lv_obj_t* view)
 
     for (MaterialType mat : materials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
-                                  .text(getMaterialName(mat))
+                                  .text(toString(mat).c_str())
                                   .width(LV_PCT(95))
                                   .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutColumn()
@@ -479,8 +479,7 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update digit material selection and button text.
     currentMaterialIndex_ = static_cast<int>(config.digitMaterial);
     if (digitMaterialButton_) {
-        std::string materialText =
-            std::string("Digit Color: ") + getMaterialName(config.digitMaterial);
+        std::string materialText = std::string("Digit Color: ") + toString(config.digitMaterial);
 
         lv_obj_t* button = lv_obj_get_child(digitMaterialButton_, 0);
         if (button) {
@@ -492,7 +491,7 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(
             Controls,
             "ClockControls: Updated digit material to {}",
-            getMaterialName(config.digitMaterial));
+            toString(config.digitMaterial));
     }
 
     // Update emissiveness stepper.
@@ -737,12 +736,12 @@ void ClockControls::onDigitMaterialSelected(lv_event_t* e)
         Controls,
         "ClockControls: Digit material changed to {} ({})",
         materialIndex,
-        getMaterialName(material));
+        toString(material));
 
     // Update selection and button text.
     self->currentMaterialIndex_ = materialIndex;
     if (self->digitMaterialButton_) {
-        std::string materialText = std::string("Digit Color: ") + getMaterialName(material);
+        std::string materialText = std::string("Digit Color: ") + toString(material);
         lv_obj_t* button = lv_obj_get_child(self->digitMaterialButton_, 0);
         if (button) {
             lv_obj_t* label = lv_obj_get_child(button, 1);

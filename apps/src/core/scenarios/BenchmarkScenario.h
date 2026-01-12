@@ -11,7 +11,7 @@ namespace DirtSim {
  * Benchmark scenario - Performance testing with complex physics.
  * 200x200 world with water pool and falling metal/wood balls.
  */
-class BenchmarkScenario : public Scenario {
+class BenchmarkScenario : public ScenarioRunner {
 public:
     BenchmarkScenario();
 

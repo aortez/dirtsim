@@ -79,7 +79,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 
     spdlog::trace(
         "Cohesion calculation for {} at ({},{}): neighbors={}, resistance={:.3f}",
-        getMaterialName(cell.material_type),
+        toString(cell.material_type),
         x,
         y,
         connected_neighbors,
@@ -256,7 +256,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     spdlog::trace(
         "Dual cohesion for {} at ({},{}): connections={}, com_offset={:.3f}, "
         "clustering=({:.3f},{:.3f}), centering=({:.3f},{:.3f}), total_mag={:.3f}",
-        getMaterialName(cell.material_type),
+        toString(cell.material_type),
         x,
         y,
         connection_count,

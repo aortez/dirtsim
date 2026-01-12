@@ -65,7 +65,7 @@ void Duck::update(World& world, double deltaTime)
                 id_,
                 anchor_cell_.x,
                 anchor_cell_.y,
-                getMaterialName(our_cell.material_type));
+                toString(our_cell.material_type));
             spdlog::critical(
                 "  Duck: age={:.1f}s, on_ground={}, facing=({:.1f},{:.1f})",
                 age_seconds_,
@@ -92,7 +92,7 @@ void Duck::update(World& world, double deltaTime)
                             id_,
                             x,
                             y,
-                            getMaterialName(cell.material_type),
+                            toString(cell.material_type),
                             cell.fill_ratio);
                     }
                 }

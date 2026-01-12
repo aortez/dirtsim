@@ -15,7 +15,7 @@ namespace Ui {
 ScenarioPanel::ScenarioPanel(
     lv_obj_t* container,
     Network::WebSocketService* wsService,
-    ScenarioId initialScenarioId,
+    Scenario::EnumType initialScenarioId,
     const ScenarioConfig& initialConfig,
     DisplayDimensionsGetter dimensionsGetter)
     : container_(container),
@@ -109,7 +109,7 @@ void ScenarioPanel::createScenarioSelectionView(lv_obj_t* view)
     }
 }
 
-void ScenarioPanel::updateFromConfig(ScenarioId scenarioId, const ScenarioConfig& config)
+void ScenarioPanel::updateFromConfig(Scenario::EnumType scenarioId, const ScenarioConfig& config)
 {
     // Handle scenario changes.
     if (scenarioId != currentScenarioId_) {
@@ -181,7 +181,7 @@ void ScenarioPanel::onScenarioSelected(lv_event_t* e)
     }
 
     int selectedIdx = it->second;
-    ScenarioId scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
+    Scenario::EnumType scenarioId = ScenarioMetadataCache::scenarioIdFromIndex(selectedIdx);
     LOG_INFO(Controls, "ScenarioPanel: Scenario changed to '{}'", toString(scenarioId));
 
     // Return to main view.

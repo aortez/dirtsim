@@ -1177,7 +1177,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at "
             "index {})",
             eventTiming.duration,
-            getMaterialName(starting_material),
+            toString(starting_material),
             state.current_index);
     }
     else if (type == ClockEventType::DIGIT_SLIDE) {

@@ -9,7 +9,7 @@ namespace DirtSim {
 /**
  * Tree Germination scenario - 9x9 world with seed growing into balanced tree.
  */
-class TreeGerminationScenario : public Scenario {
+class TreeGerminationScenario : public ScenarioRunner {
 public:
     TreeGerminationScenario();
 

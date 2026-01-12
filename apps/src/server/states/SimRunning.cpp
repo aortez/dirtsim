@@ -48,8 +48,8 @@ void SimRunning::onEnter(StateMachine& dsm)
     }
 
     // Apply startup scenario if no scenario is set.
-    if (world && scenario_id == ScenarioId::Empty && dsm.serverConfig) {
-        ScenarioId startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
+    if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
+        Scenario::EnumType startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
         spdlog::info("SimRunning: Applying startup scenario '{}'", toString(startupScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
@@ -618,7 +618,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     assert(world && "World must exist in SimRunning");
 
-    ScenarioId newScenarioId = cwc.command.scenario_id;
+    Scenario::EnumType newScenarioId = cwc.command.scenario_id;
     LOG_INFO(
         State,
         "Switching scenario from '{}' to '{}'",
@@ -817,7 +817,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
         const WorldData& data = world->getData();
         if (data.inBounds(debug.anchor_cell.x, debug.anchor_cell.y)) {
             const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
-            debug.material_at_anchor = getMaterialName(cell.material_type);
+            debug.material_at_anchor = toString(cell.material_type);
             debug.organism_id_at_anchor = world->getOrganismManager().at(debug.anchor_cell);
         }
         else {

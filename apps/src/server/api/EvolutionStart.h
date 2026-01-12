@@ -20,7 +20,7 @@ DEFINE_API_NAME(EvolutionStart);
 struct Command {
     EvolutionConfig evolution;
     MutationConfig mutation;
-    ScenarioId scenarioId = ScenarioId::TreeGermination;
+    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
