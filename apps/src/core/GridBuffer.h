@@ -13,29 +13,29 @@ namespace DirtSim {
  */
 template <typename T>
 struct GridBuffer {
-    uint32_t width = 0;
-    uint32_t height = 0;
+    int16_t width = 0;
+    int16_t height = 0;
     std::vector<T> data;
 
-    void resize(uint32_t w, uint32_t h, T default_value = T{})
+    void resize(int w, int h, T default_value = T{})
     {
-        width = w;
-        height = h;
+        width = static_cast<int16_t>(w);
+        height = static_cast<int16_t>(h);
         data.resize(static_cast<size_t>(w) * h, default_value);
     }
 
     void clear(T value = T{}) { std::fill(data.begin(), data.end(), value); }
 
-    T at(uint32_t x, uint32_t y) const { return data[y * width + x]; }
+    T at(int x, int y) const { return data[static_cast<size_t>(y) * width + x]; }
 
-    T& at(uint32_t x, uint32_t y) { return data[y * width + x]; }
+    T& at(int x, int y) { return data[static_cast<size_t>(y) * width + x]; }
 
-    void set(uint32_t x, uint32_t y, T value) { data[y * width + x] = value; }
+    void set(int x, int y, T value) { data[static_cast<size_t>(y) * width + x] = value; }
 
     // Direct row access for tight loops.
-    T* row(uint32_t y) { return &data[y * width]; }
+    T* row(int y) { return &data[static_cast<size_t>(y) * width]; }
 
-    const T* row(uint32_t y) const { return &data[y * width]; }
+    const T* row(int y) const { return &data[static_cast<size_t>(y) * width]; }
 
     // Direct data access for bulk operations.
     T* begin() { return data.data(); }

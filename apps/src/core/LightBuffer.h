@@ -12,7 +12,7 @@ namespace DirtSim {
  */
 struct LightBuffer : GridBuffer<uint32_t> {
     // Resize with white default (0xFFFFFFFF) for unlit areas.
-    void resize(uint32_t w, uint32_t h) { GridBuffer<uint32_t>::resize(w, h, 0xFFFFFFFF); }
+    void resize(int w, int h) { GridBuffer<uint32_t>::resize(w, h, 0xFFFFFFFF); }
 
     // Clear with black opaque default (0x000000FF).
     void clear(uint32_t value = 0x000000FF) { GridBuffer<uint32_t>::clear(value); }
