@@ -481,3 +481,4 @@ See design_docs/plant.md and design_docs/neural-net-brain.md for more.
 
 Never use stash.  Never checkout files unless asked to.  Be careful not to mess up WIP that you might not be aware of.
 
+
