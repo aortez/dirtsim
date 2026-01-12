@@ -10,6 +10,7 @@
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/rendering/JuliaFractal.h"
 #include "ui/state-machine/StateMachine.h"
+#include "ui/ui_builders/LVGLBuilder.h"
 #include <chrono>
 #include <lvgl/lvgl.h>
 #include <lvgl/src/misc/lv_timer_private.h>
@@ -22,6 +23,7 @@ namespace State {
 
 void StartMenu::onEnter(StateMachine& sm)
 {
+    sm_ = &sm; // Store for callbacks.
     LOG_INFO(State, "Connected to server, ready to start simulation");
 
     // Request scenario list from server and cache it (needed even for autoRun).
@@ -45,12 +47,12 @@ void StartMenu::onEnter(StateMachine& sm)
         }
     }
 
-    // Check if autoRun is enabled (skip UI, start simulation immediately).
-    if (sm.getUiConfig().autoRun) {
+    // Auto-run is a one-shot feature for startup.
+    if (sm.uiConfig && sm.uiConfig->autoRun) {
         LOG_INFO(State, "autoRun enabled, starting simulation immediately");
-        // Queue the start event for processing after onEnter completes.
+        sm.uiConfig->autoRun = false;
         sm.queueEvent(StartButtonClickedEvent{});
-        return; // Skip UI setup.
+        return;
     }
 
     // Get main menu container (switches to menu screen).
@@ -130,6 +132,19 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_center(quitLabel);
 
     LOG_INFO(State, "Created Quit button");
+
+    // Create Train button on center-right (for evolution training).
+    trainButton_ = LVGLBuilder::actionButton(container)
+                       .text("Train")
+                       .icon(LV_SYMBOL_LOOP)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .size(100)
+                       .backgroundColor(0x2288FF)
+                       .callback(onTrainButtonClicked, this)
+                       .buildOrLog();
+    lv_obj_align(trainButton_, LV_ALIGN_RIGHT_MID, -30, 0);
+
+    LOG_INFO(State, "Created Train button");
 
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
@@ -249,6 +264,17 @@ void StartMenu::onQuitButtonClicked(lv_event_t* e)
     sm->queueEvent(cwc);
 }
 
+void StartMenu::onTrainButtonClicked(lv_event_t* e)
+{
+    auto* startMenu = static_cast<StartMenu*>(lv_event_get_user_data(e));
+    if (!startMenu || !startMenu->sm_) return;
+
+    LOG_INFO(State, "Train button clicked");
+
+    // Queue train event for state machine to process.
+    startMenu->sm_->queueEvent(TrainButtonClickedEvent{});
+}
+
 void StartMenu::onTouchEvent(lv_event_t* e)
 {
     auto* label = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
@@ -337,6 +363,15 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
 
     LOG_ERROR(State, "SimRun failed after {} attempts", maxRetries);
     return StartMenu{};
+}
+
+State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "Train button clicked - Training state not yet implemented");
+
+    // TODO: Transition to Training state once it exists.
+    // return Training{};
+    return std::move(*this);
 }
 
 State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)

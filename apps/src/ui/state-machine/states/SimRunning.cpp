@@ -241,6 +241,16 @@ State::Any SimRunning::onEvent(const UiApi::SimPause::Cwc& cwc, StateMachine& /*
     return Paused{ std::move(worldData) };
 }
 
+State::Any SimRunning::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "SimStop command received, returning to start menu");
+
+    cwc.sendResponse(UiApi::SimStop::Response::okay({ true }));
+
+    // Transition to StartMenu state.
+    return StartMenu{};
+}
+
 State::Any SimRunning::onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Received PhysicsSettings from server (gravity={:.2f})", evt.settings.gravity);

@@ -33,7 +33,7 @@ struct CoreControlsState {
 /**
  * @brief Core controls always present in simulation view.
  *
- * Includes: Quit button, Reset button, FPS stats display, Debug Draw toggle, World Size slider.
+ * Includes: Stop button, Reset button, FPS stats display, Debug Draw toggle, World Size slider.
  */
 class CoreControls {
 public:
@@ -59,7 +59,7 @@ private:
     std::unique_ptr<PanelViewController> viewController_;
 
     // Widgets.
-    lv_obj_t* quitButton_ = nullptr;
+    lv_obj_t* stopButton_ = nullptr;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
@@ -81,7 +81,7 @@ private:
     void createDrawMaterialView(lv_obj_t* view);
 
     // Event handlers.
-    static void onQuitClicked(lv_event_t* e);
+    static void onStopClicked(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
     static void onInteractionModeButtonClicked(lv_event_t* e);

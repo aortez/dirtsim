@@ -8,9 +8,9 @@
 #include "ui/rendering/CellRenderer.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
-#include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/PixelRendererToggle.h"
 #include "ui/state-machine/api/RenderModeSelect.h"
+#include "ui/state-machine/api/SimStop.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <atomic>
 #include <nlohmann/json.hpp>
@@ -78,14 +78,14 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .callback(onResetClicked, this)
                        .buildOrLog();
 
-    // Quit button - red with power icon (push).
-    quitButton_ = LVGLBuilder::actionButton(topRow)
-                      .text("Quit")
-                      .icon(LV_SYMBOL_POWER)
+    // Stop button - red with stop icon (push). Returns to start menu.
+    stopButton_ = LVGLBuilder::actionButton(topRow)
+                      .text("Stop")
+                      .icon(LV_SYMBOL_STOP)
                       .mode(LVGLBuilder::ActionMode::Push)
                       .size(80)
                       .backgroundColor(0xCC0000)
-                      .callback(onQuitClicked, this)
+                      .callback(onStopClicked, this)
                       .buildOrLog();
 
     // Debug toggle.
@@ -390,15 +390,15 @@ void CoreControls::updateFromState()
     }
 }
 
-void CoreControls::onQuitClicked(lv_event_t* e)
+void CoreControls::onStopClicked(lv_event_t* e)
 {
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
     if (!self) return;
 
-    spdlog::info("CoreControls: Quit button clicked");
+    spdlog::info("CoreControls: Stop button clicked");
 
-    // Queue UI-local exit event (works in all states, including Disconnected).
-    UiApi::Exit::Cwc cwc;
+    // Queue SimStop event to return to start menu.
+    UiApi::SimStop::Cwc cwc;
     cwc.callback = [](auto&&) {}; // No response needed.
     self->eventSink_.queueEvent(cwc);
 }
