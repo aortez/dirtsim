@@ -508,6 +508,223 @@ void Server::initialize() {
     └── 2024-01-11_training.log
 ```
 
+## Implementation Plan
+
+### Directory Structure
+
+```
+src/core/organisms/evolution/
+├── EvolutionConfig.h         # Config structs (EvolutionConfig, MutationConfig)
+├── FitnessResult.h           # Fitness inputs (lifespan, max_energy)
+├── GenomeMetadata.h          # Metadata struct (fitness, generation, timestamp)
+├── GenomeRepository.h/cpp    # Storage, CRUD, persistence
+├── Mutation.h/cpp            # Gaussian perturbation, weight reset
+├── Selection.h/cpp           # Tournament selection
+└── tests/
+    ├── GenomeRepository_test.cpp
+    ├── Mutation_test.cpp
+    └── Selection_test.cpp
+
+src/server/states/
+├── Evolution.h/cpp           # Main evolution loop state
+├── EvolutionPaused.h/cpp     # Paused state
+└── (existing states...)
+
+src/server/tests/
+└── StateEvolution_test.cpp   # Evolution state tests
+
+src/server/api/
+├── EvolutionStart.h          # Start evolution command
+├── EvolutionPause.h          # Pause command
+├── EvolutionResume.h         # Resume command
+├── EvolutionStop.h           # Stop command
+├── GenomeList.h              # List genomes command
+├── GenomeGet.h               # Get specific genome
+├── GenomeGetBest.h           # Get best genome
+└── (existing commands...)
+
+src/ui/state-machine/states/
+└── Training.h/cpp            # Training UI state
+```
+
+### Phase 1: Core Data Types
+
+**Files:**
+- `EvolutionConfig.h`
+- `MutationConfig.h` (or in EvolutionConfig.h)
+- `FitnessResult.h`
+- `GenomeMetadata.h`
+
+**Work:**
+- Define config structs with defaults from `genetic-evolution.md`.
+- Define metadata struct for genome tracking.
+- Pure data, no logic.
+
+**Tests:** None needed (data-only structs).
+
+### Phase 2: GenomeRepository
+
+**Files:**
+- `GenomeRepository.h/cpp`
+- `tests/GenomeRepository_test.cpp`
+
+**Work:**
+- In-memory storage (map of GenomeId → Genome + Metadata).
+- CRUD operations: store, get, getMetadata, list, remove, clear.
+- Best tracking: markAsBest, getBestId, getBest.
+- Count/empty helpers.
+
+**Tests:**
+- Store and retrieve genome.
+- List returns all stored genomes.
+- Remove deletes genome.
+- Best tracking works correctly.
+- Clear removes all genomes.
+
+**Persistence deferred to Phase 7.**
+
+### Phase 3: Evolution Algorithms
+
+**Files:**
+- `Mutation.h/cpp`
+- `Selection.h/cpp`
+- `tests/Mutation_test.cpp`
+- `tests/Selection_test.cpp`
+
+**Work:**
+- `mutate(genome, config, rng)` — Gaussian perturbation + rare reset.
+- `tournamentSelect(population, fitness, k, rng)` — pick k, return best.
+- `computeFitness(result)` — multiplicative: lifespan × (1 + energy).
+
+**Tests:**
+- Mutation changes weights within expected distribution.
+- Mutation with rate=0 produces identical genome.
+- Tournament always returns element from population.
+- Tournament with k=population_size returns best.
+- Fitness computation matches expected formula.
+
+### Phase 4: Server StateEvolution
+
+**Files:**
+- `src/server/states/Evolution.h/cpp`
+- `src/server/states/EvolutionPaused.h/cpp`
+- `src/server/tests/StateEvolution_test.cpp`
+
+**Work:**
+- StateEvolution:
+  - Initialize random population on enter.
+  - Run evaluation loop (one organism per update tick).
+  - Create fresh World with tree_germination scenario for each eval.
+  - Run simulation for up to 10 minutes sim time.
+  - Collect FitnessResult, compute fitness.
+  - After full generation: select, mutate, replace.
+  - Store best genome in repository periodically.
+  - Broadcast EvolutionProgress.
+  - Transition to Idle on completion.
+- StateEvolutionPaused:
+  - Preserve state, resume on command.
+- Hook GenomeRepository into Server class (member, lives across states).
+
+**Tests:**
+- EvolutionStart transitions Idle → Evolution.
+- EvolutionPause transitions Evolution → EvolutionPaused.
+- EvolutionResume transitions EvolutionPaused → Evolution.
+- EvolutionStop transitions Evolution → Idle.
+- Progress broadcast contains expected fields.
+- Best genome stored in repository after generation.
+
+### Phase 5: API Commands
+
+**Files:**
+- `src/server/api/EvolutionStart.h`
+- `src/server/api/EvolutionPause.h`
+- `src/server/api/EvolutionResume.h`
+- `src/server/api/EvolutionStop.h`
+- `src/server/api/GenomeList.h`
+- `src/server/api/GenomeGet.h`
+- `src/server/api/GenomeGetBest.h`
+
+**Work:**
+- Define command/response structs following existing API pattern.
+- Wire into server command dispatch.
+- Evolution commands route to StateEvolution.
+- Genome commands access GenomeRepository (available from any state).
+
+**Tests:**
+- Covered by StateEvolution tests.
+- Additional: GenomeList/Get/GetBest work from Idle state.
+
+### Phase 6: UI StateTraining
+
+**Files:**
+- `src/ui/state-machine/states/Training.h/cpp`
+- `src/ui/state-machine/tests/StateTraining_test.cpp` (new pattern for UI)
+
+**Work:**
+- New UI state entered via "Train" from StartMenu.
+- Subscribe to EvolutionProgress broadcasts from server.
+- Render training UI:
+  - Generation progress bar.
+  - Current evaluation progress bar.
+  - Best fitness (this gen, all time).
+  - Average fitness.
+  - Mini preview of best tree (optional, can defer).
+- Controls: Pause, Resume, Stop buttons.
+- "View Best" button (pauses evolution, transitions to SimRunning with genome).
+
+**Tests:**
+- State transitions correctly on server events.
+- Progress display updates on EvolutionProgress.
+- Pause/Stop send correct commands.
+
+### Phase 7: Persistence
+
+**Files:**
+- Extend `GenomeRepository.h/cpp`
+- `tests/GenomeRepository_test.cpp` (add persistence tests)
+
+**Work:**
+- `saveBinary(path)` / `loadBinary(path)` — efficient storage.
+- `saveJson(path)` / `loadJson(path)` — human-readable interchange.
+- Auto-save on server shutdown.
+- Auto-load on server startup.
+
+**Binary format:**
+```
+Header: magic(4) + version(4) + count(4) + best_id(4)
+Per genome: id(4) + metadata_len(4) + metadata(JSON) + weight_count(4) + weights(double[])
+```
+
+**Tests:**
+- Save and load round-trip preserves all data.
+- Load nonexistent file returns gracefully.
+- Corrupt file handled gracefully.
+
+### Phase 8: Integration & Polish
+
+**Work:**
+- Extend SimRun to accept optional genome_id.
+- "View Best" flow: pause → get best → SimRun with genome → back resumes.
+- Scenario selector for training (default: tree_germination).
+- Resume training from saved population (optional, can defer).
+- Error handling and edge cases.
+
+**Tests:**
+- SimRun with genome_id spawns tree with correct brain.
+- Full training → view → resume flow works end-to-end.
+
+### Dependencies
+
+```
+Phase 1 ─────┬─────▶ Phase 2 ─────┬─────▶ Phase 4 ─────▶ Phase 5 ─────▶ Phase 6
+             │                    │           │
+             └─────▶ Phase 3 ─────┘           │
+                                              ▼
+                                          Phase 7 ─────▶ Phase 8
+```
+
+Phases 2 and 3 can proceed in parallel after Phase 1.
+
 ## Related Documents
 
 - `genetic-evolution.md` - Algorithm details (selection, mutation, fitness).
