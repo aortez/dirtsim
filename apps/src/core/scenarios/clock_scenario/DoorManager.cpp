@@ -164,6 +164,15 @@ Vector2i DoorManager::getRoofPosition(DoorId id, const WorldData& world_data) co
     return computeRoofPosition(it->second, world_data);
 }
 
+Vector2i DoorManager::getLightPosition(DoorId id, const WorldData& world_data) const
+{
+    auto it = doors_.find(id);
+    if (it == doors_.end()) {
+        return Vector2i{ -1, -1 };
+    }
+    return computeLightPosition(it->second, world_data);
+}
+
 bool DoorManager::isOpenDoorAt(Vector2i pos, const WorldData& world_data) const
 {
     for (const auto& [id, def] : doors_) {
@@ -267,6 +276,17 @@ Vector2i DoorManager::computeRoofPosition(const Door& def, const WorldData& worl
     int door_y = static_cast<int>(world_data.height - 1 - def.cells_above_floor);
     int y = door_y - 1; // One cell above the door.
     return Vector2i{ x, y };
+}
+
+Vector2i DoorManager::computeLightPosition(const Door& def, const WorldData& world_data) const
+{
+    // Light is one cell inward from the door, at the same Y as the door.
+    // This places it just inside the door opening.
+    int door_x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
+    int dx = (def.side == DoorSide::LEFT) ? 1 : -1;
+    int x = door_x + dx;
+    int door_y = static_cast<int>(world_data.height - 1 - def.cells_above_floor);
+    return Vector2i{ x, door_y };
 }
 
 } // namespace DirtSim

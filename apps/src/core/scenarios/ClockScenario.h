@@ -91,6 +91,7 @@ private:
     double time_since_last_trigger_check_ = 0.0;
     std::string last_trigger_check_time_;  // For detecting time changes.
     bool time_changed_this_frame_ = false; // Set each frame, used by event updates.
+    bool first_tick_done_ = false;         // Prevents events from triggering before first tick.
 
     // Door and obstacle management.
     DoorManager door_manager_;
@@ -124,6 +125,9 @@ private:
     void recalculateDimensions();
     void clearDigits(World& world);
     void drawDigit(World& world, int digit, int start_x, int start_y);
+    void drawCharacterWithMaterials(
+        World& world, const std::string& utf8Char, int start_x, int start_y);
+    void placeDigitPixel(World& world, int x, int y, MaterialType renderMaterial);
     void drawColon(World& world, int x, int start_y);
     void drawTimeString(World& world, const std::string& time_str);
     void drawTime(World& world);

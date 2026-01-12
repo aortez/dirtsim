@@ -1,5 +1,7 @@
 #include "FontSampler.h"
 
+#include <algorithm>
+#include <array>
 #include <lvgl.h>
 #include <spdlog/spdlog.h>
 
@@ -324,8 +326,8 @@ std::vector<std::vector<RgbPixel>> FontSampler::sampleCharacterRgb(char c)
 
     auto* canvas = static_cast<lv_obj_t*>(canvas_);
 
-    // Clear canvas to black.
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
+    // Clear canvas to transparent so unfilled areas map to AIR.
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     // Initialize layer for drawing.
     lv_layer_t layer;
@@ -362,8 +364,8 @@ std::vector<std::vector<RgbPixel>> FontSampler::sampleUtf8CharacterRgb(const std
 
     auto* canvas = static_cast<lv_obj_t*>(canvas_);
 
-    // Clear canvas to black.
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
+    // Clear canvas to transparent so unfilled areas map to AIR.
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
 
     // Initialize layer for drawing.
     lv_layer_t layer;
@@ -417,6 +419,85 @@ std::vector<std::vector<RgbPixel>> FontSampler::sampleCurrentCanvasRgb()
         for (int x = 0; x < targetWidth_; ++x) {
             lv_color32_t px = lv_canvas_get_px(canvas, x, y);
             result[y][x] = { px.red, px.green, px.blue, px.alpha };
+        }
+    }
+
+    return result;
+}
+
+GridBuffer<RgbPixel> FontSampler::sampleCurrentCanvasRgbGrid()
+{
+    auto* canvas = static_cast<lv_obj_t*>(canvas_);
+
+    GridBuffer<RgbPixel> result;
+    result.resize(targetWidth_, targetHeight_);
+
+    // Sample each pixel into flat buffer.
+    for (int y = 0; y < targetHeight_; ++y) {
+        RgbPixel* row = result.row(y);
+        for (int x = 0; x < targetWidth_; ++x) {
+            lv_color32_t px = lv_canvas_get_px(canvas, x, y);
+            row[x] = { px.red, px.green, px.blue, px.alpha };
+        }
+    }
+
+    return result;
+}
+
+GridBuffer<RgbPixel> FontSampler::sampleUtf8CharacterRgbGrid(const std::string& utf8Char)
+{
+    if (!canvas_ || !drawBuf_) {
+        spdlog::warn("FontSampler: Canvas not initialized");
+        return {};
+    }
+
+    auto* canvas = static_cast<lv_obj_t*>(canvas_);
+
+    // Clear canvas to transparent so unfilled areas map to AIR.
+    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_TRANSP);
+
+    // Initialize layer for drawing.
+    lv_layer_t layer;
+    lv_canvas_init_layer(canvas, &layer);
+
+    // Set up label descriptor.
+    lv_draw_label_dsc_t dsc;
+    lv_draw_label_dsc_init(&dsc);
+    dsc.color = lv_color_white();
+    dsc.font = font_;
+    dsc.opa = LV_OPA_COVER;
+    dsc.text = utf8Char.c_str();
+
+    // Draw with margin.
+    constexpr int MARGIN = 2;
+    lv_area_t coords = { MARGIN, MARGIN, targetWidth_ - 1 - MARGIN, targetHeight_ - 1 - MARGIN };
+    lv_draw_label(&layer, &dsc, &coords);
+
+    // Finalize drawing.
+    lv_canvas_finish_layer(canvas, &layer);
+
+    return sampleCurrentCanvasRgbGrid();
+}
+
+GridBuffer<MaterialType> FontSampler::sampleUtf8CharacterMaterialGrid(
+    const std::string& utf8Char, float alphaThreshold)
+{
+    GridBuffer<RgbPixel> rgb = sampleUtf8CharacterRgbGrid(utf8Char);
+
+    GridBuffer<MaterialType> result;
+    result.resize(rgb.width, rgb.height, MaterialType::AIR);
+
+    const uint8_t alphaThresholdByte = static_cast<uint8_t>(alphaThreshold * 255.0f);
+
+    for (int y = 0; y < rgb.height; ++y) {
+        const RgbPixel* srcRow = rgb.row(y);
+        MaterialType* dstRow = result.row(y);
+        for (int x = 0; x < rgb.width; ++x) {
+            const RgbPixel& px = srcRow[x];
+            if (px.a >= alphaThresholdByte) {
+                dstRow[x] = ColorMaterialMapper::findNearestMaterial(px.r, px.g, px.b);
+            }
+            // else: already AIR from resize default.
         }
     }
 
@@ -600,6 +681,150 @@ std::vector<std::vector<bool>> FontSampler::trimPattern(
         result[y].resize(trimmedWidth);
         for (int x = 0; x < trimmedWidth; ++x) {
             result[y][x] = pattern[minY + y][minX + x];
+        }
+    }
+
+    return result;
+}
+
+GridBuffer<MaterialType> FontSampler::sampleAndDownsample(
+    const std::string& utf8Char, int targetWidth, int targetHeight, float alphaThreshold)
+{
+    // Sample at native font resolution.
+    auto fullGrid = sampleUtf8CharacterMaterialGrid(utf8Char, alphaThreshold);
+
+    if (fullGrid.width == 0 || fullGrid.height == 0) {
+        return {};
+    }
+
+    // If already at target size or smaller, return as-is.
+    if (fullGrid.width <= targetWidth && fullGrid.height <= targetHeight) {
+        return fullGrid;
+    }
+
+    // Downsample to target size.
+    return downsample(fullGrid, targetWidth, targetHeight);
+}
+
+GridBuffer<MaterialType> FontSampler::downsample(
+    const GridBuffer<MaterialType>& src, int targetWidth, int targetHeight)
+{
+    if (src.width == 0 || src.height == 0 || targetWidth <= 0 || targetHeight <= 0) {
+        return {};
+    }
+
+    GridBuffer<MaterialType> result;
+    result.resize(targetWidth, targetHeight, MaterialType::AIR);
+
+    const int srcW = src.width;
+    const int srcH = src.height;
+
+    // Calculate scaling factors.
+    const float scaleX = static_cast<float>(srcW) / targetWidth;
+    const float scaleY = static_cast<float>(srcH) / targetHeight;
+
+    // For each target pixel, find the most common material in the source region.
+    for (int ty = 0; ty < targetHeight; ++ty) {
+        for (int tx = 0; tx < targetWidth; ++tx) {
+            // Source region bounds.
+            const int srcX0 = static_cast<int>(tx * scaleX);
+            const int srcY0 = static_cast<int>(ty * scaleY);
+            const int srcX1 = std::min(static_cast<int>((tx + 1) * scaleX), srcW);
+            const int srcY1 = std::min(static_cast<int>((ty + 1) * scaleY), srcH);
+
+            // Count materials in region (excluding AIR for voting).
+            std::array<int, 10> counts = {};
+            int nonAirTotal = 0;
+
+            for (int sy = srcY0; sy < srcY1; ++sy) {
+                const MaterialType* row = src.row(sy);
+                for (int sx = srcX0; sx < srcX1; ++sx) {
+                    MaterialType mat = row[sx];
+                    counts[static_cast<size_t>(mat)]++;
+                    if (mat != MaterialType::AIR) {
+                        nonAirTotal++;
+                    }
+                }
+            }
+
+            // If mostly AIR, keep AIR. Otherwise pick most common non-AIR material.
+            int regionSize = (srcX1 - srcX0) * (srcY1 - srcY0);
+            if (nonAirTotal * 2 < regionSize) {
+                // Less than half is non-AIR, keep as AIR.
+                result.at(tx, ty) = MaterialType::AIR;
+            }
+            else {
+                // Find most common non-AIR material.
+                MaterialType best = MaterialType::AIR;
+                int bestCount = 0;
+                for (size_t i = 1; i < counts.size(); ++i) {
+                    if (counts[i] > bestCount) {
+                        bestCount = counts[i];
+                        best = static_cast<MaterialType>(i);
+                    }
+                }
+                result.at(tx, ty) = best;
+            }
+        }
+    }
+
+    return result;
+}
+
+GridBuffer<RgbPixel> FontSampler::downsample(
+    const GridBuffer<RgbPixel>& src, int targetWidth, int targetHeight)
+{
+    if (src.width == 0 || src.height == 0 || targetWidth <= 0 || targetHeight <= 0) {
+        return {};
+    }
+
+    GridBuffer<RgbPixel> result;
+    result.resize(targetWidth, targetHeight);
+
+    const int srcW = src.width;
+    const int srcH = src.height;
+
+    // Calculate scaling factors.
+    const float scaleX = static_cast<float>(srcW) / targetWidth;
+    const float scaleY = static_cast<float>(srcH) / targetHeight;
+
+    // For each target pixel, compute alpha-weighted average of source region.
+    for (int ty = 0; ty < targetHeight; ++ty) {
+        for (int tx = 0; tx < targetWidth; ++tx) {
+            // Source region bounds.
+            const int srcX0 = static_cast<int>(tx * scaleX);
+            const int srcY0 = static_cast<int>(ty * scaleY);
+            const int srcX1 = std::min(static_cast<int>((tx + 1) * scaleX), srcW);
+            const int srcY1 = std::min(static_cast<int>((ty + 1) * scaleY), srcH);
+
+            // Alpha-weighted sum.
+            float sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+
+            for (int sy = srcY0; sy < srcY1; ++sy) {
+                const RgbPixel* row = src.row(sy);
+                for (int sx = srcX0; sx < srcX1; ++sx) {
+                    const RgbPixel& px = row[sx];
+                    float a = px.a / 255.0f;
+                    sumR += px.r * a;
+                    sumG += px.g * a;
+                    sumB += px.b * a;
+                    sumA += a;
+                }
+            }
+
+            // Compute weighted average.
+            RgbPixel& out = result.at(tx, ty);
+            if (sumA > 0.001f) {
+                out.r = static_cast<uint8_t>(std::min(255.0f, sumR / sumA));
+                out.g = static_cast<uint8_t>(std::min(255.0f, sumG / sumA));
+                out.b = static_cast<uint8_t>(std::min(255.0f, sumB / sumA));
+                // Output alpha is average alpha over region.
+                int regionSize = (srcX1 - srcX0) * (srcY1 - srcY0);
+                out.a = static_cast<uint8_t>(std::min(255.0f, (sumA / regionSize) * 255.0f));
+            }
+            else {
+                out = { 0, 0, 0, 0 };
+            }
         }
     }
 

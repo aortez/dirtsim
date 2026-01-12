@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ColorMaterialMapper.h"
+#include "GridBuffer.h"
 #include "MaterialType.h"
 #include <cstdint>
 #include <string>
@@ -56,6 +57,11 @@ public:
     std::vector<std::vector<RgbPixel>> sampleCharacterRgb(char c);
     std::vector<std::vector<RgbPixel>> sampleUtf8CharacterRgb(const std::string& utf8Char);
 
+    // GridBuffer-based sampling for cache-friendly access.
+    GridBuffer<RgbPixel> sampleUtf8CharacterRgbGrid(const std::string& utf8Char);
+    GridBuffer<MaterialType> sampleUtf8CharacterMaterialGrid(
+        const std::string& utf8Char, float alphaThreshold = 0.5f);
+
     std::vector<std::vector<MaterialType>> sampleCharacterMaterial(
         char c, float alphaThreshold = 0.5f);
     std::vector<std::vector<MaterialType>> sampleUtf8CharacterMaterial(
@@ -79,6 +85,22 @@ public:
         const std::vector<std::vector<bool>>& pattern);
     static bool hasClipping(const std::vector<std::vector<bool>>& pattern);
 
+    // Downsampling utilities. Reduces grid resolution for display.
+    // For materials: uses majority voting (most common material in source region wins).
+    // For RGB: uses alpha-weighted averaging.
+    static GridBuffer<MaterialType> downsample(
+        const GridBuffer<MaterialType>& src, int targetWidth, int targetHeight);
+    static GridBuffer<RgbPixel> downsample(
+        const GridBuffer<RgbPixel>& src, int targetWidth, int targetHeight);
+
+    // Combined sample + downsample for convenience.
+    // Samples at native font resolution, then downsamples to target size.
+    GridBuffer<MaterialType> sampleAndDownsample(
+        const std::string& utf8Char,
+        int targetWidth,
+        int targetHeight,
+        float alphaThreshold = 0.5f);
+
     int getWidth() const { return targetWidth_; }
     int getHeight() const { return targetHeight_; }
     float getThreshold() const { return threshold_; }
@@ -90,6 +112,7 @@ private:
     void initFreeType();
     std::vector<std::vector<bool>> sampleCurrentCanvas(float threshold);
     std::vector<std::vector<RgbPixel>> sampleCurrentCanvasRgb();
+    GridBuffer<RgbPixel> sampleCurrentCanvasRgbGrid();
 
     const lv_font_t* font_;
     int targetWidth_;

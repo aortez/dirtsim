@@ -473,6 +473,8 @@ void World::advanceTime(double deltaTimeSeconds)
         return;
     }
 
+    pImpl->light_calculator_.clearAllEmissive();
+
     // Rebuild grid cache for current frame (maps may have changed from previous step).
     {
         ScopeTimer timer(pImpl->timers_, "grid_cache_rebuild");
@@ -542,6 +544,9 @@ void World::advanceTime(double deltaTimeSeconds)
     // Prune disconnected organism fragments AFTER transfers complete.
     // This ensures connectivity checks use current positions, not stale pre-transfer positions.
     pruneDisconnectedFragments();
+
+    // Inject organism emissions before light calculation.
+    organism_manager_->injectEmissions(pImpl->light_calculator_);
 
     // Calculate lighting for rendering.
     {

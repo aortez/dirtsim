@@ -21,8 +21,7 @@ static constexpr float AIR_CONTROL_SAME = 0.15f;     // Steering same direction 
 static constexpr float AIR_CONTROL_OPPOSING = 0.30f; // Steering opposite to facing (2x bonus).
 
 // Sparkle constants.
-static constexpr int MIN_SPARKLES = 0;  // Sparkles when at rest.
-static constexpr int MAX_SPARKLES = 32; // Sparkles at full speed.
+static constexpr int MIN_SPARKLES = 0; // Sparkles when at rest.
 static constexpr float SPARKLE_ACCELERATION_FLOOR =
     30.0f; // Below this, no sparkles (filters noise).
 static constexpr float SPARKLE_ACCELERATION_MAX =
@@ -501,12 +500,12 @@ int Duck::getDesiredSparkleCount(float acceleration) const
         return MIN_SPARKLES;
     }
 
-    // Linear interpolation: floor -> MAX maps to MIN_SPARKLES -> MAX_SPARKLES.
+    // Linear interpolation: floor -> MAX maps to MIN_SPARKLES -> Duck::MAX_SPARKLES.
     float range = SPARKLE_ACCELERATION_MAX - SPARKLE_ACCELERATION_FLOOR;
     float t = std::min((acceleration - SPARKLE_ACCELERATION_FLOOR) / range, 1.0f);
-    int desired = MIN_SPARKLES + static_cast<int>(t * (MAX_SPARKLES - MIN_SPARKLES));
+    int desired = MIN_SPARKLES + static_cast<int>(t * (Duck::MAX_SPARKLES - MIN_SPARKLES));
 
-    return std::clamp(desired, MIN_SPARKLES, MAX_SPARKLES);
+    return std::clamp(desired, MIN_SPARKLES, Duck::MAX_SPARKLES);
 }
 
 void Duck::spawnSparkle(const Vector2d& duck_velocity)

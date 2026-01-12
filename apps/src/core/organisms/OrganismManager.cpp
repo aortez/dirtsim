@@ -14,6 +14,7 @@
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/WorldLightCalculator.h"
 #include "tests/MultiCellTestOrganism.h"
 #include <cassert>
 #include <cmath>
@@ -670,7 +671,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             entity.facing = duck->getFacing();
             entity.mass = 1.0f;
 
-            // Copy sparkles.
+            // Copy sparkles and set emission from sparkle ratio.
             const auto& duck_sparkles = duck->getSparkles();
             entity.sparkles.reserve(duck_sparkles.size());
             for (const auto& ds : duck_sparkles) {
@@ -679,6 +680,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
                 sp.opacity = ds.lifetime / ds.max_lifetime;
                 entity.sparkles.push_back(sp);
             }
+            entity.emission = 0.7 + duck->getSparkleRatio();
 
             data.entities.push_back(std::move(entity));
         }
@@ -713,6 +715,24 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
             data.entities.push_back(std::move(entity));
         }
         // Trees render as cells (SEED, WOOD, LEAF, ROOT), not entities.
+    }
+}
+
+void OrganismManager::injectEmissions(WorldLightCalculator& light_calc)
+{
+    constexpr uint32_t DUCK_GLOW_COLOR = 0xFFCC66FF;
+    constexpr float MAX_EMISSION_INTENSITY = 0.8f;
+
+    for (const auto& [id, organism] : organisms_) {
+        if (organism->getType() == OrganismType::DUCK) {
+            const Duck* duck = static_cast<const Duck*>(organism.get());
+            float sparkle_ratio = duck->getSparkleRatio();
+            if (sparkle_ratio > 0.0f) {
+                Vector2i pos = duck->getAnchorCell();
+                float intensity = sparkle_ratio * MAX_EMISSION_INTENSITY;
+                light_calc.setEmissive(pos.x, pos.y, DUCK_GLOW_COLOR, intensity);
+            }
+        }
     }
 }
 

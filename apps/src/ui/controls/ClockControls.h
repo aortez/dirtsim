@@ -62,6 +62,7 @@ private:
     lv_obj_t* fontButton_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* digitMaterialButton_ = nullptr;
+    lv_obj_t* emissivenessStepper_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
     lv_obj_t* meltButton_ = nullptr;
     lv_obj_t* colorCycleSwitch_ = nullptr;
@@ -103,6 +104,7 @@ private:
     static void onDigitMaterialButtonClicked(lv_event_t* e);
     static void onDigitMaterialSelected(lv_event_t* e);
     static void onDigitMaterialBackClicked(lv_event_t* e);
+    static void onEmissivenessChanged(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
     static void onMeltClicked(lv_event_t* e);
     static void onColorCycleToggled(lv_event_t* e);

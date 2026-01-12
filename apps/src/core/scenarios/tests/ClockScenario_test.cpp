@@ -33,6 +33,10 @@ protected:
 
         // Apply scenario setup.
         scenario_->setup(*world_);
+
+        // Run one tick to set first_tick_done_ = true.
+        // This is required for manual event toggling via setConfig() to work.
+        scenario_->tick(*world_, 0.016);
     }
 
     std::unique_ptr<ClockScenario> scenario_;
@@ -142,6 +146,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     const auto& metadata = short_scenario->getMetadata();
     auto short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     short_scenario->setup(*short_world);
+    short_scenario->tick(*short_world, 0.016); // Enable manual event toggling.
 
     // Start duck event manually.
     auto config = std::get<Config::Clock>(short_scenario->getConfig());
@@ -216,6 +221,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     const auto& metadata = test_scenario->getMetadata();
     auto test_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     test_scenario->setup(*test_world);
+    test_scenario->tick(*test_world, 0.016); // Enable manual event toggling.
 
     const WorldData& data = test_world->getData();
     const uint32_t world_width = data.width;

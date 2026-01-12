@@ -108,6 +108,10 @@ public:
     // Called automatically by World::advanceTime() - scenarios don't need to manage this.
     void syncEntitiesToWorldData(World& world);
 
+    // Inject organism emissions into the light calculator's emissive overlay.
+    // Called before light calculation so glowing organisms illuminate their surroundings.
+    void injectEmissions(class WorldLightCalculator& light_calc);
+
     // Statistics.
     size_t getOrganismCount() const { return organisms_.size(); }
 

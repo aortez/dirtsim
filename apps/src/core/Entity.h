@@ -76,10 +76,14 @@ struct Entity {
     // Used to modulate sprite rendering so entities match world lighting.
     uint32_t light_color = 0xFFFFFFFF;
 
+    // Self-emission intensity [0, 1]. Makes entity glow independent of world lighting.
+    // For ducks, this is based on sparkle ratio.
+    float emission = 0.0f;
+
     // Attached sparkle particles (used by DUCK entities).
     std::vector<SparkleParticle> sparkles;
 
-    using serialize = zpp::bits::members<10>;
+    using serialize = zpp::bits::members<11>;
 };
 
 // JSON serialization via ReflectSerializer (declared in Entity.cpp).

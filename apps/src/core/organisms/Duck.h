@@ -70,6 +70,15 @@ public:
     // Sparkle access for rendering.
     const std::vector<DuckSparkle>& getSparkles() const { return sparkles_; }
 
+    // Maximum sparkle count (used for emission ratio calculation).
+    static constexpr int MAX_SPARKLES = 32;
+
+    // Get sparkle ratio [0, 1] for emission calculations.
+    float getSparkleRatio() const
+    {
+        return static_cast<float>(sparkles_.size()) / static_cast<float>(MAX_SPARKLES);
+    }
+
     // Sensory data gathering for brain decisions.
     DuckSensoryData gatherSensoryData(const World& world, double deltaTime) const;
 

@@ -5,6 +5,8 @@
 #include "core/FragmentationParams.h"
 #include "core/MaterialMove.h"
 #include "core/MaterialType.h"
+#include "core/PhysicsSettings.h"
+#include "core/PointLight.h"
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/WorldCollisionCalculator.h"
@@ -29,8 +31,6 @@
 namespace DirtSim {
 
 namespace {
-
-constexpr float DIGIT_EMISSION_INTENSITY = 2.0f;
 
 uint32_t getMaterialColor(MaterialType mat)
 {
@@ -441,137 +441,144 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         }
 
         // Handle manual event toggling.
-        // Color cycle event toggle.
-        if (config_.colorCycleEnabled && !color_cycle_was_enabled) {
-            // User enabled color cycle - start it if not already active.
-            if (!active_events_.contains(ClockEventType::COLOR_CYCLE)) {
-                event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::COLOR_CYCLE);
-                spdlog::info("ClockScenario: Color cycle manually enabled");
+        // Skip event triggering during initial config load (before first tick).
+        // Events enabled in config will trigger naturally via tryTriggerPeriodicEvents
+        // or tryTriggerTimeChangeEvents after the simulation starts.
+        if (first_tick_done_) {
+            // Color cycle event toggle.
+            if (config_.colorCycleEnabled && !color_cycle_was_enabled) {
+                // User enabled color cycle - start it if not already active.
+                if (!active_events_.contains(ClockEventType::COLOR_CYCLE)) {
+                    event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::COLOR_CYCLE);
+                    spdlog::info("ClockScenario: Color cycle manually enabled");
+                }
             }
-        }
-        else if (!config_.colorCycleEnabled && color_cycle_was_enabled) {
-            // User disabled color cycle - stop it if active.
-            auto it = active_events_.find(ClockEventType::COLOR_CYCLE);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::COLOR_CYCLE, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Color cycle manually disabled");
+            else if (!config_.colorCycleEnabled && color_cycle_was_enabled) {
+                // User disabled color cycle - stop it if active.
+                auto it = active_events_.find(ClockEventType::COLOR_CYCLE);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::COLOR_CYCLE, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::COLOR_CYCLE] =
+                        0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Color cycle manually disabled");
+                }
             }
-        }
 
-        // Color showcase event toggle.
-        if (config_.colorShowcaseEnabled && !color_showcase_was_enabled) {
-            // User enabled color showcase - start it if not already active.
-            if (!active_events_.contains(ClockEventType::COLOR_SHOWCASE)) {
-                event_cooldowns_[ClockEventType::COLOR_SHOWCASE] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::COLOR_SHOWCASE);
-                spdlog::info("ClockScenario: Color showcase manually enabled");
+            // Color showcase event toggle.
+            if (config_.colorShowcaseEnabled && !color_showcase_was_enabled) {
+                // User enabled color showcase - start it if not already active.
+                if (!active_events_.contains(ClockEventType::COLOR_SHOWCASE)) {
+                    event_cooldowns_[ClockEventType::COLOR_SHOWCASE] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::COLOR_SHOWCASE);
+                    spdlog::info("ClockScenario: Color showcase manually enabled");
+                }
             }
-        }
-        else if (!config_.colorShowcaseEnabled && color_showcase_was_enabled) {
-            // User disabled color showcase - stop it if active.
-            auto it = active_events_.find(ClockEventType::COLOR_SHOWCASE);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::COLOR_SHOWCASE, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::COLOR_SHOWCASE] =
-                    0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Color showcase manually disabled");
+            else if (!config_.colorShowcaseEnabled && color_showcase_was_enabled) {
+                // User disabled color showcase - stop it if active.
+                auto it = active_events_.find(ClockEventType::COLOR_SHOWCASE);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::COLOR_SHOWCASE, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::COLOR_SHOWCASE] =
+                        0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Color showcase manually disabled");
+                }
             }
-        }
 
-        // Rain event toggle.
-        if (config_.rainEnabled && !rain_was_enabled) {
-            // User enabled rain - start it if not already active.
-            if (!active_events_.contains(ClockEventType::RAIN)) {
-                event_cooldowns_[ClockEventType::RAIN] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::RAIN);
-                spdlog::info("ClockScenario: Rain manually enabled");
+            // Rain event toggle.
+            if (config_.rainEnabled && !rain_was_enabled) {
+                // User enabled rain - start it if not already active.
+                if (!active_events_.contains(ClockEventType::RAIN)) {
+                    event_cooldowns_[ClockEventType::RAIN] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::RAIN);
+                    spdlog::info("ClockScenario: Rain manually enabled");
+                }
             }
-        }
-        else if (!config_.rainEnabled && rain_was_enabled) {
-            // User disabled rain - stop it if active.
-            auto it = active_events_.find(ClockEventType::RAIN);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::RAIN, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::RAIN] = 0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Rain manually disabled");
+            else if (!config_.rainEnabled && rain_was_enabled) {
+                // User disabled rain - stop it if active.
+                auto it = active_events_.find(ClockEventType::RAIN);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::RAIN, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::RAIN] = 0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Rain manually disabled");
+                }
             }
-        }
 
-        // Digit slide event toggle.
-        if (config_.digitSlideEnabled && !digit_slide_was_enabled) {
-            // User enabled digit slide - start it if not already active.
-            if (!active_events_.contains(ClockEventType::DIGIT_SLIDE)) {
-                event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::DIGIT_SLIDE);
-                spdlog::info("ClockScenario: Digit slide manually enabled");
+            // Digit slide event toggle.
+            if (config_.digitSlideEnabled && !digit_slide_was_enabled) {
+                // User enabled digit slide - start it if not already active.
+                if (!active_events_.contains(ClockEventType::DIGIT_SLIDE)) {
+                    event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::DIGIT_SLIDE);
+                    spdlog::info("ClockScenario: Digit slide manually enabled");
+                }
             }
-        }
-        else if (!config_.digitSlideEnabled && digit_slide_was_enabled) {
-            // User disabled digit slide - stop it if active.
-            auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::DIGIT_SLIDE, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Digit slide manually disabled");
+            else if (!config_.digitSlideEnabled && digit_slide_was_enabled) {
+                // User disabled digit slide - stop it if active.
+                auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::DIGIT_SLIDE, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::DIGIT_SLIDE] =
+                        0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Digit slide manually disabled");
+                }
             }
-        }
 
-        // Duck event toggle.
-        if (config_.duckEnabled && !duck_was_enabled) {
-            // User enabled duck - start it if not already active.
-            if (!active_events_.contains(ClockEventType::DUCK)) {
-                event_cooldowns_[ClockEventType::DUCK] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::DUCK);
-                spdlog::info("ClockScenario: Duck manually enabled");
+            // Duck event toggle.
+            if (config_.duckEnabled && !duck_was_enabled) {
+                // User enabled duck - start it if not already active.
+                if (!active_events_.contains(ClockEventType::DUCK)) {
+                    event_cooldowns_[ClockEventType::DUCK] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::DUCK);
+                    spdlog::info("ClockScenario: Duck manually enabled");
+                }
             }
-        }
-        else if (!config_.duckEnabled && duck_was_enabled) {
-            // User disabled duck - stop it if active.
-            auto it = active_events_.find(ClockEventType::DUCK);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::DUCK, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::DUCK] = 0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Duck manually disabled");
+            else if (!config_.duckEnabled && duck_was_enabled) {
+                // User disabled duck - stop it if active.
+                auto it = active_events_.find(ClockEventType::DUCK);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::DUCK, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::DUCK] = 0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Duck manually disabled");
+                }
             }
-        }
 
-        // Marquee event toggle.
-        if (config_.marqueeEnabled && !marquee_was_enabled) {
-            // User enabled marquee - start it if not already active.
-            if (!active_events_.contains(ClockEventType::MARQUEE)) {
-                event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::MARQUEE);
-                spdlog::info("ClockScenario: Marquee manually enabled");
+            // Marquee event toggle.
+            if (config_.marqueeEnabled && !marquee_was_enabled) {
+                // User enabled marquee - start it if not already active.
+                if (!active_events_.contains(ClockEventType::MARQUEE)) {
+                    event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::MARQUEE);
+                    spdlog::info("ClockScenario: Marquee manually enabled");
+                }
             }
-        }
-        else if (!config_.marqueeEnabled && marquee_was_enabled) {
-            // User disabled marquee - stop it if active.
-            auto it = active_events_.find(ClockEventType::MARQUEE);
-            if (it != active_events_.end()) {
-                endEvent(world, ClockEventType::MARQUEE, it->second);
-                active_events_.erase(it);
-                event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // No cooldown for manual stop.
-                spdlog::info("ClockScenario: Marquee manually disabled");
+            else if (!config_.marqueeEnabled && marquee_was_enabled) {
+                // User disabled marquee - stop it if active.
+                auto it = active_events_.find(ClockEventType::MARQUEE);
+                if (it != active_events_.end()) {
+                    endEvent(world, ClockEventType::MARQUEE, it->second);
+                    active_events_.erase(it);
+                    event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // No cooldown for manual stop.
+                    spdlog::info("ClockScenario: Marquee manually disabled");
+                }
             }
-        }
 
-        // Meltdown event trigger (one-shot).
-        if (config_.meltdownEnabled) {
-            // User triggered meltdown - start it if not already active.
-            if (!active_events_.contains(ClockEventType::MELTDOWN)) {
-                event_cooldowns_[ClockEventType::MELTDOWN] = 0.0; // Clear cooldown.
-                startEvent(world, ClockEventType::MELTDOWN);
-                spdlog::info("ClockScenario: Meltdown manually triggered");
+            // Meltdown event trigger (one-shot).
+            if (config_.meltdownEnabled) {
+                // User triggered meltdown - start it if not already active.
+                if (!active_events_.contains(ClockEventType::MELTDOWN)) {
+                    event_cooldowns_[ClockEventType::MELTDOWN] = 0.0; // Clear cooldown.
+                    startEvent(world, ClockEventType::MELTDOWN);
+                    spdlog::info("ClockScenario: Meltdown manually triggered");
+                }
+                // Reset the trigger flag immediately.
+                config_.meltdownEnabled = false;
             }
-            // Reset the trigger flag immediately.
-            config_.meltdownEnabled = false;
         }
 
         spdlog::info("ClockScenario: Config updated");
@@ -585,6 +592,11 @@ void ClockScenario::setup(World& world)
 {
     spdlog::info("ClockScenario::setup - initializing clock display");
 
+    // Dark lighting - emissive digits glow against dim background.
+    auto& light = world.getPhysicsSettings().light;
+    light.sun_intensity = 0.1f;
+    light.ambient_intensity = 0.0f;
+
     // Clear world to empty state.
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
@@ -595,8 +607,25 @@ void ClockScenario::setup(World& world)
     // Draw walls using centralized wall system.
     redrawWalls(world);
 
-    // Draw current time.
+    // Draw initial time (emissive will be set on first tick).
     drawTime(world);
+
+    // Add a warm point light on the right side, 1/3 up from the floor.
+    world.clearPointLights();
+    const WorldData& data = world.getData();
+    world.addPointLight(PointLight{
+        .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
+        .color = ColorNames::torchOrange(),
+        .intensity = 0.1f,
+        .radius = 15.0f,
+        .attenuation = 0.05f });
+
+    world.addPointLight(
+        PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
+                    .color = ColorNames::torchOrange(),
+                    .intensity = 0.1f,
+                    .radius = 15.0f,
+                    .attenuation = 0.05f });
 
     spdlog::info("ClockScenario::setup complete");
 }
@@ -610,6 +639,7 @@ void ClockScenario::reset(World& world)
 
 void ClockScenario::tick(World& world, double deltaTime)
 {
+    first_tick_done_ = true;
     redrawWalls(world);
 
     // Update event system first so digit slide can detect time changes
@@ -680,9 +710,6 @@ void ClockScenario::clearDigits(World& world)
 {
     WorldData& data = world.getData();
 
-    // Clear emissive overlay for digits.
-    world.getLightCalculator().clearAllEmissive();
-
     // Clear interior WALL cells (digit cells) but NOT:
     // - Boundary cells (x=0, x=width-1, y=0, y=height-1).
     // - Door roof cells.
@@ -717,6 +744,13 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
         return;
     }
 
+    // NotoColorEmoji uses color materials - handle separately.
+    if (config_.font == Config::ClockFont::NotoColorEmoji) {
+        std::string digitStr(1, static_cast<char>('0' + digit));
+        drawCharacterWithMaterials(world, digitStr, start_x, start_y);
+        return;
+    }
+
     int dw = getDigitWidth();
     int dh = getDigitHeight();
 
@@ -744,15 +778,9 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
                     }
                     break;
                 }
-                case Config::ClockFont::NotoColorEmoji: {
-                    // NotoColorEmoji uses FontSampler like Montserrat24.
-                    const auto& pattern = getSampledDigitPattern(digit);
-                    if (row < static_cast<int>(pattern.size())
-                        && col < static_cast<int>(pattern[row].size())) {
-                        pixel = pattern[row][col];
-                    }
+                case Config::ClockFont::NotoColorEmoji:
+                    // Handled above with early return.
                     break;
-                }
                 case Config::ClockFont::Segment7:
                     pixel = ClockFonts::SEGMENT7_PATTERNS[digit][row][col];
                     break;
@@ -771,17 +799,61 @@ void ClockScenario::drawDigit(World& world, int digit, int start_x, int start_y)
             }
 
             if (pixel) {
-                // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL);
-                world.getData().at(x, y).render_as = static_cast<int8_t>(config_.digitMaterial);
-
-                // Make digit cells emissive so they glow in darkness.
-                uint32_t color = getMaterialColor(config_.digitMaterial);
-                world.getLightCalculator().setEmissive(x, y, color, DIGIT_EMISSION_INTENSITY);
+                placeDigitPixel(world, x, y, config_.digitMaterial);
             }
         }
     }
+}
+
+void ClockScenario::drawCharacterWithMaterials(
+    World& world, const std::string& utf8Char, int start_x, int start_y)
+{
+    ensureFontSamplerInitialized();
+
+    int dw = getDigitWidth();
+    int dh = getDigitHeight();
+
+    // Sample and downsample the character to digit size.
+    auto materialGrid = font_sampler_->sampleAndDownsample(utf8Char, dw, dh, 0.5f);
+
+    if (materialGrid.width == 0 || materialGrid.height == 0) {
+        spdlog::warn("ClockScenario: Failed to sample character '{}'", utf8Char);
+        return;
+    }
+
+    for (int row = 0; row < materialGrid.height; ++row) {
+        for (int col = 0; col < materialGrid.width; ++col) {
+            int x = start_x + col;
+            int y = start_y + row;
+
+            // Bounds check.
+            if (x < 0 || x >= world.getData().width || y < 0 || y >= world.getData().height) {
+                continue;
+            }
+
+            MaterialType mat = materialGrid.at(col, row);
+
+            // Skip AIR - leave background unchanged.
+            if (mat == MaterialType::AIR) {
+                continue;
+            }
+
+            placeDigitPixel(world, x, y, mat);
+        }
+    }
+}
+
+void ClockScenario::placeDigitPixel(World& world, int x, int y, MaterialType renderMaterial)
+{
+    // Use WALL (immobile) but render as the specified material.
+    world.replaceMaterialAtCell(
+        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL);
+    world.getData().at(x, y).render_as = static_cast<int8_t>(renderMaterial);
+
+    // Make digit cells emissive so they glow in darkness.
+    uint32_t color = getMaterialColor(renderMaterial);
+    float intensity = static_cast<float>(config_.digitEmissiveness);
+    world.getLightCalculator().setEmissive(x, y, color, intensity);
 }
 
 void ClockScenario::drawColon(World& world, int start_x, int start_y)
@@ -803,25 +875,15 @@ void ClockScenario::drawColon(World& world, int start_x, int start_y)
         // For large font, draw 2x2 dots; otherwise single pixels.
         int dot_height = (config_.font == Config::ClockFont::Segment7Large) ? 2 : 1;
 
-        uint32_t color = getMaterialColor(config_.digitMaterial);
-
         for (int dy = 0; dy < dot_height; ++dy) {
             int y1 = dot1_y + dy;
             int y2 = dot2_y + dy;
 
             if (y1 >= 0 && y1 < world.getData().height) {
-                // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y1) }, MaterialType::WALL);
-                world.getData().at(x, y1).render_as = static_cast<int8_t>(config_.digitMaterial);
-                world.getLightCalculator().setEmissive(x, y1, color, DIGIT_EMISSION_INTENSITY);
+                placeDigitPixel(world, x, y1, config_.digitMaterial);
             }
             if (y2 >= 0 && y2 < world.getData().height) {
-                // Use WALL (immobile) but render as the configured digit material.
-                world.replaceMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y2) }, MaterialType::WALL);
-                world.getData().at(x, y2).render_as = static_cast<int8_t>(config_.digitMaterial);
-                world.getLightCalculator().setEmissive(x, y2, color, DIGIT_EMISSION_INTENSITY);
+                placeDigitPixel(world, x, y2, config_.digitMaterial);
             }
         }
     }
@@ -1003,6 +1065,10 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
 
 void ClockScenario::tryTriggerPeriodicEvents(World& world)
 {
+    if (!first_tick_done_) {
+        return;
+    }
+
     static constexpr std::array<ClockEventType, 7> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE, ClockEventType::COLOR_SHOWCASE, ClockEventType::DIGIT_SLIDE,
         ClockEventType::DUCK,        ClockEventType::MARQUEE,        ClockEventType::MELTDOWN,
@@ -1032,6 +1098,10 @@ void ClockScenario::tryTriggerPeriodicEvents(World& world)
 
 void ClockScenario::tryTriggerTimeChangeEvents(World& world)
 {
+    if (!first_tick_done_) {
+        return;
+    }
+
     static constexpr std::array<ClockEventType, 7> ALL_EVENT_TYPES = {
         ClockEventType::COLOR_CYCLE, ClockEventType::COLOR_SHOWCASE, ClockEventType::DIGIT_SLIDE,
         ClockEventType::DUCK,        ClockEventType::MARQUEE,        ClockEventType::MELTDOWN,
@@ -1156,6 +1226,38 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         DoorSide exit_side =
             (duck_state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
         duck_state.exit_door_id = door_manager_.createDoor(exit_side, kCellsAboveFloor);
+
+        // Add indicator lights for both doors.
+        // Door lights have short radius and quick falloff - subtle indicator effect.
+        constexpr float kDoorLightRadius = 6.0f;
+        constexpr float kDoorLightAttenuation = 0.25f;
+        constexpr float kDoorLightOpenIntensity = 0.4f;
+        constexpr float kDoorLightClosedIntensity = 0.08f;
+
+        const WorldData& data = world.getData();
+        auto& lights = world.getPointLights();
+
+        // Entrance door light (will be bright since door opens immediately).
+        Vector2i entrance_light_pos =
+            door_manager_.getLightPosition(duck_state.entrance_door_id, data);
+        duck_state.entrance_light_idx = lights.size();
+        lights.push_back(
+            PointLight{ .position = Vector2d{ static_cast<double>(entrance_light_pos.x),
+                                              static_cast<double>(entrance_light_pos.y) },
+                        .color = ColorNames::torchOrange(),
+                        .intensity = kDoorLightOpenIntensity,
+                        .radius = kDoorLightRadius,
+                        .attenuation = kDoorLightAttenuation });
+
+        // Exit door light (starts dim since door is closed).
+        Vector2i exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
+        duck_state.exit_light_idx = lights.size();
+        lights.push_back(PointLight{ .position = Vector2d{ static_cast<double>(exit_light_pos.x),
+                                                           static_cast<double>(exit_light_pos.y) },
+                                     .color = ColorNames::torchOrange(),
+                                     .intensity = kDoorLightClosedIntensity,
+                                     .radius = kDoorLightRadius,
+                                     .attenuation = kDoorLightAttenuation });
 
         // Open entrance door via DoorManager. Duck spawns after delay.
         door_manager_.openDoor(duck_state.entrance_door_id, world);
@@ -1464,16 +1566,31 @@ void ClockScenario::updateDuckEvent(
         duck_com = data.at(duck_cell.x, duck_cell.y).com;
     }
 
+    // Door light intensity constants.
+    constexpr float kDoorLightOpenIntensity = 1.0f;
+    constexpr float kDoorLightClosedIntensity = 0.08f;
+    auto& lights = world.getPointLights();
+
     // Close entrance door once duck moves away from it and schedule removal.
     Vector2i entrance_pos = door_manager_.getDoorPosition(state.entrance_door_id, data);
     if (door_manager_.isOpen(state.entrance_door_id) && duck_cell != entrance_pos) {
         door_manager_.closeDoor(state.entrance_door_id, world);
         door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
+
+        // Dim the entrance door light.
+        if (state.entrance_light_idx < lights.size()) {
+            lights[state.entrance_light_idx].intensity = kDoorLightClosedIntensity;
+        }
     }
 
     // Open exit door in the last 7 seconds.
     if (!door_manager_.isOpen(state.exit_door_id) && remaining_time <= 7.0) {
         door_manager_.openDoor(state.exit_door_id, world);
+
+        // Brighten the exit door light.
+        if (state.exit_light_idx < lights.size()) {
+            lights[state.exit_light_idx].intensity = kDoorLightOpenIntensity;
+        }
 
         // Log world state when exit door opens.
         Vector2i exit_pos = door_manager_.getDoorPosition(state.exit_door_id, data);
@@ -1571,6 +1688,15 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         // Clear any floor obstacles.
         obstacle_manager_.clearAll(world);
 
+        // Disable door lights (set intensity to 0 - keeps indices stable).
+        auto& lights = world.getPointLights();
+        if (state.entrance_light_idx < lights.size()) {
+            lights[state.entrance_light_idx].intensity = 0.0f;
+        }
+        if (state.exit_light_idx < lights.size()) {
+            lights[state.exit_light_idx].intensity = 0.0f;
+        }
+
         // Close doors and schedule removal after a delay.
         door_manager_.closeDoor(state.entrance_door_id, world);
         door_manager_.closeDoor(state.exit_door_id, world);
@@ -1604,6 +1730,15 @@ void ClockScenario::cancelAllEvents(World& world)
             auto& state = std::get<DuckEventState>(event.state);
             if (state.organism_id != INVALID_ORGANISM_ID) {
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
+            }
+
+            // Disable door lights.
+            auto& lights = world.getPointLights();
+            if (state.entrance_light_idx < lights.size()) {
+                lights[state.entrance_light_idx].intensity = 0.0f;
+            }
+            if (state.exit_light_idx < lights.size()) {
+                lights[state.exit_light_idx].intensity = 0.0f;
             }
         }
         else if (type == ClockEventType::MELTDOWN) {
@@ -1642,6 +1777,19 @@ void ClockScenario::updateMeltdownEvent(
     double event_duration = getEventTiming(ClockEventType::MELTDOWN).duration;
     ClockEvents::updateMeltdown(
         state, world, remaining_time, event_duration, drain_open_, drain_start_x_, drain_end_x_);
+
+    // Make falling digit cells emissive so they glow while melting.
+    const WorldData& data = world.getData();
+    uint32_t color = getMaterialColor(config_.digitMaterial);
+    float intensity = static_cast<float>(config_.digitEmissiveness);
+
+    for (int y = 1; y < data.height - 1; ++y) {
+        for (int x = 1; x < data.width - 1; ++x) {
+            if (data.at(x, y).material_type == state.digit_material) {
+                world.getLightCalculator().setEmissive(x, y, color, intensity);
+            }
+        }
+    }
 }
 
 void ClockScenario::convertStrayDigitMaterialToWater(World& world, MaterialType digit_material)
@@ -1957,7 +2105,10 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     std::vector<WallSpec> walls;
     walls.reserve(2 * (width + height) + 20);
 
-    // No top border - allows sunlight to illuminate the world.
+    // Top border (wooden frame - blocks sunlight, emissive digits glow in darkness).
+    for (int16_t x = 0; x < width; ++x) {
+        walls.push_back({ x, 0, MaterialType::WOOD });
+    }
 
     // Bottom border (dirt floor).
     for (int16_t x = 0; x < width; ++x) {

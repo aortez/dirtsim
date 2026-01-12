@@ -144,6 +144,11 @@ struct DuckEventState {
     double door_open_timer = 0.0;
     double door_close_timer = 0.0;
     double obstacle_spawn_timer = 0.0;
+
+    // Indices into World's point light vector for door indicator lights.
+    // SIZE_MAX means no light assigned yet.
+    size_t entrance_light_idx = SIZE_MAX;
+    size_t exit_light_idx = SIZE_MAX;
 };
 
 using EventState = std::variant<

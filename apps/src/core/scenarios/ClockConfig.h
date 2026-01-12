@@ -44,7 +44,7 @@ inline const char* getDisplayName(ClockFont font)
 }
 
 struct Clock {
-    using serialize = zpp::bits::members<19>;
+    using serialize = zpp::bits::members<20>;
 
     double horizontalScale = 1.1;
     double verticalScale = 2.0;
@@ -65,6 +65,7 @@ struct Clock {
     bool meltdownEnabled = false;
     bool rainEnabled = false;
     MaterialType digitMaterial = MaterialType::METAL; // Render color for clock digits.
+    uint8_t digitEmissiveness = 10;                   // Digit glow intensity (0-20).
 };
 
 } // namespace DirtSim::Config

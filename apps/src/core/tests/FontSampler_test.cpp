@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <lvgl.h>
+#include <map>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -325,6 +326,196 @@ TEST_F(FontSamplerTest, DISABLED_PrintTrimmedPatternForVisualization)
             spdlog::info("  {}", line);
         }
         spdlog::info("");
+    }
+}
+
+// Debug helper to check raw RGB values from NotoColorEmoji.
+TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_RawRgb)
+{
+    // Load NotoColorEmoji font via FreeType.
+    FontSampler sampler("fonts/NotoColorEmoji.ttf", 109, 120, 120, 0.3f);
+
+    // Test both: plain digit "0" vs duck emoji.
+    spdlog::info("=== Testing plain digit '0' ===");
+    auto grid0 = sampler.sampleUtf8CharacterRgbGrid("0");
+    std::map<uint32_t, int> colors0;
+    for (int y = 0; y < grid0.height; ++y) {
+        for (int x = 0; x < grid0.width; ++x) {
+            const auto& px = grid0.at(x, y);
+            uint32_t key = (px.r << 24) | (px.g << 16) | (px.b << 8) | px.a;
+            colors0[key]++;
+        }
+    }
+    spdlog::info("Digit '0': {} unique colors", colors0.size());
+
+    spdlog::info("=== Testing duck emoji ===");
+    auto grid = sampler.sampleUtf8CharacterRgbGrid("\xF0\x9F\xA6\x86"); // U+1F986 duck emoji
+
+    spdlog::info("Raw RGB for duck emoji ({}x{}):", grid.width, grid.height);
+
+    // Sample a few pixels to see what we're getting.
+    for (int y = 0; y < std::min(5, static_cast<int>(grid.height)); ++y) {
+        std::string line;
+        for (int x = 0; x < std::min(10, static_cast<int>(grid.width)); ++x) {
+            const auto& px = grid.at(x, y);
+            line += fmt::format("({:3},{:3},{:3},{:3}) ", px.r, px.g, px.b, px.a);
+        }
+        spdlog::info("  Row {}: {}", y, line);
+    }
+
+    // Count unique colors.
+    std::map<uint32_t, int> colorCounts;
+    for (int y = 0; y < grid.height; ++y) {
+        for (int x = 0; x < grid.width; ++x) {
+            const auto& px = grid.at(x, y);
+            uint32_t key = (px.r << 24) | (px.g << 16) | (px.b << 8) | px.a;
+            colorCounts[key]++;
+        }
+    }
+
+    spdlog::info("Unique colors: {}", colorCounts.size());
+    for (const auto& [color, count] : colorCounts) {
+        uint8_t r = (color >> 24) & 0xFF;
+        uint8_t g = (color >> 16) & 0xFF;
+        uint8_t b = (color >> 8) & 0xFF;
+        uint8_t a = color & 0xFF;
+        spdlog::info("  RGBA({:3},{:3},{:3},{:3}): {} pixels", r, g, b, a, count);
+    }
+}
+
+// Debug helper to test NotoColorEmoji material sampling.
+TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
+{
+    // Load NotoColorEmoji font via FreeType.
+    // NotoColorEmoji has fixed 109px bitmaps, so use a canvas large enough to fit.
+    FontSampler sampler("fonts/NotoColorEmoji.ttf", 109, 120, 120, 0.3f);
+
+    // Material abbreviations for visualization.
+    auto materialChar = [](MaterialType m) -> char {
+        switch (m) {
+            case MaterialType::AIR:
+                return ' ';
+            case MaterialType::DIRT:
+                return 'D';
+            case MaterialType::LEAF:
+                return 'L';
+            case MaterialType::METAL:
+                return 'M';
+            case MaterialType::ROOT:
+                return 'R';
+            case MaterialType::SAND:
+                return 'S';
+            case MaterialType::SEED:
+                return 'E';
+            case MaterialType::WALL:
+                return 'W';
+            case MaterialType::WATER:
+                return 'B'; // Blue.
+            case MaterialType::WOOD:
+                return 'O'; // Oak/brown.
+        }
+        return '?';
+    };
+
+    // Sample digits 0-9.
+    for (char c = '0'; c <= '9'; ++c) {
+        std::string utf8(1, c);
+        auto grid = sampler.sampleUtf8CharacterMaterialGrid(utf8);
+
+        // Count material distribution.
+        std::map<MaterialType, int> counts;
+        for (int y = 0; y < grid.height; ++y) {
+            for (int x = 0; x < grid.width; ++x) {
+                counts[grid.at(x, y)]++;
+            }
+        }
+
+        spdlog::info("Digit '{}' ({}x{}):", c, grid.width, grid.height);
+
+        // Print distribution.
+        for (const auto& [mat, count] : counts) {
+            if (mat != MaterialType::AIR && count > 0) {
+                spdlog::info("  {}: {} pixels", getMaterialName(mat), count);
+            }
+        }
+
+        // Print visual grid.
+        for (int y = 0; y < grid.height; ++y) {
+            std::string line;
+            for (int x = 0; x < grid.width; ++x) {
+                line += materialChar(grid.at(x, y));
+            }
+            spdlog::info("  |{}|", line);
+        }
+        spdlog::info("");
+    }
+}
+
+// Test downsampling from native 109px to smaller sizes.
+TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
+{
+    // Load NotoColorEmoji at native 109px size.
+    FontSampler sampler("fonts/NotoColorEmoji.ttf", 109, 120, 120, 0.3f);
+
+    // Sample duck emoji at full resolution.
+    auto fullGrid = sampler.sampleUtf8CharacterMaterialGrid("\xF0\x9F\xA6\x86", 0.5f);
+    spdlog::info("Full resolution: {}x{}", fullGrid.width, fullGrid.height);
+
+    // Downsample to various sizes.
+    std::vector<int> sizes = { 36, 24, 16, 12 };
+
+    auto materialChar = [](MaterialType m) -> char {
+        switch (m) {
+            case MaterialType::AIR:
+                return ' ';
+            case MaterialType::DIRT:
+                return 'D';
+            case MaterialType::LEAF:
+                return 'L';
+            case MaterialType::METAL:
+                return 'M';
+            case MaterialType::ROOT:
+                return 'R';
+            case MaterialType::SAND:
+                return 'S';
+            case MaterialType::SEED:
+                return 'E';
+            case MaterialType::WALL:
+                return 'W';
+            case MaterialType::WATER:
+                return 'B';
+            case MaterialType::WOOD:
+                return 'O';
+        }
+        return '?';
+    };
+
+    for (int size : sizes) {
+        auto small = FontSampler::downsample(fullGrid, size, size);
+        spdlog::info("\n=== Duck at {}x{} ===", size, size);
+
+        // Count materials.
+        std::map<MaterialType, int> counts;
+        for (int y = 0; y < small.height; ++y) {
+            for (int x = 0; x < small.width; ++x) {
+                counts[small.at(x, y)]++;
+            }
+        }
+
+        for (const auto& [mat, count] : counts) {
+            if (mat != MaterialType::AIR && count > 0) {
+                spdlog::info("  {}: {} pixels", static_cast<int>(mat), count);
+            }
+        }
+
+        // Print visual grid.
+        for (int y = 0; y < small.height; ++y) {
+            std::string line;
+            for (int x = 0; x < small.width; ++x) {
+                line += materialChar(small.at(x, y));
+            }
+            spdlog::info("  |{}|", line);
+        }
     }
 }
 

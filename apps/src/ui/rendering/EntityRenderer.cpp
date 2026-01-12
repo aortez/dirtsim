@@ -109,6 +109,13 @@ void renderEntities(
             float lightR, lightG, lightB;
             extractLightMultipliers(entity.light_color, lightR, lightG, lightB);
 
+            // Apply emission boost - duck glows warm yellow-orange based on sparkle intensity.
+            if (entity.emission > 0.0f) {
+                lightR = std::min(1.0f, lightR + entity.emission * 1.0f);
+                lightG = std::min(1.0f, lightG + entity.emission * 0.8f);
+                lightB = std::min(1.0f, lightB + entity.emission * 0.4f);
+            }
+
             for (int32_t dy = 0; dy < duckPixelHeight; dy++) {
                 // Source Y in original duck image.
                 int32_t srcY = static_cast<int32_t>(dy / scaleY);

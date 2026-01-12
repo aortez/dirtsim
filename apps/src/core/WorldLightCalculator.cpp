@@ -303,14 +303,32 @@ void WorldLightCalculator::applyDiffusion(
                 }
 
                 const size_t idx = static_cast<size_t>(y) * width + x;
+
+                // Cardinal neighbors (distance 1.0, weight 1.0).
                 const RgbF& up = light_buffer_[static_cast<size_t>(y - 1) * width + x];
                 const RgbF& down = light_buffer_[static_cast<size_t>(y + 1) * width + x];
                 const RgbF& left = light_buffer_[static_cast<size_t>(y) * width + (x - 1)];
                 const RgbF& right = light_buffer_[static_cast<size_t>(y) * width + (x + 1)];
 
-                const RgbF neighbor_avg{ (up.r + down.r + left.r + right.r) * 0.25f,
-                                         (up.g + down.g + left.g + right.g) * 0.25f,
-                                         (up.b + down.b + left.b + right.b) * 0.25f };
+                // Diagonal neighbors (distance sqrt(2), weight 1/sqrt(2) ≈ 0.707).
+                const RgbF& nw = light_buffer_[static_cast<size_t>(y - 1) * width + (x - 1)];
+                const RgbF& ne = light_buffer_[static_cast<size_t>(y - 1) * width + (x + 1)];
+                const RgbF& sw = light_buffer_[static_cast<size_t>(y + 1) * width + (x - 1)];
+                const RgbF& se = light_buffer_[static_cast<size_t>(y + 1) * width + (x + 1)];
+
+                // Weighted average: 4 cardinals × 1.0 + 4 diagonals × 0.707 ≈ 6.828.
+                constexpr float diag_weight = 0.7071067811865476f; // 1/sqrt(2)
+                constexpr float total_weight = 4.0f + 4.0f * diag_weight;
+                constexpr float inv_total = 1.0f / total_weight;
+
+                const RgbF neighbor_avg{
+                    (up.r + down.r + left.r + right.r + diag_weight * (nw.r + ne.r + sw.r + se.r))
+                        * inv_total,
+                    (up.g + down.g + left.g + right.g + diag_weight * (nw.g + ne.g + sw.g + se.g))
+                        * inv_total,
+                    (up.b + down.b + left.b + right.b + diag_weight * (nw.b + ne.b + sw.b + se.b))
+                        * inv_total
+                };
 
                 const float blend = scatter * rate;
                 data.colors.data[idx] = ColorNames::lerp(light_buffer_[idx], neighbor_avg, blend);
@@ -354,9 +372,12 @@ ColorNames::RgbF getMaterialBaseColor(MaterialType mat)
 
 void WorldLightCalculator::applyMaterialColors(World& world)
 {
+    using ColorNames::RgbF;
+
     auto& data = world.getData();
     const int width = data.width;
     const int height = data.height;
+    const RgbF white{ 1.0f, 1.0f, 1.0f };
 
 #ifdef _OPENMP
 #pragma omp parallel for collapse(2) \
@@ -365,7 +386,15 @@ void WorldLightCalculator::applyMaterialColors(World& world)
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-            data.colors.at(x, y) *= getMaterialBaseColor(cell.getRenderMaterial());
+            const MaterialType mat = cell.getRenderMaterial();
+            const float opacity = getMaterialProperties(mat).light.opacity;
+            const RgbF base_color = getMaterialBaseColor(mat);
+
+            // Blend toward base color based on opacity.
+            // Transparent materials (low opacity) stay closer to pure light color.
+            // Opaque materials get full material coloring.
+            const RgbF blended = ColorNames::lerp(white, base_color, opacity);
+            data.colors.at(x, y) *= blended;
         }
     }
 }
@@ -479,7 +508,7 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
             x += sx;
         }
         if (e2 < dx) {
-            err -= dx;
+            err += dx;
             y += sy;
         }
 

@@ -561,6 +561,73 @@ TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
     EXPECT_GT(two_lights, one_light) << "Two lights should be brighter than one";
 }
 
+TEST_F(WorldLightCalculatorTest, PointLightSpreadIsCircular)
+{
+    // Verify that light spreads equally in all directions, not biased toward cardinal axes.
+    // A + shaped light pattern indicates broken diagonal propagation.
+    World world(21, 21);
+    WorldData& data = world.getData();
+
+    // Fill with WATER so cells are visible.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+        }
+    }
+
+    // Wall at top blocks all sun.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
+    }
+
+    // Disable sun, ambient, and diffusion to isolate point light behavior.
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::black();
+    config.sky_access_enabled = false;
+    config.diffusion_iterations = 0;
+    config.diffusion_rate = 0.0f;
+
+    // Point light at center (10, 10).
+    PointLight light;
+    light.position = Vector2d{ 10.0, 10.0 };
+    light.color = ColorNames::white();
+    light.intensity = 1.0f;
+    light.radius = 10.0f;
+    light.attenuation = 0.1f;
+    world.addPointLight(light);
+
+    // Rebuild grid cache.
+    world.advanceTime(0.0001);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Measure brightness at equal distances from center in different directions.
+    // Distance 5: cardinal points.
+    float cardinal_right = ColorNames::brightness(data.colors.at(15, 10)); // (10+5, 10)
+    float cardinal_down = ColorNames::brightness(data.colors.at(10, 15));  // (10, 10+5)
+
+    // Distance ~5: diagonal points (3.54 * sqrt(2) ≈ 5).
+    // Using offset (4, 4) gives distance sqrt(32) ≈ 5.66, close enough.
+    // Using offset (3, 4) gives distance 5.0 exactly.
+    float diagonal_se = ColorNames::brightness(data.colors.at(13, 14)); // (10+3, 10+4), dist=5
+    float diagonal_sw = ColorNames::brightness(data.colors.at(7, 14));  // (10-3, 10+4), dist=5
+
+    // All points at same distance should have similar brightness.
+    // Allow 20% tolerance for discrete grid effects.
+    float avg_cardinal = (cardinal_right + cardinal_down) / 2.0f;
+    float avg_diagonal = (diagonal_se + diagonal_sw) / 2.0f;
+
+    // Diagonal should be at least 80% as bright as cardinal at same distance.
+    EXPECT_GT(avg_diagonal, avg_cardinal * 0.8f)
+        << "Diagonal cells should be nearly as bright as cardinal cells at same distance. "
+        << "Cardinal avg: " << avg_cardinal << ", Diagonal avg: " << avg_diagonal
+        << ". A large difference indicates + shaped (cardinal-biased) light spread.";
+
+    // Also verify both are reasonably lit (not zero).
+    EXPECT_GT(avg_cardinal, 0.05f) << "Cardinal cells should receive light";
+    EXPECT_GT(avg_diagonal, 0.05f) << "Diagonal cells should receive light";
+}
+
 // =============================================================================
 // Air Scattering Tests
 // =============================================================================

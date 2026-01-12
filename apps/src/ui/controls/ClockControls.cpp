@@ -103,6 +103,17 @@ void ClockControls::createMainView(lv_obj_t* view)
                                .callback(onDigitMaterialButtonClicked, this)
                                .buildOrLog();
 
+    // Digit emissiveness stepper.
+    emissivenessStepper_ = LVGLBuilder::actionStepper(view)
+                               .label("Glow")
+                               .range(0, 20)
+                               .step(1)
+                               .value(10)
+                               .valueFormat("%.0f")
+                               .width(LV_PCT(95))
+                               .callback(onEmissivenessChanged, this)
+                               .buildOrLog();
+
     // Row for Show Seconds and Melt buttons.
     lv_obj_t* secondsRow = lv_obj_create(view);
     lv_obj_set_size(secondsRow, LV_PCT(100), LV_SIZE_CONTENT);
@@ -484,6 +495,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
             getMaterialName(config.digitMaterial));
     }
 
+    // Update emissiveness stepper.
+    if (emissivenessStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(emissivenessStepper_, config.digitEmissiveness);
+        LOG_DEBUG(Controls, "ClockControls: Updated emissiveness to {}", config.digitEmissiveness);
+    }
+
     // Cache current config.
     currentConfig_ = config;
 
@@ -506,6 +523,12 @@ Config::Clock ClockControls::getCurrentConfig() const
 
     // Get digit material from current selection.
     config.digitMaterial = static_cast<MaterialType>(currentMaterialIndex_);
+
+    // Get emissiveness from stepper.
+    if (emissivenessStepper_) {
+        config.digitEmissiveness =
+            static_cast<uint8_t>(LVGLBuilder::ActionStepperBuilder::getValue(emissivenessStepper_));
+    }
 
     // Get showSeconds from button.
     if (secondsSwitch_) {
@@ -746,6 +769,28 @@ void ClockControls::onDigitMaterialBackClicked(lv_event_t* e)
 
     LOG_DEBUG(Controls, "ClockControls: Digit material back button clicked");
     self->viewController_->showView("main");
+}
+
+void ClockControls::onEmissivenessChanged(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onEmissivenessChanged called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug("ClockControls: Ignoring emissiveness change during initialization");
+        return;
+    }
+
+    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->emissivenessStepper_);
+    spdlog::info("ClockControls: Emissiveness changed to {}", value);
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
 }
 
 void ClockControls::onSecondsToggled(lv_event_t* e)
