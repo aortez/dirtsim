@@ -547,26 +547,27 @@ src/ui/state-machine/states/
 └── Training.h/cpp            # Training UI state
 ```
 
-### Phase 1: Core Data Types
+### Phase 1: Core Data Types ✅
 
 **Files:**
-- `EvolutionConfig.h`
-- `MutationConfig.h` (or in EvolutionConfig.h)
-- `FitnessResult.h`
-- `GenomeMetadata.h`
+- `EvolutionConfig.h` ✅
+- `MutationConfig.h` (in EvolutionConfig.h) ✅
+- `FitnessResult.h` ✅
+- `GenomeMetadata.h` ✅
 
 **Work:**
 - Define config structs with defaults from `genetic-evolution.md`.
 - Define metadata struct for genome tracking.
+- GenomeId strong type for type-safe genome identification.
 - Pure data, no logic.
 
 **Tests:** None needed (data-only structs).
 
-### Phase 2: GenomeRepository
+### Phase 2: GenomeRepository ✅
 
 **Files:**
-- `GenomeRepository.h/cpp`
-- `tests/GenomeRepository_test.cpp`
+- `GenomeRepository.h/cpp` ✅
+- `tests/GenomeRepository_test.cpp` ✅ (10 tests)
 
 **Work:**
 - In-memory storage (map of GenomeId → Genome + Metadata).
@@ -575,33 +576,34 @@ src/ui/state-machine/states/
 - Count/empty helpers.
 
 **Tests:**
-- Store and retrieve genome.
-- List returns all stored genomes.
-- Remove deletes genome.
-- Best tracking works correctly.
-- Clear removes all genomes.
+- Store and retrieve genome. ✅
+- List returns all stored genomes. ✅
+- Remove deletes genome. ✅
+- Best tracking works correctly. ✅
+- Clear removes all genomes. ✅
 
 **Persistence deferred to Phase 7.**
 
-### Phase 3: Evolution Algorithms
+### Phase 3: Evolution Algorithms ✅
 
 **Files:**
-- `Mutation.h/cpp`
-- `Selection.h/cpp`
-- `tests/Mutation_test.cpp`
-- `tests/Selection_test.cpp`
+- `Mutation.h/cpp` ✅
+- `Selection.h/cpp` ✅
+- `tests/Mutation_test.cpp` ✅ (4 tests)
+- `tests/Selection_test.cpp` ✅ (5 tests)
 
 **Work:**
-- `mutate(genome, config, rng)` — Gaussian perturbation + rare reset.
-- `tournamentSelect(population, fitness, k, rng)` — pick k, return best.
-- `computeFitness(result)` — multiplicative: lifespan × (1 + energy).
+- `mutate(genome, config, rng)` — Gaussian perturbation + rare reset. ✅
+- `tournamentSelect(population, fitness, k, rng)` — pick k, return best. ✅
+- `elitistReplace(parents, offspring, fitness, size)` — keep top N. ✅
+- `computeFitness(result)` — in FitnessResult (Phase 1). ✅
 
 **Tests:**
-- Mutation changes weights within expected distribution.
-- Mutation with rate=0 produces identical genome.
-- Tournament always returns element from population.
-- Tournament with k=population_size returns best.
-- Fitness computation matches expected formula.
+- Mutation changes weights within expected distribution. ✅
+- Mutation with rate=0 produces identical genome. ✅
+- Tournament always returns element from population. ✅
+- Tournament with k=population_size returns best. ✅
+- Elitist replace keeps top genomes sorted by fitness. ✅
 
 ### Phase 4: Server StateEvolution
 
