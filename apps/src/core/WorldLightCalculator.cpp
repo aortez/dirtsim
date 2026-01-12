@@ -10,15 +10,11 @@
 #include "Timers.h"
 #include "World.h"
 #include "WorldData.h"
+#include "core/LoggingChannels.h"
 
 #include <cmath>
 
 namespace DirtSim {
-
-// When enabled, AIR cells participate in light diffusion, allowing light to scatter
-// through the atmosphere. This softens shadows and makes outdoor scenes less cave-like.
-constexpr bool kEnableAirScattering = true;
-constexpr float kAirScatterRate = 0.15f;
 
 void WorldLightCalculator::calculate(
     World& world, const GridOfCells& grid, const LightConfig& config, Timers& timers)
@@ -73,7 +69,12 @@ void WorldLightCalculator::calculate(
 
     {
         ScopeTimer t(timers, "light_diffusion");
-        applyDiffusion(world, grid, config.diffusion_iterations, config.diffusion_rate);
+        applyDiffusion(
+            world,
+            grid,
+            config.diffusion_iterations,
+            config.diffusion_rate,
+            config.air_scatter_rate);
     }
 
     {
@@ -84,6 +85,44 @@ void WorldLightCalculator::calculate(
     {
         ScopeTimer t(timers, "light_material_colors");
         applyMaterialColors(world);
+    }
+
+    // Debug output every 100 frames.
+    static int frame_count = 0;
+    if (++frame_count % 100 == 0) {
+        const auto& empty = grid.emptyCells();
+        int air_count = 0;
+        int air_with_light = 0;
+        float max_air_brightness = 0.0f;
+        float total_air_brightness = 0.0f;
+
+        for (int y = 1; y < data.height - 1; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
+                if (empty.isSet(x, y)) {
+                    air_count++;
+                    float b = ColorNames::brightness(data.colors.at(x, y));
+                    total_air_brightness += b;
+                    if (b > 0.01f) {
+                        air_with_light++;
+                    }
+                    if (b > max_air_brightness) {
+                        max_air_brightness = b;
+                    }
+                }
+            }
+        }
+
+        float avg_air = air_count > 0 ? total_air_brightness / air_count : 0.0f;
+        SLOG_INFO(
+            "LightDebug: air_scatter={:.2f} diff_rate={:.2f} diff_iter={} | "
+            "air_cells={} with_light={} max_bright={:.3f} avg_bright={:.3f}",
+            config.air_scatter_rate,
+            config.diffusion_rate,
+            config.diffusion_iterations,
+            air_count,
+            air_with_light,
+            max_air_brightness,
+            avg_air);
     }
 }
 
@@ -254,7 +293,7 @@ void WorldLightCalculator::applyEmissiveCells(World& world)
 }
 
 void WorldLightCalculator::applyDiffusion(
-    World& world, const GridOfCells& grid, int iterations, float rate)
+    World& world, const GridOfCells& grid, int iterations, float rate, float air_scatter_rate)
 {
     using ColorNames::RgbF;
 
@@ -283,9 +322,9 @@ void WorldLightCalculator::applyDiffusion(
                 float scatter;
 
                 if (empty.isSet(x, y)) {
-                    // AIR cell - use air scattering if enabled.
-                    if constexpr (kEnableAirScattering) {
-                        scatter = kAirScatterRate;
+                    // AIR cell - use air scattering if enabled (rate > 0).
+                    if (air_scatter_rate > 0.0f) {
+                        scatter = air_scatter_rate;
                     }
                     else {
                         continue;
@@ -326,7 +365,7 @@ ColorNames::RgbF getMaterialBaseColor(MaterialType mat)
     using ColorNames::toRgbF;
     switch (mat) {
         case MaterialType::AIR:
-            return toRgbF(ColorNames::black());
+            return toRgbF(ColorNames::white());
         case MaterialType::DIRT:
             return toRgbF(ColorNames::dirt());
         case MaterialType::LEAF:

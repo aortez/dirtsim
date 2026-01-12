@@ -42,8 +42,10 @@ struct WorldData {
     // Entities (duck, butterfly, etc.) - sprite-based world overlays.
     std::vector<Entity> entities;
 
+    // Cell colors computed by light calculator (float RGB).
+    GridBuffer<ColorNames::RgbF> colors;
+
     // Organism debug info (optional - only populated for debugging stuck organisms).
-    // Aggregate struct - ReflectSerializer handles it automatically.
     struct OrganismDebugInfo {
         OrganismId id;
         std::string type; // "DUCK", "TREE", "GOOSE".
@@ -53,14 +55,9 @@ struct WorldData {
     };
     std::vector<OrganismDebugInfo> organism_debug;
 
-    // ===== Field 10+: NOT binary serialized (runtime/debug only) =====
+    // ===== NOT binary serialized (runtime/debug only) =====
     std::vector<CellDebug> debug_info; // Debug/viz info: debug_info[y * width + x]
-
-    // Bone connections for organism structural visualization.
-    std::vector<BoneData> bones;
-
-    // Cell colors computed by light calculator (float RGB for efficient computation).
-    GridBuffer<ColorNames::RgbF> colors;
+    std::vector<BoneData> bones;       // Bone connections for organism structural visualization.
 
     // Bounds checking.
     inline bool inBounds(int x, int y) const { return x >= 0 && y >= 0 && x < width && y < height; }
@@ -95,7 +92,8 @@ struct WorldData {
             self.fps_server,
             self.add_particles_enabled,
             self.tree_vision,
-            self.entities);
+            self.entities,
+            self.colors);
         // debug_info and bones intentionally excluded from binary serialization.
     }
 };

@@ -15,11 +15,16 @@ struct RgbF {
     RgbF() = default;
     RgbF(float r_, float g_, float b_) : r(r_), g(g_), b(b_) {}
 
+    // HDR accumulation: allow up to 2.0 for overbright light sources.
+    // Values above 1.0 enable deeper penetration and diffusion spreading.
+    // Final display clamps to 1.0 in toRgba().
+    static constexpr float kMaxHdr = 2.0f;
+
     RgbF& operator+=(const RgbF& other)
     {
-        r = std::min(1.0f, r + other.r);
-        g = std::min(1.0f, g + other.g);
-        b = std::min(1.0f, b + other.b);
+        r = std::min(kMaxHdr, r + other.r);
+        g = std::min(kMaxHdr, g + other.g);
+        b = std::min(kMaxHdr, b + other.b);
         return *this;
     }
 
@@ -37,6 +42,11 @@ struct RgbF {
         g *= other.g;
         b *= other.b;
         return *this;
+    }
+
+    constexpr static auto serialize(auto& archive, auto& self)
+    {
+        return archive(self.r, self.g, self.b);
     }
 };
 

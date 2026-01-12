@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <nlohmann/json.hpp>
 #include <vector>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 
@@ -16,6 +17,11 @@ struct GridBuffer {
     int16_t width = 0;
     int16_t height = 0;
     std::vector<T> data;
+
+    constexpr static auto serialize(auto& archive, auto& self)
+    {
+        return archive(self.width, self.height, self.data);
+    }
 
     void resize(int w, int h, T default_value = T{})
     {

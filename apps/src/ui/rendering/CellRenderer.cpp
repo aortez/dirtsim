@@ -483,6 +483,35 @@ void CellRenderer::renderWorldData(
         return;
     }
 
+    static int debug_frame = 0;
+    if (++debug_frame % 100 == 0) {
+        float max_b = 0;
+        float sample_r = 0, sample_g = 0, sample_b = 0;
+        int air_count = 0;
+        for (size_t i = 0; i < worldData.colors.size(); i++) {
+            if (worldData.cells[i].isEmpty()) {
+                air_count++;
+                auto& c = worldData.colors.data[i];
+                float b = 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
+                if (b > max_b) {
+                    max_b = b;
+                    sample_r = c.r;
+                    sample_g = c.g;
+                    sample_b = c.b;
+                }
+            }
+        }
+        uint32_t rgba = ColorNames::toRgba(ColorNames::RgbF{ sample_r, sample_g, sample_b });
+        spdlog::info(
+            "RenderDebug: air_count={} max_bright={:.3f} rgb=({:.2f},{:.2f},{:.2f}) rgba=0x{:08X}",
+            air_count,
+            max_b,
+            sample_r,
+            sample_g,
+            sample_b,
+            rgba);
+    }
+
     // Resolve adaptive mode to concrete mode based on cell size.
     RenderMode effectiveMode = mode;
     if (mode == RenderMode::ADAPTIVE) {
@@ -622,31 +651,30 @@ void CellRenderer::renderWorldData(
                     continue;
                 }
 
-                // Prepare border color and interior color.
-                uint32_t borderColor = 0xFF000000;   // ARGB black with full alpha.
-                uint32_t interiorColor = 0xFF000000; // ARGB black with full alpha.
+                // Get lit color for this cell.
+                uint32_t cellColor = (idx < worldData.colors.size())
+                    ? ColorNames::toRgba(worldData.colors.data[idx])
+                    : 0x000000FF;
+                lv_color_t matColor = getLitColor(cellColor);
+
+                // Default: use lit color for background (shows AIR lighting).
+                uint32_t borderColor =
+                    0xFF000000 | (matColor.red << 16) | (matColor.green << 8) | matColor.blue;
+                uint32_t interiorColor = borderColor;
 
                 // Only hide cells for sprite-based organisms (those with entities).
-                // Material-based organisms (trees) should show their cells.
                 OrganismId org_id = (idx < worldData.organism_ids.size())
                     ? worldData.organism_ids[idx]
                     : INVALID_ORGANISM_ID;
                 bool is_sprite_organism =
                     (org_id != INVALID_ORGANISM_ID) && (sprite_organism_ids.count(org_id) > 0);
 
-                if (!cell.isEmpty() && cell.material_type != MaterialType::AIR
-                    && !is_sprite_organism) {
-                    uint32_t cellColor = (idx < worldData.colors.size())
-                        ? ColorNames::toRgba(worldData.colors.data[idx])
-                        : 0x000000FF;
-                    lv_color_t matColor = getLitColor(cellColor);
-                    // Border opacity varies by debug mode.
-                    // Debug mode: full opacity (pronounced border).
-                    // Normal mode: 0.85 opacity (subtle/faint border).
+                bool is_material = !cell.isEmpty() && cell.material_type != MaterialType::AIR
+                    && !is_sprite_organism;
+                if (is_material) {
                     double borderOpacityFactor = debugDraw ? 1.0 : 0.85;
                     uint8_t borderAlpha =
                         static_cast<uint8_t>(cell.fill_ratio * 255.0 * borderOpacityFactor);
-                    // Interior always at 0.7 opacity (darker).
                     uint8_t interiorAlpha = static_cast<uint8_t>(cell.fill_ratio * 255.0 * 0.7);
 
                     borderColor = (borderAlpha << 24) | (matColor.red << 16) | (matColor.green << 8)
@@ -1026,21 +1054,20 @@ void CellRenderer::renderCellLVGL(
         return;
     }
 
-    // Black background for all cells
-    lv_draw_rect_dsc_t bg_rect_dsc;
-    lv_draw_rect_dsc_init(&bg_rect_dsc);
-    bg_rect_dsc.bg_color = lv_color_hex(0x000000);
-    bg_rect_dsc.bg_opa = LV_OPA_COVER;
-    bg_rect_dsc.border_width = 0;
+    lv_area_t coords = { cellX,
+                         cellY,
+                         static_cast<int32_t>(cellX + scaledCellWidth_ - 1),
+                         static_cast<int32_t>(cellY + scaledCellHeight_ - 1) };
 
-    lv_area_t bg_coords = { cellX,
-                            cellY,
-                            static_cast<int32_t>(cellX + scaledCellWidth_ - 1),
-                            static_cast<int32_t>(cellY + scaledCellHeight_ - 1) };
-    lv_draw_rect(&layer, &bg_rect_dsc, &bg_coords);
+    lv_draw_rect_dsc_t bg_dsc;
+    lv_draw_rect_dsc_init(&bg_dsc);
+    bg_dsc.bg_color = getLitColor(color);
+    bg_dsc.bg_opa = LV_OPA_COVER;
+    bg_dsc.border_width = 0;
+    lv_draw_rect(&layer, &bg_dsc, &coords);
 
-    // Render material if not empty.
-    if (!cell.isEmpty() && cell.material_type != MaterialType::AIR) {
+    bool is_material = !cell.isEmpty() && cell.material_type != MaterialType::AIR;
+    if (is_material) {
         lv_color_t material_color = getLitColor(color);
         lv_opa_t opacity =
             static_cast<lv_opa_t>(cell.fill_ratio * static_cast<double>(LV_OPA_COVER));
@@ -1054,7 +1081,7 @@ void CellRenderer::renderCellLVGL(
         rect_dsc.border_width = std::max(1, static_cast<int>(2 * scaleX_));
         rect_dsc.radius = scaledCellWidth_ > 5 ? std::max(1, static_cast<int>(2 * scaleX_)) : 0;
 
-        lv_draw_rect(&layer, &rect_dsc, &bg_coords);
+        lv_draw_rect(&layer, &rect_dsc, &coords);
 
         // Debug features only if enabled and cells are large enough
         if (debugDraw && scaledCellWidth_ >= 8) {
