@@ -7,6 +7,7 @@
 #include "ui/RemoteInputDevice.h"
 #include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
+#include "ui/controls/IconRail.h"
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/rendering/JuliaFractal.h"
 #include "ui/state-machine/StateMachine.h"
@@ -55,11 +56,19 @@ void StartMenu::onEnter(StateMachine& sm)
         return;
     }
 
-    // Get main menu container (switches to menu screen).
+    // Get main menu container (switches to menu screen with IconRail).
     auto* uiManager = sm.getUiComponentManager();
     if (!uiManager) return;
 
-    lv_obj_t* container = uiManager->getMainMenuContainer();
+    // Trigger layout creation and get content area (to the right of IconRail).
+    uiManager->getMainMenuContainer();
+    lv_obj_t* container = uiManager->getMenuContentArea();
+
+    // Configure IconRail to show only PLAY and EVOLUTION icons.
+    if (IconRail* iconRail = uiManager->getMenuIconRail()) {
+        iconRail->setVisibleIcons({ IconId::PLAY, IconId::EVOLUTION });
+        LOG_INFO(State, "Configured IconRail with PLAY and EVOLUTION icons");
+    }
 
     // Get display dimensions for full-screen fractal.
     lv_disp_t* disp = lv_disp_get_default();
@@ -132,19 +141,6 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_center(quitLabel);
 
     LOG_INFO(State, "Created Quit button");
-
-    // Create Train button on center-right (for evolution training).
-    trainButton_ = LVGLBuilder::actionButton(container)
-                       .text("Train")
-                       .icon(LV_SYMBOL_LOOP)
-                       .mode(LVGLBuilder::ActionMode::Push)
-                       .size(100)
-                       .backgroundColor(0x2288FF)
-                       .callback(onTrainButtonClicked, this)
-                       .buildOrLog();
-    lv_obj_align(trainButton_, LV_ALIGN_RIGHT_MID, -30, 0);
-
-    LOG_INFO(State, "Created Train button");
 
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
@@ -264,17 +260,6 @@ void StartMenu::onQuitButtonClicked(lv_event_t* e)
     sm->queueEvent(cwc);
 }
 
-void StartMenu::onTrainButtonClicked(lv_event_t* e)
-{
-    auto* startMenu = static_cast<StartMenu*>(lv_event_get_user_data(e));
-    if (!startMenu || !startMenu->sm_) return;
-
-    LOG_INFO(State, "Train button clicked");
-
-    // Queue train event for state machine to process.
-    startMenu->sm_->queueEvent(TrainButtonClickedEvent{});
-}
-
 void StartMenu::onTouchEvent(lv_event_t* e)
 {
     auto* label = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
@@ -309,6 +294,46 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
     // Resize the fractal to match.
     fractal->resize(newWidth, newHeight);
+}
+
+State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(
+        State,
+        "Icon selection changed: {} -> {}",
+        static_cast<int>(evt.previousId),
+        static_cast<int>(evt.selectedId));
+
+    // Icon clicks trigger state transitions.
+    if (evt.selectedId == IconId::PLAY) {
+        LOG_INFO(State, "Play icon clicked, starting simulation");
+        sm.queueEvent(StartButtonClickedEvent{});
+    }
+    else if (evt.selectedId == IconId::EVOLUTION) {
+        LOG_INFO(State, "Evolution icon clicked, starting training");
+        sm.queueEvent(TrainButtonClickedEvent{});
+    }
+
+    // StartMenu icons are action triggers, not panel toggles - deselect after firing.
+    if (evt.selectedId != IconId::COUNT) {
+        if (auto* iconRail = sm.getUiComponentManager()->getMenuIconRail()) {
+            iconRail->deselectAll();
+        }
+    }
+
+    return std::move(*this);
+}
+
+State::Any StartMenu::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "Auto-shrink requested, minimizing menu IconRail");
+
+    // Process auto-shrink in main thread (safe to modify LVGL objects).
+    if (auto* iconRail = sm.getUiComponentManager()->getMenuIconRail()) {
+        iconRail->setMode(RailMode::Minimized);
+    }
+
+    return std::move(*this);
 }
 
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)

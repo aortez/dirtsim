@@ -29,7 +29,8 @@ void SimRunning::onEnter(StateMachine& sm)
     if (wsService.isConnected()) {
         static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
-        cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
+        cmd.format =
+            debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
@@ -51,12 +52,12 @@ void SimRunning::onEnter(StateMachine& sm)
         uiManager->getSimulationContainer();
 
         playground_ = std::make_unique<SimPlayground>(uiManager, &sm.getWebSocketService(), sm);
-        playground_->connectToIconRail();
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
         iconRail->setVisibleIcons(
             { IconId::CORE, IconId::PHYSICS, IconId::SCENARIO, IconId::TREE });
+        iconRail->deselectAll(); // Start fresh, no panel open.
 
         LOG_INFO(State, "Created simulation playground");
     }
@@ -75,6 +76,74 @@ void SimRunning::onExit(StateMachine& sm)
     }
 
     playground_.reset();
+}
+
+State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(
+        State,
+        "Icon selection changed: {} -> {}",
+        static_cast<int>(evt.previousId),
+        static_cast<int>(evt.selectedId));
+
+    auto* uiManager = sm.getUiComponentManager();
+
+    // Tree icon has special behavior - toggles neural grid.
+    if (evt.selectedId == IconId::TREE) {
+        uiManager->setNeuralGridVisible(true);
+        // Don't show expandable panel for tree.
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->hide();
+        }
+    }
+    else if (evt.previousId == IconId::TREE && evt.selectedId != IconId::TREE) {
+        // Switched away from tree - hide neural grid.
+        uiManager->setNeuralGridVisible(false);
+    }
+
+    // Show/hide expandable panel based on selection.
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        if (evt.selectedId != IconId::COUNT && evt.selectedId != IconId::TREE) {
+            panel->show();
+        }
+        else if (evt.selectedId == IconId::COUNT) {
+            panel->hide();
+        }
+    }
+
+    // Notify playground about the selection change for panel content updates.
+    if (playground_) {
+        playground_->onIconSelected(evt.selectedId, evt.previousId);
+    }
+
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
+
+    // Process auto-shrink in main thread (safe to modify LVGL objects).
+    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
+        iconRail->setMode(RailMode::Minimized);
+    }
+
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const RailModeChangedEvent& evt, StateMachine& /*sm*/)
+{
+    LOG_INFO(
+        State,
+        "IconRail mode changed to: {}",
+        evt.newMode == RailMode::Minimized ? "Minimized" : "Normal");
+
+    // Trigger display resize for auto-scaling scenarios.
+    if (playground_) {
+        playground_->sendDisplayResizeUpdate();
+    }
+
+    return std::move(*this);
 }
 
 State::Any SimRunning::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
@@ -104,7 +173,8 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
     if (wsServiceRef.isConnected()) {
         static std::atomic<uint64_t> nextId{ 1 };
         Api::RenderFormatSet::Command cmd;
-        cmd.format = debugDrawEnabled ? RenderFormat::DEBUG : RenderFormat::BASIC;
+        cmd.format =
+            debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
         auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);

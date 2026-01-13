@@ -169,21 +169,6 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
-void TrainingView::connectToIconRail()
-{
-    IconRail* iconRail = uiManager_->getIconRail();
-    if (iconRail) {
-        iconRail->setSecondaryCallback([this](IconId selectedId, IconId previousId) {
-            onIconSelected(selectedId, previousId);
-        });
-
-        LOG_INFO(Controls, "TrainingView: Connected to IconRail selection callback");
-    }
-    else {
-        LOG_ERROR(Controls, "TrainingView: No IconRail available to connect to");
-    }
-}
-
 void TrainingView::onIconSelected(IconId selectedId, IconId previousId)
 {
     LOG_INFO(
@@ -224,12 +209,14 @@ void TrainingView::showPanelContent(IconId panelId)
 
     // Create content for the selected panel.
     switch (panelId) {
+        case IconId::CORE:
         case IconId::EVOLUTION:
+            // Both CORE (home icon) and EVOLUTION open the same controls panel.
             createEvolutionPanel(container);
             break;
 
-        case IconId::CORE:
         case IconId::PHYSICS:
+        case IconId::PLAY:
         case IconId::SCENARIO:
         case IconId::TREE:
         case IconId::COUNT:

@@ -49,11 +49,11 @@ void Training::onEnter(StateMachine& sm)
     }
 
     view_ = std::make_unique<TrainingView>(uiManager, sm);
-    view_->connectToIconRail();
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    iconRail->setVisibleIcons({ IconId::EVOLUTION });
+    iconRail->setVisibleIcons({ IconId::CORE });
+    iconRail->deselectAll(); // Start fresh, no panel open.
 }
 
 void Training::onExit(StateMachine& sm)
@@ -72,15 +72,55 @@ void Training::onExit(StateMachine& sm)
     sm_ = nullptr;
 }
 
-State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
 {
-    LOG_INFO(State, "Exit command received, shutting down");
+    // Update progress from server broadcast.
+    progress = evt.progress;
 
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
+    LOG_DEBUG(
+        State,
+        "Evolution progress: gen {}/{}, eval {}/{}, best fitness {:.2f}",
+        progress.generation,
+        progress.maxGenerations,
+        progress.currentEval,
+        progress.populationSize,
+        progress.bestFitnessAllTime);
 
-    // Transition to Shutdown state.
-    return Shutdown{};
+    // Update UI progress bars and labels.
+    if (view_) {
+        view_->updateProgress(progress);
+    }
+
+    // Stay in Training state.
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
+{
+    LOG_INFO(
+        State,
+        "Icon selection changed: {} -> {}",
+        static_cast<int>(evt.previousId),
+        static_cast<int>(evt.selectedId));
+
+    // Forward to TrainingView to handle panel content.
+    if (view_) {
+        view_->onIconSelected(evt.selectedId, evt.previousId);
+    }
+
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
+
+    // Process auto-shrink in main thread (safe to modify LVGL objects).
+    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
+        iconRail->setMode(RailMode::Minimized);
+    }
+
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
@@ -115,27 +155,15 @@ State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine
     return StartMenu{};
 }
 
-State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
+State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 {
-    // Update progress from server broadcast.
-    progress = evt.progress;
+    LOG_INFO(State, "Exit command received, shutting down");
 
-    LOG_DEBUG(
-        State,
-        "Evolution progress: gen {}/{}, eval {}/{}, best fitness {:.2f}",
-        progress.generation,
-        progress.maxGenerations,
-        progress.currentEval,
-        progress.populationSize,
-        progress.bestFitnessAllTime);
+    // Send success response.
+    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
 
-    // Update UI progress bars and labels.
-    if (view_) {
-        view_->updateProgress(progress);
-    }
-
-    // Stay in Training state.
-    return std::move(*this);
+    // Transition to Shutdown state.
+    return Shutdown{};
 }
 
 } // namespace State
