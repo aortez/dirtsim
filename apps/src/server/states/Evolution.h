@@ -2,14 +2,20 @@
 
 #include "StateForward.h"
 #include "core/ScenarioId.h"
+#include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/Event.h"
 
+#include <memory>
 #include <optional>
 #include <random>
 #include <vector>
+
+namespace DirtSim {
+class World;
+}
 
 namespace DirtSim {
 namespace Server {
@@ -18,9 +24,9 @@ namespace State {
 /**
  * Evolution state — runs genetic algorithm to evolve tree neural network brains.
  *
- * Each tick() evaluates one organism to completion (blocking), then advances
- * to the next individual or next generation. Stores best genomes in the
- * repository and broadcasts progress.
+ * Each tick() advances one physics step of the current evaluation, allowing
+ * the event loop to process commands between steps. This ensures responsive
+ * handling of EvolutionStop and other commands during long evaluations.
  */
 struct Evolution {
     // Config.
@@ -43,6 +49,12 @@ struct Evolution {
     // RNG.
     std::mt19937 rng;
 
+    // Current evaluation state (for non-blocking tick).
+    std::unique_ptr<World> evalWorld_;
+    OrganismId evalTreeId_{};
+    double evalSimTime_ = 0.0;
+    double evalMaxEnergy_ = 0.0;
+
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
 
@@ -57,7 +69,8 @@ struct Evolution {
 
 private:
     void initializePopulation();
-    double evaluateGenome(const Genome& genome, StateMachine& dsm);
+    void startEvaluation();
+    void finishEvaluation(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
     void storeBestGenome(StateMachine& dsm);

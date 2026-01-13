@@ -23,6 +23,10 @@ namespace DirtSim {
 namespace Server {
 namespace State {
 
+namespace {
+constexpr double TIMESTEP = 0.016; // 60 FPS physics.
+} // namespace
+
 void Evolution::onEnter(StateMachine& /*dsm*/)
 {
     LOG_INFO(
@@ -42,6 +46,9 @@ void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
 
+    // Clean up any in-progress evaluation.
+    evalWorld_.reset();
+
     // Store final best genome.
     storeBestGenome(dsm);
 }
@@ -60,8 +67,119 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         currentEval < static_cast<int>(population.size()),
         "currentEval must be within population bounds");
 
-    // Evaluate current organism to completion.
-    const double fitness = evaluateGenome(population[currentEval], dsm);
+    // Start a new evaluation if needed.
+    if (!evalWorld_) {
+        startEvaluation();
+    }
+
+    // Advance one physics step.
+    evalWorld_->advanceTime(TIMESTEP);
+    evalSimTime_ += TIMESTEP;
+
+    // Track max energy.
+    Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);
+    if (tree) {
+        evalMaxEnergy_ = std::max(evalMaxEnergy_, tree->getEnergy());
+    }
+
+    // Check if evaluation complete (tree died or max time reached).
+    const bool treeDied = (tree == nullptr);
+    const bool timeUp = (evalSimTime_ >= evolutionConfig.maxSimulationTime);
+
+    if (treeDied || timeUp) {
+        finishEvaluation(dsm);
+    }
+
+    return std::nullopt;
+}
+
+Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
+{
+    LOG_INFO(State, "Evolution: Stopping at generation {}, eval {}", generation, currentEval);
+    storeBestGenome(dsm);
+    cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
+    return Idle{};
+}
+
+Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    LOG_INFO(State, "Evolution: Exit received, shutting down");
+    cwc.sendResponse(Api::Exit::Response::okay(std::monostate{}));
+    return Shutdown{};
+}
+
+void Evolution::initializePopulation()
+{
+    population.clear();
+    fitnessScores.clear();
+
+    population.reserve(evolutionConfig.populationSize);
+    fitnessScores.resize(evolutionConfig.populationSize, 0.0);
+
+    for (int i = 0; i < evolutionConfig.populationSize; ++i) {
+        population.push_back(Genome::random(rng));
+    }
+
+    generation = 0;
+    currentEval = 0;
+    bestFitnessThisGen = 0.0;
+
+    // Clear evaluation state.
+    evalWorld_.reset();
+    evalSimTime_ = 0.0;
+    evalMaxEnergy_ = 0.0;
+}
+
+void Evolution::startEvaluation()
+{
+    DIRTSIM_ASSERT(
+        currentEval < static_cast<int>(population.size()),
+        "currentEval must be within population bounds");
+
+    // Create fresh 9x9 world for evaluation.
+    evalWorld_ = std::make_unique<World>(9, 9);
+    DIRTSIM_ASSERT(evalWorld_ != nullptr, "World creation must succeed");
+
+    // Clear to air.
+    for (int y = 0; y < evalWorld_->getData().height; ++y) {
+        for (int x = 0; x < evalWorld_->getData().width; ++x) {
+            evalWorld_->getData().at(x, y) = Cell();
+        }
+    }
+
+    // Add dirt at bottom 3 rows.
+    for (int y = 6; y < evalWorld_->getData().height; ++y) {
+        for (int x = 0; x < evalWorld_->getData().width; ++x) {
+            evalWorld_->addMaterialAtCell(
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::Dirt,
+                1.0);
+        }
+    }
+
+    // Create brain from genome and plant tree.
+    auto brain = std::make_unique<NeuralNetBrain>(population[currentEval]);
+    evalTreeId_ = evalWorld_->getOrganismManager().createTree(*evalWorld_, 4, 4, std::move(brain));
+
+    // Reset evaluation tracking.
+    evalSimTime_ = 0.0;
+    evalMaxEnergy_ = 0.0;
+}
+
+void Evolution::finishEvaluation(StateMachine& dsm)
+{
+    // Get final lifespan.
+    double lifespan = evalSimTime_;
+    Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);
+    if (tree) {
+        lifespan = tree->getAge();
+    }
+
+    // Compute fitness.
+    const FitnessResult result{ .lifespan = lifespan, .maxEnergy = evalMaxEnergy_ };
+    const double fitness =
+        result.computeFitness(evolutionConfig.maxSimulationTime, evolutionConfig.energyReference);
+
     fitnessScores[currentEval] = fitness;
 
     // Update tracking.
@@ -100,6 +218,9 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         evolutionConfig.populationSize,
         fitness);
 
+    // Clean up world.
+    evalWorld_.reset();
+
     // Advance to next individual.
     currentEval++;
 
@@ -109,99 +230,6 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 
     // Broadcast progress.
     broadcastProgress(dsm);
-
-    return std::nullopt;
-}
-
-Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
-{
-    LOG_INFO(State, "Evolution: Stopping at generation {}, eval {}", generation, currentEval);
-    storeBestGenome(dsm);
-    cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
-    return Idle{};
-}
-
-Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
-{
-    LOG_INFO(State, "Evolution: Exit received, shutting down");
-    cwc.sendResponse(Api::Exit::Response::okay(std::monostate{}));
-    return Shutdown{};
-}
-
-void Evolution::initializePopulation()
-{
-    population.clear();
-    fitnessScores.clear();
-
-    population.reserve(evolutionConfig.populationSize);
-    fitnessScores.resize(evolutionConfig.populationSize, 0.0);
-
-    for (int i = 0; i < evolutionConfig.populationSize; ++i) {
-        population.push_back(Genome::random(rng));
-    }
-
-    generation = 0;
-    currentEval = 0;
-    bestFitnessThisGen = 0.0;
-}
-
-double Evolution::evaluateGenome(const Genome& genome, StateMachine& /*dsm*/)
-{
-    // Create fresh 9x9 world for evaluation.
-    auto world = std::make_unique<World>(9, 9);
-    DIRTSIM_ASSERT(world != nullptr, "World creation must succeed");
-
-    // Clear to air.
-    for (int y = 0; y < world->getData().height; ++y) {
-        for (int x = 0; x < world->getData().width; ++x) {
-            world->getData().at(x, y) = Cell();
-        }
-    }
-
-    // Add dirt at bottom 3 rows.
-    for (int y = 6; y < world->getData().height; ++y) {
-        for (int x = 0; x < world->getData().width; ++x) {
-            world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                Material::EnumType::Dirt,
-                1.0);
-        }
-    }
-
-    // Create brain from genome and plant tree.
-    auto brain = std::make_unique<NeuralNetBrain>(genome);
-    const OrganismId treeId =
-        world->getOrganismManager().createTree(*world, 4, 4, std::move(brain));
-
-    // Run simulation until tree dies or max time reached.
-    constexpr double TIMESTEP = 0.016; // 60 FPS physics.
-    const double maxTime = evolutionConfig.maxSimulationTime;
-
-    double simTime = 0.0;
-    double maxEnergy = 0.0;
-
-    while (simTime < maxTime) {
-        world->advanceTime(TIMESTEP);
-        simTime += TIMESTEP;
-
-        // Track max energy.
-        Tree* tree = world->getOrganismManager().getTree(treeId);
-        if (!tree) {
-            break; // Tree died.
-        }
-        maxEnergy = std::max(maxEnergy, tree->getEnergy());
-    }
-
-    // Get final lifespan.
-    double lifespan = simTime;
-    Tree* tree = world->getOrganismManager().getTree(treeId);
-    if (tree) {
-        lifespan = tree->getAge();
-    }
-
-    // Compute fitness.
-    const FitnessResult result{ .lifespan = lifespan, .maxEnergy = maxEnergy };
-    return result.computeFitness(maxTime, evolutionConfig.energyReference);
 }
 
 void Evolution::advanceGeneration(StateMachine& dsm)

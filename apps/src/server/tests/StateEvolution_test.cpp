@@ -214,6 +214,167 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
 }
 
 /**
+ * @brief Test that tick() advances evaluation incrementally (non-blocking).
+ *
+ * With a longer simulation time, multiple ticks are needed per evaluation.
+ * This verifies the non-blocking architecture where each tick does one physics step.
+ */
+TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
+{
+    // Setup: Create Evolution state with longer simulation time.
+    // Use population=2 and maxGenerations=2 so we can observe currentEval advancing.
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.1; // ~6 physics steps at 0.016s each.
+
+    // Initialize the state.
+    evolutionState.onEnter(*stateMachine);
+
+    // Verify: No world exists yet.
+    EXPECT_EQ(evolutionState.evalWorld_, nullptr);
+
+    // Execute: First tick should create world and advance one step.
+    auto result1 = evolutionState.tick(*stateMachine);
+    EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
+    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should exist mid-evaluation";
+    EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
+    EXPECT_GT(evolutionState.evalSimTime_, 0.0) << "Sim time should have advanced";
+    EXPECT_LT(evolutionState.evalSimTime_, 0.1) << "Sim time should not be complete";
+
+    // Execute: Second tick should advance further but not complete.
+    auto result2 = evolutionState.tick(*stateMachine);
+    EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
+    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should still exist";
+    EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
+
+    // Execute: Tick until first evaluation completes.
+    int tickCount = 2;
+    while (evolutionState.currentEval == 0 && tickCount < 20) {
+        evolutionState.tick(*stateMachine);
+        tickCount++;
+    }
+
+    // Verify: First evaluation completed after multiple ticks.
+    EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
+    EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
+    EXPECT_EQ(evolutionState.evalWorld_, nullptr) << "World should be cleaned up between evals";
+}
+
+/**
+ * @brief Test that EvolutionStop can be processed mid-evaluation.
+ *
+ * This is the key test for responsive event handling - verifies that stop
+ * events don't have to wait for a full evaluation to complete.
+ */
+TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
+{
+    // Setup: Create Evolution state with long simulation time.
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 10;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0; // Very long - would be ~62 ticks.
+
+    // Initialize and tick once to start evaluation.
+    evolutionState.onEnter(*stateMachine);
+    evolutionState.tick(*stateMachine);
+
+    // Verify: Evaluation is in progress.
+    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should exist mid-evaluation";
+    EXPECT_LT(evolutionState.evalSimTime_, 0.5) << "Should be early in evaluation";
+
+    // Setup: Create EvolutionStop command.
+    bool callbackInvoked = false;
+    Api::EvolutionStop::Command cmd;
+    Api::EvolutionStop::Cwc cwc(cmd, [&](Api::EvolutionStop::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+    });
+
+    // Execute: Send stop command mid-evaluation.
+    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+
+    // Verify: Stop was processed immediately (non-blocking).
+    ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()))
+        << "Should transition to Idle immediately";
+    EXPECT_TRUE(callbackInvoked) << "Response callback should be invoked";
+}
+
+/**
+ * @brief Integration test: run a full training cycle and verify outputs.
+ *
+ * Runs 3 generations with population of 3, verifying:
+ * - All generations complete
+ * - Fitness scores are tracked
+ * - Best genome is stored in repository
+ * - Repository contains expected data
+ */
+TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
+{
+    // Setup: Clear repository for clean test.
+    auto& repo = stateMachine->getGenomeRepository();
+    repo.clear();
+
+    // Setup: Create Evolution state with small but complete config.
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 3;
+    evolutionState.evolutionConfig.maxGenerations = 3;
+    evolutionState.evolutionConfig.maxSimulationTime = 1.0; // 1 second per organism.
+    evolutionState.scenarioId = Scenario::EnumType::TreeGermination;
+
+    // Initialize.
+    evolutionState.onEnter(*stateMachine);
+    EXPECT_EQ(evolutionState.population.size(), 3u);
+    EXPECT_EQ(evolutionState.generation, 0);
+
+    // Run until evolution completes.
+    std::optional<Any> result;
+    int tickCount = 0;
+    constexpr int MAX_TICKS = 10000; // Safety limit.
+
+    while (tickCount < MAX_TICKS) {
+        result = evolutionState.tick(*stateMachine);
+        tickCount++;
+
+        if (result.has_value()) {
+            break; // Evolution complete.
+        }
+    }
+
+    // Verify: Evolution completed (transitioned to Idle).
+    ASSERT_TRUE(result.has_value()) << "Evolution should complete within tick limit";
+    ASSERT_TRUE(std::holds_alternative<Idle>(result->getVariant()))
+        << "Should transition to Idle on completion";
+
+    // Verify: Ran through all generations.
+    EXPECT_EQ(evolutionState.generation, 3) << "Should have completed 3 generations";
+
+    // Verify: Best fitness was tracked.
+    EXPECT_GT(evolutionState.bestFitnessAllTime, 0.0)
+        << "Best fitness should be positive (tree survives some time)";
+
+    // Verify: Repository has stored genomes.
+    EXPECT_FALSE(repo.empty()) << "Repository should have stored genomes";
+
+    // Verify: Best genome is marked.
+    auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value()) << "Best genome should be marked";
+
+    // Verify: Can retrieve best genome with valid data.
+    auto bestGenome = repo.getBest();
+    ASSERT_TRUE(bestGenome.has_value()) << "Should retrieve best genome";
+    EXPECT_FALSE(bestGenome->weights.empty()) << "Genome should have weights";
+
+    // Verify: Metadata is correct.
+    auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->scenarioId, Scenario::EnumType::TreeGermination);
+    EXPECT_GT(metadata->fitness, 0.0) << "Best fitness should be positive";
+    EXPECT_EQ(metadata->fitness, evolutionState.bestFitnessAllTime)
+        << "Stored fitness should match tracked best";
+}
+
+/**
  * @brief Test that Exit command from Evolution transitions to Shutdown.
  */
 TEST_F(StateEvolutionTest, ExitCommandTransitionsToShutdown)
