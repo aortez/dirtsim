@@ -561,6 +561,7 @@ add_executable(dirtsim-tests
     src/core/bitmaps/tests/Neighborhood3x3_test.cpp
 
     # World light and resize tests.
+    src/core/tests/ColorTuning_test.cpp
     src/core/tests/LightManager_test.cpp
     src/core/tests/WorldLightCalculator_test.cpp
     src/core/tests/WorldResize_test.cpp
