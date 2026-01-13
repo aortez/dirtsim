@@ -251,7 +251,7 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
             facing_.x = (move_x > 0) ? 1.0f : -1.0f;
             facing_.y = 0.0f;
         }
-        else if (std::abs(cell.velocity.x) > 0.1) {
+        else if (std::abs(cell.velocity.x) > 1.0) {
             facing_.x = (cell.velocity.x > 0) ? 1.0f : -1.0f;
             facing_.y = 0.0f;
         }
@@ -571,27 +571,13 @@ void Duck::updateHandheldLight(World& world, double deltaTime)
         return;
     }
 
-    const WorldData& data = world.getData();
-    if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+    if (!world.getData().inBounds(anchor_cell_.x, anchor_cell_.y)) {
         return;
     }
 
-    // Compute signed acceleration from velocity change.
-    const Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
-    const float dt = static_cast<float>(deltaTime);
-
-    Vector2d acceleration{ 0.0, 0.0 };
-    if (dt > 0.0f) {
-        acceleration.x = (cell.velocity.x - previous_velocity_.x) / dt;
-        acceleration.y = (cell.velocity.y - previous_velocity_.y) / dt;
-    }
-
-    handheld_light_->update(acceleration, deltaTime);
-
-    // Apply to the actual light in the world.
     Vector2d position{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
     const bool facing_right = facing_.x > 0.0f;
-    handheld_light_->applyToLight(world.getLightManager(), position, facing_right);
+    handheld_light_->update(world.getLightManager(), position, facing_right, deltaTime);
 }
 
 } // namespace DirtSim

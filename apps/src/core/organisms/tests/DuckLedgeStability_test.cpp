@@ -22,6 +22,7 @@
 #include <cmath>
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
+#include <sstream>
 #include <vector>
 
 using namespace DirtSim;
@@ -333,31 +334,50 @@ TEST_F(DuckLedgeStabilityTest, StandingOnLedgeWithLight)
  * This test runs long enough to find the natural equilibrium where
  * gravity torque balances the duck's corrective torque, then verifies
  * stability around that point.
+ *
+ * Layout: Duck stands on a cliff edge in the bottom-left, shining into open air.
+ * This allows us to measure where the beam actually points without wall absorption.
+ *
+ *     01234567890123456789
+ *  8: ....................
+ *  9: ....................
+ * 10: ....................
+ * 11: ......D.............  <- duck on cliff edge at (6, 11)
+ * 12: WWWWWWW.............  <- cliff from x=0 to x=6
+ * 13: WWWWWWW.............
+ * 14: WWWWWWWWWWWWWWWWWWWW  <- floor (world boundary)
  */
 TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
 {
-    // Same setup as above.
     constexpr int WIDTH = 20;
     constexpr int HEIGHT = 15;
-    constexpr int LEDGE_Y = 10;
+    constexpr int CLIFF_Y = 12;         // Top surface of cliff.
+    constexpr int CLIFF_START_X = 1;    // Left edge (inside wall border).
+    constexpr int CLIFF_END_X = 6;      // Right edge - duck stands here.
+    constexpr int CLIFF_HEIGHT = 2;     // 2 cells tall.
+    constexpr int DUCK_X = 6;           // On the cliff edge.
+    constexpr int DUCK_Y = CLIFF_Y - 1; // Standing on cliff (y=11).
 
-    auto world = createLedgeWorld(WIDTH, HEIGHT, LEDGE_Y, 5, 15, 3);
+    auto world = createLedgeWorld(WIDTH, HEIGHT, CLIFF_Y, CLIFF_START_X, CLIFF_END_X, CLIFF_HEIGHT);
+
+    // Print layout for debugging.
+    printWorld(*world, "Cliff-edge layout for flashlight test");
 
     OrganismManager& manager = world->getOrganismManager();
     auto test_brain = std::make_unique<TestDuckBrain>();
     test_brain->setAction(DuckAction::WAIT);
 
-    OrganismId duck_id = manager.createDuck(*world, 10, LEDGE_Y - 1, std::move(test_brain));
+    OrganismId duck_id = manager.createDuck(*world, DUCK_X, DUCK_Y, std::move(test_brain));
     Duck* duck = manager.getDuck(duck_id);
     ASSERT_NE(duck, nullptr);
 
     // Create and attach handheld light.
     LightManager& lights = world->getLightManager();
     SpotLight spot{
-        .position = Vector2d{ 10.0, 9.0 },
+        .position = Vector2d{ static_cast<double>(DUCK_X), static_cast<double>(DUCK_Y) },
         .color = 0xFFFF00FF,
         .intensity = 1.0f,
-        .radius = 15.0f,
+        .radius = 12.0f,
         .attenuation = 0.1f,
         .direction = 0.0f,
         .arc_width = 0.8f,
@@ -373,7 +393,8 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     constexpr double DT = 0.016;
 
     spdlog::info("");
-    spdlog::info("=== Light Equilibrium Test ===");
+    spdlog::info("=== Light Equilibrium Test (Cliff Edge) ===");
+    spdlog::info("Duck at ({}, {}), shining into open air", DUCK_X, DUCK_Y);
 
     // Run until equilibrium (angular velocity near zero).
     constexpr int MAX_FRAMES = 600; // 10 seconds.
@@ -388,12 +409,15 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
 
         // Log periodically.
         if (frame % 60 == 0) {
+            auto facing = duck->getFacing();
             spdlog::info(
-                "Frame {:4d}: pitch={:+.3f}rad ({:+5.1f}°) ω={:+.4f}",
+                "Frame {:4d}: pitch={:+.3f}rad ({:+5.1f}°) ω={:+.4f} facing=({:+.1f}, {:+.1f})",
                 frame,
                 pitch,
                 pitch * 180.0 / M_PI,
-                omega);
+                omega,
+                facing.x,
+                facing.y);
         }
 
         // Detect equilibrium: angular velocity very small.
@@ -433,11 +457,11 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     // Light should have found equilibrium.
     EXPECT_GE(equilibrium_frame, 0) << "Light should reach equilibrium";
 
-    // Equilibrium pitch should be negative (gravity pulls down) but not too extreme.
-    const auto& config = light->getConfig();
-    EXPECT_LT(equilibrium_pitch, 0.0f) << "Equilibrium pitch should be negative (drooping)";
-    EXPECT_GT(equilibrium_pitch, config.shutoff_angle)
-        << "Equilibrium pitch should be above shutoff threshold";
+    // Equilibrium pitch should be near horizontal when standing still.
+    constexpr float MAX_DROOP = 0.05f; // ~3 degrees tolerance.
+    EXPECT_LT(std::abs(equilibrium_pitch), MAX_DROOP)
+        << "Duck standing still should hold flashlight horizontal, but pitch is "
+        << equilibrium_pitch << " rad (" << (equilibrium_pitch * 180.0 / M_PI) << "°)";
 
     // Pitch should be stable (small range).
     constexpr float MAX_PITCH_RANGE = 0.02f; // ~1 degree oscillation is acceptable.
@@ -455,26 +479,198 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     Timers timers;
     calc.calculate(*world, world->getGrid(), light_config, timers);
 
-    // Measure brightness in front of duck (x=15, 5 cells ahead).
-    int duck_y = LEDGE_Y - 1;
+    // Print the lightmap for visual debugging.
+    spdlog::info("");
+    spdlog::info("=== LIGHTMAP (spotlight only, no ambient/sun) ===");
+    std::string lightmap = calc.lightMapString(*world);
+    // Print with row numbers.
+    std::istringstream iss(lightmap);
+    std::string line;
+    int row = 0;
+    spdlog::info("    01234567890123456789");
+    while (std::getline(iss, line)) {
+        spdlog::info("{:2d}: {}", row++, line);
+    }
+    spdlog::info("Shades: ' '=dark, '@'=bright");
+
+    // Print spotlight info.
+    SpotLight* spotlight = world->getLightManager().getLight<SpotLight>(light->getLightId());
+    if (spotlight) {
+        spdlog::info("");
+        spdlog::info("=== SPOTLIGHT STATE ===");
+        spdlog::info("Position: ({:.1f}, {:.1f})", spotlight->position.x, spotlight->position.y);
+        spdlog::info(
+            "Direction: {:.3f} rad ({:.1f} deg)",
+            spotlight->direction,
+            spotlight->direction * 180.0 / M_PI);
+        spdlog::info(
+            "Arc width: {:.2f} rad ({:.1f} deg)",
+            spotlight->arc_width,
+            spotlight->arc_width * 180.0 / M_PI);
+        spdlog::info("Intensity: {:.2f}, Radius: {:.1f}", spotlight->intensity, spotlight->radius);
+    }
+
+    // Measure brightness in front of duck - all in open AIR now!
+    // Duck at x=6, measure at x=12 (6 cells ahead).
+    constexpr int MEASURE_X = 12;
+    constexpr int MEASURE_DISTANCE = MEASURE_X - DUCK_X;
     WorldData& data = world->getData();
-    float b_above = ColorNames::brightness(data.colors.at(15, duck_y - 1));
-    float b_at = ColorNames::brightness(data.colors.at(15, duck_y));
-    float b_below = ColorNames::brightness(data.colors.at(15, duck_y + 1));
 
-    spdlog::info("Lightmap at x=15: above={:.4f}, at={:.4f}, below={:.4f}", b_above, b_at, b_below);
+    // Sample 5 rows centered on duck's Y position to capture the beam spread.
+    float b_2above = ColorNames::brightness(data.colors.at(MEASURE_X, DUCK_Y - 2));
+    float b_1above = ColorNames::brightness(data.colors.at(MEASURE_X, DUCK_Y - 1));
+    float b_at = ColorNames::brightness(data.colors.at(MEASURE_X, DUCK_Y));
+    float b_1below = ColorNames::brightness(data.colors.at(MEASURE_X, DUCK_Y + 1));
+    float b_2below = ColorNames::brightness(data.colors.at(MEASURE_X, DUCK_Y + 2));
 
-    // Calculate Y centroid of light.
-    float total = b_above + b_at + b_below;
+    spdlog::info("");
+    spdlog::info("=== LIGHTMAP MEASUREMENT at x={} (all AIR) ===", MEASURE_X);
+    spdlog::info("  y={}: {:.4f}", DUCK_Y - 2, b_2above);
+    spdlog::info("  y={}: {:.4f}", DUCK_Y - 1, b_1above);
+    spdlog::info("  y={}: {:.4f} <- duck level", DUCK_Y, b_at);
+    spdlog::info("  y={}: {:.4f}", DUCK_Y + 1, b_1below);
+    spdlog::info("  y={}: {:.4f}", DUCK_Y + 2, b_2below);
+
+    // Calculate Y centroid of light using weighted average.
+    float total = b_2above + b_1above + b_at + b_1below + b_2below;
     float y_centroid = (total > 0.001f)
-        ? (b_above * (duck_y - 1) + b_at * duck_y + b_below * (duck_y + 1)) / total
-        : duck_y;
-    float y_offset = y_centroid - duck_y;
-    float angle_deg = std::atan(y_offset / 5.0f) * 180.0f / static_cast<float>(M_PI);
+        ? (b_2above * (DUCK_Y - 2) + b_1above * (DUCK_Y - 1) + b_at * DUCK_Y
+           + b_1below * (DUCK_Y + 1) + b_2below * (DUCK_Y + 2))
+            / total
+        : DUCK_Y;
+    float y_offset = y_centroid - DUCK_Y;
+    float angle_deg = std::atan(y_offset / MEASURE_DISTANCE) * 180.0f / static_cast<float>(M_PI);
 
-    spdlog::info("Light centroid offset: {:.3f} cells, angle: {:.2f}°", y_offset, angle_deg);
+    spdlog::info(
+        "Light centroid: y={:.3f}, offset={:.3f} cells, beam angle={:.2f}°",
+        y_centroid,
+        y_offset,
+        angle_deg);
 
-    // Flashlight should be horizontal within 1 degree.
-    EXPECT_LT(std::abs(angle_deg), 1.0f)
-        << "Flashlight should point horizontally (within 1°), but angle is " << angle_deg << "°";
+    // Compare beam angle to reported flashlight direction.
+    if (spotlight) {
+        float reported_angle_deg = spotlight->direction * 180.0f / static_cast<float>(M_PI);
+        spdlog::info(
+            "Spotlight reports direction={:.2f}°, beam measures at {:.2f}°",
+            reported_angle_deg,
+            angle_deg);
+
+        // The measured beam angle should match the spotlight's reported direction.
+        // Allow 2 degrees tolerance for light spread and measurement granularity.
+        float angle_diff = std::abs(angle_deg - reported_angle_deg);
+        EXPECT_LT(angle_diff, 2.0f)
+            << "Beam direction (" << angle_deg << "°) should match spotlight direction ("
+            << reported_angle_deg << "°)";
+    }
+
+    // Flashlight should be near horizontal (equilibrium pitch is small).
+    EXPECT_LT(std::abs(angle_deg), 5.0f)
+        << "Flashlight should point near-horizontally, but beam angle is " << angle_deg << "°";
+}
+
+/**
+ * Test: Flashlight pitch changes when duck jumps.
+ *
+ * This tests the integration between Duck and LightHandHeld - verifying that
+ * the duck's acceleration during a jump actually reaches the flashlight physics.
+ */
+TEST_F(DuckLedgeStabilityTest, FlashlightRespondsToDuckJump)
+{
+    constexpr int WIDTH = 20;
+    constexpr int HEIGHT = 15;
+    constexpr int LEDGE_Y = 10;
+
+    auto world = createLedgeWorld(WIDTH, HEIGHT, LEDGE_Y, 5, 15, 3);
+
+    OrganismManager& manager = world->getOrganismManager();
+    auto test_brain = std::make_unique<TestDuckBrain>();
+    TestDuckBrain* brain_ptr = test_brain.get();
+    test_brain->setAction(DuckAction::WAIT);
+
+    OrganismId duck_id = manager.createDuck(*world, 10, LEDGE_Y - 1, std::move(test_brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Attach flashlight.
+    LightManager& lights = world->getLightManager();
+    SpotLight spot{
+        .position = Vector2d{ 10.0, 9.0 },
+        .color = 0xFFFF00FF,
+        .intensity = 1.0f,
+        .radius = 15.0f,
+        .attenuation = 0.1f,
+        .direction = 0.0f,
+        .arc_width = 0.8f,
+        .focus = 0.5f,
+    };
+    LightHandle handle = lights.createLight(spot);
+    duck->setHandheldLight(std::make_unique<LightHandHeld>(std::move(handle)));
+
+    LightHandHeld* light = duck->getHandheldLight();
+    ASSERT_NE(light, nullptr);
+
+    constexpr double DT = 0.016;
+
+    spdlog::info("");
+    spdlog::info("=== Flashlight Response to Jump Test ===");
+
+    // Phase 1: Let flashlight settle to equilibrium.
+    spdlog::info("--- Settling phase ---");
+    for (int i = 0; i < 120; ++i) {
+        world->advanceTime(DT);
+        if (i % 20 == 0) {
+            spdlog::info(
+                "Settle frame {:3d}: pitch={:+.3f} rad ({:+.1f}°)",
+                i,
+                light->getPitch(),
+                light->getPitch() * 180.0 / M_PI);
+        }
+    }
+    float settled_pitch = light->getPitch();
+    spdlog::info(
+        "Settled pitch before jump: {:.3f} rad ({:.1f}°)",
+        settled_pitch,
+        settled_pitch * 180.0 / M_PI);
+
+    // Phase 2: Make duck jump and track pitch changes.
+    brain_ptr->setAction(DuckAction::JUMP);
+
+    float max_pitch = settled_pitch;
+    float min_pitch = settled_pitch;
+
+    for (int i = 0; i < 60; ++i) {
+        world->advanceTime(DT);
+
+        float pitch = light->getPitch();
+        max_pitch = std::max(max_pitch, pitch);
+        min_pitch = std::min(min_pitch, pitch);
+
+        // Log every 10 frames.
+        if (i % 10 == 0) {
+            spdlog::info(
+                "Frame {:3d}: pitch={:+.3f} rad ({:+.1f}°) ω={:+.3f}",
+                i,
+                pitch,
+                pitch * 180.0 / M_PI,
+                light->getAngularVelocity());
+        }
+
+        // After first frame, stop requesting jump (edge-triggered).
+        if (i == 0) {
+            brain_ptr->setAction(DuckAction::WAIT);
+        }
+    }
+
+    float pitch_range = max_pitch - min_pitch;
+    spdlog::info(
+        "Pitch range during jump: {:.3f} rad ({:.1f}°)", pitch_range, pitch_range * 180.0 / M_PI);
+    spdlog::info("Min pitch: {:.3f} rad, Max pitch: {:.3f} rad", min_pitch, max_pitch);
+
+    // The flashlight pitch should have changed significantly during the jump.
+    // A jump creates large acceleration, which should move the pitch.
+    constexpr float MIN_EXPECTED_RANGE = 0.1f; // At least ~6 degrees of movement.
+    EXPECT_GT(pitch_range, MIN_EXPECTED_RANGE)
+        << "Flashlight pitch should change during jump, but range was only " << pitch_range
+        << " rad (" << (pitch_range * 180.0 / M_PI) << "°). "
+        << "This suggests acceleration isn't reaching the flashlight physics.";
 }
