@@ -16,7 +16,9 @@
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/PlayerDuckBrain.h"
 #include "core/organisms/Tree.h"
+#include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/components/LightHandHeld.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
@@ -731,7 +733,7 @@ State::Any SimRunning::onEvent(const Api::WorldResize::Cwc& cwc, StateMachine& /
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
 {
     using Response = Api::SeedAdd::Response;
 
@@ -741,10 +743,28 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& /*dsm
         return std::move(*this);
     }
 
+    // Build brain from genome if provided.
+    std::unique_ptr<TreeBrain> brain = nullptr;
+    if (cwc.command.genome_id) {
+        auto& repo = dsm.getGenomeRepository();
+        GenomeId id = GenomeId::fromString(cwc.command.genome_id.value());
+        auto genome = repo.get(id);
+        if (genome) {
+            brain = std::make_unique<NeuralNetBrain>(*genome);
+            spdlog::info(
+                "SeedAdd: Using genome '{}' for tree brain", cwc.command.genome_id.value());
+        }
+        else {
+            spdlog::warn(
+                "SeedAdd: Genome '{}' not found, using default brain",
+                cwc.command.genome_id.value());
+        }
+    }
+
     // Plant seed as tree organism.
     spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    OrganismId tree_id =
-        world->getOrganismManager().createTree(*world, cwc.command.x, cwc.command.y);
+    OrganismId tree_id = world->getOrganismManager().createTree(
+        *world, cwc.command.x, cwc.command.y, std::move(brain));
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));

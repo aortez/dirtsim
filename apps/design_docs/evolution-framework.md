@@ -275,18 +275,22 @@ See `src/server/api/Genome*.h` for full definitions.
 | `GenomeSave` | Save repository to disk | ❌ Not yet |
 | `GenomeLoad` | Load repository from disk | ❌ Not yet |
 
-### Planned: Running Simulation with Specific Genome
+### Running Simulation with Specific Genome
 
-Future: Add `OrganismAdd` command to spawn a seed with a genome from the repository. The flow:
+Extended `SeedAdd` command to accept an optional `genome_id`. The flow:
 
 ```
 GenomeSet{id=<uuid>, weights=[...]}
 SimRun{scenario=TreeGermination, start_paused=true}
-OrganismAdd{type=Seed, position={x,y}, genome_id=<uuid>}
+SeedAdd{x, y, genome_id=<uuid>}
 SimResume
 ```
 
-This requires TreeGermination scenario to NOT auto-plant a seed (controlled via config flag).
+If `genome_id` is provided, the handler looks up the genome in `GenomeRepository` and creates a `NeuralNetBrain` for the tree. If not provided or not found, falls back to default `RuleBasedBrain`.
+
+| Command | Description | Status |
+|---------|-------------|--------|
+| `SeedAdd` | Plant seed with optional genome | ✅ Implemented |
 
 ## Persistence
 

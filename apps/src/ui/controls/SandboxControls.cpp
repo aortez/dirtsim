@@ -224,7 +224,9 @@ void SandboxControls::onAddSeedClicked(lv_event_t* e)
     spdlog::info("SandboxControls: Add Seed button clicked");
 
     if (self->wsService_ && self->wsService_->isConnected()) {
-        const Api::SeedAdd::Command cmd{ .x = static_cast<int>(self->worldWidth_ / 2), .y = 5 };
+        const Api::SeedAdd::Command cmd{ .x = static_cast<int>(self->worldWidth_ / 2),
+                                         .y = 5,
+                                         .genome_id = std::nullopt };
 
         spdlog::info("SandboxControls: Sending seed_add at ({}, {})", cmd.x, cmd.y);
 

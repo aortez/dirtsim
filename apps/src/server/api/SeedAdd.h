@@ -5,6 +5,7 @@
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <variant>
 #include <zpp_bits.h>
 
@@ -17,12 +18,13 @@ DEFINE_API_NAME(SeedAdd);
 struct Command {
     int x;
     int y;
+    std::optional<std::string> genome_id; // UUID from GenomeRepository for tree brain.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<3>;
 };
 
 using OkayType = std::monostate;
