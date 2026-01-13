@@ -41,7 +41,7 @@ void from_json(const nlohmann::json& j, SparkleParticle& s);
  */
 struct Entity {
     uint32_t id = 0;
-    EntityType type = EntityType::DUCK;
+    EntityType type = EntityType::Duck;
     bool visible = true;
 
     // Physics state (all vectors for consistency).

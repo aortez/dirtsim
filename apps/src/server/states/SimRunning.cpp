@@ -299,8 +299,8 @@ void SimRunning::tick(StateMachine& dsm)
     size_t duck_entity_count = 0;
     size_t goose_entity_count = 0;
     for (const auto& ent : data.entities) {
-        if (ent.type == EntityType::DUCK) duck_entity_count++;
-        if (ent.type == EntityType::GOOSE) goose_entity_count++;
+        if (ent.type == EntityType::Duck) duck_entity_count++;
+        if (ent.type == EntityType::Goose) goose_entity_count++;
     }
 
     if (duck_organism_count != duck_entity_count) {

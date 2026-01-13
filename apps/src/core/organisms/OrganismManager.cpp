@@ -653,7 +653,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
 
             Entity entity;
             entity.id = id.get();
-            entity.type = EntityType::DUCK;
+            entity.type = EntityType::Duck;
             entity.visible = true;
 
             entity.position =
@@ -690,7 +690,7 @@ void OrganismManager::syncEntitiesToWorldData(World& world)
 
             Entity entity;
             entity.id = id.get();
-            entity.type = EntityType::GOOSE;
+            entity.type = EntityType::Goose;
             entity.visible = true;
 
             entity.position =

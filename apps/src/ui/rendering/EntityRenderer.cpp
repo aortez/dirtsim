@@ -48,7 +48,7 @@ void renderEntities(
         int32_t pixelX = static_cast<int32_t>(entityX * scaledCellWidth);
         int32_t pixelY = static_cast<int32_t>(entityY * scaledCellHeight);
 
-        if (entity.type == EntityType::DUCK) {
+        if (entity.type == EntityType::Duck) {
             // Draw attached sparkles first (behind duck).
             for (const auto& sparkle : entity.sparkles) {
                 uint8_t alpha = static_cast<uint8_t>(sparkle.opacity * 255);
@@ -176,7 +176,7 @@ void renderEntities(
                 }
             }
         }
-        else if (entity.type == EntityType::GOOSE) {
+        else if (entity.type == EntityType::Goose) {
             // Goose is 1 cell in size.
             int32_t goosePixelWidth = static_cast<int32_t>(scaledCellWidth);
             int32_t goosePixelHeight = static_cast<int32_t>(scaledCellHeight);
@@ -251,7 +251,7 @@ void renderEntities(
                 }
             }
         }
-        else if (entity.type == EntityType::SPARKLE) {
+        else if (entity.type == EntityType::Sparkle) {
             // Legacy standalone sparkle (for backwards compatibility).
             float opacity = std::min(entity.velocity.magnitude(), 1.0f);
             uint8_t alpha = static_cast<uint8_t>(opacity * 255);

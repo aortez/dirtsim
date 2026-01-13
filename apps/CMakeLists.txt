@@ -219,6 +219,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/ColorNames.cpp
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
+    src/core/EntityType.cpp
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialFragmentationParams.cpp
@@ -329,8 +330,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/RainEvent.cpp
     src/core/scenarios/DamBreakScenario.cpp
     src/core/scenarios/EmptyScenario.cpp
-    src/core/scenarios/FallingDirtScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
+    src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/RainingScenario.cpp
     src/core/scenarios/SandboxScenario.cpp
     src/core/scenarios/TreeGerminationScenario.cpp
