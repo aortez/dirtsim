@@ -66,6 +66,16 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
         progress.populationSize,
         progress.bestFitnessAllTime);
 
+    // Detect training completion.
+    const bool isComplete =
+        (progress.maxGenerations > 0 && progress.generation >= progress.maxGenerations
+         && progress.currentEval >= progress.populationSize);
+
+    if (isComplete) {
+        LOG_INFO(State, "Evolution completed, ready for new run");
+        evolutionStarted_ = false;
+    }
+
     // Update UI progress bars and labels.
     if (view_) {
         view_->updateProgress(progress);

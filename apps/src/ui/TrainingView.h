@@ -48,6 +48,7 @@ public:
     void renderWorld(const WorldData& worldData);
 
     void setEvolutionStarted(bool started);
+    void setEvolutionCompleted();
 
 private:
     bool evolutionStarted_ = false;

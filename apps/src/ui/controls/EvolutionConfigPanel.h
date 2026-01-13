@@ -22,6 +22,7 @@ public:
     ~EvolutionConfigPanel();
 
     void setEvolutionStarted(bool started);
+    void setEvolutionCompleted();
 
 private:
     lv_obj_t* container_;

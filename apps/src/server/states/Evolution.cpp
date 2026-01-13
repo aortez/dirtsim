@@ -280,11 +280,17 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     population = elitistReplace(
         population, fitnessScores, offspring, offspringFitness, evolutionConfig.populationSize);
 
-    // Reset for new generation.
+    // Advance to next generation.
     generation++;
-    currentEval = 0;
-    bestFitnessThisGen = 0.0;
-    std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
+
+    // Only reset for next generation if we're not at the end.
+    // This preserves currentEval = populationSize in the final broadcast,
+    // giving the UI a clean "all evals complete" signal.
+    if (generation < evolutionConfig.maxGenerations) {
+        currentEval = 0;
+        bestFitnessThisGen = 0.0;
+        std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
+    }
 }
 
 void Evolution::broadcastProgress(StateMachine& dsm)

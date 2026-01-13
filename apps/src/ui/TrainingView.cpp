@@ -251,6 +251,15 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
 {
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
 
+    // Detect training completion.
+    const bool isComplete =
+        (progress.maxGenerations > 0 && progress.generation >= progress.maxGenerations
+         && progress.currentEval >= progress.populationSize);
+
+    if (isComplete) {
+        setEvolutionCompleted();
+    }
+
     char buf[64];
 
     // Update time displays.
@@ -440,6 +449,25 @@ void TrainingView::setEvolutionStarted(bool started)
     }
     if (evolutionConfigPanel_) {
         evolutionConfigPanel_->setEvolutionStarted(started);
+    }
+}
+
+void TrainingView::setEvolutionCompleted()
+{
+    evolutionStarted_ = false;
+
+    // Show "Complete!" on main status.
+    if (statusLabel_) {
+        lv_label_set_text(statusLabel_, "Complete!");
+        lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
+    }
+
+    // Update panels to show completion and re-enable controls.
+    if (evolutionControls_) {
+        evolutionControls_->setEvolutionCompleted();
+    }
+    if (evolutionConfigPanel_) {
+        evolutionConfigPanel_->setEvolutionCompleted();
     }
 }
 

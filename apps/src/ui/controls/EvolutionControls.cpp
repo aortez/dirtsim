@@ -76,6 +76,12 @@ void EvolutionControls::setEvolutionStarted(bool started)
     updateButtonVisibility();
 }
 
+void EvolutionControls::setEvolutionCompleted()
+{
+    // Same as not started - hide Stop, show Quit.
+    setEvolutionStarted(false);
+}
+
 void EvolutionControls::onStopClicked(lv_event_t* e)
 {
     EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));

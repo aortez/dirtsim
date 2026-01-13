@@ -166,6 +166,20 @@ void EvolutionConfigPanel::setEvolutionStarted(bool started)
     updateStartButtonVisibility();
 }
 
+void EvolutionConfigPanel::setEvolutionCompleted()
+{
+    evolutionStarted_ = false;
+
+    // Enable controls (same as setEvolutionStarted(false)).
+    updateStartButtonVisibility();
+
+    // But show "Complete!" instead of empty status.
+    if (statusLabel_) {
+        lv_label_set_text(statusLabel_, "Complete!");
+        lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
+    }
+}
+
 void EvolutionConfigPanel::onStartClicked(lv_event_t* e)
 {
     EvolutionConfigPanel* self = static_cast<EvolutionConfigPanel*>(lv_event_get_user_data(e));
