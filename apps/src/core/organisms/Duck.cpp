@@ -39,7 +39,7 @@ static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained afte
 namespace DirtSim {
 
 Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
-    : Organism(id, OrganismType::DUCK), brain_(std::move(brain))
+    : Organism::Body(id, OrganismType::DUCK), brain_(std::move(brain))
 {}
 
 void Duck::update(World& world, double deltaTime)

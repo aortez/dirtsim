@@ -40,7 +40,7 @@ struct DuckSparkle {
  * - UI draws duck sprite at the duck's cell position.
  * - Sprite flips based on facing direction.
  */
-class Duck : public Organism {
+class Duck : public Organism::Body {
 public:
     /**
      * Construct a new duck with a given brain implementation.

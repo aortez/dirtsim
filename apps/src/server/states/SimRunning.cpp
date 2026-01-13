@@ -260,7 +260,7 @@ void SimRunning::tick(StateMachine& dsm)
 
     // Populate tree vision data (if any trees exist).
     Tree* firstTree = nullptr;
-    world->getOrganismManager().forEachOrganism([&](Organism& org) {
+    world->getOrganismManager().forEachOrganism([&](Organism::Body& org) {
         if (!firstTree && org.getType() == OrganismType::TREE) {
             firstTree = static_cast<Tree*>(&org);
         }
@@ -291,7 +291,7 @@ void SimRunning::tick(StateMachine& dsm)
     const WorldData& data = world->getData();
     size_t duck_organism_count = 0;
     size_t goose_organism_count = 0;
-    world->getOrganismManager().forEachOrganism([&](const Organism& org) {
+    world->getOrganismManager().forEachOrganism([&](const Organism::Body& org) {
         if (org.getType() == OrganismType::DUCK) duck_organism_count++;
         if (org.getType() == OrganismType::GOOSE) goose_organism_count++;
     });
@@ -791,7 +791,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
     }
 
     // Populate organism debug info (always fresh, not from cache).
-    world->getOrganismManager().forEachOrganism([&](const Organism& org) {
+    world->getOrganismManager().forEachOrganism([&](const Organism::Body& org) {
         WorldData::OrganismDebugInfo debug{
             .id = org.getId(),
             .type = "", // Set below based on type.

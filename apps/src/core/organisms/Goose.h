@@ -14,7 +14,7 @@ class RigidBodyComponent;
  * Uses RigidBodyComponent for physics, collision, and grid projection.
  * Brain decides movement; physics handles the rest.
  */
-class Goose : public Organism {
+class Goose : public Organism::Body {
 public:
     Goose(OrganismId id, std::unique_ptr<GooseBrain> brain);
     ~Goose();

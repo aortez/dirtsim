@@ -1119,7 +1119,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     Vector2i toPos{ fromX + direction.x, fromY + direction.y };
     OrganismId toOrgId = world.getOrganismManager().at(toPos);
     if (toOrgId != INVALID_ORGANISM_ID) {
-        const Organism* organism = world.getOrganismManager().getOrganism(toOrgId);
+        const Organism::Body* organism = world.getOrganismManager().getOrganism(toOrgId);
         if (organism && organism->usesRigidBodyPhysics()) {
             LOG_DEBUG(
                 Swap,

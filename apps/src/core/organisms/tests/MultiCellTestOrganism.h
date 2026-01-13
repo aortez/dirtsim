@@ -22,7 +22,7 @@ enum class MultiCellShape {
             //               X
 };
 
-class MultiCellTestOrganism : public Organism {
+class MultiCellTestOrganism : public Organism::Body {
 public:
     MultiCellTestOrganism(OrganismId id, MultiCellShape shape);
     ~MultiCellTestOrganism();

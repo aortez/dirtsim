@@ -69,6 +69,8 @@ struct LightAttachment {
     bool follows_facing = true;
 };
 
+namespace Organism {
+
 /**
  * Abstract base class for all organisms.
  *
@@ -82,16 +84,16 @@ struct LightAttachment {
  * - Facing direction for rendering/AI
  * - Age tracking
  */
-class Organism {
+class Body {
 public:
-    Organism(OrganismId id, OrganismType type);
-    virtual ~Organism() = default;
+    Body(OrganismId id, OrganismType type);
+    virtual ~Body() = default;
 
-    // Move-only (subclasses may have unique_ptr members).
-    Organism(Organism&&) = default;
-    Organism& operator=(Organism&&) = default;
-    Organism(const Organism&) = delete;
-    Organism& operator=(const Organism&) = delete;
+    // Move-only.
+    Body(Body&&) = default;
+    Body& operator=(Body&&) = default;
+    Body(const Body&) = delete;
+    Body& operator=(const Body&) = delete;
 
     // Identity.
     OrganismId getId() const { return id_; }
@@ -168,5 +170,7 @@ protected:
 
     void updateAttachedLights(World& world, double deltaTime);
 };
+
+} // namespace Organism
 
 } // namespace DirtSim

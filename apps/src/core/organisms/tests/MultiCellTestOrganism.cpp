@@ -7,7 +7,7 @@
 namespace DirtSim {
 
 MultiCellTestOrganism::MultiCellTestOrganism(OrganismId id, MultiCellShape shape)
-    : Organism(id, OrganismType::TREE),
+    : Organism::Body(id, OrganismType::TREE),
       shape_(shape),
       rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::WOOD))
 {

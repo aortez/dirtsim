@@ -326,13 +326,13 @@ void OrganismManager::clear()
     std::fill(grid_.begin(), grid_.end(), INVALID_ORGANISM_ID);
 }
 
-Organism* OrganismManager::getOrganism(OrganismId id)
+Organism::Body* OrganismManager::getOrganism(OrganismId id)
 {
     auto it = organisms_.find(id);
     return it != organisms_.end() ? it->second.get() : nullptr;
 }
 
-const Organism* OrganismManager::getOrganism(OrganismId id) const
+const Organism::Body* OrganismManager::getOrganism(OrganismId id) const
 {
     auto it = organisms_.find(id);
     return it != organisms_.end() ? it->second.get() : nullptr;

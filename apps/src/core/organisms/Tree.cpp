@@ -15,7 +15,7 @@ namespace DirtSim {
 
 Tree::Tree(
     OrganismId id, std::unique_ptr<TreeBrain> brain, std::unique_ptr<ITreeCommandProcessor> proc)
-    : Organism(id, OrganismType::TREE),
+    : Organism::Body(id, OrganismType::TREE),
       processor(std::move(proc)),
       brain_(std::move(brain)),
       rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::SEED))

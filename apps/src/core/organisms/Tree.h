@@ -23,7 +23,7 @@ class RigidBodyComponent;
  *
  * Uses RigidBodyComponent for physics - the entire tree structure moves as one unit.
  */
-class Tree : public Organism {
+class Tree : public Organism::Body {
 public:
     Tree(
         OrganismId id,

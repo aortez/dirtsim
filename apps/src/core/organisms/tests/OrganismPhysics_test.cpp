@@ -15,10 +15,10 @@ using namespace DirtSim;
 
 namespace {
 
-// Concrete organism for testing (Organism is abstract).
-class TestOrganism : public Organism {
+// Concrete organism for testing (Organism::Body is abstract).
+class TestOrganism : public Organism::Body {
 public:
-    TestOrganism(OrganismId id, OrganismType type) : Organism(id, type) {}
+    TestOrganism(OrganismId id, OrganismType type) : Organism::Body(id, type) {}
 
     Vector2i getAnchorCell() const override
     {

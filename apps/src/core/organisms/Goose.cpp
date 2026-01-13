@@ -16,7 +16,7 @@ constexpr double VERTICAL_MARGIN = 0.25; // Matches EntityRenderer offset.
 namespace DirtSim {
 
 Goose::Goose(OrganismId id, std::unique_ptr<GooseBrain> brain)
-    : Organism(id, OrganismType::GOOSE),
+    : Organism::Body(id, OrganismType::GOOSE),
       brain_(std::move(brain)),
       rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::WOOD))
 {

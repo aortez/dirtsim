@@ -820,7 +820,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
     // Capture continuous positions (anchor + COM) before clearing cells.
     // This preserves sub-cell precision across resize operations.
     if (organism_manager_) {
-        organism_manager_->forEachOrganism([this](Organism& organism) {
+        organism_manager_->forEachOrganism([this](Organism::Body& organism) {
             Vector2i anchor = organism.getAnchorCell();
 
             // Read COM from world cell to get full continuous position.
@@ -836,7 +836,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
         });
 
         // Now clear organism cells from world grid before interpolation.
-        organism_manager_->forEachOrganism([this](Organism& organism) {
+        organism_manager_->forEachOrganism([this](Organism::Body& organism) {
             for (const auto& pos : organism.getCells()) {
                 if (pImpl->data_.inBounds(pos.x, pos.y)) {
                     pImpl->data_.at(pos.x, pos.y) = Cell(); // Clear to AIR.
@@ -864,7 +864,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
         organism_manager_->resizeGrid(newWidth, newHeight);
 
         // Reproject organism cells onto the new world grid.
-        organism_manager_->forEachOrganism([this](Organism& organism) {
+        organism_manager_->forEachOrganism([this](Organism::Body& organism) {
             Vector2i anchor = organism.getAnchorCell();
 
             for (const auto& pos : organism.getCells()) {
@@ -1269,7 +1269,7 @@ void World::resolveRigidBodies(double deltaTime)
     WorldData& data = pImpl->data_;
 
     // Process each organism that has structural cells (currently just trees).
-    organism_manager_->forEachOrganism([&](Organism& organism) {
+    organism_manager_->forEachOrganism([&](Organism::Body& organism) {
         // For single-cell organisms (like ducks), apply simple F=ma physics.
         if (organism.getType() != OrganismType::TREE) {
             Vector2i anchor = organism.getAnchorCell();
@@ -1396,7 +1396,7 @@ void World::pruneDisconnectedFragments()
 
     WorldData& data = pImpl->data_;
 
-    organism_manager_->forEachOrganism([&](Organism& organism) {
+    organism_manager_->forEachOrganism([&](Organism::Body& organism) {
         if (organism.getType() != OrganismType::TREE) {
             return; // Only trees have structural connectivity requirements.
         }

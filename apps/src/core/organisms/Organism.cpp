@@ -45,10 +45,12 @@ double getBoneStiffness(Material::EnumType a, Material::EnumType b)
     return 0.3;
 }
 
-Organism::Organism(OrganismId id, OrganismType type) : id_(id), type_(type)
+namespace Organism {
+
+Body::Body(OrganismId id, OrganismType type) : id_(id), type_(type)
 {}
 
-void Organism::onCellTransfer(Vector2i from, Vector2i to)
+void Body::onCellTransfer(Vector2i from, Vector2i to)
 {
     // Update anchor if it moved.
     if (from == getAnchorCell()) {
@@ -74,8 +76,7 @@ void Organism::onCellTransfer(Vector2i from, Vector2i to)
     }
 }
 
-void Organism::createBonesForCell(
-    Vector2i new_cell, Material::EnumType material, const World& world)
+void Body::createBonesForCell(Vector2i new_cell, Material::EnumType material, const World& world)
 {
     // Bones disabled during rigid body implementation. The rigid body system provides
     // structural integrity for organisms without per-cell spring forces.
@@ -160,7 +161,7 @@ void Organism::createBonesForCell(
     }
 }
 
-void Organism::recomputeMass()
+void Body::recomputeMass()
 {
     mass = 0.0;
     for (const auto& cell : local_shape) {
@@ -169,7 +170,7 @@ void Organism::recomputeMass()
     }
 }
 
-void Organism::recomputeCenterOfMass()
+void Body::recomputeCenterOfMass()
 {
     if (local_shape.empty() || mass < 0.0001) {
         center_of_mass = { 0.0, 0.0 };
@@ -187,13 +188,13 @@ void Organism::recomputeCenterOfMass()
     center_of_mass.y = weighted_sum.y / mass;
 }
 
-void Organism::integratePosition(double dt)
+void Body::integratePosition(double dt)
 {
     position.x += velocity.x * dt;
     position.y += velocity.y * dt;
 }
 
-void Organism::applyForce(Vector2d force, double dt)
+void Body::applyForce(Vector2d force, double dt)
 {
     if (mass < 0.0001) {
         return;
@@ -204,7 +205,7 @@ void Organism::applyForce(Vector2d force, double dt)
     velocity.y += acceleration.y * dt;
 }
 
-CollisionInfo Organism::detectCollisions(
+CollisionInfo Body::detectCollisions(
     const std::vector<Vector2i>& target_cells, const World& world) const
 {
     CollisionInfo info;
@@ -267,12 +268,12 @@ CollisionInfo Organism::detectCollisions(
     return info;
 }
 
-void Organism::attachLight(LightHandle handle, bool follows_facing)
+void Body::attachLight(LightHandle handle, bool follows_facing)
 {
     attached_lights_.push_back({ std::move(handle), follows_facing });
 }
 
-void Organism::detachLight(LightId id)
+void Body::detachLight(LightId id)
 {
     auto it = std::remove_if(
         attached_lights_.begin(), attached_lights_.end(), [id](const LightAttachment& attachment) {
@@ -281,7 +282,7 @@ void Organism::detachLight(LightId id)
     attached_lights_.erase(it, attached_lights_.end());
 }
 
-void Organism::updateAttachedLights(World& world, double deltaTime)
+void Body::updateAttachedLights(World& world, double deltaTime)
 {
     if (attached_lights_.empty()) {
         return;
@@ -320,5 +321,7 @@ void Organism::updateAttachedLights(World& world, double deltaTime)
         }
     }
 }
+
+} // namespace Organism
 
 } // namespace DirtSim

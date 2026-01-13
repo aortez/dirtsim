@@ -66,8 +66,8 @@ public:
     void removeOrganismFromWorld(World& world, OrganismId id);
 
     // Generic organism access.
-    Organism* getOrganism(OrganismId id);
-    const Organism* getOrganism(OrganismId id) const;
+    Organism::Body* getOrganism(OrganismId id);
+    const Organism::Body* getOrganism(OrganismId id) const;
 
     // Type-specific access (returns nullptr if wrong type).
     Tree* getTree(OrganismId id);
@@ -120,7 +120,7 @@ private:
     void setOrganismAt(Vector2i pos, OrganismId id);
     void clearOrganismAt(Vector2i pos);
 
-    std::unordered_map<OrganismId, std::unique_ptr<Organism>> organisms_;
+    std::unordered_map<OrganismId, std::unique_ptr<Organism::Body>> organisms_;
     OrganismId next_id_{ 1 };
 
     std::vector<OrganismId> grid_;
