@@ -99,9 +99,14 @@ KeepFree=100M
 EOF
 
     # Store coredumps on /data partition (more space than rootfs).
-    install -d ${IMAGE_ROOTFS}/data/coredumps
+    # The symlink points to /data/coredumps, created at boot via tmpfiles.d
+    # (can't create in rootfs since /data is a separate mounted partition).
     rm -rf ${IMAGE_ROOTFS}/var/lib/systemd/coredump
     ln -s /data/coredumps ${IMAGE_ROOTFS}/var/lib/systemd/coredump
+
+    # Create tmpfiles.d entry to make /data/coredumps at boot.
+    install -d ${IMAGE_ROOTFS}/usr/lib/tmpfiles.d
+    echo "d /data/coredumps 0755 root root -" > ${IMAGE_ROOTFS}/usr/lib/tmpfiles.d/dirtsim-coredump.conf
 }
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_coredump_config;"
 
