@@ -1,50 +1,15 @@
-#include "Organism.h"
+#include "Body.h"
+
 #include "OrganismManager.h"
 #include "core/Cell.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+
 #include <algorithm>
 #include <cmath>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
-
-double getBoneStiffness(Material::EnumType a, Material::EnumType b)
-{
-    // Order-independent lookup via sorting.
-    if (a > b) std::swap(a, b);
-
-    // Core structure - very stiff.
-    if ((a == Material::EnumType::SEED && b == Material::EnumType::WOOD)
-        || (a == Material::EnumType::SEED && b == Material::EnumType::ROOT)) {
-        return 1.0;
-    }
-
-    // Trunk and branches.
-    if (a == Material::EnumType::WOOD && b == Material::EnumType::WOOD) {
-        return 0.8;
-    }
-
-    // Root system - somewhat flexible.
-    if (a == Material::EnumType::ROOT && b == Material::EnumType::ROOT) {
-        return 0.5;
-    }
-    if (a == Material::EnumType::ROOT && b == Material::EnumType::WOOD) {
-        return 0.6;
-    }
-
-    // Foliage - stiff attachment to wood, flexible between leaves.
-    if (a == Material::EnumType::LEAF && b == Material::EnumType::WOOD) {
-        return 3.0; // Strong attachment to prevent leaves from falling.
-    }
-    if (a == Material::EnumType::LEAF && b == Material::EnumType::LEAF) {
-        return 0.1;
-    }
-
-    // Default for any other organism material pairs.
-    return 0.3;
-}
-
 namespace Organism {
 
 Body::Body(OrganismId id, OrganismType type) : id_(id), type_(type)
@@ -122,14 +87,14 @@ void Body::createBonesForCell(Vector2i new_cell, Material::EnumType material, co
             double rot_damping = 0.0;
 
             // For leaf-wood connections, wood is the hinge (leaves swing around branches).
-            if (material == Material::EnumType::LEAF
-                && neighbor.material_type == Material::EnumType::WOOD) {
+            if (material == Material::EnumType::Leaf
+                && neighbor.material_type == Material::EnumType::Wood) {
                 hinge = HingeEnd::CELL_B; // Neighbor (wood) is the pivot.
                 rot_damping = 1.0;        // Passive damping to prevent leaf swinging.
             }
             else if (
-                material == Material::EnumType::WOOD
-                && neighbor.material_type == Material::EnumType::LEAF) {
+                material == Material::EnumType::Wood
+                && neighbor.material_type == Material::EnumType::Leaf) {
                 hinge = HingeEnd::CELL_A; // New cell (wood) is the pivot.
                 rot_damping = 1.0;        // Passive damping to prevent leaf swinging.
             }
@@ -228,7 +193,7 @@ CollisionInfo Body::detectCollisions(
         const Cell& cell = data.at(cell_pos.x, cell_pos.y);
 
         // Check for WALL.
-        if (cell.material_type == Material::EnumType::WALL) {
+        if (cell.material_type == Material::EnumType::Wall) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             normal_sum.y -= 1.0; // Assume floor for now, refine later.
@@ -244,11 +209,11 @@ CollisionInfo Body::detectCollisions(
         }
 
         // Check for dense solid material (skip our own cells).
-        bool is_solid = cell.material_type == Material::EnumType::DIRT
-            || cell.material_type == Material::EnumType::SAND
-            || cell.material_type == Material::EnumType::WOOD
-            || cell.material_type == Material::EnumType::METAL
-            || cell.material_type == Material::EnumType::ROOT;
+        bool is_solid = cell.material_type == Material::EnumType::Dirt
+            || cell.material_type == Material::EnumType::Sand
+            || cell.material_type == Material::EnumType::Wood
+            || cell.material_type == Material::EnumType::Metal
+            || cell.material_type == Material::EnumType::Root;
         if (is_solid && cell.fill_ratio > 0.8 && cell_org != id_) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
@@ -323,5 +288,4 @@ void Body::updateAttachedLights(World& world, double deltaTime)
 }
 
 } // namespace Organism
-
 } // namespace DirtSim

@@ -364,7 +364,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/DuckSensoryData.cpp
     src/core/organisms/Goose.cpp
     src/core/organisms/GooseBrain.cpp
-    src/core/organisms/Organism.cpp
+    src/core/organisms/Body.cpp
+    src/core/organisms/Bone.cpp
     src/core/organisms/OrganismManager.cpp
     src/core/organisms/OrganismSensoryData.cpp
     src/core/organisms/PlayerDuckBrain.cpp
