@@ -9,6 +9,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <zpp_bits.h>
 
@@ -42,11 +43,21 @@ public:
     bool operator!=(const UUID& other) const;
     bool operator<(const UUID& other) const;
 
+    // Binary serialization (zpp_bits). Public member required for structured binding.
     using serialize = zpp::bits::members<1>;
-
-private:
     std::array<uint8_t, 16> bytes_;
 };
+
+// JSON serialization: UUID serializes as string "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".
+inline void to_json(nlohmann::json& j, const UUID& uuid)
+{
+    j = uuid.toString();
+}
+
+inline void from_json(const nlohmann::json& j, UUID& uuid)
+{
+    uuid = UUID::fromString(j.get<std::string>());
+}
 
 } // namespace DirtSim
 

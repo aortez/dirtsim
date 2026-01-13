@@ -17,8 +17,11 @@ struct Genome;
  */
 class GenomeRepository {
 public:
-    // Store a genome with metadata, returns assigned ID.
-    GenomeId store(const Genome& genome, const GenomeMetadata& meta);
+    // Store a genome with metadata at the given ID. Overwrites if ID exists.
+    void store(GenomeId id, const Genome& genome, const GenomeMetadata& meta);
+
+    // Check if a genome exists.
+    bool exists(GenomeId id) const;
 
     // Retrieve genome or metadata by ID.
     std::optional<Genome> get(GenomeId id) const;
@@ -46,7 +49,6 @@ private:
     std::unordered_map<GenomeId, Genome> genomes_;
     std::unordered_map<GenomeId, GenomeMetadata> metadata_;
     std::optional<GenomeId> bestId_;
-    GenomeId nextId_{ 1 };
 };
 
 } // namespace DirtSim

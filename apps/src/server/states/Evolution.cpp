@@ -4,6 +4,7 @@
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/ScenarioConfig.h"
+#include "core/UUID.h"
 #include "core/World.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/organisms/OrganismManager.h"
@@ -213,7 +214,8 @@ void Evolution::finishEvaluation(StateMachine& dsm)
             .scenarioId = scenarioId,
             .notes = "",
         };
-        bestGenomeId = repo.store(population[currentEval], meta);
+        bestGenomeId = UUID::generate();
+        repo.store(bestGenomeId, population[currentEval], meta);
         repo.markAsBest(bestGenomeId);
 
         LOG_INFO(
@@ -368,7 +370,8 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .scenarioId = scenarioId,
         .notes = "",
     };
-    const GenomeId id = repo.store(population[bestIdx], meta);
+    const GenomeId id = UUID::generate();
+    repo.store(id, population[bestIdx], meta);
 
     if (bestFit >= bestFitnessAllTime) {
         repo.markAsBest(id);

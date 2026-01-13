@@ -12,6 +12,7 @@
 #include "api/GenomeGet.h"
 #include "api/GenomeGetBest.h"
 #include "api/GenomeList.h"
+#include "api/GenomeSet.h"
 #include "api/GravitySet.h"
 #include "api/PeersGet.h"
 #include "api/PerfStatsGet.h"
@@ -421,6 +422,7 @@ public:
         DirtSim::Api::GenomeGet::Cwc,
         DirtSim::Api::GenomeGetBest::Cwc,
         DirtSim::Api::GenomeList::Cwc,
+        DirtSim::Api::GenomeSet::Cwc,
         DirtSim::Api::GravitySet::Cwc,
         DirtSim::Api::PeersGet::Cwc,
         DirtSim::Api::PerfStatsGet::Cwc,

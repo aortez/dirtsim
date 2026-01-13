@@ -16,6 +16,7 @@
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
@@ -25,6 +26,7 @@
 #include "states/State.h"
 #include <cassert>
 #include <chrono>
+#include <ctime>
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <thread>
@@ -341,6 +343,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GenomeGetBest::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeList::Cwc>(
         [this](Api::GenomeList::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::GenomeSet::Cwc>(
+        [this](Api::GenomeSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GravitySet::Cwc>(
         [this](Api::GravitySet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::PerfStatsGet::Cwc>(
@@ -653,6 +657,44 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         cwc.sendResponse(Api::GenomeList::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle GenomeSet globally (works in any state).
+    if (std::holds_alternative<Api::GenomeSet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::GenomeSet::Cwc>(event.getVariant());
+        auto& repo = getGenomeRepository();
+
+        // Check if genome already exists.
+        bool overwritten = repo.exists(cwc.command.id);
+
+        // Build genome from weights.
+        Genome genome;
+        genome.weights = cwc.command.weights;
+
+        // Use provided metadata or create default.
+        GenomeMetadata meta = cwc.command.metadata.value_or(GenomeMetadata{
+            .name = "imported_" + cwc.command.id.toShortString(),
+            .fitness = 0.0,
+            .generation = 0,
+            .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+            .scenarioId = Scenario::EnumType::TreeGermination,
+            .notes = "",
+        });
+
+        repo.store(cwc.command.id, genome, meta);
+
+        LOG_INFO(
+            State,
+            "GenomeSet: Stored genome {} ({} weights, overwritten={})",
+            cwc.command.id.toShortString(),
+            genome.weights.size(),
+            overwritten);
+
+        Api::GenomeSet::Okay response;
+        response.success = true;
+        response.overwritten = overwritten;
+        cwc.sendResponse(Api::GenomeSet::Response::okay(std::move(response)));
         return;
     }
 

@@ -89,6 +89,10 @@ uint32_t seedGlow()
 {
     return 0x80FF80FF;
 }
+uint32_t stormGlow()
+{
+    return 0xAADDFFFF;
+}
 
 // Utility.
 uint32_t white()

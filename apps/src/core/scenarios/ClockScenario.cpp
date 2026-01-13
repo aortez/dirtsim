@@ -629,17 +629,17 @@ void ClockScenario::setup(World& world)
     // Draw initial time (emissive will be set on first tick).
     drawTime(world);
 
-    // Add static torch lights at corners.
+    // Add torch lights at corners (intensity increases with rain).
     world.getLightManager().clear();
     const WorldData& data = world.getData();
-    world.getLightManager().addLight(PointLight{
+    torch_right_ = world.getLightManager().createLight(PointLight{
         .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
         .color = ColorNames::torchOrange(),
         .intensity = 0.1f,
         .radius = 15.0f,
         .attenuation = 0.05f });
 
-    world.getLightManager().addLight(
+    torch_left_ = world.getLightManager().createLight(
         PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
                     .color = ColorNames::torchOrange(),
                     .intensity = 0.1f,
@@ -1486,7 +1486,6 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
         world.swapCells(spawn_pos, best_neighbor);
     }
 
-    // Use DuckBrain2 with dead reckoning and exit-seeking behavior.
     std::unique_ptr<DuckBrain> brain = std::make_unique<DuckBrain2>();
 
     state.organism_id = world.getOrganismManager().createDuck(
@@ -1538,7 +1537,7 @@ void ClockScenario::updateDuckEvent(
     }
 
     // Phase 3: Duck exited, wait briefly then close door and end event.
-    constexpr double DOOR_CLOSE_DELAY = 1.0;
+    constexpr double DOOR_CLOSE_DELAY = 2.0;
 
     if (state.phase == DuckEventPhase::DOOR_CLOSING) {
         state.door_close_timer += deltaTime;
@@ -1959,6 +1958,180 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         }
         else if (drain_was_open && !drain_open_) {
             spdlog::info("ClockScenario: Drain closed (water: {:.1f})", water_amount);
+        }
+
+        // Manage drain light - shines up from drain when open.
+        if (!drain_was_open && drain_open_) {
+            // Drain just opened - create spotlight pointing up from drain.
+            double drain_light_x = static_cast<double>(new_start_x + new_end_x) / 2.0;
+            double drain_light_y = static_cast<double>(drain_y);
+            float intensity = static_cast<float>(actual_drain_size) / MAX_DRAIN_SIZE;
+            drain_light_ = world.getLightManager().createLight(
+                SpotLight{ .position = Vector2d{ drain_light_x, drain_light_y },
+                           .color = ColorNames::stormGlow(), // Cool blue-white glow.
+                           .intensity = intensity,
+                           .radius = 30.0f,
+                           .attenuation = 0.03f,
+                           .direction = static_cast<float>(-M_PI / 2.0), // Pointing up.
+                           .arc_width = 1.2f,
+                           .focus = 0.3f });
+            spdlog::info(
+                "ClockScenario: Drain light created at ({:.1f}, {:.1f}), intensity={:.2f}, id={}",
+                drain_light_x,
+                drain_light_y,
+                intensity,
+                drain_light_->id());
+
+            // Create digit lights - below the digits at 1/4 and 3/4 width, facing down.
+            double digit_bottom_y = static_cast<double>(data.height + getDigitHeight()) / 2.0 + 1.0;
+            double left_x = static_cast<double>(data.width) * 0.25;
+            double right_x = static_cast<double>(data.width) * 0.75;
+            float digit_intensity = intensity * 0.5f;
+
+            digit_light_left_ = world.getLightManager().createLight(
+                SpotLight{ .position = Vector2d{ left_x, digit_bottom_y },
+                           .color = ColorNames::stormGlow(),
+                           .intensity = digit_intensity,
+                           .radius = 25.0f,
+                           .attenuation = 0.04f,
+                           .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
+                           .arc_width = 2.0f,
+                           .focus = 0.2f });
+
+            digit_light_right_ = world.getLightManager().createLight(
+                SpotLight{ .position = Vector2d{ right_x, digit_bottom_y },
+                           .color = ColorNames::stormGlow(),
+                           .intensity = digit_intensity,
+                           .radius = 25.0f,
+                           .attenuation = 0.04f,
+                           .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
+                           .arc_width = 2.0f,
+                           .focus = 0.2f });
+
+            spdlog::info(
+                "ClockScenario: Digit lights created at y={:.1f}, x=[{:.1f}, {:.1f}], "
+                "intensity={:.2f}",
+                digit_bottom_y,
+                left_x,
+                right_x,
+                digit_intensity);
+        }
+        else if (drain_was_open && !drain_open_) {
+            // Drain closed - remove all lights.
+            spdlog::info("ClockScenario: Drain lights removed");
+            drain_light_.reset();
+            digit_light_left_.reset();
+            digit_light_right_.reset();
+        }
+        else if (drain_open_ && drain_light_) {
+            // Drain size changed - update intensities.
+            float new_intensity = static_cast<float>(actual_drain_size) / MAX_DRAIN_SIZE;
+            if (SpotLight* light = drain_light_->get<SpotLight>()) {
+                if (light->intensity != new_intensity) {
+                    spdlog::info(
+                        "ClockScenario: Drain light intensity updated: {:.2f} -> {:.2f}",
+                        light->intensity,
+                        new_intensity);
+                    light->intensity = new_intensity;
+                }
+            }
+            // Update digit lights at 1/2 intensity.
+            float digit_intensity = new_intensity * 0.5f;
+            if (digit_light_left_) {
+                if (SpotLight* light = digit_light_left_->get<SpotLight>()) {
+                    light->intensity = digit_intensity;
+                }
+            }
+            if (digit_light_right_) {
+                if (SpotLight* light = digit_light_right_->get<SpotLight>()) {
+                    light->intensity = digit_intensity;
+                }
+            }
+        }
+    }
+
+    // Manage rain light - shines down from top when water is in upper third.
+    {
+        // Count water in the top third of the world.
+        int top_third_end = data.height / 3;
+        double top_water = 0.0;
+        for (int y = 1; y < top_third_end; ++y) {
+            for (int x = 1; x < data.width - 1; ++x) {
+                const Cell& cell = data.at(x, y);
+                if (cell.material_type == Material::EnumType::Water) {
+                    top_water += cell.fill_ratio;
+                }
+            }
+        }
+
+        constexpr double RAIN_LIGHT_THRESHOLD = 0.5;
+        constexpr double RAIN_LIGHT_FULL = 20.0;
+
+        constexpr float TORCH_BASE_INTENSITY = 0.1f;
+        constexpr float TORCH_RAIN_BOOST = 0.2f; // Max additional intensity from rain.
+
+        if (top_water >= RAIN_LIGHT_THRESHOLD) {
+            float base_intensity = static_cast<float>(std::min(top_water / RAIN_LIGHT_FULL, 1.0));
+            // Flicker: vary intensity by ±20%.
+            float flicker = static_cast<float>(0.8 + 0.4 * uniform_dist_(rng_));
+            float intensity = base_intensity * flicker;
+
+            if (!rain_light_) {
+                // Create rain light at top center, pointing down.
+                double light_x = static_cast<double>(data.width) / 2.0;
+                rain_light_ = world.getLightManager().createLight(
+                    SpotLight{ .position = Vector2d{ light_x, 1 },
+                               .color = ColorNames::torchOrange(),
+                               .intensity = intensity,
+                               .radius = 35.0f,
+                               .attenuation = 0.02f,
+                               .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
+                               .arc_width = 2.2f,
+                               .focus = 0.1f });
+                spdlog::info(
+                    "ClockScenario: Rain light created at ({:.1f}, 0), intensity={:.2f}",
+                    light_x,
+                    base_intensity);
+            }
+            else {
+                // Update intensity with flicker.
+                if (SpotLight* light = rain_light_->get<SpotLight>()) {
+                    light->intensity = intensity;
+                }
+            }
+
+            // Boost torch intensity with rain (with subtle flicker).
+            float torch_intensity =
+                TORCH_BASE_INTENSITY + TORCH_RAIN_BOOST * base_intensity * flicker;
+            if (torch_left_) {
+                if (PointLight* light = torch_left_->get<PointLight>()) {
+                    light->intensity = torch_intensity;
+                }
+            }
+            if (torch_right_) {
+                if (PointLight* light = torch_right_->get<PointLight>()) {
+                    light->intensity = torch_intensity;
+                }
+            }
+        }
+        else {
+            // No rain - restore torch base intensity.
+            if (torch_left_) {
+                if (PointLight* light = torch_left_->get<PointLight>()) {
+                    light->intensity = TORCH_BASE_INTENSITY;
+                }
+            }
+            if (torch_right_) {
+                if (PointLight* light = torch_right_->get<PointLight>()) {
+                    light->intensity = TORCH_BASE_INTENSITY;
+                }
+            }
+
+            if (rain_light_) {
+                // Remove rain light.
+                spdlog::info("ClockScenario: Rain light removed");
+                rain_light_.reset();
+            }
         }
     }
 

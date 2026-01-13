@@ -1,3 +1,4 @@
+#include "core/UUID.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -29,10 +30,11 @@ TEST_F(GenomeRepositoryTest, StoreAndRetrieveGenome)
 {
     auto genome = createTestGenome(0.5);
     auto meta = createTestMetadata("test_genome", 1.5);
+    GenomeId id = UUID::generate();
 
-    GenomeId id = repo.store(genome, meta);
+    repo.store(id, genome, meta);
 
-    EXPECT_NE(id, INVALID_GENOME_ID);
+    EXPECT_TRUE(repo.exists(id));
 
     auto retrieved = repo.get(id);
     ASSERT_TRUE(retrieved.has_value());
@@ -46,17 +48,18 @@ TEST_F(GenomeRepositoryTest, StoreAndRetrieveGenome)
 
 TEST_F(GenomeRepositoryTest, GetNonexistentReturnsNullopt)
 {
-    GenomeId bogusId{ 999 };
+    GenomeId bogusId = UUID::generate(); // Not stored.
 
+    EXPECT_FALSE(repo.exists(bogusId));
     EXPECT_FALSE(repo.get(bogusId).has_value());
     EXPECT_FALSE(repo.getMetadata(bogusId).has_value());
 }
 
 TEST_F(GenomeRepositoryTest, ListReturnsAllStoredGenomes)
 {
-    repo.store(createTestGenome(0.1), createTestMetadata("genome_a", 1.0));
-    repo.store(createTestGenome(0.2), createTestMetadata("genome_b", 2.0));
-    repo.store(createTestGenome(0.3), createTestMetadata("genome_c", 3.0));
+    repo.store(UUID::generate(), createTestGenome(0.1), createTestMetadata("genome_a", 1.0));
+    repo.store(UUID::generate(), createTestGenome(0.2), createTestMetadata("genome_b", 2.0));
+    repo.store(UUID::generate(), createTestGenome(0.3), createTestMetadata("genome_c", 3.0));
 
     auto list = repo.list();
 
@@ -65,7 +68,8 @@ TEST_F(GenomeRepositoryTest, ListReturnsAllStoredGenomes)
 
 TEST_F(GenomeRepositoryTest, RemoveDeletesGenome)
 {
-    GenomeId id = repo.store(createTestGenome(0.5), createTestMetadata("doomed", 1.0));
+    GenomeId id = UUID::generate();
+    repo.store(id, createTestGenome(0.5), createTestMetadata("doomed", 1.0));
 
     EXPECT_TRUE(repo.get(id).has_value());
     EXPECT_EQ(repo.count(), 1u);
@@ -79,8 +83,8 @@ TEST_F(GenomeRepositoryTest, RemoveDeletesGenome)
 
 TEST_F(GenomeRepositoryTest, ClearRemovesAllGenomes)
 {
-    repo.store(createTestGenome(0.1), createTestMetadata("a", 1.0));
-    repo.store(createTestGenome(0.2), createTestMetadata("b", 2.0));
+    repo.store(UUID::generate(), createTestGenome(0.1), createTestMetadata("a", 1.0));
+    repo.store(UUID::generate(), createTestGenome(0.2), createTestMetadata("b", 2.0));
 
     EXPECT_EQ(repo.count(), 2u);
     EXPECT_FALSE(repo.empty());
@@ -94,8 +98,10 @@ TEST_F(GenomeRepositoryTest, ClearRemovesAllGenomes)
 TEST_F(GenomeRepositoryTest, BestTrackingWorks)
 {
     // Store two genomes, only use id2.
-    repo.store(createTestGenome(0.1), createTestMetadata("mediocre", 1.0));
-    const GenomeId id2 = repo.store(createTestGenome(0.2), createTestMetadata("champion", 5.0));
+    GenomeId id1 = UUID::generate();
+    GenomeId id2 = UUID::generate();
+    repo.store(id1, createTestGenome(0.1), createTestMetadata("mediocre", 1.0));
+    repo.store(id2, createTestGenome(0.2), createTestMetadata("champion", 5.0));
 
     // Initially no best.
     EXPECT_FALSE(repo.getBestId().has_value());
@@ -111,7 +117,8 @@ TEST_F(GenomeRepositoryTest, BestTrackingWorks)
 
 TEST_F(GenomeRepositoryTest, RemovingBestClearsBestId)
 {
-    GenomeId id = repo.store(createTestGenome(0.5), createTestMetadata("champ", 5.0));
+    GenomeId id = UUID::generate();
+    repo.store(id, createTestGenome(0.5), createTestMetadata("champ", 5.0));
     repo.markAsBest(id);
 
     EXPECT_TRUE(repo.getBestId().has_value());
@@ -123,7 +130,8 @@ TEST_F(GenomeRepositoryTest, RemovingBestClearsBestId)
 
 TEST_F(GenomeRepositoryTest, ClearAlsoClearsBestId)
 {
-    GenomeId id = repo.store(createTestGenome(0.5), createTestMetadata("champ", 5.0));
+    GenomeId id = UUID::generate();
+    repo.store(id, createTestGenome(0.5), createTestMetadata("champ", 5.0));
     repo.markAsBest(id);
 
     repo.clear();
@@ -133,20 +141,23 @@ TEST_F(GenomeRepositoryTest, ClearAlsoClearsBestId)
 
 TEST_F(GenomeRepositoryTest, MarkAsBestWithInvalidIdDoesNothing)
 {
-    GenomeId bogusId{ 999 };
+    GenomeId bogusId = UUID::generate(); // Not stored.
 
     repo.markAsBest(bogusId);
 
     EXPECT_FALSE(repo.getBestId().has_value());
 }
 
-TEST_F(GenomeRepositoryTest, IdsAreUnique)
+TEST_F(GenomeRepositoryTest, StoreOverwritesExistingGenome)
 {
-    const GenomeId id1 = repo.store(createTestGenome(0.1), createTestMetadata("a", 1.0));
-    const GenomeId id2 = repo.store(createTestGenome(0.2), createTestMetadata("b", 2.0));
-    const GenomeId id3 = repo.store(createTestGenome(0.3), createTestMetadata("c", 3.0));
+    GenomeId id = UUID::generate();
+    repo.store(id, createTestGenome(0.1), createTestMetadata("original", 1.0));
+    repo.store(id, createTestGenome(0.9), createTestMetadata("updated", 9.0));
 
-    EXPECT_NE(id1, id2);
-    EXPECT_NE(id2, id3);
-    EXPECT_NE(id1, id3);
+    EXPECT_EQ(repo.count(), 1u);
+
+    auto meta = repo.getMetadata(id);
+    ASSERT_TRUE(meta.has_value());
+    EXPECT_EQ(meta->name, "updated");
+    EXPECT_DOUBLE_EQ(meta->fitness, 9.0);
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Assert.h"
 #include "LightTypes.h"
 #include "StrongType.h"
 #include <functional>
@@ -87,6 +88,21 @@ public:
     LightId id() const { return id_; }
     bool isValid() const;
     LightId release();
+
+    // Get the underlying light for modification.
+    template <typename T>
+    T* get()
+    {
+        DIRTSIM_ASSERT(manager_ != nullptr && id_ != INVALID_LIGHT_ID, "Invalid LightHandle");
+        return manager_->getLight<T>(id_);
+    }
+
+    template <typename T>
+    const T* get() const
+    {
+        DIRTSIM_ASSERT(manager_ != nullptr && id_ != INVALID_LIGHT_ID, "Invalid LightHandle");
+        return manager_->getLight<T>(id_);
+    }
 
 private:
     friend class LightManager;

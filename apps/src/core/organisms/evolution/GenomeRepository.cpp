@@ -4,12 +4,15 @@
 
 namespace DirtSim {
 
-GenomeId GenomeRepository::store(const Genome& genome, const GenomeMetadata& meta)
+void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMetadata& meta)
 {
-    const GenomeId id = nextId_++;
     genomes_[id] = genome;
     metadata_[id] = meta;
-    return id;
+}
+
+bool GenomeRepository::exists(GenomeId id) const
+{
+    return genomes_.find(id) != genomes_.end();
 }
 
 std::optional<Genome> GenomeRepository::get(GenomeId id) const

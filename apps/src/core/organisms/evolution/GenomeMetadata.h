@@ -1,7 +1,7 @@
 #pragma once
 
 #include "core/ScenarioId.h"
-#include "core/StrongType.h"
+#include "core/UUID.h"
 
 #include <cstdint>
 #include <nlohmann/json_fwd.hpp>
@@ -9,8 +9,8 @@
 
 namespace DirtSim {
 
-using GenomeId = StrongType<struct GenomeIdTag>;
-const GenomeId INVALID_GENOME_ID{};
+using GenomeId = UUID;
+inline const GenomeId INVALID_GENOME_ID = UUID::nil();
 
 /**
  * Metadata for a stored genome in the repository.

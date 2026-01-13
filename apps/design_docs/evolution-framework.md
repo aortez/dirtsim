@@ -56,50 +56,12 @@ A service that lives at the Server level, persisting across state changes.
 
 ### Interface
 
-```cpp
-using GenomeId = uint32_t;
+See `src/core/organisms/evolution/GenomeRepository.h` and `GenomeMetadata.h`.
 
-struct GenomeMetadata {
-    std::string name;           // User-provided or auto-generated.
-    double fitness;             // Best fitness achieved.
-    int generation;             // Generation it came from.
-    uint64_t created_timestamp; // Unix timestamp.
-    std::string scenario_id;    // Which scenario it was trained on.
-    std::string notes;          // Optional user notes.
-};
-
-class GenomeRepository {
-public:
-    // Store and retrieve.
-    GenomeId store(const Genome& genome, const GenomeMetadata& meta);
-    std::optional<Genome> get(GenomeId id) const;
-    std::optional<GenomeMetadata> getMetadata(GenomeId id) const;
-    std::vector<std::pair<GenomeId, GenomeMetadata>> list() const;
-    void remove(GenomeId id);
-    void clear();
-
-    // Persistence.
-    void saveBinary(const std::filesystem::path& path);
-    void loadBinary(const std::filesystem::path& path);
-    void saveJson(const std::filesystem::path& path);
-    void loadJson(const std::filesystem::path& path);
-
-    // Best genome tracking.
-    void markAsBest(GenomeId id);
-    std::optional<GenomeId> getBestId() const;
-    std::optional<Genome> getBest() const;
-
-    // Statistics.
-    size_t count() const;
-    bool empty() const;
-
-private:
-    std::unordered_map<GenomeId, Genome> genomes_;
-    std::unordered_map<GenomeId, GenomeMetadata> metadata_;
-    std::optional<GenomeId> best_id_;
-    GenomeId next_id_ = 1;
-};
-```
+Key points:
+- `GenomeId` is a UUID (RFC 4122 v4), caller-provided
+- `store(id, genome, meta)` overwrites if ID exists
+- Persistence methods not yet implemented
 
 ### Usage Patterns
 
@@ -301,83 +263,30 @@ struct EvolutionStatusResponse {
 
 ### Genome Repository
 
-```cpp
-// List all stored genomes.
-struct GenomeList {};
-struct GenomeListResponse {
-    std::vector<std::pair<GenomeId, GenomeMetadata>> genomes;
-};
+See `src/server/api/Genome*.h` for full definitions.
 
-// Get a specific genome.
-struct GenomeGet {
-    GenomeId id;
-};
-struct GenomeGetResponse {
-    Genome genome;
-    GenomeMetadata metadata;
-};
+| Command | Description | Status |
+|---------|-------------|--------|
+| `GenomeSet` | Store genome with caller-provided UUID | ✅ Implemented |
+| `GenomeGet` | Retrieve genome by ID | ✅ Implemented |
+| `GenomeGetBest` | Get current best genome | ✅ Implemented |
+| `GenomeList` | List all stored genomes | ✅ Implemented |
+| `GenomeDelete` | Remove genome by ID | ❌ Not yet |
+| `GenomeSave` | Save repository to disk | ❌ Not yet |
+| `GenomeLoad` | Load repository from disk | ❌ Not yet |
 
-// Store a genome (import).
-struct GenomeStore {
-    Genome genome;
-    GenomeMetadata metadata;
-};
-struct GenomeStoreResponse {
-    GenomeId id;
-};
+### Planned: Running Simulation with Specific Genome
 
-// Delete a genome.
-struct GenomeDelete {
-    GenomeId id;
-};
+Future: Add `OrganismAdd` command to spawn a seed with a genome from the repository. The flow:
 
-// Get current best.
-struct GenomeGetBest {};
-struct GenomeGetBestResponse {
-    bool found;
-    GenomeId id;
-    Genome genome;
-    GenomeMetadata metadata;
-};
-
-// Save/load repository to disk.
-struct GenomeSave {
-    std::string path;
-    bool binary;  // True for binary, false for JSON.
-};
-struct GenomeLoad {
-    std::string path;
-};
-
-// Export single genome for sharing.
-struct GenomeExport {
-    GenomeId id;
-    bool binary;
-};
-struct GenomeExportResponse {
-    std::string data;  // Base64-encoded binary or JSON string.
-};
-
-// Import single genome.
-struct GenomeImport {
-    std::string data;
-    std::string name;
-};
-struct GenomeImportResponse {
-    GenomeId id;
-};
+```
+GenomeSet{id=<uuid>, weights=[...]}
+SimRun{scenario=TreeGermination, start_paused=true}
+OrganismAdd{type=Seed, position={x,y}, genome_id=<uuid>}
+SimResume
 ```
 
-### Running Simulation with Specific Genome
-
-```cpp
-// Extended SimRun to support loading a genome.
-struct SimRun {
-    std::string scenario_id;
-    std::optional<GenomeId> genome_id;  // If set, use this genome for tree brain.
-    // ... existing fields ...
-};
-```
+This requires TreeGermination scenario to NOT auto-plant a seed (controlled via config flag).
 
 ## Persistence
 

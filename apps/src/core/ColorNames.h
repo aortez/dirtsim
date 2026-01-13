@@ -228,6 +228,7 @@ uint32_t wood();
 // Material emissions.
 uint32_t lavaGlow();
 uint32_t seedGlow();
+uint32_t stormGlow();
 
 // Utility.
 uint32_t white();

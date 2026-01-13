@@ -13,6 +13,7 @@
 #include "GenomeGet.h"
 #include "GenomeGetBest.h"
 #include "GenomeList.h"
+#include "GenomeSet.h"
 #include "GravitySet.h"
 #include "PeersGet.h"
 #include "PerfStatsGet.h"
@@ -70,6 +71,7 @@ using ApiCommand = std::variant<
     Api::GenomeGet::Command,
     Api::GenomeGetBest::Command,
     Api::GenomeList::Command,
+    Api::GenomeSet::Command,
     Api::GravitySet::Command,
     Api::PeersGet::Command,
     Api::PerfStatsGet::Command,

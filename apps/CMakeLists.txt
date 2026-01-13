@@ -295,6 +295,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/GenomeGet.cpp
     src/server/api/GenomeGetBest.cpp
     src/server/api/GenomeList.cpp
+    src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
     src/server/api/PeersGet.cpp
     src/server/api/PerfStatsGet.cpp
