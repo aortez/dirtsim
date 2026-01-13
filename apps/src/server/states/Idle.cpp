@@ -121,16 +121,20 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     newState.frameLimit = cwc.command.max_frame_ms;
 
     spdlog::info(
-        "Idle: World created, transitioning to SimRunning (timestep={}ms, max_steps={}, "
+        "Idle: World created, transitioning to {} (timestep={}ms, max_steps={}, "
         "max_frame_ms={})",
+        cwc.command.start_paused ? "SimPaused" : "SimRunning",
         newState.stepDurationMs,
         cwc.command.max_steps,
         newState.frameLimit);
 
-    // Send response immediately (before transition).
-    cwc.sendResponse(Api::SimRun::Response::okay({ true, 0 }));
+    // Send response: running=false if starting paused.
+    cwc.sendResponse(Api::SimRun::Response::okay({ !cwc.command.start_paused, 0 }));
 
-    // Transition to SimRunning.
+    // Transition to SimRunning or SimPaused based on start_paused flag.
+    if (cwc.command.start_paused) {
+        return SimPaused{ std::move(newState) };
+    }
     return newState;
 }
 

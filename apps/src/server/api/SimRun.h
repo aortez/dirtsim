@@ -23,13 +23,14 @@ struct Command {
     int max_steps = -1;
     int max_frame_ms = 0;
     std::optional<Scenario::EnumType>
-        scenario_id; // Optional scenario (nullopt = use server config default).
+        scenario_id;           // Optional scenario (nullopt = use server config default).
+    bool start_paused = false; // Load scenario but don't start advancing.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<5>;
 };
 
 struct Okay {
