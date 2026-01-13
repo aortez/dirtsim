@@ -12,6 +12,10 @@
 
 namespace DirtSim::Test {
 
+// ============================================================================
+// Test Brain
+// ============================================================================
+
 /**
  * Test brain that allows explicit control of duck actions.
  * Supports independent control of movement and jump for air steering tests.
@@ -81,9 +85,100 @@ private:
     DuckInput direct_input_ = { .move = {}, .jump = false };
 };
 
+// ============================================================================
+// World Factory Functions
+// ============================================================================
+
+/**
+ * Create a flat world with walls on edges and floor at bottom.
+ *
+ * Layout (width x height):
+ *   Row 0: WALL border (ceiling)
+ *   Row 1 to height-2: AIR (interior)
+ *   Row height-1: WALL floor
+ *   Column 0 and width-1: WALL borders
+ */
+inline std::unique_ptr<World> createFlatWorld(int width, int height)
+{
+    auto world = std::make_unique<World>(width, height);
+
+    // Clear interior to air.
+    for (int y = 1; y < height - 1; ++y) {
+        for (int x = 1; x < width - 1; ++x) {
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
+        }
+    }
+
+    // Ensure floor (bottom row).
+    for (int x = 0; x < width; ++x) {
+        world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    return world;
+}
+
+/**
+ * Create a flat world with an obstacle rising from the floor.
+ * Obstacle is WALL blocks at obstacle_x, rising obstacle_height cells.
+ */
+inline std::unique_ptr<World> createObstacleWorld(
+    int width, int height, int obstacle_x, int obstacle_height)
+{
+    auto world = createFlatWorld(width, height);
+
+    // Place obstacle: WALL blocks rising from the floor.
+    for (int h = 0; h < obstacle_height; ++h) {
+        int y = height - 2 - h; // Start one above floor, go up.
+        if (y >= 1) {
+            world->getData().at(obstacle_x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+        }
+    }
+
+    return world;
+}
+
+/**
+ * Create a world with a cliff (gap in the floor).
+ *
+ * Layout (width x 10):
+ *   Row 0: WALL border (ceiling)
+ *   Row 1-7: AIR
+ *   Row 8: WALL floor with gap from cliff_start to cliff_end
+ *   Row 9: WALL border (bottom)
+ */
+inline std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_end)
+{
+    auto world = std::make_unique<World>(width, 10);
+
+    // Clear interior to air (rows 1-8).
+    for (int y = 1; y < 9; ++y) {
+        for (int x = 1; x < width - 1; ++x) {
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
+        }
+    }
+
+    // Create floor with gap (cliff).
+    for (int x = 0; x < width; ++x) {
+        if (x >= cliff_start && x <= cliff_end) {
+            // Gap - air.
+            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Air, 0.0);
+        }
+        else {
+            // Floor - wall.
+            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Wall, 1.0);
+        }
+    }
+
+    return world;
+}
+
+// ============================================================================
+// Test Setup Helper
+// ============================================================================
+
 /**
  * Helper struct for common duck test setup.
- * Creates a flat world with floor, spawns duck, and settles it.
+ * Creates a flat world with floor, spawns duck with TestDuckBrain, and settles it.
  */
 struct DuckTestSetup {
     std::unique_ptr<World> world;
@@ -92,33 +187,14 @@ struct DuckTestSetup {
     OrganismId duck_id = INVALID_ORGANISM_ID;
 
     /**
-     * Create a flat world with walls and floor, spawn duck, and let it settle.
-     *
-     * @param width World width.
-     * @param height World height (floor at height-1).
-     * @param duck_x Duck spawn X position.
-     * @param duck_y Duck spawn Y position (typically height-2 for floor level).
-     * @param settle_frames Frames to run for settling (default 20).
+     * Create flat world, spawn duck, and let it settle.
+     * Duck spawns at (duck_x, duck_y), floor is at height-1.
      */
     static DuckTestSetup create(
         int width, int height, int duck_x, int duck_y, int settle_frames = 20)
     {
         DuckTestSetup setup;
-
-        // Create world.
-        setup.world = std::make_unique<World>(width, height);
-
-        // Clear interior to air.
-        for (int y = 1; y < height - 1; ++y) {
-            for (int x = 1; x < width - 1; ++x) {
-                setup.world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-            }
-        }
-
-        // Ensure floor (bottom row).
-        for (int x = 0; x < width; ++x) {
-            setup.world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
+        setup.world = createFlatWorld(width, height);
 
         // Create duck with test brain.
         auto brain_ptr = std::make_unique<TestDuckBrain>();
@@ -157,41 +233,9 @@ struct DuckTestSetup {
     }
 };
 
-/**
- * Helper to create a world with a cliff.
- *
- * Layout (width x 10):
- *   Row 0: WALL border (ceiling)
- *   Row 1-7: AIR
- *   Row 8: WALL floor from x=0 to cliff_start-1, AIR from cliff_start to cliff_end,
- *          WALL from cliff_end+1 to width-1
- *   Row 9: WALL border (bottom)
- */
-inline std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_end)
-{
-    auto world = std::make_unique<World>(width, 10);
-
-    // Clear interior to air (rows 1-8).
-    for (int y = 1; y < 9; ++y) {
-        for (int x = 1; x < width - 1; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-        }
-    }
-
-    // Create floor with gap (cliff).
-    for (int x = 0; x < width; ++x) {
-        if (x >= cliff_start && x <= cliff_end) {
-            // Gap - air.
-            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Air, 0.0);
-        }
-        else {
-            // Floor - wall.
-            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-    }
-
-    return world;
-}
+// ============================================================================
+// Debug Utilities
+// ============================================================================
 
 /**
  * Print a world state to the log for debugging.

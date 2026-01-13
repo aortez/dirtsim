@@ -34,7 +34,7 @@ protected:
 TEST_F(DuckBrainTest, WallBouncingBrainPingPongs)
 {
     // Create world for wall bouncing.
-    auto world = std::make_unique<World>(10, 5);
+    auto world = createFlatWorld(10, 5);
 
     OrganismManager& manager = world->getOrganismManager();
 
@@ -103,7 +103,7 @@ TEST_F(DuckBrainTest, WallBouncingBrainBouncesOffWall)
     LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::debug);
 
     // Create world (no automatic WALL borders - sensory system will mark edges as WALL).
-    auto world = std::make_unique<World>(10, 5);
+    auto world = createFlatWorld(10, 5);
     printWorld(*world, "Initial world");
 
     OrganismManager& manager = world->getOrganismManager();
@@ -196,7 +196,7 @@ TEST_F(DuckBrainTest, WallBouncingBrainJumpsAtMidpoint)
     LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
 
     // Create world.
-    auto world = std::make_unique<World>(10, 5);
+    auto world = createFlatWorld(10, 5);
 
     OrganismManager& manager = world->getOrganismManager();
 
@@ -254,7 +254,7 @@ TEST_F(DuckBrainTest, WallBouncingBrainJumpsAtMidpoint)
 TEST_F(DuckBrainTest, DuckBrain2DetectsSpawnSide)
 {
     // Create world - duck spawns near left wall.
-    auto world = std::make_unique<World>(20, 5);
+    auto world = createFlatWorld(20, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create duck with DuckBrain2 near left wall (x=1).
@@ -277,7 +277,7 @@ TEST_F(DuckBrainTest, DuckBrain2TurnsAroundAtWall)
     LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
 
     // Create world.
-    auto world = std::make_unique<World>(15, 5);
+    auto world = createFlatWorld(15, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create duck with DuckBrain2 near left wall.
@@ -341,7 +341,7 @@ TEST_F(DuckBrainTest, DuckBrain2BouncesBackAndForth)
     LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
 
     // Create world.
-    auto world = std::make_unique<World>(15, 5);
+    auto world = createFlatWorld(15, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create duck with DuckBrain2 near left wall.
@@ -424,7 +424,7 @@ TEST_F(DuckBrainTest, DuckBrain2JumpsWhenMovingFastInMiddle)
     LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::info);
 
     // Create world.
-    auto world = std::make_unique<World>(20, 5);
+    auto world = createFlatWorld(20, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create duck with DuckBrain2 near left wall.
@@ -490,7 +490,7 @@ TEST_F(DuckBrainTest, DuckBrain2JumpsWhenMovingFastInMiddle)
 TEST_F(DuckBrainTest, DuckBrain2DoesNotJumpWhenStationary)
 {
     // Create world.
-    auto world = std::make_unique<World>(10, 5);
+    auto world = createFlatWorld(10, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create duck with DuckBrain2 exactly in the middle.

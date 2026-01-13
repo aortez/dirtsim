@@ -31,25 +31,7 @@ protected:
 
 TEST_F(DuckJumpTest, DuckJumps2CellsHigh)
 {
-    // Create a taller world for jump testing.
-    // Layout (5x10):
-    //   Row 0: WALL border
-    //   Row 1-8: AIR
-    //   Row 9: WALL floor
-    auto world = std::make_unique<World>(5, 10);
-
-    // Clear interior to air.
-    for (int y = 1; y < 9; ++y) {
-        for (int x = 1; x < 4; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-        }
-    }
-
-    // Ensure floor.
-    for (int x = 0; x < 5; ++x) {
-        world->getData().at(x, 9).replaceMaterial(Material::EnumType::Wall, 1.0);
-    }
-
+    auto world = createFlatWorld(5, 10);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create a test brain we can control.
@@ -320,54 +302,6 @@ protected:
         LoggingChannels::initialize();
         LoggingChannels::setChannelLevel(LogChannel::Brain, spdlog::level::debug);
     }
-
-    /**
-     * Create a 20x10 world with outer walls and an obstacle.
-     *
-     * Layout:
-     *   Row 0: WALL border (ceiling)
-     *   Row 1-8: AIR (interior)
-     *   Row 9: WALL border (floor)
-     *
-     * Obstacle is placed at the specified x position, rising from the floor.
-     */
-    std::unique_ptr<World> createObstacleWorld(int obstacle_x, int obstacle_height)
-    {
-        constexpr int WIDTH = 20;
-        constexpr int HEIGHT = 10;
-
-        auto world = std::make_unique<World>(WIDTH, HEIGHT);
-
-        // Clear everything to air first.
-        for (int y = 0; y < HEIGHT; ++y) {
-            for (int x = 0; x < WIDTH; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-            }
-        }
-
-        // Add outer walls manually.
-        // Top and bottom rows.
-        for (int x = 0; x < WIDTH; ++x) {
-            world->getData().at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
-            world->getData().at(x, HEIGHT - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-        // Left and right columns.
-        for (int y = 0; y < HEIGHT; ++y) {
-            world->getData().at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0);
-            world->getData().at(WIDTH - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-
-        // Place obstacle: WALL blocks rising from the floor.
-        // Floor is at row HEIGHT-1, so obstacle occupies rows above it.
-        for (int h = 0; h < obstacle_height; ++h) {
-            int y = HEIGHT - 2 - h; // Start one above floor, go up.
-            if (y >= 1) {
-                world->getData().at(obstacle_x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
-            }
-        }
-
-        return world;
-    }
 };
 
 TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
@@ -379,7 +313,7 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
         params.obstacle_height,
         params.name);
 
-    auto world = createObstacleWorld(params.obstacle_x, params.obstacle_height);
+    auto world = createObstacleWorld(20, 10, params.obstacle_x, params.obstacle_height);
     printWorld(*world, "Initial world with obstacle");
 
     OrganismManager& manager = world->getOrganismManager();

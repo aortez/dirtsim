@@ -23,35 +23,8 @@ class DuckTest : public ::testing::Test {
 protected:
     void SetUp() override { spdlog::set_level(spdlog::level::debug); }
 
-    /**
-     * Create a small world with air and a floor.
-     *
-     * Layout (5x5):
-     *   01234
-     * 0 WWWWW  <- wall border (automatic)
-     * 1 W   W
-     * 2 W D W  <- duck at center (2,2)
-     * 3 W   W
-     * 4 WWWWW  <- wall floor
-     */
-    std::unique_ptr<World> createTestWorld()
-    {
-        auto world = std::make_unique<World>(5, 5);
-
-        // Clear interior to air.
-        for (int y = 1; y < 4; ++y) {
-            for (int x = 1; x < 4; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-            }
-        }
-
-        // Bottom row is already WALL from World constructor, but ensure it.
-        for (int x = 0; x < 5; ++x) {
-            world->getData().at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-
-        return world;
-    }
+    // Small 5x5 test world for basic tests.
+    std::unique_ptr<World> createTestWorld() { return createFlatWorld(5, 5); }
 };
 
 // ============================================================================
@@ -246,25 +219,7 @@ TEST_F(DuckTest, DuckRemovalClearsCell)
 
 TEST_F(DuckTest, DuckWalksWhenOnGround)
 {
-    // Create a wider world for movement testing.
-    // Layout (100x5):
-    //   Row 0: WALL border
-    //   Row 1-3: AIR
-    //   Row 4: WALL floor
-    auto world = std::make_unique<World>(100, 5);
-
-    // Clear interior to air.
-    for (int y = 1; y < 4; ++y) {
-        for (int x = 1; x < 99; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-        }
-    }
-
-    // Ensure floor.
-    for (int x = 0; x < 100; ++x) {
-        world->getData().at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0);
-    }
-
+    auto world = createFlatWorld(100, 5);
     OrganismManager& manager = world->getOrganismManager();
 
     // Create a test brain we can control.
@@ -330,16 +285,9 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
     std::vector<SurfaceResult> results;
 
     for (const auto& test_case : test_cases) {
-        auto world = std::make_unique<World>(100, 10);
+        auto world = createFlatWorld(100, 10);
 
-        // Clear interior to air.
-        for (int y = 1; y < 9; ++y) {
-            for (int x = 1; x < 99; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-            }
-        }
-
-        // Set floor material.
+        // Override floor with test material.
         for (int x = 0; x < 100; ++x) {
             world->getData().at(x, 9).replaceMaterial(test_case.material, 1.0);
         }
@@ -424,20 +372,7 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
     // DuckBrain2 learns max_speed when velocity stabilizes for 1 second.
     spdlog::info("--- Testing DuckBrain2 max speed learning ---");
     {
-        auto world = std::make_unique<World>(100, 10);
-
-        // Clear interior to air.
-        for (int y = 1; y < 9; ++y) {
-            for (int x = 1; x < 99; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
-            }
-        }
-
-        // WALL floor.
-        for (int x = 0; x < 100; ++x) {
-            world->getData().at(x, 9).replaceMaterial(Material::EnumType::Wall, 1.0);
-        }
-
+        auto world = createFlatWorld(100, 10);
         OrganismManager& manager = world->getOrganismManager();
 
         // Create duck with DuckBrain2 near left wall.
