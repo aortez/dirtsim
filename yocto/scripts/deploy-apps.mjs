@@ -53,18 +53,28 @@ function findBinary(recipe, binaryName) {
     return newest;
 }
 
+// Path to apps source directory (for assets).
+const APPS_DIR = `${YOCTO_DIR}../apps`;
+
 const APPS = {
     server: {
         recipe: 'dirtsim-server',
         binaryName: 'dirtsim-server',
         remotePath: '/usr/bin/dirtsim-server',
         service: 'dirtsim-server',
+        assets: [],
     },
     ui: {
         recipe: 'dirtsim-ui',
         binaryName: 'dirtsim-ui',
         remotePath: '/usr/bin/dirtsim-ui',
         service: 'dirtsim-ui',
+        assets: [
+            {
+                local: `${APPS_DIR}/assets/fonts/fa-solid-900.ttf`,
+                remote: '/usr/share/fonts/fontawesome/fa-solid-900.ttf',
+            },
+        ],
     },
 };
 
@@ -132,6 +142,7 @@ async function buildApps(apps) {
 
 async function deployApp(appName) {
     const app = APPS[appName];
+    const { dirname, basename } = require('path');
 
     const binary = findBinary(app.recipe, app.binaryName);
     if (!binary) {
@@ -145,10 +156,25 @@ async function deployApp(appName) {
         // SCP binary to /tmp/.
         run(`scp ${binary} ${PI_USER}@${piHost}:/tmp/`);
 
-        // Stop service, copy binary, start service.
+        // SCP assets to /tmp/ and build remote commands to install them.
+        const assetCmds = [];
+        for (const asset of app.assets || []) {
+            if (!existsSync(asset.local)) {
+                consola.warn(`Asset not found: ${asset.local}`);
+                continue;
+            }
+            const fileName = basename(asset.local);
+            const remoteDir = dirname(asset.remote);
+            run(`scp ${asset.local} ${PI_USER}@${piHost}:/tmp/${fileName}`);
+            assetCmds.push(`sudo mkdir -p ${remoteDir}`);
+            assetCmds.push(`sudo cp /tmp/${fileName} ${asset.remote}`);
+        }
+
+        // Stop service, copy binary, copy assets, start service.
         const remoteCmd = [
             `sudo systemctl stop ${app.service}`,
             `sudo cp /tmp/${app.binaryName} ${app.remotePath}`,
+            ...assetCmds,
             `sudo systemctl start ${app.service}`,
         ].join(' && ');
 
