@@ -1,7 +1,9 @@
 #pragma once
 
+#include "core/IconFont.h"
 #include "lvgl/lvgl.h"
 #include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace DirtSim {
@@ -95,9 +97,12 @@ private:
     lv_obj_t* container_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
     std::vector<IconConfig> iconConfigs_;
+    std::unique_ptr<IconFont> iconFont_; // FontAwesome loaded at runtime.
 
     IconId selectedId_ = IconId::COUNT;
     bool treeIconVisible_ = false;
+    std::vector<IconId>
+        allowedIcons_; // Icons that are allowed to be shown (set by setVisibleIcons).
     EventSink* eventSink_ = nullptr;
 
     // Mode support.

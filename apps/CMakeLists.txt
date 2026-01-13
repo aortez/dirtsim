@@ -216,10 +216,13 @@ target_link_libraries(lvgl_linux PUBLIC nlohmann_json::nlohmann_json spdlog::spd
 # Core library - minimal shared types for serialization.
 set(DIRTSIM_CORE_SOURCES
     src/core/Cell.cpp
+    src/core/ColorMaterialMapper.cpp
     src/core/ColorNames.cpp
     src/core/ConfigLoader.cpp
     src/core/Entity.cpp
     src/core/EntityType.cpp
+    src/core/FontSampler.cpp
+    src/core/IconFont.cpp
     src/core/LightConfig.cpp
     src/core/LoggingChannels.cpp
     src/core/MaterialFragmentationParams.cpp
@@ -252,7 +255,7 @@ set(DIRTSIM_CORE_SOURCES
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
 target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
-target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv)
+target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv lvgl)
 
 # Link SDL2 for gamepad support.
 target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})
@@ -336,10 +339,6 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/SandboxScenario.cpp
     src/core/scenarios/TreeGerminationScenario.cpp
     src/core/scenarios/WaterEqualizationScenario.cpp
-
-    # Font sampling for cell-based text rendering.
-    src/core/ColorMaterialMapper.cpp
-    src/core/FontSampler.cpp
 
     # Physics engine.
     src/core/LightManager.cpp
@@ -584,6 +583,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckBrain_test.cpp
     src/core/organisms/tests/DuckBuoyancy_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
+    src/core/organisms/tests/DuckLedgeStability_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp

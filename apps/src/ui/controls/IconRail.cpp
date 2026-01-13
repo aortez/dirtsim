@@ -1,5 +1,6 @@
 #include "IconRail.h"
 #include "core/Assert.h"
+#include "core/IconFont.h"
 #include "core/LoggingChannels.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
@@ -11,14 +12,17 @@ namespace Ui {
 
 IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSink)
 {
-    // Define our icon configuration with per-icon colors.
+    // Load FontAwesome at icon size (slightly smaller than button for padding).
+    iconFont_ = std::make_unique<IconFont>(ICON_SIZE - 24);
+
+    // Define our icon configuration with FontAwesome icons and per-icon colors.
     iconConfigs_ = {
-        { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },     // Light blue.
-        { IconId::EVOLUTION, LV_SYMBOL_REFRESH, "Evolution", 0xDA70D6 }, // Orchid/purple.
-        { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },    // Silver.
-        { IconId::PLAY, LV_SYMBOL_PLAY, "Play Simulation", 0x90EE90 },   // Light green.
-        { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },     // Orange.
-        { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },   // Lime green.
+        { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },    // Light blue.
+        { IconId::EVOLUTION, IconFont::DNA, "Evolution", 0xDA70D6 },    // Orchid/purple.
+        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },        // Silver.
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },  // Light green.
+        { IconId::SCENARIO, IconFont::SEEDLING, "Scenario", 0xFFA500 }, // Orange.
+        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },     // Lime green.
     };
 
     createIcons(parent);
@@ -87,6 +91,7 @@ void IconRail::createIcons(lv_obj_t* parent)
 
         lv_obj_t* btnContainer = LVGLBuilder::actionButton(container_)
                                      .icon(config.symbol)
+                                     .font(iconFont_->font())
                                      .mode(LVGLBuilder::ActionMode::Toggle)
                                      .size(ICON_SIZE)
                                      .glowColor(config.color)
@@ -191,6 +196,9 @@ void IconRail::setTreeIconVisible(bool visible)
 
 void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
 {
+    // Store the allowed icons so applyMode() knows which icons can be shown.
+    allowedIcons_ = visibleIcons;
+
     for (size_t i = 0; i < iconConfigs_.size() && i < buttons_.size(); i++) {
         if (!buttons_[i]) continue;
 
@@ -367,12 +375,21 @@ void IconRail::applyMode()
                 lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
             }
             else {
-                // Respect tree visibility when expanding.
-                if (iconConfigs_[i].id == IconId::TREE && !treeIconVisible_) {
-                    lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+                const IconId id = iconConfigs_[i].id;
+
+                // Check if this icon is in the allowed set (if set was configured).
+                const bool isAllowed = allowedIcons_.empty()
+                    || std::find(allowedIcons_.begin(), allowedIcons_.end(), id)
+                        != allowedIcons_.end();
+
+                // Also respect tree visibility setting.
+                const bool showIcon = isAllowed && (id != IconId::TREE || treeIconVisible_);
+
+                if (showIcon) {
+                    lv_obj_clear_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
                 }
                 else {
-                    lv_obj_clear_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(buttons_[i], LV_OBJ_FLAG_HIDDEN);
                 }
             }
         }

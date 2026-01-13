@@ -1489,6 +1489,12 @@ LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::icon(const c
     return *this;
 }
 
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::font(const lv_font_t* f)
+{
+    font_ = f;
+    return *this;
+}
+
 LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::mode(ActionMode m)
 {
     mode_ = m;
@@ -1681,7 +1687,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         if (icon_label_) {
             lv_label_set_text(icon_label_, icon_.c_str());
             lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
-            lv_obj_set_style_text_font(icon_label_, &lv_font_montserrat_40, 0);
+            // Use custom font if set, otherwise default to Montserrat 40.
+            const lv_font_t* icon_font = font_ ? font_ : &lv_font_montserrat_40;
+            lv_obj_set_style_text_font(icon_label_, icon_font, 0);
         }
     }
 

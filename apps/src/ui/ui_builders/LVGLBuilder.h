@@ -437,6 +437,7 @@ public:
         // Text and icon.
         ActionButtonBuilder& text(const char* text);
         ActionButtonBuilder& icon(const char* symbol); // LV_SYMBOL_* or emoji.
+        ActionButtonBuilder& font(const lv_font_t* f); // Custom font for icon/text.
 
         // Mode and state.
         ActionButtonBuilder& mode(ActionMode m);
@@ -489,6 +490,7 @@ public:
 
         std::string text_;
         std::string icon_;
+        const lv_font_t* font_ = nullptr; // Custom font (nullptr = use default).
         ActionMode mode_ = ActionMode::Push;
         bool initial_checked_ = false;
         int width_ = Style::ACTION_SIZE;
