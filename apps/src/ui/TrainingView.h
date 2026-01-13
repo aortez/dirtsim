@@ -62,7 +62,12 @@ private:
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
+    lv_obj_t* cumulativeTimeLabel_ = nullptr;
+    lv_obj_t* etaLabel_ = nullptr;
+    lv_obj_t* simTimeLabel_ = nullptr;
+    lv_obj_t* speedupLabel_ = nullptr;
     lv_obj_t* statusLabel_ = nullptr;
+    lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
 
     // World renderer.

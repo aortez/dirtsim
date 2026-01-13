@@ -8,6 +8,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/Event.h"
 
+#include <chrono>
 #include <memory>
 #include <optional>
 #include <random>
@@ -54,6 +55,10 @@ struct Evolution {
     OrganismId evalTreeId_{};
     double evalSimTime_ = 0.0;
     double evalMaxEnergy_ = 0.0;
+
+    // Training timing.
+    std::chrono::steady_clock::time_point trainingStartTime_;
+    double cumulativeSimTime_ = 0.0; // Total sim time across all completed individuals.
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);

@@ -20,11 +20,16 @@ struct EvolutionProgress {
     double bestFitnessAllTime = 0.0;
     double averageFitness = 0.0;
     GenomeId bestGenomeId{};
+    double totalTrainingSeconds = 0.0; // Real-world seconds since training started.
+    double currentSimTime = 0.0;       // Sim time for current individual.
+    double cumulativeSimTime = 0.0;    // Total sim time across all individuals.
+    double speedupFactor = 0.0;        // Sim time / real time.
+    double etaSeconds = 0.0;           // Estimated time remaining.
 
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<13>;
 };
 
 } // namespace Api

@@ -36,6 +36,9 @@ void Evolution::onEnter(StateMachine& /*dsm*/)
         evolutionConfig.populationSize,
         evolutionConfig.maxGenerations);
 
+    // Record training start time.
+    trainingStartTime_ = std::chrono::steady_clock::now();
+
     // Seed RNG.
     rng.seed(std::random_device{}());
 
@@ -83,6 +86,9 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         evalWorld_->getOrganismManager().getGrid(),
         scenarioId,
         Config::TreeGermination{});
+
+    // Broadcast progress for real-time time display updates.
+    broadcastProgress(dsm);
 
     // Track max energy.
     Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);
@@ -226,6 +232,9 @@ void Evolution::finishEvaluation(StateMachine& dsm)
         evolutionConfig.populationSize,
         fitness);
 
+    // Add this individual's sim time to cumulative total.
+    cumulativeSimTime_ += evalSimTime_;
+
     // Clean up world.
     evalWorld_.reset();
 
@@ -289,6 +298,26 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         avgFitness /= currentEval;
     }
 
+    // Calculate total training time.
+    auto now = std::chrono::steady_clock::now();
+    double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
+
+    // Cumulative sim time = completed individuals + current individual's progress.
+    double cumulative = cumulativeSimTime_ + evalSimTime_;
+
+    // Speedup factor = how much faster than real-time.
+    double speedup = (totalSeconds > 0.0) ? (cumulative / totalSeconds) : 0.0;
+
+    // ETA calculation based on throughput.
+    int completedIndividuals = generation * evolutionConfig.populationSize + currentEval;
+    int totalIndividuals = evolutionConfig.maxGenerations * evolutionConfig.populationSize;
+    int remainingIndividuals = totalIndividuals - completedIndividuals;
+    double eta = 0.0;
+    if (completedIndividuals > 0 && remainingIndividuals > 0) {
+        double avgRealTimePerIndividual = totalSeconds / completedIndividuals;
+        eta = remainingIndividuals * avgRealTimePerIndividual;
+    }
+
     const Api::EvolutionProgress progress{
         .generation = generation,
         .maxGenerations = evolutionConfig.maxGenerations,
@@ -298,6 +327,11 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .bestFitnessAllTime = bestFitnessAllTime,
         .averageFitness = avgFitness,
         .bestGenomeId = bestGenomeId,
+        .totalTrainingSeconds = totalSeconds,
+        .currentSimTime = evalSimTime_,
+        .cumulativeSimTime = cumulative,
+        .speedupFactor = speedup,
+        .etaSeconds = eta,
     };
 
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));

@@ -39,10 +39,22 @@ private:
     lv_obj_t* startButton_ = nullptr;
     lv_obj_t* statusLabel_ = nullptr;
 
+    // Config steppers.
+    lv_obj_t* populationStepper_ = nullptr;
+    lv_obj_t* generationsStepper_ = nullptr;
+    lv_obj_t* mutationRateStepper_ = nullptr;
+    lv_obj_t* tournamentSizeStepper_ = nullptr;
+    lv_obj_t* maxSimTimeStepper_ = nullptr;
+
     void createMainView(lv_obj_t* view);
     void updateStartButtonVisibility();
 
     static void onStartClicked(lv_event_t* e);
+    static void onPopulationChanged(lv_event_t* e);
+    static void onGenerationsChanged(lv_event_t* e);
+    static void onMutationRateChanged(lv_event_t* e);
+    static void onTournamentSizeChanged(lv_event_t* e);
+    static void onMaxSimTimeChanged(lv_event_t* e);
 };
 
 } // namespace Ui

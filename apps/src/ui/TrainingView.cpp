@@ -89,39 +89,101 @@ void TrainingView::createUI()
     lv_label_set_text(statusLabel_, "Ready - Press Start");
     lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
-    lv_obj_set_style_pad_bottom(statusLabel_, 15, 0);
+    lv_obj_set_style_pad_bottom(statusLabel_, 8, 0);
 
-    // Generation progress section.
-    genLabel_ = lv_label_create(statsPanel);
-    lv_label_set_text(genLabel_, "Generation: 0 / 0");
+    // Time displays container (left-aligned).
+    lv_obj_t* timeContainer = lv_obj_create(statsPanel);
+    lv_obj_set_size(timeContainer, 250, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(timeContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(timeContainer, 0, 0);
+    lv_obj_set_style_pad_all(timeContainer, 0, 0);
+    lv_obj_set_flex_flow(timeContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        timeContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(timeContainer, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_bottom(timeContainer, 10, 0);
+
+    // Total training time.
+    totalTimeLabel_ = lv_label_create(timeContainer);
+    lv_label_set_text(totalTimeLabel_, "Training: 0.0s");
+    lv_obj_set_style_text_color(totalTimeLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(totalTimeLabel_, &lv_font_montserrat_12, 0);
+
+    // Current sim time.
+    simTimeLabel_ = lv_label_create(timeContainer);
+    lv_label_set_text(simTimeLabel_, "Sim Time: 0.0s");
+    lv_obj_set_style_text_color(simTimeLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(simTimeLabel_, &lv_font_montserrat_12, 0);
+
+    // Cumulative sim time.
+    cumulativeTimeLabel_ = lv_label_create(timeContainer);
+    lv_label_set_text(cumulativeTimeLabel_, "Cumulative: 0.0s");
+    lv_obj_set_style_text_color(cumulativeTimeLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(cumulativeTimeLabel_, &lv_font_montserrat_12, 0);
+
+    // Speedup factor.
+    speedupLabel_ = lv_label_create(timeContainer);
+    lv_label_set_text(speedupLabel_, "Speedup: 0.0x");
+    lv_obj_set_style_text_color(speedupLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(speedupLabel_, &lv_font_montserrat_12, 0);
+
+    // ETA.
+    etaLabel_ = lv_label_create(timeContainer);
+    lv_label_set_text(etaLabel_, "ETA: --");
+    lv_obj_set_style_text_color(etaLabel_, lv_color_hex(0xFFDD66), 0);
+    lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
+
+    // Generation progress section (label on left, bar on right).
+    lv_obj_t* genRow = lv_obj_create(statsPanel);
+    lv_obj_set_size(genRow, 250, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(genRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(genRow, 0, 0);
+    lv_obj_set_style_pad_all(genRow, 0, 0);
+    lv_obj_set_flex_flow(genRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(genRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(genRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_bottom(genRow, 8, 0);
+
+    genLabel_ = lv_label_create(genRow);
+    lv_label_set_text(genLabel_, "Gen: 0/0");
     lv_obj_set_style_text_color(genLabel_, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_pad_bottom(genLabel_, 3, 0);
+    lv_obj_set_style_text_font(genLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(genLabel_, 70);
 
-    generationBar_ = lv_bar_create(statsPanel);
-    lv_obj_set_size(generationBar_, 250, 16);
+    generationBar_ = lv_bar_create(genRow);
+    lv_obj_set_size(generationBar_, 170, 14);
     lv_bar_set_range(generationBar_, 0, 100);
     lv_bar_set_value(generationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(generationBar_, lv_color_hex(0x333355), 0);
     lv_obj_set_style_bg_color(generationBar_, lv_color_hex(0x00AA66), LV_PART_INDICATOR);
     lv_obj_set_style_radius(generationBar_, 4, 0);
     lv_obj_set_style_radius(generationBar_, 4, LV_PART_INDICATOR);
-    lv_obj_set_style_pad_bottom(generationBar_, 10, 0);
 
-    // Evaluation progress section.
-    evalLabel_ = lv_label_create(statsPanel);
-    lv_label_set_text(evalLabel_, "Evaluating: 0 / 0");
+    // Evaluation progress section (label on left, bar on right).
+    lv_obj_t* evalRow = lv_obj_create(statsPanel);
+    lv_obj_set_size(evalRow, 250, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(evalRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(evalRow, 0, 0);
+    lv_obj_set_style_pad_all(evalRow, 0, 0);
+    lv_obj_set_flex_flow(evalRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(evalRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(evalRow, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_bottom(evalRow, 12, 0);
+
+    evalLabel_ = lv_label_create(evalRow);
+    lv_label_set_text(evalLabel_, "Eval: 0/0");
     lv_obj_set_style_text_color(evalLabel_, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_pad_bottom(evalLabel_, 3, 0);
+    lv_obj_set_style_text_font(evalLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_width(evalLabel_, 70);
 
-    evaluationBar_ = lv_bar_create(statsPanel);
-    lv_obj_set_size(evaluationBar_, 250, 16);
+    evaluationBar_ = lv_bar_create(evalRow);
+    lv_obj_set_size(evaluationBar_, 170, 14);
     lv_bar_set_range(evaluationBar_, 0, 100);
     lv_bar_set_value(evaluationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x333355), 0);
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x6688CC), LV_PART_INDICATOR);
     lv_obj_set_style_radius(evaluationBar_, 4, 0);
     lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
-    lv_obj_set_style_pad_bottom(evaluationBar_, 15, 0);
 
     // Fitness statistics section.
     lv_obj_t* fitnessContainer = lv_obj_create(statsPanel);
@@ -163,11 +225,16 @@ void TrainingView::destroyUI()
     bestAllTimeLabel_ = nullptr;
     bestThisGenLabel_ = nullptr;
     container_ = nullptr;
+    cumulativeTimeLabel_ = nullptr;
+    etaLabel_ = nullptr;
     evalLabel_ = nullptr;
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    simTimeLabel_ = nullptr;
+    speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
+    totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
 }
 
@@ -186,8 +253,51 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
 
     char buf[64];
 
+    // Update time displays.
+    if (totalTimeLabel_) {
+        snprintf(buf, sizeof(buf), "Training: %.1fs", progress.totalTrainingSeconds);
+        lv_label_set_text(totalTimeLabel_, buf);
+    }
+
+    if (simTimeLabel_) {
+        snprintf(buf, sizeof(buf), "Sim Time: %.1fs", progress.currentSimTime);
+        lv_label_set_text(simTimeLabel_, buf);
+    }
+
+    if (cumulativeTimeLabel_) {
+        snprintf(buf, sizeof(buf), "Cumulative: %.1fs", progress.cumulativeSimTime);
+        lv_label_set_text(cumulativeTimeLabel_, buf);
+    }
+
+    if (speedupLabel_) {
+        snprintf(buf, sizeof(buf), "Speedup: %.1fx", progress.speedupFactor);
+        lv_label_set_text(speedupLabel_, buf);
+    }
+
+    if (etaLabel_) {
+        if (progress.etaSeconds <= 0.0) {
+            lv_label_set_text(etaLabel_, "ETA: --");
+        }
+        else if (progress.etaSeconds < 60.0) {
+            snprintf(buf, sizeof(buf), "ETA: %.0fs", progress.etaSeconds);
+            lv_label_set_text(etaLabel_, buf);
+        }
+        else if (progress.etaSeconds < 3600.0) {
+            int mins = static_cast<int>(progress.etaSeconds) / 60;
+            int secs = static_cast<int>(progress.etaSeconds) % 60;
+            snprintf(buf, sizeof(buf), "ETA: %dm %ds", mins, secs);
+            lv_label_set_text(etaLabel_, buf);
+        }
+        else {
+            int hours = static_cast<int>(progress.etaSeconds) / 3600;
+            int mins = (static_cast<int>(progress.etaSeconds) % 3600) / 60;
+            snprintf(buf, sizeof(buf), "ETA: %dh %dm", hours, mins);
+            lv_label_set_text(etaLabel_, buf);
+        }
+    }
+
     // Update generation progress.
-    snprintf(buf, sizeof(buf), "Generation: %d / %d", progress.generation, progress.maxGenerations);
+    snprintf(buf, sizeof(buf), "Gen: %d/%d", progress.generation, progress.maxGenerations);
     lv_label_set_text(genLabel_, buf);
 
     const int genPercent =
@@ -195,8 +305,7 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     lv_bar_set_value(generationBar_, genPercent, LV_ANIM_ON);
 
     // Update evaluation progress.
-    snprintf(
-        buf, sizeof(buf), "Evaluating: %d / %d", progress.currentEval, progress.populationSize);
+    snprintf(buf, sizeof(buf), "Eval: %d/%d", progress.currentEval, progress.populationSize);
     lv_label_set_text(evalLabel_, buf);
 
     const int evalPercent =
