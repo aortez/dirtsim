@@ -9,10 +9,13 @@
  */
 
 #include "DuckTestUtils.h"
+#include "core/ColorNames.h"
+#include "core/LightConfig.h"
 #include "core/LightManager.h"
 #include "core/LightTypes.h"
-#include "core/LoggingChannels.h"
+#include "core/Timers.h"
 #include "core/World.h"
+#include "core/WorldLightCalculator.h"
 #include "core/organisms/Duck.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/components/LightHandHeld.h"
@@ -441,4 +444,37 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     EXPECT_LT(pitch_range, MAX_PITCH_RANGE)
         << "Pitch should be stable at equilibrium, but range was " << pitch_range << " rad ("
         << (pitch_range * 180.0 / M_PI) << "°)";
+
+    // Lightmap verification: confirm flashlight is pointing horizontally.
+    LightConfig light_config = getDefaultLightConfig();
+    light_config.ambient_color = ColorNames::black();
+    light_config.ambient_intensity = 0.0f;
+    light_config.sun_enabled = false;
+
+    WorldLightCalculator calc;
+    Timers timers;
+    calc.calculate(*world, world->getGrid(), light_config, timers);
+
+    // Measure brightness in front of duck (x=15, 5 cells ahead).
+    int duck_y = LEDGE_Y - 1;
+    WorldData& data = world->getData();
+    float b_above = ColorNames::brightness(data.colors.at(15, duck_y - 1));
+    float b_at = ColorNames::brightness(data.colors.at(15, duck_y));
+    float b_below = ColorNames::brightness(data.colors.at(15, duck_y + 1));
+
+    spdlog::info("Lightmap at x=15: above={:.4f}, at={:.4f}, below={:.4f}", b_above, b_at, b_below);
+
+    // Calculate Y centroid of light.
+    float total = b_above + b_at + b_below;
+    float y_centroid = (total > 0.001f)
+        ? (b_above * (duck_y - 1) + b_at * duck_y + b_below * (duck_y + 1)) / total
+        : duck_y;
+    float y_offset = y_centroid - duck_y;
+    float angle_deg = std::atan(y_offset / 5.0f) * 180.0f / static_cast<float>(M_PI);
+
+    spdlog::info("Light centroid offset: {:.3f} cells, angle: {:.2f}°", y_offset, angle_deg);
+
+    // Flashlight should be horizontal within 1 degree.
+    EXPECT_LT(std::abs(angle_deg), 1.0f)
+        << "Flashlight should point horizontally (within 1°), but angle is " << angle_deg << "°";
 }
