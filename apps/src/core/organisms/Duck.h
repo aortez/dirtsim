@@ -1,14 +1,16 @@
 #pragma once
 
+#include "Body.h"
 #include "DuckBrain.h"
 #include "DuckInput.h"
 #include "DuckSensoryData.h"
-#include "Organism.h"
 #include <memory>
 #include <random>
 #include <vector>
 
 namespace DirtSim {
+
+class LightHandHeld;
 
 /**
  * Sparkle particle owned by a duck.
@@ -49,6 +51,7 @@ public:
      * @param brain Brain implementation for movement decisions.
      */
     Duck(OrganismId id, std::unique_ptr<DuckBrain> brain);
+    ~Duck();
 
     // Organism interface.
     Vector2i getAnchorCell() const override { return anchor_cell_; }
@@ -81,6 +84,9 @@ public:
 
     DuckSensoryData gatherSensoryData(const World& world, double deltaTime) const;
 
+    void setHandheldLight(std::unique_ptr<LightHandHeld> light);
+    LightHandHeld* getHandheldLight() { return handheld_light_.get(); }
+
 private:
     Vector2i anchor_cell_{ 0, 0 };
     bool on_ground_ = false;
@@ -96,6 +102,7 @@ private:
     std::mt19937 sparkle_rng_{ std::random_device{}() };
     Vector2d previous_velocity_{ 0.0, 0.0 };
     Vector2d smoothed_acceleration_{ 0.0, 0.0 };
+    std::unique_ptr<LightHandHeld> handheld_light_;
 
     void applyMovementToCell(World& world, double deltaTime);
     int getDesiredSparkleCount(float acceleration) const;
@@ -103,6 +110,7 @@ private:
     void logPhysicsState(const World& world);
     void spawnSparkle(const Vector2d& duck_velocity);
     void updateGroundDetection(const World& world);
+    void updateHandheldLight(World& world, double deltaTime);
     void updateSparkles(const World& world, double deltaTime);
 };
 

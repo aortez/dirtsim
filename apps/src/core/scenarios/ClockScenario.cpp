@@ -17,6 +17,7 @@
 #include "core/organisms/Duck.h"
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/organisms/components/LightHandHeld.h"
 #include "spdlog/spdlog.h"
 
 #include <array>
@@ -1513,8 +1514,10 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
                        .direction = 0.0f,
                        .arc_width = static_cast<float>(M_PI / 3.0),
                        .focus = 1.0f });
-        duck->attachLight(std::move(flashlight), true);
-        spdlog::info("ClockScenario: Attached flashlight to duck {}", state.organism_id);
+
+        auto handheld = std::make_unique<LightHandHeld>(std::move(flashlight));
+        duck->setHandheldLight(std::move(handheld));
+        spdlog::info("ClockScenario: Attached handheld flashlight to duck {}", state.organism_id);
     }
 
     state.phase = DuckEventPhase::DUCK_ACTIVE;

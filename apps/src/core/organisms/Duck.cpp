@@ -1,5 +1,6 @@
 #include "Duck.h"
 #include "OrganismSensoryData.h"
+#include "components/LightHandHeld.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
@@ -9,6 +10,7 @@
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
 #include <algorithm>
+#include <cmath>
 
 namespace {
 // Physics constants.
@@ -41,6 +43,8 @@ namespace DirtSim {
 Duck::Duck(OrganismId id, std::unique_ptr<DuckBrain> brain)
     : Organism::Body(id, OrganismType::DUCK), brain_(std::move(brain))
 {}
+
+Duck::~Duck() = default;
 
 void Duck::update(World& world, double deltaTime)
 {
@@ -130,7 +134,13 @@ void Duck::update(World& world, double deltaTime)
     // Update sparkle particle system.
     updateSparkles(world, deltaTime);
 
-    updateAttachedLights(world, deltaTime);
+    // Update handheld light (if present) or fall back to simple attached lights.
+    if (handheld_light_) {
+        updateHandheldLight(world, deltaTime);
+    }
+    else {
+        updateAttachedLights(world, deltaTime);
+    }
 
     // Log physics state every 60 frames.
     if (frame_counter_ % 60 == 0) {
@@ -548,6 +558,40 @@ void Duck::spawnSparkle(const Vector2d& duck_velocity)
     sparkle.max_lifetime = sparkle.lifetime;
 
     sparkles_.push_back(sparkle);
+}
+
+void Duck::setHandheldLight(std::unique_ptr<LightHandHeld> light)
+{
+    handheld_light_ = std::move(light);
+}
+
+void Duck::updateHandheldLight(World& world, double deltaTime)
+{
+    if (!handheld_light_) {
+        return;
+    }
+
+    const WorldData& data = world.getData();
+    if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+        return;
+    }
+
+    // Compute signed acceleration from velocity change.
+    const Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
+    const float dt = static_cast<float>(deltaTime);
+
+    Vector2d acceleration{ 0.0, 0.0 };
+    if (dt > 0.0f) {
+        acceleration.x = (cell.velocity.x - previous_velocity_.x) / dt;
+        acceleration.y = (cell.velocity.y - previous_velocity_.y) / dt;
+    }
+
+    handheld_light_->update(acceleration, deltaTime);
+
+    // Apply to the actual light in the world.
+    Vector2d position{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
+    const bool facing_right = facing_.x > 0.0f;
+    handheld_light_->applyToLight(world.getLightManager(), position, facing_right);
 }
 
 } // namespace DirtSim

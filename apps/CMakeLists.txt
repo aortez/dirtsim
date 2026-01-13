@@ -317,7 +317,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/network/PeerDiscovery.cpp
 
     # Scenarios.
-    src/server/scenarios/ScenarioRegistry.cpp
+    src/core/scenarios/ScenarioRegistry.cpp
     src/core/scenarios/BenchmarkScenario.cpp
     src/core/scenarios/ClockScenario.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
@@ -380,6 +380,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
     src/core/organisms/evolution/Selection.cpp
+    src/core/organisms/evolution/TrainingRunner.cpp
+    src/core/organisms/components/LightHandHeld.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
     src/core/organisms/tests/MultiCellTestOrganism.cpp
     src/core/organisms/components/RigidBodyCollisionComponent.cpp
@@ -590,6 +592,7 @@ add_executable(dirtsim-tests
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
+    src/core/organisms/evolution/tests/TrainingRunner_test.cpp
 
     # Core tests.
     src/core/tests/FontSampler_test.cpp
