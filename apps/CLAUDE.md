@@ -123,42 +123,49 @@ You can troubleshoot behavior by examining the TRACE logs.
 #### Core Dumps for Crash Analysis
 When applications crash with segmentation faults, core dumps provide invaluable debugging information.
 
-**Locating Core Dumps:**
+**On the Pi (remote):**
+Coredumps are stored on the data partition at `/data/coredumps/` (symlinked from `/var/lib/systemd/coredump/`). The Pi doesn't have gdb installed, so pull dumps to workstation for analysis.
+
 ```bash
-# List recent core dumps (systemd-coredump)
-coredumpctl list | grep dirtsim | tail -5
+# SSH to Pi and list crashes
+ssh dirtsim.local "coredumpctl list -q"
+
+# Get crash details
+ssh dirtsim.local "coredumpctl info -q"
+
+# Pull coredump to workstation
+scp dirtsim.local:/data/coredumps/core.* /tmp/crash-analysis/
+```
+
+**Analyzing on workstation:**
+```bash
+# Install cross-gdb (one time)
+sudo apt install gdb-multiarch
+
+# Decompress the dump
+cd /tmp/crash-analysis
+zstd -d core.dirtsim-server.*.zst -o core.dump
+
+# Analyze with cross-gdb
+gdb-multiarch ./build-debug/bin/dirtsim-server core.dump
+(gdb) bt                      # Backtrace
+(gdb) info threads            # List all threads
+(gdb) thread apply all bt     # Backtrace of all threads
+(gdb) frame 5                 # Jump to specific frame
+(gdb) print variable_name     # Inspect variables
+(gdb) quit
+```
+
+**Local development (workstation crashes):**
+```bash
+# List recent core dumps
+coredumpctl list | grep dirtsim
 
 # Get info about the latest crash
 coredumpctl info
 
-# Analyze with gdb
-coredumpctl gdb <PID>
-
-# Quick backtrace from most recent crash
-coredumpctl gdb --batch -ex "bt" -ex "quit"
-```
-
-**Analyzing Core Dumps:**
-```bash
-# Get backtrace of all threads
-coredumpctl gdb <PID>
-(gdb) bt            # Main thread backtrace
-(gdb) info threads  # List all threads
-(gdb) thread apply all bt  # Backtrace of all threads
-(gdb) frame 5       # Jump to specific frame
-(gdb) print variable_name  # Inspect variables
-(gdb) quit
-
-# Or use batch mode for automated analysis
-cat > /tmp/gdb_commands.txt << 'EOF'
-set pagination off
-bt
-info threads
-thread apply all bt
-quit
-EOF
-
-coredumpctl gdb <PID> < /tmp/gdb_commands.txt > crash_analysis.txt 2>&1
+# Analyze directly with gdb
+coredumpctl gdb
 ```
 
 ## Architecture

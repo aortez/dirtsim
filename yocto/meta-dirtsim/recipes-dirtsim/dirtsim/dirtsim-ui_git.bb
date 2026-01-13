@@ -41,10 +41,14 @@ DEPENDS = " \
 "
 
 # CMake configuration for UI build.
+# RelWithDebInfo keeps -O2 optimization but adds -g debug symbols for crash analysis.
 EXTRA_OECMAKE = " \
-    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
 "
+
+# Keep debug symbols in deployed binary (don't strip).
+INHIBIT_PACKAGE_STRIP = "1"
 
 # Allow network access during configure for FetchContent.
 do_configure[network] = "1"

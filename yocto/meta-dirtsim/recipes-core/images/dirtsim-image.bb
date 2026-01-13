@@ -82,6 +82,30 @@ disable_fb_console() {
 ROOTFS_POSTPROCESS_COMMAND:append = " disable_fb_console;"
 
 # ============================================================================
+# Coredump Collection
+# ============================================================================
+# Enable crash dump collection for field debugging. Cores are compressed and
+# stored in /var/lib/systemd/coredump/, accessible via coredumpctl.
+# Note: coredumpctl is part of systemd when PACKAGECONFIG includes "coredump"
+# (configured in kas-dirtsim.yml). No separate package needed.
+setup_coredump_config() {
+    install -d ${IMAGE_ROOTFS}/etc/systemd
+    cat > ${IMAGE_ROOTFS}/etc/systemd/coredump.conf << 'EOF'
+[Coredump]
+Storage=external
+Compress=yes
+MaxUse=500M
+KeepFree=100M
+EOF
+
+    # Store coredumps on /data partition (more space than rootfs).
+    install -d ${IMAGE_ROOTFS}/data/coredumps
+    rm -rf ${IMAGE_ROOTFS}/var/lib/systemd/coredump
+    ln -s /data/coredumps ${IMAGE_ROOTFS}/var/lib/systemd/coredump
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_coredump_config;"
+
+# ============================================================================
 # Additional Development & Debug Tools
 # ============================================================================
 # Tools beyond what pi-base-image provides.

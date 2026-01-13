@@ -59,6 +59,9 @@ local_conf_header:
     # Use systemd as init system.
     INIT_MANAGER = "systemd"
 
+    # Enable systemd-coredump for crash analysis.
+    PACKAGECONFIG:append:pn-systemd = " coredump"
+
     # Set hostname (can be overridden by /boot/hostname.txt at boot).
     hostname:pn-base-files = "dirtsim"
 
