@@ -174,7 +174,7 @@ void StartMenu::onExit(StateMachine& sm)
         // This prevents use-after-free if a resize event occurs after exit.
         auto* uiManager = sm.getUiComponentManager();
         if (uiManager) {
-            lv_obj_t* container = uiManager->getMainMenuContainer();
+            lv_obj_t* container = uiManager->getMenuContentArea();
             if (container) {
                 lv_obj_remove_event_cb(container, onDisplayResized);
                 LOG_INFO(State, "Removed resize event handler");

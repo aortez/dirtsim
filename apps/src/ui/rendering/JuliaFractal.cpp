@@ -1,4 +1,5 @@
 #include "JuliaFractal.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include <chrono>
 #include <cmath>
@@ -569,6 +570,9 @@ void JuliaFractal::update()
 
 void JuliaFractal::resize(int newWidth, int newHeight)
 {
+    DIRTSIM_ASSERT(newWidth > 0 && newHeight > 0, "Invalid resize dimensions");
+    DIRTSIM_ASSERT(currentResolutionDivisor_ > 0.0, "Invalid resolution divisor (use-after-free?)");
+
     // Update base window dimensions (in case this is a real window resize).
     baseWindowWidth_ = newWidth;
     baseWindowHeight_ = newHeight;

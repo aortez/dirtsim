@@ -130,31 +130,58 @@ Coredumps are stored on the data partition at `/data/coredumps/` (symlinked from
 # SSH to Pi and list crashes
 ssh dirtsim.local "coredumpctl list -q"
 
-# Get crash details
+# Get crash details (shows exact filename)
 ssh dirtsim.local "coredumpctl info -q"
 
-# Pull coredump to workstation
-scp dirtsim.local:/data/coredumps/core.* /tmp/crash-analysis/
+# Pull coredump to workstation (use actual filename from info command)
+mkdir -p /tmp/crash-analysis
+scp dirtsim.local:/data/coredumps/core.dirtsim-ui.*.zst /tmp/crash-analysis/
 ```
 
 **Analyzing on workstation:**
+
+IMPORTANT: Pi crashes produce ARM (aarch64) coredumps. You MUST use the ARM debug binary from Yocto, not the local x86 build.
+
 ```bash
 # Install cross-gdb (one time)
 sudo apt install gdb-multiarch
 
 # Decompress the dump
 cd /tmp/crash-analysis
-zstd -d core.dirtsim-server.*.zst -o core.dump
+zstd -d core.dirtsim-ui.*.zst -o core.dump
 
-# Analyze with cross-gdb
-gdb-multiarch ./build-debug/bin/dirtsim-server core.dump
+# Key paths (adjust binary name: dirtsim-ui or dirtsim-server)
+YOCTO="/home/data/workspace/dirtsim/yocto/build/tmp"
+SYSROOT="$YOCTO/work/raspberrypi_dirtsim-poky-linux/dirtsim-image/1.0/rootfs"
+DEBUG_BIN="$YOCTO/work/cortexa72-poky-linux/dirtsim-ui/git/packages-split/dirtsim-ui-dbg/usr/bin/.debug/dirtsim-ui"
+
+# Create GDB command script
+cat > gdb-commands.txt << EOF
+set sysroot $SYSROOT
+file $DEBUG_BIN
+core-file core.dump
+# Get binary load address from: info proc mappings | grep dirtsim
+# Then load symbols at that address (example uses 0x5570780000)
+add-symbol-file $DEBUG_BIN 0x5570780000
+thread apply all bt
+EOF
+
+# Run analysis
+gdb-multiarch -batch -x gdb-commands.txt 2>&1 | grep -v "^warning:"
+
+# Or interactive session
+gdb-multiarch -x gdb-commands.txt
 (gdb) bt                      # Backtrace
 (gdb) info threads            # List all threads
 (gdb) thread apply all bt     # Backtrace of all threads
 (gdb) frame 5                 # Jump to specific frame
 (gdb) print variable_name     # Inspect variables
+(gdb) info proc mappings      # Show memory mappings (find load address)
 (gdb) quit
 ```
+
+**Finding the correct load address:**
+The `add-symbol-file` command needs the actual load address from the coredump. Run `info proc mappings` in gdb and look for the dirtsim binary - use the first address shown.
 
 **Local development (workstation crashes):**
 ```bash
@@ -164,7 +191,7 @@ coredumpctl list | grep dirtsim
 # Get info about the latest crash
 coredumpctl info
 
-# Analyze directly with gdb
+# Analyze directly with gdb (works because x86 binary matches x86 dump)
 coredumpctl gdb
 ```
 
