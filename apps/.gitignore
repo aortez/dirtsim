@@ -1,6 +1,10 @@
 logging-config.json.local
 node_modules/
 
+# Yocto build artifacts.
+oe-logs
+oe-workdir
+
 # Build artifacts.
 build/
 build-debug/
