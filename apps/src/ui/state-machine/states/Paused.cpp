@@ -4,6 +4,7 @@
 #include "server/api/SimStop.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/state-machine/StateMachine.h"
+#include "ui/ui_builders/LVGLBuilder.h"
 
 namespace DirtSim {
 namespace Ui {
@@ -23,7 +24,7 @@ void Paused::onEnter(StateMachine& sm)
 
     // Create centered button container.
     lv_obj_t* buttonContainer = lv_obj_create(overlay_);
-    lv_obj_set_size(buttonContainer, 200, 180);
+    lv_obj_set_size(buttonContainer, 200, 240);
     lv_obj_center(buttonContainer);
     lv_obj_set_style_bg_color(buttonContainer, lv_color_hex(0x333333), 0);
     lv_obj_set_style_bg_opa(buttonContainer, LV_OPA_90, 0);
@@ -40,35 +41,38 @@ void Paused::onEnter(StateMachine& sm)
     lv_obj_set_style_text_font(pausedLabel, &lv_font_montserrat_24, 0);
     lv_obj_set_style_text_color(pausedLabel, lv_color_hex(0xFFFFFF), 0);
 
-    // Resume button (green).
-    resumeButton_ = lv_btn_create(buttonContainer);
-    lv_obj_set_size(resumeButton_, 160, 40);
-    lv_obj_set_style_bg_color(resumeButton_, lv_palette_main(LV_PALETTE_GREEN), 0);
-    lv_obj_set_user_data(resumeButton_, &sm);
-    lv_obj_add_event_cb(resumeButton_, onResumeClicked, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* resumeLabel = lv_label_create(resumeButton_);
-    lv_label_set_text(resumeLabel, "Resume");
-    lv_obj_center(resumeLabel);
+    // Resume button (green) - continues simulation.
+    resumeButton_ = LVGLBuilder::actionButton(buttonContainer)
+                        .text("Resume")
+                        .icon(LV_SYMBOL_PLAY)
+                        .mode(LVGLBuilder::ActionMode::Push)
+                        .width(160)
+                        .height(50)
+                        .backgroundColor(0x00AA00)
+                        .callback(onResumeClicked, &sm)
+                        .buildOrLog();
 
     // Stop button (orange) - returns to start menu.
-    stopButton_ = lv_btn_create(buttonContainer);
-    lv_obj_set_size(stopButton_, 160, 40);
-    lv_obj_set_style_bg_color(stopButton_, lv_palette_main(LV_PALETTE_ORANGE), 0);
-    lv_obj_set_user_data(stopButton_, &sm);
-    lv_obj_add_event_cb(stopButton_, onStopClicked, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* stopLabel = lv_label_create(stopButton_);
-    lv_label_set_text(stopLabel, "Stop");
-    lv_obj_center(stopLabel);
+    stopButton_ = LVGLBuilder::actionButton(buttonContainer)
+                      .text("Stop")
+                      .icon(LV_SYMBOL_STOP)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .width(160)
+                      .height(50)
+                      .backgroundColor(0xFF8800)
+                      .callback(onStopClicked, &sm)
+                      .buildOrLog();
 
-    // Quit button (red).
-    quitButton_ = lv_btn_create(buttonContainer);
-    lv_obj_set_size(quitButton_, 160, 40);
-    lv_obj_set_style_bg_color(quitButton_, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_set_user_data(quitButton_, &sm);
-    lv_obj_add_event_cb(quitButton_, onQuitClicked, LV_EVENT_CLICKED, nullptr);
-    lv_obj_t* quitLabel = lv_label_create(quitButton_);
-    lv_label_set_text(quitLabel, "Quit");
-    lv_obj_center(quitLabel);
+    // Quit button (red) - exits program.
+    quitButton_ = LVGLBuilder::actionButton(buttonContainer)
+                      .text("Quit")
+                      .icon(LV_SYMBOL_CLOSE)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .width(160)
+                      .height(50)
+                      .backgroundColor(0xCC0000)
+                      .callback(onQuitClicked, &sm)
+                      .buildOrLog();
 
     LOG_INFO(State, "Created overlay with Resume/Stop/Quit buttons");
 }
@@ -88,8 +92,7 @@ void Paused::onExit(StateMachine& /*sm*/)
 
 void Paused::onResumeClicked(lv_event_t* e)
 {
-    auto* sm = static_cast<StateMachine*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
     if (!sm) return;
 
     LOG_INFO(State, "Resume button clicked");
@@ -101,8 +104,7 @@ void Paused::onResumeClicked(lv_event_t* e)
 
 void Paused::onStopClicked(lv_event_t* e)
 {
-    auto* sm = static_cast<StateMachine*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
     if (!sm) return;
 
     LOG_INFO(State, "Stop button clicked");
@@ -114,8 +116,7 @@ void Paused::onStopClicked(lv_event_t* e)
 
 void Paused::onQuitClicked(lv_event_t* e)
 {
-    auto* sm = static_cast<StateMachine*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
     if (!sm) return;
 
     LOG_INFO(State, "Quit button clicked");

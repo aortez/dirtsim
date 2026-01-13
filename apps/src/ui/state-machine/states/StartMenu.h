@@ -51,7 +51,7 @@ private:
     lv_obj_t* infoPanel_ = nullptr;                    // Bottom-left info panel container.
     lv_obj_t* infoLabel_ = nullptr;                    // Fractal info label.
     lv_obj_t* nextFractalButton_ = nullptr;            // Button to advance fractal.
-    lv_obj_t* quitButton_ = nullptr;                   // Quit button (top-left corner).
+    lv_obj_t* quitButtonContainer_ = nullptr;          // Quit button container (top-left corner).
     int updateFrameCount_ = 0;                         // Frame counter for periodic logging.
     int labelUpdateCounter_ = 0;                       // Frame counter for label updates (~1/sec).
 };

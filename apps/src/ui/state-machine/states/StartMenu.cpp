@@ -128,17 +128,18 @@ void StartMenu::onEnter(StateMachine& sm)
 
     LOG_INFO(State, "Created fractal info panel");
 
-    // Create Quit button in top-left corner (same style as SimRunning).
-    quitButton_ = lv_btn_create(container);
-    lv_obj_set_size(quitButton_, 80, 40);
-    lv_obj_align(quitButton_, LV_ALIGN_TOP_LEFT, 20, 20);
-    lv_obj_set_style_bg_color(quitButton_, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_set_user_data(quitButton_, &sm);
-    lv_obj_add_event_cb(quitButton_, onQuitButtonClicked, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t* quitLabel = lv_label_create(quitButton_);
-    lv_label_set_text(quitLabel, "Quit");
-    lv_obj_center(quitLabel);
+    // Create Quit button in top-left corner.
+    quitButtonContainer_ = LVGLBuilder::actionButton(container)
+                               .text("Quit")
+                               .icon(LV_SYMBOL_CLOSE)
+                               .mode(LVGLBuilder::ActionMode::Push)
+                               .size(80)
+                               .backgroundColor(0xCC0000)
+                               .callback(onQuitButtonClicked, &sm)
+                               .buildOrLog();
+    if (quitButtonContainer_) {
+        lv_obj_align(quitButtonContainer_, LV_ALIGN_TOP_LEFT, 20, 20);
+    }
 
     LOG_INFO(State, "Created Quit button");
 
@@ -248,8 +249,7 @@ void StartMenu::onNextFractalClicked(lv_event_t* e)
 
 void StartMenu::onQuitButtonClicked(lv_event_t* e)
 {
-    auto* sm = static_cast<StateMachine*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
+    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
     if (!sm) return;
 
     LOG_INFO(State, "Quit button clicked");

@@ -45,14 +45,15 @@ void EvolutionControls::createMainView(lv_obj_t* view)
                       .callback(onStopClicked, this)
                       .buildOrLog();
 
-    liveDisplayToggle_ = LVGLBuilder::actionButton(view)
-                             .text("Show Live Sim")
-                             .mode(LVGLBuilder::ActionMode::Toggle)
-                             .size(80)
-                             .checked(liveDisplayEnabled_)
-                             .glowColor(0x00CC00)
-                             .callback(onLiveDisplayToggled, this)
-                             .buildOrLog();
+    // Quit button - always visible, returns to start menu.
+    quitButton_ = LVGLBuilder::actionButton(view)
+                      .text("Quit")
+                      .icon(LV_SYMBOL_STOP)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .size(80)
+                      .backgroundColor(0xCC0000)
+                      .callback(onQuitClicked, this)
+                      .buildOrLog();
 
     updateButtonVisibility();
 }
@@ -75,14 +76,6 @@ void EvolutionControls::setEvolutionStarted(bool started)
     updateButtonVisibility();
 }
 
-void EvolutionControls::setLiveDisplayEnabled(bool enabled)
-{
-    liveDisplayEnabled_ = enabled;
-    if (liveDisplayToggle_) {
-        LVGLBuilder::ActionButtonBuilder::setChecked(liveDisplayToggle_, enabled);
-    }
-}
-
 void EvolutionControls::onStopClicked(lv_event_t* e)
 {
     EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
@@ -93,16 +86,15 @@ void EvolutionControls::onStopClicked(lv_event_t* e)
     self->eventSink_.queueEvent(StopButtonClickedEvent{});
 }
 
-void EvolutionControls::onLiveDisplayToggled(lv_event_t* e)
+void EvolutionControls::onQuitClicked(lv_event_t* e)
 {
     EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
     if (!self) return;
 
-    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->liveDisplayToggle_);
+    spdlog::info("EvolutionControls: Quit button clicked");
 
-    spdlog::info("EvolutionControls: Live display toggled to {}", enabled ? "ON" : "OFF");
-
-    self->liveDisplayEnabled_ = enabled;
+    // Quit also sends StopButtonClickedEvent to return to start menu.
+    self->eventSink_.queueEvent(StopButtonClickedEvent{});
 }
 
 } // namespace Ui
