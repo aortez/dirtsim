@@ -573,12 +573,16 @@ add_executable(dirtsim-tests
     src/core/scenarios/tests/ClockScenario_test.cpp
 
     # Organism tests.
+    src/core/organisms/components/LightHandHeld_test.cpp
     src/core/organisms/components/LocalShapeProjection_test.cpp
     src/core/organisms/components/RigidBodyCollisionComponent_test.cpp
     src/core/organisms/components/RigidBodyPhysicsComponent_test.cpp
     src/core/organisms/tests/CantileverSupport_test.cpp
     src/core/organisms/tests/CellTrackerUtil.cpp
     src/core/organisms/tests/Duck_test.cpp
+    src/core/organisms/tests/DuckBrain_test.cpp
+    src/core/organisms/tests/DuckBuoyancy_test.cpp
+    src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp
