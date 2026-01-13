@@ -77,6 +77,7 @@ public:
     static constexpr const char* WATER = "\xEF\x9D\xB3";    // U+F773
 
     // Science & Evolution.
+    static constexpr const char* CHART_LINE = "\xEF\x88\x81"; // U+F201
     static constexpr const char* DNA = "\xEF\x91\xB1";        // U+F471
     static constexpr const char* BRAIN = "\xEF\x97\x9C";      // U+F5DC
     static constexpr const char* FLASK = "\xEF\x83\x83";      // U+F0C3

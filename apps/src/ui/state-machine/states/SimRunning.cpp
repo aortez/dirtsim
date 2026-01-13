@@ -55,8 +55,7 @@ void SimRunning::onEnter(StateMachine& sm)
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-        iconRail->setVisibleIcons(
-            { IconId::CORE, IconId::PHYSICS, IconId::SCENARIO, IconId::TREE });
+        iconRail->setVisibleIcons({ IconId::CORE, IconId::SCENARIO, IconId::PHYSICS });
         iconRail->deselectAll(); // Start fresh, no panel open.
 
         LOG_INFO(State, "Created simulation playground");

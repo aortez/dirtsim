@@ -64,10 +64,10 @@ void StartMenu::onEnter(StateMachine& sm)
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
 
-    // Configure IconRail to show only PLAY and EVOLUTION icons.
+    // Configure IconRail to show SCENARIO and EVOLUTION icons.
     if (IconRail* iconRail = uiManager->getMenuIconRail()) {
-        iconRail->setVisibleIcons({ IconId::PLAY, IconId::EVOLUTION });
-        LOG_INFO(State, "Configured IconRail with PLAY and EVOLUTION icons");
+        iconRail->setVisibleIcons({ IconId::SCENARIO, IconId::EVOLUTION });
+        LOG_INFO(State, "Configured IconRail with SCENARIO and EVOLUTION icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -305,8 +305,8 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.selectedId));
 
     // Icon clicks trigger state transitions.
-    if (evt.selectedId == IconId::PLAY) {
-        LOG_INFO(State, "Play icon clicked, starting simulation");
+    if (evt.selectedId == IconId::SCENARIO) {
+        LOG_INFO(State, "Scenario icon clicked, starting simulation");
         sm.queueEvent(StartButtonClickedEvent{});
     }
     else if (evt.selectedId == IconId::EVOLUTION) {
