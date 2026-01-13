@@ -233,6 +233,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
     src/core/Timers.cpp
+    src/core/UUID.cpp
     # Vector2d.cpp and Vector2i.cpp removed - now fully inline template in Vector2.h
 
     # Bitmap infrastructure.
@@ -565,6 +566,7 @@ add_executable(dirtsim-tests
     # World light and resize tests.
     src/core/tests/ColorTuning_test.cpp
     src/core/tests/LightManager_test.cpp
+    src/core/tests/UUID_test.cpp
     src/core/tests/WorldLightCalculator_test.cpp
     src/core/tests/WorldResize_test.cpp
 
