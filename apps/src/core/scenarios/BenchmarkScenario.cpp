@@ -62,9 +62,8 @@ void BenchmarkScenario::setup(World& world)
         }
     }
 
-    // Create boundary walls.
+    // Create boundary walls (no top wall - allows sunlight to illuminate the world).
     for (int x = 0; x < world.getData().width; ++x) {
-        world.getData().at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0); // Top wall.
         world.getData()
             .at(x, world.getData().height - 1)
             .replaceMaterial(Material::EnumType::Wall, 1.0); // Bottom wall.
