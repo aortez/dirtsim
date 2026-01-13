@@ -33,8 +33,8 @@ public:
     explicit LightHandHeld(LightHandle light);
     LightHandHeld(LightHandle light, Config config);
 
-    void update(Vector2d holder_acceleration, double deltaTime);
-    void applyToLight(LightManager& lights, Vector2d position, bool facing_right);
+    /// Update physics and apply to light. Computes acceleration from position changes.
+    void update(LightManager& lights, Vector2d position, bool facing_right, double deltaTime);
 
     float getPitch() const { return pitch_; }
     float getAngularVelocity() const { return angular_velocity_; }
@@ -44,11 +44,18 @@ public:
     void setConfig(const Config& config) { config_ = config; }
 
 private:
-    LightHandle light_;
+    void applyToLight(LightManager& lights, Vector2d position, bool facing_right);
+    void updatePhysics(Vector2d holder_acceleration, double deltaTime);
+
     Config config_;
-    float pitch_ = 0.0f; // Vertical deviation from horizontal (radians).
+    LightHandle light_;
+
     float angular_velocity_ = 0.0f;
+    bool has_previous_ = false;
     bool is_on_ = true;
+    float pitch_ = 0.0f; // Radians from horizontal. Positive = pointing down.
+    Vector2d previous_position_{ 0.0, 0.0 };
+    Vector2d previous_velocity_{ 0.0, 0.0 };
     float stored_intensity_ = 1.0f;
 };
 
