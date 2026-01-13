@@ -438,11 +438,9 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
             world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
 
-            // After resize: Reset drain state (positions may be invalid now).
-            drain_open_ = false;
-            drain_start_x_ = 0;
-            drain_end_x_ = 0;
-            current_drain_size_ = 0;
+            // After resize: Reset manager states (positions may be invalid now).
+            drain_manager_.reset();
+            storm_manager_.reset();
 
             // Clear stray WALL cells from interior (old boundaries may now be inside).
             WorldData& data = world.getData();
@@ -629,17 +627,19 @@ void ClockScenario::setup(World& world)
     // Draw initial time (emissive will be set on first tick).
     drawTime(world);
 
-    // Add torch lights at corners (intensity increases with rain).
+    // Add static torch lights at corners.
     world.getLightManager().clear();
     const WorldData& data = world.getData();
-    torch_right_ = world.getLightManager().createLight(PointLight{
+
+    // Static corner torches (fire-and-forget, LightManager owns them).
+    world.getLightManager().addLight(PointLight{
         .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
         .color = ColorNames::torchOrange(),
         .intensity = 0.1f,
         .radius = 15.0f,
         .attenuation = 0.05f });
 
-    torch_left_ = world.getLightManager().createLight(
+    world.getLightManager().addLight(
         PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
                     .color = ColorNames::torchOrange(),
                     .intensity = 0.1f,
@@ -684,7 +684,37 @@ void ClockScenario::tick(World& world, double deltaTime)
 
     // Manage floor drain based on water level.
     // Runs after events so drain clearing catches any floor restored by obstacle clearing.
-    updateDrain(world, deltaTime);
+    double waterAmount = countWaterInBottomThird(world);
+    std::optional<Material::EnumType> meltMaterial = std::nullopt;
+    if (isMeltdownActive()) {
+        auto it = active_events_.find(ClockEventType::MELTDOWN);
+        if (it != active_events_.end()) {
+            meltMaterial = std::get<MeltdownEventState>(it->second.state).digit_material;
+        }
+    }
+    drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
+
+    // Make all water cells glow softly (visible rain against dark clock background).
+    if (config_.rainEnabled) {
+        auto& lightCalc = world.getLightCalculator();
+        constexpr float kWaterGlowIntensity = 0.8f;
+        const WorldData& glowData = world.getData();
+
+        for (int y = 1; y < glowData.height - 1; ++y) {
+            for (int x = 1; x < glowData.width - 1; ++x) {
+                if (glowData.at(x, y).material_type == Material::EnumType::Water) {
+                    lightCalc.setEmissive(x, y, ColorNames::stormGlow(), kWaterGlowIntensity);
+                }
+            }
+        }
+    }
+
+    // Manage storm lighting (lightning flashes based on water in top third).
+    if (config_.rainEnabled) {
+        double topWater = countWaterInTopThird(world);
+        double stormIntensity = std::min(topWater / 10.0, 1.0);
+        storm_manager_.update(world.getLightCalculator(), deltaTime, stormIntensity, rng_);
+    }
 
     // Debug check: verify all WOOD cells have an associated organism.
     // WOOD cells only come from ducks in this scenario, so orphaned WOOD is a bug.
@@ -1556,7 +1586,7 @@ void ClockScenario::updateDuckEvent(
     Vector2i duck_cell = duck_organism->getAnchorCell();
 
     // Floor obstacles: spawn when drain is closed and obstacles are enabled.
-    if (!drain_open_ && event_configs_.duck.floor_obstacles_enabled) {
+    if (!drain_manager_.isOpen() && event_configs_.duck.floor_obstacles_enabled) {
         constexpr double SPAWN_INTERVAL = 3.0;
 
         state.obstacle_spawn_timer += deltaTime;
@@ -1565,7 +1595,7 @@ void ClockScenario::updateDuckEvent(
             obstacle_manager_.spawnObstacle(world, rng_, uniform_dist_);
         }
     }
-    else if (drain_open_ && !obstacle_manager_.getObstacles().empty()) {
+    else if (drain_manager_.isOpen() && !obstacle_manager_.getObstacles().empty()) {
         // Drain is open, clear any obstacles.
         obstacle_manager_.clearAll(world);
     }
@@ -1781,7 +1811,13 @@ void ClockScenario::updateMeltdownEvent(
 {
     double event_duration = getEventTiming(ClockEventType::MELTDOWN).duration;
     ClockEvents::updateMeltdown(
-        state, world, remaining_time, event_duration, drain_open_, drain_start_x_, drain_end_x_);
+        state,
+        world,
+        remaining_time,
+        event_duration,
+        drain_manager_.isOpen(),
+        drain_manager_.getStartX(),
+        drain_manager_.getEndX());
 
     // Make falling digit cells emissive so they glow while melting.
     const WorldData& data = world.getData();
@@ -1824,457 +1860,24 @@ double ClockScenario::countWaterInBottomThird(const World& world) const
     return total_water;
 }
 
-void ClockScenario::updateDrain(World& world, double deltaTime)
+double ClockScenario::countWaterInTopThird(const World& world) const
 {
-    WorldData& data = world.getData();
-    if (data.height < 3 || data.width < 5) return;
+    const WorldData& data = world.getData();
 
-    // Count water in bottom third.
-    double water_amount = countWaterInBottomThird(world);
+    // Count water in the top 1/3 of the world.
+    int top_third_end = data.height / 3;
+    double total_water = 0.0;
 
-    // Thresholds for drain opening size.
-    constexpr double CLOSE_THRESHOLD = 1.0;       // Below this, drain is closed.
-    constexpr double FULL_OPEN_THRESHOLD = 100.0; // At or above this, drain is fully open.
-    constexpr uint32_t MAX_DRAIN_SIZE = 7;        // Maximum drain opening width.
-
-    // Calculate target drain size based on water level (odd numbers only: 3, 5, 7).
-    // Size 1 is only used as an animation transition step, not a sustained state.
-    int16_t target_drain_size = 0;
-    if (water_amount >= FULL_OPEN_THRESHOLD) {
-        target_drain_size = MAX_DRAIN_SIZE;
-    }
-    else if (water_amount >= CLOSE_THRESHOLD) {
-        // Linear interpolation from 3 to MAX_DRAIN_SIZE, quantized to odd numbers.
-        double t = (water_amount - CLOSE_THRESHOLD) / (FULL_OPEN_THRESHOLD - CLOSE_THRESHOLD);
-        uint32_t continuous_size = 3 + static_cast<uint32_t>(t * (MAX_DRAIN_SIZE - 3));
-
-        // Round to nearest odd number (3, 5, 7).
-        if (continuous_size % 2 == 0) {
-            // Even number - round down to next lower odd number.
-            target_drain_size = continuous_size - 1;
-        }
-        else {
-            target_drain_size = continuous_size;
-        }
-    }
-    // else target_drain_size remains 0 (closed).
-
-    // If there's any water on the bottom playable row, ensure drain opens at least one cell.
-    // This prevents water from pooling at the bottom with no way to drain.
-    if (target_drain_size == 0) {
-        int bottom_row = data.height - 2;
+    for (int y = 1; y < top_third_end; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, bottom_row).material_type == Material::EnumType::Water) {
-                target_drain_size = 1;
-                break;
+            const Cell& cell = data.at(x, y);
+            if (cell.material_type == Material::EnumType::Water) {
+                total_water += cell.fill_ratio;
             }
         }
     }
 
-    // Hysteresis: only change drain size one step per second.
-    auto now = std::chrono::steady_clock::now();
-    auto elapsed =
-        std::chrono::duration_cast<std::chrono::milliseconds>(now - last_drain_size_change_)
-            .count();
-
-    int16_t actual_drain_size = current_drain_size_;
-    if (target_drain_size != current_drain_size_ && elapsed >= 1000) {
-        // Step one size at a time (0 <-> 1 <-> 3 <-> 5 <-> 7).
-        if (target_drain_size > current_drain_size_) {
-            // Opening: step up.
-            if (current_drain_size_ == 0) {
-                actual_drain_size = 1;
-            }
-            else {
-                actual_drain_size = static_cast<int16_t>(current_drain_size_ + 2);
-            }
-        }
-        else {
-            // Closing: step down.
-            if (current_drain_size_ == 1) {
-                actual_drain_size = 0;
-            }
-            else {
-                actual_drain_size = static_cast<int16_t>(current_drain_size_ - 2);
-            }
-        }
-        current_drain_size_ = actual_drain_size;
-        last_drain_size_change_ = now;
-    }
-
-    int center_x = data.width / 2;
-    int drain_y = data.height - 1; // Bottom wall row.
-
-    // Calculate new drain bounds based on actual size (centered).
-    int half_drain = static_cast<int>(actual_drain_size / 2);
-    int new_start_x =
-        (actual_drain_size > 0 && center_x > half_drain) ? center_x - half_drain : center_x;
-    int new_end_x =
-        (actual_drain_size > 0) ? std::min(new_start_x + actual_drain_size - 1, data.width - 2) : 0;
-
-    // Ensure start doesn't go below 1 (keep wall border).
-    if (new_start_x < 1) new_start_x = 1;
-
-    // Track if drain size changed.
-    bool drain_was_open = drain_open_;
-    int old_start_x = static_cast<int>(drain_start_x_);
-    int old_end_x = static_cast<int>(drain_end_x_);
-
-    drain_open_ = (actual_drain_size > 0);
-    drain_start_x_ = static_cast<int16_t>(new_start_x);
-    drain_end_x_ = static_cast<int16_t>(new_end_x);
-
-    // Update drain cells if size changed.
-    if (drain_was_open || drain_open_) {
-        // Restore wall on cells that are no longer in the drain.
-        if (drain_was_open) {
-            for (int x = old_start_x; x <= old_end_x; ++x) {
-                bool still_open = drain_open_ && x >= new_start_x && x <= new_end_x;
-                if (!still_open) {
-                    world.replaceMaterialAtCell(
-                        { static_cast<int16_t>(x), static_cast<int16_t>(drain_y) },
-                        Material::EnumType::Wall);
-                }
-            }
-        }
-
-        // Ensure drain cells are clear (always, not just when newly opened).
-        // This handles cases where obstacle clearing may have restored floor over drain.
-        if (drain_open_) {
-            for (int x = new_start_x; x <= new_end_x; ++x) {
-                Cell& cell = data.at(x, drain_y);
-                if (cell.material_type == Material::EnumType::Wall) {
-                    cell = Cell();
-                }
-            }
-        }
-
-        // Log significant changes.
-        if (!drain_was_open && drain_open_) {
-            spdlog::info(
-                "ClockScenario: Drain opened (size: {}, water: {:.1f})",
-                actual_drain_size,
-                water_amount);
-        }
-        else if (drain_was_open && !drain_open_) {
-            spdlog::info("ClockScenario: Drain closed (water: {:.1f})", water_amount);
-        }
-
-        // Manage drain light - shines up from drain when open.
-        if (!drain_was_open && drain_open_) {
-            // Drain just opened - create spotlight pointing up from drain.
-            double drain_light_x = static_cast<double>(new_start_x + new_end_x) / 2.0;
-            double drain_light_y = static_cast<double>(drain_y);
-            float intensity = static_cast<float>(actual_drain_size) / MAX_DRAIN_SIZE;
-            drain_light_ = world.getLightManager().createLight(
-                SpotLight{ .position = Vector2d{ drain_light_x, drain_light_y },
-                           .color = ColorNames::stormGlow(), // Cool blue-white glow.
-                           .intensity = intensity,
-                           .radius = 30.0f,
-                           .attenuation = 0.03f,
-                           .direction = static_cast<float>(-M_PI / 2.0), // Pointing up.
-                           .arc_width = 1.2f,
-                           .focus = 0.3f });
-            spdlog::info(
-                "ClockScenario: Drain light created at ({:.1f}, {:.1f}), intensity={:.2f}, id={}",
-                drain_light_x,
-                drain_light_y,
-                intensity,
-                drain_light_->id());
-
-            // Create digit lights - below the digits at 1/4 and 3/4 width, facing down.
-            double digit_bottom_y = static_cast<double>(data.height + getDigitHeight()) / 2.0 + 1.0;
-            double left_x = static_cast<double>(data.width) * 0.25;
-            double right_x = static_cast<double>(data.width) * 0.75;
-            float digit_intensity = intensity * 0.5f;
-
-            digit_light_left_ = world.getLightManager().createLight(
-                SpotLight{ .position = Vector2d{ left_x, digit_bottom_y },
-                           .color = ColorNames::stormGlow(),
-                           .intensity = digit_intensity,
-                           .radius = 25.0f,
-                           .attenuation = 0.04f,
-                           .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
-                           .arc_width = 2.0f,
-                           .focus = 0.2f });
-
-            digit_light_right_ = world.getLightManager().createLight(
-                SpotLight{ .position = Vector2d{ right_x, digit_bottom_y },
-                           .color = ColorNames::stormGlow(),
-                           .intensity = digit_intensity,
-                           .radius = 25.0f,
-                           .attenuation = 0.04f,
-                           .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
-                           .arc_width = 2.0f,
-                           .focus = 0.2f });
-
-            spdlog::info(
-                "ClockScenario: Digit lights created at y={:.1f}, x=[{:.1f}, {:.1f}], "
-                "intensity={:.2f}",
-                digit_bottom_y,
-                left_x,
-                right_x,
-                digit_intensity);
-        }
-        else if (drain_was_open && !drain_open_) {
-            // Drain closed - remove all lights.
-            spdlog::info("ClockScenario: Drain lights removed");
-            drain_light_.reset();
-            digit_light_left_.reset();
-            digit_light_right_.reset();
-        }
-        else if (drain_open_ && drain_light_) {
-            // Drain size changed - update intensities.
-            float new_intensity = static_cast<float>(actual_drain_size) / MAX_DRAIN_SIZE;
-            if (SpotLight* light = drain_light_->get<SpotLight>()) {
-                if (light->intensity != new_intensity) {
-                    spdlog::info(
-                        "ClockScenario: Drain light intensity updated: {:.2f} -> {:.2f}",
-                        light->intensity,
-                        new_intensity);
-                    light->intensity = new_intensity;
-                }
-            }
-            // Update digit lights at 1/2 intensity.
-            float digit_intensity = new_intensity * 0.5f;
-            if (digit_light_left_) {
-                if (SpotLight* light = digit_light_left_->get<SpotLight>()) {
-                    light->intensity = digit_intensity;
-                }
-            }
-            if (digit_light_right_) {
-                if (SpotLight* light = digit_light_right_->get<SpotLight>()) {
-                    light->intensity = digit_intensity;
-                }
-            }
-        }
-    }
-
-    // Manage rain light - shines down from top when water is in upper third.
-    {
-        // Count water in the top third of the world.
-        int top_third_end = data.height / 3;
-        double top_water = 0.0;
-        for (int y = 1; y < top_third_end; ++y) {
-            for (int x = 1; x < data.width - 1; ++x) {
-                const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::Water) {
-                    top_water += cell.fill_ratio;
-                }
-            }
-        }
-
-        constexpr double RAIN_LIGHT_THRESHOLD = 0.5;
-        constexpr double RAIN_LIGHT_FULL = 20.0;
-
-        constexpr float TORCH_BASE_INTENSITY = 0.1f;
-        constexpr float TORCH_RAIN_BOOST = 0.2f; // Max additional intensity from rain.
-
-        if (top_water >= RAIN_LIGHT_THRESHOLD) {
-            float base_intensity = static_cast<float>(std::min(top_water / RAIN_LIGHT_FULL, 1.0));
-            // Flicker: vary intensity by ±20%.
-            float flicker = static_cast<float>(0.8 + 0.4 * uniform_dist_(rng_));
-            float intensity = base_intensity * flicker;
-
-            if (!rain_light_) {
-                // Create rain light at top center, pointing down.
-                double light_x = static_cast<double>(data.width) / 2.0;
-                rain_light_ = world.getLightManager().createLight(
-                    SpotLight{ .position = Vector2d{ light_x, 1 },
-                               .color = ColorNames::torchOrange(),
-                               .intensity = intensity,
-                               .radius = 35.0f,
-                               .attenuation = 0.02f,
-                               .direction = static_cast<float>(M_PI / 2.0), // Pointing down.
-                               .arc_width = 2.2f,
-                               .focus = 0.1f });
-                spdlog::info(
-                    "ClockScenario: Rain light created at ({:.1f}, 0), intensity={:.2f}",
-                    light_x,
-                    base_intensity);
-            }
-            else {
-                // Update intensity with flicker.
-                if (SpotLight* light = rain_light_->get<SpotLight>()) {
-                    light->intensity = intensity;
-                }
-            }
-
-            // Boost torch intensity with rain (with subtle flicker).
-            float torch_intensity =
-                TORCH_BASE_INTENSITY + TORCH_RAIN_BOOST * base_intensity * flicker;
-            if (torch_left_) {
-                if (PointLight* light = torch_left_->get<PointLight>()) {
-                    light->intensity = torch_intensity;
-                }
-            }
-            if (torch_right_) {
-                if (PointLight* light = torch_right_->get<PointLight>()) {
-                    light->intensity = torch_intensity;
-                }
-            }
-        }
-        else {
-            // No rain - restore torch base intensity.
-            if (torch_left_) {
-                if (PointLight* light = torch_left_->get<PointLight>()) {
-                    light->intensity = TORCH_BASE_INTENSITY;
-                }
-            }
-            if (torch_right_) {
-                if (PointLight* light = torch_right_->get<PointLight>()) {
-                    light->intensity = TORCH_BASE_INTENSITY;
-                }
-            }
-
-            if (rain_light_) {
-                // Remove rain light.
-                spdlog::info("ClockScenario: Rain light removed");
-                rain_light_.reset();
-            }
-        }
-    }
-
-    // If drain is open, handle material in drain cells.
-    if (drain_open_) {
-        int16_t center_x = static_cast<int16_t>((drain_start_x_ + drain_end_x_) / 2);
-
-        // Get the digit material if a meltdown is active.
-        Material::EnumType melt_digit_material =
-            Material::EnumType::Air; // Default (won't match anything).
-        if (isMeltdownActive()) {
-            auto it = active_events_.find(ClockEventType::MELTDOWN);
-            if (it != active_events_.end()) {
-                melt_digit_material = std::get<MeltdownEventState>(it->second.state).digit_material;
-            }
-        }
-
-        for (int16_t x = drain_start_x_; x <= drain_end_x_; ++x) {
-            Cell& cell = data.at(x, drain_y);
-
-            // Digit material falls through the drain during meltdown - convert to water and spray.
-            if (cell.material_type == melt_digit_material && cell.com.y > 0.0) {
-                cell.replaceMaterial(Material::EnumType::Water, cell.fill_ratio);
-                sprayDrainCell(world, cell, x, drain_y);
-                continue;
-            }
-
-            if (cell.material_type != Material::EnumType::Water) {
-                continue;
-            }
-
-            const bool com_below_midline = cell.com.y > 0.0;
-            if (!com_below_midline) {
-                continue;
-            }
-
-            const bool is_center = (x == center_x);
-
-            // Center cell: chance to spray dramatically.
-            if (is_center && cell.fill_ratio > 0.5) {
-                if (uniform_dist_(rng_) < 0.7) {
-                    sprayDrainCell(world, cell, x, drain_y);
-                    continue;
-                }
-            }
-
-            // All drain cells dissipate: full to empty pretty fast.
-            cell.fill_ratio -= (deltaTime * 10);
-            if (cell.fill_ratio <= 0.0) {
-                cell = Cell();
-            }
-        }
-
-        // Drain center position.
-        double drain_center_x = static_cast<double>(drain_start_x_ + drain_end_x_) / 2.0;
-        double drain_center_y = static_cast<double>(drain_y);
-
-        // Apply global gravity-like pull toward drain for all water in the world.
-        constexpr double DRAIN_GRAVITY = 1.0; // Gentle pull toward drain.
-
-        for (int y = 1; y < data.height - 1; ++y) {
-            for (int x = 1; x < data.width - 1; ++x) {
-                Cell& cell = data.at(x, y);
-                if (cell.material_type != Material::EnumType::Water) {
-                    continue;
-                }
-
-                // Vector from cell to drain center.
-                double dx = drain_center_x - static_cast<double>(x);
-                double dy = drain_center_y - static_cast<double>(y);
-
-                // Normalize direction.
-                double dist = std::sqrt(dx * dx + dy * dy);
-                if (dist > 0.5) {
-                    dx /= dist;
-                    dy /= dist;
-                    cell.addPendingForce(Vector2d{ dx * DRAIN_GRAVITY, dy * DRAIN_GRAVITY });
-                }
-            }
-        }
-
-        // Apply stronger suction force to water on the bottom playable row.
-        uint32_t bottom_row = drain_y - 1; // Row above the drain (height - 2).
-        double max_distance = static_cast<double>(data.width) / 2.0;
-        constexpr double MAX_FORCE = 5.0; // Maximum suction force.
-
-        for (int x = 1; x < data.width - 1; ++x) {
-            Cell& cell = data.at(x, bottom_row);
-            if (cell.material_type != Material::EnumType::Water) {
-                continue;
-            }
-
-            // Calculate distance to drain center.
-            double cell_x = static_cast<double>(x);
-            double distance = std::abs(cell_x - drain_center_x);
-
-            // Force strength: stronger when close.
-            double strength = 1.0 - 0.9 * std::min(distance / max_distance, 1.0);
-            double force_magnitude = MAX_FORCE * strength;
-
-            // Pull water down when directly over the drain opening.
-            bool over_drain = (x >= drain_start_x_ && x <= drain_end_x_);
-            double downward_force = over_drain ? MAX_FORCE : 0.0;
-
-            double horizontal_force;
-            if (over_drain) {
-                // Apply horizontal damping to prevent overshooting the drain.
-                // Damping opposes horizontal velocity with magnitude equal to suction force.
-                horizontal_force = -cell.velocity.x * force_magnitude;
-            }
-            else {
-                // Direction toward drain center.
-                double direction = (cell_x < drain_center_x) ? 1.0 : -1.0;
-                if (std::abs(cell_x - drain_center_x) < 0.5) {
-                    direction = 0.0; // Already at drain.
-                }
-                horizontal_force = direction * force_magnitude;
-            }
-
-            cell.addPendingForce(Vector2d{ horizontal_force, downward_force });
-        }
-    }
-}
-
-void ClockScenario::sprayDrainCell(World& world, Cell& cell, int16_t x, int16_t y)
-{
-    static const FragmentationParams drain_frag_params{
-        .radial_bias = 0.2,
-        .min_arc = M_PI / 3.0,
-        .max_arc = M_PI / 2.0,
-        .edge_speed_factor = 1.2,
-        .base_speed = 50.0,
-        .spray_fraction = 1.0,
-    };
-
-    Vector2d spray_direction(0.0, -1.0);
-    constexpr int NUM_FRAGS = 5;
-    constexpr double ARC_WIDTH = M_PI / 2.0;
-
-    world.getCollisionCalculator().fragmentSingleCell(
-        world, cell, x, y, x, y, spray_direction, NUM_FRAGS, ARC_WIDTH, drain_frag_params);
-
-    cell = Cell();
+    return total_water;
 }
 
 std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const WorldData& data) const
@@ -2296,7 +1899,8 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
         Vector2i pos{ x, static_cast<int>(height - 1) };
 
         // Skip open doors, drain cells, and pit cells.
-        bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
+        bool is_drain_cell = drain_manager_.isOpen() && x >= drain_manager_.getStartX()
+            && x <= drain_manager_.getEndX();
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
         if (!door_manager_.isOpenDoorAt(pos, data) && !is_drain_cell && !is_pit_cell) {
@@ -2366,7 +1970,8 @@ void ClockScenario::redrawWalls(World& world)
     int16_t height = data.height;
     for (int16_t x = 0; x < data.width; ++x) {
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
-        bool is_drain_cell = drain_open_ && x >= drain_start_x_ && x <= drain_end_x_;
+        bool is_drain_cell = drain_manager_.isOpen() && x >= drain_manager_.getStartX()
+            && x <= drain_manager_.getEndX();
 
         if (is_pit_cell && !is_drain_cell) {
             Cell& cell = world.getData().at(x, height - 1);

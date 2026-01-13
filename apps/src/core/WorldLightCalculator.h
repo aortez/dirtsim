@@ -42,6 +42,7 @@ public:
     void clearEmissive(int x, int y);
     void clearAllEmissive();
     void resize(int width, int height);
+    void setAmbientBoost(ColorNames::RgbF boost);
 
 private:
     void applyAmbient(World& world, const GridOfCells& grid, const LightConfig& config);
@@ -72,6 +73,7 @@ private:
         int y1,
         ColorNames::RgbF color) const;
 
+    ColorNames::RgbF ambient_boost_{};
     GridBuffer<ColorNames::RgbF> emissive_overlay_;
     std::vector<ColorNames::RgbF> light_buffer_;
     LightBuffer raw_light_;

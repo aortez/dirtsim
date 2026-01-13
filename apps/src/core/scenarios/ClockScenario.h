@@ -6,9 +6,11 @@
 #include "clock_scenario/ColorCycleEvent.h"
 #include "clock_scenario/ColorShowcaseEvent.h"
 #include "clock_scenario/DoorManager.h"
+#include "clock_scenario/DrainManager.h"
 #include "clock_scenario/MeltdownEvent.h"
 #include "clock_scenario/ObstacleManager.h"
 #include "clock_scenario/RainEvent.h"
+#include "clock_scenario/StormManager.h"
 #include "core/Cell.h"
 #include "core/FontSampler.h"
 #include "core/scenarios/Scenario.h"
@@ -95,22 +97,11 @@ private:
     bool time_changed_this_frame_ = false; // Set each frame, used by event updates.
     bool first_tick_done_ = false;         // Prevents events from triggering before first tick.
 
-    // Door and obstacle management.
+    // Managers for sub-systems.
     DoorManager door_manager_;
+    DrainManager drain_manager_;
     ObstacleManager obstacle_manager_;
-
-    // Floor drain state.
-    bool drain_open_ = false;
-    int16_t drain_start_x_ = 0;
-    int16_t drain_end_x_ = 0;
-    int16_t current_drain_size_ = 0; // Current drain size (0, 1, 3, 5, or 7).
-    std::chrono::steady_clock::time_point last_drain_size_change_;
-    std::optional<LightHandle> drain_light_;       // Light shining up from drain when open.
-    std::optional<LightHandle> digit_light_left_;  // Light below digits at 1/4 width, facing down.
-    std::optional<LightHandle> digit_light_right_; // Light below digits at 3/4 width, facing down.
-    std::optional<LightHandle> rain_light_;        // Light at top, facing down when water above.
-    std::optional<LightHandle> torch_left_;        // Corner torch, intensifies with rain.
-    std::optional<LightHandle> torch_right_;       // Corner torch, intensifies with rain.
+    StormManager storm_manager_;
 
     std::mt19937 rng_{ std::random_device{}() };
     std::uniform_real_distribution<double> uniform_dist_{ 0.0, 1.0 };
@@ -157,8 +148,7 @@ private:
     void endEvent(World& world, ClockEventType type, ActiveEvent& event);
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
-    void updateDrain(World& world, double deltaTime);
-    void sprayDrainCell(World& world, Cell& cell, int16_t x, int16_t y);
+    double countWaterInTopThird(const World& world) const;
 
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);

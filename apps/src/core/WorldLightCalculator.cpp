@@ -40,6 +40,7 @@ void WorldLightCalculator::calculate(
     {
         ScopeTimer t(timers, "light_ambient");
         applyAmbient(world, grid, config);
+        ambient_boost_ = {};
     }
 
     // Add sunlight (top-down).
@@ -100,7 +101,8 @@ void WorldLightCalculator::applyAmbient(
     using ColorNames::toRgbF;
 
     auto& data = world.getData();
-    const RgbF base_ambient = toRgbF(config.ambient_color) * config.ambient_intensity;
+    const RgbF base_ambient =
+        toRgbF(config.ambient_color) * config.ambient_intensity + ambient_boost_;
 
     if (!config.sky_access_enabled) {
         // Simple uniform ambient - parallelize.
@@ -455,6 +457,11 @@ void WorldLightCalculator::storeRawLight(World& world)
 const LightBuffer& WorldLightCalculator::getRawLightBuffer() const
 {
     return raw_light_;
+}
+
+void WorldLightCalculator::setAmbientBoost(ColorNames::RgbF boost)
+{
+    ambient_boost_ = boost;
 }
 
 void WorldLightCalculator::setEmissive(int x, int y, uint32_t color, float intensity)
