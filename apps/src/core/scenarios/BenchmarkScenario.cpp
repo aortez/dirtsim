@@ -64,23 +64,23 @@ void BenchmarkScenario::setup(World& world)
 
     // Create boundary walls.
     for (int x = 0; x < world.getData().width; ++x) {
-        world.getData().at(x, 0).replaceMaterial(MaterialType::WALL, 1.0); // Top wall.
+        world.getData().at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0); // Top wall.
         world.getData()
             .at(x, world.getData().height - 1)
-            .replaceMaterial(MaterialType::WALL, 1.0); // Bottom wall.
+            .replaceMaterial(Material::EnumType::WALL, 1.0); // Bottom wall.
     }
     for (int y = 0; y < world.getData().height; ++y) {
-        world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0); // Left wall.
+        world.getData().at(0, y).replaceMaterial(Material::EnumType::WALL, 1.0); // Left wall.
         world.getData()
             .at(world.getData().width - 1, y)
-            .replaceMaterial(MaterialType::WALL, 1.0); // Right wall.
+            .replaceMaterial(Material::EnumType::WALL, 1.0); // Right wall.
     }
 
     // Fill bottom 1/3 with water.
     int waterStartY = world.getData().height - (world.getData().height / 3);
     for (int y = waterStartY; y < world.getData().height - 1; ++y) {
         for (int x = 1; x < world.getData().width - 1; ++x) {
-            world.getData().at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+            world.getData().at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
         }
     }
     spdlog::info(
@@ -94,12 +94,12 @@ void BenchmarkScenario::setup(World& world)
     // Position balls proportionally to world size.
     uint32_t metalBallX = world.getData().width / 5;
     uint32_t metalBallY = world.getData().height / 10;
-    addBall(world, metalBallX, metalBallY, ballRadius, MaterialType::METAL);
+    addBall(world, metalBallX, metalBallY, ballRadius, Material::EnumType::METAL);
     spdlog::info("Added metal ball at ({}, {}), radius {}", metalBallX, metalBallY, ballRadius);
 
     uint32_t woodBallX = (4 * world.getData().width) / 5;
     uint32_t woodBallY = world.getData().height / 10;
-    addBall(world, woodBallX, woodBallY, ballRadius, MaterialType::WOOD);
+    addBall(world, woodBallX, woodBallY, ballRadius, Material::EnumType::WOOD);
     spdlog::info("Added wood ball at ({}, {}), radius {}", woodBallX, woodBallY, ballRadius);
 
     // Add random sand particles (5% of world space).
@@ -115,8 +115,8 @@ void BenchmarkScenario::setup(World& world)
         uint32_t y = 1 + (std::rand() % (world.getData().height - 2));
 
         // Only add sand to AIR cells (don't overwrite water, balls, or walls).
-        if (world.getData().at(x, y).material_type == MaterialType::AIR) {
-            world.getData().at(x, y).replaceMaterial(MaterialType::SAND, 1.0);
+        if (world.getData().at(x, y).material_type == Material::EnumType::AIR) {
+            world.getData().at(x, y).replaceMaterial(Material::EnumType::SAND, 1.0);
             sandAdded++;
         }
     }
@@ -132,7 +132,7 @@ void BenchmarkScenario::reset(World& world)
 }
 
 void BenchmarkScenario::addBall(
-    World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material)
+    World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, Material::EnumType material)
 {
     // Create a circular ball of material.
     for (int y = 0; y < world.getData().height; ++y) {

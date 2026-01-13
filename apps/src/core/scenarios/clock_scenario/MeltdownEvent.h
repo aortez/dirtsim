@@ -43,7 +43,7 @@ void updateMeltdown(
  * @param world The world to clean up.
  * @param digit_material The material type to convert.
  */
-void endMeltdown(World& world, MaterialType digit_material);
+void endMeltdown(World& world, Material::EnumType digit_material);
 
 } // namespace ClockEvents
 } // namespace DirtSim

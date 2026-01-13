@@ -7,7 +7,7 @@
 
 namespace DirtSim {
 
-RigidBodyPhysicsComponent::RigidBodyPhysicsComponent(MaterialType mat) : material(mat)
+RigidBodyPhysicsComponent::RigidBodyPhysicsComponent(Material::EnumType mat) : material(mat)
 {}
 
 void RigidBodyPhysicsComponent::addForce(Vector2d force)
@@ -23,7 +23,7 @@ void RigidBodyPhysicsComponent::applyAirResistance(const World& world, Vector2d 
         return;
     }
 
-    const auto& props = getMaterialProperties(material);
+    const auto& props = Material::getProperties(material);
     const double strength = world.getAirResistanceStrength();
     const double dragMagnitude = strength * props.air_resistance * vMag * vMag;
 

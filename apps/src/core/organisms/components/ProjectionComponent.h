@@ -21,7 +21,7 @@ class ProjectionComponent {
 public:
     virtual ~ProjectionComponent() = default;
 
-    virtual void addCell(Vector2i localPos, MaterialType material, double fillRatio) = 0;
+    virtual void addCell(Vector2i localPos, Material::EnumType material, double fillRatio) = 0;
     virtual void clear(World& world) = 0;
     virtual const std::vector<LocalCell>& getLocalShape() const = 0;
     virtual const std::vector<Vector2i>& getOccupiedCells() const = 0;

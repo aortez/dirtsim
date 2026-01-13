@@ -9,7 +9,7 @@ namespace DirtSim {
 MultiCellTestOrganism::MultiCellTestOrganism(OrganismId id, MultiCellShape shape)
     : Organism(id, OrganismType::TREE),
       shape_(shape),
-      rigidBody_(std::make_unique<RigidBodyComponent>(MaterialType::WOOD))
+      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::WOOD))
 {
     initializeShape();
     recomputeMass();
@@ -23,39 +23,39 @@ void MultiCellTestOrganism::initializeShape()
     switch (shape_) {
         case MultiCellShape::STICK:
             // Two horizontal cells: XX (anchor at left cell).
-            rigidBody_->addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
-            rigidBody_->addCell({ 1, 0 }, MaterialType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
+            rigidBody_->addCell({ 1, 0 }, Material::EnumType::WOOD, 1.0);
             local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             local_shape.push_back(LocalCell{
-                .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 1, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             break;
 
         case MultiCellShape::LSHAPE:
             // L shape:  X   (anchor at corner).
             //          XX
-            rigidBody_->addCell({ 0, -1 }, MaterialType::WOOD, 1.0);
-            rigidBody_->addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
-            rigidBody_->addCell({ 1, 0 }, MaterialType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, -1 }, Material::EnumType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
+            rigidBody_->addCell({ 1, 0 }, Material::EnumType::WOOD, 1.0);
             local_shape.push_back(LocalCell{
-                .localPos = { 0, -1 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, -1 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             local_shape.push_back(LocalCell{
-                .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 1, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             break;
 
         case MultiCellShape::COLUMN:
             // Three vertical cells (anchor at bottom).
-            rigidBody_->addCell({ 0, -2 }, MaterialType::WOOD, 1.0);
-            rigidBody_->addCell({ 0, -1 }, MaterialType::WOOD, 1.0);
-            rigidBody_->addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, -2 }, Material::EnumType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, -1 }, Material::EnumType::WOOD, 1.0);
+            rigidBody_->addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
             local_shape.push_back(LocalCell{
-                .localPos = { 0, -2 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, -2 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             local_shape.push_back(LocalCell{
-                .localPos = { 0, -1 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, -1 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+                .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
             break;
     }
 }

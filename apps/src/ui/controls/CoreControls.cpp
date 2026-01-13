@@ -300,13 +300,13 @@ void CoreControls::createDrawMaterialView(lv_obj_t* view)
 
     // Material option buttons (excluding AIR since that's for erasing).
     buttonToDrawMaterial_.clear();
-    const std::vector<MaterialType> drawableMaterials = { MaterialType::DIRT,  MaterialType::LEAF,
-                                                          MaterialType::METAL, MaterialType::ROOT,
-                                                          MaterialType::SAND,  MaterialType::SEED,
-                                                          MaterialType::WALL,  MaterialType::WATER,
-                                                          MaterialType::WOOD };
+    const std::vector<Material::EnumType> drawableMaterials = {
+        Material::EnumType::DIRT, Material::EnumType::LEAF,  Material::EnumType::METAL,
+        Material::EnumType::ROOT, Material::EnumType::SAND,  Material::EnumType::SEED,
+        Material::EnumType::WALL, Material::EnumType::WATER, Material::EnumType::WOOD
+    };
 
-    for (MaterialType material : drawableMaterials) {
+    for (Material::EnumType material : drawableMaterials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
                                   .text(toString(material).c_str())
                                   .width(LV_PCT(95))
@@ -519,7 +519,7 @@ void CoreControls::onDrawMaterialSelected(lv_event_t* e)
         return;
     }
 
-    MaterialType material = it->second;
+    Material::EnumType material = it->second;
 
     spdlog::info("CoreControls: Draw mode enabled with material {}", toString(material));
 

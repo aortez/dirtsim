@@ -9,35 +9,35 @@
 
 namespace DirtSim {
 
-double getBoneStiffness(MaterialType a, MaterialType b)
+double getBoneStiffness(Material::EnumType a, Material::EnumType b)
 {
     // Order-independent lookup via sorting.
     if (a > b) std::swap(a, b);
 
     // Core structure - very stiff.
-    if ((a == MaterialType::SEED && b == MaterialType::WOOD)
-        || (a == MaterialType::SEED && b == MaterialType::ROOT)) {
+    if ((a == Material::EnumType::SEED && b == Material::EnumType::WOOD)
+        || (a == Material::EnumType::SEED && b == Material::EnumType::ROOT)) {
         return 1.0;
     }
 
     // Trunk and branches.
-    if (a == MaterialType::WOOD && b == MaterialType::WOOD) {
+    if (a == Material::EnumType::WOOD && b == Material::EnumType::WOOD) {
         return 0.8;
     }
 
     // Root system - somewhat flexible.
-    if (a == MaterialType::ROOT && b == MaterialType::ROOT) {
+    if (a == Material::EnumType::ROOT && b == Material::EnumType::ROOT) {
         return 0.5;
     }
-    if (a == MaterialType::ROOT && b == MaterialType::WOOD) {
+    if (a == Material::EnumType::ROOT && b == Material::EnumType::WOOD) {
         return 0.6;
     }
 
     // Foliage - stiff attachment to wood, flexible between leaves.
-    if (a == MaterialType::LEAF && b == MaterialType::WOOD) {
+    if (a == Material::EnumType::LEAF && b == Material::EnumType::WOOD) {
         return 3.0; // Strong attachment to prevent leaves from falling.
     }
-    if (a == MaterialType::LEAF && b == MaterialType::LEAF) {
+    if (a == Material::EnumType::LEAF && b == Material::EnumType::LEAF) {
         return 0.1;
     }
 
@@ -74,7 +74,8 @@ void Organism::onCellTransfer(Vector2i from, Vector2i to)
     }
 }
 
-void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, const World& world)
+void Organism::createBonesForCell(
+    Vector2i new_cell, Material::EnumType material, const World& world)
 {
     // Bones disabled during rigid body implementation. The rigid body system provides
     // structural integrity for organisms without per-cell spring forces.
@@ -120,12 +121,14 @@ void Organism::createBonesForCell(Vector2i new_cell, MaterialType material, cons
             double rot_damping = 0.0;
 
             // For leaf-wood connections, wood is the hinge (leaves swing around branches).
-            if (material == MaterialType::LEAF && neighbor.material_type == MaterialType::WOOD) {
+            if (material == Material::EnumType::LEAF
+                && neighbor.material_type == Material::EnumType::WOOD) {
                 hinge = HingeEnd::CELL_B; // Neighbor (wood) is the pivot.
                 rot_damping = 1.0;        // Passive damping to prevent leaf swinging.
             }
             else if (
-                material == MaterialType::WOOD && neighbor.material_type == MaterialType::LEAF) {
+                material == Material::EnumType::WOOD
+                && neighbor.material_type == Material::EnumType::LEAF) {
                 hinge = HingeEnd::CELL_A; // New cell (wood) is the pivot.
                 rot_damping = 1.0;        // Passive damping to prevent leaf swinging.
             }
@@ -161,7 +164,7 @@ void Organism::recomputeMass()
 {
     mass = 0.0;
     for (const auto& cell : local_shape) {
-        double cell_mass = getMaterialProperties(cell.material).density * cell.fillRatio;
+        double cell_mass = Material::getProperties(cell.material).density * cell.fillRatio;
         mass += cell_mass;
     }
 }
@@ -175,7 +178,7 @@ void Organism::recomputeCenterOfMass()
 
     Vector2d weighted_sum{ 0.0, 0.0 };
     for (const auto& cell : local_shape) {
-        double cell_mass = getMaterialProperties(cell.material).density * cell.fillRatio;
+        double cell_mass = Material::getProperties(cell.material).density * cell.fillRatio;
         weighted_sum.x += static_cast<double>(cell.localPos.x) * cell_mass;
         weighted_sum.y += static_cast<double>(cell.localPos.y) * cell_mass;
     }
@@ -224,7 +227,7 @@ CollisionInfo Organism::detectCollisions(
         const Cell& cell = data.at(cell_pos.x, cell_pos.y);
 
         // Check for WALL.
-        if (cell.material_type == MaterialType::WALL) {
+        if (cell.material_type == Material::EnumType::WALL) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);
             normal_sum.y -= 1.0; // Assume floor for now, refine later.
@@ -240,10 +243,11 @@ CollisionInfo Organism::detectCollisions(
         }
 
         // Check for dense solid material (skip our own cells).
-        bool is_solid = cell.material_type == MaterialType::DIRT
-            || cell.material_type == MaterialType::SAND || cell.material_type == MaterialType::WOOD
-            || cell.material_type == MaterialType::METAL
-            || cell.material_type == MaterialType::ROOT;
+        bool is_solid = cell.material_type == Material::EnumType::DIRT
+            || cell.material_type == Material::EnumType::SAND
+            || cell.material_type == Material::EnumType::WOOD
+            || cell.material_type == Material::EnumType::METAL
+            || cell.material_type == Material::EnumType::ROOT;
         if (is_solid && cell.fill_ratio > 0.8 && cell_org != id_) {
             info.blocked = true;
             info.blocked_cells.push_back(cell_pos);

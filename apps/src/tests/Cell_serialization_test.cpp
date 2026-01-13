@@ -10,7 +10,7 @@ TEST(CellSerializationTest, BasicCellSerializationWorks)
 {
     // Create a cell.
     Cell original;
-    original.material_type = MaterialType::DIRT;
+    original.material_type = Material::EnumType::DIRT;
     original.fill_ratio = 0.8;
 
     // Serialize using zpp_bits (same as network protocol).
@@ -31,7 +31,7 @@ TEST(CellSerializationTest, BasicCellSerializationWorks)
 TEST(CellSerializationTest, DebugCellPackingPreservesValues)
 {
     Cell cell;
-    cell.material_type = MaterialType::WOOD;
+    cell.material_type = Material::EnumType::WOOD;
     cell.fill_ratio = 0.8;
     cell.com = Vector2d{ 0.5, -0.3 };
     cell.velocity = Vector2d{ 1.5, -2.0 };
@@ -41,7 +41,7 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     DebugCell packed = packDebugCell(cell);
     UnpackedDebugCell unpacked = unpackDebugCell(packed);
 
-    EXPECT_EQ(unpacked.material_type, MaterialType::WOOD);
+    EXPECT_EQ(unpacked.material_type, Material::EnumType::WOOD);
     EXPECT_NEAR(unpacked.fill_ratio, 0.8, 0.01);
     EXPECT_NEAR(unpacked.com.x, 0.5, 0.01);
     EXPECT_NEAR(unpacked.com.y, -0.3, 0.01);

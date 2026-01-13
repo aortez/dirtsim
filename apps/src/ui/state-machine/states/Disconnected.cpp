@@ -309,7 +309,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 const BasicCell* basicCells =
                     reinterpret_cast<const BasicCell*>(renderMsg.payload.data());
                 for (size_t i = 0; i < numCells; ++i) {
-                    MaterialType material;
+                    Material::EnumType material;
                     double fill_ratio;
                     int8_t render_as;
                     uint32_t color;

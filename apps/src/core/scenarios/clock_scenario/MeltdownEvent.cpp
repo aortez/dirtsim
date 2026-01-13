@@ -18,7 +18,7 @@ void startMeltdown(MeltdownEventState& state, World& world)
 {
     // Use METAL for falling digits - dense, falls through water nicely.
     // The UI digitMaterial setting only affects render color, not physics.
-    state.digit_material = MaterialType::METAL;
+    state.digit_material = Material::EnumType::METAL;
     WorldData& data = world.getData();
 
     // Convert interior WALL cells (digit display cells) to METAL so they can fall.
@@ -29,7 +29,7 @@ void startMeltdown(MeltdownEventState& state, World& world)
             Cell& cell = data.at(x, y);
 
             // Only convert WALL cells with render_as override (digit cells).
-            if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+            if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
                 // Convert to the digit material so it can fall.
                 cell.material_type = state.digit_material;
                 cell.render_as = -1; // Clear override - now it's the real material.
@@ -59,7 +59,7 @@ void updateMeltdown(
 
     int bottom_wall_y = data.height - 1;
     int above_bottom_y = data.height - 2;
-    MaterialType digit_mat = state.digit_material;
+    Material::EnumType digit_mat = state.digit_material;
 
     // Fragmentation params for digit material spraying up from drain.
     static const FragmentationParams melt_frag_params{
@@ -84,7 +84,7 @@ void updateMeltdown(
             Cell& drain_cell = data.at(x, bottom_wall_y);
             if (drain_cell.material_type == digit_mat) {
                 // Convert to water and spray upward.
-                drain_cell.replaceMaterial(MaterialType::WATER, drain_cell.fill_ratio);
+                drain_cell.replaceMaterial(Material::EnumType::WATER, drain_cell.fill_ratio);
 
                 world.getCollisionCalculator().fragmentSingleCell(
                     world,
@@ -106,7 +106,7 @@ void updateMeltdown(
         Cell& bottom_cell = data.at(x, above_bottom_y);
         if (bottom_cell.material_type == digit_mat) {
             // Convert to water and splash upward.
-            bottom_cell.replaceMaterial(MaterialType::WATER, bottom_cell.fill_ratio);
+            bottom_cell.replaceMaterial(Material::EnumType::WATER, bottom_cell.fill_ratio);
 
             world.getCollisionCalculator().fragmentSingleCell(
                 world,
@@ -145,7 +145,7 @@ void updateMeltdown(
     }
 }
 
-void endMeltdown(World& world, MaterialType digit_material)
+void endMeltdown(World& world, Material::EnumType digit_material)
 {
     WorldData& data = world.getData();
 
@@ -154,7 +154,7 @@ void endMeltdown(World& world, MaterialType digit_material)
         for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
             if (cell.material_type == digit_material) {
-                cell.replaceMaterial(MaterialType::WATER, cell.fill_ratio);
+                cell.replaceMaterial(Material::EnumType::WATER, cell.fill_ratio);
             }
         }
     }

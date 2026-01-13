@@ -58,7 +58,7 @@ public:
     struct WallSpec {
         int16_t x;
         int16_t y;
-        MaterialType render_as; // Visual appearance (WOOD for frame, DIRT for floor, etc.).
+        Material::EnumType render_as; // Visual appearance (WOOD for frame, DIRT for floor, etc.).
     };
 
     explicit ClockScenario(ClockEventConfigs event_configs = {});
@@ -137,7 +137,7 @@ private:
     void drawCharacterWithMaterials(
         World& world, const std::string& utf8Char, int start_x, int start_y);
     bool getCharacterPixel(const std::string& utf8Char, int row, int col) const;
-    void placeDigitPixel(World& world, int x, int y, MaterialType renderMaterial);
+    void placeDigitPixel(World& world, int x, int y, Material::EnumType renderMaterial);
     void drawTimeString(World& world, const std::string& time_str);
     void drawTime(World& world);
     std::string getCurrentTimeString() const;
@@ -168,7 +168,7 @@ private:
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);
 
     bool isMeltdownActive() const;
-    void convertStrayDigitMaterialToWater(World& world, MaterialType digit_material);
+    void convertStrayDigitMaterialToWater(World& world, Material::EnumType digit_material);
 
     // Centralized wall system.
     std::vector<WallSpec> generateWallSpecs(const WorldData& data) const;

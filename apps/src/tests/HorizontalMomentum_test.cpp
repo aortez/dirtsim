@@ -57,10 +57,10 @@ protected:
             std::string row = "  y=" + std::to_string(y) + ": ";
             for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::DIRT) {
+                if (cell.material_type == Material::EnumType::DIRT) {
                     row += "[D]";
                 }
-                else if (cell.material_type == MaterialType::WALL) {
+                else if (cell.material_type == Material::EnumType::WALL) {
                     row += "[#]";
                 }
                 else {
@@ -101,7 +101,9 @@ TEST_F(HorizontalMomentumTest, DirtMaintainsHorizontalVelocity)
     const uint32_t startY = 2;
 
     world->addMaterialAtCell(
-        { static_cast<int16_t>(startX), static_cast<int16_t>(startY) }, MaterialType::DIRT, 1.0);
+        { static_cast<int16_t>(startX), static_cast<int16_t>(startY) },
+        Material::EnumType::DIRT,
+        1.0);
 
     // Give dirt horizontal velocity to the right.
     Cell& dirtCell = world->getData().at(startX, startY);
@@ -130,7 +132,7 @@ TEST_F(HorizontalMomentumTest, DirtMaintainsHorizontalVelocity)
         for (int y = 0; y < world->getData().height; ++y) {
             for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::DIRT && cell.fill_ratio > 0.5) {
+                if (cell.material_type == Material::EnumType::DIRT && cell.fill_ratio > 0.5) {
                     dirtX = x;
                     found = true;
 

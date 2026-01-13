@@ -51,7 +51,9 @@ void GooseTestScenario::setup(World& world)
     for (int y = data.height - 5; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
             world.addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::DIRT,
+                1.0);
         }
     }
 

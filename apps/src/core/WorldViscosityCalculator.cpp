@@ -22,7 +22,7 @@ WorldViscosityCalculator::ViscousForce WorldViscosityCalculator::calculateViscou
     }
 
     // Get material properties.
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
+    const Material::Properties& props = Material::getProperties(cell.material_type);
 
     // Skip if viscosity is zero.
     if (props.viscosity <= 0.0f) {

@@ -17,11 +17,11 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
-    if (cell.material_type == MaterialType::AIR) {
+    if (cell.material_type == Material::EnumType::AIR) {
         return { 0.0f, 0 };
     }
 
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
+    const Material::Properties& props = Material::getProperties(cell.material_type);
     const float material_cohesion = props.cohesion;
     int connected_neighbors = 0; // Accumulated in loop.
 
@@ -48,7 +48,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 
     // Check for metal neighbors that provide structural support.
     int metal_neighbors = 0; // Accumulated in loop.
-    if (cell.material_type == MaterialType::METAL) {
+    if (cell.material_type == Material::EnumType::METAL) {
         // Count metal neighbors for structural support.
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
@@ -60,7 +60,7 @@ WorldCohesionCalculator::CohesionForce WorldCohesionCalculator::calculateCohesio
 
                 if (data.inBounds(nx, ny)) {
                     const Cell& neighbor = data.at(nx, ny);
-                    if (neighbor.material_type == MaterialType::METAL
+                    if (neighbor.material_type == Material::EnumType::METAL
                         && neighbor.fill_ratio > 0.5f) {
                         metal_neighbors++;
                     }
@@ -102,7 +102,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     // Fallback to direct cell access.
     const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
-    if (cell.material_type == MaterialType::AIR) {
+    if (cell.material_type == Material::EnumType::AIR) {
         return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
     }
 
@@ -115,7 +115,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     const Vector2f com = cell.com;
     const Vector2f cell_world_pos(
         static_cast<float>(x) + cell.com.x, static_cast<float>(y) + cell.com.y);
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
+    const Material::Properties& props = Material::getProperties(cell.material_type);
 
     // ===================================================================
     // FORCE 1: Clustering (attraction toward same-material neighbors)
@@ -290,7 +290,7 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     // Skip AIR cells - they have zero cohesion and don't participate in clustering.
-    if (cell.material_type == MaterialType::AIR) {
+    if (cell.material_type == Material::EnumType::AIR) {
         return { { 0.0f, 0.0f }, 0.0f, { 0.0f, 0.0f }, 0, 0.0f, 0.0f, false, 0.0f };
     }
 
@@ -302,10 +302,10 @@ WorldCohesionCalculator::COMCohesionForce WorldCohesionCalculator::calculateCOMC
     const Vector2f com = cell.com;
     const Vector2f cell_world_pos(
         static_cast<float>(x) + cell.com.x, static_cast<float>(y) + cell.com.y);
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
+    const Material::Properties& props = Material::getProperties(cell.material_type);
 
     // Get center material from cache.
-    const MaterialType my_material = mat_n.getCenterMaterial();
+    const Material::EnumType my_material = mat_n.getCenterMaterial();
 
     // ===================================================================
     // FORCE 1: Clustering (cache-optimized - use MaterialNeighborhood)

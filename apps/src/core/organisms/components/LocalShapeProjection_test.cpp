@@ -38,12 +38,12 @@ TEST_F(LocalShapeProjectionTest, ProjectsSingleCellToGrid)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
     projection.project(*world, id, { 5.5, 5.5 }, { 0.0, 0.0 });
 
     // Cell should be at grid position (5, 5).
     const auto& cell = world->getData().at(5, 5);
-    EXPECT_EQ(cell.material_type, MaterialType::WOOD);
+    EXPECT_EQ(cell.material_type, Material::EnumType::WOOD);
     EXPECT_NEAR(cell.fill_ratio, 1.0, 0.0001);
     EXPECT_EQ(world->getOrganismManager().at({ 5, 5 }), id);
 }
@@ -55,15 +55,15 @@ TEST_F(LocalShapeProjectionTest, ProjectsMultipleCellsToGrid)
     LocalShapeProjection projection;
 
     // L-shaped organism.
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
-    projection.addCell({ 1, 0 }, MaterialType::WOOD, 1.0);
-    projection.addCell({ 0, 1 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
+    projection.addCell({ 1, 0 }, Material::EnumType::WOOD, 1.0);
+    projection.addCell({ 0, 1 }, Material::EnumType::WOOD, 1.0);
 
     projection.project(*world, id, { 3.0, 3.0 }, { 0.0, 0.0 });
 
-    EXPECT_EQ(world->getData().at(3, 3).material_type, MaterialType::WOOD);
-    EXPECT_EQ(world->getData().at(4, 3).material_type, MaterialType::WOOD);
-    EXPECT_EQ(world->getData().at(3, 4).material_type, MaterialType::WOOD);
+    EXPECT_EQ(world->getData().at(3, 3).material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(world->getData().at(4, 3).material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(world->getData().at(3, 4).material_type, Material::EnumType::WOOD);
 }
 
 TEST_F(LocalShapeProjectionTest, SetsVelocityOnProjectedCells)
@@ -72,7 +72,7 @@ TEST_F(LocalShapeProjectionTest, SetsVelocityOnProjectedCells)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
     projection.project(*world, id, { 5.0, 5.0 }, { 2.5, -1.0 });
 
     const auto& cell = world->getData().at(5, 5);
@@ -86,7 +86,7 @@ TEST_F(LocalShapeProjectionTest, ComputesSubCellCOMFromFractionalPosition)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
 
     // Position at (5.75, 5.25) -> fractional (0.75, 0.25) -> COM (0.5, -0.5).
     projection.project(*world, id, { 5.75, 5.25 }, { 0.0, 0.0 });
@@ -102,8 +102,8 @@ TEST_F(LocalShapeProjectionTest, TracksOccupiedCells)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
-    projection.addCell({ 1, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
+    projection.addCell({ 1, 0 }, Material::EnumType::WOOD, 1.0);
 
     projection.project(*world, id, { 5.0, 5.0 }, { 0.0, 0.0 });
 
@@ -121,19 +121,19 @@ TEST_F(LocalShapeProjectionTest, ClearsOldProjectionOnReproject)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
 
     // Project at (5, 5).
     projection.project(*world, id, { 5.0, 5.0 }, { 0.0, 0.0 });
-    EXPECT_EQ(world->getData().at(5, 5).material_type, MaterialType::WOOD);
+    EXPECT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::WOOD);
 
     // Reproject at (7, 7).
     projection.project(*world, id, { 7.0, 7.0 }, { 0.0, 0.0 });
 
     // Old position should be cleared.
-    EXPECT_EQ(world->getData().at(5, 5).material_type, MaterialType::AIR);
+    EXPECT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::AIR);
     // New position should have the cell.
-    EXPECT_EQ(world->getData().at(7, 7).material_type, MaterialType::WOOD);
+    EXPECT_EQ(world->getData().at(7, 7).material_type, Material::EnumType::WOOD);
 }
 
 TEST_F(LocalShapeProjectionTest, ClearResetsOccupiedCells)
@@ -142,7 +142,7 @@ TEST_F(LocalShapeProjectionTest, ClearResetsOccupiedCells)
     OrganismId id = createTestOrganism(*world, 5, 5);
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::WOOD, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
     projection.project(*world, id, { 5.0, 5.0 }, { 0.0, 0.0 });
 
     EXPECT_EQ(projection.getOccupiedCells().size(), 1u);
@@ -160,10 +160,10 @@ TEST_F(LocalShapeProjectionTest, AddCellExpandsShape)
 {
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::SEED, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::SEED, 1.0);
     EXPECT_EQ(projection.getLocalShape().size(), 1u);
 
-    projection.addCell({ 0, 1 }, MaterialType::ROOT, 1.0);
+    projection.addCell({ 0, 1 }, Material::EnumType::ROOT, 1.0);
     EXPECT_EQ(projection.getLocalShape().size(), 2u);
 }
 
@@ -171,22 +171,22 @@ TEST_F(LocalShapeProjectionTest, RemoveCellShrinksShape)
 {
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::SEED, 1.0);
-    projection.addCell({ 0, 1 }, MaterialType::ROOT, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::SEED, 1.0);
+    projection.addCell({ 0, 1 }, Material::EnumType::ROOT, 1.0);
     EXPECT_EQ(projection.getLocalShape().size(), 2u);
 
     projection.removeCell({ 0, 1 });
     EXPECT_EQ(projection.getLocalShape().size(), 1u);
 
     // The SEED at (0,0) should still be there.
-    EXPECT_EQ(projection.getLocalShape()[0].material, MaterialType::SEED);
+    EXPECT_EQ(projection.getLocalShape()[0].material, Material::EnumType::SEED);
 }
 
 TEST_F(LocalShapeProjectionTest, RemoveNonexistentCellDoesNothing)
 {
     LocalShapeProjection projection;
 
-    projection.addCell({ 0, 0 }, MaterialType::SEED, 1.0);
+    projection.addCell({ 0, 0 }, Material::EnumType::SEED, 1.0);
     EXPECT_EQ(projection.getLocalShape().size(), 1u);
 
     projection.removeCell({ 99, 99 });

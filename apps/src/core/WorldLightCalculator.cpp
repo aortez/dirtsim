@@ -120,18 +120,18 @@ void WorldLightCalculator::applyAmbient(
 
     // Helper to apply ambient with sky attenuation for a single cell.
     // Opacity scales with fill ratio - partially filled cells are more transparent.
-    auto processCell =
-        [&data, &base_ambient, falloff, width](MaterialType mat, int x, int y, float& sky_factor) {
-            data.colors.at(x, y) += base_ambient * sky_factor;
-            const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-            const float fill = cell.fill_ratio;
-            const float base_opacity = getMaterialProperties(mat).light.opacity;
-            const float effective_opacity = base_opacity * fill;
-            sky_factor *= (1.0f - effective_opacity * falloff);
-            if (sky_factor < 0.0f) {
-                sky_factor = 0.0f;
-            }
-        };
+    auto processCell = [&data, &base_ambient, falloff, width](
+                           Material::EnumType mat, int x, int y, float& sky_factor) {
+        data.colors.at(x, y) += base_ambient * sky_factor;
+        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const float fill = cell.fill_ratio;
+        const float base_opacity = Material::getProperties(mat).light.opacity;
+        const float effective_opacity = base_opacity * fill;
+        sky_factor *= (1.0f - effective_opacity * falloff);
+        if (sky_factor < 0.0f) {
+            sky_factor = 0.0f;
+        }
+    };
 
     // Sky access attenuation: ambient diminishes with depth based on opacity above.
     // Use material neighborhood cache to process 3 cells per lookup.
@@ -145,7 +145,7 @@ void WorldLightCalculator::applyAmbient(
         // Process row 0 separately (top edge).
         {
             const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
-            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             processCell(mat, x, 0, sky_factor);
         }
 
@@ -153,9 +153,12 @@ void WorldLightCalculator::applyAmbient(
         int y = 1; // Loop variable, incremented.
         for (; y + 2 < height; y += 3) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
-            const MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
-            const MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
-            const MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
+            const Material::EnumType mat0 =
+                static_cast<Material::EnumType>((packed >> 4) & 0xF); // y
+            const Material::EnumType mat1 =
+                static_cast<Material::EnumType>((packed >> 16) & 0xF); // y+1
+            const Material::EnumType mat2 =
+                static_cast<Material::EnumType>((packed >> 28) & 0xF); // y+2
 
             processCell(mat0, x, y, sky_factor);
             processCell(mat1, x, y + 1, sky_factor);
@@ -165,7 +168,7 @@ void WorldLightCalculator::applyAmbient(
         // Handle remaining rows.
         for (; y < height; ++y) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             processCell(mat, x, y, sky_factor);
         }
     }
@@ -185,9 +188,9 @@ void WorldLightCalculator::applySunlight(
 
     // Helper to apply sunlight attenuation for a single cell.
     // Opacity and tinting scale with fill ratio - partially filled cells are more transparent.
-    auto processCell = [&data, &white, width](MaterialType mat, int x, int y, RgbF& sun) {
+    auto processCell = [&data, &white, width](Material::EnumType mat, int x, int y, RgbF& sun) {
         data.colors.at(x, y) += sun;
-        const auto& light_props = getMaterialProperties(mat).light;
+        const auto& light_props = Material::getProperties(mat).light;
         const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
         const float fill = cell.fill_ratio;
 
@@ -214,7 +217,7 @@ void WorldLightCalculator::applySunlight(
         // Process row 0 separately (top edge).
         {
             const uint64_t packed = grid.getMaterialNeighborhood(x, 0).raw();
-            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             processCell(mat, x, 0, sun);
         }
 
@@ -224,9 +227,12 @@ void WorldLightCalculator::applySunlight(
         for (; y + 2 < height; y += 3) {
             // Fetch neighborhood centered at y+1 to get y, y+1, y+2.
             const uint64_t packed = grid.getMaterialNeighborhood(x, y + 1).raw();
-            const MaterialType mat0 = static_cast<MaterialType>((packed >> 4) & 0xF);  // y
-            const MaterialType mat1 = static_cast<MaterialType>((packed >> 16) & 0xF); // y+1
-            const MaterialType mat2 = static_cast<MaterialType>((packed >> 28) & 0xF); // y+2
+            const Material::EnumType mat0 =
+                static_cast<Material::EnumType>((packed >> 4) & 0xF); // y
+            const Material::EnumType mat1 =
+                static_cast<Material::EnumType>((packed >> 16) & 0xF); // y+1
+            const Material::EnumType mat2 =
+                static_cast<Material::EnumType>((packed >> 28) & 0xF); // y+2
 
             processCell(mat0, x, y, sun);
             processCell(mat1, x, y + 1, sun);
@@ -236,7 +242,7 @@ void WorldLightCalculator::applySunlight(
         // Handle remaining rows (0-2 cells).
         for (; y < height; ++y) {
             const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-            const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
+            const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
             processCell(mat, x, y, sun);
         }
     }
@@ -309,8 +315,9 @@ void WorldLightCalculator::applyDiffusion(
                 else {
                     // Get material from neighborhood cache instead of Cell struct.
                     const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-                    const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
-                    scatter = getMaterialProperties(mat).light.scatter;
+                    const Material::EnumType mat =
+                        static_cast<Material::EnumType>((packed >> 16) & 0xF);
+                    scatter = Material::getProperties(mat).light.scatter;
 
                     if (scatter <= 0.0f) {
                         continue;
@@ -354,29 +361,29 @@ void WorldLightCalculator::applyDiffusion(
 
 namespace {
 
-ColorNames::RgbF getMaterialBaseColor(MaterialType mat)
+ColorNames::RgbF getMaterialBaseColor(Material::EnumType mat)
 {
     using ColorNames::toRgbF;
     switch (mat) {
-        case MaterialType::AIR:
+        case Material::EnumType::AIR:
             return toRgbF(ColorNames::white());
-        case MaterialType::DIRT:
+        case Material::EnumType::DIRT:
             return toRgbF(ColorNames::dirt());
-        case MaterialType::LEAF:
+        case Material::EnumType::LEAF:
             return toRgbF(ColorNames::leaf());
-        case MaterialType::METAL:
+        case Material::EnumType::METAL:
             return toRgbF(ColorNames::metal());
-        case MaterialType::ROOT:
+        case Material::EnumType::ROOT:
             return toRgbF(ColorNames::root());
-        case MaterialType::SAND:
+        case Material::EnumType::SAND:
             return toRgbF(ColorNames::sand());
-        case MaterialType::SEED:
+        case Material::EnumType::SEED:
             return toRgbF(ColorNames::seed());
-        case MaterialType::WALL:
+        case Material::EnumType::WALL:
             return toRgbF(ColorNames::stone());
-        case MaterialType::WATER:
+        case Material::EnumType::WATER:
             return toRgbF(ColorNames::water());
-        case MaterialType::WOOD:
+        case Material::EnumType::WOOD:
             return toRgbF(ColorNames::wood());
         default:
             return ColorNames::RgbF{ 1.0f, 1.0f, 1.0f };
@@ -401,8 +408,8 @@ void WorldLightCalculator::applyMaterialColors(World& world)
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
-            const MaterialType mat = cell.getRenderMaterial();
-            const float opacity = getMaterialProperties(mat).light.opacity;
+            const Material::EnumType mat = cell.getRenderMaterial();
+            const float opacity = Material::getProperties(mat).light.opacity;
             const RgbF base_color = getMaterialBaseColor(mat);
 
             // Blend toward base color based on opacity.
@@ -546,8 +553,8 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
 
         // Get material and fill ratio at this cell.
         const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
-        const MaterialType mat = static_cast<MaterialType>((packed >> 16) & 0xF);
-        const auto& light_props = getMaterialProperties(mat).light;
+        const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
+        const auto& light_props = Material::getProperties(mat).light;
         const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
         const float fill = cell.fill_ratio;
 

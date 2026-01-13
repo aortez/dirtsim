@@ -28,8 +28,8 @@ Vector2f WorldAirResistanceCalculator::calculateAirResistance(
     }
 
     // Get material properties.
-    const MaterialType material = cell.material_type;
-    const MaterialProperties& props = getMaterialProperties(material);
+    const Material::EnumType material = cell.material_type;
+    const Material::Properties& props = Material::getProperties(material);
 
     // Calculate air resistance force using proper physics.
     // F_drag = -k * v² * v̂

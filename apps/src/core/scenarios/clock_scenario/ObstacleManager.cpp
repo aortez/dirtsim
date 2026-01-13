@@ -91,7 +91,7 @@ void ObstacleManager::clearAll(World& world)
                 // Clear hurdle wall at height-2.
                 if (height > 2) {
                     Cell& cell = data.at(x, height - 2);
-                    if (cell.material_type == MaterialType::WALL) {
+                    if (cell.material_type == Material::EnumType::WALL) {
                         cell = Cell();
                     }
                 }
@@ -100,7 +100,7 @@ void ObstacleManager::clearAll(World& world)
                 // Restore floor at height-1 for pit.
                 world.replaceMaterialAtCell(
                     { static_cast<int16_t>(x), static_cast<int16_t>(height - 1) },
-                    MaterialType::WALL);
+                    Material::EnumType::WALL);
             }
         }
     }

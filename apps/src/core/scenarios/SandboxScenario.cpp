@@ -96,13 +96,13 @@ void SandboxScenario::setup(World& world)
     for (int x = 0; x < world.getData().width; ++x) {
         world.getData()
             .at(x, world.getData().height - 1)
-            .replaceMaterial(MaterialType::WALL, 1.0); // Bottom wall.
+            .replaceMaterial(Material::EnumType::WALL, 1.0); // Bottom wall.
     }
     for (int y = 0; y < world.getData().height; ++y) {
-        world.getData().at(0, y).replaceMaterial(MaterialType::WALL, 1.0); // Left wall.
+        world.getData().at(0, y).replaceMaterial(Material::EnumType::WALL, 1.0); // Left wall.
         world.getData()
             .at(world.getData().width - 1, y)
-            .replaceMaterial(MaterialType::WALL, 1.0); // Right wall.
+            .replaceMaterial(Material::EnumType::WALL, 1.0); // Right wall.
     }
 
     // Fill lower-right quadrant if enabled.
@@ -207,8 +207,8 @@ void SandboxScenario::clearWaterColumn(World& world)
     for (int y = 0; y < columnHeight && y < world.getData().height; ++y) {
         for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             Cell& cell = world.getData().at(x, y);
-            if (cell.material_type == MaterialType::WATER) {
-                cell.replaceMaterial(MaterialType::AIR, 0.0);
+            if (cell.material_type == Material::EnumType::WATER) {
+                cell.replaceMaterial(Material::EnumType::AIR, 0.0);
             }
         }
     }
@@ -237,8 +237,8 @@ void SandboxScenario::clearDirtQuadrant(World& world)
     for (int y = startY; y < world.getData().height - 1; ++y) {
         for (int x = startX; x < world.getData().width - 1; ++x) {
             Cell& cell = world.getData().at(x, y);
-            if (cell.material_type == MaterialType::DIRT) {
-                cell.replaceMaterial(MaterialType::AIR, 0.0);
+            if (cell.material_type == Material::EnumType::DIRT) {
+                cell.replaceMaterial(Material::EnumType::AIR, 0.0);
             }
         }
     }
@@ -256,8 +256,8 @@ void SandboxScenario::refillWaterColumn(World& world)
         for (int x = 1; x <= columnWidth && x < world.getData().width; ++x) {
             Cell& cell = world.getData().at(x, y);
             // Only refill if cell is air or water, and not already full.
-            if ((cell.material_type == MaterialType::AIR
-                 || cell.material_type == MaterialType::WATER)
+            if ((cell.material_type == Material::EnumType::AIR
+                 || cell.material_type == Material::EnumType::WATER)
                 && !cell.isFull()) {
                 cell.addWater(1.0 - cell.fill_ratio);
             }

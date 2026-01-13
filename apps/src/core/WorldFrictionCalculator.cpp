@@ -90,7 +90,7 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
 
             // Skip empty cells, walls, and fluids.
             // Fluids don't have Coulomb friction - they have viscosity instead.
-            if (cellA.isEmpty() || cellA.isWall() || isMaterialFluid(cellA.material_type)) {
+            if (cellA.isEmpty() || cellA.isWall() || Material::isFluid(cellA.material_type)) {
                 continue;
             }
 
@@ -116,7 +116,7 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
 
                     // Skip if neighbor is empty or fluid.
                     // Walls can provide friction - their friction coefficients control the amount.
-                    if (cellB.isEmpty() || isMaterialFluid(cellB.material_type)) {
+                    if (cellB.isEmpty() || Material::isFluid(cellB.material_type)) {
                         continue;
                     }
 
@@ -149,8 +149,10 @@ void WorldFrictionCalculator::accumulateFrictionForces(World& world)
                     }
 
                     // Calculate friction coefficient.
-                    const MaterialProperties& propsA = getMaterialProperties(cellA.material_type);
-                    const MaterialProperties& propsB = getMaterialProperties(cellB.material_type);
+                    const Material::Properties& propsA =
+                        Material::getProperties(cellA.material_type);
+                    const Material::Properties& propsB =
+                        Material::getProperties(cellB.material_type);
                     const float friction_coefficient =
                         calculateFrictionCoefficient(tangential_speed, propsA, propsB);
 
@@ -203,11 +205,11 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
 
             // Skip empty cells, walls, and fluids.
             // Fluids don't have Coulomb friction - they have viscosity instead.
-            if (cellA.isEmpty() || cellA.isWall() || isMaterialFluid(cellA.material_type)) {
+            if (cellA.isEmpty() || cellA.isWall() || Material::isFluid(cellA.material_type)) {
                 continue;
             }
 
-            const MaterialProperties& propsA = getMaterialProperties(cellA.material_type);
+            const Material::Properties& propsA = Material::getProperties(cellA.material_type);
 
             // Check only cardinal (non-diagonal) neighbors for friction.
             // Diagonal contacts don't make physical sense in a grid system.
@@ -233,7 +235,7 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
 
                     // Skip if neighbor is empty or fluid.
                     // Walls can provide friction - their friction coefficients control the amount.
-                    if (cellB.isEmpty() || isMaterialFluid(cellB.material_type)) {
+                    if (cellB.isEmpty() || Material::isFluid(cellB.material_type)) {
                         continue;
                     }
 
@@ -279,7 +281,8 @@ std::vector<WorldFrictionCalculator::ContactInterface> WorldFrictionCalculator::
                     }
 
                     // Calculate friction coefficient.
-                    const MaterialProperties& propsB = getMaterialProperties(cellB.material_type);
+                    const Material::Properties& propsB =
+                        Material::getProperties(cellB.material_type);
                     contact.friction_coefficient =
                         calculateFrictionCoefficient(tangential_speed, propsA, propsB);
 
@@ -334,8 +337,8 @@ float WorldFrictionCalculator::calculateNormalForce(
 
 float WorldFrictionCalculator::calculateFrictionCoefficient(
     float tangential_speed,
-    const MaterialProperties& propsA,
-    const MaterialProperties& propsB) const
+    const Material::Properties& propsA,
+    const Material::Properties& propsB) const
 {
     // Use geometric mean for inter-material friction coefficients.
     const float static_friction =

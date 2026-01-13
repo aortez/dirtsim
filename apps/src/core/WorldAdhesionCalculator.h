@@ -22,10 +22,10 @@ class WorldAdhesionCalculator : public WorldCalculatorBase {
 public:
     // Data structure for adhesion force results.
     struct AdhesionForce {
-        Vector2f force_direction;     // Direction of adhesive pull/resistance.
-        float force_magnitude;        // Strength of adhesive force.
-        MaterialType target_material; // Strongest interacting material.
-        int contact_points;           // Number of contact interfaces.
+        Vector2f force_direction;           // Direction of adhesive pull/resistance.
+        float force_magnitude;              // Strength of adhesive force.
+        Material::EnumType target_material; // Strongest interacting material.
+        int contact_points;                 // Number of contact interfaces.
     };
 
     // Default constructor - calculator is stateless.

@@ -31,7 +31,7 @@ struct Cell {
     static constexpr uint32_t WIDTH = 30;
     static constexpr uint32_t HEIGHT = 30;
 
-    MaterialType material_type = MaterialType::AIR;
+    Material::EnumType material_type = Material::EnumType::AIR;
     float fill_ratio = 0.0f;
     Vector2f com = {};
     Vector2f velocity = {};
@@ -43,14 +43,14 @@ struct Cell {
     // Physics force accumulation.
     Vector2f pending_force = {};
 
-    // Rendering override: -1 = use material_type, 0+ = MaterialType to render as.
+    // Rendering override: -1 = use material_type, 0+ = Material::EnumType to render as.
     // Allows cells to behave as one material but display as another.
     int8_t render_as = -1;
 
     // Calculated lit color (packed RGBA).
     uint32_t color_ = 0x000000FF;
 
-    const MaterialProperties& material() const;
+    const Material::Properties& material() const;
 
     // Helper with invariant: clamps fill ratio and auto-converts to AIR.
     void setFillRatio(float ratio);
@@ -66,7 +66,7 @@ struct Cell {
     bool isWall() const;
 
     // Get the material type to use for rendering (respects render_as override).
-    MaterialType getRenderMaterial() const;
+    Material::EnumType getRenderMaterial() const;
 
     // Get the calculated lit color (packed RGBA).
     uint32_t getColor() const { return color_; }
@@ -88,11 +88,11 @@ struct Cell {
     float getEffectiveDensity() const;
 
     // Add material to this cell (returns amount actually added).
-    float addMaterial(MaterialType type, float amount);
+    float addMaterial(Material::EnumType type, float amount);
 
     // Add material with physics context for realistic COM placement.
     float addMaterialWithPhysics(
-        MaterialType type,
+        Material::EnumType type,
         float amount,
         const Vector2f& source_com,
         const Vector2f& newVel,
@@ -108,7 +108,7 @@ struct Cell {
     float transferToWithPhysics(Cell& target, float amount, const Vector2f& boundary_normal);
 
     // Replace all material with new type and amount.
-    void replaceMaterial(MaterialType type, float fill_ratio = 1.0f);
+    void replaceMaterial(Material::EnumType type, float fill_ratio = 1.0f);
 
     // Clear cell (set to empty air)
     void clear();

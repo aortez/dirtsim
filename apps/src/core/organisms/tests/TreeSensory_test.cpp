@@ -31,7 +31,9 @@ TEST(TreeSensoryTest, OOBCellsHaveEmptyHistograms)
     for (uint32_t y = 6; y < 9; y++) {
         for (uint32_t x = 0; x < 9; x++) {
             world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::DIRT,
+                1.0);
         }
     }
 
@@ -116,7 +118,9 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     for (uint32_t y = 6; y < 9; y++) {
         for (uint32_t x = 0; x < 9; x++) {
             world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::DIRT,
+                1.0);
         }
     }
 
@@ -137,18 +141,18 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     // - WOOD at (4,4) - should count as above_ground (mass 0.3).
 
     // After 30 timesteps, SEED should have fallen from (4,4) to (4,5).
-    ASSERT_EQ(world->getData().at(4, 5).material_type, MaterialType::SEED)
+    ASSERT_EQ(world->getData().at(4, 5).material_type, Material::EnumType::SEED)
         << "SEED should have fallen to (4,5)";
     ASSERT_EQ(world->getOrganismManager().at(Vector2i{ 4, 5 }), tree_id)
         << "SEED should have organism_id set";
     tree->setAnchorCell(Vector2i{ 4, 5 });
 
     // Force grow ROOT at (4,6).
-    world->getData().at(4, 6).replaceMaterial(MaterialType::ROOT, 1.0);
+    world->getData().at(4, 6).replaceMaterial(Material::EnumType::ROOT, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 4, 6 });
 
     // Force grow WOOD at (4,4).
-    world->getData().at(4, 4).replaceMaterial(MaterialType::WOOD, 1.0);
+    world->getData().at(4, 4).replaceMaterial(Material::EnumType::WOOD, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 4, 4 });
 
     // Gather sensory data.
@@ -163,9 +167,9 @@ TEST(TreeSensoryTest, MassCalculationNoDuplicates)
     for (int y = 0; y < 15; y++) {
         for (int x = 0; x < 15; x++) {
             const auto& hist = sensory.material_histograms[y][x];
-            if (hist[static_cast<int>(MaterialType::SEED)] > 0.5) seed_count++;
-            if (hist[static_cast<int>(MaterialType::ROOT)] > 0.5) root_count++;
-            if (hist[static_cast<int>(MaterialType::WOOD)] > 0.5) wood_count++;
+            if (hist[static_cast<int>(Material::EnumType::SEED)] > 0.5) seed_count++;
+            if (hist[static_cast<int>(Material::EnumType::ROOT)] > 0.5) root_count++;
+            if (hist[static_cast<int>(Material::EnumType::WOOD)] > 0.5) wood_count++;
         }
     }
 

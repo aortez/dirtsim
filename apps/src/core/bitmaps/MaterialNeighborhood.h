@@ -50,32 +50,32 @@ public:
      *
      * @param dx X offset from center [-1, 1]
      * @param dy Y offset from center [-1, 1]
-     * @return MaterialType at that position
+     * @return Material::EnumType at that position
      */
-    inline MaterialType getMaterial(int dx, int dy) const
+    inline Material::EnumType getMaterial(int dx, int dy) const
     {
         int bit_pos = (dy + 1) * 3 + (dx + 1);
         return getMaterialByBitPos(bit_pos);
     }
 
-    inline MaterialType getMaterialByBitPos(int bit_pos) const
+    inline Material::EnumType getMaterialByBitPos(int bit_pos) const
     {
         int shift = bit_pos * BITS_PER_MATERIAL;
-        return static_cast<MaterialType>((data_ >> shift) & 0xF);
+        return static_cast<Material::EnumType>((data_ >> shift) & 0xF);
     }
 
-    inline MaterialType getCenterMaterial() const { return getMaterialByBitPos(4); }
+    inline Material::EnumType getCenterMaterial() const { return getMaterialByBitPos(4); }
 
     // ========== Named Directional Accessors ==========
 
-    MaterialType north() const;
-    MaterialType south() const;
-    MaterialType east() const;
-    MaterialType west() const;
-    MaterialType northEast() const;
-    MaterialType northWest() const;
-    MaterialType southEast() const;
-    MaterialType southWest() const;
+    Material::EnumType north() const;
+    Material::EnumType south() const;
+    Material::EnumType east() const;
+    Material::EnumType west() const;
+    Material::EnumType northEast() const;
+    Material::EnumType northWest() const;
+    Material::EnumType southEast() const;
+    Material::EnumType southWest() const;
 
     // ========== Aggregate Query Methods ==========
 
@@ -85,7 +85,7 @@ public:
      * @param material Material type to count
      * @return Number of neighbors (0-8) matching the material
      */
-    int countMaterial(MaterialType material) const;
+    int countMaterial(Material::EnumType material) const;
 
     /**
      * Check if all neighbors are the same material type.
@@ -95,7 +95,7 @@ public:
      * @param material Material type to check
      * @return true if all 8 neighbors match the material
      */
-    bool allNeighborsSameMaterial(MaterialType material) const;
+    bool allNeighborsSameMaterial(Material::EnumType material) const;
 
     /**
      * Check if center is surrounded by same material.

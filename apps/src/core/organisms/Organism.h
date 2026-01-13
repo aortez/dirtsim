@@ -20,7 +20,7 @@ class World;
  */
 struct LocalCell {
     Vector2i localPos;
-    MaterialType material;
+    Material::EnumType material;
     double fillRatio;
 };
 
@@ -62,7 +62,7 @@ struct Bone {
 /**
  * Get bone stiffness based on connected material types.
  */
-double getBoneStiffness(MaterialType a, MaterialType b);
+double getBoneStiffness(Material::EnumType a, Material::EnumType b);
 
 struct LightAttachment {
     LightHandle handle;
@@ -137,7 +137,7 @@ public:
     virtual void onCellTransfer(Vector2i from, Vector2i to);
 
     // Create bones connecting a new cell to existing organism cells.
-    void createBonesForCell(Vector2i new_cell, MaterialType material, const World& world);
+    void createBonesForCell(Vector2i new_cell, Material::EnumType material, const World& world);
 
     // Rigid body state.
     Vector2d position{ 0.0, 0.0 };

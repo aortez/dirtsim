@@ -43,8 +43,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == MaterialType::WOOD
-                                || neighbor.material_type == MaterialType::SEED) {
+                            if (neighbor.material_type == Material::EnumType::WOOD
+                                || neighbor.material_type == Material::EnumType::SEED) {
                                 has_structural_neighbor = true;
                                 break;
                             }
@@ -62,7 +62,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 Vector2i localPos = command.target_pos - anchor;
 
                 // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, MaterialType::WOOD, 1.0);
+                tree.addCellToLocalShape(localPos, Material::EnumType::WOOD, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_WOOD);
 
                 spdlog::info(
@@ -97,7 +97,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == MaterialType::WOOD) {
+                            if (neighbor.material_type == Material::EnumType::WOOD) {
                                 has_wood_neighbor = true;
                                 break;
                             }
@@ -115,7 +115,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 Vector2i localPos = command.target_pos - anchor;
 
                 // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, MaterialType::LEAF, 1.0);
+                tree.addCellToLocalShape(localPos, Material::EnumType::LEAF, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_LEAF);
 
                 spdlog::info(
@@ -145,8 +145,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == MaterialType::ROOT
-                                || neighbor.material_type == MaterialType::SEED) {
+                            if (neighbor.material_type == Material::EnumType::ROOT
+                                || neighbor.material_type == Material::EnumType::SEED) {
                                 has_root_neighbor = true;
                                 break;
                             }
@@ -164,7 +164,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 Vector2i localPos = command.target_pos - anchor;
 
                 // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, MaterialType::ROOT, 1.0);
+                tree.addCellToLocalShape(localPos, Material::EnumType::ROOT, 1.0);
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_ROOT);
 
                 spdlog::info(
@@ -215,8 +215,8 @@ CommandExecutionResult TreeCommandProcessor::execute(
                         if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
                             const Cell& neighbor =
                                 world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == MaterialType::WOOD
-                                || neighbor.material_type == MaterialType::LEAF) {
+                            if (neighbor.material_type == Material::EnumType::WOOD
+                                || neighbor.material_type == Material::EnumType::LEAF) {
                                 has_branch_neighbor = true;
                                 break;
                             }
@@ -232,7 +232,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 // Check target cell is growable (must be AIR - seeds need to fall).
                 const Cell& target_cell =
                     world.getData().at(command.position.x, command.position.y);
-                if (target_cell.material_type != MaterialType::AIR) {
+                if (target_cell.material_type != Material::EnumType::AIR) {
                     return { CommandResult::BLOCKED, "SEED can only be placed in AIR cells" };
                 }
 
@@ -245,7 +245,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 world.getData()
                     .at(command.position.x, command.position.y)
-                    .replaceMaterial(MaterialType::SEED, 1.0);
+                    .replaceMaterial(Material::EnumType::SEED, 1.0);
 
                 tree.setEnergy(tree.getEnergy() - ENERGY_COST_PRODUCE_SEED);
 

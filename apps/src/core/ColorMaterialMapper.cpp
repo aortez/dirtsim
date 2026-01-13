@@ -6,12 +6,12 @@
 
 namespace DirtSim {
 
-MaterialType ColorMaterialMapper::findNearestMaterial(uint8_t r, uint8_t g, uint8_t b)
+Material::EnumType ColorMaterialMapper::findNearestMaterial(uint8_t r, uint8_t g, uint8_t b)
 {
     const auto& materialColors = getMaterialColors();
 
     float minDistance = std::numeric_limits<float>::max();
-    MaterialType nearestMaterial = MaterialType::DIRT; // Default fallback.
+    Material::EnumType nearestMaterial = Material::EnumType::DIRT; // Default fallback.
 
     // Check each material color (skipping AIR at index 0).
     for (size_t i = 1; i <= 9; ++i) {
@@ -20,14 +20,14 @@ MaterialType ColorMaterialMapper::findNearestMaterial(uint8_t r, uint8_t g, uint
 
         if (distance < minDistance) {
             minDistance = distance;
-            nearestMaterial = static_cast<MaterialType>(i);
+            nearestMaterial = static_cast<Material::EnumType>(i);
         }
     }
 
     return nearestMaterial;
 }
 
-std::vector<std::vector<MaterialType>> ColorMaterialMapper::rgbToMaterials(
+std::vector<std::vector<Material::EnumType>> ColorMaterialMapper::rgbToMaterials(
     const std::vector<std::vector<RgbPixel>>& rgbPattern, float alphaThreshold)
 {
     if (rgbPattern.empty() || rgbPattern[0].empty()) {
@@ -38,7 +38,7 @@ std::vector<std::vector<MaterialType>> ColorMaterialMapper::rgbToMaterials(
     const int width = static_cast<int>(rgbPattern[0].size());
     const uint8_t alphaThresholdByte = static_cast<uint8_t>(alphaThreshold * 255.0f);
 
-    std::vector<std::vector<MaterialType>> result(height);
+    std::vector<std::vector<Material::EnumType>> result(height);
     for (int y = 0; y < height; ++y) {
         result[y].resize(width);
         for (int x = 0; x < width; ++x) {
@@ -46,7 +46,7 @@ std::vector<std::vector<MaterialType>> ColorMaterialMapper::rgbToMaterials(
 
             // Transparent pixels map to AIR.
             if (pixel.a < alphaThresholdByte) {
-                result[y][x] = MaterialType::AIR;
+                result[y][x] = Material::EnumType::AIR;
             }
             else {
                 result[y][x] = findNearestMaterial(pixel.r, pixel.g, pixel.b);
@@ -72,7 +72,7 @@ const std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10>& ColorMaterialMapper
     using namespace ColorNames;
 
     // Material colors from ColorNames.cpp, using helper functions to extract RGB.
-    // Array index matches MaterialType enum value (0=AIR, 1=DIRT, ..., 9=WOOD).
+    // Array index matches Material::EnumType enum value (0=AIR, 1=DIRT, ..., 9=WOOD).
     static const std::array<std::tuple<uint8_t, uint8_t, uint8_t>, 10> colors = { {
         { getR(air()), getG(air()), getB(air()) },
         { getR(dirt()), getG(dirt()), getB(dirt()) },

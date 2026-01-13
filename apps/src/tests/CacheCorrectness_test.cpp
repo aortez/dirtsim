@@ -134,7 +134,7 @@ TEST(CacheCorrectnessTest, DeterminismCheck)
         // Add some materials.
         for (int16_t y = 20; y < 26; ++y) {
             for (int16_t x = 10; x < 18; ++x) {
-                world.addMaterialAtCell({ x, y }, MaterialType::DIRT, 1.0f);
+                world.addMaterialAtCell({ x, y }, Material::EnumType::DIRT, 1.0f);
             }
         }
 

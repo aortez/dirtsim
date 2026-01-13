@@ -206,44 +206,44 @@ double NeuralGridRenderer::calculatePurity(
 
 lv_color_t NeuralGridRenderer::getMaterialColor(int materialIndex) const
 {
-    // Map material index to MaterialType (alphabetical order).
+    // Map material index to Material::EnumType (alphabetical order).
     // AIR=0, DIRT=1, LEAF=2, METAL=3, SAND=4, SEED=5, WALL=6, WATER=7, WOOD=8.
-    static const MaterialType materials[] = { MaterialType::AIR,  MaterialType::DIRT,
-                                              MaterialType::LEAF, MaterialType::METAL,
-                                              MaterialType::SAND, MaterialType::SEED,
-                                              MaterialType::WALL, MaterialType::WATER,
-                                              MaterialType::WOOD };
+    static const Material::EnumType materials[] = {
+        Material::EnumType::AIR,   Material::EnumType::DIRT,  Material::EnumType::LEAF,
+        Material::EnumType::METAL, Material::EnumType::SAND,  Material::EnumType::SEED,
+        Material::EnumType::WALL,  Material::EnumType::WATER, Material::EnumType::WOOD
+    };
 
     if (materialIndex < 0 || materialIndex >= TreeSensoryData::NUM_MATERIALS) {
         return lv_color_hex(0x000000); // Black for invalid index.
     }
 
-    MaterialType type = materials[materialIndex];
+    Material::EnumType type = materials[materialIndex];
 
     // Material color mapping (matching CellRenderer).
     switch (type) {
-        case MaterialType::AIR:
+        case Material::EnumType::AIR:
             return lv_color_hex(0x000000); // Black.
-        case MaterialType::DIRT:
+        case Material::EnumType::DIRT:
             return lv_color_hex(0xA0522D); // Sienna brown.
-        case MaterialType::LEAF:
+        case Material::EnumType::LEAF:
             return lv_color_hex(0x00FF32); // Bright lime green.
-        case MaterialType::METAL:
+        case Material::EnumType::METAL:
             return lv_color_hex(0xC0C0C0); // Silver.
-        case MaterialType::SAND:
+        case Material::EnumType::SAND:
             return lv_color_hex(0xFFB347); // Sandy orange.
-        case MaterialType::SEED:
+        case Material::EnumType::SEED:
             return lv_color_hex(0xFFD700); // Gold (bright and distinctive).
-        case MaterialType::WALL:
+        case Material::EnumType::WALL:
             return lv_color_hex(0x808080); // Gray.
-        case MaterialType::WATER:
+        case Material::EnumType::WATER:
             return lv_color_hex(0x00BFFF); // Deep sky blue.
-        case MaterialType::WOOD:
+        case Material::EnumType::WOOD:
             return lv_color_hex(0xDEB887); // Burlywood.
-        case MaterialType::ROOT:
+        case Material::EnumType::ROOT:
             return lv_color_hex(0x8B4513); // Saddle brown.
     }
-    DIRTSIM_ASSERT(false, "Unhandled MaterialType");
+    DIRTSIM_ASSERT(false, "Unhandled Material::EnumType");
     return lv_color_hex(0xFF00FF); // Magenta for unknown.
 }
 

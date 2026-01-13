@@ -12,13 +12,13 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
-        return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::AIR, 0 };
     }
 
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
+    const Material::Properties& props = Material::getProperties(cell.material_type);
     Vector2f total_force(0.0f, 0.0f);
     int contact_count = 0;
-    MaterialType strongest_attractor = MaterialType::AIR;
+    Material::EnumType strongest_attractor = Material::EnumType::AIR;
     float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
@@ -34,15 +34,15 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 
                 // Skip same material and AIR neighbors (AIR has adhesion=0.0).
                 if (neighbor.material_type == cell.material_type
-                    || neighbor.material_type == MaterialType::AIR) {
+                    || neighbor.material_type == Material::EnumType::AIR) {
                     continue;
                 }
 
                 if (neighbor.fill_ratio > MIN_MATTER_THRESHOLD) {
 
                     // Calculate mutual adhesion (geometric mean).
-                    const MaterialProperties& neighbor_props =
-                        getMaterialProperties(neighbor.material_type);
+                    const Material::Properties& neighbor_props =
+                        Material::getProperties(neighbor.material_type);
                     const float mutual_adhesion =
                         std::sqrt(props.adhesion * neighbor_props.adhesion);
 
@@ -77,14 +77,14 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
-        return { { 0.0f, 0.0f }, 0.0f, MaterialType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::AIR, 0 };
     }
 
-    const MaterialProperties& props = getMaterialProperties(cell.material_type);
-    const MaterialType my_material = mat_n.getCenterMaterial();
+    const Material::Properties& props = Material::getProperties(cell.material_type);
+    const Material::EnumType my_material = mat_n.getCenterMaterial();
     Vector2f total_force(0.0f, 0.0f);
     int contact_count = 0;
-    MaterialType strongest_attractor = MaterialType::AIR;
+    Material::EnumType strongest_attractor = Material::EnumType::AIR;
     float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
@@ -102,8 +102,8 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 
             // Multi-stage cache filtering (bounds check handled by cache).
             // Stage 1: Material difference check (pure cache - no cell access).
-            const MaterialType neighbor_material = mat_n.getMaterial(dx, dy);
-            if (neighbor_material == my_material || neighbor_material == MaterialType::AIR) {
+            const Material::EnumType neighbor_material = mat_n.getMaterial(dx, dy);
+            if (neighbor_material == my_material || neighbor_material == Material::EnumType::AIR) {
                 continue;
             }
 
@@ -112,7 +112,7 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
             const Cell& neighbor = data.at(nx, ny);
 
             // Calculate mutual adhesion (geometric mean).
-            const MaterialProperties& neighbor_props = getMaterialProperties(neighbor_material);
+            const Material::Properties& neighbor_props = Material::getProperties(neighbor_material);
             const float mutual_adhesion = std::sqrt(props.adhesion * neighbor_props.adhesion);
 
             // Direction vector toward neighbor (normalized).

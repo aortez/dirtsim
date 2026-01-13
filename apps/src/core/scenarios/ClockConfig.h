@@ -64,8 +64,8 @@ struct Clock {
     bool marqueeEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
-    MaterialType digitMaterial = MaterialType::METAL; // Render color for clock digits.
-    uint8_t digitEmissiveness = 10;                   // Digit glow intensity (0-20).
+    Material::EnumType digitMaterial = Material::EnumType::METAL; // Render color for clock digits.
+    uint8_t digitEmissiveness = 10;                               // Digit glow intensity (0-20).
 };
 
 } // namespace DirtSim::Config

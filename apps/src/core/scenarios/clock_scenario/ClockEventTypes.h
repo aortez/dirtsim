@@ -51,9 +51,9 @@ struct ColorShowcaseEventConfig {
                                  .duration = 10.0,
                                  .chance = 0.3,
                                  .cooldown = 60.0 };
-    std::vector<MaterialType> showcase_materials = { MaterialType::LEAF,
-                                                     MaterialType::WATER,
-                                                     MaterialType::WOOD };
+    std::vector<Material::EnumType> showcase_materials = { Material::EnumType::LEAF,
+                                                           Material::EnumType::WATER,
+                                                           Material::EnumType::WOOD };
 };
 
 struct DigitSlideEventConfig {
@@ -114,8 +114,8 @@ struct DigitSlideEventState {
 
 struct MeltdownEventState {
     // Meltdown lets digits fall, converts to water on impact.
-    int digit_bottom_y = 0;        // Scanned at event start: lowest Y with digit material.
-    MaterialType digit_material{}; // Material type digits become when melting.
+    int digit_bottom_y = 0;              // Scanned at event start: lowest Y with digit material.
+    Material::EnumType digit_material{}; // Material type digits become when melting.
 };
 
 struct RainEventState {

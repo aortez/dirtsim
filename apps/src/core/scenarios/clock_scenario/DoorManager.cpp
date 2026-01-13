@@ -57,7 +57,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
     world.getData().at(door_pos.x, door_pos.y) = Cell();
 
     // Place wall at roof position (displace any organisms).
-    world.replaceMaterialAtCell(roof_pos, MaterialType::WALL);
+    world.replaceMaterialAtCell(roof_pos, Material::EnumType::WALL);
 
     def.is_open = true;
 
@@ -87,7 +87,7 @@ void DoorManager::closeDoor(DoorId id, World& world)
     // Validate positions are within bounds before accessing.
     if (data.inBounds(door_pos.x, door_pos.y)) {
         // Restore wall at door position.
-        world.replaceMaterialAtCell(door_pos, MaterialType::WALL);
+        world.replaceMaterialAtCell(door_pos, Material::EnumType::WALL);
     }
 
     if (data.inBounds(roof_pos.x, roof_pos.y)) {

@@ -9,7 +9,7 @@
 
 namespace DirtSim {
 
-RigidBodyComponent::RigidBodyComponent(MaterialType material)
+RigidBodyComponent::RigidBodyComponent(Material::EnumType material)
     : physics_(std::make_unique<RigidBodyPhysicsComponent>(material)),
       collision_(std::make_unique<RigidBodyCollisionComponent>()),
       projection_(std::make_unique<LocalShapeProjection>())
@@ -20,7 +20,7 @@ RigidBodyComponent::~RigidBodyComponent() = default;
 RigidBodyComponent::RigidBodyComponent(RigidBodyComponent&&) noexcept = default;
 RigidBodyComponent& RigidBodyComponent::operator=(RigidBodyComponent&&) noexcept = default;
 
-void RigidBodyComponent::addCell(Vector2i localPos, MaterialType material, double fillRatio)
+void RigidBodyComponent::addCell(Vector2i localPos, Material::EnumType material, double fillRatio)
 {
     projection_->addCell(localPos, material, fillRatio);
 }

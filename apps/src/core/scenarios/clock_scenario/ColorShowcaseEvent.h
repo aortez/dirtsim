@@ -16,9 +16,9 @@ namespace ClockEvents {
  * @param rng Random number generator for selecting starting color.
  * @return The starting material that was selected.
  */
-MaterialType startColorShowcase(
+Material::EnumType startColorShowcase(
     ColorShowcaseEventState& state,
-    const std::vector<MaterialType>& showcase_materials,
+    const std::vector<Material::EnumType>& showcase_materials,
     std::mt19937& rng);
 
 /**
@@ -30,9 +30,9 @@ MaterialType startColorShowcase(
  * @param time_changed Whether the displayed time changed this frame.
  * @return The new material if changed, or empty optional if no change.
  */
-std::optional<MaterialType> updateColorShowcase(
+std::optional<Material::EnumType> updateColorShowcase(
     ColorShowcaseEventState& state,
-    const std::vector<MaterialType>& showcase_materials,
+    const std::vector<Material::EnumType>& showcase_materials,
     bool time_changed);
 
 } // namespace ClockEvents

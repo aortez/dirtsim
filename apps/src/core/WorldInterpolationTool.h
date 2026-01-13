@@ -62,11 +62,11 @@ private:
         double fx,
         double fy);
 
-    static MaterialType interpolateMaterialType(
-        MaterialType m00,
-        MaterialType m10,
-        MaterialType m01,
-        MaterialType m11,
+    static Material::EnumType interpolateMaterialType(
+        Material::EnumType m00,
+        Material::EnumType m10,
+        Material::EnumType m01,
+        Material::EnumType m11,
         double fx,
         double fy);
 

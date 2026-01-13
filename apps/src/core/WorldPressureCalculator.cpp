@@ -44,7 +44,7 @@ void WorldPressureCalculator::injectGravityPressure(World& world, float deltaTim
 
             // All materials contribute to pressure based on pressure_injection_weight.
             // This creates correct buoyancy gradients for lighter materials in heavier fluids.
-            const MaterialProperties& props = getMaterialProperties(cell.material_type);
+            const Material::Properties& props = Material::getProperties(cell.material_type);
 
             // Skip if material doesn't inject pressure (e.g., WALL).
             if (props.pressure_injection_weight <= 0.0f) {
@@ -94,7 +94,7 @@ void WorldPressureCalculator::processBlockedTransfers(
 
                     // Get material-specific dynamic weight for source.
                     const float material_weight =
-                        getMaterialProperties(source_cell.material_type).dynamic_weight;
+                        Material::getProperties(source_cell.material_type).dynamic_weight;
                     const float dynamic_strength =
                         static_cast<float>(world.getPhysicsSettings().pressure_dynamic_strength);
 
@@ -132,7 +132,7 @@ void WorldPressureCalculator::processBlockedTransfers(
             Cell& target_cell = data.at(transfer.toX, transfer.toY);
 
             const float material_weight =
-                getMaterialProperties(target_cell.material_type).dynamic_weight;
+                Material::getProperties(target_cell.material_type).dynamic_weight;
             const float dynamic_strength =
                 static_cast<float>(world.getPhysicsSettings().pressure_dynamic_strength);
             const float weighted_energy = blocked_energy * material_weight * dynamic_strength;
@@ -424,13 +424,13 @@ void WorldPressureCalculator::generateVirtualGravityTransfers(World& world, floa
 }
 
 float WorldPressureCalculator::calculateReflectionCoefficient(
-    MaterialType materialType, float impactEnergy) const
+    Material::EnumType materialType, float impactEnergy) const
 {
     // Get material elasticity from properties.
-    const MaterialProperties& material_props = getMaterialProperties(materialType);
+    const Material::Properties& material_props = Material::getProperties(materialType);
     const float material_elasticity = material_props.elasticity;
 
-    // Wall elasticity is fixed at 0.9 (from MaterialType.cpp).
+    // Wall elasticity is fixed at 0.9 (from Material::EnumType.cpp).
     const float wall_elasticity = 0.9f;
 
     // Calculate coefficient of restitution using geometric mean.
@@ -486,8 +486,8 @@ double WorldPressureCalculator::getSurroundingFluidDensity(const World& world, i
 
         // Only count fluid neighbors (WATER, AIR).
         if (!neighbor.isEmpty()) {
-            const MaterialProperties& neighbor_props =
-                getMaterialProperties(neighbor.material_type);
+            const Material::Properties& neighbor_props =
+                Material::getProperties(neighbor.material_type);
             if (neighbor_props.is_fluid) {
                 total_fluid_density += neighbor.getEffectiveDensity();
                 fluid_neighbor_count++;
@@ -542,12 +542,12 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                 const Cell& cell = data.at(x, y);
 
                 // Skip empty cells and walls.
-                if (cell.isEmpty() || cell.material_type == MaterialType::WALL) {
+                if (cell.isEmpty() || cell.material_type == Material::EnumType::WALL) {
                     continue;
                 }
 
                 // Get material diffusion coefficient.
-                const MaterialProperties& props = getMaterialProperties(cell.material_type);
+                const Material::Properties& props = Material::getProperties(cell.material_type);
                 const float diffusion_rate =
                     props.pressure_diffusion * settings.pressure_diffusion_strength;
 
@@ -578,7 +578,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                     else {
                         const Cell& neighbor = data.at(nx, ny);
 
-                        if (neighbor.material_type == MaterialType::WALL) {
+                        if (neighbor.material_type == Material::EnumType::WALL) {
                             neighbor_pressure = current_pressure;
                             neighbor_diffusion = diffusion_rate;
                         }
@@ -587,7 +587,8 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                             neighbor_diffusion = diffusion_rate;
                         }
                         else if (
-                            TREAT_AIR_AS_BOUNDARY && neighbor.material_type == MaterialType::AIR) {
+                            TREAT_AIR_AS_BOUNDARY
+                            && neighbor.material_type == Material::EnumType::AIR) {
                             // Treat AIR as no-flux boundary (pressure sealed in).
                             neighbor_pressure = current_pressure;
                             neighbor_diffusion = diffusion_rate;
@@ -596,7 +597,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                             const size_t neighbor_idx = ny * width + nx;
                             neighbor_pressure = temp_pressure[neighbor_idx];
                             neighbor_diffusion =
-                                getMaterialProperties(neighbor.material_type).pressure_diffusion;
+                                Material::getProperties(neighbor.material_type).pressure_diffusion;
                         }
                     }
 

@@ -328,7 +328,7 @@ struct SpawnDirtBallCommand {
  * @brief Change selected material type.
  */
 struct SelectMaterialCommand {
-    MaterialType material;
+    Material::EnumType material;
     static constexpr const char* name() { return "SelectMaterialCommand"; }
 };
 

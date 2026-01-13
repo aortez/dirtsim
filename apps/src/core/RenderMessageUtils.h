@@ -194,12 +194,12 @@ inline RenderMessage packRenderMessage(
 
 inline void unpackBasicCell(
     const BasicCell& src,
-    MaterialType& material,
+    Material::EnumType& material,
     double& fill_ratio,
     int8_t& render_as,
     uint32_t& color)
 {
-    material = static_cast<MaterialType>(src.material_type);
+    material = static_cast<Material::EnumType>(src.material_type);
     fill_ratio = src.fill_ratio / 255.0;
     render_as = src.render_as;
     color = src.color;
@@ -209,7 +209,7 @@ inline void unpackBasicCell(
  * @brief Unpack DebugCell to get all rendering data.
  */
 struct UnpackedDebugCell {
-    MaterialType material_type;
+    Material::EnumType material_type;
     double fill_ratio;
     int8_t render_as;
     Vector2d com;
@@ -223,7 +223,7 @@ inline UnpackedDebugCell unpackDebugCell(const DebugCell& src)
 {
     UnpackedDebugCell result;
 
-    result.material_type = static_cast<MaterialType>(src.material_type);
+    result.material_type = static_cast<Material::EnumType>(src.material_type);
     result.fill_ratio = src.fill_ratio / 255.0;
     result.render_as = src.render_as;
 

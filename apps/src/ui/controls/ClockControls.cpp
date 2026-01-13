@@ -90,8 +90,8 @@ void ClockControls::createMainView(lv_obj_t* view)
                           .buildOrLog();
 
     // Digit material selector button.
-    std::string materialText =
-        std::string("Digit Color: ") + toString(static_cast<MaterialType>(currentMaterialIndex_));
+    std::string materialText = std::string("Digit Color: ")
+        + toString(static_cast<Material::EnumType>(currentMaterialIndex_));
 
     digitMaterialButton_ = LVGLBuilder::actionButton(view)
                                .text(materialText.c_str())
@@ -353,13 +353,14 @@ void ClockControls::createDigitMaterialSelectionView(lv_obj_t* view)
     buttonToMaterialIndex_.clear();
 
     // All material types in enum order.
-    static const MaterialType materials[] = { MaterialType::AIR,   MaterialType::DIRT,
-                                              MaterialType::LEAF,  MaterialType::METAL,
-                                              MaterialType::ROOT,  MaterialType::SAND,
-                                              MaterialType::SEED,  MaterialType::WALL,
-                                              MaterialType::WATER, MaterialType::WOOD };
+    static const Material::EnumType materials[] = {
+        Material::EnumType::AIR,   Material::EnumType::DIRT, Material::EnumType::LEAF,
+        Material::EnumType::METAL, Material::EnumType::ROOT, Material::EnumType::SAND,
+        Material::EnumType::SEED,  Material::EnumType::WALL, Material::EnumType::WATER,
+        Material::EnumType::WOOD
+    };
 
-    for (MaterialType mat : materials) {
+    for (Material::EnumType mat : materials) {
         lv_obj_t* container = LVGLBuilder::actionButton(view)
                                   .text(toString(mat).c_str())
                                   .width(LV_PCT(95))
@@ -521,7 +522,7 @@ Config::Clock ClockControls::getCurrentConfig() const
     config.timezoneIndex = static_cast<uint8_t>(currentTimezoneIndex_);
 
     // Get digit material from current selection.
-    config.digitMaterial = static_cast<MaterialType>(currentMaterialIndex_);
+    config.digitMaterial = static_cast<Material::EnumType>(currentMaterialIndex_);
 
     // Get emissiveness from stepper.
     if (emissivenessStepper_) {
@@ -731,7 +732,7 @@ void ClockControls::onDigitMaterialSelected(lv_event_t* e)
     }
 
     int materialIndex = it->second;
-    MaterialType material = static_cast<MaterialType>(materialIndex);
+    Material::EnumType material = static_cast<Material::EnumType>(materialIndex);
     LOG_INFO(
         Controls,
         "ClockControls: Digit material changed to {} ({})",

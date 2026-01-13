@@ -17,11 +17,11 @@ void Cell::setFillRatio(float ratio)
 
     // If fill ratio becomes effectively zero, convert to empty AIR.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
-        if (material_type == MaterialType::WOOD) {
+        if (material_type == Material::EnumType::WOOD) {
             spdlog::info(
                 "Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)", fill_ratio);
         }
-        material_type = MaterialType::AIR;
+        material_type = Material::EnumType::AIR;
         fill_ratio = 0.0f;
         velocity = Vector2f{ 0.0f, 0.0f };
         com = Vector2f{ 0.0f, 0.0f };
@@ -43,15 +43,15 @@ float Cell::getMass() const
     if (isEmpty()) {
         return 0.0f;
     }
-    return fill_ratio * static_cast<float>(getMaterialDensity(material_type));
+    return fill_ratio * static_cast<float>(Material::getDensity(material_type));
 }
 
 float Cell::getEffectiveDensity() const
 {
-    return fill_ratio * static_cast<float>(getMaterialDensity(material_type));
+    return fill_ratio * static_cast<float>(Material::getDensity(material_type));
 }
 
-float Cell::addMaterial(MaterialType type, float amount)
+float Cell::addMaterial(Material::EnumType type, float amount)
 {
     if (amount <= 0.0f) {
         return 0.0f;
@@ -79,7 +79,7 @@ float Cell::addMaterial(MaterialType type, float amount)
 }
 
 float Cell::addMaterialWithPhysics(
-    MaterialType type,
+    Material::EnumType type,
     float amount,
     const Vector2f& source_com,
     const Vector2f& newVel,
@@ -91,11 +91,11 @@ float Cell::addMaterialWithPhysics(
 
     // If we're empty, accept any material type with trajectory-based COM.
     if (isEmpty()) {
-        if (material_type == MaterialType::WOOD && type != MaterialType::WOOD) {
+        if (material_type == Material::EnumType::WOOD && type != Material::EnumType::WOOD) {
             spdlog::info(
                 "Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell "
                 "(old_fill={:.3f})",
-                ::toString(type),
+                Material::toString(type),
                 fill_ratio);
         }
         material_type = type;
@@ -197,7 +197,7 @@ float Cell::transferToWithPhysics(Cell& target, float amount, const Vector2f& bo
     return accepted;
 }
 
-void Cell::replaceMaterial(MaterialType type, float new_fill_ratio)
+void Cell::replaceMaterial(Material::EnumType type, float new_fill_ratio)
 {
     // Reset to default state, then set the new material.
     // This ensures all fields (render_as, pressure, pending_force, etc.) are cleared.
@@ -301,8 +301,8 @@ Vector2f Cell::calculateTrajectoryLanding(
 std::string Cell::toString() const
 {
     std::ostringstream oss;
-    oss << ::toString(material_type) << "(fill=" << fill_ratio << ", com=[" << com.x << "," << com.y
-        << "]" << ", vel=[" << velocity.x << "," << velocity.y << "]" << ")";
+    oss << Material::toString(material_type) << "(fill=" << fill_ratio << ", com=[" << com.x << ","
+        << com.y << "]" << ", vel=[" << velocity.x << "," << velocity.y << "]" << ")";
     return oss.str();
 }
 
@@ -313,13 +313,13 @@ std::string Cell::toString() const
 void Cell::addDirt(float amount)
 {
     if (amount <= 0.0f) return;
-    addMaterial(MaterialType::DIRT, amount);
+    addMaterial(Material::EnumType::DIRT, amount);
 }
 
 void Cell::addWater(float amount)
 {
     if (amount <= 0.0f) return;
-    addMaterial(MaterialType::WATER, amount);
+    addMaterial(Material::EnumType::WATER, amount);
 }
 
 void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
@@ -328,7 +328,7 @@ void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
 
     // Store current fill ratio to calculate momentum.
     float oldFill = fill_ratio;
-    float actualAdded = addMaterial(MaterialType::DIRT, amount);
+    float actualAdded = addMaterial(Material::EnumType::DIRT, amount);
 
     if (actualAdded > 0.0f) {
         // Update velocity based on momentum conservation.
@@ -352,7 +352,7 @@ void Cell::addDirtWithCOM(float amount, const Vector2f& newCom, const Vector2f& 
     Vector2f oldCOM = com;
     Vector2f oldVelocity = velocity;
 
-    float actualAdded = addMaterial(MaterialType::DIRT, amount);
+    float actualAdded = addMaterial(Material::EnumType::DIRT, amount);
 
     if (actualAdded > 0.0f) {
         float newFill = fill_ratio;
@@ -389,33 +389,33 @@ std::string Cell::toAsciiCharacter() const
     // Choose character based on material type.
     char material_char = '?';
     switch (material_type) {
-        case MaterialType::AIR:
+        case Material::EnumType::AIR:
             return "  "; // Two spaces for air.
-        case MaterialType::DIRT:
+        case Material::EnumType::DIRT:
             material_char = '#';
             break;
-        case MaterialType::WATER:
+        case Material::EnumType::WATER:
             material_char = '~';
             break;
-        case MaterialType::WOOD:
+        case Material::EnumType::WOOD:
             material_char = 'W';
             break;
-        case MaterialType::SAND:
+        case Material::EnumType::SAND:
             material_char = '.';
             break;
-        case MaterialType::METAL:
+        case Material::EnumType::METAL:
             material_char = 'M';
             break;
-        case MaterialType::LEAF:
+        case Material::EnumType::LEAF:
             material_char = 'L';
             break;
-        case MaterialType::WALL:
+        case Material::EnumType::WALL:
             material_char = '|';
             break;
-        case MaterialType::ROOT:
+        case Material::EnumType::ROOT:
             material_char = 'R';
             break;
-        case MaterialType::SEED:
+        case Material::EnumType::SEED:
             material_char = 'S';
             break;
     }
@@ -432,9 +432,9 @@ std::string Cell::toAsciiCharacter() const
 // INLINE METHOD IMPLEMENTATIONS (moved from header)
 // =================================================================
 
-const MaterialProperties& Cell::material() const
+const Material::Properties& Cell::material() const
 {
-    return getMaterialProperties(material_type);
+    return Material::getProperties(material_type);
 }
 
 void Cell::addPendingForce(const Vector2f& force)
@@ -459,18 +459,18 @@ bool Cell::isFull() const
 
 bool Cell::isAir() const
 {
-    return material_type == MaterialType::AIR;
+    return material_type == Material::EnumType::AIR;
 }
 
 bool Cell::isWall() const
 {
-    return material_type == MaterialType::WALL;
+    return material_type == Material::EnumType::WALL;
 }
 
-MaterialType Cell::getRenderMaterial() const
+Material::EnumType Cell::getRenderMaterial() const
 {
     if (render_as >= 0) {
-        return static_cast<MaterialType>(render_as);
+        return static_cast<Material::EnumType>(render_as);
     }
     return material_type;
 }

@@ -65,15 +65,19 @@ protected:
 
         // Top and bottom walls.
         for (uint32_t x = 0; x < world_size; ++x) {
-            world->addMaterialAtCell({ static_cast<int16_t>(x), 0 }, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell({ static_cast<int16_t>(x), 0 }, Material::EnumType::WALL, 1.0);
             world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(last) }, MaterialType::WALL, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(last) },
+                Material::EnumType::WALL,
+                1.0);
         }
         // Left and right walls.
         for (uint32_t y = 0; y < world_size; ++y) {
-            world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, Material::EnumType::WALL, 1.0);
             world->addMaterialAtCell(
-                { static_cast<int16_t>(last), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+                { static_cast<int16_t>(last), static_cast<int16_t>(y) },
+                Material::EnumType::WALL,
+                1.0);
         }
     }
 
@@ -95,7 +99,7 @@ protected:
                 if (interior_y > interior_x) {
                     world->addMaterialAtCell(
                         { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                        MaterialType::WATER,
+                        Material::EnumType::WATER,
                         1.0);
                     ++water_count;
                 }
@@ -113,7 +117,7 @@ protected:
         for (uint32_t x = 1; x <= interior_size_; ++x) {
             for (uint32_t y = 1; y <= interior_size_; ++y) {
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::WATER && cell.fill_ratio > 0.5) {
+                if (cell.material_type == Material::EnumType::WATER && cell.fill_ratio > 0.5) {
                     ++count;
                 }
             }
@@ -130,7 +134,7 @@ protected:
         uint32_t y = interior_y + 1; // Convert to world coordinate.
         for (uint32_t x = 1; x <= interior_size_; ++x) {
             const Cell& cell = world->getData().at(x, y);
-            if (cell.material_type == MaterialType::WATER && cell.fill_ratio > 0.5) {
+            if (cell.material_type == Material::EnumType::WATER && cell.fill_ratio > 0.5) {
                 ++count;
             }
         }
@@ -150,7 +154,7 @@ protected:
         for (uint32_t x = 1; x <= interior_size_; ++x) {
             for (uint32_t y = 1; y <= interior_size_; ++y) {
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::WATER && cell.fill_ratio > 0.5) {
+                if (cell.material_type == Material::EnumType::WATER && cell.fill_ratio > 0.5) {
                     ++column_heights[x - 1];
                 }
             }
@@ -200,13 +204,13 @@ protected:
                     continue;
                 }
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::WATER) {
+                if (cell.material_type == Material::EnumType::WATER) {
                     row += "~";
                 }
-                else if (cell.material_type == MaterialType::WALL) {
+                else if (cell.material_type == Material::EnumType::WALL) {
                     row += "#";
                 }
-                else if (cell.material_type == MaterialType::DIRT) {
+                else if (cell.material_type == Material::EnumType::DIRT) {
                     row += "@";
                 }
                 else {

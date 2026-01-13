@@ -42,12 +42,14 @@ TEST_F(TreeGerminationTest, SeedFallsOntoGround)
     for (uint32_t y = 6; y < 9; ++y) {
         for (uint32_t x = 0; x < 9; ++x) {
             world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::DIRT,
+                1.0);
         }
     }
     OrganismId id = world->getOrganismManager().createTree(*world, 4, 1);
 
-    EXPECT_EQ(world->getData().at(4, 1).material_type, MaterialType::SEED);
+    EXPECT_EQ(world->getData().at(4, 1).material_type, Material::EnumType::SEED);
 
     std::cout << "Initial state:\n"
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
@@ -100,11 +102,11 @@ TEST_F(TreeGerminationTest, SeedBlockedByWall)
 {
     for (uint32_t y = 0; y < 9; ++y) {
         for (uint32_t x = 0; x < 9; ++x) {
-            world->getData().at(x, y).replaceMaterial(MaterialType::WALL, 1.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::WALL, 1.0);
         }
     }
 
-    world->getData().at(4, 4).replaceMaterial(MaterialType::AIR, 0.0);
+    world->getData().at(4, 4).replaceMaterial(Material::EnumType::AIR, 0.0);
 
     OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     const Tree* tree = world->getOrganismManager().getTree(id);
@@ -134,7 +136,7 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
     CellTracker tracker(*world, id, 20);
 
     // Initialize with seed.
-    tracker.trackCell(tree->getAnchorCell(), MaterialType::SEED, 0);
+    tracker.trackCell(tree->getAnchorCell(), Material::EnumType::SEED, 0);
 
     for (int i = 0; i < 2000; i++) {
         // Snapshot current cells before advancing.
@@ -200,13 +202,13 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
 
             const Cell& cell = world->getData().at(x, y);
 
-            if (cell.material_type == MaterialType::WOOD) {
+            if (cell.material_type == Material::EnumType::WOOD) {
                 if (static_cast<int>(x) < seed_x)
                     wood_left++;
                 else if (static_cast<int>(x) > seed_x)
                     wood_right++;
             }
-            else if (cell.material_type == MaterialType::LEAF) {
+            else if (cell.material_type == Material::EnumType::LEAF) {
                 if (static_cast<int>(x) < seed_x)
                     leaf_left++;
                 else if (static_cast<int>(x) > seed_x)
@@ -248,13 +250,13 @@ TEST_F(TreeGerminationTest, RootsStopAtWater)
     // Water at bottom 2 rows.
     for (uint32_t y = 7; y < 9; ++y) {
         for (uint32_t x = 0; x < 9; ++x) {
-            world->getData().at(x, y).replaceMaterial(MaterialType::WATER, 1.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
         }
     }
 
     // Dirt layer above water.
     for (uint32_t x = 0; x < 9; ++x) {
-        world->getData().at(x, 6).replaceMaterial(MaterialType::DIRT, 1.0);
+        world->getData().at(x, 6).replaceMaterial(Material::EnumType::DIRT, 1.0);
     }
 
     std::cout << "Initial water test setup:\n"
@@ -277,8 +279,8 @@ TEST_F(TreeGerminationTest, RootsStopAtWater)
     int water_count = 0;
     for (uint32_t y = 0; y < 9; ++y) {
         for (uint32_t x = 0; x < 9; ++x) {
-            if (world->getData().at(x, y).material_type == MaterialType::ROOT) root_count++;
-            if (world->getData().at(x, y).material_type == MaterialType::WATER) water_count++;
+            if (world->getData().at(x, y).material_type == Material::EnumType::ROOT) root_count++;
+            if (world->getData().at(x, y).material_type == Material::EnumType::WATER) water_count++;
         }
     }
 
@@ -339,7 +341,7 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
                 Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                 if (world->getOrganismManager().at(pos) == tree->getId()) {
                     const Cell& cell = world->getData().at(x, y);
-                    if (cell.material_type == MaterialType::WOOD) {
+                    if (cell.material_type == Material::EnumType::WOOD) {
                         wood_positions.push_back(pos);
                     }
                 }
@@ -382,7 +384,7 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
             std::cout << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
         }
 
-        EXPECT_EQ(cell.material_type, MaterialType::WOOD)
+        EXPECT_EQ(cell.material_type, Material::EnumType::WOOD)
             << "Frame " << frame << ": WOOD cell at (" << second_wood_pos.x << ", "
             << second_wood_pos.y << ") changed to " << toString(cell.material_type);
         EXPECT_EQ(world->getOrganismManager().at(second_wood_pos), tree->getId())
@@ -452,7 +454,7 @@ TEST_F(TreeGerminationTest, DISABLED_HorizontalBoneForceBehavior)
 
     // Set up tracker with seed.
     CellTracker tracker(*world, id);
-    tracker.trackCell(seed_pos, MaterialType::SEED, 0);
+    tracker.trackCell(seed_pos, Material::EnumType::SEED, 0);
 
     // Run until WOOD appears.
     int frame = 0;
@@ -467,7 +469,7 @@ TEST_F(TreeGerminationTest, DISABLED_HorizontalBoneForceBehavior)
         tracker.detectNewCells(cells_before, tree->getCells(), frame);
 
         const Cell& wood_cell = world->getData().at(wood_target.x, wood_target.y);
-        if (wood_cell.material_type == MaterialType::WOOD
+        if (wood_cell.material_type == Material::EnumType::WOOD
             && world->getOrganismManager().at(wood_target) == id) {
             wood_grown = true;
             std::cout << "WOOD grown at frame " << frame << ":\n"
@@ -506,9 +508,9 @@ TEST_F(TreeGerminationTest, DISABLED_HorizontalBoneForceBehavior)
     const Cell& final_seed = world->getData().at(seed_pos.x, seed_pos.y);
     const Cell& final_wood = world->getData().at(wood_target.x, wood_target.y);
 
-    EXPECT_EQ(final_seed.material_type, MaterialType::SEED);
+    EXPECT_EQ(final_seed.material_type, Material::EnumType::SEED);
     EXPECT_EQ(world->getOrganismManager().at(seed_pos), id);
-    EXPECT_EQ(final_wood.material_type, MaterialType::WOOD);
+    EXPECT_EQ(final_wood.material_type, Material::EnumType::WOOD);
     EXPECT_EQ(world->getOrganismManager().at(wood_target), id);
 
     // Verify horizontal bone stability (X components should be near center).
@@ -552,7 +554,7 @@ TEST_F(TreeGerminationTest, VerticalBoneForceBehavior)
 
     // Set up tracker with seed.
     CellTracker tracker(*world, id);
-    tracker.trackCell(seed_pos, MaterialType::SEED, 0);
+    tracker.trackCell(seed_pos, Material::EnumType::SEED, 0);
 
     // Run until both WOOD cells appear.
     int frame = 0;
@@ -568,7 +570,7 @@ TEST_F(TreeGerminationTest, VerticalBoneForceBehavior)
         tracker.detectNewCells(cells_before, tree->getCells(), frame);
 
         const Cell& wood1_cell = world->getData().at(wood1_target.x, wood1_target.y);
-        if (!wood1_grown && wood1_cell.material_type == MaterialType::WOOD
+        if (!wood1_grown && wood1_cell.material_type == Material::EnumType::WOOD
             && world->getOrganismManager().at(wood1_target) == id) {
             wood1_grown = true;
             std::cout << "WOOD1 grown at frame " << frame << ":\n"
@@ -576,7 +578,7 @@ TEST_F(TreeGerminationTest, VerticalBoneForceBehavior)
         }
 
         const Cell& wood2_cell = world->getData().at(wood2_target.x, wood2_target.y);
-        if (!wood2_grown && wood2_cell.material_type == MaterialType::WOOD
+        if (!wood2_grown && wood2_cell.material_type == Material::EnumType::WOOD
             && world->getOrganismManager().at(wood2_target) == id) {
             wood2_grown = true;
             std::cout << "WOOD2 grown at frame " << frame << ":\n"
@@ -619,11 +621,11 @@ TEST_F(TreeGerminationTest, VerticalBoneForceBehavior)
     const Cell& final_wood1 = world->getData().at(wood1_target.x, wood1_target.y);
     const Cell& final_wood2 = world->getData().at(wood2_target.x, wood2_target.y);
 
-    EXPECT_EQ(final_seed.material_type, MaterialType::SEED);
+    EXPECT_EQ(final_seed.material_type, Material::EnumType::SEED);
     EXPECT_EQ(world->getOrganismManager().at(seed_pos), id);
-    EXPECT_EQ(final_wood1.material_type, MaterialType::WOOD);
+    EXPECT_EQ(final_wood1.material_type, Material::EnumType::WOOD);
     EXPECT_EQ(world->getOrganismManager().at(wood1_target), id);
-    EXPECT_EQ(final_wood2.material_type, MaterialType::WOOD);
+    EXPECT_EQ(final_wood2.material_type, Material::EnumType::WOOD);
     EXPECT_EQ(world->getOrganismManager().at(wood2_target), id);
 
     // For vertical stack, just verify cells stayed in their grid positions.
@@ -656,7 +658,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                 Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                 if (world->getOrganismManager().at(pos) == tree->getId()) {
                     const Cell& cell = world->getData().at(x, y);
-                    if (cell.material_type == MaterialType::WOOD) {
+                    if (cell.material_type == Material::EnumType::WOOD) {
                         wood_positions.push_back(pos);
                     }
                 }
@@ -749,8 +751,8 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
             }
 
             // Check if WOOD[1] moved.
-            bool wood1_still_there =
-                world->getData().at(wood1_pos.x, wood1_pos.y).material_type == MaterialType::WOOD
+            bool wood1_still_there = world->getData().at(wood1_pos.x, wood1_pos.y).material_type
+                    == Material::EnumType::WOOD
                 && world->getOrganismManager().at(wood1_pos) == tree->getId();
 
             if (!wood1_still_there) {
@@ -762,7 +764,7 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
                         Vector2i pos{ static_cast<int>(x), static_cast<int>(y) };
                         if (world->getOrganismManager().at(pos) == tree->getId()) {
                             const Cell& cell = world->getData().at(x, y);
-                            if (cell.material_type == MaterialType::WOOD
+                            if (cell.material_type == Material::EnumType::WOOD
                                 && !(
                                     static_cast<int>(x) == wood0_pos.x
                                     && static_cast<int>(y) == wood0_pos.y)) {
@@ -902,7 +904,7 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
 
     // Track all cells as they're added (frame count continues from Phase 1).
     CellTracker tracker(*world, tree_id, 50);
-    tracker.trackCell(seed_pos, MaterialType::SEED, frame);
+    tracker.trackCell(seed_pos, Material::EnumType::SEED, frame);
 
     const int STABILITY_FRAMES = 60;             // Frames to run after each growth.
     const double VEL_THRESHOLD = 0.05;           // Max acceptable velocity after stabilization.

@@ -31,11 +31,11 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
     }
 
     // Place known materials at specific positions.
-    world->addMaterialAtCell({ 7, 7 }, MaterialType::DIRT, 1.0);  // Center.
-    world->addMaterialAtCell({ 5, 7 }, MaterialType::WATER, 0.8); // Left of center.
-    world->addMaterialAtCell({ 9, 7 }, MaterialType::SAND, 0.6);  // Right of center.
-    world->addMaterialAtCell({ 7, 5 }, MaterialType::WOOD, 1.0);  // Above center.
-    world->addMaterialAtCell({ 7, 9 }, MaterialType::METAL, 1.0); // Below center.
+    world->addMaterialAtCell({ 7, 7 }, Material::EnumType::DIRT, 1.0);  // Center.
+    world->addMaterialAtCell({ 5, 7 }, Material::EnumType::WATER, 0.8); // Left of center.
+    world->addMaterialAtCell({ 9, 7 }, Material::EnumType::SAND, 0.6);  // Right of center.
+    world->addMaterialAtCell({ 7, 5 }, Material::EnumType::WOOD, 1.0);  // Above center.
+    world->addMaterialAtCell({ 7, 9 }, Material::EnumType::METAL, 1.0); // Below center.
 
     // Gather histograms centered at (7,7) with 9x9 grid.
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
@@ -49,19 +49,19 @@ TEST(SensoryUtilsTest, GatherHistogramsCorrectlySamplesMaterials)
     EXPECT_EQ(world_offset.y, 3);
 
     // Check center (neural 4,4 -> world 7,7) has DIRT.
-    EXPECT_GT(histograms[4][4][static_cast<int>(MaterialType::DIRT)], 0.9);
+    EXPECT_GT(histograms[4][4][static_cast<int>(Material::EnumType::DIRT)], 0.9);
 
     // Check left (neural 2,4 -> world 5,7) has WATER.
-    EXPECT_GT(histograms[4][2][static_cast<int>(MaterialType::WATER)], 0.7);
+    EXPECT_GT(histograms[4][2][static_cast<int>(Material::EnumType::WATER)], 0.7);
 
     // Check right (neural 6,4 -> world 9,7) has SAND.
-    EXPECT_GT(histograms[4][6][static_cast<int>(MaterialType::SAND)], 0.5);
+    EXPECT_GT(histograms[4][6][static_cast<int>(Material::EnumType::SAND)], 0.5);
 
     // Check above (neural 4,2 -> world 7,5) has WOOD.
-    EXPECT_GT(histograms[2][4][static_cast<int>(MaterialType::WOOD)], 0.9);
+    EXPECT_GT(histograms[2][4][static_cast<int>(Material::EnumType::WOOD)], 0.9);
 
     // Check below (neural 4,6 -> world 7,9) has METAL.
-    EXPECT_GT(histograms[6][4][static_cast<int>(MaterialType::METAL)], 0.9);
+    EXPECT_GT(histograms[6][4][static_cast<int>(Material::EnumType::METAL)], 0.9);
 
     // Check an empty cell (neural 0,0 -> world 3,3) is AIR/empty.
     double total_fill = 0.0;
@@ -97,7 +97,7 @@ TEST(SensoryUtilsTest, GatherHistogramsMarksBoundariesAsWall)
     EXPECT_EQ(world_offset.y, -3);
 
     // Top-left corner (neural [0][0]) maps to world (-3,-3) which is OOB, should be WALL.
-    EXPECT_GT(histograms[0][0][static_cast<int>(MaterialType::WALL)], 0.9);
+    EXPECT_GT(histograms[0][0][static_cast<int>(Material::EnumType::WALL)], 0.9);
 }
 
 /**
@@ -113,7 +113,9 @@ TEST(SensoryUtilsTest, GatherHistogramsAtWorldEdge)
         for (uint32_t x = 0; x < 10; x++) {
             if (x == 0 || x == 9 || y == 0 || y == 9) {
                 world->addMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::WALL,
+                    1.0);
             }
             else {
                 world->getData().at(x, y) = Cell();
@@ -132,10 +134,10 @@ TEST(SensoryUtilsTest, GatherHistogramsAtWorldEdge)
     EXPECT_EQ(world_offset.y, 1);
 
     // Right edge of grid (neural [4][8]) maps to world (12,5) which is OOB, should be WALL.
-    EXPECT_GT(histograms[4][8][static_cast<int>(MaterialType::WALL)], 0.9);
+    EXPECT_GT(histograms[4][8][static_cast<int>(Material::EnumType::WALL)], 0.9);
 
     // Also the actual wall at world x=9 (neural x=5) should still be visible.
-    EXPECT_GT(histograms[4][5][static_cast<int>(MaterialType::WALL)], 0.9);
+    EXPECT_GT(histograms[4][5][static_cast<int>(Material::EnumType::WALL)], 0.9);
 }
 
 // =============================================================================
@@ -150,12 +152,12 @@ TEST(SensoryUtilsTest, GetDominantMaterialReturnsHighestFill)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // Set up a cell with multiple materials - SAND has highest fill.
-    histograms[4][4][static_cast<int>(MaterialType::DIRT)] = 0.3;
-    histograms[4][4][static_cast<int>(MaterialType::SAND)] = 0.7;
-    histograms[4][4][static_cast<int>(MaterialType::WATER)] = 0.1;
+    histograms[4][4][static_cast<int>(Material::EnumType::DIRT)] = 0.3;
+    histograms[4][4][static_cast<int>(Material::EnumType::SAND)] = 0.7;
+    histograms[4][4][static_cast<int>(Material::EnumType::WATER)] = 0.1;
 
-    MaterialType dominant = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 4);
-    EXPECT_EQ(dominant, MaterialType::SAND);
+    Material::EnumType dominant = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 4);
+    EXPECT_EQ(dominant, Material::EnumType::SAND);
 }
 
 /**
@@ -166,8 +168,8 @@ TEST(SensoryUtilsTest, GetDominantMaterialReturnsAirForEmpty)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // All zeros - should return AIR (index 0).
-    MaterialType dominant = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 4);
-    EXPECT_EQ(dominant, MaterialType::AIR);
+    Material::EnumType dominant = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 4);
+    EXPECT_EQ(dominant, Material::EnumType::AIR);
 }
 
 /**
@@ -178,17 +180,17 @@ TEST(SensoryUtilsTest, GetDominantMaterialReturnsAirForOOB)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // Out of bounds should return AIR.
-    MaterialType result1 = SensoryUtils::getDominantMaterial<9, 10>(histograms, -1, 4);
-    EXPECT_EQ(result1, MaterialType::AIR);
+    Material::EnumType result1 = SensoryUtils::getDominantMaterial<9, 10>(histograms, -1, 4);
+    EXPECT_EQ(result1, Material::EnumType::AIR);
 
-    MaterialType result2 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 9, 4);
-    EXPECT_EQ(result2, MaterialType::AIR);
+    Material::EnumType result2 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 9, 4);
+    EXPECT_EQ(result2, Material::EnumType::AIR);
 
-    MaterialType result3 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, -1);
-    EXPECT_EQ(result3, MaterialType::AIR);
+    Material::EnumType result3 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, -1);
+    EXPECT_EQ(result3, Material::EnumType::AIR);
 
-    MaterialType result4 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 9);
-    EXPECT_EQ(result4, MaterialType::AIR);
+    Material::EnumType result4 = SensoryUtils::getDominantMaterial<9, 10>(histograms, 4, 9);
+    EXPECT_EQ(result4, Material::EnumType::AIR);
 }
 
 // =============================================================================
@@ -203,27 +205,27 @@ TEST(SensoryUtilsTest, IsSolidReturnsTrueForSolidMaterials)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // DIRT is solid.
-    histograms[0][0][static_cast<int>(MaterialType::DIRT)] = 1.0;
+    histograms[0][0][static_cast<int>(Material::EnumType::DIRT)] = 1.0;
     bool result1 = SensoryUtils::isSolid<9, 10>(histograms, 0, 0);
     EXPECT_TRUE(result1);
 
     // SAND is solid.
-    histograms[1][0][static_cast<int>(MaterialType::SAND)] = 1.0;
+    histograms[1][0][static_cast<int>(Material::EnumType::SAND)] = 1.0;
     bool result2 = SensoryUtils::isSolid<9, 10>(histograms, 0, 1);
     EXPECT_TRUE(result2);
 
     // WOOD is solid.
-    histograms[2][0][static_cast<int>(MaterialType::WOOD)] = 1.0;
+    histograms[2][0][static_cast<int>(Material::EnumType::WOOD)] = 1.0;
     bool result3 = SensoryUtils::isSolid<9, 10>(histograms, 0, 2);
     EXPECT_TRUE(result3);
 
     // METAL is solid.
-    histograms[3][0][static_cast<int>(MaterialType::METAL)] = 1.0;
+    histograms[3][0][static_cast<int>(Material::EnumType::METAL)] = 1.0;
     bool result4 = SensoryUtils::isSolid<9, 10>(histograms, 0, 3);
     EXPECT_TRUE(result4);
 
     // WALL is solid.
-    histograms[4][0][static_cast<int>(MaterialType::WALL)] = 1.0;
+    histograms[4][0][static_cast<int>(Material::EnumType::WALL)] = 1.0;
     bool result5 = SensoryUtils::isSolid<9, 10>(histograms, 0, 4);
     EXPECT_TRUE(result5);
 }
@@ -236,12 +238,12 @@ TEST(SensoryUtilsTest, IsSolidReturnsFalseForNonSolidMaterials)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // AIR is not solid.
-    histograms[0][0][static_cast<int>(MaterialType::AIR)] = 1.0;
+    histograms[0][0][static_cast<int>(Material::EnumType::AIR)] = 1.0;
     bool result1 = SensoryUtils::isSolid<9, 10>(histograms, 0, 0);
     EXPECT_FALSE(result1);
 
     // WATER is not solid.
-    histograms[1][0][static_cast<int>(MaterialType::WATER)] = 1.0;
+    histograms[1][0][static_cast<int>(Material::EnumType::WATER)] = 1.0;
     bool result2 = SensoryUtils::isSolid<9, 10>(histograms, 0, 1);
     EXPECT_FALSE(result2);
 
@@ -266,7 +268,7 @@ TEST(SensoryUtilsTest, IsEmptyReturnsTrueForLowFillCells)
     EXPECT_TRUE(result1);
 
     // Very low fill (below 0.1 threshold).
-    histograms[5][5][static_cast<int>(MaterialType::DIRT)] = 0.05;
+    histograms[5][5][static_cast<int>(Material::EnumType::DIRT)] = 0.05;
     bool result2 = SensoryUtils::isEmpty<9, 10>(histograms, 5, 5);
     EXPECT_TRUE(result2);
 }
@@ -279,13 +281,13 @@ TEST(SensoryUtilsTest, IsEmptyReturnsFalseForFilledCells)
     std::array<std::array<std::array<double, 10>, 9>, 9> histograms = {};
 
     // Above threshold.
-    histograms[4][4][static_cast<int>(MaterialType::DIRT)] = 0.5;
+    histograms[4][4][static_cast<int>(Material::EnumType::DIRT)] = 0.5;
     bool result1 = SensoryUtils::isEmpty<9, 10>(histograms, 4, 4);
     EXPECT_FALSE(result1);
 
     // Multiple materials adding up.
-    histograms[5][5][static_cast<int>(MaterialType::DIRT)] = 0.05;
-    histograms[5][5][static_cast<int>(MaterialType::SAND)] = 0.06;
+    histograms[5][5][static_cast<int>(Material::EnumType::DIRT)] = 0.05;
+    histograms[5][5][static_cast<int>(Material::EnumType::SAND)] = 0.06;
     bool result2 = SensoryUtils::isEmpty<9, 10>(histograms, 5, 5);
     EXPECT_FALSE(result2);
 }
@@ -325,7 +327,9 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
         for (uint32_t x = 0; x < 15; x++) {
             if (y == 14) {
                 world->addMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::WALL,
+                    1.0);
             }
             else {
                 world->getData().at(x, y) = Cell();
@@ -374,16 +378,16 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
 
     // Add floor at y=13.
     for (uint32_t x = 0; x < 15; x++) {
-        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, MaterialType::DIRT, 1.0);
+        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, Material::EnumType::DIRT, 1.0);
     }
 
     // Add wall to the right at x=10.
     for (uint32_t y = 0; y < 13; y++) {
-        world->addMaterialAtCell({ 10, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+        world->addMaterialAtCell({ 10, static_cast<int16_t>(y) }, Material::EnumType::WALL, 1.0);
     }
 
     // Add water pool to the left.
-    world->addMaterialAtCell({ 4, 12 }, MaterialType::WATER, 1.0);
+    world->addMaterialAtCell({ 4, 12 }, Material::EnumType::WATER, 1.0);
 
     // Create duck at (7, 12).
     OrganismId duck_id = world->getOrganismManager().createDuck(*world, 7, 12);
@@ -402,7 +406,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     // Check that row 5 has DIRT.
     bool found_dirt = false;
     for (int x = 0; x < DuckSensoryData::GRID_SIZE; x++) {
-        if (sensory.material_histograms[5][x][static_cast<int>(MaterialType::DIRT)] > 0.5) {
+        if (sensory.material_histograms[5][x][static_cast<int>(Material::EnumType::DIRT)] > 0.5) {
             found_dirt = true;
             break;
         }
@@ -412,7 +416,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     // Wall at x=10 should be at neural x = 10 - 3 = 7.
     bool found_wall = false;
     for (int y = 0; y < DuckSensoryData::GRID_SIZE; y++) {
-        if (sensory.material_histograms[y][7][static_cast<int>(MaterialType::WALL)] > 0.5) {
+        if (sensory.material_histograms[y][7][static_cast<int>(Material::EnumType::WALL)] > 0.5) {
             found_wall = true;
             break;
         }
@@ -420,7 +424,7 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     EXPECT_TRUE(found_wall) << "Should see WALL to the right in sensory grid";
 
     // Water at (4,12) should be at neural (4-3, 12-8) = (1, 4).
-    EXPECT_GT(sensory.material_histograms[4][1][static_cast<int>(MaterialType::WATER)], 0.5)
+    EXPECT_GT(sensory.material_histograms[4][1][static_cast<int>(Material::EnumType::WATER)], 0.5)
         << "Should see WATER to the left in sensory grid";
 }
 
@@ -439,11 +443,11 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
 
     // Add floor.
     for (uint32_t x = 0; x < 15; x++) {
-        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, MaterialType::DIRT, 1.0);
+        world->addMaterialAtCell({ static_cast<int16_t>(x), 13 }, Material::EnumType::DIRT, 1.0);
     }
 
     // Add wall 2 cells to the right of where duck will be.
-    world->addMaterialAtCell({ 9, 12 }, MaterialType::WALL, 1.0);
+    world->addMaterialAtCell({ 9, 12 }, Material::EnumType::WALL, 1.0);
 
     // Create duck at (7, 12) facing right.
     OrganismId duck_id = world->getOrganismManager().createDuck(*world, 7, 12);

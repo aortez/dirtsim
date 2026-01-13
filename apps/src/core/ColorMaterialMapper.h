@@ -14,16 +14,16 @@ struct RgbPixel {
 };
 
 /**
- * Maps RGB colors to MaterialType via Euclidean distance matching.
+ * Maps RGB colors to Material::EnumType via Euclidean distance matching.
  *
  * Enables automatic dithering of colored images/emojis into cell-based
- * material patterns by finding the closest MaterialType for each pixel color.
+ * material patterns by finding the closest Material::EnumType for each pixel color.
  */
 class ColorMaterialMapper {
 public:
-    static MaterialType findNearestMaterial(uint8_t r, uint8_t g, uint8_t b);
+    static Material::EnumType findNearestMaterial(uint8_t r, uint8_t g, uint8_t b);
 
-    static std::vector<std::vector<MaterialType>> rgbToMaterials(
+    static std::vector<std::vector<Material::EnumType>> rgbToMaterials(
         const std::vector<std::vector<RgbPixel>>& rgbPattern, float alphaThreshold = 0.5f);
 
 private:

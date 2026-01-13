@@ -13,7 +13,7 @@ namespace DirtSim {
  */
 class LocalShapeProjection : public ProjectionComponent {
 public:
-    void addCell(Vector2i localPos, MaterialType material, double fillRatio) override;
+    void addCell(Vector2i localPos, Material::EnumType material, double fillRatio) override;
     void clear(World& world) override;
     const std::vector<LocalCell>& getLocalShape() const override;
     const std::vector<Vector2i>& getOccupiedCells() const override;

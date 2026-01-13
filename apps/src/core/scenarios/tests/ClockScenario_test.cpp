@@ -59,19 +59,19 @@ TEST_F(ClockScenarioTest, Setup_HasWallBorders)
 
     // Verify bottom border is all walls.
     for (int x = 0; x < data.width; ++x) {
-        EXPECT_EQ(data.at(x, data.height - 1).material_type, MaterialType::WALL)
+        EXPECT_EQ(data.at(x, data.height - 1).material_type, Material::EnumType::WALL)
             << "Bottom border missing WALL at x=" << x;
     }
 
     // Verify left border is all walls.
     for (int y = 0; y < data.height; ++y) {
-        EXPECT_EQ(data.at(0, y).material_type, MaterialType::WALL)
+        EXPECT_EQ(data.at(0, y).material_type, Material::EnumType::WALL)
             << "Left border missing WALL at y=" << y;
     }
 
     // Verify right border is all walls.
     for (int y = 0; y < data.height; ++y) {
-        EXPECT_EQ(data.at(data.width - 1, y).material_type, MaterialType::WALL)
+        EXPECT_EQ(data.at(data.width - 1, y).material_type, Material::EnumType::WALL)
             << "Right border missing WALL at y=" << y;
     }
 }
@@ -85,7 +85,7 @@ TEST_F(ClockScenarioTest, Setup_HasMinimumDigitBlocks)
     for (int y = 1; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
             const Cell& cell = data.at(x, y);
-            if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+            if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
                 digit_cell_count++;
             }
         }
@@ -266,7 +266,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
         }
         const Cell& cell = data.at(x, y);
         // Door is open if the wall cell has been cleared to AIR.
-        return cell.material_type == MaterialType::AIR;
+        return cell.material_type == Material::EnumType::AIR;
     };
 
     // Run simulation and track all frames.
@@ -383,7 +383,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
 {
     // Track material counts for digit cells across all frames.
-    std::map<MaterialType, int> material_counts;
+    std::map<Material::EnumType, int> material_counts;
 
     // Start color cycle event via config toggle.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
@@ -410,8 +410,9 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    MaterialType render_material = static_cast<MaterialType>(cell.render_as);
+                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                    Material::EnumType render_material =
+                        static_cast<Material::EnumType>(cell.render_as);
                     material_counts[render_material]++;
                     goto sampled; // Sample one cell per tick.
                 }
@@ -463,7 +464,7 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
                     y_positions.push_back(static_cast<int>(y));
                 }
             }
@@ -537,7 +538,7 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
                     positions.emplace_back(x, y);
                 }
             }
@@ -609,12 +610,12 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
 
     // Helper to get all digit cell materials.
     auto getDigitMaterials = [](const WorldData& data) {
-        std::vector<MaterialType> materials;
+        std::vector<Material::EnumType> materials;
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    materials.push_back(static_cast<MaterialType>(cell.render_as));
+                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                    materials.push_back(static_cast<Material::EnumType>(cell.render_as));
                 }
             }
         }
@@ -643,7 +644,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     auto initial_materials = getDigitMaterials(world_->getData());
     ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
 
-    MaterialType initial_showcase = initial_materials[0];
+    Material::EnumType initial_showcase = initial_materials[0];
     std::cout << "Initial showcase material: " << toString(initial_showcase) << "\n";
 
     // Change the time to trigger slide animation.
@@ -655,7 +656,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
 
     // Sample materials during the slide animation (should take ~0.5s at speed 2.0).
     // We sample multiple times during the animation to catch any flashing.
-    std::map<MaterialType, int> material_counts;
+    std::map<Material::EnumType, int> material_counts;
     int num_samples = 0;
 
     for (int frame = 0; frame < 30; ++frame) { // ~0.5s of animation at 60fps.
@@ -676,7 +677,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     }
 
     // METAL should NOT appear during showcase+slide (that indicates showcase reset bug).
-    auto metal_it = material_counts.find(MaterialType::METAL);
+    auto metal_it = material_counts.find(Material::EnumType::METAL);
     EXPECT_TRUE(metal_it == material_counts.end())
         << "Found METAL material during animation. METAL appeared "
         << (metal_it != material_counts.end() ? metal_it->second : 0)
@@ -694,12 +695,12 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     // Similar test for showcase + marquee combination.
 
     auto getDigitMaterials = [](const WorldData& data) {
-        std::vector<MaterialType> materials;
+        std::vector<Material::EnumType> materials;
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == MaterialType::WALL && cell.render_as >= 0) {
-                    materials.push_back(static_cast<MaterialType>(cell.render_as));
+                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                    materials.push_back(static_cast<Material::EnumType>(cell.render_as));
                 }
             }
         }
@@ -724,11 +725,11 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     auto initial_materials = getDigitMaterials(world_->getData());
     ASSERT_FALSE(initial_materials.empty()) << "Should have digit cells";
 
-    MaterialType showcase_material = initial_materials[0];
+    Material::EnumType showcase_material = initial_materials[0];
     std::cout << "Showcase material: " << toString(showcase_material) << "\n";
 
     // Sample materials during marquee animation.
-    std::map<MaterialType, int> material_counts;
+    std::map<Material::EnumType, int> material_counts;
     int num_samples = 0;
 
     for (int frame = 0; frame < 60; ++frame) { // ~1s of animation.
@@ -750,8 +751,8 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     }
 
     // METAL should NOT appear during showcase+marquee.
-    auto metal_it = material_counts.find(MaterialType::METAL);
-    if (metal_it != material_counts.end() && showcase_material != MaterialType::METAL) {
+    auto metal_it = material_counts.find(Material::EnumType::METAL);
+    if (metal_it != material_counts.end() && showcase_material != Material::EnumType::METAL) {
         FAIL() << "Found METAL material during marquee when showcase material was "
                << toString(showcase_material) << ". METAL appeared " << metal_it->second
                << " times out of " << num_samples << " samples.";

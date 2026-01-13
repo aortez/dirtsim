@@ -4,11 +4,11 @@
 #include <array>
 #include <cassert>
 
-namespace DirtSim {
+namespace DirtSim::Material {
 
 // Material property database.
 // Each material is defined using designated initializers for easy editing and understanding.
-static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
+static std::array<Properties, 10> MATERIAL_PROPERTIES = {
     { // ========== AIR ==========
       // Nearly massless, high elasticity, no cohesion/adhesion, very high pressure diffusion.
       { .density = 0.001,
@@ -196,59 +196,52 @@ static std::array<MaterialProperties, 10> MATERIAL_PROPERTIES = {
         .light = { .opacity = 0.6f, .scatter = 0.2f, .tint = 0xDEB887FF } } }
 };
 
-const MaterialProperties& getMaterialProperties(MaterialType type)
+const Properties& getProperties(EnumType type)
 {
     const auto index = static_cast<size_t>(type);
     assert(index < MATERIAL_PROPERTIES.size());
     return MATERIAL_PROPERTIES[index];
 }
 
-double getMaterialDensity(MaterialType type)
+double getDensity(EnumType type)
 {
-    return getMaterialProperties(type).density;
+    return getProperties(type).density;
 }
 
-bool isMaterialFluid(MaterialType type)
+bool isFluid(EnumType type)
 {
-    return getMaterialProperties(type).is_fluid;
+    return getProperties(type).is_fluid;
 }
 
-std::string toString(MaterialType type)
+std::string toString(EnumType type)
 {
     return std::string(reflect::enum_name(type));
 }
 
-std::optional<MaterialType> fromString(const std::string& str)
+std::optional<EnumType> fromString(const std::string& str)
 {
-    for (const auto& [value, name] : reflect::enumerators<MaterialType>) {
+    for (const auto& [value, name] : reflect::enumerators<EnumType>) {
         if (name == str) {
-            return static_cast<MaterialType>(value);
+            return static_cast<EnumType>(value);
         }
     }
     return std::nullopt;
 }
 
-const std::vector<MaterialType>& getAllMaterialTypes()
+const std::vector<EnumType>& getAllTypes()
 {
-    // Build list once using reflection - automatically includes all MaterialType values.
-    static std::vector<MaterialType> materials = []() {
-        std::vector<MaterialType> result;
-        for (const auto& [value, name] : reflect::enumerators<MaterialType>) {
-            result.push_back(static_cast<MaterialType>(value));
+    // Build list once using reflection - automatically includes all EnumType values.
+    static std::vector<EnumType> materials = []() {
+        std::vector<EnumType> result;
+        for (const auto& [value, name] : reflect::enumerators<EnumType>) {
+            result.push_back(static_cast<EnumType>(value));
         }
         return result;
     }();
     return materials;
 }
 
-void setMaterialCohesion(MaterialType type, double cohesion)
-{
-    const auto index = static_cast<size_t>(type);
-    assert(index < MATERIAL_PROPERTIES.size());
-    MATERIAL_PROPERTIES[index].cohesion = cohesion;
-}
-
-double getFrictionCoefficient(double velocity_magnitude, const MaterialProperties& props)
+double getFrictionCoefficient(double velocity_magnitude, const Properties& props)
 {
     // Below stick velocity, use full static friction.
     if (velocity_magnitude < props.stick_velocity) {
@@ -269,4 +262,5 @@ double getFrictionCoefficient(double velocity_magnitude, const MaterialPropertie
     return props.static_friction_coefficient * (1.0 - smooth_t)
         + props.kinetic_friction_coefficient * smooth_t;
 }
-} // namespace DirtSim
+
+} // namespace DirtSim::Material

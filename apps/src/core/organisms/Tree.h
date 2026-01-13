@@ -62,7 +62,8 @@ public:
 
     // Growth: Add a cell to the tree's local shape.
     // Called by TreeCommandProcessor during growth commands.
-    void addCellToLocalShape(Vector2i localPos, MaterialType material, double fillRatio = 1.0);
+    void addCellToLocalShape(
+        Vector2i localPos, Material::EnumType material, double fillRatio = 1.0);
 
 private:
     GrowthStage stage_ = GrowthStage::SEED;

@@ -1,5 +1,11 @@
 #pragma once
 
+/**
+ * \file
+ * Material type definitions for the pure-material World physics system.
+ * Each cell contains one material type with a fill ratio [0,1].
+ */
+
 #include "LightProperties.h"
 
 #include <cstdint>
@@ -7,15 +13,9 @@
 #include <string>
 #include <vector>
 
-namespace DirtSim {
+namespace DirtSim::Material {
 
-/**
- * \file
- * Material type definitions for the pure-material World physics system.
- * Each cell contains one material type with a fill ratio [0,1].
- */
-
-enum class MaterialType : uint8_t {
+enum class EnumType : uint8_t {
     AIR = 0, // Empty space (default).
     DIRT,    // Granular solid material.
     LEAF,    // Light organic matter.
@@ -31,7 +31,7 @@ enum class MaterialType : uint8_t {
 /**
  * Material properties that define physical behavior.
  */
-struct MaterialProperties {
+struct Properties {
     double density;                      // Mass per unit volume (affects gravity response).
     double elasticity;                   // Bounce factor for collisions [0.0-1.0].
     double cohesion;                     // Internal binding strength.
@@ -51,24 +51,22 @@ struct MaterialProperties {
     LightProperties light;
 };
 
-const MaterialProperties& getMaterialProperties(MaterialType type);
+std::string toString(EnumType type);
 
-double getMaterialDensity(MaterialType type);
+std::optional<EnumType> fromString(const std::string& str);
 
-std::string toString(MaterialType type);
+const std::vector<EnumType>& getAllTypes();
 
-std::optional<MaterialType> fromString(const std::string& str);
+const Properties& getProperties(EnumType type);
 
-const std::vector<MaterialType>& getAllMaterialTypes();
+double getDensity(EnumType type);
 
-bool isMaterialFluid(MaterialType type);
-
-void setMaterialCohesion(MaterialType type, double cohesion);
+bool isFluid(EnumType type);
 
 /**
  * Calculate velocity-dependent friction coefficient with smooth transition.
  * Returns a value between kinetic and static friction coefficients based on velocity.
  */
-double getFrictionCoefficient(double velocity_magnitude, const MaterialProperties& props);
+double getFrictionCoefficient(double velocity_magnitude, const Properties& props);
 
-} // namespace DirtSim
+} // namespace DirtSim::Material

@@ -9,7 +9,7 @@
 
 namespace DirtSim {
 
-void LocalShapeProjection::addCell(Vector2i localPos, MaterialType material, double fillRatio)
+void LocalShapeProjection::addCell(Vector2i localPos, Material::EnumType material, double fillRatio)
 {
     localShape.push_back(
         LocalCell{ .localPos = localPos, .material = material, .fillRatio = fillRatio });
@@ -27,7 +27,7 @@ void LocalShapeProjection::clear(World& world)
         auto& cell = data.at(oldPos.x, oldPos.y);
         if (world.getOrganismManager().at(oldPos) == lastOwnerId) {
             world.getOrganismManager().removeCellsFromOrganism(lastOwnerId, { oldPos });
-            cell.material_type = MaterialType::AIR;
+            cell.material_type = Material::EnumType::AIR;
             cell.fill_ratio = 0.0;
             cell.velocity = { 0.0, 0.0 };
             cell.com = { 0.0, 0.0 };

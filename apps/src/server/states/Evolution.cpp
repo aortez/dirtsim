@@ -162,7 +162,9 @@ double Evolution::evaluateGenome(const Genome& genome, StateMachine& /*dsm*/)
     for (int y = 6; y < world->getData().height; ++y) {
         for (int x = 0; x < world->getData().width; ++x) {
             world->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                Material::EnumType::DIRT,
+                1.0);
         }
     }
 

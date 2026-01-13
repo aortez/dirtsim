@@ -390,14 +390,14 @@ std::vector<std::vector<RgbPixel>> FontSampler::sampleUtf8CharacterRgb(const std
     return sampleCurrentCanvasRgb();
 }
 
-std::vector<std::vector<MaterialType>> FontSampler::sampleCharacterMaterial(
+std::vector<std::vector<Material::EnumType>> FontSampler::sampleCharacterMaterial(
     char c, float alphaThreshold)
 {
     auto rgbPattern = sampleCharacterRgb(c);
     return ColorMaterialMapper::rgbToMaterials(rgbPattern, alphaThreshold);
 }
 
-std::vector<std::vector<MaterialType>> FontSampler::sampleUtf8CharacterMaterial(
+std::vector<std::vector<Material::EnumType>> FontSampler::sampleUtf8CharacterMaterial(
     const std::string& utf8Char, float alphaThreshold)
 {
     auto rgbPattern = sampleUtf8CharacterRgb(utf8Char);
@@ -479,19 +479,19 @@ GridBuffer<RgbPixel> FontSampler::sampleUtf8CharacterRgbGrid(const std::string& 
     return sampleCurrentCanvasRgbGrid();
 }
 
-GridBuffer<MaterialType> FontSampler::sampleUtf8CharacterMaterialGrid(
+GridBuffer<Material::EnumType> FontSampler::sampleUtf8CharacterMaterialGrid(
     const std::string& utf8Char, float alphaThreshold)
 {
     GridBuffer<RgbPixel> rgb = sampleUtf8CharacterRgbGrid(utf8Char);
 
-    GridBuffer<MaterialType> result;
-    result.resize(rgb.width, rgb.height, MaterialType::AIR);
+    GridBuffer<Material::EnumType> result;
+    result.resize(rgb.width, rgb.height, Material::EnumType::AIR);
 
     const uint8_t alphaThresholdByte = static_cast<uint8_t>(alphaThreshold * 255.0f);
 
     for (int y = 0; y < rgb.height; ++y) {
         const RgbPixel* srcRow = rgb.row(y);
-        MaterialType* dstRow = result.row(y);
+        Material::EnumType* dstRow = result.row(y);
         for (int x = 0; x < rgb.width; ++x) {
             const RgbPixel& px = srcRow[x];
             if (px.a >= alphaThresholdByte) {
@@ -687,7 +687,7 @@ std::vector<std::vector<bool>> FontSampler::trimPattern(
     return result;
 }
 
-GridBuffer<MaterialType> FontSampler::sampleAndDownsample(
+GridBuffer<Material::EnumType> FontSampler::sampleAndDownsample(
     const std::string& utf8Char, int targetWidth, int targetHeight, float alphaThreshold)
 {
     // Sample at native font resolution.
@@ -706,15 +706,15 @@ GridBuffer<MaterialType> FontSampler::sampleAndDownsample(
     return downsample(fullGrid, targetWidth, targetHeight);
 }
 
-GridBuffer<MaterialType> FontSampler::downsample(
-    const GridBuffer<MaterialType>& src, int targetWidth, int targetHeight)
+GridBuffer<Material::EnumType> FontSampler::downsample(
+    const GridBuffer<Material::EnumType>& src, int targetWidth, int targetHeight)
 {
     if (src.width == 0 || src.height == 0 || targetWidth <= 0 || targetHeight <= 0) {
         return {};
     }
 
-    GridBuffer<MaterialType> result;
-    result.resize(targetWidth, targetHeight, MaterialType::AIR);
+    GridBuffer<Material::EnumType> result;
+    result.resize(targetWidth, targetHeight, Material::EnumType::AIR);
 
     const int srcW = src.width;
     const int srcH = src.height;
@@ -737,11 +737,11 @@ GridBuffer<MaterialType> FontSampler::downsample(
             int nonAirTotal = 0;
 
             for (int sy = srcY0; sy < srcY1; ++sy) {
-                const MaterialType* row = src.row(sy);
+                const Material::EnumType* row = src.row(sy);
                 for (int sx = srcX0; sx < srcX1; ++sx) {
-                    MaterialType mat = row[sx];
+                    Material::EnumType mat = row[sx];
                     counts[static_cast<size_t>(mat)]++;
-                    if (mat != MaterialType::AIR) {
+                    if (mat != Material::EnumType::AIR) {
                         nonAirTotal++;
                     }
                 }
@@ -751,16 +751,16 @@ GridBuffer<MaterialType> FontSampler::downsample(
             int regionSize = (srcX1 - srcX0) * (srcY1 - srcY0);
             if (nonAirTotal * 2 < regionSize) {
                 // Less than half is non-AIR, keep as AIR.
-                result.at(tx, ty) = MaterialType::AIR;
+                result.at(tx, ty) = Material::EnumType::AIR;
             }
             else {
                 // Find most common non-AIR material.
-                MaterialType best = MaterialType::AIR;
+                Material::EnumType best = Material::EnumType::AIR;
                 int bestCount = 0;
                 for (size_t i = 1; i < counts.size(); ++i) {
                     if (counts[i] > bestCount) {
                         bestCount = counts[i];
-                        best = static_cast<MaterialType>(i);
+                        best = static_cast<Material::EnumType>(i);
                     }
                 }
                 result.at(tx, ty) = best;

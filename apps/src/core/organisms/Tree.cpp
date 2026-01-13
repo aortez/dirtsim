@@ -18,14 +18,14 @@ Tree::Tree(
     : Organism(id, OrganismType::TREE),
       processor(std::move(proc)),
       brain_(std::move(brain)),
-      rigidBody_(std::make_unique<RigidBodyComponent>(MaterialType::SEED))
+      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::SEED))
 {
     // Initialize local shape with a single SEED cell at origin.
-    rigidBody_->addCell({ 0, 0 }, MaterialType::SEED, 1.0);
+    rigidBody_->addCell({ 0, 0 }, Material::EnumType::SEED, 1.0);
 
     // Keep base class local_shape in sync for mass computation.
     local_shape.push_back(
-        LocalCell{ .localPos = { 0, 0 }, .material = MaterialType::SEED, .fillRatio = 1.0 });
+        LocalCell{ .localPos = { 0, 0 }, .material = Material::EnumType::SEED, .fillRatio = 1.0 });
 
     recomputeMass();
     recomputeCenterOfMass();
@@ -312,7 +312,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     return data;
 }
 
-void Tree::addCellToLocalShape(Vector2i localPos, MaterialType material, double fillRatio)
+void Tree::addCellToLocalShape(Vector2i localPos, Material::EnumType material, double fillRatio)
 {
     // Add to RigidBodyComponent projection.
     rigidBody_->addCell(localPos, material, fillRatio);

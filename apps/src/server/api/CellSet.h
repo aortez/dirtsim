@@ -19,7 +19,7 @@ DEFINE_API_NAME(CellSet);
 struct Command {
     int x;
     int y;
-    MaterialType material;
+    Material::EnumType material;
     double fill = 1.0;
 
     API_COMMAND_NAME();

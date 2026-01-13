@@ -225,7 +225,7 @@ bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWal
 {
     // Check material histogram for WALL in adjacent cell.
     // Sensory grid is 9x9, center is at (4, 4).
-    // MaterialType::WALL = 7.
+    // Material::EnumType::WALL = 7.
     // Note: Out-of-bounds cells are marked as WALL by the sensory system.
     constexpr int CENTER = 4;
     constexpr int WALL_MATERIAL_INDEX = 7;
@@ -445,16 +445,16 @@ void DuckBrain2::think(Duck& duck, const DuckSensoryData& sensory, double deltaT
 
             // Rows 0-2: vertical wall + empty.
             for (int row = 0; row < 3; ++row) {
-                wall_template.pattern[row][wall_col] =
-                    SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
+                wall_template.pattern[row][wall_col] = SensoryUtils::CellPattern(
+                    SensoryUtils::MatchMode::Is, { Material::EnumType::WALL });
                 wall_template.pattern[row][empty_col] =
                     SensoryUtils::CellPattern(SensoryUtils::MatchMode::IsEmpty);
             }
             // Row 3: floor (both columns are wall).
-            wall_template.pattern[3][0] =
-                SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
-            wall_template.pattern[3][1] =
-                SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
+            wall_template.pattern[3][0] = SensoryUtils::CellPattern(
+                SensoryUtils::MatchMode::Is, { Material::EnumType::WALL });
+            wall_template.pattern[3][1] = SensoryUtils::CellPattern(
+                SensoryUtils::MatchMode::Is, { Material::EnumType::WALL });
 
             // Find wall boundary pattern.
             auto match = SensoryUtils::
@@ -642,7 +642,7 @@ bool DuckBrain2::detectsGapInExitWall(const DuckSensoryData& sensory) const
     SensoryUtils::SensoryTemplate door_template(1, 2);
     door_template.pattern[0][0] = SensoryUtils::CellPattern(SensoryUtils::MatchMode::IsEmpty);
     door_template.pattern[1][0] =
-        SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { MaterialType::WALL });
+        SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { Material::EnumType::WALL });
 
     // Check around center row for door pattern at the recorded wall position.
     constexpr int CENTER_Y = 4;
@@ -677,7 +677,7 @@ int DuckBrain2::findObstacleDistance(const DuckSensoryData& sensory) const
         }
         double total_fill = 0.0;
         for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
-            if (mat != static_cast<int>(MaterialType::AIR)) {
+            if (mat != static_cast<int>(Material::EnumType::AIR)) {
                 total_fill += sensory.material_histograms[row][col][mat];
             }
         }
@@ -891,7 +891,7 @@ bool DuckBrain2::detectsCliffAhead(const DuckSensoryData& sensory) const
         // Sum all non-AIR materials.
         double total_fill = 0.0;
         for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
-            if (mat != static_cast<int>(MaterialType::AIR)) {
+            if (mat != static_cast<int>(Material::EnumType::AIR)) {
                 total_fill += sensory.material_histograms[FLOOR_ROW][col][mat];
             }
         }

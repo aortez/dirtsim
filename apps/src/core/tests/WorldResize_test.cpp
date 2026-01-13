@@ -33,12 +33,12 @@ protected:
 
         // Fill edges with WALL.
         for (uint32_t x = 0; x < width; ++x) {
-            data.at(x, 0).replaceMaterial(MaterialType::WALL, 1.0);
-            data.at(x, height - 1).replaceMaterial(MaterialType::WALL, 1.0);
+            data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+            data.at(x, height - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
         }
         for (uint32_t y = 0; y < height; ++y) {
-            data.at(0, y).replaceMaterial(MaterialType::WALL, 1.0);
-            data.at(width - 1, y).replaceMaterial(MaterialType::WALL, 1.0);
+            data.at(0, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+            data.at(width - 1, y).replaceMaterial(Material::EnumType::WALL, 1.0);
         }
 
         return world;
@@ -48,7 +48,12 @@ protected:
      * @brief Helper to fill a rectangular region with a material.
      */
     void fillRegion(
-        World& world, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, MaterialType material)
+        World& world,
+        uint32_t x1,
+        uint32_t y1,
+        uint32_t x2,
+        uint32_t y2,
+        Material::EnumType material)
     {
         WorldData& data = world.getData();
         for (uint32_t y = y1; y <= y2; ++y) {
@@ -75,9 +80,9 @@ TEST_F(WorldResizeTest, ResizePreservesEdgeWalls_Expanding)
     auto world = createWorldWithWalls(10, 10);
 
     // Verify initial state.
-    EXPECT_EQ(world->getData().at(0, 0).material_type, MaterialType::WALL);
-    EXPECT_EQ(world->getData().at(9, 9).material_type, MaterialType::WALL);
-    EXPECT_EQ(world->getData().at(5, 5).material_type, MaterialType::AIR);
+    EXPECT_EQ(world->getData().at(0, 0).material_type, Material::EnumType::WALL);
+    EXPECT_EQ(world->getData().at(9, 9).material_type, Material::EnumType::WALL);
+    EXPECT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::AIR);
 
     // Action: Resize to 20x20.
     world->resizeGrid(20, 20);
@@ -87,19 +92,19 @@ TEST_F(WorldResizeTest, ResizePreservesEdgeWalls_Expanding)
     EXPECT_EQ(world->getData().height, 20);
 
     // Check all four corners.
-    EXPECT_EQ(world->getData().at(0, 0).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(0, 0).material_type, Material::EnumType::WALL)
         << "Top-left corner should be WALL";
-    EXPECT_EQ(world->getData().at(19, 0).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(19, 0).material_type, Material::EnumType::WALL)
         << "Top-right corner should be WALL";
-    EXPECT_EQ(world->getData().at(0, 19).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(0, 19).material_type, Material::EnumType::WALL)
         << "Bottom-left corner should be WALL";
-    EXPECT_EQ(world->getData().at(19, 19).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(19, 19).material_type, Material::EnumType::WALL)
         << "Bottom-right corner should be WALL";
 
     // Check edge cells (not just corners).
-    EXPECT_EQ(world->getData().at(10, 0).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(10, 0).material_type, Material::EnumType::WALL)
         << "Top edge middle should be WALL";
-    EXPECT_EQ(world->getData().at(0, 10).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(0, 10).material_type, Material::EnumType::WALL)
         << "Left edge middle should be WALL";
 }
 
@@ -113,11 +118,11 @@ TEST_F(WorldResizeTest, ResizePreservesEdgeWalls_Shrinking)
 {
     // Setup: 20x20 world with WALL at edges, DIRT in interior.
     auto world = createWorldWithWalls(20, 20);
-    fillRegion(*world, 1, 1, 18, 18, MaterialType::DIRT);
+    fillRegion(*world, 1, 1, 18, 18, Material::EnumType::DIRT);
 
     // Verify initial state.
-    EXPECT_EQ(world->getData().at(0, 0).material_type, MaterialType::WALL);
-    EXPECT_EQ(world->getData().at(10, 10).material_type, MaterialType::DIRT);
+    EXPECT_EQ(world->getData().at(0, 0).material_type, Material::EnumType::WALL);
+    EXPECT_EQ(world->getData().at(10, 10).material_type, Material::EnumType::DIRT);
 
     // Action: Resize to 10x10.
     world->resizeGrid(10, 10);
@@ -127,17 +132,17 @@ TEST_F(WorldResizeTest, ResizePreservesEdgeWalls_Shrinking)
     EXPECT_EQ(world->getData().height, 10);
 
     // Check all four edges.
-    EXPECT_EQ(world->getData().at(0, 0).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(0, 0).material_type, Material::EnumType::WALL)
         << "Top-left corner should be WALL, not diluted";
-    EXPECT_EQ(world->getData().at(9, 0).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(9, 0).material_type, Material::EnumType::WALL)
         << "Top-right corner should be WALL, not diluted";
-    EXPECT_EQ(world->getData().at(0, 9).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(0, 9).material_type, Material::EnumType::WALL)
         << "Bottom-left corner should be WALL, not diluted";
-    EXPECT_EQ(world->getData().at(9, 9).material_type, MaterialType::WALL)
+    EXPECT_EQ(world->getData().at(9, 9).material_type, Material::EnumType::WALL)
         << "Bottom-right corner should be WALL, not diluted";
 
     // Interior should still be DIRT.
-    EXPECT_EQ(world->getData().at(5, 5).material_type, MaterialType::DIRT)
+    EXPECT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::DIRT)
         << "Interior should be DIRT";
 }
 
@@ -155,20 +160,20 @@ TEST_F(WorldResizeTest, ResizePreservesInteriorMaterial)
 {
     // Setup: 10x10 world with a 2x2 DIRT blob in center (at 4,4 to 5,5).
     auto world = std::make_unique<World>(10, 10);
-    fillRegion(*world, 4, 4, 5, 5, MaterialType::DIRT);
+    fillRegion(*world, 4, 4, 5, 5, Material::EnumType::DIRT);
 
     // Verify initial state.
-    EXPECT_EQ(world->getData().at(4, 4).material_type, MaterialType::DIRT);
-    EXPECT_EQ(world->getData().at(5, 5).material_type, MaterialType::DIRT);
+    EXPECT_EQ(world->getData().at(4, 4).material_type, Material::EnumType::DIRT);
+    EXPECT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::DIRT);
 
     // Action: Resize to 20x20.
     world->resizeGrid(20, 20);
 
     // Verify: DIRT should still be in the center region.
     // Original (4,4)-(5,5) maps to approximately (8,8)-(11,11) in 20x20.
-    EXPECT_EQ(world->getData().at(9, 9).material_type, MaterialType::DIRT)
+    EXPECT_EQ(world->getData().at(9, 9).material_type, Material::EnumType::DIRT)
         << "Center should still be DIRT";
-    EXPECT_EQ(world->getData().at(10, 10).material_type, MaterialType::DIRT)
+    EXPECT_EQ(world->getData().at(10, 10).material_type, Material::EnumType::DIRT)
         << "Center should still be DIRT";
 }
 

@@ -37,12 +37,13 @@ protected:
     {
         // Left column: fill with water.
         for (int y = 0; y < 6; y++) {
-            world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, MaterialType::WATER, 1.0);
+            world->addMaterialAtCell(
+                { 0, static_cast<int16_t>(y) }, Material::EnumType::WATER, 1.0);
         }
 
         // Middle column: wall barrier with bottom cell open for flow.
         for (int y = 0; y < 5; y++) { // Only y=0 to y=4 (leave y=5 open).
-            world->addMaterialAtCell({ 1, static_cast<int16_t>(y) }, MaterialType::WALL, 1.0);
+            world->addMaterialAtCell({ 1, static_cast<int16_t>(y) }, Material::EnumType::WALL, 1.0);
         }
         // Bottom cell at (1, 5) is left empty for water to flow through.
 
@@ -57,7 +58,7 @@ protected:
         uint32_t count = 0;
         for (int y = 0; y < world->getData().height; ++y) {
             const Cell& cell = world->getData().at(x, y);
-            if (cell.material_type == MaterialType::WATER && cell.fill_ratio > 0.5) {
+            if (cell.material_type == Material::EnumType::WATER && cell.fill_ratio > 0.5) {
                 count++;
             }
         }
@@ -74,10 +75,10 @@ protected:
             std::string row = "  y=" + std::to_string(y) + ": ";
             for (int x = 0; x < world->getData().width; ++x) {
                 const Cell& cell = world->getData().at(x, y);
-                if (cell.material_type == MaterialType::WATER) {
+                if (cell.material_type == Material::EnumType::WATER) {
                     row += "[W]";
                 }
-                else if (cell.material_type == MaterialType::WALL) {
+                else if (cell.material_type == Material::EnumType::WALL) {
                     row += "[#]";
                 }
                 else {

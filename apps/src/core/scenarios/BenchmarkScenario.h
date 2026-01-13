@@ -27,7 +27,11 @@ private:
     Config::Benchmark config_;
 
     void addBall(
-        World& world, uint32_t centerX, uint32_t centerY, uint32_t radius, MaterialType material);
+        World& world,
+        uint32_t centerX,
+        uint32_t centerY,
+        uint32_t radius,
+        Material::EnumType material);
 };
 
 } // namespace DirtSim

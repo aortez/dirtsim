@@ -20,7 +20,7 @@ namespace DirtSim {
  * Uses LVGL's canvas and text rendering to convert any supported font
  * character into 2D patterns suitable for cell-based rendering. Supports
  * boolean thresholding, full RGB sampling, and automatic dithering to
- * MaterialTypes for colored emoji rendering.
+ * Material::EnumTypes for colored emoji rendering.
  *
  * Supports two font sources:
  * 1. Built-in LVGL fonts (passed as const lv_font_t*)
@@ -59,12 +59,12 @@ public:
 
     // GridBuffer-based sampling for cache-friendly access.
     GridBuffer<RgbPixel> sampleUtf8CharacterRgbGrid(const std::string& utf8Char);
-    GridBuffer<MaterialType> sampleUtf8CharacterMaterialGrid(
+    GridBuffer<Material::EnumType> sampleUtf8CharacterMaterialGrid(
         const std::string& utf8Char, float alphaThreshold = 0.5f);
 
-    std::vector<std::vector<MaterialType>> sampleCharacterMaterial(
+    std::vector<std::vector<Material::EnumType>> sampleCharacterMaterial(
         char c, float alphaThreshold = 0.5f);
-    std::vector<std::vector<MaterialType>> sampleUtf8CharacterMaterial(
+    std::vector<std::vector<Material::EnumType>> sampleUtf8CharacterMaterial(
         const std::string& utf8Char, float alphaThreshold = 0.5f);
 
     // Samples character, auto-resizes canvas if clipping detected, and trims whitespace.
@@ -88,14 +88,14 @@ public:
     // Downsampling utilities. Reduces grid resolution for display.
     // For materials: uses majority voting (most common material in source region wins).
     // For RGB: uses alpha-weighted averaging.
-    static GridBuffer<MaterialType> downsample(
-        const GridBuffer<MaterialType>& src, int targetWidth, int targetHeight);
+    static GridBuffer<Material::EnumType> downsample(
+        const GridBuffer<Material::EnumType>& src, int targetWidth, int targetHeight);
     static GridBuffer<RgbPixel> downsample(
         const GridBuffer<RgbPixel>& src, int targetWidth, int targetHeight);
 
     // Combined sample + downsample for convenience.
     // Samples at native font resolution, then downsamples to target size.
-    GridBuffer<MaterialType> sampleAndDownsample(
+    GridBuffer<Material::EnumType> sampleAndDownsample(
         const std::string& utf8Char,
         int targetWidth,
         int targetHeight,

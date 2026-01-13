@@ -29,16 +29,16 @@ enum class CollisionType : uint8_t {
  * Layout optimized for minimal size (~44 bytes):
  * - Coordinates packed as Vector2s (int16_t) - sufficient for grids up to 32767x32767.
  * - boundary_normal removed - computed on-the-fly via getDirection().
- * - CollisionType and MaterialType packed as uint8_t.
+ * - CollisionType and Material::EnumType packed as uint8_t.
  * - All floating-point values use float (32-bit) instead of double (64-bit).
  */
 struct MaterialMove {
     // Basic transfer data (optimized layout for packing).
-    float amount;          // Amount of material to transfer.
-    Vector2f momentum;     // Velocity/momentum of the moving material.
-    Vector2s from;         // Source cell coordinates.
-    Vector2s to;           // Target cell coordinates.
-    MaterialType material; // Type of material being transferred.
+    float amount;                // Amount of material to transfer.
+    Vector2f momentum;           // Velocity/momentum of the moving material.
+    Vector2s from;               // Source cell coordinates.
+    Vector2s to;                 // Target cell coordinates.
+    Material::EnumType material; // Type of material being transferred.
     CollisionType collision_type = CollisionType::TRANSFER_ONLY;
 
     // Collision-specific data.

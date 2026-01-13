@@ -36,11 +36,12 @@ enum class MatchMode {
  */
 struct CellPattern {
     MatchMode mode = MatchMode::Any;
-    std::vector<MaterialType> materials;
+    std::vector<Material::EnumType> materials;
 
     CellPattern() = default;
     CellPattern(MatchMode m) : mode(m) {}
-    CellPattern(MatchMode m, std::vector<MaterialType> mats) : mode(m), materials(std::move(mats))
+    CellPattern(MatchMode m, std::vector<Material::EnumType> mats)
+        : mode(m), materials(std::move(mats))
     {}
 };
 
@@ -127,7 +128,7 @@ void gatherMaterialHistograms(
  * @return The material type with the highest fill ratio.
  */
 template <int GridSize, int NumMaterials>
-MaterialType getDominantMaterial(
+Material::EnumType getDominantMaterial(
     const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
     int gx,
     int gy);

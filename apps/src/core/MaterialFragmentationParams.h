@@ -5,6 +5,6 @@
 
 namespace DirtSim {
 
-FragmentationParams getMaterialFragmentationParams(MaterialType type);
+FragmentationParams getMaterialFragmentationParams(Material::EnumType type);
 
 } // namespace DirtSim

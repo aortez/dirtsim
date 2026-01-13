@@ -29,13 +29,13 @@ struct RigidBodyUpdateResult {
 
 class RigidBodyComponent {
 public:
-    explicit RigidBodyComponent(MaterialType material);
+    explicit RigidBodyComponent(Material::EnumType material);
     ~RigidBodyComponent();
 
     RigidBodyComponent(RigidBodyComponent&&) noexcept;
     RigidBodyComponent& operator=(RigidBodyComponent&&) noexcept;
 
-    void addCell(Vector2i localPos, MaterialType material, double fillRatio);
+    void addCell(Vector2i localPos, Material::EnumType material, double fillRatio);
 
     RigidBodyUpdateResult update(
         OrganismId id,

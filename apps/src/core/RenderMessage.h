@@ -31,10 +31,10 @@ enum class RenderFormat : uint8_t {
  * Fill ratio is quantized to 8-bit precision (256 levels).
  */
 struct BasicCell {
-    uint8_t material_type; // MaterialType enum value (0-9).
+    uint8_t material_type; // Material::EnumType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
-    int8_t render_as;      // Render override: -1 = use material_type, 0+ = MaterialType value.
-    uint32_t color;        // Lit color (packed RGBA from WorldLightCalculator).
+    int8_t render_as; // Render override: -1 = use material_type, 0+ = Material::EnumType value.
+    uint32_t color;   // Lit color (packed RGBA from WorldLightCalculator).
 
     using serialize = zpp::bits::members<4>;
 };
@@ -46,9 +46,9 @@ struct BasicCell {
  * All floating-point values are converted to fixed-point integers.
  */
 struct DebugCell {
-    uint8_t material_type; // MaterialType enum value (0-9).
+    uint8_t material_type; // Material::EnumType enum value (0-9).
     uint8_t fill_ratio;    // Quantized [0.0, 1.0] → [0, 255].
-    int8_t render_as;      // Render override: -1 = use material_type, 0+ = MaterialType value.
+    int8_t render_as; // Render override: -1 = use material_type, 0+ = Material::EnumType value.
 
     int16_t com_x;      // Center of mass X: [-1.0, 1.0] → [-32767, 32767].
     int16_t com_y;      // Center of mass Y: [-1.0, 1.0] → [-32767, 32767].

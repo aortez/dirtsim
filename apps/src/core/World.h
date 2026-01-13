@@ -68,7 +68,7 @@ public:
     // These methods maintain the invariant between cells and organism tracking.
     //
     void swapCells(Vector2s pos1, Vector2s pos2);
-    void replaceMaterialAtCell(Vector2s pos, MaterialType material);
+    void replaceMaterialAtCell(Vector2s pos, Material::EnumType material);
     void clearCellAtPosition(Vector2s pos);
 
     // =================================================================
@@ -76,8 +76,8 @@ public:
     // =================================================================
 
     // Material selection state management (for UI/API coordination).
-    void setSelectedMaterial(MaterialType type);
-    MaterialType getSelectedMaterial() const;
+    void setSelectedMaterial(Material::EnumType type);
+    Material::EnumType getSelectedMaterial() const;
 
     // =================================================================
     // PHYSICS PARAMETERS
@@ -183,8 +183,8 @@ public:
     // =================================================================
 
     // Add material at specific cell coordinates.
-    void addMaterialAtCell(Vector2s pos, MaterialType type, float amount = 1.0f);
-    void addMaterialAtCell(int x, int y, MaterialType type, float amount = 1.0f);
+    void addMaterialAtCell(Vector2s pos, Material::EnumType type, float amount = 1.0f);
+    void addMaterialAtCell(int x, int y, Material::EnumType type, float amount = 1.0f);
 
     static constexpr double MIN_MATTER_THRESHOLD = 0.001; // Minimum matter to process.
 
@@ -217,7 +217,7 @@ public:
 
     std::string toAsciiDiagram() const;
 
-    void spawnMaterialBall(MaterialType material, Vector2s center);
+    void spawnMaterialBall(Material::EnumType material, Vector2s center);
 
     // World state data - public accessors for Pimpl-stored state.
     WorldData& getData();
@@ -248,7 +248,7 @@ public:
     int com_cohesion_range_;
     bool air_resistance_enabled_;
     double air_resistance_strength_;
-    MaterialType selected_material_;
+    Material::EnumType selected_material_;
 
     struct Impl;
     Pimpl<Impl> pImpl;

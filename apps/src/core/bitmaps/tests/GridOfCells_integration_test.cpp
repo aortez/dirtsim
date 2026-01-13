@@ -33,7 +33,7 @@ TEST(GridOfCellsIntegrationTest, CacheProducesIdenticalResults)
         for (int i = 0; i < 15; ++i) {
             int16_t x = static_cast<int16_t>(coord_dist(rng));
             int16_t y = static_cast<int16_t>(coord_dist(rng));
-            MaterialType mat = static_cast<MaterialType>(mat_dist(rng));
+            Material::EnumType mat = static_cast<Material::EnumType>(mat_dist(rng));
             float fill = static_cast<float>(fill_dist(rng));
             world.addMaterialAtCell({ x, y }, mat, fill);
         }
@@ -103,7 +103,7 @@ TEST(GridOfCellsIntegrationTest, SingleFrameComparison)
         world.setRandomSeed(42); // Deterministic RNG.
 
         // Add one dirt cell.
-        world.addMaterialAtCell({ 5, 5 }, MaterialType::DIRT, 1.0);
+        world.addMaterialAtCell({ 5, 5 }, Material::EnumType::DIRT, 1.0);
 
         // Run one frame.
         world.advanceTime(0.016);
@@ -133,9 +133,9 @@ TEST(GridOfCellsTest, EmptyCellBitmapMatchesCellState)
     World world(20, 20);
 
     // Add some materials at known locations.
-    world.addMaterialAtCell({ 5, 5 }, MaterialType::DIRT, 1.0);
-    world.addMaterialAtCell({ 10, 10 }, MaterialType::WATER, 0.5);
-    world.addMaterialAtCell({ 15, 15 }, MaterialType::METAL, 0.8);
+    world.addMaterialAtCell({ 5, 5 }, Material::EnumType::DIRT, 1.0);
+    world.addMaterialAtCell({ 10, 10 }, Material::EnumType::WATER, 0.5);
+    world.addMaterialAtCell({ 15, 15 }, Material::EnumType::METAL, 0.8);
 
     // Build grid cache.
     GridOfCells grid(
@@ -179,7 +179,7 @@ TEST(GridOfCellsTest, CacheConstructionOverhead)
     for (int i = 0; i < 500; ++i) {
         int16_t x = static_cast<int16_t>(coord_dist(rng));
         int16_t y = static_cast<int16_t>(coord_dist(rng));
-        MaterialType mat = static_cast<MaterialType>(mat_dist(rng));
+        Material::EnumType mat = static_cast<Material::EnumType>(mat_dist(rng));
         world.addMaterialAtCell({ x, y }, mat, 0.5f);
     }
 

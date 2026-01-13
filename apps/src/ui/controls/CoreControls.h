@@ -23,7 +23,7 @@ class UiComponentManager;
 
 struct CoreControlsState {
     bool debugDrawEnabled = false;
-    MaterialType drawMaterial = MaterialType::WALL;
+    Material::EnumType drawMaterial = Material::EnumType::WALL;
     InteractionMode interactionMode = InteractionMode::NONE;
     RenderMode renderMode = RenderMode::ADAPTIVE;
     double scaleFactor = 0.4;
@@ -72,7 +72,7 @@ private:
     // Button to index mappings for modal selections.
     std::unordered_map<lv_obj_t*, int> buttonToRenderMode_;
     std::unordered_map<lv_obj_t*, int> buttonToInteractionMode_;
-    std::unordered_map<lv_obj_t*, MaterialType> buttonToDrawMaterial_;
+    std::unordered_map<lv_obj_t*, Material::EnumType> buttonToDrawMaterial_;
 
     // View creation helpers.
     void createMainView(lv_obj_t* view);

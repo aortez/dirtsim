@@ -52,7 +52,9 @@ protected:
         for (uint32_t y = 12; y < 15; ++y) {
             for (uint32_t x = 0; x < 15; ++x) {
                 world->addMaterialAtCell(
-                    { static_cast<int16_t>(x), static_cast<int16_t>(y) }, MaterialType::DIRT, 1.0);
+                    { static_cast<int16_t>(x), static_cast<int16_t>(y) },
+                    Material::EnumType::DIRT,
+                    1.0);
             }
         }
     }

@@ -100,8 +100,8 @@ private:
      */
     float calculateFrictionCoefficient(
         float tangential_speed,
-        const MaterialProperties& propsA,
-        const MaterialProperties& propsB) const;
+        const Material::Properties& propsA,
+        const Material::Properties& propsB) const;
 
     /**
      * @brief Decompose relative velocity into normal and tangential components.

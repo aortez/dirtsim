@@ -35,12 +35,12 @@ public:
     };
 
     struct TrackedCell {
-        MaterialType material;
+        Material::EnumType material;
         int frame_added;
     };
 
     struct PrevCellState {
-        MaterialType material;
+        Material::EnumType material;
         OrganismId org_id;
     };
 
@@ -49,7 +49,7 @@ public:
     {}
 
     // Start tracking a cell at a given position.
-    void trackCell(const Vector2i& pos, MaterialType material, int frame);
+    void trackCell(const Vector2i& pos, Material::EnumType material, int frame);
 
     // Record current state of all tracked cells (call after advanceTime).
     void recordFrame(int frame);

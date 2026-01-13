@@ -130,8 +130,13 @@ double WorldInterpolationTool::bilinearInterpolateDouble(
 // WORLD (PURE MATERIALS) INTERPOLATION.
 // =================================================================
 
-MaterialType WorldInterpolationTool::interpolateMaterialType(
-    MaterialType m00, MaterialType m10, MaterialType m01, MaterialType m11, double fx, double fy)
+Material::EnumType WorldInterpolationTool::interpolateMaterialType(
+    Material::EnumType m00,
+    Material::EnumType m10,
+    Material::EnumType m01,
+    Material::EnumType m11,
+    double fx,
+    double fy)
 {
     // Simple bilinear interpolation - choose based on position.
     // Pick the material from the nearest corner.
@@ -150,7 +155,7 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
     double fy)
 {
     // Interpolate material type (choose dominant).
-    MaterialType materialType = interpolateMaterialType(
+    Material::EnumType materialType = interpolateMaterialType(
         cell00.material_type,
         cell10.material_type,
         cell01.material_type,
@@ -168,14 +173,14 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
     // - applyGravity() applies forces (only checks isEmpty/isWall)
     // - computeMaterialMoves() skips AIR cells (also checks isAir)
     // Result: velocity accumulates but COM never updates.
-    if (materialType == MaterialType::AIR && fillRatio > Cell::MIN_FILL_THRESHOLD) {
+    if (materialType == Material::EnumType::AIR && fillRatio > Cell::MIN_FILL_THRESHOLD) {
         // Find a non-AIR material from the corners to preserve the material.
         const Cell* corners[4] = { &cell00, &cell10, &cell01, &cell11 };
         const Cell* bestCorner = nullptr;
         double bestFill = 0.0;
 
         for (const Cell* corner : corners) {
-            if (corner->material_type != MaterialType::AIR && corner->fill_ratio > bestFill) {
+            if (corner->material_type != Material::EnumType::AIR && corner->fill_ratio > bestFill) {
                 bestCorner = corner;
                 bestFill = corner->fill_ratio;
             }

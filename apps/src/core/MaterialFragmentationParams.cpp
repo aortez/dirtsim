@@ -2,12 +2,12 @@
 
 namespace DirtSim {
 
-FragmentationParams getMaterialFragmentationParams(MaterialType type)
+FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
 {
     FragmentationParams params;
 
     switch (type) {
-        case MaterialType::WATER:
+        case Material::EnumType::WATER:
             // Gentle spreading, not explosive.
             params.radial_bias = 0.6;
             params.min_arc = M_PI / 3.0;
@@ -16,7 +16,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.base_speed = 0.5;
             break;
 
-        case MaterialType::SAND:
+        case Material::EnumType::SAND:
             // Granular scatter.
             params.radial_bias = 0.5;
             params.min_arc = M_PI / 4.0;
@@ -25,7 +25,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.base_speed = 0.6;
             break;
 
-        case MaterialType::DIRT:
+        case Material::EnumType::DIRT:
             // Chunky breakup.
             params.radial_bias = 0.4;
             params.min_arc = M_PI / 4.0;
@@ -34,7 +34,7 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.base_speed = 0.5;
             break;
 
-        case MaterialType::METAL:
+        case Material::EnumType::METAL:
             // Dramatic shatter.
             params.radial_bias = 0.9;
             params.min_arc = M_PI / 2.0;
@@ -43,12 +43,12 @@ FragmentationParams getMaterialFragmentationParams(MaterialType type)
             params.base_speed = 0.8;
             break;
 
-        case MaterialType::AIR:
-        case MaterialType::LEAF:
-        case MaterialType::ROOT:
-        case MaterialType::SEED:
-        case MaterialType::WALL:
-        case MaterialType::WOOD:
+        case Material::EnumType::AIR:
+        case Material::EnumType::LEAF:
+        case Material::EnumType::ROOT:
+        case Material::EnumType::SEED:
+        case Material::EnumType::WALL:
+        case Material::EnumType::WOOD:
             // Use struct defaults.
             break;
     }

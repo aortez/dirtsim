@@ -59,7 +59,9 @@ void FallingDirtScenario::setup(World& world)
 
     // Add floor.
     for (int x = 0; x < world.getData().width; ++x) {
-        world.getData().at(x, world.getData().height - 1).replaceMaterial(MaterialType::WALL, 1.0);
+        world.getData()
+            .at(x, world.getData().height - 1)
+            .replaceMaterial(Material::EnumType::WALL, 1.0);
     }
 
     // Add some initial dirt piles to make it interesting.
@@ -68,14 +70,14 @@ void FallingDirtScenario::setup(World& world)
 
     if (width >= 7 && height >= 7) {
         // Left mound.
-        world.addMaterialAtCell(1, height - 2, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell(2, height - 2, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell(1, height - 3, MaterialType::DIRT, 0.5);
+        world.addMaterialAtCell(1, height - 2, Material::EnumType::DIRT, 1.0);
+        world.addMaterialAtCell(2, height - 2, Material::EnumType::DIRT, 1.0);
+        world.addMaterialAtCell(1, height - 3, Material::EnumType::DIRT, 0.5);
 
         // Right mound.
-        world.addMaterialAtCell(width - 3, height - 2, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell(width - 2, height - 2, MaterialType::DIRT, 1.0);
-        world.addMaterialAtCell(width - 2, height - 3, MaterialType::DIRT, 0.5);
+        world.addMaterialAtCell(width - 3, height - 2, Material::EnumType::DIRT, 1.0);
+        world.addMaterialAtCell(width - 2, height - 2, Material::EnumType::DIRT, 1.0);
+        world.addMaterialAtCell(width - 2, height - 3, Material::EnumType::DIRT, 0.5);
     }
 
     spdlog::info("FallingDirtScenario::setup complete");
@@ -98,7 +100,7 @@ void FallingDirtScenario::tick(World& world, double deltaTime)
         int y = 1; // Start near top.
 
         // Add dirt at the position.
-        world.addMaterialAtCell(x, y, MaterialType::DIRT, 0.7);
+        world.addMaterialAtCell(x, y, Material::EnumType::DIRT, 0.7);
     }
 }
 

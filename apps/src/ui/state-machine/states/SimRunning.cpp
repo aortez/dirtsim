@@ -180,9 +180,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
         LOG_INFO(State, "Draw mode active");
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
-            MaterialType material = (cwc.command.button == UiApi::MouseButton::LEFT)
-                ? MaterialType::WALL
-                : MaterialType::AIR;
+            Material::EnumType material = (cwc.command.button == UiApi::MouseButton::LEFT)
+                ? Material::EnumType::WALL
+                : Material::EnumType::AIR;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
@@ -217,9 +217,9 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
         && playground_->getInteractionMode() == InteractionMode::DRAW) {
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
-            MaterialType material = (*activeMouseButton == UiApi::MouseButton::LEFT)
-                ? MaterialType::WALL
-                : MaterialType::AIR;
+            Material::EnumType material = (*activeMouseButton == UiApi::MouseButton::LEFT)
+                ? Material::EnumType::WALL
+                : Material::EnumType::AIR;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };

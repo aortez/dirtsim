@@ -640,7 +640,7 @@ void CellRenderer::renderWorldData(
                 bool is_sprite_organism =
                     (org_id != INVALID_ORGANISM_ID) && (sprite_organism_ids.count(org_id) > 0);
 
-                bool is_material = !cell.isEmpty() && cell.material_type != MaterialType::AIR
+                bool is_material = !cell.isEmpty() && cell.material_type != Material::EnumType::AIR
                     && !is_sprite_organism;
                 if (is_material) {
                     double borderOpacityFactor = debugDraw ? 1.0 : 0.85;
@@ -746,7 +746,7 @@ void CellRenderer::renderWorldData(
                 }
 
                 // Debug draw: Pressure visualization (drawn first, under COM/vectors).
-                if (debugDraw && !cell.isEmpty() && cell.material_type != MaterialType::AIR) {
+                if (debugDraw && !cell.isEmpty() && cell.material_type != Material::EnumType::AIR) {
                     // Pressure visualization (fixed-width borders with variable opacity).
                     if (scaledCellWidth_ >= 4) {
                         // Calculate opacity from unified pressure.
@@ -811,7 +811,7 @@ void CellRenderer::renderWorldData(
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
-                    if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
+                    if (cell.isEmpty() || cell.material_type == Material::EnumType::AIR) continue;
                 }
             }
 
@@ -822,7 +822,7 @@ void CellRenderer::renderWorldData(
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
-                    if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
+                    if (cell.isEmpty() || cell.material_type == Material::EnumType::AIR) continue;
 
                     int32_t cellX = static_cast<int32_t>(x) * scaledCellWidth_;
                     int32_t cellY = static_cast<int32_t>(y) * scaledCellHeight_;
@@ -861,7 +861,7 @@ void CellRenderer::renderWorldData(
                     if (idx >= worldData.cells.size()) break;
 
                     const Cell& cell = worldData.cells[idx];
-                    if (cell.isEmpty() || cell.material_type == MaterialType::AIR) continue;
+                    if (cell.isEmpty() || cell.material_type == Material::EnumType::AIR) continue;
 
                     int32_t cellX = static_cast<int32_t>(x) * scaledCellWidth_;
                     int32_t cellY = static_cast<int32_t>(y) * scaledCellHeight_;
@@ -1050,7 +1050,7 @@ void CellRenderer::renderCellLVGL(
     bg_dsc.border_width = 0;
     lv_draw_rect(&layer, &bg_dsc, &coords);
 
-    bool is_material = !cell.isEmpty() && cell.material_type != MaterialType::AIR;
+    bool is_material = !cell.isEmpty() && cell.material_type != Material::EnumType::AIR;
     if (is_material) {
         lv_color_t material_color = getLitColor(color);
         lv_opa_t opacity =

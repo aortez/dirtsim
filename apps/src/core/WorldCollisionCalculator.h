@@ -86,7 +86,7 @@ public:
      * @return Type of collision that should occur.
      */
     CollisionType determineCollisionType(
-        MaterialType from, MaterialType to, double collision_energy) const;
+        Material::EnumType from, Material::EnumType to, double collision_energy) const;
 
     /**
      * @brief Calculate kinetic energy of a collision.
@@ -226,7 +226,8 @@ public:
      * @param direction Direction of failed transfer.
      * @param material Material type for elasticity calculation.
      */
-    void applyCellBoundaryReflection(Cell& cell, const Vector2i& direction, MaterialType material);
+    void applyCellBoundaryReflection(
+        Cell& cell, const Vector2i& direction, Material::EnumType material);
 
     bool shouldSwapMaterials(
         const World& world,

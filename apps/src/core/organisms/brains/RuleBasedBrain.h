@@ -67,9 +67,9 @@ private:
     std::mt19937 rng_; // Per-brain RNG for deterministic growth.
 
     GrowthSuitability checkGrowthSuitability(
-        const TreeSensoryData& sensory, Vector2i world_pos, MaterialType target_material);
+        const TreeSensoryData& sensory, Vector2i world_pos, Material::EnumType target_material);
     TreeComposition analyzeTreeComposition(const TreeSensoryData& sensory);
-    Vector2i findGrowthPosition(const TreeSensoryData& sensory, MaterialType target_material);
+    Vector2i findGrowthPosition(const TreeSensoryData& sensory, Material::EnumType target_material);
     bool hasWaterAccess(const TreeSensoryData& sensory);
 
     // Tree structure analysis and realistic growth.

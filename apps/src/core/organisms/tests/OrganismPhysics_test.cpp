@@ -41,7 +41,8 @@ public:
 class OrganismPhysicsTest : public ::testing::Test {
 protected:
     // Helper to create a simple single-cell organism.
-    std::unique_ptr<TestOrganism> createSingleCellOrganism(Vector2d pos, MaterialType material)
+    std::unique_ptr<TestOrganism> createSingleCellOrganism(
+        Vector2d pos, Material::EnumType material)
     {
         auto org = std::make_unique<TestOrganism>(OrganismId{ 1 }, OrganismType::TREE);
         org->position = pos;
@@ -68,11 +69,11 @@ protected:
 
         // Three WOOD cells in a row: local positions (0,0), (1,0), (2,0).
         org->local_shape.push_back(
-            { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+            { .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
         org->local_shape.push_back(
-            { .localPos = { 1, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+            { .localPos = { 1, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
         org->local_shape.push_back(
-            { .localPos = { 2, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+            { .localPos = { 2, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
 
         org->recomputeMass();
         org->recomputeCenterOfMass();
@@ -87,7 +88,7 @@ protected:
 
 TEST_F(OrganismPhysicsTest, PositionUpdatesWithVelocity)
 {
-    auto org = createSingleCellOrganism({ 5.0, 5.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 5.0, 5.0 }, Material::EnumType::WOOD);
     org->velocity = { 1.0, 0.5 };
 
     double dt = 0.1;
@@ -99,7 +100,7 @@ TEST_F(OrganismPhysicsTest, PositionUpdatesWithVelocity)
 
 TEST_F(OrganismPhysicsTest, PositionAccumulatesOverMultipleFrames)
 {
-    auto org = createSingleCellOrganism({ 0.0, 0.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 0.0, 0.0 }, Material::EnumType::WOOD);
     org->velocity = { 0.5, 0.5 };
 
     double dt = 0.016;
@@ -115,7 +116,7 @@ TEST_F(OrganismPhysicsTest, PositionAccumulatesOverMultipleFrames)
 
 TEST_F(OrganismPhysicsTest, VelocityUpdatesWithForce)
 {
-    auto org = createSingleCellOrganism({ 5.0, 5.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 5.0, 5.0 }, Material::EnumType::WOOD);
     org->velocity = { 0.0, 0.0 };
 
     // Apply a force.
@@ -133,7 +134,7 @@ TEST_F(OrganismPhysicsTest, VelocityUpdatesWithForce)
 
 TEST_F(OrganismPhysicsTest, VelocityAccumulatesForces)
 {
-    auto org = createSingleCellOrganism({ 5.0, 5.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 5.0, 5.0 }, Material::EnumType::WOOD);
     org->velocity = { 1.0, 0.0 }; // Initial velocity.
 
     Vector2d force = { 0.0, 10.0 }; // Downward force.
@@ -155,9 +156,9 @@ TEST_F(OrganismPhysicsTest, VelocityAccumulatesForces)
 
 TEST_F(OrganismPhysicsTest, MassComputedFromSingleCell)
 {
-    auto org = createSingleCellOrganism({ 0.0, 0.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 0.0, 0.0 }, Material::EnumType::WOOD);
 
-    double expected_mass = getMaterialProperties(MaterialType::WOOD).density * 1.0;
+    double expected_mass = Material::getProperties(Material::EnumType::WOOD).density * 1.0;
     EXPECT_NEAR(org->mass, expected_mass, 0.0001);
 }
 
@@ -165,7 +166,7 @@ TEST_F(OrganismPhysicsTest, MassComputedFromMultipleCells)
 {
     auto org = createHorizontalBeam({ 0.0, 0.0 });
 
-    double wood_density = getMaterialProperties(MaterialType::WOOD).density;
+    double wood_density = Material::getProperties(Material::EnumType::WOOD).density;
     double expected_mass = wood_density * 3.0; // 3 cells, full fill.
 
     EXPECT_NEAR(org->mass, expected_mass, 0.0001);
@@ -180,13 +181,13 @@ TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
     // One cell at 50% fill.
     org->local_shape.push_back({
         .localPos = { 0, 0 },
-        .material = MaterialType::WOOD,
+        .material = Material::EnumType::WOOD,
         .fillRatio = 0.5,
     });
 
     org->recomputeMass();
 
-    double expected_mass = getMaterialProperties(MaterialType::WOOD).density * 0.5;
+    double expected_mass = Material::getProperties(Material::EnumType::WOOD).density * 0.5;
     EXPECT_NEAR(org->mass, expected_mass, 0.0001);
 }
 
@@ -198,14 +199,14 @@ TEST_F(OrganismPhysicsTest, MassAccountsForDifferentMaterials)
 
     // Mix of WOOD and METAL.
     org->local_shape.push_back(
-        { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        { .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
     org->local_shape.push_back(
-        { .localPos = { 1, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
+        { .localPos = { 1, 0 }, .material = Material::EnumType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
 
-    double wood_density = getMaterialProperties(MaterialType::WOOD).density;
-    double metal_density = getMaterialProperties(MaterialType::METAL).density;
+    double wood_density = Material::getProperties(Material::EnumType::WOOD).density;
+    double metal_density = Material::getProperties(Material::EnumType::METAL).density;
     double expected_mass = wood_density + metal_density;
 
     EXPECT_NEAR(org->mass, expected_mass, 0.0001);
@@ -217,7 +218,7 @@ TEST_F(OrganismPhysicsTest, MassAccountsForDifferentMaterials)
 
 TEST_F(OrganismPhysicsTest, COMAtOriginForSingleCellAtOrigin)
 {
-    auto org = createSingleCellOrganism({ 5.0, 5.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 5.0, 5.0 }, Material::EnumType::WOOD);
 
     // Single cell at local (0,0) -> COM should be at (0,0) relative to position.
     EXPECT_NEAR(org->center_of_mass.x, 0.0, 0.0001);
@@ -242,9 +243,9 @@ TEST_F(OrganismPhysicsTest, COMShiftsTowardHeavierMaterial)
 
     // WOOD at (0,0), METAL at (2,0). METAL is denser, so COM shifts right.
     org->local_shape.push_back(
-        { .localPos = { 0, 0 }, .material = MaterialType::WOOD, .fillRatio = 1.0 });
+        { .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
     org->local_shape.push_back(
-        { .localPos = { 2, 0 }, .material = MaterialType::METAL, .fillRatio = 1.0 });
+        { .localPos = { 2, 0 }, .material = Material::EnumType::METAL, .fillRatio = 1.0 });
 
     org->recomputeMass();
     org->recomputeCenterOfMass();
@@ -261,7 +262,7 @@ TEST_F(OrganismPhysicsTest, COMShiftsTowardHeavierMaterial)
 
 TEST_F(OrganismPhysicsTest, GravityAcceleratesDownward)
 {
-    auto org = createSingleCellOrganism({ 5.0, 5.0 }, MaterialType::WOOD);
+    auto org = createSingleCellOrganism({ 5.0, 5.0 }, Material::EnumType::WOOD);
     org->velocity = { 0.0, 0.0 };
 
     double gravity = 9.8;
@@ -279,7 +280,7 @@ TEST_F(OrganismPhysicsTest, GravityAcceleratesDownward)
 TEST_F(OrganismPhysicsTest, HeavierOrganismSameAcceleration)
 {
     // Create light organism (1 cell).
-    auto light_org = createSingleCellOrganism({ 0.0, 0.0 }, MaterialType::WOOD);
+    auto light_org = createSingleCellOrganism({ 0.0, 0.0 }, Material::EnumType::WOOD);
 
     // Create heavy organism (3 cells).
     auto heavy_org = createHorizontalBeam({ 0.0, 0.0 });

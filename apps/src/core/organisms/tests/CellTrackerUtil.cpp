@@ -5,7 +5,7 @@
 
 namespace DirtSim {
 
-void CellTracker::trackCell(const Vector2i& pos, MaterialType material, int frame)
+void CellTracker::trackCell(const Vector2i& pos, Material::EnumType material, int frame)
 {
     tracked_cells_[pos] = TrackedCell{ material, frame };
 }

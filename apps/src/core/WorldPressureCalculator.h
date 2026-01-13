@@ -129,7 +129,7 @@ public:
      * Calculates how much energy is reflected when material hits a wall.
      * Takes into account material elasticity and applies energy-dependent damping.
      */
-    float calculateReflectionCoefficient(MaterialType materialType, float impactEnergy) const;
+    float calculateReflectionCoefficient(Material::EnumType materialType, float impactEnergy) const;
 
     // Queue of blocked transfers.
     std::vector<BlockedTransfer> blocked_transfers_;

@@ -2,52 +2,53 @@
 
 namespace DirtSim {
 
-MaterialType MaterialNeighborhood::north() const
+Material::EnumType MaterialNeighborhood::north() const
 {
     return getMaterial(0, -1);
 }
 
-MaterialType MaterialNeighborhood::south() const
+Material::EnumType MaterialNeighborhood::south() const
 {
     return getMaterial(0, 1);
 }
 
-MaterialType MaterialNeighborhood::east() const
+Material::EnumType MaterialNeighborhood::east() const
 {
     return getMaterial(1, 0);
 }
 
-MaterialType MaterialNeighborhood::west() const
+Material::EnumType MaterialNeighborhood::west() const
 {
     return getMaterial(-1, 0);
 }
 
-MaterialType MaterialNeighborhood::northEast() const
+Material::EnumType MaterialNeighborhood::northEast() const
 {
     return getMaterial(1, -1);
 }
 
-MaterialType MaterialNeighborhood::northWest() const
+Material::EnumType MaterialNeighborhood::northWest() const
 {
     return getMaterial(-1, -1);
 }
 
-MaterialType MaterialNeighborhood::southEast() const
+Material::EnumType MaterialNeighborhood::southEast() const
 {
     return getMaterial(1, 1);
 }
 
-MaterialType MaterialNeighborhood::southWest() const
+Material::EnumType MaterialNeighborhood::southWest() const
 {
     return getMaterial(-1, 1);
 }
 
-int MaterialNeighborhood::countMaterial(MaterialType material) const
+int MaterialNeighborhood::countMaterial(Material::EnumType material) const
 {
     int count = 0;
     for (int i = 0; i < 9; ++i) {
         if (i == 4) continue; // Skip center.
-        MaterialType mat = static_cast<MaterialType>((data_ >> (i * BITS_PER_MATERIAL)) & 0xF);
+        Material::EnumType mat =
+            static_cast<Material::EnumType>((data_ >> (i * BITS_PER_MATERIAL)) & 0xF);
         if (mat == material) {
             ++count;
         }
@@ -55,11 +56,12 @@ int MaterialNeighborhood::countMaterial(MaterialType material) const
     return count;
 }
 
-bool MaterialNeighborhood::allNeighborsSameMaterial(MaterialType material) const
+bool MaterialNeighborhood::allNeighborsSameMaterial(Material::EnumType material) const
 {
     for (int i = 0; i < 9; ++i) {
         if (i == 4) continue; // Skip center.
-        MaterialType mat = static_cast<MaterialType>((data_ >> (i * BITS_PER_MATERIAL)) & 0xF);
+        Material::EnumType mat =
+            static_cast<Material::EnumType>((data_ >> (i * BITS_PER_MATERIAL)) & 0xF);
         if (mat != material) {
             return false;
         }
@@ -69,7 +71,7 @@ bool MaterialNeighborhood::allNeighborsSameMaterial(MaterialType material) const
 
 bool MaterialNeighborhood::isSurroundedBySameMaterial() const
 {
-    MaterialType center_mat = getCenterMaterial();
+    Material::EnumType center_mat = getCenterMaterial();
     return allNeighborsSameMaterial(center_mat);
 }
 

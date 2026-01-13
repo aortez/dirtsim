@@ -73,18 +73,18 @@ bool matchesTemplate(
 
                 case MatchMode::IsSolid: {
                     // Find dominant material and check if it's solid (not fluid).
-                    MaterialType dominant = MaterialType::AIR;
+                    Material::EnumType dominant = Material::EnumType::AIR;
                     double max_fill = 0.0;
                     for (int m = 0; m < NumMaterials; ++m) {
                         if (cell_histogram[m] > max_fill) {
                             max_fill = cell_histogram[m];
-                            dominant = static_cast<MaterialType>(m);
+                            dominant = static_cast<Material::EnumType>(m);
                         }
                     }
                     if (max_fill < MATERIAL_THRESHOLD) {
                         return false;
                     }
-                    const MaterialProperties& props = getMaterialProperties(dominant);
+                    const Material::Properties& props = Material::getProperties(dominant);
                     if (props.is_fluid) {
                         return false;
                     }
@@ -93,18 +93,18 @@ bool matchesTemplate(
 
                 case MatchMode::IsLiquid: {
                     // Find dominant material and check if it's fluid.
-                    MaterialType dominant = MaterialType::AIR;
+                    Material::EnumType dominant = Material::EnumType::AIR;
                     double max_fill = 0.0;
                     for (int m = 0; m < NumMaterials; ++m) {
                         if (cell_histogram[m] > max_fill) {
                             max_fill = cell_histogram[m];
-                            dominant = static_cast<MaterialType>(m);
+                            dominant = static_cast<Material::EnumType>(m);
                         }
                     }
                     if (max_fill < MATERIAL_THRESHOLD) {
                         return false;
                     }
-                    const MaterialProperties& props = getMaterialProperties(dominant);
+                    const Material::Properties& props = Material::getProperties(dominant);
                     if (!props.is_fluid) {
                         return false;
                     }
@@ -114,7 +114,7 @@ bool matchesTemplate(
                 case MatchMode::Is: {
                     // Must be one of the specified materials.
                     bool matched = false;
-                    for (MaterialType mat : cell_pattern.materials) {
+                    for (Material::EnumType mat : cell_pattern.materials) {
                         int mat_idx = static_cast<int>(mat);
                         if (mat_idx >= 0 && mat_idx < NumMaterials) {
                             if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
@@ -131,7 +131,7 @@ bool matchesTemplate(
 
                 case MatchMode::IsNot: {
                     // Must NOT be any of the specified materials.
-                    for (MaterialType mat : cell_pattern.materials) {
+                    for (Material::EnumType mat : cell_pattern.materials) {
                         int mat_idx = static_cast<int>(mat);
                         if (mat_idx >= 0 && mat_idx < NumMaterials) {
                             if (cell_histogram[mat_idx] >= MATERIAL_THRESHOLD) {
@@ -181,7 +181,7 @@ void gatherMaterialHistograms(
             // Check bounds.
             if (!data.inBounds(wx, wy)) {
                 // Out of bounds - treat as WALL so organisms can detect world edges.
-                int wall_idx = static_cast<int>(MaterialType::WALL);
+                int wall_idx = static_cast<int>(Material::EnumType::WALL);
                 if (wall_idx >= 0 && wall_idx < NumMaterials) {
                     histograms[ny][nx][wall_idx] = 1.0;
                 }
@@ -198,13 +198,13 @@ void gatherMaterialHistograms(
 }
 
 template <int GridSize, int NumMaterials>
-MaterialType getDominantMaterial(
+Material::EnumType getDominantMaterial(
     const std::array<std::array<std::array<double, NumMaterials>, GridSize>, GridSize>& histograms,
     int gx,
     int gy)
 {
     if (gx < 0 || gx >= GridSize || gy < 0 || gy >= GridSize) {
-        return MaterialType::AIR;
+        return Material::EnumType::AIR;
     }
 
     double max_fill = 0.0;
@@ -215,7 +215,7 @@ MaterialType getDominantMaterial(
             max_idx = i;
         }
     }
-    return static_cast<MaterialType>(max_idx);
+    return static_cast<Material::EnumType>(max_idx);
 }
 
 template <int GridSize, int NumMaterials>
@@ -224,8 +224,8 @@ bool isSolid(
     int gx,
     int gy)
 {
-    MaterialType mat = getDominantMaterial<GridSize, NumMaterials>(histograms, gx, gy);
-    return mat != MaterialType::AIR && mat != MaterialType::WATER;
+    Material::EnumType mat = getDominantMaterial<GridSize, NumMaterials>(histograms, gx, gy);
+    return mat != Material::EnumType::AIR && mat != Material::EnumType::WATER;
 }
 
 template <int GridSize, int NumMaterials>
@@ -258,10 +258,10 @@ template void gatherMaterialHistograms<9, 10>(
     std::array<std::array<std::array<double, 10>, 9>, 9>& histograms,
     Vector2i& world_offset);
 
-template MaterialType getDominantMaterial<15, 10>(
+template Material::EnumType getDominantMaterial<15, 10>(
     const std::array<std::array<std::array<double, 10>, 15>, 15>& histograms, int gx, int gy);
 
-template MaterialType getDominantMaterial<9, 10>(
+template Material::EnumType getDominantMaterial<9, 10>(
     const std::array<std::array<std::array<double, 10>, 9>, 9>& histograms, int gx, int gy);
 
 template bool isSolid<15, 10>(

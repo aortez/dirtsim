@@ -14,7 +14,7 @@ namespace ClockEvents {
  * @param colors_per_second Rate of color cycling.
  * @return The initial material to use for digits.
  */
-MaterialType startColorCycle(ColorCycleEventState& state, double colors_per_second);
+Material::EnumType startColorCycle(ColorCycleEventState& state, double colors_per_second);
 
 /**
  * Updates the ColorCycle event each tick.
@@ -23,7 +23,7 @@ MaterialType startColorCycle(ColorCycleEventState& state, double colors_per_seco
  * @param deltaTime Time since last update.
  * @return The new material if color changed, nullopt otherwise.
  */
-std::optional<MaterialType> updateColorCycle(ColorCycleEventState& state, double deltaTime);
+std::optional<Material::EnumType> updateColorCycle(ColorCycleEventState& state, double deltaTime);
 
 } // namespace ClockEvents
 } // namespace DirtSim

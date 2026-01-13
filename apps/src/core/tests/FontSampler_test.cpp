@@ -391,27 +391,27 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
     FontSampler sampler("fonts/NotoColorEmoji.ttf", 109, 120, 120, 0.3f);
 
     // Material abbreviations for visualization.
-    auto materialChar = [](MaterialType m) -> char {
+    auto materialChar = [](Material::EnumType m) -> char {
         switch (m) {
-            case MaterialType::AIR:
+            case Material::EnumType::AIR:
                 return ' ';
-            case MaterialType::DIRT:
+            case Material::EnumType::DIRT:
                 return 'D';
-            case MaterialType::LEAF:
+            case Material::EnumType::LEAF:
                 return 'L';
-            case MaterialType::METAL:
+            case Material::EnumType::METAL:
                 return 'M';
-            case MaterialType::ROOT:
+            case Material::EnumType::ROOT:
                 return 'R';
-            case MaterialType::SAND:
+            case Material::EnumType::SAND:
                 return 'S';
-            case MaterialType::SEED:
+            case Material::EnumType::SEED:
                 return 'E';
-            case MaterialType::WALL:
+            case Material::EnumType::WALL:
                 return 'W';
-            case MaterialType::WATER:
+            case Material::EnumType::WATER:
                 return 'B'; // Blue.
-            case MaterialType::WOOD:
+            case Material::EnumType::WOOD:
                 return 'O'; // Oak/brown.
         }
         return '?';
@@ -423,7 +423,7 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
         auto grid = sampler.sampleUtf8CharacterMaterialGrid(utf8);
 
         // Count material distribution.
-        std::map<MaterialType, int> counts;
+        std::map<Material::EnumType, int> counts;
         for (int y = 0; y < grid.height; ++y) {
             for (int x = 0; x < grid.width; ++x) {
                 counts[grid.at(x, y)]++;
@@ -434,7 +434,7 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
 
         // Print distribution.
         for (const auto& [mat, count] : counts) {
-            if (mat != MaterialType::AIR && count > 0) {
+            if (mat != Material::EnumType::AIR && count > 0) {
                 spdlog::info("  {}: {} pixels", toString(mat), count);
             }
         }
@@ -464,27 +464,27 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
     // Downsample to various sizes.
     std::vector<int> sizes = { 36, 24, 16, 12 };
 
-    auto materialChar = [](MaterialType m) -> char {
+    auto materialChar = [](Material::EnumType m) -> char {
         switch (m) {
-            case MaterialType::AIR:
+            case Material::EnumType::AIR:
                 return ' ';
-            case MaterialType::DIRT:
+            case Material::EnumType::DIRT:
                 return 'D';
-            case MaterialType::LEAF:
+            case Material::EnumType::LEAF:
                 return 'L';
-            case MaterialType::METAL:
+            case Material::EnumType::METAL:
                 return 'M';
-            case MaterialType::ROOT:
+            case Material::EnumType::ROOT:
                 return 'R';
-            case MaterialType::SAND:
+            case Material::EnumType::SAND:
                 return 'S';
-            case MaterialType::SEED:
+            case Material::EnumType::SEED:
                 return 'E';
-            case MaterialType::WALL:
+            case Material::EnumType::WALL:
                 return 'W';
-            case MaterialType::WATER:
+            case Material::EnumType::WATER:
                 return 'B';
-            case MaterialType::WOOD:
+            case Material::EnumType::WOOD:
                 return 'O';
         }
         return '?';
@@ -495,7 +495,7 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
         spdlog::info("\n=== Duck at {}x{} ===", size, size);
 
         // Count materials.
-        std::map<MaterialType, int> counts;
+        std::map<Material::EnumType, int> counts;
         for (int y = 0; y < small.height; ++y) {
             for (int x = 0; x < small.width; ++x) {
                 counts[small.at(x, y)]++;
@@ -503,7 +503,7 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
         }
 
         for (const auto& [mat, count] : counts) {
-            if (mat != MaterialType::AIR && count > 0) {
+            if (mat != Material::EnumType::AIR && count > 0) {
                 spdlog::info("  {}: {} pixels", static_cast<int>(mat), count);
             }
         }

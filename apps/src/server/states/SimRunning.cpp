@@ -729,7 +729,7 @@ State::Any SimRunning::onEvent(const Api::SpawnDirtBall::Cwc& cwc, StateMachine&
 
     // Spawn a ball of the currently selected material.
     // Radius is calculated automatically as 15% of world width.
-    MaterialType selectedMaterial = world->getSelectedMaterial();
+    Material::EnumType selectedMaterial = world->getSelectedMaterial();
     world->spawnMaterialBall(selectedMaterial, { centerX, topY });
 
     cwc.sendResponse(Response::okay(std::monostate{}));
@@ -1133,7 +1133,7 @@ State::Any SimRunning::onEvent(const SpawnDirtBallCommand& /*cmd*/, StateMachine
 
         // Spawn a ball of the currently selected material.
         // Radius is calculated automatically as 15% of world width.
-        MaterialType selectedMaterial = world->getSelectedMaterial();
+        Material::EnumType selectedMaterial = world->getSelectedMaterial();
         world->spawnMaterialBall(selectedMaterial, { centerX, topY });
     }
     else {
