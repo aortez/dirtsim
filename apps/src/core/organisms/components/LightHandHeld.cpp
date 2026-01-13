@@ -26,8 +26,10 @@ void LightHandHeld::update(Vector2d holder_acceleration, double deltaTime)
     // Pseudo-force from holder acceleration.
     // When holder accelerates up (jump), beam feels heavier and droops.
     // When holder accelerates down (fall), beam feels lighter and rises.
+    // Note: In DirtSim, upward acceleration is negative y, and we want negative
+    // torque (more droop) when accelerating up, so we use the sign directly.
     const float accel_torque =
-        static_cast<float>(-holder_acceleration.y) * config_.accel_sensitivity;
+        static_cast<float>(holder_acceleration.y) * config_.accel_sensitivity;
 
     // Duck's corrective torque: tries to return to horizontal (pitch=0).
     const float correction_strength = -pitch_ * config_.max_torque * 2.0f;

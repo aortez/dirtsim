@@ -6,7 +6,7 @@
  */
 #pragma once
 
-#include "core/organisms/Organism.h"
+#include "core/organisms/Body.h"
 #include <memory>
 
 namespace DirtSim {

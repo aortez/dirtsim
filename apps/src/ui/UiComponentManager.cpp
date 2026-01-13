@@ -22,6 +22,7 @@ UiComponentManager::~UiComponentManager()
 
     // Reset unique_ptrs first (they'll clean up LVGL objects via callbacks).
     iconRail_.reset();
+    menuIconRail_.reset();
     expandablePanel_.reset();
 
     // Clean up any screens we created (not the default one).
@@ -31,8 +32,9 @@ UiComponentManager::~UiComponentManager()
     if (mainMenuScreen && mainMenuScreen != lv_disp_get_scr_act(display)) {
         cleanupScreen(mainMenuScreen);
     }
-    if (configScreen && configScreen != lv_disp_get_scr_act(display)) {
-        cleanupScreen(configScreen);
+    if (disconnectedDiagnosticsScreen
+        && disconnectedDiagnosticsScreen != lv_disp_get_scr_act(display)) {
+        cleanupScreen(disconnectedDiagnosticsScreen);
     }
 
     SLOG_INFO("UiComponentManager cleanup completed");
@@ -126,16 +128,28 @@ lv_obj_t* UiComponentManager::getMainMenuContainer()
 
     mainMenuScreen = ensureScreen(mainMenuScreen, "main_menu");
     transitionToScreen(mainMenuScreen);
+
+    // Create layout structure if not already created.
+    if (!menuMainRow_) {
+        createMainMenuLayout();
+    }
+
     return mainMenuScreen;
 }
 
-lv_obj_t* UiComponentManager::getConfigContainer()
+lv_obj_t* UiComponentManager::getMenuContentArea()
+{
+    getMainMenuContainer(); // Ensure layout is created.
+    return menuContentArea_;
+}
+
+lv_obj_t* UiComponentManager::getDisconnectedDiagnosticsContainer()
 {
     if (!display) return nullptr;
 
-    configScreen = ensureScreen(configScreen, "config");
-    transitionToScreen(configScreen);
-    return configScreen;
+    disconnectedDiagnosticsScreen = ensureScreen(disconnectedDiagnosticsScreen, "config");
+    transitionToScreen(disconnectedDiagnosticsScreen);
+    return disconnectedDiagnosticsScreen;
 }
 
 void UiComponentManager::clearCurrentContainer()
@@ -227,39 +241,9 @@ void UiComponentManager::createSimulationLayout()
 
     // -------------------------------------------------------------------------
     // Icon Rail (48px wide, full height).
+    // Events are queued to eventSink_ for state machine to handle.
     // -------------------------------------------------------------------------
-    iconRail_ =
-        std::make_unique<IconRail>(simMainRow_, [this](IconId selectedId, IconId previousId) {
-            // Handle icon selection changes.
-            LOG_INFO(
-                Controls,
-                "Icon selection changed: {} -> {}",
-                static_cast<int>(previousId),
-                static_cast<int>(selectedId));
-
-            // Tree icon has special behavior - toggles neural grid.
-            if (selectedId == IconId::TREE) {
-                setNeuralGridVisible(true);
-                // Don't show expandable panel for tree.
-                if (expandablePanel_) {
-                    expandablePanel_->hide();
-                }
-            }
-            else if (previousId == IconId::TREE && selectedId != IconId::TREE) {
-                // Switched away from tree - hide neural grid.
-                setNeuralGridVisible(false);
-            }
-
-            // Show/hide expandable panel based on selection.
-            if (expandablePanel_) {
-                if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
-                    expandablePanel_->show();
-                }
-                else if (selectedId == IconId::COUNT) {
-                    expandablePanel_->hide();
-                }
-            }
-        });
+    iconRail_ = std::make_unique<IconRail>(simMainRow_, eventSink_);
 
     // -------------------------------------------------------------------------
     // Expandable Panel (250px wide, hidden by default).
@@ -306,6 +290,63 @@ void UiComponentManager::createSimulationLayout()
     setDisplayAreaRatio(1, 0);
 
     SLOG_INFO("UiComponentManager: Created icon-based simulation layout");
+}
+
+void UiComponentManager::createMainMenuLayout()
+{
+    if (!mainMenuScreen) {
+        SLOG_ERROR("createMainMenuLayout: main menu screen not created");
+        return;
+    }
+
+    // =========================================================================
+    // MAIN MENU LAYOUT: Icon Rail + Content Area
+    //
+    // ┌────┬────────────────────────────────────────────┐
+    // │Icon│                                            │
+    // │Rail│       Content Area (fractal, buttons)      │
+    // │108px│                                            │
+    // │    │                                            │
+    // └────┴────────────────────────────────────────────┘
+    // =========================================================================
+
+    // Main container - horizontal flex.
+    lv_obj_set_flex_flow(mainMenuScreen, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        mainMenuScreen, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(mainMenuScreen, 0, 0);
+    lv_obj_set_style_pad_gap(mainMenuScreen, 0, 0);
+
+    // Create main row container (holds everything).
+    menuMainRow_ = lv_obj_create(mainMenuScreen);
+    lv_obj_set_size(menuMainRow_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_flow(menuMainRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        menuMainRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(menuMainRow_, 0, 0);
+    lv_obj_set_style_pad_gap(menuMainRow_, 0, 0);
+    lv_obj_set_style_border_width(menuMainRow_, 0, 0);
+    lv_obj_set_style_bg_opa(menuMainRow_, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(menuMainRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // -------------------------------------------------------------------------
+    // Icon Rail (108px wide, full height).
+    // Events are queued to eventSink_ for state machine to handle.
+    // -------------------------------------------------------------------------
+    menuIconRail_ = std::make_unique<IconRail>(menuMainRow_, eventSink_);
+
+    // -------------------------------------------------------------------------
+    // Content Area (fills remaining space).
+    // -------------------------------------------------------------------------
+    menuContentArea_ = lv_obj_create(menuMainRow_);
+    lv_obj_set_height(menuContentArea_, LV_PCT(100));
+    lv_obj_set_flex_grow(menuContentArea_, 1); // Take all remaining horizontal space.
+    lv_obj_set_style_pad_all(menuContentArea_, 0, 0);
+    lv_obj_set_style_border_width(menuContentArea_, 0, 0);
+    lv_obj_set_style_bg_opa(menuContentArea_, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(menuContentArea_, LV_OBJ_FLAG_SCROLLABLE);
+
+    SLOG_INFO("UiComponentManager: Created main menu layout with IconRail");
 }
 
 } // namespace Ui

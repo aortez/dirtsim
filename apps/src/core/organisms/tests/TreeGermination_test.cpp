@@ -9,7 +9,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeBrain.h"
 #include "core/organisms/TreeCommands.h"
-#include "server/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include <gtest/gtest.h>
 #include <iomanip>
 #include <spdlog/spdlog.h>

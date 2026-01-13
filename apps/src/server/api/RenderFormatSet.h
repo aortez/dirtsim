@@ -17,7 +17,7 @@ namespace RenderFormatSet {
 DEFINE_API_NAME(RenderFormatSet);
 
 struct Command {
-    RenderFormat format;
+    RenderFormat::EnumType format;
     std::string connectionId;
 
     API_COMMAND_NAME();
@@ -28,7 +28,7 @@ struct Command {
 };
 
 struct Okay {
-    RenderFormat active_format;
+    RenderFormat::EnumType active_format;
     std::string message;
 
     API_COMMAND_NAME();

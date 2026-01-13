@@ -70,8 +70,8 @@ void Disconnected::createDiagnosticsScreen(StateMachine& sm)
         return;
     }
 
-    // Get the main menu container (reuse the menu screen).
-    lv_obj_t* screen = uiManager->getMainMenuContainer();
+    // Get the config container (dedicated screen for diagnostics).
+    lv_obj_t* screen = uiManager->getDisconnectedDiagnosticsContainer();
     if (!screen) {
         return;
     }
@@ -283,7 +283,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             worldData.cells.resize(numCells);
             worldData.colors.resize(renderMsg.width, renderMsg.height);
 
-            if (renderMsg.format == RenderFormat::DEBUG) {
+            if (renderMsg.format == RenderFormat::EnumType::Debug) {
                 LOG_DEBUG(Network, "RenderMessage UNPACK: DEBUG format, {} cells", numCells);
 
                 const DebugCell* debugCells =

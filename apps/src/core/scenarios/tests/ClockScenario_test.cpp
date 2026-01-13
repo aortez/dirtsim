@@ -3,7 +3,7 @@
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
 #include "core/scenarios/ClockScenario.h"
-#include "server/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include <gtest/gtest.h>
 #include <map>
 

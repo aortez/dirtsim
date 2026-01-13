@@ -28,6 +28,7 @@ struct Training {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
+    Any onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
@@ -37,6 +38,7 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     StateMachine* sm_ = nullptr;
+    bool evolutionStarted_ = false;
 };
 
 } // namespace State

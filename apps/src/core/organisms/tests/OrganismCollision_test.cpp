@@ -1,7 +1,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
-#include "core/organisms/Organism.h"
+#include "core/organisms/Body.h"
 #include "core/organisms/OrganismManager.h"
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>

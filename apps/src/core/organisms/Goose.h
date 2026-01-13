@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Body.h"
 #include "GooseBrain.h"
-#include "Organism.h"
 #include <memory>
 
 namespace DirtSim {

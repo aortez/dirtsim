@@ -520,10 +520,15 @@ src/core/organisms/evolution/
 ├── GenomeRepository.h/cpp    # Storage, CRUD, persistence
 ├── Mutation.h/cpp            # Gaussian perturbation, weight reset
 ├── Selection.h/cpp           # Tournament selection
+├── TrainingRunner.h/cpp      # Incremental genome evaluation (non-blocking)
 └── tests/
     ├── GenomeRepository_test.cpp
     ├── Mutation_test.cpp
-    └── Selection_test.cpp
+    ├── Selection_test.cpp
+    └── TrainingRunner_test.cpp
+
+src/core/scenarios/
+├── ScenarioRegistry.h/cpp    # Scenario factory (moved from server/)
 
 src/server/states/
 ├── Evolution.h/cpp           # Main evolution loop state
@@ -605,6 +610,43 @@ src/ui/state-machine/states/
 - Tournament with k=population_size returns best. ✅
 - Elitist replace keeps top genomes sorted by fitness. ✅
 
+### Phase 3.5: TrainingRunner ✅
+
+Incremental genome evaluation that doesn't block the main thread.
+
+**Problem solved:**
+The original `evaluateGenome()` ran a tight `while` loop for up to 10 minutes,
+blocking all event processing. No cancel, no pause, no rendering during training.
+
+**Solution:**
+TrainingRunner owns a World and steps it incrementally via `step(frames)`.
+Control returns to caller between steps, allowing event processing and rendering.
+
+**Files:**
+- `src/core/organisms/evolution/TrainingRunner.h/cpp` ✅
+- `src/core/organisms/evolution/tests/TrainingRunner_test.cpp` ✅ (2 tests)
+
+**Interface:**
+```cpp
+class TrainingRunner {
+    TrainingRunner(const Genome& genome, Scenario::EnumType scenarioId,
+                   const EvolutionConfig& config);
+
+    Status step(int frames = 1);  // Returns Running, TreeDied, or TimeExpired.
+
+    const World* getWorld() const;  // Access for rendering.
+    double getSimTime() const;
+    double getMaxTime() const;
+    float getProgress() const;
+};
+```
+
+**Tests:**
+- `StepIsIncrementalNotBlocking` — step() returns quickly, world accessible. ✅
+- `CompletionReturnsFitnessResults` — full lifecycle returns metrics. ✅
+
+**TODO:** Wire into Evolution state to replace blocking `evaluateGenome()`.
+
 ### Phase 4: Server StateEvolution ✅
 
 **Files:**
@@ -616,10 +658,12 @@ src/ui/state-machine/states/
 - `src/server/tests/StateEvolution_test.cpp` ✅ (6 tests)
 
 **Work:**
-- StateEvolution: ✅
+- StateEvolution: ✅ (refactoring in progress)
   - Initialize random population on enter. ✅
-  - Run evaluation loop (one organism per tick, blocking). ✅
-  - Create fresh World (9x9) for each eval. ✅
+  - ~~Run evaluation loop (one organism per tick, blocking). ✅~~
+  - **REFACTORING**: Original implementation blocked main thread for entire evaluation.
+    Now using TrainingRunner for incremental, non-blocking evaluation.
+  - Create fresh World using ScenarioRegistry. ✅
   - Run simulation for up to 10 minutes sim time. ✅
   - Collect FitnessResult, compute fitness. ✅
   - After full generation: select, mutate, replace. ✅

@@ -22,6 +22,8 @@ struct StartMenu {
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
 
+    Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
+    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StartButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainButtonClickedEvent& evt, StateMachine& sm);
@@ -41,7 +43,6 @@ private:
     static void onNextFractalClicked(lv_event_t* e);
     static void onQuitButtonClicked(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
-    static void onTrainButtonClicked(lv_event_t* e);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     JuliaFractal* fractal_ = nullptr;                  // Fractal background animation.
@@ -51,7 +52,6 @@ private:
     lv_obj_t* infoLabel_ = nullptr;                    // Fractal info label.
     lv_obj_t* nextFractalButton_ = nullptr;            // Button to advance fractal.
     lv_obj_t* quitButton_ = nullptr;                   // Quit button (top-left corner).
-    lv_obj_t* trainButton_ = nullptr;                  // Train button (center-right).
     int updateFrameCount_ = 0;                         // Frame counter for periodic logging.
     int labelUpdateCounter_ = 0;                       // Frame counter for label updates (~1/sec).
 };

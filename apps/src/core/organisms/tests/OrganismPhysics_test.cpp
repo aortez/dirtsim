@@ -8,7 +8,7 @@
 #include "core/MaterialType.h"
 #include "core/Vector2d.h"
 #include "core/Vector2i.h"
-#include "core/organisms/Organism.h"
+#include "core/organisms/Body.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;

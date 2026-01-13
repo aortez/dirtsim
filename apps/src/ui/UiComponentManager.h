@@ -9,6 +9,9 @@
 namespace DirtSim {
 namespace Ui {
 
+// Forward declaration.
+class EventSink;
+
 /**
  * @brief Lightweight manager for LVGL resources and screen management.
  *
@@ -31,15 +34,31 @@ public:
     ~UiComponentManager();
 
     /**
+     * @brief Set the event sink for IconRail events.
+     * Must be called before creating layouts that include IconRail.
+     */
+    void setEventSink(EventSink* sink) { eventSink_ = sink; }
+
+    /**
      * @brief Get container for simulation UI.
      * Creates/prepares the simulation screen if needed.
      */
     lv_obj_t* getSimulationContainer();
 
     /**
-     * @brief Get the icon rail component.
+     * @brief Get the icon rail component (simulation screen).
      */
     IconRail* getIconRail() { return iconRail_.get(); }
+
+    /**
+     * @brief Get the icon rail component (main menu screen).
+     */
+    IconRail* getMenuIconRail() { return menuIconRail_.get(); }
+
+    /**
+     * @brief Get the content area for main menu (where fractal/buttons go).
+     */
+    lv_obj_t* getMenuContentArea();
 
     /**
      * @brief Get the expandable panel component.
@@ -86,7 +105,7 @@ public:
      * @brief Get container for configuration UI.
      * Creates/prepares the config screen if needed.
      */
-    lv_obj_t* getConfigContainer();
+    lv_obj_t* getDisconnectedDiagnosticsContainer();
 
     /**
      * @brief Clear the current container of all children.
@@ -129,17 +148,19 @@ public:
 
 private:
     lv_disp_t* display;
+    EventSink* eventSink_ = nullptr;
 
     // Screens for different states.
     lv_obj_t* simulationScreen = nullptr;
     lv_obj_t* mainMenuScreen = nullptr;
-    lv_obj_t* configScreen = nullptr;
+    lv_obj_t* disconnectedDiagnosticsScreen = nullptr;
 
     // Current active screen.
     lv_obj_t* currentScreen = nullptr;
 
     // New icon-based layout components.
-    std::unique_ptr<IconRail> iconRail_;
+    std::unique_ptr<IconRail> iconRail_;     // For simulation screen.
+    std::unique_ptr<IconRail> menuIconRail_; // For main menu screen.
     std::unique_ptr<ExpandablePanel> expandablePanel_;
 
     // Simulation screen layout containers.
@@ -147,6 +168,10 @@ private:
     lv_obj_t* simDisplayArea_ = nullptr; // Contains world + neural grid.
     lv_obj_t* simWorldDisplayArea_ = nullptr;
     lv_obj_t* simNeuralGridDisplayArea_ = nullptr;
+
+    // Main menu screen layout containers.
+    lv_obj_t* menuMainRow_ = nullptr;     // Main horizontal row (icon rail + content).
+    lv_obj_t* menuContentArea_ = nullptr; // Content area (fractal, buttons, etc.).
 
     bool neuralGridVisible_ = false;
 
@@ -165,6 +190,12 @@ private:
      * Called lazily when first simulation container is requested.
      */
     void createSimulationLayout();
+
+    /**
+     * @brief Create the main menu screen layout structure.
+     * Called lazily when first menu container is requested.
+     */
+    void createMainMenuLayout();
 };
 
 } // namespace Ui

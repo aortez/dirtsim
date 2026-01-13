@@ -1,8 +1,8 @@
 #pragma once
 
+#include "Body.h"
 #include "DuckBrain.h"
 #include "GooseBrain.h"
-#include "Organism.h"
 #include "OrganismType.h"
 #include "TreeBrain.h"
 #include "TreeCommandProcessor.h"

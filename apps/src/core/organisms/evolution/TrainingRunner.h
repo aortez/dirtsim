@@ -1,11 +1,13 @@
 #pragma once
 
+#include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 #include <memory>
 
 namespace DirtSim {
 
+class ScenarioRunner;
 class World;
 class Tree;
 struct EvolutionConfig;
@@ -33,7 +35,8 @@ public:
         double lifespan = 0.0;
     };
 
-    TrainingRunner(const Genome& genome, const EvolutionConfig& config);
+    TrainingRunner(
+        const Genome& genome, Scenario::EnumType scenarioId, const EvolutionConfig& config);
     ~TrainingRunner();
 
     TrainingRunner(const TrainingRunner&) = delete;
@@ -59,6 +62,7 @@ public:
 
 private:
     std::unique_ptr<World> world_;
+    std::unique_ptr<ScenarioRunner> scenario_;
     OrganismId treeId_ = INVALID_ORGANISM_ID;
 
     double simTime_ = 0.0;

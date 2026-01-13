@@ -497,22 +497,23 @@ void WebSocketService::broadcastRenderMessage(
 }
 
 void WebSocketService::setClientRenderFormat(
-    std::shared_ptr<rtc::WebSocket> ws, RenderFormat format)
+    std::shared_ptr<rtc::WebSocket> ws, RenderFormat::EnumType format)
 {
     clientRenderFormats_[ws] = format;
     LOG_INFO(
         Network,
         "Client render format set to {}",
-        format == RenderFormat::BASIC ? "BASIC" : "DEBUG");
+        format == RenderFormat::EnumType::Basic ? "Basic" : "Debug");
 }
 
-RenderFormat WebSocketService::getClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws) const
+RenderFormat::EnumType WebSocketService::getClientRenderFormat(
+    std::shared_ptr<rtc::WebSocket> ws) const
 {
     auto it = clientRenderFormats_.find(ws);
     if (it != clientRenderFormats_.end()) {
         return it->second;
     }
-    return RenderFormat::BASIC;
+    return RenderFormat::EnumType::Basic;
 }
 
 std::shared_ptr<rtc::WebSocket> WebSocketService::getClientByConnectionId(

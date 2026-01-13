@@ -250,9 +250,9 @@ public:
     void broadcastRenderMessage(
         const WorldData& data, const std::vector<OrganismId>& organism_grid);
 
-    void setClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws, RenderFormat format);
+    void setClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws, RenderFormat::EnumType format);
 
-    RenderFormat getClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws) const;
+    RenderFormat::EnumType getClientRenderFormat(std::shared_ptr<rtc::WebSocket> ws) const;
 
     std::shared_ptr<rtc::WebSocket> getClientByConnectionId(const std::string& connectionId);
 
@@ -441,7 +441,7 @@ private:
     std::map<std::string, CommandHandler> commandHandlers_;
     std::vector<std::shared_ptr<rtc::WebSocket>> connectedClients_;
     std::map<std::shared_ptr<rtc::WebSocket>, Protocol> clientProtocols_;
-    std::map<std::shared_ptr<rtc::WebSocket>, RenderFormat> clientRenderFormats_;
+    std::map<std::shared_ptr<rtc::WebSocket>, RenderFormat::EnumType> clientRenderFormats_;
 
     // Connection ID registry for directed messaging.
     std::atomic<uint64_t> nextConnectionId_{ 1 };

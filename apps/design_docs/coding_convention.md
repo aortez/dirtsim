@@ -12,6 +12,8 @@ Add documentation to files, structs, and classes but skip it for members.  Inste
 
 Documentation in headers should be sparse, with most of it focused on the file and class/struct scopes.
 
+Never comment @params or @returns - we can see those already.
+
 Documenation in code - should be rare and only to explain strange things.  Instead prefer to add docs to the top of headers.
 
 Don't number sections in code "phase 3" etc, just say "next phase", as the numbers just end up being wrong and or noise in diffs.

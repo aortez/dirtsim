@@ -57,10 +57,16 @@ public:
     ~SimPlayground();
 
     /**
-     * @brief Connect to the icon rail's selection callback.
-     * Must be called after construction to enable panel switching.
+     * @brief Handle icon selection change from state machine.
+     * Shows/hides panel content based on selected icon.
      */
-    void connectToIconRail();
+    void onIconSelected(IconId selectedId, IconId previousId);
+
+    /**
+     * @brief Send display resize update for auto-scaling scenarios.
+     * Called when the panel closes or rail mode changes.
+     */
+    void sendDisplayResizeUpdate();
 
     void updateFromWorldData(
         const WorldData& data,
@@ -130,14 +136,6 @@ private:
 
     void clearPanelContent();
 
-    /**
-     * @brief Send display resize update for auto-scaling scenarios.
-     *
-     * Called when the panel closes to notify scenarios like Clock that
-     * more display space is now available.
-     */
-    void sendDisplayResizeUpdate();
-
     void createCorePanel(lv_obj_t* container);
 
     void createScenarioPanel(lv_obj_t* container);
@@ -145,8 +143,6 @@ private:
     void createPhysicsPanel(lv_obj_t* container);
 
     void showPanelContent(IconId panelId);
-
-    void onIconSelected(IconId selectedId, IconId previousId);
 
     void setupCanvasEventHandlers(lv_obj_t* canvas);
     static void onCanvasClicked(lv_event_t* e);

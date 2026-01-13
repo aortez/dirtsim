@@ -1,7 +1,10 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
+#include "core/ColorNames.h"
 #include "core/GridOfCells.h"
+#include "core/LightManager.h"
+#include "core/LightTypes.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
@@ -13,7 +16,9 @@
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/PlayerDuckBrain.h"
 #include "core/organisms/Tree.h"
+#include "core/organisms/components/LightHandHeld.h"
 #include "core/scenarios/Scenario.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/FingerDown.h"
@@ -21,7 +26,6 @@
 #include "server/api/FingerUp.h"
 #include "server/api/ScenarioSwitch.h"
 #include "server/api/SimStop.h"
-#include "server/scenarios/ScenarioRegistry.h"
 #include <chrono>
 #include <cmath>
 #include <nlohmann/json.hpp>
@@ -151,6 +155,25 @@ void SimRunning::tick(StateMachine& dsm)
             gamepad_to_duck_[i] = duck_id;
             spdlog::info(
                 "SimRunning: Gamepad {} spawned duck {} at ({}, {})", i, duck_id, spawn_x, spawn_y);
+
+            // Attach a handheld flashlight to the player-controlled duck.
+            Duck* duck = world->getOrganismManager().getDuck(duck_id);
+            if (duck) {
+                LightHandle flashlight = world->getLightManager().createLight(
+                    SpotLight{ .position = Vector2d{ static_cast<double>(spawn_x),
+                                                     static_cast<double>(spawn_y) },
+                               .color = ColorNames::warmSunlight(),
+                               .intensity = 1.0f,
+                               .radius = 15.0f,
+                               .attenuation = 0.1f,
+                               .direction = 0.0f,
+                               .arc_width = static_cast<float>(M_PI / 3.0),
+                               .focus = 1.0f });
+
+                auto handheld = std::make_unique<LightHandHeld>(std::move(flashlight));
+                duck->setHandheldLight(std::move(handheld));
+                spdlog::info("SimRunning: Attached flashlight to duck {}", duck_id);
+            }
         }
         prev_start_button_[i] = state->button_start;
 
@@ -203,6 +226,22 @@ void SimRunning::tick(StateMachine& dsm)
     dsm.getTimers().stopTimer("physics_step");
 
     stepCount++;
+
+    // HACK: Log flashlight state once per second for debugging.
+    if (stepCount % 60 == 0) {
+        for (const auto& [gamepad_idx, duck_id] : gamepad_to_duck_) {
+            if (auto* duck = world->getOrganismManager().getDuck(duck_id)) {
+                if (auto* light = duck->getHandheldLight()) {
+                    spdlog::info(
+                        "Flashlight [duck {}]: pitch={:.2f} rad, angVel={:.2f}, on={}",
+                        duck_id,
+                        light->getPitch(),
+                        light->getAngularVelocity(),
+                        light->isOn() ? "yes" : "no");
+                }
+            }
+        }
+    }
 
     // Calculate actual FPS (physics steps per second).
     const auto frameElapsed =

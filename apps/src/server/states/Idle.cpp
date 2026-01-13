@@ -3,10 +3,10 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/network/PeerDiscovery.h"
-#include "server/scenarios/ScenarioRegistry.h"
 
 namespace DirtSim {
 namespace Server {

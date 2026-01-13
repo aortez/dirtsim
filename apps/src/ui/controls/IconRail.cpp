@@ -1,20 +1,22 @@
 #include "IconRail.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "ui/state-machine/Event.h"
+#include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Ui {
 
-IconRail::IconRail(lv_obj_t* parent, SelectCallback onSelect)
-    : onSelectCallback_(std::move(onSelect))
+IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSink)
 {
     // Define our icon configuration with per-icon colors.
     iconConfigs_ = {
         { IconId::CORE, LV_SYMBOL_HOME, "Core Controls", 0x87CEEB },     // Light blue.
         { IconId::EVOLUTION, LV_SYMBOL_REFRESH, "Evolution", 0xDA70D6 }, // Orchid/purple.
         { IconId::PHYSICS, LV_SYMBOL_SETTINGS, "Physics", 0xC0C0C0 },    // Silver.
+        { IconId::PLAY, LV_SYMBOL_PLAY, "Play Simulation", 0x90EE90 },   // Light green.
         { IconId::SCENARIO, LV_SYMBOL_VIDEO, "Scenario", 0xFFA500 },     // Orange.
         { IconId::TREE, LV_SYMBOL_EYE_OPEN, "Tree Vision", 0x32CD32 },   // Lime green.
     };
@@ -139,14 +141,9 @@ void IconRail::onIconClicked(lv_event_t* e)
     self->updateButtonVisuals();
     self->resetAutoShrinkTimer();
 
-    // Notify primary callback.
-    if (self->onSelectCallback_) {
-        self->onSelectCallback_(self->selectedId_, previousId);
-    }
-
-    // Notify secondary callback (e.g., SimPlayground).
-    if (self->secondaryCallback_) {
-        self->secondaryCallback_(self->selectedId_, previousId);
+    // Queue event for state machine to process.
+    if (self->eventSink_) {
+        self->eventSink_->queueEvent(IconSelectedEvent{ self->selectedId_, previousId });
     }
 }
 
@@ -180,8 +177,8 @@ void IconRail::setTreeIconVisible(bool visible)
                     selectedId_ = IconId::COUNT;
                     updateButtonVisuals();
 
-                    if (onSelectCallback_) {
-                        onSelectCallback_(selectedId_, previousId);
+                    if (eventSink_) {
+                        eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
                     }
                 }
             }
@@ -211,8 +208,8 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
                 const IconId previousId = selectedId_;
                 selectedId_ = IconId::COUNT;
                 updateButtonVisuals();
-                if (onSelectCallback_) {
-                    onSelectCallback_(selectedId_, previousId);
+                if (eventSink_) {
+                    eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
                 }
             }
         }
@@ -227,8 +224,8 @@ void IconRail::selectIcon(IconId id)
     selectedId_ = id;
     updateButtonVisuals();
 
-    if (onSelectCallback_) {
-        onSelectCallback_(selectedId_, previousId);
+    if (eventSink_) {
+        eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
     }
 }
 
@@ -240,8 +237,8 @@ void IconRail::deselectAll()
     selectedId_ = IconId::COUNT;
     updateButtonVisuals();
 
-    if (onSelectCallback_) {
-        onSelectCallback_(selectedId_, previousId);
+    if (eventSink_) {
+        eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
     }
 }
 
@@ -426,9 +423,9 @@ void IconRail::setMode(RailMode mode)
 
     applyMode();
 
-    // Notify mode change listeners.
-    if (modeChangeCallback_) {
-        modeChangeCallback_(mode_);
+    // Queue mode change event for state machine to process.
+    if (eventSink_) {
+        eventSink_->queueEvent(RailModeChangedEvent{ mode_ });
     }
 }
 
@@ -486,10 +483,13 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     IconRail* self = static_cast<IconRail*>(lv_timer_get_user_data(timer));
     if (!self) return;
 
-    // Only shrink if no icon is selected.
+    // Only request shrink if no icon is selected and currently expanded.
     if (self->selectedId_ == IconId::COUNT && self->mode_ == RailMode::Normal) {
-        LOG_INFO(Controls, "Auto-shrinking IconRail after inactivity");
-        self->setMode(RailMode::Minimized);
+        LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
+        // Queue event for state machine to handle (don't touch LVGL objects from timer).
+        if (self->eventSink_) {
+            self->eventSink_->queueEvent(RailAutoShrinkRequestEvent{});
+        }
     }
 
     lv_timer_pause(timer);

@@ -18,10 +18,10 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/Scenario.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
-#include "scenarios/ScenarioRegistry.h"
 #include "states/State.h"
 #include <cassert>
 #include <chrono>
@@ -38,7 +38,7 @@ namespace Server {
 
 struct SubscribedClient {
     std::string connectionId;
-    RenderFormat renderFormat;
+    RenderFormat::EnumType renderFormat;
 };
 
 struct StateMachine::Impl {
@@ -306,7 +306,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     // RenderFormatGet - return default format (TODO: track per-client).
     service.registerHandler<Api::RenderFormatGet::Cwc>([](Api::RenderFormatGet::Cwc cwc) {
         Api::RenderFormatGet::Okay okay;
-        okay.active_format = RenderFormat::BASIC; // Default for now.
+        okay.active_format = RenderFormat::EnumType::Basic; // Default for now.
         cwc.sendResponse(Api::RenderFormatGet::Response::okay(std::move(okay)));
     });
 
@@ -678,7 +678,7 @@ void StateMachine::handleEvent(const Event& event)
         spdlog::info(
             "StateMachine: Client '{}' subscribed (format={}, total={})",
             connectionId,
-            cwc.command.format == RenderFormat::BASIC ? "BASIC" : "DEBUG",
+            cwc.command.format == RenderFormat::EnumType::Basic ? "Basic" : "Debug",
             pImpl->subscribedClients_.size());
 
         Api::RenderFormatSet::Okay okay;

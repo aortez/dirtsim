@@ -47,6 +47,7 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
+    uiManager_->setEventSink(this); // StateMachine implements EventSink.
     LOG_INFO(State, "UiComponentManager created");
 
     // Create remote input device for WebSocket mouse events.

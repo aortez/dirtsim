@@ -17,47 +17,9 @@ namespace State {
 
 void Training::onEnter(StateMachine& sm)
 {
-    LOG_INFO(State, "Entering Training state, starting evolution on server");
+    LOG_INFO(State, "Entering Training state (waiting for start command)");
     sm_ = &sm;
-
-    // Send EvolutionStart to server.
-    if (sm.hasWebSocketService()) {
-        auto& wsService = sm.getWebSocketService();
-        if (wsService.isConnected()) {
-            Api::EvolutionStart::Command cmd;
-            cmd.scenarioId = Scenario::EnumType::TreeGermination;
-
-            const auto result = wsService.sendCommand<Api::EvolutionStart::OkayType>(cmd, 5000);
-            if (result.isError()) {
-                LOG_ERROR(State, "Failed to send EvolutionStart: {}", result.errorValue());
-            }
-            else if (result.value().isError()) {
-                LOG_ERROR(
-                    State, "Server EvolutionStart error: {}", result.value().errorValue().message);
-            }
-            else {
-                LOG_INFO(State, "Evolution started on server");
-            }
-
-            // Subscribe to render stream for live training view.
-            static std::atomic<uint64_t> nextId{ 1 };
-            Api::RenderFormatSet::Command renderCmd;
-            renderCmd.format = RenderFormat::EnumType::Basic;
-
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
-            auto renderResult = wsService.sendBinaryAndReceive(envelope);
-            if (renderResult.isError()) {
-                LOG_ERROR(
-                    State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
-            }
-            else {
-                LOG_INFO(State, "Subscribed to render stream for live training view");
-            }
-        }
-        else {
-            LOG_WARN(State, "Not connected to server, cannot start evolution");
-        }
-    }
+    evolutionStarted_ = false;
 
     // Create training view.
     auto* uiManager = sm.getUiComponentManager();
@@ -70,7 +32,7 @@ void Training::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    iconRail->setVisibleIcons({ IconId::CORE });
+    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION });
     iconRail->deselectAll(); // Start fresh, no panel open.
 }
 
@@ -148,6 +110,71 @@ State::Any Training::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /
 
     // Lost connection - go back to Disconnected state.
     return Disconnected{};
+}
+
+State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm)
+{
+    if (evolutionStarted_) {
+        LOG_WARN(State, "Evolution already started, ignoring duplicate start");
+        return std::move(*this);
+    }
+
+    LOG_INFO(
+        State,
+        "Starting evolution: population={}, generations={}",
+        evt.evolution.populationSize,
+        evt.evolution.maxGenerations);
+
+    if (!sm.hasWebSocketService()) {
+        LOG_ERROR(State, "No WebSocketService available");
+        return std::move(*this);
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot start evolution");
+        return std::move(*this);
+    }
+
+    // Send EvolutionStart to server with provided config.
+    Api::EvolutionStart::Command cmd;
+    cmd.scenarioId = Scenario::EnumType::TreeGermination;
+    cmd.evolution = evt.evolution;
+    cmd.mutation = evt.mutation;
+
+    const auto result = wsService.sendCommand<Api::EvolutionStart::OkayType>(cmd, 5000);
+    if (result.isError()) {
+        LOG_ERROR(State, "Failed to send EvolutionStart: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(State, "Server EvolutionStart error: {}", result.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "Evolution started on server");
+    evolutionStarted_ = true;
+
+    // Subscribe to render stream for live training view.
+    static std::atomic<uint64_t> nextId{ 1 };
+    Api::RenderFormatSet::Command renderCmd;
+    renderCmd.format = RenderFormat::EnumType::Basic;
+
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+    auto renderResult = wsService.sendBinaryAndReceive(envelope);
+    if (renderResult.isError()) {
+        LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
+    }
+    else {
+        LOG_INFO(State, "Subscribed to render stream for live training view");
+    }
+
+    // Update UI to show "running" state.
+    if (view_) {
+        view_->setEvolutionStarted(true);
+    }
+
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)

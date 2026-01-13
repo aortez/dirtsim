@@ -1,5 +1,6 @@
 #include "TrainingView.h"
 #include "UiComponentManager.h"
+#include "controls/EvolutionConfigPanel.h"
 #include "controls/EvolutionControls.h"
 #include "controls/ExpandablePanel.h"
 #include "core/Assert.h"
@@ -81,7 +82,14 @@ void TrainingView::createUI()
     lv_label_set_text(title, "EVOLUTION");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FF88), 0);
-    lv_obj_set_style_pad_bottom(title, 15, 0);
+    lv_obj_set_style_pad_bottom(title, 5, 0);
+
+    // Status label.
+    statusLabel_ = lv_label_create(statsPanel);
+    lv_label_set_text(statusLabel_, "Ready - Press Start");
+    lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
+    lv_obj_set_style_pad_bottom(statusLabel_, 15, 0);
 
     // Generation progress section.
     genLabel_ = lv_label_create(statsPanel);
@@ -159,6 +167,7 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    statusLabel_ = nullptr;
     worldContainer_ = nullptr;
 }
 
@@ -252,9 +261,11 @@ void TrainingView::showPanelContent(IconId panelId)
     // Create content for the selected panel.
     switch (panelId) {
         case IconId::CORE:
+            createCorePanel(container);
+            break;
+
         case IconId::EVOLUTION:
-            // Both CORE (home icon) and EVOLUTION open the same controls panel.
-            createEvolutionPanel(container);
+            createEvolutionConfigPanel(container);
             break;
 
         case IconId::PHYSICS:
@@ -274,6 +285,7 @@ void TrainingView::showPanelContent(IconId panelId)
 
 void TrainingView::clearPanelContent()
 {
+    evolutionConfigPanel_.reset();
     evolutionControls_.reset();
 
     ExpandablePanel* panel = uiManager_->getExpandablePanel();
@@ -284,10 +296,42 @@ void TrainingView::clearPanelContent()
     activePanel_ = IconId::COUNT;
 }
 
-void TrainingView::createEvolutionPanel(lv_obj_t* container)
+void TrainingView::createCorePanel(lv_obj_t* container)
 {
-    evolutionControls_ = std::make_unique<EvolutionControls>(container, eventSink_);
-    LOG_INFO(Controls, "TrainingView: Created Evolution controls panel");
+    evolutionControls_ =
+        std::make_unique<EvolutionControls>(container, eventSink_, evolutionStarted_);
+    LOG_INFO(Controls, "TrainingView: Created Core controls panel");
+}
+
+void TrainingView::createEvolutionConfigPanel(lv_obj_t* container)
+{
+    evolutionConfigPanel_ =
+        std::make_unique<EvolutionConfigPanel>(container, eventSink_, evolutionStarted_);
+    LOG_INFO(Controls, "TrainingView: Created Evolution config panel");
+}
+
+void TrainingView::setEvolutionStarted(bool started)
+{
+    evolutionStarted_ = started;
+
+    if (statusLabel_) {
+        if (started) {
+            lv_label_set_text(statusLabel_, "Training...");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
+        }
+        else {
+            lv_label_set_text(statusLabel_, "Ready - Press Start");
+            lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
+        }
+    }
+
+    // Update panels if open.
+    if (evolutionControls_) {
+        evolutionControls_->setEvolutionStarted(started);
+    }
+    if (evolutionConfigPanel_) {
+        evolutionConfigPanel_->setEvolutionStarted(started);
+    }
 }
 
 } // namespace Ui

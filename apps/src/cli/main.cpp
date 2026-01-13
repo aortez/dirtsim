@@ -662,7 +662,7 @@ int main(int argc, char** argv)
 
         // Subscribe to broadcasts by sending RenderFormatSet.
         Api::RenderFormatSet::Command subCmd{
-            .format = RenderFormat::BASIC,
+            .format = RenderFormat::EnumType::Basic,
             .connectionId = "", // Server fills this in.
         };
         auto subResult = client.sendCommand<Api::RenderFormatSet::Okay>(subCmd, 5000);

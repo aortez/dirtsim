@@ -24,7 +24,7 @@ struct Command {
 };
 
 struct Okay {
-    RenderFormat active_format;
+    RenderFormat::EnumType active_format;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

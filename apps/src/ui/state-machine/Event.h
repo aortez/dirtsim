@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ui/controls/IconRail.h"
+
 #include "api/DrawDebugToggle.h"
 #include "api/Exit.h"
 #include "api/MouseDown.h"
@@ -17,6 +19,7 @@
 #include "api/WebRtcCandidate.h"
 #include "core/PhysicsSettings.h"
 #include "core/api/UiUpdateEvent.h"
+#include "core/organisms/evolution/EvolutionConfig.h"
 #include "server/api/EvolutionProgress.h"
 #include <concepts>
 #include <string>
@@ -106,6 +109,15 @@ struct TrainButtonClickedEvent {
 };
 
 /**
+ * @brief User clicked Start button in Training state to begin evolution.
+ */
+struct StartEvolutionButtonClickedEvent {
+    EvolutionConfig evolution;
+    MutationConfig mutation;
+    static constexpr const char* name() { return "StartEvolutionButtonClickedEvent"; }
+};
+
+/**
  * @brief User clicked Stop button in Training state.
  */
 struct StopButtonClickedEvent {
@@ -129,6 +141,34 @@ struct EvolutionProgressReceivedEvent {
 };
 
 // =================================================================
+// UI CONTROL EVENTS
+// =================================================================
+
+/**
+ * @brief Icon selected/deselected in IconRail.
+ */
+struct IconSelectedEvent {
+    IconId selectedId;
+    IconId previousId;
+    static constexpr const char* name() { return "IconSelectedEvent"; }
+};
+
+/**
+ * @brief IconRail mode changed (Normal <-> Minimized).
+ */
+struct RailModeChangedEvent {
+    RailMode newMode;
+    static constexpr const char* name() { return "RailModeChangedEvent"; }
+};
+
+/**
+ * @brief IconRail auto-shrink timer fired (requests minimization after inactivity).
+ */
+struct RailAutoShrinkRequestEvent {
+    static constexpr const char* name() { return "RailAutoShrinkRequestEvent"; }
+};
+
+// =================================================================
 // EVENT VARIANT
 // =================================================================
 
@@ -144,6 +184,7 @@ using Event = std::variant<
     ServerConnectedEvent,
     ServerDisconnectedEvent,
     StartButtonClickedEvent,
+    StartEvolutionButtonClickedEvent,
     StopButtonClickedEvent,
     TrainButtonClickedEvent,
     RequestWorldUpdateCommand,
@@ -152,6 +193,11 @@ using Event = std::variant<
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
     PhysicsSettingsReceivedEvent,
+
+    // UI control events
+    IconSelectedEvent,
+    RailAutoShrinkRequestEvent,
+    RailModeChangedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)
     DirtSim::UiApi::DrawDebugToggle::Cwc,

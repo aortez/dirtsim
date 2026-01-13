@@ -163,7 +163,9 @@ inline std::vector<BoneData> extractBones(const WorldData& data)
  * @brief Pack WorldData into RenderMessage with specified format.
  */
 inline RenderMessage packRenderMessage(
-    const WorldData& data, RenderFormat format, const std::vector<OrganismId>& organism_grid)
+    const WorldData& data,
+    RenderFormat::EnumType format,
+    const std::vector<OrganismId>& organism_grid)
 {
     RenderMessage msg;
     msg.format = format;
@@ -174,10 +176,10 @@ inline RenderMessage packRenderMessage(
     msg.tree_vision = data.tree_vision;
 
     // Pack cells based on format.
-    if (format == RenderFormat::BASIC) {
+    if (format == RenderFormat::EnumType::Basic) {
         msg.payload = packBasicCells(data);
     }
-    else if (format == RenderFormat::DEBUG) {
+    else if (format == RenderFormat::EnumType::Debug) {
         msg.payload = packDebugCells(data);
     }
 

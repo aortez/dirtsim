@@ -2,16 +2,18 @@
 
 #include "lvgl/lvgl.h"
 #include <cstdint>
-#include <functional>
 #include <vector>
 
 namespace DirtSim {
 namespace Ui {
 
+// Forward declaration to avoid circular dependency with Event.h.
+class EventSink;
+
 /**
  * @brief Identifiers for icons in an IconRail.
  */
-enum class IconId { CORE = 0, EVOLUTION, PHYSICS, SCENARIO, TREE, COUNT };
+enum class IconId { CORE = 0, EVOLUTION, PHYSICS, PLAY, SCENARIO, TREE, COUNT };
 
 enum class RailMode {
     Normal,   // Full width with all icon buttons.
@@ -38,14 +40,12 @@ struct IconConfig {
  */
 class IconRail {
 public:
-    using SelectCallback = std::function<void(IconId selectedId, IconId previousId)>;
-
     /**
      * @brief Construct the icon rail.
      * @param parent Parent LVGL object to attach to.
-     * @param onSelect Callback when an icon is selected/deselected.
+     * @param eventSink Event sink for queueing icon selection events.
      */
-    IconRail(lv_obj_t* parent, SelectCallback onSelect);
+    IconRail(lv_obj_t* parent, EventSink* eventSink);
     ~IconRail();
 
     // Prevent copying.
@@ -70,7 +70,7 @@ public:
     IconId getSelectedIcon() const { return selectedId_; }
 
     /**
-     * @brief Programmatically select an icon (updates visuals and triggers callback).
+     * @brief Programmatically select an icon (updates visuals and queues event).
      */
     void selectIcon(IconId id);
 
@@ -83,23 +83,6 @@ public:
      * @brief Check if tree icon is currently visible.
      */
     bool isTreeIconVisible() const { return treeIconVisible_; }
-
-    /**
-     * @brief Set an additional callback for icon selection changes.
-     * This is called after the primary callback set in the constructor.
-     */
-    void setSecondaryCallback(SelectCallback callback) { secondaryCallback_ = std::move(callback); }
-
-    using ModeChangeCallback = std::function<void(RailMode newMode)>;
-
-    /**
-     * @brief Set a callback for when the rail mode changes (Normal <-> Minimized).
-     * Called when auto-shrink or manual collapse/expand occurs.
-     */
-    void setModeChangeCallback(ModeChangeCallback callback)
-    {
-        modeChangeCallback_ = std::move(callback);
-    }
 
     RailMode getMode() const { return mode_; }
     void setMode(RailMode mode);
@@ -115,9 +98,7 @@ private:
 
     IconId selectedId_ = IconId::COUNT;
     bool treeIconVisible_ = false;
-    SelectCallback onSelectCallback_;
-    SelectCallback secondaryCallback_;
-    ModeChangeCallback modeChangeCallback_;
+    EventSink* eventSink_ = nullptr;
 
     // Mode support.
     RailMode mode_ = RailMode::Normal;

@@ -45,30 +45,6 @@ SimPlayground::~SimPlayground()
     LOG_INFO(Controls, "Destroyed");
 }
 
-void SimPlayground::connectToIconRail()
-{
-    IconRail* iconRail = uiManager_->getIconRail();
-    if (iconRail) {
-        iconRail->setSecondaryCallback([this](IconId selectedId, IconId previousId) {
-            onIconSelected(selectedId, previousId);
-        });
-
-        iconRail->setModeChangeCallback([this](RailMode newMode) {
-            LOG_INFO(
-                Controls,
-                "IconRail mode changed to: {}",
-                newMode == RailMode::Minimized ? "Minimized" : "Normal");
-            // Trigger display resize for auto-scaling scenarios like Clock.
-            sendDisplayResizeUpdate();
-        });
-
-        LOG_INFO(Controls, "Connected to IconRail selection and mode callbacks");
-    }
-    else {
-        LOG_ERROR(Controls, "No IconRail available to connect to");
-    }
-}
-
 void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
 {
     LOG_INFO(
@@ -128,6 +104,10 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::EVOLUTION:
             // Evolution panel is only available in Training state.
             LOG_WARN(Controls, "Evolution panel not available in SimRunning state");
+            return;
+        case IconId::PLAY:
+            // Play is an action icon, not a panel.
+            LOG_DEBUG(Controls, "Play icon selected - no panel to show");
             return;
         case IconId::TREE:
             // Tree panel not yet implemented.

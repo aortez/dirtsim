@@ -4,7 +4,7 @@
 #include "RigidBodyPhysicsComponent.h"
 #include "core/PhysicsSettings.h"
 #include "core/World.h"
-#include "core/organisms/Organism.h"
+#include "core/organisms/Body.h"
 #include <cmath>
 
 namespace DirtSim {

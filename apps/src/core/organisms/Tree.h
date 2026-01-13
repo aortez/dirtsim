@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Organism.h"
+#include "Body.h"
 #include "TreeBrain.h"
 #include "TreeCommands.h"
 #include "TreeSensoryData.h"

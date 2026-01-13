@@ -84,7 +84,7 @@ TrainResults TrainRunner::run(
 
     // Subscribe to broadcasts.
     Api::RenderFormatSet::Command subCmd{
-        .format = RenderFormat::BASIC,
+        .format = RenderFormat::EnumType::Basic,
         .connectionId = "",
     };
     auto subResult = client_.sendCommand<Api::RenderFormatSet::Okay>(subCmd, 5000);

@@ -2,6 +2,7 @@
 
 #include "Entity.h"
 #include "ReflectSerializer.h"
+#include "RenderFormat.h"
 #include "Vector2.h"
 #include "organisms/TreeSensoryData.h"
 #include <cstdint>
@@ -12,17 +13,6 @@
 #include <zpp_bits.h>
 
 namespace DirtSim {
-
-/**
- * @brief Render format types for optimized network transmission.
- *
- * Defines the level of detail sent from server to UI clients.
- * Different formats trade payload size for rendering capability.
- */
-enum class RenderFormat : uint8_t {
-    BASIC = 0, // Minimal: material + fill only (2 bytes/cell = ~45 KB for 150×150).
-    DEBUG = 1  // Debug: + COM, velocity, pressure (16 bytes/cell = ~360 KB for 150×150).
-};
 
 /**
  * @brief Basic cell data for rendering (7 bytes).
@@ -93,17 +83,6 @@ struct BoneData {
     using serialize = zpp::bits::members<2>;
 };
 
-inline void to_json(nlohmann::json& j, const BoneData& bone)
-{
-    j = nlohmann::json{ { "cell_a", bone.cell_a }, { "cell_b", bone.cell_b } };
-}
-
-inline void from_json(const nlohmann::json& j, BoneData& bone)
-{
-    bone.cell_a = j.at("cell_a").get<Vector2i>();
-    bone.cell_b = j.at("cell_b").get<Vector2i>();
-}
-
 /**
  * @brief Render message containing optimized world state.
  *
@@ -111,7 +90,7 @@ inline void from_json(const nlohmann::json& j, BoneData& bone)
  * Format determines payload structure (BasicCell or DebugCell).
  */
 struct RenderMessage {
-    RenderFormat format; // Which format is payload encoded in?
+    RenderFormat::EnumType format; // Which format is payload encoded in?
 
     // Grid dimensions and simulation state.
     int16_t width = 0;
@@ -137,21 +116,10 @@ struct RenderMessage {
     using serialize = zpp::bits::members<10>;
 };
 
-/**
- * @brief ADL (Argument-Dependent Lookup) functions for nlohmann::json.
- */
-inline void to_json(nlohmann::json& j, const RenderFormat& format)
-{
-    j = static_cast<uint8_t>(format);
-}
-
-inline void from_json(const nlohmann::json& j, RenderFormat& format)
-{
-    format = static_cast<RenderFormat>(j.get<uint8_t>());
-}
-
 void to_json(nlohmann::json& j, const BasicCell& cell);
 void from_json(const nlohmann::json& j, BasicCell& cell);
+void to_json(nlohmann::json& j, const BoneData& bone);
+void from_json(const nlohmann::json& j, BoneData& bone);
 void to_json(nlohmann::json& j, const DebugCell& cell);
 void from_json(const nlohmann::json& j, DebugCell& cell);
 void to_json(nlohmann::json& j, const OrganismData& org);

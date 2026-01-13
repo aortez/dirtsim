@@ -41,7 +41,10 @@ struct SimRunning {
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
 
+    Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
+    Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);

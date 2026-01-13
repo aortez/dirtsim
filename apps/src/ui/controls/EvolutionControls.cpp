@@ -1,5 +1,4 @@
 #include "EvolutionControls.h"
-#include "core/LoggingChannels.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -8,8 +7,9 @@
 namespace DirtSim {
 namespace Ui {
 
-EvolutionControls::EvolutionControls(lv_obj_t* container, EventSink& eventSink)
-    : container_(container), eventSink_(eventSink)
+EvolutionControls::EvolutionControls(
+    lv_obj_t* container, EventSink& eventSink, bool evolutionStarted)
+    : container_(container), eventSink_(eventSink), evolutionStarted_(evolutionStarted)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -17,7 +17,7 @@ EvolutionControls::EvolutionControls(lv_obj_t* container, EventSink& eventSink)
     createMainView(mainView);
     viewController_->showView("main");
 
-    spdlog::info("EvolutionControls: Initialized");
+    spdlog::info("EvolutionControls: Initialized (started={})", evolutionStarted_);
 }
 
 EvolutionControls::~EvolutionControls()
@@ -29,12 +29,13 @@ void EvolutionControls::createMainView(lv_obj_t* view)
 {
     // Title.
     lv_obj_t* titleLabel = lv_label_create(view);
-    lv_label_set_text(titleLabel, "Evolution Controls");
-    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xDA70D6), 0); // Orchid to match icon.
+    lv_label_set_text(titleLabel, "Training Controls");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xDA70D6), 0); // Orchid.
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 12, 0);
 
+    // Stop button - only visible when evolution is running.
     stopButton_ = LVGLBuilder::actionButton(view)
                       .text("Stop")
                       .icon(LV_SYMBOL_STOP)
@@ -52,6 +53,26 @@ void EvolutionControls::createMainView(lv_obj_t* view)
                              .glowColor(0x00CC00)
                              .callback(onLiveDisplayToggled, this)
                              .buildOrLog();
+
+    updateButtonVisibility();
+}
+
+void EvolutionControls::updateButtonVisibility()
+{
+    if (stopButton_) {
+        if (evolutionStarted_) {
+            lv_obj_clear_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+}
+
+void EvolutionControls::setEvolutionStarted(bool started)
+{
+    evolutionStarted_ = started;
+    updateButtonVisibility();
 }
 
 void EvolutionControls::setLiveDisplayEnabled(bool enabled)

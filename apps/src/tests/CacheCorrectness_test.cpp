@@ -1,7 +1,7 @@
 #include "core/GridOfCells.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include "server/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/ScenarioRegistry.h"
 
 #include <gtest/gtest.h>
 #include <nlohmann/json.hpp>

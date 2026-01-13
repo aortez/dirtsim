@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Pimpl.h"
+#include "core/RenderFormat.h"
 #include "core/ScenarioConfig.h"
 #include "core/StateMachineBase.h"
 #include "core/StateMachineInterface.h"
@@ -19,7 +20,6 @@ class ScenarioRegistry;
 namespace DirtSim {
 class GamepadManager;
 class GenomeRepository;
-enum class RenderFormat : uint8_t;
 struct ServerConfig;
 struct WorldData;
 
@@ -101,7 +101,7 @@ public:
     void broadcastCommand(const std::string& messageType);
     void broadcastEventData(const std::string& messageType, const std::vector<std::byte>& payload);
 
-    void addSubscriber(const std::string& connectionId, RenderFormat format);
+    void addSubscriber(const std::string& connectionId, RenderFormat::EnumType format);
 
     // Default world dimensions optimized for HyperPixel 4.0 (800x480) with icon rail (76px).
     // Available space: 724x480 when panel closed, 474x480 when panel open.

@@ -17,6 +17,7 @@ struct EvolutionProgress;
 namespace Ui {
 
 class CellRenderer;
+class EvolutionConfigPanel;
 class EvolutionControls;
 class EventSink;
 class UiComponentManager;
@@ -46,7 +47,10 @@ public:
 
     void renderWorld(const WorldData& worldData);
 
+    void setEvolutionStarted(bool started);
+
 private:
+    bool evolutionStarted_ = false;
     UiComponentManager* uiManager_;
     EventSink& eventSink_;
 
@@ -58,12 +62,14 @@ private:
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
+    lv_obj_t* statusLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
 
     // World renderer.
     std::unique_ptr<CellRenderer> renderer_;
 
     // Panel content (created lazily).
+    std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
     std::unique_ptr<EvolutionControls> evolutionControls_;
 
     // Currently active panel.
@@ -73,7 +79,8 @@ private:
     void destroyUI();
     void clearPanelContent();
     void showPanelContent(IconId panelId);
-    void createEvolutionPanel(lv_obj_t* container);
+    void createCorePanel(lv_obj_t* container);
+    void createEvolutionConfigPanel(lv_obj_t* container);
 };
 
 } // namespace Ui
