@@ -8,15 +8,18 @@ typedef struct _lv_event_t lv_event_t;
 
 namespace DirtSim {
 
+struct WorldData;
+
 namespace Api {
 struct EvolutionProgress;
 }
 
 namespace Ui {
 
-class UiComponentManager;
+class CellRenderer;
 class EvolutionControls;
 class EventSink;
+class UiComponentManager;
 
 /**
  * Coordinates the training view display.
@@ -34,12 +37,14 @@ public:
     ~TrainingView();
 
     /**
-     * @brief Connect to the icon rail's selection callback.
-     * Must be called after construction to enable panel switching.
+     * @brief Handle icon selection change from state machine.
+     * Shows/hides panel content based on selected icon.
      */
-    void connectToIconRail();
+    void onIconSelected(IconId selectedId, IconId previousId);
 
     void updateProgress(const Api::EvolutionProgress& progress);
+
+    void renderWorld(const WorldData& worldData);
 
 private:
     UiComponentManager* uiManager_;
@@ -53,6 +58,10 @@ private:
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
+    lv_obj_t* worldContainer_ = nullptr;
+
+    // World renderer.
+    std::unique_ptr<CellRenderer> renderer_;
 
     // Panel content (created lazily).
     std::unique_ptr<EvolutionControls> evolutionControls_;
@@ -65,7 +74,6 @@ private:
     void clearPanelContent();
     void showPanelContent(IconId panelId);
     void createEvolutionPanel(lv_obj_t* container);
-    void onIconSelected(IconId selectedId, IconId previousId);
 };
 
 } // namespace Ui

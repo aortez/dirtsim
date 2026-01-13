@@ -1,6 +1,7 @@
 #pragma once
 
 #include "StateForward.h"
+#include "core/api/UiUpdateEvent.h"
 #include "server/api/EvolutionProgress.h"
 #include "ui/TrainingView.h"
 #include "ui/state-machine/Event.h"
@@ -23,10 +24,13 @@ struct Training {
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
 
-    Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
+    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
-    Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
 
     static constexpr const char* name() { return "Training"; }
 

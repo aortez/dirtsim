@@ -1,12 +1,15 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/RenderFormatSet.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
+#include <atomic>
 
 namespace DirtSim {
 namespace Ui {
@@ -34,6 +37,21 @@ void Training::onEnter(StateMachine& sm)
             }
             else {
                 LOG_INFO(State, "Evolution started on server");
+            }
+
+            // Subscribe to render stream for live training view.
+            static std::atomic<uint64_t> nextId{ 1 };
+            Api::RenderFormatSet::Command renderCmd;
+            renderCmd.format = RenderFormat::EnumType::Basic;
+
+            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+            auto renderResult = wsService.sendBinaryAndReceive(envelope);
+            if (renderResult.isError()) {
+                LOG_ERROR(
+                    State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
+            }
+            else {
+                LOG_INFO(State, "Subscribed to render stream for live training view");
             }
         }
         else {
@@ -164,6 +182,16 @@ State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 
     // Transition to Shutdown state.
     return Shutdown{};
+}
+
+State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
+{
+    // Render live training world.
+    if (view_) {
+        view_->renderWorld(evt.worldData);
+    }
+
+    return std::move(*this);
 }
 
 } // namespace State

@@ -3,6 +3,7 @@
 #include "core/Cell.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
+#include "core/ScenarioConfig.h"
 #include "core/World.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/organisms/OrganismManager.h"
@@ -75,6 +76,13 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     // Advance one physics step.
     evalWorld_->advanceTime(TIMESTEP);
     evalSimTime_ += TIMESTEP;
+
+    // Broadcast render message for live training view.
+    dsm.broadcastRenderMessage(
+        evalWorld_->getData(),
+        evalWorld_->getOrganismManager().getGrid(),
+        scenarioId,
+        Config::TreeGermination{});
 
     // Track max energy.
     Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);

@@ -4,6 +4,9 @@
 #include "controls/ExpandablePanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/WorldData.h"
+#include "rendering/CellRenderer.h"
+#include "rendering/RenderMode.h"
 #include "server/api/EvolutionProgress.h"
 #include "state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -16,6 +19,7 @@ namespace Ui {
 TrainingView::TrainingView(UiComponentManager* uiManager, EventSink& eventSink)
     : uiManager_(uiManager), eventSink_(eventSink)
 {
+    renderer_ = std::make_unique<CellRenderer>();
     createUI();
 }
 
@@ -33,88 +37,116 @@ void TrainingView::createUI()
 
     lv_obj_clean(container_);
 
-    // Create centered content container.
-    lv_obj_t* content = lv_obj_create(container_);
-    lv_obj_set_size(content, 400, 350);
-    lv_obj_center(content);
-    lv_obj_set_style_bg_color(content, lv_color_hex(0x1A1A2E), 0);
-    lv_obj_set_style_bg_opa(content, LV_OPA_90, 0);
-    lv_obj_set_style_radius(content, 12, 0);
-    lv_obj_set_style_border_width(content, 2, 0);
-    lv_obj_set_style_border_color(content, lv_color_hex(0x4A4A6A), 0);
-    lv_obj_set_style_pad_all(content, 20, 0);
-    lv_obj_set_flex_flow(content, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(content, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
+    // Create horizontal layout container for world + stats.
+    lv_obj_t* mainLayout = lv_obj_create(container_);
+    lv_obj_set_size(mainLayout, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(mainLayout, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mainLayout, 0, 0);
+    lv_obj_set_style_pad_all(mainLayout, 10, 0);
+    lv_obj_set_flex_flow(mainLayout, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        mainLayout, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(mainLayout, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Left side: World view container.
+    worldContainer_ = lv_obj_create(mainLayout);
+    lv_obj_set_size(worldContainer_, 300, 300);
+    lv_obj_set_style_bg_color(worldContainer_, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_opa(worldContainer_, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(worldContainer_, 8, 0);
+    lv_obj_set_style_border_width(worldContainer_, 2, 0);
+    lv_obj_set_style_border_color(worldContainer_, lv_color_hex(0x4A4A6A), 0);
+    lv_obj_set_style_pad_all(worldContainer_, 5, 0);
+    lv_obj_clear_flag(worldContainer_, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Initialize the renderer with the world container.
+    renderer_->initialize(worldContainer_, 9, 9);
+
+    // Right side: Stats container.
+    lv_obj_t* statsPanel = lv_obj_create(mainLayout);
+    lv_obj_set_size(statsPanel, 300, 300);
+    lv_obj_set_style_bg_color(statsPanel, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_opa(statsPanel, LV_OPA_90, 0);
+    lv_obj_set_style_radius(statsPanel, 8, 0);
+    lv_obj_set_style_border_width(statsPanel, 2, 0);
+    lv_obj_set_style_border_color(statsPanel, lv_color_hex(0x4A4A6A), 0);
+    lv_obj_set_style_pad_all(statsPanel, 15, 0);
+    lv_obj_set_flex_flow(statsPanel, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        statsPanel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(statsPanel, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title: "EVOLUTION".
-    lv_obj_t* title = lv_label_create(content);
+    lv_obj_t* title = lv_label_create(statsPanel);
     lv_label_set_text(title, "EVOLUTION");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(title, lv_color_hex(0x00FF88), 0);
-    lv_obj_set_style_pad_bottom(title, 20, 0);
+    lv_obj_set_style_pad_bottom(title, 15, 0);
 
     // Generation progress section.
-    genLabel_ = lv_label_create(content);
+    genLabel_ = lv_label_create(statsPanel);
     lv_label_set_text(genLabel_, "Generation: 0 / 0");
     lv_obj_set_style_text_color(genLabel_, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_pad_bottom(genLabel_, 5, 0);
+    lv_obj_set_style_pad_bottom(genLabel_, 3, 0);
 
-    generationBar_ = lv_bar_create(content);
-    lv_obj_set_size(generationBar_, 340, 20);
+    generationBar_ = lv_bar_create(statsPanel);
+    lv_obj_set_size(generationBar_, 250, 16);
     lv_bar_set_range(generationBar_, 0, 100);
     lv_bar_set_value(generationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(generationBar_, lv_color_hex(0x333355), 0);
     lv_obj_set_style_bg_color(generationBar_, lv_color_hex(0x00AA66), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(generationBar_, 5, 0);
-    lv_obj_set_style_radius(generationBar_, 5, LV_PART_INDICATOR);
-    lv_obj_set_style_pad_bottom(generationBar_, 15, 0);
+    lv_obj_set_style_radius(generationBar_, 4, 0);
+    lv_obj_set_style_radius(generationBar_, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_bottom(generationBar_, 10, 0);
 
     // Evaluation progress section.
-    evalLabel_ = lv_label_create(content);
+    evalLabel_ = lv_label_create(statsPanel);
     lv_label_set_text(evalLabel_, "Evaluating: 0 / 0");
     lv_obj_set_style_text_color(evalLabel_, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_pad_bottom(evalLabel_, 5, 0);
+    lv_obj_set_style_pad_bottom(evalLabel_, 3, 0);
 
-    evaluationBar_ = lv_bar_create(content);
-    lv_obj_set_size(evaluationBar_, 340, 20);
+    evaluationBar_ = lv_bar_create(statsPanel);
+    lv_obj_set_size(evaluationBar_, 250, 16);
     lv_bar_set_range(evaluationBar_, 0, 100);
     lv_bar_set_value(evaluationBar_, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x333355), 0);
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x6688CC), LV_PART_INDICATOR);
-    lv_obj_set_style_radius(evaluationBar_, 5, 0);
-    lv_obj_set_style_radius(evaluationBar_, 5, LV_PART_INDICATOR);
-    lv_obj_set_style_pad_bottom(evaluationBar_, 20, 0);
+    lv_obj_set_style_radius(evaluationBar_, 4, 0);
+    lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_bottom(evaluationBar_, 15, 0);
 
     // Fitness statistics section.
-    lv_obj_t* statsContainer = lv_obj_create(content);
-    lv_obj_set_size(statsContainer, 340, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(statsContainer, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(statsContainer, 0, 0);
-    lv_obj_set_style_pad_all(statsContainer, 0, 0);
-    lv_obj_set_flex_flow(statsContainer, LV_FLEX_FLOW_COLUMN);
+    lv_obj_t* fitnessContainer = lv_obj_create(statsPanel);
+    lv_obj_set_size(fitnessContainer, 250, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(fitnessContainer, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(fitnessContainer, 0, 0);
+    lv_obj_set_style_pad_all(fitnessContainer, 0, 0);
+    lv_obj_set_flex_flow(fitnessContainer, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        statsContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(statsContainer, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_pad_bottom(statsContainer, 20, 0);
+        fitnessContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(fitnessContainer, LV_OBJ_FLAG_SCROLLABLE);
 
-    bestThisGenLabel_ = lv_label_create(statsContainer);
+    bestThisGenLabel_ = lv_label_create(fitnessContainer);
     lv_label_set_text(bestThisGenLabel_, "Best (this gen):  --");
     lv_obj_set_style_text_color(bestThisGenLabel_, lv_color_hex(0xAAAACC), 0);
 
-    bestAllTimeLabel_ = lv_label_create(statsContainer);
+    bestAllTimeLabel_ = lv_label_create(fitnessContainer);
     lv_label_set_text(bestAllTimeLabel_, "Best (all time):  --");
     lv_obj_set_style_text_color(bestAllTimeLabel_, lv_color_hex(0xFFDD66), 0);
 
-    averageLabel_ = lv_label_create(statsContainer);
+    averageLabel_ = lv_label_create(fitnessContainer);
     lv_label_set_text(averageLabel_, "Average:          --");
     lv_obj_set_style_text_color(averageLabel_, lv_color_hex(0xAAAACC), 0);
 
-    LOG_INFO(Controls, "Training UI created");
+    LOG_INFO(Controls, "Training UI created with live world view");
 }
 
 void TrainingView::destroyUI()
 {
+    if (renderer_) {
+        renderer_->cleanup();
+    }
+
     if (container_) {
         lv_obj_clean(container_);
     }
@@ -127,6 +159,16 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    worldContainer_ = nullptr;
+}
+
+void TrainingView::renderWorld(const WorldData& worldData)
+{
+    if (!renderer_ || !worldContainer_) {
+        return;
+    }
+
+    renderer_->renderWorldData(worldData, worldContainer_, false, RenderMode::SHARP);
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
