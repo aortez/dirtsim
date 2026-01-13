@@ -78,7 +78,7 @@ CollisionResult RigidBodyCollisionComponent::detect(
         const Cell& cell = data.at(cellPos.x, cellPos.y);
 
         // Check for WALL.
-        if (cell.material_type == Material::EnumType::WALL) {
+        if (cell.material_type == Material::EnumType::Wall) {
             result.blocked = true;
             result.blockedCells.push_back(cellPos);
             addBoundaryCrossedNormal(cellPos);
@@ -95,11 +95,11 @@ CollisionResult RigidBodyCollisionComponent::detect(
         }
 
         // Check for dense solid material (not owned by this organism).
-        bool isSolid = cell.material_type == Material::EnumType::DIRT
-            || cell.material_type == Material::EnumType::SAND
-            || cell.material_type == Material::EnumType::WOOD
-            || cell.material_type == Material::EnumType::METAL
-            || cell.material_type == Material::EnumType::ROOT;
+        bool isSolid = cell.material_type == Material::EnumType::Dirt
+            || cell.material_type == Material::EnumType::Sand
+            || cell.material_type == Material::EnumType::Wood
+            || cell.material_type == Material::EnumType::Metal
+            || cell.material_type == Material::EnumType::Root;
 
         if (isSolid && cell.fill_ratio > 0.8 && cellOrg != organismId) {
             result.blocked = true;
@@ -191,17 +191,17 @@ Vector2d RigidBodyCollisionComponent::computeSupportForce(
 
         // Solid materials provide full support.
         Material::EnumType mat = groundCell.material_type;
-        if (mat == Material::EnumType::WALL || mat == Material::EnumType::METAL
-            || mat == Material::EnumType::WOOD || mat == Material::EnumType::DIRT
-            || mat == Material::EnumType::SAND || mat == Material::EnumType::SEED
-            || mat == Material::EnumType::ROOT) {
+        if (mat == Material::EnumType::Wall || mat == Material::EnumType::Metal
+            || mat == Material::EnumType::Wood || mat == Material::EnumType::Dirt
+            || mat == Material::EnumType::Sand || mat == Material::EnumType::Seed
+            || mat == Material::EnumType::Root) {
             supportFraction += 1.0;
         }
-        else if (mat == Material::EnumType::WATER) {
+        else if (mat == Material::EnumType::Water) {
             // Partial buoyancy.
             supportFraction += 0.5 * groundCell.fill_ratio;
         }
-        else if (mat == Material::EnumType::LEAF) {
+        else if (mat == Material::EnumType::Leaf) {
             supportFraction += 0.3 * groundCell.fill_ratio;
         }
     }
@@ -255,7 +255,7 @@ Vector2d RigidBodyCollisionComponent::computeGroundFriction(
 
         // World boundary = treat as WALL (provides full support and friction).
         if (!data.inBounds(groundX, groundY)) {
-            groundMaterials.push_back(Material::EnumType::WALL);
+            groundMaterials.push_back(Material::EnumType::Wall);
             continue;
         }
 

@@ -57,7 +57,7 @@ void RainingScenario::setup(World& world)
     // Add a solid floor of walls.
     uint32_t bottomY = world.getData().height - 1;
     for (int x = 0; x < world.getData().width; ++x) {
-        world.getData().at(x, bottomY).replaceMaterial(Material::EnumType::WALL, 1.0);
+        world.getData().at(x, bottomY).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Configure physics.
@@ -84,7 +84,7 @@ void RainingScenario::tick(World& world, double deltaTime)
         for (int y = 0; y < world.getData().height; ++y) {
             for (int x = 0; x < world.getData().width; ++x) {
                 const Cell& cell = world.getData().at(x, y);
-                if (cell.material_type != Material::EnumType::AIR) {
+                if (cell.material_type != Material::EnumType::Air) {
                     totalFill += cell.fill_ratio;
                 }
             }
@@ -101,10 +101,10 @@ void RainingScenario::tick(World& world, double deltaTime)
             for (int y = 0; y < world.getData().height; ++y) {
                 for (int x = 0; x < world.getData().width; ++x) {
                     Cell& cell = world.getData().at(x, y);
-                    if (cell.material_type == Material::EnumType::WATER) {
+                    if (cell.material_type == Material::EnumType::Water) {
                         cell.fill_ratio -= evaporationRate * deltaTime;
                         if (cell.fill_ratio < 0.01) {
-                            cell.replaceMaterial(Material::EnumType::AIR, 0.0);
+                            cell.replaceMaterial(Material::EnumType::Air, 0.0);
                         }
                     }
                 }
@@ -122,7 +122,7 @@ void RainingScenario::tick(World& world, double deltaTime)
 
         // Add water at the position.
         world.addMaterialAtCell(
-            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::WATER, 0.5);
+            { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Water, 0.5);
     }
 
     // Manage drain opening in the floor and evaporate water in the drain.
@@ -141,21 +141,21 @@ void RainingScenario::tick(World& world, double deltaTime)
 
         if (inDrain) {
             // Inside drain area - remove walls, evaporate water.
-            if (cell.material_type == Material::EnumType::WALL) {
-                cell.replaceMaterial(Material::EnumType::AIR, 0.0);
+            if (cell.material_type == Material::EnumType::Wall) {
+                cell.replaceMaterial(Material::EnumType::Air, 0.0);
             }
-            else if (cell.material_type == Material::EnumType::WATER) {
+            else if (cell.material_type == Material::EnumType::Water) {
                 // Evaporate water at 10% per tick.
                 cell.fill_ratio -= 0.1;
                 if (cell.fill_ratio < 0.01) {
-                    cell.replaceMaterial(Material::EnumType::AIR, 0.0);
+                    cell.replaceMaterial(Material::EnumType::Air, 0.0);
                 }
             }
         }
         else {
             // Outside drain area - ensure floor is walls.
-            if (cell.material_type != Material::EnumType::WALL) {
-                cell.replaceMaterial(Material::EnumType::WALL, 1.0);
+            if (cell.material_type != Material::EnumType::Wall) {
+                cell.replaceMaterial(Material::EnumType::Wall, 1.0);
             }
         }
     }

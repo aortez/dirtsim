@@ -100,8 +100,8 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
     const Cell& topLeft = simRunning.world->getData().at(0, 0);
     const Cell& bottomRight = simRunning.world->getData().at(
         simRunning.world->getData().width - 1, simRunning.world->getData().height - 1);
-    EXPECT_EQ(topLeft.material_type, Material::EnumType::WALL) << "Walls should be created";
-    EXPECT_EQ(bottomRight.material_type, Material::EnumType::WALL) << "Walls should be created";
+    EXPECT_EQ(topLeft.material_type, Material::EnumType::Wall) << "Walls should be created";
+    EXPECT_EQ(bottomRight.material_type, Material::EnumType::Wall) << "Walls should be created";
 }
 
 /**
@@ -142,7 +142,7 @@ TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
         static_cast<int>(cellBelow.material_type),
         cellBelow.fill_ratio);
 
-    EXPECT_EQ(startCell.material_type, Material::EnumType::DIRT)
+    EXPECT_EQ(startCell.material_type, Material::EnumType::Dirt)
         << "Should have dirt at starting position";
     EXPECT_GT(startCell.fill_ratio, 0.9) << "Dirt should be nearly full";
     EXPECT_LT(cellBelow.fill_ratio, 0.1) << "Cell below should be empty initially";
@@ -179,7 +179,7 @@ TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 
         // Check if dirt has moved to cell below.
         const Cell& cellBelow = simRunning.world->getData().at(testX, testY + 1);
-        if (cellBelow.material_type == Material::EnumType::DIRT && cellBelow.fill_ratio > 0.1) {
+        if (cellBelow.material_type == Material::EnumType::Dirt && cellBelow.fill_ratio > 0.1) {
             dirtFell = true;
             spdlog::info("Dirt fell after {} steps", i + 1);
             break;
@@ -189,7 +189,7 @@ TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
     // Verify: Dirt fell to the cell below within 200 frames.
     ASSERT_TRUE(dirtFell) << "Dirt should fall to next cell within 200 frames";
     const Cell& finalCellBelow = simRunning.world->getData().at(testX, testY + 1);
-    EXPECT_EQ(finalCellBelow.material_type, Material::EnumType::DIRT)
+    EXPECT_EQ(finalCellBelow.material_type, Material::EnumType::Dirt)
         << "Cell below should have dirt";
     EXPECT_GT(finalCellBelow.fill_ratio, 0.1) << "Cell below should have dirt";
     EXPECT_GT(simRunning.stepCount, 0u) << "Step count should have increased";
@@ -246,7 +246,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     // Verify: Water column initially exists (check a few cells).
     // Water column height = world.height / 3 = 28 / 3 = 9, so check y=5 (middle of column).
     const Cell& waterCell = simRunning.world->getData().at(3, 5);
-    EXPECT_EQ(waterCell.material_type, Material::EnumType::WATER)
+    EXPECT_EQ(waterCell.material_type, Material::EnumType::Water)
         << "Water column should exist initially";
     EXPECT_GT(waterCell.fill_ratio, 0.5) << "Water column cells should be filled";
 
@@ -273,7 +273,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     for (uint32_t y = 0; y < 20; ++y) {
         for (uint32_t x = 1; x <= 5; ++x) {
             const Cell& cell = simRunning.world->getData().at(x, y);
-            EXPECT_TRUE(cell.material_type != Material::EnumType::WATER || cell.fill_ratio < 0.1)
+            EXPECT_TRUE(cell.material_type != Material::EnumType::Water || cell.fill_ratio < 0.1)
                 << "Water column cells should be cleared at (" << x << "," << y << ")";
         }
     }
@@ -296,7 +296,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
     // Verify: Water column restored.
     ASSERT_TRUE(callbackInvoked);
     const Cell& restoredWaterCell = simRunning.world->getData().at(3, 5);
-    EXPECT_EQ(restoredWaterCell.material_type, Material::EnumType::WATER)
+    EXPECT_EQ(restoredWaterCell.material_type, Material::EnumType::Water)
         << "Water column should be restored";
     EXPECT_GT(restoredWaterCell.fill_ratio, 0.9) << "Water should be nearly full";
 }
@@ -313,7 +313,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     uint32_t quadX = simRunning.world->getData().width - 5;
     uint32_t quadY = simRunning.world->getData().height - 5;
     const Cell& quadCell = simRunning.world->getData().at(quadX, quadY);
-    EXPECT_EQ(quadCell.material_type, Material::EnumType::DIRT)
+    EXPECT_EQ(quadCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should exist initially";
     EXPECT_GT(quadCell.fill_ratio, 0.5) << "Quadrant cells should be filled";
 
@@ -339,7 +339,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     ASSERT_TRUE(callbackInvoked);
     const Cell& clearedCell = simRunning.world->getData().at(quadX, quadY);
     EXPECT_TRUE(
-        clearedCell.material_type != Material::EnumType::DIRT || clearedCell.fill_ratio < 0.1)
+        clearedCell.material_type != Material::EnumType::Dirt || clearedCell.fill_ratio < 0.1)
         << "Quadrant should be cleared";
 
     // Execute: Toggle quadrant back ON.
@@ -360,7 +360,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
     // Verify: Quadrant restored.
     ASSERT_TRUE(callbackInvoked);
     const Cell& restoredCell = simRunning.world->getData().at(quadX, quadY);
-    EXPECT_EQ(restoredCell.material_type, Material::EnumType::DIRT)
+    EXPECT_EQ(restoredCell.material_type, Material::EnumType::Dirt)
         << "Quadrant should be restored";
     EXPECT_GT(restoredCell.fill_ratio, 0.9) << "Quadrant cells should be filled";
 }
@@ -441,7 +441,7 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 
     // Verify: Cell is initially empty (AIR).
     const Cell& cellBefore = simRunning.world->getData().at(testX, testY);
-    EXPECT_EQ(cellBefore.material_type, Material::EnumType::AIR)
+    EXPECT_EQ(cellBefore.material_type, Material::EnumType::Air)
         << "Cell should be empty initially";
     EXPECT_LT(cellBefore.fill_ratio, 0.1) << "Cell should have minimal fill initially";
 
@@ -466,7 +466,7 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 
     // Verify: Cell now contains SEED material.
     const Cell& cellAfter = simRunning.world->getData().at(testX, testY);
-    EXPECT_EQ(cellAfter.material_type, Material::EnumType::SEED)
+    EXPECT_EQ(cellAfter.material_type, Material::EnumType::Seed)
         << "Cell should contain SEED material";
     EXPECT_GT(cellAfter.fill_ratio, 0.9) << "Cell should be nearly full with SEED";
 
@@ -620,7 +620,7 @@ TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
     // Verify duck exists.
     ASSERT_NE(duckId, INVALID_ORGANISM_ID);
     EXPECT_EQ(simRunning.world->getOrganismManager().getOrganismCount(), 1u);
-    EXPECT_EQ(simRunning.world->getData().at(duckX, duckY).material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(simRunning.world->getData().at(duckX, duckY).material_type, Material::EnumType::Wood);
 
     // Execute: Switch to Benchmark scenario.
     bool callbackInvoked = false;

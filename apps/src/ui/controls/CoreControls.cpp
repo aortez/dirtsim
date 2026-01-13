@@ -301,9 +301,9 @@ void CoreControls::createDrawMaterialView(lv_obj_t* view)
     // Material option buttons (excluding AIR since that's for erasing).
     buttonToDrawMaterial_.clear();
     const std::vector<Material::EnumType> drawableMaterials = {
-        Material::EnumType::DIRT, Material::EnumType::LEAF,  Material::EnumType::METAL,
-        Material::EnumType::ROOT, Material::EnumType::SAND,  Material::EnumType::SEED,
-        Material::EnumType::WALL, Material::EnumType::WATER, Material::EnumType::WOOD
+        Material::EnumType::Dirt, Material::EnumType::Leaf,  Material::EnumType::Metal,
+        Material::EnumType::Root, Material::EnumType::Sand,  Material::EnumType::Seed,
+        Material::EnumType::Wall, Material::EnumType::Water, Material::EnumType::Wood
     };
 
     for (Material::EnumType material : drawableMaterials) {

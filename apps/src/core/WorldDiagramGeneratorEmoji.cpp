@@ -42,34 +42,34 @@ std::string WorldDiagramGeneratorEmoji::generateEmojiDiagram(const World& world)
                 auto cellB = dynamic_cast<const Cell*>(&cell);
                 if (cellB) {
                     switch (cellB->material_type) {
-                        case Material::EnumType::AIR:
+                        case Material::EnumType::Air:
                             diagram << "⬜";
                             break;
-                        case Material::EnumType::DIRT:
+                        case Material::EnumType::Dirt:
                             diagram << "🟫";
                             break;
-                        case Material::EnumType::WATER:
+                        case Material::EnumType::Water:
                             diagram << "💧";
                             break;
-                        case Material::EnumType::WOOD:
+                        case Material::EnumType::Wood:
                             diagram << "🪵";
                             break;
-                        case Material::EnumType::SAND:
+                        case Material::EnumType::Sand:
                             diagram << "🟨";
                             break;
-                        case Material::EnumType::METAL:
+                        case Material::EnumType::Metal:
                             diagram << "🔩";
                             break;
-                        case Material::EnumType::ROOT:
+                        case Material::EnumType::Root:
                             diagram << "🌿";
                             break;
-                        case Material::EnumType::LEAF:
+                        case Material::EnumType::Leaf:
                             diagram << "🍃";
                             break;
-                        case Material::EnumType::SEED:
+                        case Material::EnumType::Seed:
                             diagram << "🌰";
                             break;
-                        case Material::EnumType::WALL:
+                        case Material::EnumType::Wall:
                             diagram << "🧱";
                             break;
                         default:
@@ -134,34 +134,34 @@ std::string WorldDiagramGeneratorEmoji::generateMixedDiagram(const World& world)
 
                     // Material emoji.
                     switch (cellB->material_type) {
-                        case Material::EnumType::AIR:
+                        case Material::EnumType::Air:
                             diagram << " ";
                             break;
-                        case Material::EnumType::DIRT:
+                        case Material::EnumType::Dirt:
                             diagram << "🟫";
                             break;
-                        case Material::EnumType::WATER:
+                        case Material::EnumType::Water:
                             diagram << "💧";
                             break;
-                        case Material::EnumType::WOOD:
+                        case Material::EnumType::Wood:
                             diagram << "🪵";
                             break;
-                        case Material::EnumType::SAND:
+                        case Material::EnumType::Sand:
                             diagram << "🟨";
                             break;
-                        case Material::EnumType::METAL:
+                        case Material::EnumType::Metal:
                             diagram << "🔩";
                             break;
-                        case Material::EnumType::ROOT:
+                        case Material::EnumType::Root:
                             diagram << "🌿";
                             break;
-                        case Material::EnumType::LEAF:
+                        case Material::EnumType::Leaf:
                             diagram << "🍃";
                             break;
-                        case Material::EnumType::SEED:
+                        case Material::EnumType::Seed:
                             diagram << "🌰";
                             break;
-                        case Material::EnumType::WALL:
+                        case Material::EnumType::Wall:
                             diagram << "🧱";
                             break;
                         default:

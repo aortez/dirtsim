@@ -87,8 +87,8 @@ for iteration = 0 to diffusionIterations:
 
 **Material Scatter Values:**
 - Controls how much light a material re-emits vs absorbs
-- High scatter (METAL: 0.8) = reflective, bounces light
-- Low scatter (WALL: 0.1) = absorbs most light
+- High scatter (Metal: 0.8) = reflective, bounces light
+- Low scatter (Wall: 0.1) = absorbs most light
 - Zero scatter = pure absorption
 
 ## Data Structures
@@ -151,16 +151,16 @@ uint32_t emissionColor = ColorNames::white();
 
 | Material | Opacity | Scatter | Tint | Emission |
 |----------|---------|---------|------|----------|
-| AIR      | 0.0     | 0.0     | white | 0.0 |
-| WATER    | 0.05    | 0.1     | slight blue | 0.0 |
-| LEAF     | 0.4     | 0.3     | green | 0.0 |
-| SAND     | 0.7     | 0.2     | warm | 0.0 |
-| DIRT     | 0.9     | 0.2     | brown | 0.0 |
-| WOOD     | 0.95    | 0.15    | warm | 0.0 |
-| SEED     | 0.3     | 0.2     | green | 0.1 (faint glow) |
-| ROOT     | 0.9     | 0.15    | brown | 0.0 |
-| METAL    | 1.0     | 0.8     | white | 0.0 |
-| WALL     | 1.0     | 0.1     | white | 0.0 |
+| Air      | 0.0     | 0.0     | white | 0.0 |
+| Water    | 0.05    | 0.1     | slight blue | 0.0 |
+| Leaf     | 0.4     | 0.3     | green | 0.0 |
+| Sand     | 0.7     | 0.2     | warm | 0.0 |
+| Dirt     | 0.9     | 0.2     | brown | 0.0 |
+| Wood     | 0.95    | 0.15    | warm | 0.0 |
+| Seed     | 0.3     | 0.2     | green | 0.1 (faint glow) |
+| Root     | 0.9     | 0.15    | brown | 0.0 |
+| Metal    | 1.0     | 0.8     | white | 0.0 |
+| Wall     | 1.0     | 0.1     | white | 0.0 |
 
 ## WorldLightCalculator
 
@@ -376,7 +376,7 @@ TEST(WorldLightCalculator, SunlightBlockedByWall) {
     World world(10, 10);
     // Wall across middle.
     for (int x = 0; x < 10; x++) {
-        world.getCell(x, 3).setMaterialType(MaterialType::WALL);
+        world.getCell(x, 3).setMaterialType(MaterialType::Wall);
     }
 
     WorldLightCalculator calc;
@@ -406,7 +406,7 @@ TEST(WorldLightCalculator, PointLightInDarkRoom) {
     World world(20, 20);
     // Ceiling blocks sun.
     for (int x = 0; x < 20; x++) {
-        world.getCell(x, 0).setMaterialType(MaterialType::WALL);
+        world.getCell(x, 0).setMaterialType(MaterialType::Wall);
     }
 
     // Point light in center.
@@ -436,7 +436,7 @@ TEST(WorldLightCalculator, DiffusionSoftensShadows) {
     World world(20, 10);
     // Pillar creates shadow.
     for (int y = 0; y < 5; y++) {
-        world.getCell(10, y).setMaterialType(MaterialType::WALL);
+        world.getCell(10, y).setMaterialType(MaterialType::Wall);
     }
 
     WorldLightCalculator calc;

@@ -7,7 +7,7 @@ FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
     FragmentationParams params;
 
     switch (type) {
-        case Material::EnumType::WATER:
+        case Material::EnumType::Water:
             // Gentle spreading, not explosive.
             params.radial_bias = 0.6;
             params.min_arc = M_PI / 3.0;
@@ -16,7 +16,7 @@ FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
             params.base_speed = 0.5;
             break;
 
-        case Material::EnumType::SAND:
+        case Material::EnumType::Sand:
             // Granular scatter.
             params.radial_bias = 0.5;
             params.min_arc = M_PI / 4.0;
@@ -25,7 +25,7 @@ FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
             params.base_speed = 0.6;
             break;
 
-        case Material::EnumType::DIRT:
+        case Material::EnumType::Dirt:
             // Chunky breakup.
             params.radial_bias = 0.4;
             params.min_arc = M_PI / 4.0;
@@ -34,7 +34,7 @@ FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
             params.base_speed = 0.5;
             break;
 
-        case Material::EnumType::METAL:
+        case Material::EnumType::Metal:
             // Dramatic shatter.
             params.radial_bias = 0.9;
             params.min_arc = M_PI / 2.0;
@@ -43,12 +43,12 @@ FragmentationParams getMaterialFragmentationParams(Material::EnumType type)
             params.base_speed = 0.8;
             break;
 
-        case Material::EnumType::AIR:
-        case Material::EnumType::LEAF:
-        case Material::EnumType::ROOT:
-        case Material::EnumType::SEED:
-        case Material::EnumType::WALL:
-        case Material::EnumType::WOOD:
+        case Material::EnumType::Air:
+        case Material::EnumType::Leaf:
+        case Material::EnumType::Root:
+        case Material::EnumType::Seed:
+        case Material::EnumType::Wall:
+        case Material::EnumType::Wood:
             // Use struct defaults.
             break;
     }

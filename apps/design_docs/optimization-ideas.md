@@ -151,7 +151,7 @@ int water_count = 0;
 for (int i = 0; i < 9; ++i) {
     if (i == 4) continue;  // Skip center
     MaterialType mat = static_cast<MaterialType>((mat_neighborhood >> (i * 4)) & 0xF);
-    if (mat == MaterialType::WATER) ++water_count;
+    if (mat == MaterialType::Water) ++water_count;
 }
 
 // Check if all neighbors are same material (cohesion test):
@@ -299,7 +299,7 @@ uint32_t hash = (y / CHUNK_SIZE) * GRID_WIDTH + (x / CHUNK_SIZE);
 
 ### Early Exit Conditions
 - Skip if force below threshold: `if (force.magnitude() < 0.001) continue;`
-- Skip if material immobile: `if (material == WALL) continue;`
+- Skip if material immobile: `if (material == Wall) continue;`
 - Skip if region quiet: `if (region.quiet_frames > 60) continue;`
 
 ### Approximate Physics for Distant Effects

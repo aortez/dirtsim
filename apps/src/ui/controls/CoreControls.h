@@ -23,7 +23,7 @@ class UiComponentManager;
 
 struct CoreControlsState {
     bool debugDrawEnabled = false;
-    Material::EnumType drawMaterial = Material::EnumType::WALL;
+    Material::EnumType drawMaterial = Material::EnumType::Wall;
     InteractionMode interactionMode = InteractionMode::NONE;
     RenderMode renderMode = RenderMode::ADAPTIVE;
     double scaleFactor = 0.4;

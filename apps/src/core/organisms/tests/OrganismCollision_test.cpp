@@ -26,7 +26,7 @@ protected:
 
         // Add floor at bottom row.
         for (uint32_t x = 0; x < width; ++x) {
-            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         return world;
@@ -51,7 +51,7 @@ TEST_F(OrganismCollisionTest, DetectsWallCollision)
     TestOrganism org(OrganismId{ 1 });
 
     // Add a wall at (5, 5).
-    world->getData().at(5, 5).replaceMaterial(Material::EnumType::WALL, 1.0);
+    world->getData().at(5, 5).replaceMaterial(Material::EnumType::Wall, 1.0);
 
     std::vector<Vector2i> target_cells = { { 5, 5 } };
     CollisionInfo info = org.detectCollisions(target_cells, *world);
@@ -150,7 +150,7 @@ TEST_F(OrganismCollisionTest, DetectsDenseDirtCollision)
     TestOrganism org(OrganismId{ 1 });
 
     // Place dense dirt at (5, 5).
-    world->getData().at(5, 5).replaceMaterial(Material::EnumType::DIRT, 0.9);
+    world->getData().at(5, 5).replaceMaterial(Material::EnumType::Dirt, 0.9);
 
     std::vector<Vector2i> target_cells = { { 5, 5 } };
     CollisionInfo info = org.detectCollisions(target_cells, *world);
@@ -164,7 +164,7 @@ TEST_F(OrganismCollisionTest, NoCollisionWithSparseDirt)
     TestOrganism org(OrganismId{ 1 });
 
     // Place sparse dirt at (5, 5) - below threshold.
-    world->getData().at(5, 5).replaceMaterial(Material::EnumType::DIRT, 0.5);
+    world->getData().at(5, 5).replaceMaterial(Material::EnumType::Dirt, 0.5);
 
     std::vector<Vector2i> target_cells = { { 5, 5 } };
     CollisionInfo info = org.detectCollisions(target_cells, *world);

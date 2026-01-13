@@ -31,7 +31,7 @@ struct Cell {
     static constexpr uint32_t WIDTH = 30;
     static constexpr uint32_t HEIGHT = 30;
 
-    Material::EnumType material_type = Material::EnumType::AIR;
+    Material::EnumType material_type = Material::EnumType::Air;
     float fill_ratio = 0.0f;
     Vector2f com = {};
     Vector2f velocity = {};

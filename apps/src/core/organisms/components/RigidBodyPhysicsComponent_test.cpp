@@ -49,7 +49,7 @@ TEST_F(RigidBodyPhysicsComponentTest, EmptyCellsContributeZeroForce)
     RigidBodyPhysicsComponent physics;
 
     // Cell at (5,5) is AIR with no pending force.
-    ASSERT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::AIR);
+    ASSERT_EQ(world->getData().at(5, 5).material_type, Material::EnumType::Air);
 
     std::vector<Vector2i> cells = { { 5, 5 } };
     physics.gatherForces(*world, cells);
@@ -150,7 +150,7 @@ TEST_F(RigidBodyPhysicsComponentTest, IntegrateWithZeroMassDoesNothing)
 TEST_F(RigidBodyPhysicsComponentTest, AirResistanceOpposesMotion)
 {
     auto world = createWorld();
-    RigidBodyPhysicsComponent physics(Material::EnumType::WOOD);
+    RigidBodyPhysicsComponent physics(Material::EnumType::Wood);
 
     const Vector2d velocity{ 10.0, 0.0 };
     physics.applyAirResistance(*world, velocity);
@@ -165,7 +165,7 @@ TEST_F(RigidBodyPhysicsComponentTest, AirResistanceOpposesMotion)
 TEST_F(RigidBodyPhysicsComponentTest, AirResistanceZeroWhenStationary)
 {
     auto world = createWorld();
-    RigidBodyPhysicsComponent physics(Material::EnumType::WOOD);
+    RigidBodyPhysicsComponent physics(Material::EnumType::Wood);
 
     const Vector2d velocity{ 0.0, 0.0 };
     physics.applyAirResistance(*world, velocity);
@@ -179,8 +179,8 @@ TEST_F(RigidBodyPhysicsComponentTest, AirResistanceScalesWithVelocitySquared)
 {
     auto world = createWorld();
 
-    RigidBodyPhysicsComponent physics1(Material::EnumType::WOOD);
-    RigidBodyPhysicsComponent physics2(Material::EnumType::WOOD);
+    RigidBodyPhysicsComponent physics1(Material::EnumType::Wood);
+    RigidBodyPhysicsComponent physics2(Material::EnumType::Wood);
 
     physics1.applyAirResistance(*world, { 5.0, 0.0 });
     physics2.applyAirResistance(*world, { 10.0, 0.0 });

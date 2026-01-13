@@ -11,7 +11,7 @@ Material::EnumType ColorMaterialMapper::findNearestMaterial(uint8_t r, uint8_t g
     const auto& materialColors = getMaterialColors();
 
     float minDistance = std::numeric_limits<float>::max();
-    Material::EnumType nearestMaterial = Material::EnumType::DIRT; // Default fallback.
+    Material::EnumType nearestMaterial = Material::EnumType::Dirt; // Default fallback.
 
     // Check each material color (skipping AIR at index 0).
     for (size_t i = 1; i <= 9; ++i) {
@@ -46,7 +46,7 @@ std::vector<std::vector<Material::EnumType>> ColorMaterialMapper::rgbToMaterials
 
             // Transparent pixels map to AIR.
             if (pixel.a < alphaThresholdByte) {
-                result[y][x] = Material::EnumType::AIR;
+                result[y][x] = Material::EnumType::Air;
             }
             else {
                 result[y][x] = findNearestMaterial(pixel.r, pixel.g, pixel.b);

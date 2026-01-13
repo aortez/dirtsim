@@ -468,7 +468,7 @@ void SimPlayground::onCanvasClicked(lv_event_t* e)
 
     // DRAW mode places the selected material, ERASE mode places AIR.
     Material::EnumType material = (mode == InteractionMode::ERASE)
-        ? Material::EnumType::AIR
+        ? Material::EnumType::Air
         : self->coreControlsState_.drawMaterial;
     double fillRatio = (mode == InteractionMode::ERASE) ? 0.0 : 1.0;
 

@@ -485,7 +485,7 @@ GridBuffer<Material::EnumType> FontSampler::sampleUtf8CharacterMaterialGrid(
     GridBuffer<RgbPixel> rgb = sampleUtf8CharacterRgbGrid(utf8Char);
 
     GridBuffer<Material::EnumType> result;
-    result.resize(rgb.width, rgb.height, Material::EnumType::AIR);
+    result.resize(rgb.width, rgb.height, Material::EnumType::Air);
 
     const uint8_t alphaThresholdByte = static_cast<uint8_t>(alphaThreshold * 255.0f);
 
@@ -714,7 +714,7 @@ GridBuffer<Material::EnumType> FontSampler::downsample(
     }
 
     GridBuffer<Material::EnumType> result;
-    result.resize(targetWidth, targetHeight, Material::EnumType::AIR);
+    result.resize(targetWidth, targetHeight, Material::EnumType::Air);
 
     const int srcW = src.width;
     const int srcH = src.height;
@@ -741,7 +741,7 @@ GridBuffer<Material::EnumType> FontSampler::downsample(
                 for (int sx = srcX0; sx < srcX1; ++sx) {
                     Material::EnumType mat = row[sx];
                     counts[static_cast<size_t>(mat)]++;
-                    if (mat != Material::EnumType::AIR) {
+                    if (mat != Material::EnumType::Air) {
                         nonAirTotal++;
                     }
                 }
@@ -751,11 +751,11 @@ GridBuffer<Material::EnumType> FontSampler::downsample(
             int regionSize = (srcX1 - srcX0) * (srcY1 - srcY0);
             if (nonAirTotal * 2 < regionSize) {
                 // Less than half is non-AIR, keep as AIR.
-                result.at(tx, ty) = Material::EnumType::AIR;
+                result.at(tx, ty) = Material::EnumType::Air;
             }
             else {
                 // Find most common non-AIR material.
-                Material::EnumType best = Material::EnumType::AIR;
+                Material::EnumType best = Material::EnumType::Air;
                 int bestCount = 0;
                 for (size_t i = 1; i < counts.size(); ++i) {
                     if (counts[i] > bestCount) {

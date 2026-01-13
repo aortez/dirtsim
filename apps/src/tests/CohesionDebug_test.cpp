@@ -30,7 +30,7 @@ TEST_F(CohesionDebugTest, OneByThreeColumn)
 
     // Fill all cells with dirt.
     for (uint32_t y = 0; y < 3; y++) {
-        world->getData().at(0, y).replaceMaterial(Material::EnumType::DIRT, 1.0);
+        world->getData().at(0, y).replaceMaterial(Material::EnumType::Dirt, 1.0);
         world->getData().at(0, y).setCOM(0.0, 0.0); // Start centered.
     }
 
@@ -71,7 +71,7 @@ TEST_F(CohesionDebugTest, ThreeByThreeGrid)
     // Fill all cells with dirt.
     for (uint32_t y = 0; y < 3; y++) {
         for (uint32_t x = 0; x < 3; x++) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::DIRT, 1.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0);
             world->getData().at(x, y).setCOM(0.0, 0.0); // Start centered.
         }
     }
@@ -115,7 +115,7 @@ TEST_F(CohesionDebugTest, OffsetCOMs)
     // Fill all cells with dirt.
     for (uint32_t y = 0; y < 3; y++) {
         for (uint32_t x = 0; x < 3; x++) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::DIRT, 1.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0);
             world->getData().at(x, y).setCOM(0.0, 0.0);
         }
     }
@@ -147,9 +147,9 @@ TEST_F(CohesionDebugTest, DirectionalCorrection)
     world->getPhysicsSettings().cohesion_strength = 150.0;
 
     // Setup: Left-Center-Right dirt cells.
-    world->getData().at(0, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
-    world->getData().at(1, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
-    world->getData().at(2, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
+    world->getData().at(0, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
+    world->getData().at(1, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
+    world->getData().at(2, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
 
     // All COMs centered initially.
     world->getData().at(0, 0).setCOM(0.0, 0.0);
@@ -194,9 +194,9 @@ TEST_F(CohesionDebugTest, AlignmentGating)
     spdlog::set_level(spdlog::level::trace);             // Enable trace logging.
 
     // All dirt cells.
-    world->getData().at(0, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
-    world->getData().at(1, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
-    world->getData().at(2, 0).replaceMaterial(Material::EnumType::DIRT, 1.0);
+    world->getData().at(0, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
+    world->getData().at(1, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
+    world->getData().at(2, 0).replaceMaterial(Material::EnumType::Dirt, 1.0);
 
     // Test Case A: COM offset TOWARD neighbors (should skip clustering).
     spdlog::info("--- Case A: COM offset toward neighbors (clustering opposes centering) ---");
@@ -221,7 +221,7 @@ TEST_F(CohesionDebugTest, AlignmentGating)
     spdlog::info("--- Case B: COM offset away from neighbors (clustering helps centering) ---");
 
     // Only RIGHT neighbor exists (left cell is AIR).
-    world->getData().at(0, 0).replaceMaterial(Material::EnumType::AIR, 0.0); // No left neighbor.
+    world->getData().at(0, 0).replaceMaterial(Material::EnumType::Air, 0.0); // No left neighbor.
     world->getData().at(1, 0).setCOM(
         -0.6, 0.0); // Center cell COM shifted LEFT (away from right neighbor).
     world->getData().at(2, 0).setCOM(0.0, 0.0); // Right neighbor centered.

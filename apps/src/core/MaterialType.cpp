@@ -9,7 +9,7 @@ namespace DirtSim::Material {
 // Material property database.
 // Each material is defined using designated initializers for easy editing and understanding.
 static std::array<Properties, 10> MATERIAL_PROPERTIES = {
-    { // ========== AIR ==========
+    { // ========== Air ==========
       // Nearly massless, high elasticity, no cohesion/adhesion, very high pressure diffusion.
       { .density = 0.001,
         .elasticity = 1.0,
@@ -28,7 +28,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = true,
         .light = { .opacity = 0.0f, .scatter = 0.0f } },
 
-      // ========== DIRT ==========
+      // ========== Dirt ==========
       { .density = 1.5,
         .elasticity = 0.2,
         .cohesion = 0.2,
@@ -46,7 +46,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 0.7f, .scatter = 0.2f, .tint = 0x8B6914FF } },
 
-      // ========== LEAF ==========
+      // ========== Leaf ==========
       { .density = 0.3,
         .elasticity = 0.4,
         .cohesion = 0.7,
@@ -64,7 +64,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 0.1f, .scatter = 0.3f, .tint = 0x228B22FF } },
 
-      // ========== METAL ==========
+      // ========== Metal ==========
       { .density = 7.8,
         .elasticity = 0.8,
         .cohesion = 1.0,
@@ -82,7 +82,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 1.0f, .scatter = 0.8f } },
 
-      // ========== ROOT ==========
+      // ========== Root ==========
       // Underground tree tissue that grips soil and forms networks.
       { .density = 1.2,
         .elasticity = 0.3,
@@ -101,7 +101,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 0.7f, .scatter = 0.15f, .tint = 0x5C4033FF } },
 
-      // ========== SAND ==========
+      // ========== Sand ==========
       { .density = 1.8,
         .elasticity = 0.2,
         .cohesion = 0.2,
@@ -119,7 +119,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 0.4f, .scatter = 0.2f, .tint = 0xE6D5ACFF } },
 
-      // ========== SEED ==========
+      // ========== Seed ==========
       { .density = 1.5,
         .elasticity = 0.2,
         .cohesion = 0.9,
@@ -141,7 +141,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
                    .emission = 0.1f,
                    .emission_color = 0x80FF80FF } },
 
-      // ========== WALL ==========
+      // ========== Wall ==========
       { .density = 1000.0,
         .elasticity = 0.9,
         .cohesion = 1.0,
@@ -159,7 +159,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = false,
         .light = { .opacity = 1.0f, .scatter = 0.3f } },
 
-      // ========== WATER ==========
+      // ========== Water ==========
       { .density = 1.0,
         .elasticity = 0.1,
         .cohesion = 0.1,
@@ -177,7 +177,7 @@ static std::array<Properties, 10> MATERIAL_PROPERTIES = {
         .is_fluid = true,
         .light = { .opacity = 0.03f, .scatter = 0.5f, .tint = 0xCCE6FFFF } },
 
-      // ========== WOOD ==========
+      // ========== Wood ==========
       { .density = 0.3,
         .elasticity = 0.6,
         .cohesion = 0.7,

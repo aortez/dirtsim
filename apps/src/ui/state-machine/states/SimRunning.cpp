@@ -181,8 +181,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
             Material::EnumType material = (cwc.command.button == UiApi::MouseButton::LEFT)
-                ? Material::EnumType::WALL
-                : Material::EnumType::AIR;
+                ? Material::EnumType::Wall
+                : Material::EnumType::Air;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
@@ -218,8 +218,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
         auto cell = playground_->pixelToCell(cwc.command.pixelX, cwc.command.pixelY);
         if (cell) {
             Material::EnumType material = (*activeMouseButton == UiApi::MouseButton::LEFT)
-                ? Material::EnumType::WALL
-                : Material::EnumType::AIR;
+                ? Material::EnumType::Wall
+                : Material::EnumType::Air;
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };

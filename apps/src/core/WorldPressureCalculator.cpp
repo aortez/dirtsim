@@ -542,7 +542,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                 const Cell& cell = data.at(x, y);
 
                 // Skip empty cells and walls.
-                if (cell.isEmpty() || cell.material_type == Material::EnumType::WALL) {
+                if (cell.isEmpty() || cell.material_type == Material::EnumType::Wall) {
                     continue;
                 }
 
@@ -578,7 +578,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                     else {
                         const Cell& neighbor = data.at(nx, ny);
 
-                        if (neighbor.material_type == Material::EnumType::WALL) {
+                        if (neighbor.material_type == Material::EnumType::Wall) {
                             neighbor_pressure = current_pressure;
                             neighbor_diffusion = diffusion_rate;
                         }
@@ -588,7 +588,7 @@ void WorldPressureCalculator::applyPressureDiffusion(World& world, float deltaTi
                         }
                         else if (
                             TREAT_AIR_AS_BOUNDARY
-                            && neighbor.material_type == Material::EnumType::AIR) {
+                            && neighbor.material_type == Material::EnumType::Air) {
                             // Treat AIR as no-flux boundary (pressure sealed in).
                             neighbor_pressure = current_pressure;
                             neighbor_diffusion = diffusion_rate;

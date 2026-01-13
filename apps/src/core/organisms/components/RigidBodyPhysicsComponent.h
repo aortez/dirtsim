@@ -13,7 +13,7 @@ namespace DirtSim {
  */
 class RigidBodyPhysicsComponent : public PhysicsComponent {
 public:
-    explicit RigidBodyPhysicsComponent(Material::EnumType material = Material::EnumType::WOOD);
+    explicit RigidBodyPhysicsComponent(Material::EnumType material = Material::EnumType::Wood);
 
     void addForce(Vector2d force) override;
     void applyAirResistance(const World& world, Vector2d velocity) override;
@@ -22,7 +22,7 @@ public:
     Vector2d getPendingForce() const override;
     void integrate(Vector2d& velocity, double mass, double dt) override;
 
-    Material::EnumType material = Material::EnumType::WOOD;
+    Material::EnumType material = Material::EnumType::Wood;
     Vector2d pendingForce{ 0.0, 0.0 };
 };
 

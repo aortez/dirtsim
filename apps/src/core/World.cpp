@@ -99,7 +99,7 @@ World::World(int width, int height)
       com_cohesion_range_(1),
       air_resistance_enabled_(true),
       air_resistance_strength_(0.1),
-      selected_material_(Material::EnumType::DIRT),
+      selected_material_(Material::EnumType::Dirt),
       pImpl(),
       organism_manager_(std::make_unique<OrganismManager>()),
       rng_(std::make_unique<std::mt19937>(std::random_device{}()))
@@ -125,7 +125,7 @@ World::World(int width, int height)
 
     // Initialize with empty air.
     for (auto& cell : pImpl->data_.cells) {
-        cell = Cell{ Material::EnumType::AIR, 0.0 };
+        cell = Cell{ Material::EnumType::Air, 0.0 };
     }
 
     // Note: Boundary walls are now set up by Scenarios in their setup() method.
@@ -628,7 +628,7 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
     }
 
     // AIR means "clear this cell" - delegate to clearCellAtPosition.
-    if (material == Material::EnumType::AIR) {
+    if (material == Material::EnumType::Air) {
         clearCellAtPosition(pos);
         return;
     }
@@ -870,7 +870,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
             for (const auto& pos : organism.getCells()) {
                 // TODO: Preserve original material type. For now, use WOOD.
                 Cell& cell = pImpl->data_.at(pos.x, pos.y);
-                cell.replaceMaterial(Material::EnumType::WOOD, 1.0);
+                cell.replaceMaterial(Material::EnumType::Wood, 1.0);
 
                 // Write COM to anchor cell (sub-cell position).
                 if (pos == anchor) {
@@ -1315,9 +1315,9 @@ void World::resolveRigidBodies(double deltaTime)
             Cell& cell = data.at(pos.x, pos.y);
 
             // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != Material::EnumType::SEED
-                && cell.material_type != Material::EnumType::ROOT
-                && cell.material_type != Material::EnumType::WOOD) {
+            if (cell.material_type != Material::EnumType::Seed
+                && cell.material_type != Material::EnumType::Root
+                && cell.material_type != Material::EnumType::Wood) {
                 continue;
             }
 
@@ -1432,9 +1432,9 @@ void World::pruneDisconnectedFragments()
             Cell& cell = data.at(pos.x, pos.y);
 
             // Only SEED, ROOT, and WOOD form structural connections (LEAF excluded).
-            if (cell.material_type != Material::EnumType::SEED
-                && cell.material_type != Material::EnumType::ROOT
-                && cell.material_type != Material::EnumType::WOOD) {
+            if (cell.material_type != Material::EnumType::Seed
+                && cell.material_type != Material::EnumType::Root
+                && cell.material_type != Material::EnumType::Wood) {
                 continue;
             }
 
@@ -1554,20 +1554,20 @@ Vector2d World::computeOrganismSupportForce(
         Material::EnumType mat = ground_cell.material_type;
 
         // Solid materials provide full support (normal force).
-        if (mat == Material::EnumType::WALL || mat == Material::EnumType::METAL
-            || mat == Material::EnumType::WOOD || mat == Material::EnumType::DIRT
-            || mat == Material::EnumType::SAND || mat == Material::EnumType::SEED
-            || mat == Material::EnumType::ROOT) {
+        if (mat == Material::EnumType::Wall || mat == Material::EnumType::Metal
+            || mat == Material::EnumType::Wood || mat == Material::EnumType::Dirt
+            || mat == Material::EnumType::Sand || mat == Material::EnumType::Seed
+            || mat == Material::EnumType::Root) {
             // Full support from this contact point.
             support_fraction += 1.0;
         }
-        else if (mat == Material::EnumType::WATER) {
+        else if (mat == Material::EnumType::Water) {
             // Partial buoyancy-based support from water.
             // Support = (water_density / organism_density) based on fill ratio.
-            double water_density = Material::getProperties(Material::EnumType::WATER).density;
+            double water_density = Material::getProperties(Material::EnumType::Water).density;
             support_fraction += water_density * ground_cell.fill_ratio;
         }
-        else if (mat == Material::EnumType::LEAF) {
+        else if (mat == Material::EnumType::Leaf) {
             // Leaves provide weak support.
             support_fraction += 0.3 * ground_cell.fill_ratio;
         }
@@ -1836,7 +1836,7 @@ void World::processMaterialMoves()
 
         // Apply any pressure from excess that couldn't transfer.
         if (move.pressure_from_excess > 0.0) {
-            if (toCell.material_type == Material::EnumType::WALL) {
+            if (toCell.material_type == Material::EnumType::Wall) {
                 fromCell.pressure += move.pressure_from_excess;
 
                 spdlog::debug(
@@ -1986,14 +1986,14 @@ void World::setupBoundaryWalls()
 
     // Top and bottom walls.
     for (int x = 0; x < pImpl->data_.width; ++x) {
-        pImpl->data_.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
-        pImpl->data_.at(x, pImpl->data_.height - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
+        pImpl->data_.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+        pImpl->data_.at(x, pImpl->data_.height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Left and right walls.
     for (int y = 0; y < pImpl->data_.height; ++y) {
-        pImpl->data_.at(0, y).replaceMaterial(Material::EnumType::WALL, 1.0);
-        pImpl->data_.at(pImpl->data_.width - 1, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+        pImpl->data_.at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+        pImpl->data_.at(pImpl->data_.width - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     spdlog::info("Boundary walls setup complete");

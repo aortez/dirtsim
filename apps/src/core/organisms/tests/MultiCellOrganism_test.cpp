@@ -38,13 +38,13 @@ protected:
         // Clear interior to air.
         for (int y = 1; y < height - 1; ++y) {
             for (int x = 1; x < width - 1; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
         // Ensure floor is WALL.
         for (int x = 0; x < width; ++x) {
-            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         return world;
@@ -82,7 +82,7 @@ TEST_F(MultiCellOrganismTest, StickFallsAsUnit)
 
     CellTracker tracker(*world, id, 20);
     for (const auto& pos : stick->getGridPositions()) {
-        tracker.trackCell(pos, Material::EnumType::WOOD, 0);
+        tracker.trackCell(pos, Material::EnumType::Wood, 0);
     }
 
     // Run physics - stick should fall.
@@ -92,7 +92,7 @@ TEST_F(MultiCellOrganismTest, StickFallsAsUnit)
 
         // Track current cells.
         for (const auto& pos : stick->getGridPositions()) {
-            tracker.trackCell(pos, Material::EnumType::WOOD, frame);
+            tracker.trackCell(pos, Material::EnumType::Wood, frame);
         }
 
         // Check displacement every 20 frames.
@@ -150,7 +150,7 @@ TEST_F(MultiCellOrganismTest, StickMovesHorizontallyWithoutTearing)
 
     CellTracker tracker(*world, id, 50);
     for (const auto& pos : stick->getGridPositions()) {
-        tracker.trackCell(pos, Material::EnumType::WOOD, 0);
+        tracker.trackCell(pos, Material::EnumType::Wood, 0);
     }
 
     // Apply horizontal force.
@@ -170,7 +170,7 @@ TEST_F(MultiCellOrganismTest, StickMovesHorizontallyWithoutTearing)
             << "Cells should remain horizontally adjacent at frame " << frame;
 
         for (const auto& pos : cells) {
-            tracker.trackCell(pos, Material::EnumType::WOOD, frame);
+            tracker.trackCell(pos, Material::EnumType::Wood, frame);
         }
     }
 
@@ -212,7 +212,7 @@ TEST_F(MultiCellOrganismTest, LShapeFallsAsUnit)
 
     CellTracker tracker(*world, id, 20);
     for (const auto& pos : lshape->getGridPositions()) {
-        tracker.trackCell(pos, Material::EnumType::WOOD, 0);
+        tracker.trackCell(pos, Material::EnumType::Wood, 0);
     }
 
     for (int frame = 0; frame < 200; ++frame) {
@@ -220,7 +220,7 @@ TEST_F(MultiCellOrganismTest, LShapeFallsAsUnit)
         tracker.recordFrame(frame);
 
         for (const auto& pos : lshape->getGridPositions()) {
-            tracker.trackCell(pos, Material::EnumType::WOOD, frame);
+            tracker.trackCell(pos, Material::EnumType::Wood, frame);
         }
     }
 
@@ -277,7 +277,7 @@ TEST_F(MultiCellOrganismTest, LShapeCollidesWithWall)
     // Add a vertical wall.
     int wall_x = 15;
     for (int y = 1; y < world->getData().height - 1; ++y) {
-        world->getData().at(wall_x, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+        world->getData().at(wall_x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     int floor_y = world->getData().height - 2;
@@ -339,7 +339,7 @@ TEST_F(MultiCellOrganismTest, ColumnFallsAsUnit)
 
     CellTracker tracker(*world, id, 20);
     for (const auto& pos : column->getGridPositions()) {
-        tracker.trackCell(pos, Material::EnumType::WOOD, 0);
+        tracker.trackCell(pos, Material::EnumType::Wood, 0);
     }
 
     for (int frame = 0; frame < 200; ++frame) {
@@ -356,7 +356,7 @@ TEST_F(MultiCellOrganismTest, ColumnFallsAsUnit)
         }
 
         for (const auto& pos : cells) {
-            tracker.trackCell(pos, Material::EnumType::WOOD, frame);
+            tracker.trackCell(pos, Material::EnumType::Wood, frame);
         }
     }
 
@@ -468,7 +468,7 @@ TEST_F(MultiCellOrganismTest, MassScalesWithCellCount)
     ASSERT_NE(lshape, nullptr);
     ASSERT_NE(column, nullptr);
 
-    double wood_density = Material::getDensity(Material::EnumType::WOOD);
+    double wood_density = Material::getDensity(Material::EnumType::Wood);
 
     EXPECT_NEAR(stick->mass, 2 * wood_density, 0.01) << "Stick mass should be 2 * wood_density";
     EXPECT_NEAR(lshape->mass, 3 * wood_density, 0.01) << "LShape mass should be 3 * wood_density";

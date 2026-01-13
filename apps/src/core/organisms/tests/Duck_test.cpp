@@ -104,13 +104,13 @@ protected:
         // Clear interior to air.
         for (int y = 1; y < 4; ++y) {
             for (int x = 1; x < 4; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
         // Bottom row is already WALL from World constructor, but ensure it.
         for (int x = 0; x < 5; ++x) {
-            world->getData().at(x, 4).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         return world;
@@ -124,13 +124,13 @@ protected:
             std::string row;
             for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL) {
+                if (cell.material_type == Material::EnumType::Wall) {
                     row += "W";
                 }
-                else if (cell.material_type == Material::EnumType::WOOD) {
+                else if (cell.material_type == Material::EnumType::Wood) {
                     row += "D"; // Duck cell.
                 }
-                else if (cell.material_type == Material::EnumType::AIR || cell.isEmpty()) {
+                else if (cell.material_type == Material::EnumType::Air || cell.isEmpty()) {
                     row += ".";
                 }
                 else {
@@ -171,7 +171,7 @@ protected:
             // Clear interior to air.
             for (int y = 1; y < height - 1; ++y) {
                 for (int x = 1; x < width - 1; ++x) {
-                    setup.world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                    setup.world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
                 }
             }
 
@@ -179,7 +179,7 @@ protected:
             for (int x = 0; x < width; ++x) {
                 setup.world->getData()
                     .at(x, height - 1)
-                    .replaceMaterial(Material::EnumType::WALL, 1.0);
+                    .replaceMaterial(Material::EnumType::Wall, 1.0);
             }
 
             // Create duck with test brain.
@@ -235,7 +235,7 @@ TEST_F(DuckTest, CreateDuckPlacesWoodCell)
 
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(2, 2);
-    EXPECT_EQ(cell.material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(cell.material_type, Material::EnumType::Wood);
     EXPECT_EQ(manager.at(Vector2i{ 2, 2 }), duck_id);
 
     // Check duck's anchor cell.
@@ -299,8 +299,8 @@ TEST_F(DuckTest, DuckFallsWithGravity)
 
     // Duck should have fallen - WOOD should be at a lower position.
     bool wood_moved_down =
-        (cell_below.material_type == Material::EnumType::WOOD
-         || cell_at_floor.material_type == Material::EnumType::WOOD);
+        (cell_below.material_type == Material::EnumType::Wood
+         || cell_at_floor.material_type == Material::EnumType::Wood);
 
     EXPECT_TRUE(wood_moved_down) << "Duck's WOOD cell should have fallen due to gravity";
 }
@@ -328,7 +328,7 @@ TEST_F(DuckTest, DuckAnchorCellTracksPhysics)
     Vector2i actual_wood_pos(-1, -1);
     for (int y = 0; y < world->getData().height; ++y) {
         for (int x = 0; x < world->getData().width; ++x) {
-            if (world->getData().at(x, y).material_type == Material::EnumType::WOOD) {
+            if (world->getData().at(x, y).material_type == Material::EnumType::Wood) {
                 actual_wood_pos = Vector2i(x, y);
                 break;
             }
@@ -355,13 +355,13 @@ TEST_F(DuckTest, DuckWalksWhenOnGround)
     // Clear interior to air.
     for (int y = 1; y < 4; ++y) {
         for (int x = 1; x < 99; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
         }
     }
 
     // Ensure floor.
     for (int x = 0; x < 100; ++x) {
-        world->getData().at(x, 4).replaceMaterial(Material::EnumType::WALL, 1.0);
+        world->getData().at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     OrganismManager& manager = world->getOrganismManager();
@@ -413,9 +413,9 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
     };
 
     std::vector<SurfaceTestCase> test_cases = {
-        { Material::EnumType::WALL, "WALL" },
-        { Material::EnumType::DIRT, "DIRT" },
-        { Material::EnumType::SAND, "SAND" },
+        { Material::EnumType::Wall, "WALL" },
+        { Material::EnumType::Dirt, "DIRT" },
+        { Material::EnumType::Sand, "SAND" },
     };
 
     struct SurfaceResult {
@@ -434,7 +434,7 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
         // Clear interior to air.
         for (int y = 1; y < 9; ++y) {
             for (int x = 1; x < 99; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
@@ -528,13 +528,13 @@ TEST_F(DuckTest, DuckWalkingSpeedOnDifferentSurfaces)
         // Clear interior to air.
         for (int y = 1; y < 9; ++y) {
             for (int x = 1; x < 99; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
         // WALL floor.
         for (int x = 0; x < 100; ++x) {
-            world->getData().at(x, 9).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, 9).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         OrganismManager& manager = world->getOrganismManager();
@@ -581,13 +581,13 @@ TEST_F(DuckTest, DuckJumps2CellsHigh)
     // Clear interior to air.
     for (int y = 1; y < 9; ++y) {
         for (int x = 1; x < 4; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
         }
     }
 
     // Ensure floor.
     for (int x = 0; x < 5; ++x) {
-        world->getData().at(x, 9).replaceMaterial(Material::EnumType::WALL, 1.0);
+        world->getData().at(x, 9).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     OrganismManager& manager = world->getOrganismManager();
@@ -735,7 +735,7 @@ TEST_F(DuckTest, DuckRemovalClearsCell)
     ASSERT_NE(manager.getDuck(duck_id), nullptr);
 
     // Verify WOOD cell exists.
-    EXPECT_EQ(world->getData().at(2, 2).material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(world->getData().at(2, 2).material_type, Material::EnumType::Wood);
 
     // Remove organism and its cells from the world.
     manager.removeOrganismFromWorld(*world, duck_id);
@@ -744,7 +744,7 @@ TEST_F(DuckTest, DuckRemovalClearsCell)
 
     // Verify cell is now empty.
     const Cell& cell = world->getData().at(2, 2);
-    EXPECT_EQ(cell.material_type, Material::EnumType::AIR);
+    EXPECT_EQ(cell.material_type, Material::EnumType::Air);
     EXPECT_LT(cell.fill_ratio, 0.01) << "Cell should be empty after duck removal";
 }
 
@@ -1256,7 +1256,7 @@ std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_en
     // Clear interior to air (rows 1-8).
     for (int y = 1; y < 9; ++y) {
         for (int x = 1; x < width - 1; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
         }
     }
 
@@ -1264,11 +1264,11 @@ std::unique_ptr<World> createCliffWorld(int width, int cliff_start, int cliff_en
     for (int x = 0; x < width; ++x) {
         if (x >= cliff_start && x <= cliff_end) {
             // Gap - air.
-            world->getData().at(x, 8).replaceMaterial(Material::EnumType::AIR, 0.0);
+            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Air, 0.0);
         }
         else {
             // Floor - wall.
-            world->getData().at(x, 8).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, 8).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
     }
 
@@ -1410,7 +1410,7 @@ TEST_F(DuckTest, DuckBrain2DetectsCliffInSensoryData)
     for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
         double total_fill = 0.0;
         for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
-            if (mat != static_cast<int>(Material::EnumType::AIR)) {
+            if (mat != static_cast<int>(Material::EnumType::Air)) {
                 total_fill += sensory.material_histograms[FLOOR_ROW][col][mat];
             }
         }
@@ -1461,20 +1461,20 @@ protected:
         // Clear everything to air first.
         for (int y = 0; y < HEIGHT; ++y) {
             for (int x = 0; x < WIDTH; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
         // Add outer walls manually.
         // Top and bottom rows.
         for (int x = 0; x < WIDTH; ++x) {
-            world->getData().at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
-            world->getData().at(x, HEIGHT - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+            world->getData().at(x, HEIGHT - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
         // Left and right columns.
         for (int y = 0; y < HEIGHT; ++y) {
-            world->getData().at(0, y).replaceMaterial(Material::EnumType::WALL, 1.0);
-            world->getData().at(WIDTH - 1, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+            world->getData().at(WIDTH - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         // Place obstacle: WALL blocks rising from the floor.
@@ -1482,7 +1482,7 @@ protected:
         for (int h = 0; h < obstacle_height; ++h) {
             int y = HEIGHT - 2 - h; // Start one above floor, go up.
             if (y >= 1) {
-                world->getData().at(obstacle_x, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+                world->getData().at(obstacle_x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
             }
         }
 
@@ -1497,13 +1497,13 @@ protected:
             std::string row;
             for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL) {
+                if (cell.material_type == Material::EnumType::Wall) {
                     row += "W";
                 }
-                else if (cell.material_type == Material::EnumType::WOOD) {
+                else if (cell.material_type == Material::EnumType::Wood) {
                     row += "D";
                 }
-                else if (cell.material_type == Material::EnumType::AIR || cell.isEmpty()) {
+                else if (cell.material_type == Material::EnumType::Air || cell.isEmpty()) {
                     row += ".";
                 }
                 else {
@@ -2172,7 +2172,7 @@ TEST_F(DuckTest, DISABLED_DuckFloatsInWater)
     //   . W .   y=5
     for (int16_t y = 0; y < 6; ++y) {
         if (y != 3) {
-            world->addMaterialAtCell({ 1, y }, Material::EnumType::WATER, 1.0f);
+            world->addMaterialAtCell({ 1, y }, Material::EnumType::Water, 1.0f);
         }
     }
 

@@ -36,25 +36,25 @@ namespace {
 uint32_t getMaterialColor(Material::EnumType mat)
 {
     switch (mat) {
-        case Material::EnumType::AIR:
+        case Material::EnumType::Air:
             return ColorNames::black();
-        case Material::EnumType::DIRT:
+        case Material::EnumType::Dirt:
             return ColorNames::dirt();
-        case Material::EnumType::LEAF:
+        case Material::EnumType::Leaf:
             return ColorNames::leaf();
-        case Material::EnumType::METAL:
+        case Material::EnumType::Metal:
             return ColorNames::metal();
-        case Material::EnumType::ROOT:
+        case Material::EnumType::Root:
             return ColorNames::root();
-        case Material::EnumType::SAND:
+        case Material::EnumType::Sand:
             return ColorNames::sand();
-        case Material::EnumType::SEED:
+        case Material::EnumType::Seed:
             return ColorNames::seed();
-        case Material::EnumType::WALL:
+        case Material::EnumType::Wall:
             return ColorNames::stone();
-        case Material::EnumType::WATER:
+        case Material::EnumType::Water:
             return ColorNames::water();
-        case Material::EnumType::WOOD:
+        case Material::EnumType::Wood:
             return ColorNames::wood();
     }
     return ColorNames::white();
@@ -447,7 +447,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             WorldData& data = world.getData();
             for (int y = 1; y < data.height - 1; ++y) {
                 for (int x = 1; x < data.width - 1; ++x) {
-                    if (data.at(x, y).material_type == Material::EnumType::WALL) {
+                    if (data.at(x, y).material_type == Material::EnumType::Wall) {
                         data.at(x, y) = Cell();
                     }
                 }
@@ -692,7 +692,7 @@ void ClockScenario::tick(World& world, double deltaTime)
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
             size_t idx = y * data.width + x;
-            if (data.cells[idx].material_type == Material::EnumType::WOOD) {
+            if (data.cells[idx].material_type == Material::EnumType::Wood) {
                 if (org_grid[idx] == INVALID_ORGANISM_ID) {
                     spdlog::error(
                         "ClockScenario: Orphaned WOOD cell at ({}, {}) with no organism!", x, y);
@@ -735,7 +735,7 @@ void ClockScenario::clearDigits(World& world)
     for (int y = 1; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, y);
-            if (cell.material_type != Material::EnumType::WALL) {
+            if (cell.material_type != Material::EnumType::Wall) {
                 continue;
             }
 
@@ -898,7 +898,7 @@ void ClockScenario::drawCharacterWithMaterials(
             Material::EnumType mat = materialGrid.at(col, row);
 
             // Skip AIR - leave background unchanged.
-            if (mat == Material::EnumType::AIR) {
+            if (mat == Material::EnumType::Air) {
                 continue;
             }
 
@@ -911,7 +911,7 @@ void ClockScenario::placeDigitPixel(World& world, int x, int y, Material::EnumTy
 {
     // Use WALL (immobile) but render as the specified material.
     world.replaceMaterialAtCell(
-        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::WALL);
+        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Wall);
     world.getData().at(x, y).render_as = static_cast<int8_t>(renderMaterial);
 
     // Make digit cells emissive so they glow in darkness.
@@ -1455,7 +1455,7 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
 
             // Skip walls.
             const Cell& neighbor = world.getData().at(nx, ny);
-            if (neighbor.material_type == Material::EnumType::WALL) {
+            if (neighbor.material_type == Material::EnumType::Wall) {
                 continue;
             }
 
@@ -1683,7 +1683,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
 
     if (type == ClockEventType::COLOR_CYCLE) {
         // Restore default digit material.
-        config_.digitMaterial = Material::EnumType::METAL;
+        config_.digitMaterial = Material::EnumType::Metal;
         spdlog::info("ClockScenario: COLOR_CYCLE ended, restored digit material to METAL");
     }
     else if (type == ClockEventType::MELTDOWN) {
@@ -1713,7 +1713,7 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         // Restore default digit material (METAL).
-        config_.digitMaterial = Material::EnumType::METAL;
+        config_.digitMaterial = Material::EnumType::Metal;
         spdlog::info("ClockScenario: COLOR_SHOWCASE ended, restored digit material to METAL");
     }
 
@@ -1732,7 +1732,7 @@ void ClockScenario::cancelAllEvents(World& world)
     for (auto& [type, event] : active_events_) {
         if (type == ClockEventType::COLOR_CYCLE) {
             // Restore default digit material.
-            config_.digitMaterial = Material::EnumType::METAL;
+            config_.digitMaterial = Material::EnumType::Metal;
         }
         else if (type == ClockEventType::DUCK) {
             auto& state = std::get<DuckEventState>(event.state);
@@ -1813,7 +1813,7 @@ double ClockScenario::countWaterInBottomThird(const World& world) const
     for (int y = bottom_third_start; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
             const Cell& cell = data.at(x, y);
-            if (cell.material_type == Material::EnumType::WATER) {
+            if (cell.material_type == Material::EnumType::Water) {
                 total_water += cell.fill_ratio;
             }
         }
@@ -1862,7 +1862,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
     if (target_drain_size == 0) {
         int bottom_row = data.height - 2;
         for (int x = 1; x < data.width - 1; ++x) {
-            if (data.at(x, bottom_row).material_type == Material::EnumType::WATER) {
+            if (data.at(x, bottom_row).material_type == Material::EnumType::Water) {
                 target_drain_size = 1;
                 break;
             }
@@ -1931,7 +1931,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
                 if (!still_open) {
                     world.replaceMaterialAtCell(
                         { static_cast<int16_t>(x), static_cast<int16_t>(drain_y) },
-                        Material::EnumType::WALL);
+                        Material::EnumType::Wall);
                 }
             }
         }
@@ -1941,7 +1941,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         if (drain_open_) {
             for (int x = new_start_x; x <= new_end_x; ++x) {
                 Cell& cell = data.at(x, drain_y);
-                if (cell.material_type == Material::EnumType::WALL) {
+                if (cell.material_type == Material::EnumType::Wall) {
                     cell = Cell();
                 }
             }
@@ -1965,7 +1965,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
 
         // Get the digit material if a meltdown is active.
         Material::EnumType melt_digit_material =
-            Material::EnumType::AIR; // Default (won't match anything).
+            Material::EnumType::Air; // Default (won't match anything).
         if (isMeltdownActive()) {
             auto it = active_events_.find(ClockEventType::MELTDOWN);
             if (it != active_events_.end()) {
@@ -1978,12 +1978,12 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
 
             // Digit material falls through the drain during meltdown - convert to water and spray.
             if (cell.material_type == melt_digit_material && cell.com.y > 0.0) {
-                cell.replaceMaterial(Material::EnumType::WATER, cell.fill_ratio);
+                cell.replaceMaterial(Material::EnumType::Water, cell.fill_ratio);
                 sprayDrainCell(world, cell, x, drain_y);
                 continue;
             }
 
-            if (cell.material_type != Material::EnumType::WATER) {
+            if (cell.material_type != Material::EnumType::Water) {
                 continue;
             }
 
@@ -2019,7 +2019,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 Cell& cell = data.at(x, y);
-                if (cell.material_type != Material::EnumType::WATER) {
+                if (cell.material_type != Material::EnumType::Water) {
                     continue;
                 }
 
@@ -2044,7 +2044,7 @@ void ClockScenario::updateDrain(World& world, double deltaTime)
 
         for (int x = 1; x < data.width - 1; ++x) {
             Cell& cell = data.at(x, bottom_row);
-            if (cell.material_type != Material::EnumType::WATER) {
+            if (cell.material_type != Material::EnumType::Water) {
                 continue;
             }
 
@@ -2112,7 +2112,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 
     // Top border (wooden frame - blocks sunlight, emissive digits glow in darkness).
     for (int16_t x = 0; x < width; ++x) {
-        walls.push_back({ x, 0, Material::EnumType::WOOD });
+        walls.push_back({ x, 0, Material::EnumType::Wood });
     }
 
     // Bottom border (dirt floor).
@@ -2124,7 +2124,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
         bool is_pit_cell = obstacle_manager_.isPitAt(x);
 
         if (!door_manager_.isOpenDoorAt(pos, data) && !is_drain_cell && !is_pit_cell) {
-            walls.push_back({ x, static_cast<int16_t>(height - 1), Material::EnumType::DIRT });
+            walls.push_back({ x, static_cast<int16_t>(height - 1), Material::EnumType::Dirt });
         }
     }
 
@@ -2132,7 +2132,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     for (int16_t y = 0; y < height; ++y) {
         Vector2i pos{ 0, y };
         if (!door_manager_.isOpenDoorAt(pos, data)) {
-            walls.push_back({ 0, y, Material::EnumType::WOOD });
+            walls.push_back({ 0, y, Material::EnumType::Wood });
         }
     }
 
@@ -2140,7 +2140,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     for (int16_t y = 0; y < height; ++y) {
         Vector2i pos{ width - 1, y };
         if (!door_manager_.isOpenDoorAt(pos, data)) {
-            walls.push_back({ static_cast<int16_t>(width - 1), y, Material::EnumType::WOOD });
+            walls.push_back({ static_cast<int16_t>(width - 1), y, Material::EnumType::Wood });
         }
     }
 
@@ -2148,7 +2148,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     if (height > 2) {
         for (int16_t x = 0; x < width; ++x) {
             if (obstacle_manager_.isHurdleAt(x)) {
-                walls.push_back({ x, static_cast<int16_t>(height - 2), Material::EnumType::WALL });
+                walls.push_back({ x, static_cast<int16_t>(height - 2), Material::EnumType::Wall });
             }
         }
     }
@@ -2157,14 +2157,14 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
     for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
         walls.push_back({ static_cast<int16_t>(roof_pos.x),
                           static_cast<int16_t>(roof_pos.y),
-                          Material::EnumType::WALL });
+                          Material::EnumType::Wall });
     }
 
     // Door frame cells (wall above door, floor at door - render as wall/gray).
     for (const auto& frame_pos : door_manager_.getFramePositions(data)) {
         walls.push_back({ static_cast<int16_t>(frame_pos.x),
                           static_cast<int16_t>(frame_pos.y),
-                          Material::EnumType::WALL });
+                          Material::EnumType::Wall });
     }
 
     return walls;
@@ -2173,7 +2173,7 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 void ClockScenario::applyWalls(World& world, const std::vector<WallSpec>& walls)
 {
     for (const auto& wall : walls) {
-        world.replaceMaterialAtCell({ wall.x, wall.y }, Material::EnumType::WALL);
+        world.replaceMaterialAtCell({ wall.x, wall.y }, Material::EnumType::Wall);
         world.getData().at(wall.x, wall.y).render_as = static_cast<int8_t>(wall.render_as);
     }
 }
@@ -2194,7 +2194,7 @@ void ClockScenario::redrawWalls(World& world)
 
         if (is_pit_cell && !is_drain_cell) {
             Cell& cell = world.getData().at(x, height - 1);
-            if (cell.material_type == Material::EnumType::WALL) {
+            if (cell.material_type == Material::EnumType::Wall) {
                 cell = Cell();
             }
         }

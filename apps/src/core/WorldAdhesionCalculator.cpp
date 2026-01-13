@@ -12,13 +12,13 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
-        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::Air, 0 };
     }
 
     const Material::Properties& props = Material::getProperties(cell.material_type);
     Vector2f total_force(0.0f, 0.0f);
     int contact_count = 0;
-    Material::EnumType strongest_attractor = Material::EnumType::AIR;
+    Material::EnumType strongest_attractor = Material::EnumType::Air;
     float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
@@ -34,7 +34,7 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
 
                 // Skip same material and AIR neighbors (AIR has adhesion=0.0).
                 if (neighbor.material_type == cell.material_type
-                    || neighbor.material_type == Material::EnumType::AIR) {
+                    || neighbor.material_type == Material::EnumType::Air) {
                     continue;
                 }
 
@@ -77,14 +77,14 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
     const auto& data = world.getData();
     const Cell& cell = data.at(x, y);
     if (cell.isEmpty()) {
-        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::AIR, 0 };
+        return { { 0.0f, 0.0f }, 0.0f, Material::EnumType::Air, 0 };
     }
 
     const Material::Properties& props = Material::getProperties(cell.material_type);
     const Material::EnumType my_material = mat_n.getCenterMaterial();
     Vector2f total_force(0.0f, 0.0f);
     int contact_count = 0;
-    Material::EnumType strongest_attractor = Material::EnumType::AIR;
+    Material::EnumType strongest_attractor = Material::EnumType::Air;
     float max_adhesion = 0.0f;
 
     // Check all 8 neighbors for different materials.
@@ -103,7 +103,7 @@ WorldAdhesionCalculator::AdhesionForce WorldAdhesionCalculator::calculateAdhesio
             // Multi-stage cache filtering (bounds check handled by cache).
             // Stage 1: Material difference check (pure cache - no cell access).
             const Material::EnumType neighbor_material = mat_n.getMaterial(dx, dy);
-            if (neighbor_material == my_material || neighbor_material == Material::EnumType::AIR) {
+            if (neighbor_material == my_material || neighbor_material == Material::EnumType::Air) {
                 continue;
             }
 

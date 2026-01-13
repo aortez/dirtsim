@@ -80,7 +80,7 @@ private:
     // Current selections.
     int currentFontIndex_ = 0;
     int currentTimezoneIndex_ = 0;
-    int currentMaterialIndex_ = static_cast<int>(Material::EnumType::METAL);
+    int currentMaterialIndex_ = static_cast<int>(Material::EnumType::Metal);
 
     // Current config (cached from last updateFromConfig call).
     Config::Clock currentConfig_;

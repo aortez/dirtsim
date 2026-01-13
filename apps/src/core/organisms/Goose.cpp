@@ -18,14 +18,14 @@ namespace DirtSim {
 Goose::Goose(OrganismId id, std::unique_ptr<GooseBrain> brain)
     : Organism::Body(id, OrganismType::GOOSE),
       brain_(std::move(brain)),
-      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::WOOD))
+      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::Wood))
 {
     // Initialize local shape with a single cell at origin.
-    rigidBody_->addCell({ 0, 0 }, Material::EnumType::WOOD, 1.0);
+    rigidBody_->addCell({ 0, 0 }, Material::EnumType::Wood, 1.0);
 
     // Keep base class local_shape in sync for mass computation.
     local_shape.push_back(
-        LocalCell{ .localPos = { 0, 0 }, .material = Material::EnumType::WOOD, .fillRatio = 1.0 });
+        LocalCell{ .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
 
     recomputeMass();
     recomputeCenterOfMass();

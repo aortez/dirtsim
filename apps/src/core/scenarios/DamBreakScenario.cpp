@@ -74,14 +74,14 @@ void DamBreakScenario::setup(World& world)
         for (int y = 0; y < 6; y++) {
             world.addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                Material::EnumType::WATER,
+                Material::EnumType::Water,
                 1.0);
         }
     }
 
     // Create dam (wall) at x=2 - full height.
     for (int y = 0; y < 6; y++) {
-        world.addMaterialAtCell({ 2, static_cast<int16_t>(y) }, Material::EnumType::WALL, 1.0);
+        world.addMaterialAtCell({ 2, static_cast<int16_t>(y) }, Material::EnumType::Wall, 1.0);
     }
 
     spdlog::info("DamBreakScenario::setup complete - water at x=0-1, dam at x=2");

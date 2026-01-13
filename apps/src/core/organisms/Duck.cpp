@@ -59,7 +59,7 @@ void Duck::update(World& world, double deltaTime)
         const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
 
         // Cell material must be WOOD.
-        if (our_cell.material_type != Material::EnumType::WOOD) {
+        if (our_cell.material_type != Material::EnumType::Wood) {
             spdlog::critical(
                 "Duck {} VIOLATION: anchor ({},{}) has {} instead of WOOD!",
                 id_,
@@ -99,7 +99,7 @@ void Duck::update(World& world, double deltaTime)
             }
         }
         DIRTSIM_ASSERT(
-            our_cell.material_type == Material::EnumType::WOOD, "Duck anchor cell must be WOOD!");
+            our_cell.material_type == Material::EnumType::Wood, "Duck anchor cell must be WOOD!");
 
         // OrganismManager must say we own our anchor.
         OrganismId manager_says = world.getOrganismManager().at(anchor_cell_);
@@ -165,12 +165,12 @@ void Duck::updateGroundDetection(const World& world)
 
     // Ground is any non-AIR, non-empty cell.
     // Also check if it's a wall or has significant fill.
-    bool is_solid_below = (below.material_type == Material::EnumType::WALL
-                           || below.material_type == Material::EnumType::DIRT
-                           || below.material_type == Material::EnumType::SAND
-                           || below.material_type == Material::EnumType::WOOD
-                           || below.material_type == Material::EnumType::METAL
-                           || below.material_type == Material::EnumType::ROOT)
+    bool is_solid_below = (below.material_type == Material::EnumType::Wall
+                           || below.material_type == Material::EnumType::Dirt
+                           || below.material_type == Material::EnumType::Sand
+                           || below.material_type == Material::EnumType::Wood
+                           || below.material_type == Material::EnumType::Metal
+                           || below.material_type == Material::EnumType::Root)
         && below.fill_ratio > 0.5;
 
     // Also check our own cell's COM - if it's near the bottom, we might be resting.
@@ -489,7 +489,7 @@ bool Duck::isSolidCell(const World& world, int x, int y) const
     const Cell& cell = data.at(x, y);
 
     // Consider a cell solid if it has significant fill with a non-air material.
-    if (cell.material_type == Material::EnumType::AIR || cell.fill_ratio < 0.5f) {
+    if (cell.material_type == Material::EnumType::Air || cell.fill_ratio < 0.5f) {
         return false;
     }
 

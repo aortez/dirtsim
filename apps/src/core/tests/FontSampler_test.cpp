@@ -393,25 +393,25 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
     // Material abbreviations for visualization.
     auto materialChar = [](Material::EnumType m) -> char {
         switch (m) {
-            case Material::EnumType::AIR:
+            case Material::EnumType::Air:
                 return ' ';
-            case Material::EnumType::DIRT:
+            case Material::EnumType::Dirt:
                 return 'D';
-            case Material::EnumType::LEAF:
+            case Material::EnumType::Leaf:
                 return 'L';
-            case Material::EnumType::METAL:
+            case Material::EnumType::Metal:
                 return 'M';
-            case Material::EnumType::ROOT:
+            case Material::EnumType::Root:
                 return 'R';
-            case Material::EnumType::SAND:
+            case Material::EnumType::Sand:
                 return 'S';
-            case Material::EnumType::SEED:
+            case Material::EnumType::Seed:
                 return 'E';
-            case Material::EnumType::WALL:
+            case Material::EnumType::Wall:
                 return 'W';
-            case Material::EnumType::WATER:
+            case Material::EnumType::Water:
                 return 'B'; // Blue.
-            case Material::EnumType::WOOD:
+            case Material::EnumType::Wood:
                 return 'O'; // Oak/brown.
         }
         return '?';
@@ -434,7 +434,7 @@ TEST_F(FontSamplerTest, DISABLED_NotoColorEmoji_MaterialDistribution)
 
         // Print distribution.
         for (const auto& [mat, count] : counts) {
-            if (mat != Material::EnumType::AIR && count > 0) {
+            if (mat != Material::EnumType::Air && count > 0) {
                 spdlog::info("  {}: {} pixels", toString(mat), count);
             }
         }
@@ -466,25 +466,25 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
 
     auto materialChar = [](Material::EnumType m) -> char {
         switch (m) {
-            case Material::EnumType::AIR:
+            case Material::EnumType::Air:
                 return ' ';
-            case Material::EnumType::DIRT:
+            case Material::EnumType::Dirt:
                 return 'D';
-            case Material::EnumType::LEAF:
+            case Material::EnumType::Leaf:
                 return 'L';
-            case Material::EnumType::METAL:
+            case Material::EnumType::Metal:
                 return 'M';
-            case Material::EnumType::ROOT:
+            case Material::EnumType::Root:
                 return 'R';
-            case Material::EnumType::SAND:
+            case Material::EnumType::Sand:
                 return 'S';
-            case Material::EnumType::SEED:
+            case Material::EnumType::Seed:
                 return 'E';
-            case Material::EnumType::WALL:
+            case Material::EnumType::Wall:
                 return 'W';
-            case Material::EnumType::WATER:
+            case Material::EnumType::Water:
                 return 'B';
-            case Material::EnumType::WOOD:
+            case Material::EnumType::Wood:
                 return 'O';
         }
         return '?';
@@ -503,7 +503,7 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
         }
 
         for (const auto& [mat, count] : counts) {
-            if (mat != Material::EnumType::AIR && count > 0) {
+            if (mat != Material::EnumType::Air && count > 0) {
                 spdlog::info("  {}: {} pixels", static_cast<int>(mat), count);
             }
         }

@@ -1,8 +1,9 @@
 #pragma once
 
+#include "EntityType.h"
 #include "Vector2.h"
+
 #include <cstdint>
-#include <nlohmann/json.hpp>
 #include <vector>
 #include <zpp_bits.h>
 
@@ -24,28 +25,6 @@ struct SparkleParticle {
 // JSON serialization for SparkleParticle.
 void to_json(nlohmann::json& j, const SparkleParticle& s);
 void from_json(const nlohmann::json& j, SparkleParticle& s);
-
-/**
- * @brief Entity types for world overlays.
- *
- * Entities are sprite-based objects that exist in the world but render
- * as images rather than cell materials. They have physics (position,
- * velocity, mass) and can interact with the simulation.
- */
-enum class EntityType : uint8_t {
-    DUCK = 0,
-    GOOSE = 1,
-    SPARKLE = 2, // Legacy standalone sparkle (may be removed).
-    // Future: BUTTERFLY, BIRD, FISH, etc.
-};
-
-NLOHMANN_JSON_SERIALIZE_ENUM(
-    EntityType,
-    {
-        { EntityType::DUCK, "duck" },
-        { EntityType::GOOSE, "goose" },
-        { EntityType::SPARKLE, "sparkle" },
-    })
 
 /**
  * @brief World entity with physics and rendering state.
@@ -80,7 +59,7 @@ struct Entity {
     // For ducks, this is based on sparkle ratio.
     float emission = 0.0f;
 
-    // Attached sparkle particles (used by DUCK entities).
+    // Attached sparkle particles.
     std::vector<SparkleParticle> sparkles;
 
     using serialize = zpp::bits::members<11>;

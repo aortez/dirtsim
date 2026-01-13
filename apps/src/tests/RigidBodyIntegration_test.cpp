@@ -16,7 +16,7 @@ protected:
         auto world = std::make_unique<World>(width, height);
         for (uint32_t y = 0; y < height; ++y) {
             for (uint32_t x = 0; x < width; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
         return world;
@@ -36,9 +36,9 @@ TEST_F(RigidBodyIntegrationTest, FloatingStructureFallsTogether)
     // Build 2x2 structure by adding adjacent WOOD cells to tree's local shape.
     // Local coords are relative to seed position: (4, 3) = local (0, 0).
     // (5, 3) = local (1, 0), (4, 4) = local (0, 1), (5, 4) = local (1, 1).
-    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::WOOD, 1.0);
-    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::WOOD, 1.0);
-    tree->addCellToLocalShape({ 1, 1 }, Material::EnumType::WOOD, 1.0);
+    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 1, 1 }, Material::EnumType::Wood, 1.0);
 
     // Run one frame to project the local shape to the world grid.
     // (Use small deltaTime; 0.0 returns early without doing anything.)
@@ -86,7 +86,7 @@ TEST_F(RigidBodyIntegrationTest, TreeStructureMovesAsUnit)
     ASSERT_NE(tree, nullptr);
 
     // Add WOOD cell at local (1, 0) = world (2, 1).
-    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::WOOD, 1.0);
+    tree->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
 
     // Run one frame to project cells (use small deltaTime; 0.0 returns early).
     world->advanceTime(0.001);
@@ -124,13 +124,13 @@ TEST_F(RigidBodyIntegrationTest, MultipleStructuresMoveIndependently)
     OrganismId tree1_id = organism_manager.createTree(*world, 2, 3);
     Tree* tree1 = organism_manager.getTree(tree1_id);
     ASSERT_NE(tree1, nullptr);
-    tree1->addCellToLocalShape({ 1, 0 }, Material::EnumType::WOOD, 1.0);
+    tree1->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
 
     // Structure 2: seed + WOOD at y=6.
     OrganismId tree2_id = organism_manager.createTree(*world, 6, 6);
     Tree* tree2 = organism_manager.getTree(tree2_id);
     ASSERT_NE(tree2, nullptr);
-    tree2->addCellToLocalShape({ 1, 0 }, Material::EnumType::WOOD, 1.0);
+    tree2->addCellToLocalShape({ 1, 0 }, Material::EnumType::Wood, 1.0);
 
     // Project cells (use small deltaTime; 0.0 returns early).
     world->advanceTime(0.001);

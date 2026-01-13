@@ -23,8 +23,8 @@ namespace {
 // Helper: Check if material should have elastic collisions (METAL, WOOD, SEED, WALL).
 bool isCollisionRigid(Material::EnumType type)
 {
-    return type == Material::EnumType::METAL || type == Material::EnumType::WOOD
-        || type == Material::EnumType::SEED || type == Material::EnumType::WALL;
+    return type == Material::EnumType::Metal || type == Material::EnumType::Wood
+        || type == Material::EnumType::Seed || type == Material::EnumType::Wall;
 }
 
 } // namespace
@@ -151,44 +151,44 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
     const auto& toProps = Material::getProperties(to);
 
     // Empty cells allow transfer.
-    if (to == Material::EnumType::AIR) {
+    if (to == Material::EnumType::Air) {
         return CollisionType::TRANSFER_ONLY;
     }
 
     // High-energy impacts on brittle materials cause fragmentation.
     if (collision_energy > FRAGMENTATION_THRESHOLD
-        && (from == Material::EnumType::WOOD || from == Material::EnumType::LEAF)
-        && (to == Material::EnumType::METAL || to == Material::EnumType::WALL)) {
+        && (from == Material::EnumType::Wood || from == Material::EnumType::Leaf)
+        && (to == Material::EnumType::Metal || to == Material::EnumType::Wall)) {
         return CollisionType::FRAGMENTATION;
     }
 
     // Material-specific interaction matrix.
 
     // METAL interactions - highly elastic due to high elasticity (0.8)
-    if (from == Material::EnumType::METAL || to == Material::EnumType::METAL) {
-        if (to == Material::EnumType::WALL || from == Material::EnumType::WALL) {
+    if (from == Material::EnumType::Metal || to == Material::EnumType::Metal) {
+        if (to == Material::EnumType::Wall || from == Material::EnumType::Wall) {
             return CollisionType::ELASTIC_REFLECTION; // Metal vs wall.
         }
-        if ((from == Material::EnumType::METAL && to == Material::EnumType::METAL)
-            || (from == Material::EnumType::METAL && isCollisionRigid(to))
-            || (to == Material::EnumType::METAL && isCollisionRigid(from))) {
+        if ((from == Material::EnumType::Metal && to == Material::EnumType::Metal)
+            || (from == Material::EnumType::Metal && isCollisionRigid(to))
+            || (to == Material::EnumType::Metal && isCollisionRigid(from))) {
             return CollisionType::ELASTIC_REFLECTION; // Metal vs rigid materials.
         }
         return CollisionType::INELASTIC_COLLISION; // Metal vs soft materials.
     }
 
     // WALL interactions - always elastic due to infinite mass.
-    if (to == Material::EnumType::WALL) {
+    if (to == Material::EnumType::Wall) {
         return CollisionType::ELASTIC_REFLECTION;
     }
 
     // WOOD interactions - moderately elastic (0.6 elasticity)
-    if (from == Material::EnumType::WOOD && isCollisionRigid(to)) {
+    if (from == Material::EnumType::Wood && isCollisionRigid(to)) {
         return CollisionType::ELASTIC_REFLECTION;
     }
 
     // AIR interactions - highly elastic (1.0 elasticity) but low mass.
-    if (from == Material::EnumType::AIR) {
+    if (from == Material::EnumType::Air) {
         return CollisionType::ELASTIC_REFLECTION;
     }
 
@@ -200,8 +200,8 @@ CollisionType WorldCollisionCalculator::determineCollisionType(
     }
 
     // Fluid absorption behaviors.
-    if ((from == Material::EnumType::WATER && to == Material::EnumType::DIRT)
-        || (from == Material::EnumType::DIRT && to == Material::EnumType::WATER)) {
+    if ((from == Material::EnumType::Water && to == Material::EnumType::Dirt)
+        || (from == Material::EnumType::Dirt && to == Material::EnumType::Water)) {
         return CollisionType::ABSORPTION;
     }
 
@@ -280,7 +280,7 @@ bool WorldCollisionCalculator::checkFloatingParticleCollision(
         // For now, simple collision detection - can be enhanced later.
         // Heavy materials (like METAL) can push through lighter materials.
         // Solid materials (like WALL) stop everything.
-        if (targetCell.material_type == Material::EnumType::WALL) {
+        if (targetCell.material_type == Material::EnumType::Wall) {
             return true; // Wall stops everything.
         }
 
@@ -611,15 +611,15 @@ void WorldCollisionCalculator::handleAbsorption(
     World& world, Cell& fromCell, Cell& toCell, const MaterialMove& move)
 {
     // One material absorbs the other - implement absorption logic.
-    if (move.material == Material::EnumType::WATER
-        && toCell.material_type == Material::EnumType::DIRT) {
+    if (move.material == Material::EnumType::Water
+        && toCell.material_type == Material::EnumType::Dirt) {
         // Water absorbed by dirt - transfer all water.
         handleTransferMove(world, fromCell, toCell, move);
         spdlog::trace("Absorption: WATER absorbed by DIRT at ({},{})", move.to.x, move.to.y);
     }
     else if (
-        move.material == Material::EnumType::DIRT
-        && toCell.material_type == Material::EnumType::WATER) {
+        move.material == Material::EnumType::Dirt
+        && toCell.material_type == Material::EnumType::Water) {
         // Dirt falls into water - mix materials.
         handleTransferMove(world, fromCell, toCell, move);
         spdlog::trace("Absorption: DIRT mixed with WATER at ({},{})", move.to.x, move.to.y);
@@ -777,12 +777,12 @@ double WorldCollisionCalculator::fragmentSingleCell(
 
         // Add material to target cell.
         if (target.isEmpty()) {
-            target.material_type = Material::EnumType::WATER;
+            target.material_type = Material::EnumType::Water;
             target.fill_ratio = to_transfer;
             target.setCOM(landing_com);
             target.velocity = frag.velocity;
         }
-        else if (target.material_type == Material::EnumType::WATER) {
+        else if (target.material_type == Material::EnumType::Water) {
             // Merge with existing water.
             const double old_mass = target.fill_ratio;
             const double new_mass = to_transfer;
@@ -821,8 +821,8 @@ bool WorldCollisionCalculator::handleWaterFragmentation(
     }
 
     // At least one cell must be water to fragment.
-    const bool from_is_water = fromCell.material_type == Material::EnumType::WATER;
-    const bool to_is_water = toCell.material_type == Material::EnumType::WATER;
+    const bool from_is_water = fromCell.material_type == Material::EnumType::Water;
+    const bool to_is_water = toCell.material_type == Material::EnumType::Water;
 
     if (!from_is_water && !to_is_water) {
         return false;
@@ -1139,7 +1139,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
     // effect where dirt drops through water, pushing water up through solid.
     // AIR is excluded because we want air pockets to fill in naturally.
     const Material::Properties& from_props = Material::getProperties(fromCell.material_type);
-    if (direction.y != 0 && to_props.is_fluid && toCell.material_type != Material::EnumType::AIR) {
+    if (direction.y != 0 && to_props.is_fluid && toCell.material_type != Material::EnumType::Air) {
         const WorldData& data = world.getData();
         const int toX = fromX + direction.x;
         const int toY = fromY + direction.y;
@@ -1248,7 +1248,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             return false;
         }
         // Log horizontal swap approval details.
-        if (toCell.material_type != Material::EnumType::AIR) {
+        if (toCell.material_type != Material::EnumType::Air) {
             // LOG_WARN(Swap,
             //     "Horizontal swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
             //     "{:.3f}, "
@@ -1367,7 +1367,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
             return false;
         }
         // Log vertical swap approval details.
-        if (toCell.material_type != Material::EnumType::AIR) {
+        if (toCell.material_type != Material::EnumType::Air) {
             LOG_INFO(
                 Swap,
                 "Vertical swap OK: {} -> {} at ({},{}) -> ({},{}) | momentum: {:.3f} (mass: "
@@ -1476,7 +1476,7 @@ bool WorldCollisionCalculator::shouldSwapMaterials(
         return false;
     }
 
-    if (toCell.material_type == Material::EnumType::AIR) {
+    if (toCell.material_type == Material::EnumType::Air) {
         LOG_DEBUG(
             Swap,
             "Swap approved: {} -> {} at ({},{}) -> ({},{}) | Energy: {:.3f} >= {:.3f} (base: "
@@ -1531,7 +1531,7 @@ void WorldCollisionCalculator::swapCounterMovingMaterials(
     // AIR swaps preserve momentum - no real collision occurred.
     // Moving through air should not cost energy (air resistance handled elsewhere).
     const bool involves_air =
-        from_type == Material::EnumType::AIR || to_type == Material::EnumType::AIR;
+        from_type == Material::EnumType::Air || to_type == Material::EnumType::Air;
 
     Vector2d new_velocity;
     double swap_cost = 0.0;

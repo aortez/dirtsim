@@ -84,7 +84,7 @@ TEST_F(RigidBodyCollisionComponentTest, DetectsWallCollision)
     RigidBodyCollisionComponent collision;
 
     // Place a WALL cell.
-    world->getData().at(5, 7).material_type = Material::EnumType::WALL;
+    world->getData().at(5, 7).material_type = Material::EnumType::Wall;
     world->getData().at(5, 7).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -103,7 +103,7 @@ TEST_F(RigidBodyCollisionComponentTest, WallCollisionNormalPointsAwayFromWall)
     RigidBodyCollisionComponent collision;
 
     // Wall below organism.
-    world->getData().at(5, 7).material_type = Material::EnumType::WALL;
+    world->getData().at(5, 7).material_type = Material::EnumType::Wall;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
     std::vector<Vector2i> predictedCells = { { 5, 7 } };
@@ -146,7 +146,7 @@ TEST_F(RigidBodyCollisionComponentTest, NoCollisionWithOwnCells)
 
     // Create organism at (5, 5) and add another cell at (5, 6).
     OrganismId myOrganism = world->getOrganismManager().createTree(*world, 5, 5);
-    world->getData().at(5, 6).material_type = Material::EnumType::WOOD;
+    world->getData().at(5, 6).material_type = Material::EnumType::Wood;
     world->getData().at(5, 6).fill_ratio = 1.0;
     world->getOrganismManager().addCellToOrganism(myOrganism, { 5, 6 });
 
@@ -169,7 +169,7 @@ TEST_F(RigidBodyCollisionComponentTest, DetectsDenseSolidCollision)
     RigidBodyCollisionComponent collision;
 
     // Place dense dirt.
-    world->getData().at(5, 7).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 7).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 7).fill_ratio = 0.9;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -186,7 +186,7 @@ TEST_F(RigidBodyCollisionComponentTest, NoCollisionWithSparseSolid)
     RigidBodyCollisionComponent collision;
 
     // Sparse dirt (below threshold).
-    world->getData().at(5, 7).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 7).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 7).fill_ratio = 0.5;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -220,7 +220,7 @@ TEST_F(RigidBodyCollisionComponentTest, NoCollisionWithWater)
     RigidBodyCollisionComponent collision;
 
     // Water is not solid.
-    world->getData().at(5, 7).material_type = Material::EnumType::WATER;
+    world->getData().at(5, 7).material_type = Material::EnumType::Water;
     world->getData().at(5, 7).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -330,7 +330,7 @@ TEST_F(RigidBodyCollisionComponentTest, DetectsPartialBlockingMultiCell)
     RigidBodyCollisionComponent collision;
 
     // Wall on one side only.
-    world->getData().at(6, 5).material_type = Material::EnumType::WALL;
+    world->getData().at(6, 5).material_type = Material::EnumType::Wall;
 
     std::vector<Vector2i> currentCells = { { 4, 5 }, { 5, 5 } };
     std::vector<Vector2i> predictedCells = { { 5, 5 }, { 6, 5 } };
@@ -347,8 +347,8 @@ TEST_F(RigidBodyCollisionComponentTest, ContactNormalFromMultipleBlockedCells)
     RigidBodyCollisionComponent collision;
 
     // Corner collision - walls on right and below.
-    world->getData().at(7, 5).material_type = Material::EnumType::WALL;
-    world->getData().at(6, 6).material_type = Material::EnumType::WALL;
+    world->getData().at(7, 5).material_type = Material::EnumType::Wall;
+    world->getData().at(6, 6).material_type = Material::EnumType::Wall;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
     std::vector<Vector2i> predictedCells = { { 7, 5 }, { 6, 6 } };
@@ -391,7 +391,7 @@ TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionOpposesHorizontalVe
     RigidBodyCollisionComponent collision;
 
     // Place DIRT ground below organism.
-    world->getData().at(5, 6).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 6).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 6).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -412,7 +412,7 @@ TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionProportionalToNorma
     RigidBodyCollisionComponent collision;
 
     // Place DIRT ground below organism.
-    world->getData().at(5, 6).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 6).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 6).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -439,7 +439,7 @@ TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionUsesStaticCoefficie
     RigidBodyCollisionComponent collision;
 
     // Place DIRT ground (static_friction=1.5, stick_velocity=0.1).
-    world->getData().at(5, 6).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 6).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 6).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -461,7 +461,7 @@ TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionUsesKineticCoeffici
     RigidBodyCollisionComponent collision;
 
     // Place DIRT ground (kinetic_friction=0.5, stick_velocity=0.1, transition_width=0.1).
-    world->getData().at(5, 6).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 6).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 6).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };
@@ -484,7 +484,7 @@ TEST_F(RigidBodyCollisionComponentTest, ComputeGroundFrictionZeroWhenStationary)
     RigidBodyCollisionComponent collision;
 
     // Place DIRT ground below organism.
-    world->getData().at(5, 6).material_type = Material::EnumType::DIRT;
+    world->getData().at(5, 6).material_type = Material::EnumType::Dirt;
     world->getData().at(5, 6).fill_ratio = 1.0;
 
     std::vector<Vector2i> currentCells = { { 5, 5 } };

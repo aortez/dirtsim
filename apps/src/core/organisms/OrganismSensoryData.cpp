@@ -73,7 +73,7 @@ bool matchesTemplate(
 
                 case MatchMode::IsSolid: {
                     // Find dominant material and check if it's solid (not fluid).
-                    Material::EnumType dominant = Material::EnumType::AIR;
+                    Material::EnumType dominant = Material::EnumType::Air;
                     double max_fill = 0.0;
                     for (int m = 0; m < NumMaterials; ++m) {
                         if (cell_histogram[m] > max_fill) {
@@ -93,7 +93,7 @@ bool matchesTemplate(
 
                 case MatchMode::IsLiquid: {
                     // Find dominant material and check if it's fluid.
-                    Material::EnumType dominant = Material::EnumType::AIR;
+                    Material::EnumType dominant = Material::EnumType::Air;
                     double max_fill = 0.0;
                     for (int m = 0; m < NumMaterials; ++m) {
                         if (cell_histogram[m] > max_fill) {
@@ -181,7 +181,7 @@ void gatherMaterialHistograms(
             // Check bounds.
             if (!data.inBounds(wx, wy)) {
                 // Out of bounds - treat as WALL so organisms can detect world edges.
-                int wall_idx = static_cast<int>(Material::EnumType::WALL);
+                int wall_idx = static_cast<int>(Material::EnumType::Wall);
                 if (wall_idx >= 0 && wall_idx < NumMaterials) {
                     histograms[ny][nx][wall_idx] = 1.0;
                 }
@@ -204,7 +204,7 @@ Material::EnumType getDominantMaterial(
     int gy)
 {
     if (gx < 0 || gx >= GridSize || gy < 0 || gy >= GridSize) {
-        return Material::EnumType::AIR;
+        return Material::EnumType::Air;
     }
 
     double max_fill = 0.0;
@@ -225,7 +225,7 @@ bool isSolid(
     int gy)
 {
     Material::EnumType mat = getDominantMaterial<GridSize, NumMaterials>(histograms, gx, gy);
-    return mat != Material::EnumType::AIR && mat != Material::EnumType::WATER;
+    return mat != Material::EnumType::Air && mat != Material::EnumType::Water;
 }
 
 template <int GridSize, int NumMaterials>

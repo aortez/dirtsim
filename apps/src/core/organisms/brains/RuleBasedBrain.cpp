@@ -21,7 +21,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
 
             for (const auto& dir : directions) {
                 Vector2i check_pos = seed + dir;
-                int mat_idx = static_cast<int>(Material::EnumType::DIRT);
+                int mat_idx = static_cast<int>(Material::EnumType::Dirt);
 
                 if (check_pos.x >= 0 && check_pos.y >= 0 && check_pos.x < sensory.GRID_SIZE
                     && check_pos.y < sensory.GRID_SIZE) {
@@ -54,7 +54,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
         double observation_time = sensory.age_seconds - dirt_contact_age_seconds_;
         if (observation_time >= 2.0) {
             GrowthSuitability suitability =
-                checkGrowthSuitability(sensory, root_target_pos_, Material::EnumType::ROOT);
+                checkGrowthSuitability(sensory, root_target_pos_, Material::EnumType::Root);
 
             if (suitability == GrowthSuitability::SUITABLE) {
                 spdlog::info(
@@ -83,7 +83,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
             Vector2i wood_pos{ sensory.seed_position.x, sensory.seed_position.y - 1 };
 
             GrowthSuitability suitability =
-                checkGrowthSuitability(sensory, wood_pos, Material::EnumType::WOOD);
+                checkGrowthSuitability(sensory, wood_pos, Material::EnumType::Wood);
 
             if (suitability == GrowthSuitability::SUITABLE) {
                 has_grown_first_wood_ = true;
@@ -128,8 +128,8 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
 
     // Priority 1: Ensure roots support canopy (cell count based).
     if (above_ground_cells > root_capacity) {
-        Vector2i pos = findGrowthPosition(sensory, Material::EnumType::ROOT);
-        if (checkGrowthSuitability(sensory, pos, Material::EnumType::ROOT)
+        Vector2i pos = findGrowthPosition(sensory, Material::EnumType::Root);
+        if (checkGrowthSuitability(sensory, pos, Material::EnumType::Root)
             == GrowthSuitability::SUITABLE) {
             spdlog::debug(
                 "RuleBasedBrain: [P1] Growing ROOT for support at ({},{}) - need {} more capacity",
@@ -144,7 +144,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
     bool need_trunk = metrics.trunk_height < 3 || metrics.isTooFlat();
     if (need_trunk) {
         Vector2i pos = findTrunkGrowthPosition(sensory, metrics);
-        if (checkGrowthSuitability(sensory, pos, Material::EnumType::WOOD)
+        if (checkGrowthSuitability(sensory, pos, Material::EnumType::Wood)
             == GrowthSuitability::SUITABLE) {
             spdlog::debug(
                 "RuleBasedBrain: [P2] Growing TRUNK at ({},{}) (height={}, flat={})",
@@ -182,12 +182,12 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
                     Vector2i right = trunk_cell + Vector2i{ 1, 0 };
                     Vector2i pos = prefer_left ? left : right;
 
-                    if (checkGrowthSuitability(sensory, pos, Material::EnumType::WOOD)
+                    if (checkGrowthSuitability(sensory, pos, Material::EnumType::Wood)
                         != GrowthSuitability::SUITABLE) {
                         pos = prefer_left ? right : left; // Try other side.
                     }
 
-                    if (checkGrowthSuitability(sensory, pos, Material::EnumType::WOOD)
+                    if (checkGrowthSuitability(sensory, pos, Material::EnumType::Wood)
                         == GrowthSuitability::SUITABLE) {
                         spdlog::debug(
                             "RuleBasedBrain: [P3] Starting BRANCH at ({},{}) tier={}",
@@ -223,7 +223,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
             }
 
             Vector2i pos = branch + Vector2i{ direction, 0 };
-            if (checkGrowthSuitability(sensory, pos, Material::EnumType::WOOD)
+            if (checkGrowthSuitability(sensory, pos, Material::EnumType::Wood)
                 == GrowthSuitability::SUITABLE) {
                 spdlog::debug(
                     "RuleBasedBrain: [P4] Extending BRANCH at ({},{}) toward {} sector",
@@ -240,7 +240,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
     double leaf_ratio = comp.leaf_count / total;
     if (leaf_ratio < 0.25 && metrics.branch_cells.size() > 0) {
         Vector2i pos = findLeafGrowthPositionOnBranches(sensory, metrics);
-        if (checkGrowthSuitability(sensory, pos, Material::EnumType::LEAF)
+        if (checkGrowthSuitability(sensory, pos, Material::EnumType::Leaf)
             == GrowthSuitability::SUITABLE) {
             spdlog::debug("RuleBasedBrain: [P5] Growing LEAF at ({},{})", pos.x, pos.y);
             return GrowLeafCommand{ .target_pos = pos, .execution_time_seconds = 0.5 };
@@ -249,7 +249,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
 
     // Priority 6: Continue trunk growth if nothing else to do.
     Vector2i pos = findTrunkGrowthPosition(sensory, metrics);
-    if (checkGrowthSuitability(sensory, pos, Material::EnumType::WOOD)
+    if (checkGrowthSuitability(sensory, pos, Material::EnumType::Wood)
         == GrowthSuitability::SUITABLE) {
         spdlog::debug("RuleBasedBrain: [P6] Fallback TRUNK growth at ({},{})", pos.x, pos.y);
         return GrowWoodCommand{ .target_pos = pos, .execution_time_seconds = 3.0 };
@@ -270,18 +270,18 @@ GrowthSuitability RuleBasedBrain::checkGrowthSuitability(
 
     const auto& histogram = sensory.material_histograms[grid_y][grid_x];
 
-    double air = histogram[static_cast<int>(Material::EnumType::AIR)];
-    double dirt = histogram[static_cast<int>(Material::EnumType::DIRT)];
-    double sand = histogram[static_cast<int>(Material::EnumType::SAND)];
-    double water = histogram[static_cast<int>(Material::EnumType::WATER)];
-    double wall = histogram[static_cast<int>(Material::EnumType::WALL)];
-    double metal = histogram[static_cast<int>(Material::EnumType::METAL)];
+    double air = histogram[static_cast<int>(Material::EnumType::Air)];
+    double dirt = histogram[static_cast<int>(Material::EnumType::Dirt)];
+    double sand = histogram[static_cast<int>(Material::EnumType::Sand)];
+    double water = histogram[static_cast<int>(Material::EnumType::Water)];
+    double wall = histogram[static_cast<int>(Material::EnumType::Wall)];
+    double metal = histogram[static_cast<int>(Material::EnumType::Metal)];
 
     if (wall > 0.5 || metal > 0.5 || water > 0.5) {
         return GrowthSuitability::BLOCKED;
     }
 
-    if (target_material == Material::EnumType::LEAF) {
+    if (target_material == Material::EnumType::Leaf) {
         return (air > 0.5) ? GrowthSuitability::SUITABLE : GrowthSuitability::BLOCKED;
     }
 
@@ -296,9 +296,9 @@ TreeComposition RuleBasedBrain::analyzeTreeComposition(const TreeSensoryData& se
 {
     TreeComposition comp{ 0, 0, 0, 0 };
 
-    int root_idx = static_cast<int>(Material::EnumType::ROOT);
-    int wood_idx = static_cast<int>(Material::EnumType::WOOD);
-    int leaf_idx = static_cast<int>(Material::EnumType::LEAF);
+    int root_idx = static_cast<int>(Material::EnumType::Root);
+    int wood_idx = static_cast<int>(Material::EnumType::Wood);
+    int leaf_idx = static_cast<int>(Material::EnumType::Leaf);
 
     for (int y = 0; y < sensory.GRID_SIZE; y++) {
         for (int x = 0; x < sensory.GRID_SIZE; x++) {
@@ -319,8 +319,8 @@ Vector2i RuleBasedBrain::findGrowthPosition(
 {
     Vector2i seed = sensory.seed_position;
 
-    if (target_material == Material::EnumType::LEAF) {
-        int wood_idx = static_cast<int>(Material::EnumType::WOOD);
+    if (target_material == Material::EnumType::Leaf) {
+        int wood_idx = static_cast<int>(Material::EnumType::Wood);
         Vector2i best_pos = seed;
         double best_distance = -1.0;
 
@@ -333,7 +333,7 @@ Vector2i RuleBasedBrain::findGrowthPosition(
                     for (const auto& dir : directions) {
                         Vector2i candidate = wood_pos + dir;
 
-                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::LEAF)
+                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::Leaf)
                             == GrowthSuitability::SUITABLE) {
                             int dx = candidate.x - seed.x;
                             int dy = candidate.y - seed.y;
@@ -352,9 +352,9 @@ Vector2i RuleBasedBrain::findGrowthPosition(
         return best_pos;
     }
 
-    if (target_material == Material::EnumType::ROOT) {
+    if (target_material == Material::EnumType::Root) {
         // Find all ROOT cells and grow downward from the deepest ones.
-        int root_idx = static_cast<int>(Material::EnumType::ROOT);
+        int root_idx = static_cast<int>(Material::EnumType::Root);
         Vector2i best_pos = seed;
         int best_depth = -1; // Higher y = deeper.
 
@@ -368,7 +368,7 @@ Vector2i RuleBasedBrain::findGrowthPosition(
                     for (const auto& dir : directions) {
                         Vector2i candidate = root_pos + dir;
 
-                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::ROOT)
+                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::Root)
                             == GrowthSuitability::SUITABLE) {
                             // Prefer deeper positions (higher y values).
                             if (candidate.y > best_depth) {
@@ -383,9 +383,9 @@ Vector2i RuleBasedBrain::findGrowthPosition(
 
         return best_pos;
     }
-    else if (target_material == Material::EnumType::WOOD) {
+    else if (target_material == Material::EnumType::Wood) {
         // Find all WOOD cells and grow upward from the highest ones.
-        int wood_idx = static_cast<int>(Material::EnumType::WOOD);
+        int wood_idx = static_cast<int>(Material::EnumType::Wood);
         Vector2i best_pos = seed;
         int best_height = INT32_MAX; // Lower y = higher.
 
@@ -399,7 +399,7 @@ Vector2i RuleBasedBrain::findGrowthPosition(
                     for (const auto& dir : directions) {
                         Vector2i candidate = wood_pos + dir;
 
-                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::WOOD)
+                        if (checkGrowthSuitability(sensory, candidate, Material::EnumType::Wood)
                             == GrowthSuitability::SUITABLE) {
                             // Prefer higher positions (lower y values).
                             if (candidate.y < best_height) {
@@ -420,8 +420,8 @@ Vector2i RuleBasedBrain::findGrowthPosition(
 
 bool RuleBasedBrain::hasWaterAccess(const TreeSensoryData& sensory)
 {
-    int root_idx = static_cast<int>(Material::EnumType::ROOT);
-    int water_idx = static_cast<int>(Material::EnumType::WATER);
+    int root_idx = static_cast<int>(Material::EnumType::Root);
+    int water_idx = static_cast<int>(Material::EnumType::Water);
 
     for (int y = 0; y < sensory.GRID_SIZE; y++) {
         for (int x = 0; x < sensory.GRID_SIZE; x++) {
@@ -449,10 +449,10 @@ TreeMetrics RuleBasedBrain::analyzeTreeStructure(const TreeSensoryData& sensory)
     TreeMetrics metrics;
     Vector2i seed = sensory.seed_position;
 
-    int wood_idx = static_cast<int>(Material::EnumType::WOOD);
-    int leaf_idx = static_cast<int>(Material::EnumType::LEAF);
-    int root_idx = static_cast<int>(Material::EnumType::ROOT);
-    int seed_idx = static_cast<int>(Material::EnumType::SEED);
+    int wood_idx = static_cast<int>(Material::EnumType::Wood);
+    int leaf_idx = static_cast<int>(Material::EnumType::Leaf);
+    int root_idx = static_cast<int>(Material::EnumType::Root);
+    int seed_idx = static_cast<int>(Material::EnumType::Seed);
 
     // Track bounds for canopy dimensions.
     int min_x = INT32_MAX, max_x = INT32_MIN;
@@ -611,7 +611,7 @@ Vector2i RuleBasedBrain::findTrunkGrowthPosition(
     Vector2i trunk_top = seed + Vector2i{ 0, -metrics.trunk_height - 1 };
 
     // Verify it's suitable.
-    if (checkGrowthSuitability(sensory, trunk_top, Material::EnumType::WOOD)
+    if (checkGrowthSuitability(sensory, trunk_top, Material::EnumType::Wood)
         == GrowthSuitability::SUITABLE) {
         return trunk_top;
     }
@@ -636,13 +636,13 @@ Vector2i RuleBasedBrain::findBranchGrowthPosition(
         Vector2i left = trunk_pos + Vector2i{ -1, 0 };
         Vector2i right = trunk_pos + Vector2i{ 1, 0 };
 
-        if (checkGrowthSuitability(sensory, left, Material::EnumType::WOOD)
+        if (checkGrowthSuitability(sensory, left, Material::EnumType::Wood)
             == GrowthSuitability::SUITABLE) {
             double weight = prefer_left ? 10.0 : 1.0; // 10x weight for deficient side.
             weighted_candidates.push_back({ left, weight });
         }
 
-        if (checkGrowthSuitability(sensory, right, Material::EnumType::WOOD)
+        if (checkGrowthSuitability(sensory, right, Material::EnumType::Wood)
             == GrowthSuitability::SUITABLE) {
             double weight = prefer_left ? 1.0 : 10.0;
             weighted_candidates.push_back({ right, weight });
@@ -679,7 +679,7 @@ Vector2i RuleBasedBrain::findLeafGrowthPositionOnBranches(
     (void)metrics; // Future: could use branch_cells for more targeted growth.
 
     Vector2i seed = sensory.seed_position;
-    int wood_idx = static_cast<int>(Material::EnumType::WOOD);
+    int wood_idx = static_cast<int>(Material::EnumType::Wood);
 
     // Find WOOD cells (trunk + branches), weighted by distance from seed.
     // Prefer top/bottom neighbors (not sides).
@@ -699,13 +699,13 @@ Vector2i RuleBasedBrain::findLeafGrowthPositionOnBranches(
                 Vector2i top = wood_pos + Vector2i{ 0, -1 };
                 Vector2i bottom = wood_pos + Vector2i{ 0, 1 };
 
-                if (checkGrowthSuitability(sensory, top, Material::EnumType::LEAF)
+                if (checkGrowthSuitability(sensory, top, Material::EnumType::Leaf)
                     == GrowthSuitability::SUITABLE) {
                     double weight = (distance + 1.0) * 2.0; // Distance weight + top/bottom bonus.
                     weighted_candidates.push_back({ top, weight });
                 }
 
-                if (checkGrowthSuitability(sensory, bottom, Material::EnumType::LEAF)
+                if (checkGrowthSuitability(sensory, bottom, Material::EnumType::Leaf)
                     == GrowthSuitability::SUITABLE) {
                     double weight = (distance + 1.0) * 2.0;
                     weighted_candidates.push_back({ bottom, weight });
@@ -715,13 +715,13 @@ Vector2i RuleBasedBrain::findLeafGrowthPositionOnBranches(
                 Vector2i left = wood_pos + Vector2i{ -1, 0 };
                 Vector2i right = wood_pos + Vector2i{ 1, 0 };
 
-                if (checkGrowthSuitability(sensory, left, Material::EnumType::LEAF)
+                if (checkGrowthSuitability(sensory, left, Material::EnumType::Leaf)
                     == GrowthSuitability::SUITABLE) {
                     double weight = distance + 1.0; // No bonus for sides.
                     weighted_candidates.push_back({ left, weight });
                 }
 
-                if (checkGrowthSuitability(sensory, right, Material::EnumType::LEAF)
+                if (checkGrowthSuitability(sensory, right, Material::EnumType::Leaf)
                     == GrowthSuitability::SUITABLE) {
                     double weight = distance + 1.0;
                     weighted_candidates.push_back({ right, weight });

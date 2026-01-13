@@ -18,14 +18,14 @@ Tree::Tree(
     : Organism::Body(id, OrganismType::TREE),
       processor(std::move(proc)),
       brain_(std::move(brain)),
-      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::SEED))
+      rigidBody_(std::make_unique<RigidBodyComponent>(Material::EnumType::Seed))
 {
     // Initialize local shape with a single SEED cell at origin.
-    rigidBody_->addCell({ 0, 0 }, Material::EnumType::SEED, 1.0);
+    rigidBody_->addCell({ 0, 0 }, Material::EnumType::Seed, 1.0);
 
     // Keep base class local_shape in sync for mass computation.
     local_shape.push_back(
-        LocalCell{ .localPos = { 0, 0 }, .material = Material::EnumType::SEED, .fillRatio = 1.0 });
+        LocalCell{ .localPos = { 0, 0 }, .material = Material::EnumType::Seed, .fillRatio = 1.0 });
 
     recomputeMass();
     recomputeCenterOfMass();

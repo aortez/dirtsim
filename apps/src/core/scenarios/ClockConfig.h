@@ -64,7 +64,7 @@ struct Clock {
     bool marqueeEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
-    Material::EnumType digitMaterial = Material::EnumType::METAL; // Render color for clock digits.
+    Material::EnumType digitMaterial = Material::EnumType::Metal; // Render color for clock digits.
     uint8_t digitEmissiveness = 10;                               // Digit glow intensity (0-20).
 };
 

@@ -56,7 +56,7 @@ TEST_F(WorldLightCalculatorTest, SunlightEmptyColumn)
     // Fill with WATER (low opacity 0.05) so light transmits through.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
@@ -80,13 +80,13 @@ TEST_F(WorldLightCalculatorTest, SunlightBlockedByWall)
     // Fill with WATER (low opacity) so we can see light differences.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Wall across row 3.
     for (int x = 0; x < 10; ++x) {
-        data.at(x, 3).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 3).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Advance to rebuild grid cache after placing materials.
@@ -121,12 +121,12 @@ TEST_F(WorldLightCalculatorTest, LeafPartiallyBlocksSunlight)
     // Fill with WATER (low opacity) so light transmits through.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Single leaf cell at x=2, y=0.
-    data.at(2, 0).replaceMaterial(Material::EnumType::LEAF, 1.0);
+    data.at(2, 0).replaceMaterial(Material::EnumType::Leaf, 1.0);
 
     // Advance to rebuild grid cache after placing materials.
     world.advanceTime(0.0001);
@@ -149,11 +149,11 @@ TEST_F(WorldLightCalculatorTest, EmissiveSeedAddsLight)
 
     // Block all sun with a wall at top.
     for (int x = 0; x < 5; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Place a seed in the dark area.
-    data.at(2, 2).replaceMaterial(Material::EnumType::SEED, 1.0);
+    data.at(2, 2).replaceMaterial(Material::EnumType::Seed, 1.0);
 
     // Advance to rebuild grid cache after placing materials.
     world.advanceTime(0.0001);
@@ -177,14 +177,14 @@ TEST_F(WorldLightCalculatorTest, WaterTransmitsLight)
     // Fill with WATER (opacity=0.05, scatter=0.1) - transparent enough for light.
     for (int y = 0; y < 10; ++y) {
         for (int x = 0; x < 10; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Block sun on right half with wall.
     for (int y = 0; y < 10; ++y) {
         for (int x = 5; x < 10; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
     }
 
@@ -207,7 +207,7 @@ TEST_F(WorldLightCalculatorTest, LightMapStringProducesOutput)
     // Fill with WATER so cells are visible.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
@@ -235,13 +235,13 @@ TEST_F(WorldLightCalculatorTest, AmbientLightAddsBaseIllumination)
     // Fill with SAND so we can see light.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::SAND, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Sand, 1.0);
         }
     }
 
     // Block all sun.
     for (int x = 0; x < 5; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Disable sun to isolate ambient light test.
@@ -271,7 +271,7 @@ TEST_F(WorldLightCalculatorTest, AmbientIntensityScalesLight)
     // Fill with WATER so we can see light.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
@@ -301,13 +301,13 @@ TEST_F(WorldLightCalculatorTest, SkyAccessAttenuatesUnderground)
     // Fill with WATER (low opacity, visible color).
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Wall at row 3 blocks sky access.
     for (int x = 0; x < 5; ++x) {
-        data.at(x, 3).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 3).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Advance to rebuild grid cache after placing materials.
@@ -339,14 +339,14 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
     // Fill with WATER (low opacity, visible color).
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Wall across row 2, but leave a gap at x=5 (vertical shaft).
     for (int x = 0; x < 10; ++x) {
         if (x != 5) {
-            data.at(x, 2).replaceMaterial(Material::EnumType::WALL, 1.0);
+            data.at(x, 2).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
     }
 
@@ -383,13 +383,13 @@ TEST_F(WorldLightCalculatorTest, PointLightIlluminatesDarkRoom)
     // Fill with WATER so cells are visible.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Wall at top blocks all sun.
     for (int x = 0; x < data.width; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Disable sun and ambient.
@@ -430,13 +430,13 @@ TEST_F(WorldLightCalculatorTest, PointLightFalloffWithDistance)
     // Fill with WATER.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Block sun.
     for (int x = 0; x < data.width; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     config.sun_enabled = false;
@@ -471,18 +471,18 @@ TEST_F(WorldLightCalculatorTest, PointLightBlockedByWall)
     // Fill with WATER.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Block sun.
     for (int x = 0; x < data.width; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Vertical wall in the middle.
     for (int y = 2; y < 8; ++y) {
-        data.at(10, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(10, y).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Advance to rebuild grid cache after placing materials.
@@ -520,13 +520,13 @@ TEST_F(WorldLightCalculatorTest, MultiplePointLightsAdditive)
     // Fill with WATER.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Block sun.
     for (int x = 0; x < data.width; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     config.sun_enabled = false;
@@ -572,13 +572,13 @@ TEST_F(WorldLightCalculatorTest, PointLightSpreadIsCircular)
     // Fill with WATER so cells are visible.
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            data.at(x, y).replaceMaterial(Material::EnumType::WATER, 1.0);
+            data.at(x, y).replaceMaterial(Material::EnumType::Water, 1.0);
         }
     }
 
     // Wall at top blocks all sun.
     for (int x = 0; x < data.width; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Disable sun, ambient, and diffusion to isolate point light behavior.
@@ -642,11 +642,11 @@ TEST_F(WorldLightCalculatorTest, AirScatteringDiffusesLightSideways)
 
     // Wall covering right side at row 0 (blocks sun for x >= 8).
     for (int x = 8; x < 20; ++x) {
-        data.at(x, 0).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // SAND marker in shadow (x=10, just past shadow boundary).
-    data.at(10, 5).replaceMaterial(Material::EnumType::SAND, 1.0);
+    data.at(10, 5).replaceMaterial(Material::EnumType::Sand, 1.0);
 
     // Advance to rebuild grid cache after placing materials.
     world.advanceTime(0.0001);
@@ -681,11 +681,11 @@ TEST_F(WorldLightCalculatorTest, AirScatteringSoftensOverhangShadow)
 
     // Create an overhang: wall at y=4, extending from x=6 to edge.
     for (int x = 6; x < 15; ++x) {
-        data.at(x, 4).replaceMaterial(Material::EnumType::WALL, 1.0);
+        data.at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // WATER marker under overhang (x=10, y=6).
-    data.at(10, 6).replaceMaterial(Material::EnumType::WATER, 1.0);
+    data.at(10, 6).replaceMaterial(Material::EnumType::Water, 1.0);
 
     // Advance to rebuild grid cache after placing materials.
     world.advanceTime(0.0001);

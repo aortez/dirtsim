@@ -88,13 +88,13 @@ protected:
         // Clear interior to air.
         for (int y = 1; y < height - 1; ++y) {
             for (int x = 1; x < width - 1; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
 
         // Ensure floor is WALL.
         for (int x = 0; x < width; ++x) {
-            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::WALL, 1.0);
+            world->getData().at(x, height - 1).replaceMaterial(Material::EnumType::Wall, 1.0);
         }
 
         return world;
@@ -108,13 +108,13 @@ protected:
             std::string row;
             for (int x = 0; x < data.width; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL) {
+                if (cell.material_type == Material::EnumType::Wall) {
                     row += "W";
                 }
-                else if (cell.material_type == Material::EnumType::WOOD) {
+                else if (cell.material_type == Material::EnumType::Wood) {
                     row += "G"; // Goose cell.
                 }
-                else if (cell.material_type == Material::EnumType::AIR || cell.isEmpty()) {
+                else if (cell.material_type == Material::EnumType::Air || cell.isEmpty()) {
                     row += ".";
                 }
                 else {
@@ -145,7 +145,7 @@ TEST_F(GooseTest, CreateGoosePlacesWoodCell)
 
     // Check that WOOD cell was placed.
     const Cell& cell = world->getData().at(10, 8);
-    EXPECT_EQ(cell.material_type, Material::EnumType::WOOD);
+    EXPECT_EQ(cell.material_type, Material::EnumType::Wood);
     EXPECT_EQ(manager.at(Vector2i{ 10, 8 }), goose_id);
 
     // Check goose's anchor cell.
@@ -178,7 +178,7 @@ TEST_F(GooseTest, GooseStandsStillWithWaitAction)
 
     // Set up cell tracker for detailed diagnostics.
     CellTracker tracker(*world, goose_id, 20);
-    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, 0);
+    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, 0);
 
     // Run physics for many frames.
     for (int frame = 0; frame < 100; ++frame) {
@@ -188,7 +188,7 @@ TEST_F(GooseTest, GooseStandsStillWithWaitAction)
         // Track if the goose cell moved.
         Vector2i current_anchor = goose->getAnchorCell();
         if (current_anchor != Vector2i(10, 8)) {
-            tracker.trackCell(current_anchor, Material::EnumType::WOOD, frame);
+            tracker.trackCell(current_anchor, Material::EnumType::Wood, frame);
         }
     }
 
@@ -245,7 +245,7 @@ TEST_F(GooseTest, GooseFallsToFloorThenStops)
 
     // Set up cell tracker.
     CellTracker tracker(*world, goose_id, 20);
-    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, 0);
+    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, 0);
 
     // Run physics - goose should fall due to gravity.
     for (int frame = 0; frame < 200; ++frame) {
@@ -255,7 +255,7 @@ TEST_F(GooseTest, GooseFallsToFloorThenStops)
         // Track if the goose cell moved.
         Vector2i current_anchor = goose->getAnchorCell();
         if (frame < 100) {
-            tracker.trackCell(current_anchor, Material::EnumType::WOOD, frame);
+            tracker.trackCell(current_anchor, Material::EnumType::Wood, frame);
         }
     }
 
@@ -323,7 +323,7 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
 
     // Set up cell tracker.
     CellTracker tracker(*world, goose_id, 20);
-    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, 0);
+    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, 0);
 
     // Walk right for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_RIGHT);
@@ -332,7 +332,7 @@ TEST_F(GooseTest, GooseWalksRightWhenOnGround)
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
         tracker.recordFrame(frame);
-        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, frame);
+        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, frame);
 
         // Track max velocity.
         Vector2i pos = goose->getAnchorCell();
@@ -409,7 +409,7 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
 
     // Set up cell tracker.
     CellTracker tracker(*world, goose_id, 20);
-    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, 0);
+    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, 0);
 
     // Walk left for 100 frames (~1.6 seconds), tracking velocity.
     brain_ptr->setAction(GooseAction::RUN_LEFT);
@@ -417,7 +417,7 @@ TEST_F(GooseTest, GooseWalksLeftWhenOnGround)
     for (int frame = 0; frame < 100; ++frame) {
         world->advanceTime(0.016);
         tracker.recordFrame(frame);
-        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, frame);
+        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, frame);
 
         // Track max velocity (absolute value since going left).
         Vector2i pos = goose->getAnchorCell();
@@ -481,7 +481,7 @@ TEST_F(GooseTest, GooseStopsWhenWalkDirectionChangesToZero)
 
     // Set up tracker.
     CellTracker tracker(*world, goose_id, 100);
-    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, 0);
+    tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, 0);
 
     int frame = 0;
 
@@ -498,7 +498,7 @@ TEST_F(GooseTest, GooseStopsWhenWalkDirectionChangesToZero)
     while (goose->getAnchorCell().x < stop_x) {
         world->advanceTime(0.016);
         ++frame;
-        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, frame);
+        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, frame);
         tracker.recordFrame(frame);
     }
 
@@ -516,7 +516,7 @@ TEST_F(GooseTest, GooseStopsWhenWalkDirectionChangesToZero)
     for (int i = 0; i < 50; ++i) {
         world->advanceTime(0.016);
         ++frame;
-        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::WOOD, frame);
+        tracker.trackCell(goose->getAnchorCell(), Material::EnumType::Wood, frame);
         tracker.recordFrame(frame);
     }
 
@@ -557,7 +557,7 @@ TEST_F(GooseTest, GooseCannotWalkThroughVerticalWall)
     // Wall at x=12, from y=1 to y=8.
     int wall_x = 12;
     for (int y = 1; y <= 8; ++y) {
-        world->getData().at(wall_x, y).replaceMaterial(Material::EnumType::WALL, 1.0);
+        world->getData().at(wall_x, y).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
     // Create a test brain we can control.

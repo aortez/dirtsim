@@ -180,7 +180,7 @@ OrganismId OrganismManager::createTree(
 
     // Place seed material in world.
     world.addMaterialAtCell(
-        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::SEED, 1.0);
+        { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Seed, 1.0);
 
     // Track cell ownership.
     tree->getCells().insert(pos);
@@ -221,7 +221,7 @@ OrganismId OrganismManager::createDuck(
     duck->setAnchorCell(pos);
 
     // Place duck as WOOD cell in world (replace whatever is there).
-    world.getData().at(x, y).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world.getData().at(x, y).replaceMaterial(Material::EnumType::Wood, 1.0);
 
     // Track cell ownership.
     duck->getCells().insert(pos);

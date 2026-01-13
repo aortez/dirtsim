@@ -51,9 +51,9 @@ struct ColorShowcaseEventConfig {
                                  .duration = 10.0,
                                  .chance = 0.3,
                                  .cooldown = 60.0 };
-    std::vector<Material::EnumType> showcase_materials = { Material::EnumType::LEAF,
-                                                           Material::EnumType::WATER,
-                                                           Material::EnumType::WOOD };
+    std::vector<Material::EnumType> showcase_materials = { Material::EnumType::Leaf,
+                                                           Material::EnumType::Water,
+                                                           Material::EnumType::Wood };
 };
 
 struct DigitSlideEventConfig {

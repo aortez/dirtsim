@@ -173,14 +173,14 @@ Cell WorldInterpolationTool::createInterpolatedCellB(
     // - applyGravity() applies forces (only checks isEmpty/isWall)
     // - computeMaterialMoves() skips AIR cells (also checks isAir)
     // Result: velocity accumulates but COM never updates.
-    if (materialType == Material::EnumType::AIR && fillRatio > Cell::MIN_FILL_THRESHOLD) {
+    if (materialType == Material::EnumType::Air && fillRatio > Cell::MIN_FILL_THRESHOLD) {
         // Find a non-AIR material from the corners to preserve the material.
         const Cell* corners[4] = { &cell00, &cell10, &cell01, &cell11 };
         const Cell* bestCorner = nullptr;
         double bestFill = 0.0;
 
         for (const Cell* corner : corners) {
-            if (corner->material_type != Material::EnumType::AIR && corner->fill_ratio > bestFill) {
+            if (corner->material_type != Material::EnumType::Air && corner->fill_ratio > bestFill) {
                 bestCorner = corner;
                 bestFill = corner->fill_ratio;
             }

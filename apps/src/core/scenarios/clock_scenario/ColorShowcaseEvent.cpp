@@ -12,7 +12,7 @@ Material::EnumType startColorShowcase(
 {
     if (showcase_materials.empty()) {
         state.current_index = 0;
-        return Material::EnumType::METAL;
+        return Material::EnumType::Metal;
     }
 
     // Start on a random color each time.

@@ -354,10 +354,10 @@ void ClockControls::createDigitMaterialSelectionView(lv_obj_t* view)
 
     // All material types in enum order.
     static const Material::EnumType materials[] = {
-        Material::EnumType::AIR,   Material::EnumType::DIRT, Material::EnumType::LEAF,
-        Material::EnumType::METAL, Material::EnumType::ROOT, Material::EnumType::SAND,
-        Material::EnumType::SEED,  Material::EnumType::WALL, Material::EnumType::WATER,
-        Material::EnumType::WOOD
+        Material::EnumType::Air,   Material::EnumType::Dirt, Material::EnumType::Leaf,
+        Material::EnumType::Metal, Material::EnumType::Root, Material::EnumType::Sand,
+        Material::EnumType::Seed,  Material::EnumType::Wall, Material::EnumType::Water,
+        Material::EnumType::Wood
     };
 
     for (Material::EnumType mat : materials) {

@@ -59,19 +59,19 @@ TEST_F(ClockScenarioTest, Setup_HasWallBorders)
 
     // Verify bottom border is all walls.
     for (int x = 0; x < data.width; ++x) {
-        EXPECT_EQ(data.at(x, data.height - 1).material_type, Material::EnumType::WALL)
+        EXPECT_EQ(data.at(x, data.height - 1).material_type, Material::EnumType::Wall)
             << "Bottom border missing WALL at x=" << x;
     }
 
     // Verify left border is all walls.
     for (int y = 0; y < data.height; ++y) {
-        EXPECT_EQ(data.at(0, y).material_type, Material::EnumType::WALL)
+        EXPECT_EQ(data.at(0, y).material_type, Material::EnumType::Wall)
             << "Left border missing WALL at y=" << y;
     }
 
     // Verify right border is all walls.
     for (int y = 0; y < data.height; ++y) {
-        EXPECT_EQ(data.at(data.width - 1, y).material_type, Material::EnumType::WALL)
+        EXPECT_EQ(data.at(data.width - 1, y).material_type, Material::EnumType::Wall)
             << "Right border missing WALL at y=" << y;
     }
 }
@@ -85,7 +85,7 @@ TEST_F(ClockScenarioTest, Setup_HasMinimumDigitBlocks)
     for (int y = 1; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {
             const Cell& cell = data.at(x, y);
-            if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+            if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                 digit_cell_count++;
             }
         }
@@ -266,7 +266,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
         }
         const Cell& cell = data.at(x, y);
         // Door is open if the wall cell has been cleared to AIR.
-        return cell.material_type == Material::EnumType::AIR;
+        return cell.material_type == Material::EnumType::Air;
     };
 
     // Run simulation and track all frames.
@@ -410,7 +410,7 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                     Material::EnumType render_material =
                         static_cast<Material::EnumType>(cell.render_as);
                     material_counts[render_material]++;
@@ -464,7 +464,7 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                     y_positions.push_back(static_cast<int>(y));
                 }
             }
@@ -538,7 +538,7 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                     positions.emplace_back(x, y);
                 }
             }
@@ -614,7 +614,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                     materials.push_back(static_cast<Material::EnumType>(cell.render_as));
                 }
             }
@@ -677,7 +677,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     }
 
     // METAL should NOT appear during showcase+slide (that indicates showcase reset bug).
-    auto metal_it = material_counts.find(Material::EnumType::METAL);
+    auto metal_it = material_counts.find(Material::EnumType::Metal);
     EXPECT_TRUE(metal_it == material_counts.end())
         << "Found METAL material during animation. METAL appeared "
         << (metal_it != material_counts.end() ? metal_it->second : 0)
@@ -699,7 +699,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
         for (int y = 1; y < data.height - 1; ++y) {
             for (int x = 1; x < data.width - 1; ++x) {
                 const Cell& cell = data.at(x, y);
-                if (cell.material_type == Material::EnumType::WALL && cell.render_as >= 0) {
+                if (cell.material_type == Material::EnumType::Wall && cell.render_as >= 0) {
                     materials.push_back(static_cast<Material::EnumType>(cell.render_as));
                 }
             }
@@ -751,8 +751,8 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     }
 
     // METAL should NOT appear during showcase+marquee.
-    auto metal_it = material_counts.find(Material::EnumType::METAL);
-    if (metal_it != material_counts.end() && showcase_material != Material::EnumType::METAL) {
+    auto metal_it = material_counts.find(Material::EnumType::Metal);
+    if (metal_it != material_counts.end() && showcase_material != Material::EnumType::Metal) {
         FAIL() << "Found METAL material during marquee when showcase material was "
                << toString(showcase_material) << ". METAL appeared " << metal_it->second
                << " times out of " << num_samples << " samples.";

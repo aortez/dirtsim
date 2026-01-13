@@ -27,19 +27,19 @@ TEST(CantileverSupportTest, DISABLED_HorizontalBeamStaysSupported)
     // Clear to air.
     for (uint32_t y = 0; y < 3; ++y) {
         for (uint32_t x = 0; x < 3; ++x) {
-            world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
         }
     }
 
     // Create L-shaped wood structure (beam one row lower).
     world->getData().at(0, 2).replaceMaterial(
-        Material::EnumType::WOOD, 1.0); // Bottom (grounded on edge)
+        Material::EnumType::Wood, 1.0); // Bottom (grounded on edge)
     world->getData().at(0, 1).replaceMaterial(
-        Material::EnumType::WOOD, 1.0); // Top of column (corner)
+        Material::EnumType::Wood, 1.0); // Top of column (corner)
     world->getData().at(1, 1).replaceMaterial(
-        Material::EnumType::WOOD, 1.0); // Beam middle (cantilever!)
+        Material::EnumType::Wood, 1.0); // Beam middle (cantilever!)
     world->getData().at(2, 1).replaceMaterial(
-        Material::EnumType::WOOD, 1.0); // Beam right (cantilever!)
+        Material::EnumType::Wood, 1.0); // Beam right (cantilever!)
 
     std::cout << "\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
     std::cout << "CANTILEVER SUPPORT TEST\n";
@@ -57,10 +57,10 @@ TEST(CantileverSupportTest, DISABLED_HorizontalBeamStaysSupported)
     CellTracker tracker(*world, INVALID_ORGANISM_ID, 20);
 
     // Track all wood cells.
-    tracker.trackCell(Vector2i{ 0, 2 }, Material::EnumType::WOOD, 0);
-    tracker.trackCell(Vector2i{ 0, 1 }, Material::EnumType::WOOD, 0);
-    tracker.trackCell(Vector2i{ 1, 1 }, Material::EnumType::WOOD, 0);
-    tracker.trackCell(Vector2i{ 2, 1 }, Material::EnumType::WOOD, 0);
+    tracker.trackCell(Vector2i{ 0, 2 }, Material::EnumType::Wood, 0);
+    tracker.trackCell(Vector2i{ 0, 1 }, Material::EnumType::Wood, 0);
+    tracker.trackCell(Vector2i{ 1, 1 }, Material::EnumType::Wood, 0);
+    tracker.trackCell(Vector2i{ 2, 1 }, Material::EnumType::Wood, 0);
 
     // Print detailed header.
     std::cout << "\nFrame | Pos  | COM           | Velocity      | Pending Force | Sup\n";
@@ -80,7 +80,7 @@ TEST(CantileverSupportTest, DISABLED_HorizontalBeamStaysSupported)
             for (uint32_t y = 0; y < 3; ++y) {
                 for (uint32_t x = 0; x < 3; ++x) {
                     const Cell& cell = world->getData().at(x, y);
-                    if (cell.material_type == Material::EnumType::WOOD) {
+                    if (cell.material_type == Material::EnumType::Wood) {
                         std::cout << std::setw(5) << frame << " | (" << x << "," << y << ") | ("
                                   << std::setw(5) << std::fixed << std::setprecision(2)
                                   << cell.com.x << "," << std::setw(5) << cell.com.y << ") | ("

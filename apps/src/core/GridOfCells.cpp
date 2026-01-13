@@ -103,7 +103,7 @@ void GridOfCells::precomputeMaterialNeighborhoods()
                     int nx = x + dx;
                     int ny = y + dy;
 
-                    Material::EnumType mat = Material::EnumType::AIR; // Default for OOB.
+                    Material::EnumType mat = Material::EnumType::Air; // Default for OOB.
                     if (nx >= 0 && nx < width_ && ny >= 0 && ny < height_) {
                         const Cell& cell = cells_[ny * width_ + nx];
                         mat = cell.material_type;

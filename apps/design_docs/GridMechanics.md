@@ -117,14 +117,14 @@ TURBULENT -> STATIC: Velocity damped below threshold
 Viscosity represents a material's resistance to flow and deformation. Unlike the deprecated cohesion binding system, viscosity provides continuous damping rather than binary thresholds.
 
 ### Material Viscosity Values (0.0 - 1.0)
-- **AIR**: 0.001 (negligible resistance)
-- **WATER**: 0.01 (flows easily)
-- **SAND**: 0.3 (granular flow resistance)
-- **DIRT**: 0.5 (cohesive, resists flow)
-- **LEAF**: 0.2 (light, some resistance)
-- **WOOD**: 0.9 (essentially solid)
-- **METAL**: 0.95 (rigid body)
-- **WALL**: 1.0 (infinite - never flows)
+- **Air**: 0.001 (negligible resistance)
+- **Water**: 0.01 (flows easily)
+- **Sand**: 0.3 (granular flow resistance)
+- **Dirt**: 0.5 (cohesive, resists flow)
+- **Leaf**: 0.2 (light, some resistance)
+- **Wood**: 0.9 (essentially solid)
+- **Metal**: 0.95 (rigid body)
+- **Wall**: 1.0 (infinite - never flows)
 
 ### Physics Implementation
 Viscosity creates continuous velocity damping:
@@ -144,15 +144,15 @@ Key behaviors:
 Air resistance is a material-specific property that provides velocity-dependent damping. Unlike viscosity (which is internal flow resistance), air resistance models drag from the surrounding medium.
 
 ### Material Air Resistance Values (0.0 - 1.0)
-- **AIR**: 0.0 (no self-drag)
-- **WATER**: 0.01 (very low - fluid)
-- **METAL**: 0.1 (low - dense, compact)
-- **SAND**: 0.2 (low - small, heavy particles)
-- **SEED**: 0.2 (low-moderate - compact, dense)
-- **DIRT**: 0.3 (moderate - chunky particles)
-- **WOOD**: 0.4 (moderate - shape-dependent)
-- **LEAF**: 0.8 (high - large surface area, light)
-- **WALL**: 0.0 (immobile, n/a)
+- **Air**: 0.0 (no self-drag)
+- **Water**: 0.01 (very low - fluid)
+- **Metal**: 0.1 (low - dense, compact)
+- **Sand**: 0.2 (low - small, heavy particles)
+- **Seed**: 0.2 (low-moderate - compact, dense)
+- **Dirt**: 0.3 (moderate - chunky particles)
+- **Wood**: 0.4 (moderate - shape-dependent)
+- **Leaf**: 0.8 (high - large surface area, light)
+- **Wall**: 0.0 (immobile, n/a)
 
 ### Physical Basis
 
@@ -207,14 +207,14 @@ return lerp(static_coefficient, kinetic_coefficient, smooth_t)
 
 ### Material Friction Values
 
-- **METAL**: stick=0.01, width=0.02, static=1.5, kinetic=1.0 (very sticky, sharp breakaway)
-- **WOOD**: stick=0.02, width=0.03, static=1.3, kinetic=0.9 (sticky, moderate breakaway)
-- **DIRT**: stick=0.1, width=0.10, static=1.5, kinetic=0.5 (resists flow, avalanches when moving)
-- **SAND**: stick=0.04, width=0.08, static=0.6, kinetic=0.4 (light resistance, flows when disturbed)
-- **LEAF**: stick=0.03, width=0.06, static=0.5, kinetic=0.3 (light materials, easy to move)
-- **WATER**: stick=0.0, width=0.001, static=0, kinetic=0 (fluids excluded from friction)
-- **AIR**: stick=0.0, width=0.01, static=1.0, kinetic=1.0 (fluids excluded from friction)
-- **WALL**: N/A (immobile)
+- **Metal**: stick=0.01, width=0.02, static=1.5, kinetic=1.0 (very sticky, sharp breakaway)
+- **Wood**: stick=0.02, width=0.03, static=1.3, kinetic=0.9 (sticky, moderate breakaway)
+- **Dirt**: stick=0.1, width=0.10, static=1.5, kinetic=0.5 (resists flow, avalanches when moving)
+- **Sand**: stick=0.04, width=0.08, static=0.6, kinetic=0.4 (light resistance, flows when disturbed)
+- **Leaf**: stick=0.03, width=0.06, static=0.5, kinetic=0.3 (light materials, easy to move)
+- **Water**: stick=0.0, width=0.001, static=0, kinetic=0 (fluids excluded from friction)
+- **Air**: stick=0.0, width=0.01, static=1.0, kinetic=1.0 (fluids excluded from friction)
+- **Wall**: N/A (immobile)
 
 ### Integration with Forces
 
@@ -282,20 +282,20 @@ Purpose: Simulates how different materials stick to each other (e.g., water adhe
 **AIR handling**: AIR neighbors are explicitly skipped in adhesion calculations since AIR has zero adhesion. This prevents unnecessary force computations for particles moving through AIR.
 
 Each material has an adhesion value (0.0-1.0):
-AIR:   0.0  (no adhesion - always skipped)
-DIRT:  0.3  (moderate adhesion)
-WATER: 0.3  (moderate adhesion)
+Air:   0.0  (no adhesion - always skipped)
+Dirt:  0.3  (moderate adhesion)
+Water: 0.3  (moderate adhesion)
 WOOD:  0.3  (moderate adhesion)
-SAND:  0.1  (low adhesion - doesn't stick well)
-METAL: 0.1  (low adhesion)
+Sand:  0.1  (low adhesion - doesn't stick well)
+Metal: 0.1  (low adhesion)
 LEAF:  0.2  (moderate adhesion)
 WALL:  1.0  (maximum adhesion - everything sticks to walls)
 
 Each material has motion thresholds:
-WATER: coherence_threshold=0.9, recovery_time=5   (flows easily, quick to reform)
-SAND:  coherence_threshold=0.7, recovery_time=20  (granular, slow to settle)
-DIRT:  coherence_threshold=0.6, recovery_time=30  (clumpy, slow to stabilize)
-METAL: coherence_threshold=0.95, recovery_time=0  (rigid, instant connections)
+Water: coherence_threshold=0.9, recovery_time=5   (flows easily, quick to reform)
+Sand:  coherence_threshold=0.7, recovery_time=20  (granular, slow to settle)
+Dirt:  coherence_threshold=0.6, recovery_time=30  (clumpy, slow to stabilize)
+Metal: coherence_threshold=0.95, recovery_time=0  (rigid, instant connections)
 
 Force Calculation
 
@@ -318,9 +318,9 @@ Key Differences from Cohesion
 - Adhesion: Calculated by WorldBAdhesionCalculator
 
 Behavioral Examples
-- WATER + DIRT: Water particles attracted toward dirt surfaces (realistic wetting)
+- WATER + Dirt: Water particles attracted toward dirt surfaces (realistic wetting)
 - Any Material + WALL: Strong attraction creates sticky boundary behavior
-- METAL + WATER: Moderate adhesion (weak + strong)
+- METAL + Water: Moderate adhesion (weak + strong)
 - AIR interactions: No adhesive forces
 
   The system enables realistic multi-material physics where particles can form mixed structures through adhesive bonds between different material types.
@@ -392,10 +392,10 @@ Material-specific pressure spreading using 8-neighbor diffusion (includes diagon
 5. Stability limits prevent numerical explosion
 
 **Material Diffusion Rates:**
-- WATER: 0.9 (high - pressure spreads quickly)
-- LEAF: 0.6, SAND: 0.3, DIRT: 0.3 (moderate)
-- WOOD: 0.15, METAL: 0.1 (low - slow spreading)
-- WALL: 0.0 (barrier), AIR: 1.0 (maximum)
+- Water: 0.9 (high - pressure spreads quickly)
+- Leaf: 0.6, Sand: 0.3, Dirt: 0.3 (moderate)
+- Wood: 0.15, Metal: 0.1 (low - slow spreading)
+- Wall: 0.0 (barrier), Air: 1.0 (maximum)
 
 **Boundary Conditions:**
 - **Empty cells**: No-flux boundaries (pressure sealed in, doesn't leak to air)
@@ -508,11 +508,11 @@ This allows pressure to redirect fluids laterally when blocked, creating realist
 
   Material-Specific Behaviors
 
-  - WATER: Low viscosity (0.01) → flows easily, quick pressure equilibration
-  - DIRT: Low viscosity (0.2) → granular flow with some cohesion
-  - SAND: Moderate viscosity (0.3) → granular flow, forms natural slopes
-  - METAL: Very high viscosity (1.0) → essentially rigid, minimal flow
-  - WOOD: High viscosity (1.0) → maintains structure, deforms only under extreme force
+  - Water: Low viscosity (0.01) → flows easily, quick pressure equilibration
+  - Dirt: Low viscosity (0.2) → granular flow with some cohesion
+  - Sand: Moderate viscosity (0.3) → granular flow, forms natural slopes
+  - Metal: Very high viscosity (1.0) → essentially rigid, minimal flow
+  - Wood: High viscosity (1.0) → maintains structure, deforms only under extreme force
 
   Key Design Principles
 

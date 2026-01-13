@@ -58,7 +58,7 @@ protected:
         for (size_t y = 0; y < materials.size() && y < static_cast<size_t>(world->getData().height);
              ++y) {
             Cell& cell = world->getData().at(0, y); // Only one column (x=0).
-            if (materials[y] != Material::EnumType::AIR) {
+            if (materials[y] != Material::EnumType::Air) {
                 cell.addMaterial(materials[y], 1.0); // Fill completely.
             }
         }
@@ -92,11 +92,11 @@ TEST_F(BuoyancyTest, PureFluidPressureField)
     spdlog::info("Starting BuoyancyTest::PureFluidPressureField");
 
     // Setup: Vertical column of 5 water cells.
-    setupColumn({ Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER });
+    setupColumn({ Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -105,7 +105,7 @@ TEST_F(BuoyancyTest, PureFluidPressureField)
     // This uses the same formula as WorldPressureCalculator::calculateHydrostaticPressure().
     const double gravity = world->getPhysicsSettings().gravity;
     const double strength = world->getPhysicsSettings().pressure_hydrostatic_strength;
-    const Material::Properties& water_props = Material::getProperties(Material::EnumType::WATER);
+    const Material::Properties& water_props = Material::getProperties(Material::EnumType::Water);
     const double water_density = water_props.density;
 
     spdlog::info("  Physics configuration:");
@@ -150,11 +150,11 @@ TEST_F(BuoyancyTest, SolidInFluidColumn)
     spdlog::info("Starting BuoyancyTest::SolidInFluidColumn");
 
     // Setup: Water column with metal cell in the middle.
-    setupColumn({ Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::METAL,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER });
+    setupColumn({ Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Metal,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -164,8 +164,8 @@ TEST_F(BuoyancyTest, SolidInFluidColumn)
     // field. This is how buoyancy works - solids contribute surrounding fluid density.
     const double gravity = world->getPhysicsSettings().gravity;
     const double strength = world->getPhysicsSettings().pressure_hydrostatic_strength;
-    const Material::Properties& water_props = Material::getProperties(Material::EnumType::WATER);
-    const Material::Properties& metal_props = Material::getProperties(Material::EnumType::METAL);
+    const Material::Properties& water_props = Material::getProperties(Material::EnumType::Water);
+    const Material::Properties& metal_props = Material::getProperties(Material::EnumType::Metal);
     const double water_density = water_props.density;
     const double metal_density = metal_props.density;
 
@@ -215,11 +215,11 @@ TEST_F(BuoyancyTest, PressureForceDirection)
     spdlog::info("Starting BuoyancyTest::PressureForceDirection");
 
     // Setup: Water column with metal cell in the middle.
-    setupColumn({ Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::METAL,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER });
+    setupColumn({ Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Metal,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -271,11 +271,11 @@ TEST_F(BuoyancyTest, NetForceCalculation)
         spdlog::info("  Test Case A: Metal in water");
 
         // Setup.
-        setupColumn({ Material::EnumType::WATER,
-                      Material::EnumType::WATER,
-                      Material::EnumType::METAL,
-                      Material::EnumType::WATER,
-                      Material::EnumType::WATER });
+        setupColumn({ Material::EnumType::Water,
+                      Material::EnumType::Water,
+                      Material::EnumType::Metal,
+                      Material::EnumType::Water,
+                      Material::EnumType::Water });
         calculatePressure();
 
         WorldPressureCalculator calculator;
@@ -283,7 +283,7 @@ TEST_F(BuoyancyTest, NetForceCalculation)
 
         // Gravity force (downward, positive y).
         const Material::Properties& metal_props =
-            Material::getProperties(Material::EnumType::METAL);
+            Material::getProperties(Material::EnumType::Metal);
         double gravity_magnitude = world->getPhysicsSettings().gravity;
         Vector2d gravity_force(0.0, metal_props.density * gravity_magnitude);
 
@@ -316,18 +316,18 @@ TEST_F(BuoyancyTest, NetForceCalculation)
         world->getPhysicsSettings().gravity = 1.0;
 
         // Setup.
-        setupColumn({ Material::EnumType::WATER,
-                      Material::EnumType::WATER,
-                      Material::EnumType::WOOD,
-                      Material::EnumType::WATER,
-                      Material::EnumType::WATER });
+        setupColumn({ Material::EnumType::Water,
+                      Material::EnumType::Water,
+                      Material::EnumType::Wood,
+                      Material::EnumType::Water,
+                      Material::EnumType::Water });
         calculatePressure();
 
         WorldPressureCalculator calculator;
         Vector2d pressure_gradient = calculator.calculatePressureGradient(*world, 0, 2);
 
         // Gravity force (downward, positive y).
-        const Material::Properties& wood_props = Material::getProperties(Material::EnumType::WOOD);
+        const Material::Properties& wood_props = Material::getProperties(Material::EnumType::Wood);
         double gravity_magnitude = world->getPhysicsSettings().gravity;
         Vector2d gravity_force(0.0, wood_props.density * gravity_magnitude);
 
@@ -364,11 +364,11 @@ TEST_F(BuoyancyTest, WoodDevelopsUpwardVelocity)
     spdlog::info("Starting BuoyancyTest::WoodDevelopsUpwardVelocity");
 
     // Setup: Wood cell submerged in water column.
-    setupColumn({ Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WOOD,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER });
+    setupColumn({ Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Wood,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water });
 
     // Get wood cell reference.
     Cell& wood = world->getData().at(0, 2);
@@ -397,7 +397,7 @@ TEST_F(BuoyancyTest, WoodDevelopsUpwardVelocity)
         // Find current wood position.
         int current_wood_y = -1;
         for (uint32_t y = 0; y < 5; ++y) {
-            if (world->getData().at(0, y).material_type == Material::EnumType::WOOD) {
+            if (world->getData().at(0, y).material_type == Material::EnumType::Wood) {
                 current_wood_y = y;
                 break;
             }
@@ -421,7 +421,7 @@ TEST_F(BuoyancyTest, WoodDevelopsUpwardVelocity)
         // Track position changes.
         int new_wood_y = -1;
         for (uint32_t y = 0; y < 5; ++y) {
-            if (world->getData().at(0, y).material_type == Material::EnumType::WOOD) {
+            if (world->getData().at(0, y).material_type == Material::EnumType::Wood) {
                 new_wood_y = y;
                 break;
             }
@@ -522,7 +522,7 @@ protected:
     {
         // Fill entire column with water.
         for (int16_t y = 0; y < 5; ++y) {
-            world->addMaterialAtCell({ 0, y }, Material::EnumType::WATER, 1.0f);
+            world->addMaterialAtCell({ 0, y }, Material::EnumType::Water, 1.0f);
         }
 
         // Place test material in middle (y=2).
@@ -708,22 +708,22 @@ INSTANTIATE_TEST_SUITE_P(
     Materials,
     ParameterizedBuoyancyTest,
     ::testing::Values(
-        BuoyancyMaterialParams{ .material = Material::EnumType::WOOD,
+        BuoyancyMaterialParams{ .material = Material::EnumType::Wood,
                                 .expected_behavior = BuoyancyMaterialParams::ExpectedBehavior::RISE,
                                 .max_steps_to_endpoint = 5000,
                                 .description = "Wood" },
 
-        BuoyancyMaterialParams{ .material = Material::EnumType::DIRT,
+        BuoyancyMaterialParams{ .material = Material::EnumType::Dirt,
                                 .expected_behavior = BuoyancyMaterialParams::ExpectedBehavior::SINK,
                                 .max_steps_to_endpoint = 200,
                                 .description = "Dirt" },
 
-        BuoyancyMaterialParams{ .material = Material::EnumType::METAL,
+        BuoyancyMaterialParams{ .material = Material::EnumType::Metal,
                                 .expected_behavior = BuoyancyMaterialParams::ExpectedBehavior::SINK,
                                 .max_steps_to_endpoint = 150,
                                 .description = "Metal" },
 
-        BuoyancyMaterialParams{ .material = Material::EnumType::LEAF,
+        BuoyancyMaterialParams{ .material = Material::EnumType::Leaf,
                                 .expected_behavior = BuoyancyMaterialParams::ExpectedBehavior::RISE,
                                 .max_steps_to_endpoint = 1200,
                                 .description = "Leaf" }));
@@ -738,11 +738,11 @@ TEST_F(BuoyancyTest, MetalDevelopsDownwardVelocity)
     spdlog::info("Starting BuoyancyTest::MetalDevelopsDownwardVelocity");
 
     // Setup: Metal cell submerged in water column.
-    setupColumn({ Material::EnumType::WATER,
-                  Material::EnumType::WATER,
-                  Material::EnumType::METAL,
-                  Material::EnumType::WATER,
-                  Material::EnumType::WATER });
+    setupColumn({ Material::EnumType::Water,
+                  Material::EnumType::Water,
+                  Material::EnumType::Metal,
+                  Material::EnumType::Water,
+                  Material::EnumType::Water });
 
     // Verify initial state: metal at rest.
     const Cell& initial_metal = world->getData().at(0, 2);
@@ -764,7 +764,7 @@ TEST_F(BuoyancyTest, MetalDevelopsDownwardVelocity)
 
         // Track metal position (it may swap cells).
         for (uint32_t y = 0; y < 5; ++y) {
-            if (world->getData().at(0, y).material_type == Material::EnumType::METAL) {
+            if (world->getData().at(0, y).material_type == Material::EnumType::Metal) {
                 final_metal_y = y;
                 break;
             }
@@ -818,13 +818,13 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
             if (x == 1 && y == 1) {
                 world->addMaterialAtCell(
                     { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                    Material::EnumType::WOOD,
+                    Material::EnumType::Wood,
                     1.0);
             }
             else {
                 world->addMaterialAtCell(
                     { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                    Material::EnumType::WATER,
+                    Material::EnumType::Water,
                     1.0);
             }
         }
@@ -850,10 +850,10 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
                 for (uint32_t x = 0; x < 3; ++x) {
                     const Cell& c = world->getData().at(x, y);
                     char symbol = '?';
-                    if (c.material_type == Material::EnumType::WOOD) {
+                    if (c.material_type == Material::EnumType::Wood) {
                         symbol = 'X';
                     }
-                    else if (c.material_type == Material::EnumType::WATER) {
+                    else if (c.material_type == Material::EnumType::Water) {
                         symbol = 'W';
                     }
                     else {
@@ -880,10 +880,10 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
             for (uint32_t y = 0; y < 3; ++y) {
                 for (uint32_t x = 0; x < 3; ++x) {
                     const Cell& c = world->getData().at(x, y);
-                    if (c.material_type == Material::EnumType::WOOD) {
+                    if (c.material_type == Material::EnumType::Wood) {
                         // Calculate expected forces.
                         const Material::Properties& wood_props =
-                            Material::getProperties(Material::EnumType::WOOD);
+                            Material::getProperties(Material::EnumType::Wood);
                         double gravity_force = wood_props.density * 1.0; // gravity = 1.0
 
                         WorldPressureCalculator calc;
@@ -940,10 +940,10 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
         std::string row = "    ";
         for (uint32_t x = 0; x < 3; ++x) {
             const Cell& c = world->getData().at(x, y);
-            if (c.material_type == Material::EnumType::WOOD) {
+            if (c.material_type == Material::EnumType::Wood) {
                 row += "[X]";
             }
-            else if (c.material_type == Material::EnumType::WATER) {
+            else if (c.material_type == Material::EnumType::Water) {
                 row += "[W]";
             }
             else {
@@ -960,7 +960,7 @@ TEST_F(BuoyancyTest, WoodCanRiseIn3x3World)
     for (uint32_t y = 0; y < 3; ++y) {
         for (uint32_t x = 0; x < 3; ++x) {
             const Cell& c = world->getData().at(x, y);
-            if (c.material_type == Material::EnumType::WOOD) {
+            if (c.material_type == Material::EnumType::Wood) {
                 wood_found = true;
                 wood_y = y;
                 spdlog::info(
@@ -1017,7 +1017,7 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
         for (uint32_t x = 0; x < 2; ++x) {
             world->addMaterialAtCell(
                 { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                Material::EnumType::WATER,
+                Material::EnumType::Water,
                 1.0);
         }
     }
@@ -1041,7 +1041,7 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
                 std::string row = "    ";
                 for (uint32_t x = 0; x < 2; ++x) {
                     const Cell& c = world->getData().at(x, y);
-                    if (c.material_type == Material::EnumType::WATER) {
+                    if (c.material_type == Material::EnumType::Water) {
                         row += "[W]";
                     }
                     else {
@@ -1071,7 +1071,7 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
         std::string row = "    ";
         for (uint32_t x = 0; x < 2; ++x) {
             const Cell& c = world->getData().at(x, y);
-            if (c.material_type == Material::EnumType::WATER) {
+            if (c.material_type == Material::EnumType::Water) {
                 row += "[W]";
             }
             else {
@@ -1085,7 +1085,7 @@ TEST_F(BuoyancyTest, WaterColumnFalls)
     int water_count_bottom_half = 0;
     for (uint32_t y = 2; y < 4; ++y) {
         for (uint32_t x = 0; x < 2; ++x) {
-            if (world->getData().at(x, y).material_type == Material::EnumType::WATER) {
+            if (world->getData().at(x, y).material_type == Material::EnumType::Water) {
                 water_count_bottom_half++;
             }
         }
@@ -1121,9 +1121,9 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
     world->getPhysicsSettings().gravity = 9.81;      // Realistic gravity (sandbox default).
 
     // Setup: Dirt at top (y=0), water below.
-    world->addMaterialAtCell({ 0, 0 }, Material::EnumType::DIRT, 1.0);
+    world->addMaterialAtCell({ 0, 0 }, Material::EnumType::Dirt, 1.0);
     for (uint32_t y = 1; y < 6; ++y) {
-        world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, Material::EnumType::WATER, 1.0);
+        world->addMaterialAtCell({ 0, static_cast<int16_t>(y) }, Material::EnumType::Water, 1.0);
     }
 
     spdlog::info("  Initial setup:");
@@ -1149,7 +1149,7 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
         // Find current dirt position.
         int current_dirt_y = -1;
         for (uint32_t y = 0; y < 6; ++y) {
-            if (world->getData().at(0, y).material_type == Material::EnumType::DIRT) {
+            if (world->getData().at(0, y).material_type == Material::EnumType::Dirt) {
                 current_dirt_y = y;
                 break;
             }
@@ -1171,7 +1171,7 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
 
             // Check expected forces.
             const Material::Properties& dirt_props =
-                Material::getProperties(Material::EnumType::DIRT);
+                Material::getProperties(Material::EnumType::Dirt);
             spdlog::info(
                 "    Dirt density={:.1f}, expected net force={:.1f} (should sink)",
                 dirt_props.density,
@@ -1183,7 +1183,7 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
         // Track position changes.
         int new_dirt_y = -1;
         for (uint32_t y = 0; y < 6; ++y) {
-            if (world->getData().at(0, y).material_type == Material::EnumType::DIRT) {
+            if (world->getData().at(0, y).material_type == Material::EnumType::Dirt) {
                 new_dirt_y = y;
                 break;
             }
@@ -1205,7 +1205,7 @@ TEST_F(BuoyancyTest, DirtSinksThroughWater)
     spdlog::info("  === Final State (step {}) ===", steps);
     for (uint32_t y = 0; y < 6; ++y) {
         const Cell& c = world->getData().at(0, y);
-        char symbol = (c.material_type == Material::EnumType::DIRT) ? 'D' : 'W';
+        char symbol = (c.material_type == Material::EnumType::Dirt) ? 'D' : 'W';
         spdlog::info("    [{}] y={}", symbol, y);
     }
 
@@ -1246,15 +1246,15 @@ TEST_F(BuoyancyTest, DirtShouldSinkNotFloat)
     world->getPhysicsSettings().pressure_hydrostatic_strength = 1.0;
     world->getPhysicsSettings().gravity = 9.81;
 
-    world->addMaterialAtCell({ 0, 0 }, Material::EnumType::WATER, 1.0);
-    world->addMaterialAtCell({ 0, 1 }, Material::EnumType::DIRT, 1.0);
-    world->addMaterialAtCell({ 0, 2 }, Material::EnumType::WATER, 1.0);
+    world->addMaterialAtCell({ 0, 0 }, Material::EnumType::Water, 1.0);
+    world->addMaterialAtCell({ 0, 1 }, Material::EnumType::Dirt, 1.0);
+    world->addMaterialAtCell({ 0, 2 }, Material::EnumType::Water, 1.0);
 
     // Calculate pressure.
     calculatePressure();
 
     // Check forces on dirt.
-    const Material::Properties& dirt_props = Material::getProperties(Material::EnumType::DIRT);
+    const Material::Properties& dirt_props = Material::getProperties(Material::EnumType::Dirt);
 
     WorldPressureCalculator calc;
     Vector2d pressure_grad = calc.calculatePressureGradient(*world, 0, 1);

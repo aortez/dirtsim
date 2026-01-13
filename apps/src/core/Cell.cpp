@@ -17,11 +17,11 @@ void Cell::setFillRatio(float ratio)
 
     // If fill ratio becomes effectively zero, convert to empty AIR.
     if (fill_ratio < MIN_FILL_THRESHOLD) {
-        if (material_type == Material::EnumType::WOOD) {
+        if (material_type == Material::EnumType::Wood) {
             spdlog::info(
-                "Cell::setFillRatio - clearing WOOD cell (fill {:.3f} -> 0.0)", fill_ratio);
+                "Cell::setFillRatio - clearing Wood cell (fill {:.3f} -> 0.0)", fill_ratio);
         }
-        material_type = Material::EnumType::AIR;
+        material_type = Material::EnumType::Air;
         fill_ratio = 0.0f;
         velocity = Vector2f{ 0.0f, 0.0f };
         com = Vector2f{ 0.0f, 0.0f };
@@ -91,9 +91,9 @@ float Cell::addMaterialWithPhysics(
 
     // If we're empty, accept any material type with trajectory-based COM.
     if (isEmpty()) {
-        if (material_type == Material::EnumType::WOOD && type != Material::EnumType::WOOD) {
+        if (material_type == Material::EnumType::Wood && type != Material::EnumType::Wood) {
             spdlog::info(
-                "Cell::addMaterialWithPhysics - replacing WOOD with {} in 'empty' cell "
+                "Cell::addMaterialWithPhysics - replacing Wood with {} in 'empty' cell "
                 "(old_fill={:.3f})",
                 Material::toString(type),
                 fill_ratio);
@@ -313,13 +313,13 @@ std::string Cell::toString() const
 void Cell::addDirt(float amount)
 {
     if (amount <= 0.0f) return;
-    addMaterial(Material::EnumType::DIRT, amount);
+    addMaterial(Material::EnumType::Dirt, amount);
 }
 
 void Cell::addWater(float amount)
 {
     if (amount <= 0.0f) return;
-    addMaterial(Material::EnumType::WATER, amount);
+    addMaterial(Material::EnumType::Water, amount);
 }
 
 void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
@@ -328,7 +328,7 @@ void Cell::addDirtWithVelocity(float amount, const Vector2f& newVel)
 
     // Store current fill ratio to calculate momentum.
     float oldFill = fill_ratio;
-    float actualAdded = addMaterial(Material::EnumType::DIRT, amount);
+    float actualAdded = addMaterial(Material::EnumType::Dirt, amount);
 
     if (actualAdded > 0.0f) {
         // Update velocity based on momentum conservation.
@@ -352,7 +352,7 @@ void Cell::addDirtWithCOM(float amount, const Vector2f& newCom, const Vector2f& 
     Vector2f oldCOM = com;
     Vector2f oldVelocity = velocity;
 
-    float actualAdded = addMaterial(Material::EnumType::DIRT, amount);
+    float actualAdded = addMaterial(Material::EnumType::Dirt, amount);
 
     if (actualAdded > 0.0f) {
         float newFill = fill_ratio;
@@ -389,33 +389,33 @@ std::string Cell::toAsciiCharacter() const
     // Choose character based on material type.
     char material_char = '?';
     switch (material_type) {
-        case Material::EnumType::AIR:
+        case Material::EnumType::Air:
             return "  "; // Two spaces for air.
-        case Material::EnumType::DIRT:
+        case Material::EnumType::Dirt:
             material_char = '#';
             break;
-        case Material::EnumType::WATER:
+        case Material::EnumType::Water:
             material_char = '~';
             break;
-        case Material::EnumType::WOOD:
+        case Material::EnumType::Wood:
             material_char = 'W';
             break;
-        case Material::EnumType::SAND:
+        case Material::EnumType::Sand:
             material_char = '.';
             break;
-        case Material::EnumType::METAL:
+        case Material::EnumType::Metal:
             material_char = 'M';
             break;
-        case Material::EnumType::LEAF:
+        case Material::EnumType::Leaf:
             material_char = 'L';
             break;
-        case Material::EnumType::WALL:
+        case Material::EnumType::Wall:
             material_char = '|';
             break;
-        case Material::EnumType::ROOT:
+        case Material::EnumType::Root:
             material_char = 'R';
             break;
-        case Material::EnumType::SEED:
+        case Material::EnumType::Seed:
             material_char = 'S';
             break;
     }
@@ -459,12 +459,12 @@ bool Cell::isFull() const
 
 bool Cell::isAir() const
 {
-    return material_type == Material::EnumType::AIR;
+    return material_type == Material::EnumType::Air;
 }
 
 bool Cell::isWall() const
 {
-    return material_type == Material::EnumType::WALL;
+    return material_type == Material::EnumType::Wall;
 }
 
 Material::EnumType Cell::getRenderMaterial() const

@@ -16,7 +16,7 @@ protected:
         // Clear to air.
         for (uint32_t y = 0; y < height; ++y) {
             for (uint32_t x = 0; x < width; ++x) {
-                world->getData().at(x, y).replaceMaterial(Material::EnumType::AIR, 0.0);
+                world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
             }
         }
         return world;
@@ -26,7 +26,7 @@ protected:
 TEST_F(RigidBodyCalculatorTest, SingleWoodCellFormsStructure)
 {
     auto world = createWorld(5, 5);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
 
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
 
@@ -41,7 +41,7 @@ TEST_F(RigidBodyCalculatorTest, NonOrganismCellReturnsEmpty)
 {
     auto world = createWorld(5, 5);
     // Cell without organism_id should not form structure.
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
 
@@ -57,13 +57,13 @@ TEST_F(RigidBodyCalculatorTest, LShapedWoodConnects)
     //   W
     //   W W W
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 1, 0);
-    world->getData().at(1, 1).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(1, 1).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 1, 1 });
-    world->getData().at(1, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(1, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 1, 2 });
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 0 });
@@ -79,7 +79,7 @@ TEST_F(RigidBodyCalculatorTest, DiagonalDoesNotConnect)
     //   W .
     //   . W
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 1, 1);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 1, 1 });
@@ -108,7 +108,7 @@ TEST_F(RigidBodyCalculatorTest, SameOrganismIdConnects)
 
     // Two adjacent wood cells with same organism ID.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, tree_id);
@@ -124,12 +124,12 @@ TEST_F(RigidBodyCalculatorTest, FindAllStructuresFindsMultiple)
     // Two separate structures.
     // Structure 1: cells at (1,2), (2,2).
     OrganismId tree1 = world->getOrganismManager().createTree(*world, 1, 2);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::METAL, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Metal, 1.0);
     world->getOrganismManager().addCellToOrganism(tree1, { 2, 2 });
 
     // Structure 2: cells at (7,2), (8,2).
     OrganismId tree2 = world->getOrganismManager().createTree(*world, 7, 2);
-    world->getData().at(8, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(8, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree2, { 8, 2 });
 
     auto structures = calculator.findAllStructures(*world);
@@ -143,14 +143,14 @@ TEST_F(RigidBodyCalculatorTest, CalculateMassIsSumOfCellMasses)
 
     // SEED + WOOD cells.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
     double mass = calculator.calculateStructureMass(*world, structure);
 
-    double expected = Material::getProperties(Material::EnumType::SEED).density
-        + Material::getProperties(Material::EnumType::WOOD).density;
+    double expected = Material::getProperties(Material::EnumType::Seed).density
+        + Material::getProperties(Material::EnumType::Wood).density;
     // Use EXPECT_NEAR because Cell::getMass() returns float, accumulating float precision.
     EXPECT_NEAR(mass, expected, 1e-6);
 }
@@ -161,8 +161,8 @@ TEST_F(RigidBodyCalculatorTest, CalculateCOMIsWeightedCenter)
 
     // Two equal WOOD cells at x=2 and x=3, COM should be at x=2.5.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 });
@@ -177,10 +177,10 @@ TEST_F(RigidBodyCalculatorTest, GatherForcesIsSumOfPendingForces)
     auto world = createWorld(5, 5);
 
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getData().at(2, 2).pending_force = { 1.0, 2.0 };
 
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
     world->getData().at(3, 2).pending_force = { 0.5, -1.0 };
 
@@ -197,14 +197,14 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocitySetsAllCellsToSameVelocity)
 
     // Create 3-cell WOOD structure with different pending forces.
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 1, 2);
-    world->getData().at(1, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(1, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getData().at(1, 2).pending_force = { 1.0, -2.0 };
 
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 2, 2 });
     world->getData().at(2, 2).pending_force = { 0.0, -1.0 };
 
-    world->getData().at(3, 2).replaceMaterial(Material::EnumType::WOOD, 1.0);
+    world->getData().at(3, 2).replaceMaterial(Material::EnumType::Wood, 1.0);
     world->getOrganismManager().addCellToOrganism(tree_id, { 3, 2 });
     world->getData().at(3, 2).pending_force = { -1.0, -1.0 };
 
@@ -225,7 +225,7 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocitySetsAllCellsToSameVelocity)
     // Velocity should be based on total force / total mass.
     // Total force: (1-1, -2-1-1) = (0, -4).
     // Total mass: 3 * wood_density.
-    double wood_density = Material::getProperties(Material::EnumType::WOOD).density;
+    double wood_density = Material::getProperties(Material::EnumType::Wood).density;
     double total_mass = 3.0 * wood_density;
     double expected_vy = (-4.0 / total_mass) * dt;
 
@@ -238,7 +238,7 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocityUpdatesStructureVelocity)
     auto world = createWorld(5, 5);
 
     OrganismId tree_id = world->getOrganismManager().createTree(*world, 2, 2);
-    world->getData().at(2, 2).replaceMaterial(Material::EnumType::METAL, 1.0);
+    world->getData().at(2, 2).replaceMaterial(Material::EnumType::Metal, 1.0);
     world->getData().at(2, 2).pending_force = { 10.0, -5.0 };
 
     auto structure = calculator.findConnectedStructure(*world, { 2, 2 }, tree_id);
@@ -249,7 +249,7 @@ TEST_F(RigidBodyCalculatorTest, ApplyUnifiedVelocityUpdatesStructureVelocity)
     calculator.applyUnifiedVelocity(*world, structure, dt);
 
     // Structure velocity should be updated.
-    double metal_density = Material::getProperties(Material::EnumType::METAL).density;
+    double metal_density = Material::getProperties(Material::EnumType::Metal).density;
     double expected_vx = (10.0 / metal_density) * dt;
     double expected_vy = (-5.0 / metal_density) * dt;
 
