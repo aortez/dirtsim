@@ -196,7 +196,7 @@ TEST_F(ColorTuningTest, MaterialColorsUnderSunlight)
     // All materials at surface should have good brightness under sunlight.
     EXPECT_GT(ColorNames::brightness(water_color), 0.3f) << "Water surface should be lit";
     EXPECT_GT(ColorNames::brightness(metal_color), 0.3f) << "Metal surface should be lit";
-    EXPECT_GT(ColorNames::brightness(leaf_color), 0.5f) << "Leaf surface should be lit";
+    EXPECT_GT(ColorNames::brightness(leaf_color), 0.3f) << "Leaf surface should be lit";
     EXPECT_GT(ColorNames::brightness(dirt_color), 0.3f) << "Dirt surface should be lit";
 
     // Water should be bluish (more blue than red).

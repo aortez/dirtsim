@@ -409,13 +409,11 @@ void WorldLightCalculator::applyMaterialColors(World& world)
         for (int x = 0; x < width; ++x) {
             const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
             const Material::EnumType mat = cell.getRenderMaterial();
-            const float opacity = Material::getProperties(mat).light.opacity;
+            const float saturation = Material::getProperties(mat).light.saturation;
             const RgbF base_color = getMaterialBaseColor(mat);
 
-            // Blend toward base color based on opacity.
-            // Transparent materials (low opacity) stay closer to pure light color.
-            // Opaque materials get full material coloring.
-            const RgbF blended = ColorNames::lerp(white, base_color, opacity);
+            // Blend toward base color based on saturation.
+            const RgbF blended = ColorNames::lerp(white, base_color, saturation);
             data.colors.at(x, y) *= blended;
         }
     }
