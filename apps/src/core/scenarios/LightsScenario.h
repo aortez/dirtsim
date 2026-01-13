@@ -1,18 +1,16 @@
 #pragma once
 
-#include "FallingDirtConfig.h"
+#include "LightsConfig.h"
 #include "core/scenarios/Scenario.h"
-#include <memory>
-#include <random>
 
 namespace DirtSim {
 
 /**
- * Falling Dirt scenario - Dirt particles falling and accumulating.
+ * Lights scenario - Test lighting system with water, dirt, and leaf materials.
  */
-class FallingDirtScenario : public ScenarioRunner {
+class LightsScenario : public ScenarioRunner {
 public:
-    FallingDirtScenario();
+    LightsScenario();
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -23,11 +21,7 @@ public:
 
 private:
     ScenarioMetadata metadata_;
-    Config::FallingDirt config_;
-
-    // Random number generation for dirt drops.
-    std::mt19937 rng_{ 123 }; // Different seed than rain.
-    std::uniform_real_distribution<double> drop_dist_{ 0.0, 1.0 };
+    Config::Lights config_;
 };
 
 } // namespace DirtSim

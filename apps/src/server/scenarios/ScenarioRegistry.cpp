@@ -5,8 +5,8 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/DamBreakScenario.h"
 #include "core/scenarios/EmptyScenario.h"
-#include "core/scenarios/FallingDirtScenario.h"
 #include "core/scenarios/GooseTestScenario.h"
+#include "core/scenarios/LightsScenario.h"
 #include "core/scenarios/RainingScenario.h"
 #include "core/scenarios/SandboxScenario.h"
 #include "core/scenarios/TreeGerminationScenario.h"
@@ -39,14 +39,13 @@ ScenarioRegistry ScenarioRegistry::createDefault()
     });
 
     registry.registerScenario(
-        Scenario::EnumType::FallingDirt, FallingDirtScenario{}.getMetadata(), []() {
-            return std::make_unique<FallingDirtScenario>();
-        });
-
-    registry.registerScenario(
         Scenario::EnumType::GooseTest, GooseTestScenario{}.getMetadata(), []() {
             return std::make_unique<GooseTestScenario>();
         });
+
+    registry.registerScenario(Scenario::EnumType::Lights, LightsScenario{}.getMetadata(), []() {
+        return std::make_unique<LightsScenario>();
+    });
 
     registry.registerScenario(Scenario::EnumType::Raining, RainingScenario{}.getMetadata(), []() {
         return std::make_unique<RainingScenario>();
