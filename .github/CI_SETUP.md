@@ -161,13 +161,47 @@ Available configuration options (all optional except GITHUB_TOKEN):
 - `RUNNER_LABELS`: Comma-separated list of labels (default: `self-hosted,linux,x64`).
 - `RUNNER_WORK_DIR`: Working directory for jobs (default: `_work`).
 
+### Deploy and Smoke Test
+
+The workflow includes a `deploy-and-smoke-test` job that:
+- Builds and deploys the full rootfs image to dirtsim.local.
+- Waits for the Pi to reboot.
+- Runs StatusGet on both server and UI services.
+- Verifies both services are healthy and connected.
+
+#### Prerequisites for Smoke Test
+
+The self-hosted runner must have:
+
+1. **SSH access to dirtsim.local**: The runner needs passwordless SSH access to `dirtsim@dirtsim.local`.
+   - Configure the runner's SSH key in `~/.ssh/config` or add it to the Pi's authorized_keys.
+   - The SSH key must match the one configured in `yocto/.flash-config.json`.
+
+2. **Network access**: The runner must be on the same network as dirtsim.local or have routing to reach it.
+
+3. **Flash configuration**: Run the flash script once to create `yocto/.flash-config.json` with your SSH key:
+   ```bash
+   cd yocto
+   npm run flash -- --reconfigure
+   ```
+
+4. **Test SSH access manually**:
+   ```bash
+   ssh dirtsim@dirtsim.local 'echo "SSH working"'
+   ```
+
+If the smoke test fails, check:
+- Runner can reach dirtsim.local: `ping dirtsim.local`.
+- SSH works: `ssh -v dirtsim@dirtsim.local`.
+- Runner logs: `~/actions-runner/_diag/`.
+
 ### Workflow Customization
 
 Edit `.github/workflows/pr-check.yml` to:
 - Add more build configurations (ASAN, different compilers).
 - Run visual tests (if display available).
-- Add deployment steps.
 - Configure notifications.
+- Change the smoke test target: Add `-- --target <hostname>` to the smoke-test command.
 
 ## Troubleshooting
 

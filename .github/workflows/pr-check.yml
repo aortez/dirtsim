@@ -45,3 +45,23 @@ jobs:
     - name: Run unit tests
       working-directory: apps
       run: ./build-debug/bin/dirtsim-tests
+
+  deploy-and-smoke-test:
+    runs-on: self-hosted
+    needs: build-and-test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        clean: true
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Merge target branch
+      if: github.event_name == 'pull_request'
+      run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
+
+    - name: Deploy and smoke test on dirtsim.local
+      working-directory: yocto
+      run: npm run smoke-test
