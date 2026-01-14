@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/WorldData.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/controls/IconRail.h"
@@ -9,8 +10,6 @@ typedef struct _lv_obj_t lv_obj_t;
 typedef struct _lv_event_t lv_event_t;
 
 namespace DirtSim {
-
-struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
@@ -77,8 +76,26 @@ private:
     lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
 
-    // World renderer.
+    // Best snapshot display.
+    lv_obj_t* bestWorldContainer_ = nullptr;
+    lv_obj_t* bestFitnessLabel_ = nullptr;
+
+    // World renderer for live feed.
     std::unique_ptr<CellRenderer> renderer_;
+
+    // Renderer for best snapshot.
+    std::unique_ptr<CellRenderer> bestRenderer_;
+
+    // Tracking state for best snapshot capture.
+    WorldData lastRenderedWorld_;
+    int lastEval_ = -1;
+    int lastGeneration_ = -1;
+    double lastBestFitness_ = -1.0;
+
+    // Best snapshot data.
+    WorldData bestWorldData_;
+    double bestFitness_ = 0.0;
+    int bestGeneration_ = 0;
 
     // Panel content (created lazily).
     std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
@@ -93,6 +110,7 @@ private:
     void showPanelContent(IconId panelId);
     void createCorePanel(lv_obj_t* container);
     void createEvolutionConfigPanel(lv_obj_t* container);
+    void renderBestWorld();
 };
 
 } // namespace Ui
