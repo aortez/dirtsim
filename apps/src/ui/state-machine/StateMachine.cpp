@@ -79,37 +79,39 @@ void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
 
+    // IMPORTANT: Cast to concrete type because registerHandler is a template method.
+    // Template methods aren't virtual, so calling through the interface base pointer
+    // would invoke the no-op stub in WebSocketServiceInterface instead of the real
+    // implementation in WebSocketService.
+    auto* ws = static_cast<Network::WebSocketService*>(wsService_.get());
+
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
-    wsService_->registerHandler<UiApi::SimRun::Cwc>(
-        [this](UiApi::SimRun::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::SimPause::Cwc>(
+    ws->registerHandler<UiApi::SimRun::Cwc>([this](UiApi::SimRun::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::SimPause::Cwc>(
         [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::SimStop::Cwc>(
-        [this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::StatusGet::Cwc>(
+    ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::ScreenGrab::Cwc>(
+    ws->registerHandler<UiApi::ScreenGrab::Cwc>(
         [this](UiApi::ScreenGrab::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::StreamStart::Cwc>(
+    ws->registerHandler<UiApi::StreamStart::Cwc>(
         [this](UiApi::StreamStart::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::WebRtcAnswer::Cwc>(
+    ws->registerHandler<UiApi::WebRtcAnswer::Cwc>(
         [this](UiApi::WebRtcAnswer::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::WebRtcCandidate::Cwc>(
+    ws->registerHandler<UiApi::WebRtcCandidate::Cwc>(
         [this](UiApi::WebRtcCandidate::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::Exit::Cwc>(
-        [this](UiApi::Exit::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::MouseDown::Cwc>(
+    ws->registerHandler<UiApi::Exit::Cwc>([this](UiApi::Exit::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::MouseDown::Cwc>(
         [this](UiApi::MouseDown::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::MouseMove::Cwc>(
+    ws->registerHandler<UiApi::MouseMove::Cwc>(
         [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::MouseUp::Cwc>(
-        [this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::DrawDebugToggle::Cwc>(
+    ws->registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::PixelRendererToggle::Cwc>(
+    ws->registerHandler<UiApi::PixelRendererToggle::Cwc>(
         [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
-    wsService_->registerHandler<UiApi::RenderModeSelect::Cwc>(
+    ws->registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
