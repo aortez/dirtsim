@@ -2,6 +2,7 @@
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
 #include "core/encoding/H264Encoder.h"
@@ -79,11 +80,9 @@ void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
 
-    // IMPORTANT: Cast to concrete type because registerHandler is a template method.
-    // Template methods aren't virtual, so calling through the interface base pointer
-    // would invoke the no-op stub in WebSocketServiceInterface instead of the real
-    // implementation in WebSocketService.
-    auto* ws = static_cast<Network::WebSocketService*>(wsService_.get());
+    // Get concrete WebSocketService for template method access.
+    auto* ws = getConcreteWebSocketService();
+    DIRTSIM_ASSERT(ws != nullptr, "Failed to cast wsService_ to WebSocketService");
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.
@@ -601,6 +600,11 @@ Network::WebSocketServiceInterface& StateMachine::getWebSocketService()
 {
     assert(wsService_ && "wsService_ is null!");
     return *wsService_.get();
+}
+
+Network::WebSocketService* StateMachine::getConcreteWebSocketService()
+{
+    return dynamic_cast<Network::WebSocketService*>(wsService_.get());
 }
 
 void StateMachine::transitionTo(State::Any newState)

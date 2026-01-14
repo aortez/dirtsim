@@ -16,7 +16,10 @@ Command-line client for interacting with DirtSim server and UI via WebSocket.
 # 3. See a visual snapshot
 ./build-debug/bin/cli server DiagramGet
 
-# 4. Clean up when done
+# 4. Take a screenshot
+./build-debug/bin/cli screenshot output.png
+
+# 5. Clean up when done
 ./build-debug/bin/cli cleanup
 ```
 
@@ -24,14 +27,15 @@ That's it! Now read below for details...
 
 ## Overview
 
-The CLI provides six modes of operation:
+The CLI provides several operation modes:
 
-1. **Command Mode**: Send individual commands to server or UI
-2. **Run-All Mode**: Launch both server and UI with one command
-3. **Benchmark Mode**: Automated performance testing with metrics collection
-4. **Train Mode**: Run evolution training with JSON configuration
-5. **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
-6. **Integration Test Mode**: Automated server + UI lifecycle testing
+- **Command Mode**: Send individual commands to server or UI
+- **Run-All Mode**: Launch both server and UI with one command
+- **Screenshot Mode**: Capture PNG screenshots from local or remote UI
+- **Benchmark Mode**: Automated performance testing with metrics collection
+- **Train Mode**: Run evolution training with JSON configuration
+- **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
+- **Integration Test Mode**: Automated server + UI lifecycle testing
 
 ## Usage
 
@@ -87,6 +91,39 @@ Launch both server and UI with a single command:
 **Use case**: Quickest way to launch everything for interactive testing.
 
 **Note**: Runs in foreground - press Ctrl+C to exit both processes.
+
+### Screenshot Mode
+
+Capture PNG screenshots from the UI display:
+
+```bash
+# Capture from local UI (default: localhost:7070)
+./build-debug/bin/cli screenshot output.png
+
+# Capture from remote UI (Raspberry Pi)
+./build-debug/bin/cli screenshot --address ws://dirtsim.local:7070 screenshot.png
+
+# Custom timeout (default: 5000ms)
+./build-debug/bin/cli screenshot --timeout 10000 output.png
+```
+
+**What it does**:
+- Connects to UI via WebSocket (port 7070)
+- Sends ScreenGrab command requesting PNG format
+- Receives base64-encoded PNG data
+- Decodes and writes to specified output file
+- Reports image dimensions and file size
+
+**Output example**:
+```
+✓ Screenshot saved to output.png (800x600, 45231 bytes)
+```
+
+**Use cases**:
+- Capturing simulation states for documentation
+- Automated testing with visual verification
+- Recording evolution training progress
+- Remote monitoring of headless Pi deployments
 
 ### Benchmark Mode
 

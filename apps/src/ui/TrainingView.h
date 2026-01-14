@@ -69,7 +69,6 @@ private:
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
-    lv_obj_t* cumulativeTimeLabel_ = nullptr;
     lv_obj_t* etaLabel_ = nullptr;
     lv_obj_t* simTimeLabel_ = nullptr;
     lv_obj_t* speedupLabel_ = nullptr;
@@ -77,8 +76,27 @@ private:
     lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
 
-    // World renderer.
+    // Best snapshot display.
+    lv_obj_t* bestWorldContainer_ = nullptr;
+    lv_obj_t* bestFitnessLabel_ = nullptr;
+
+    // World renderer for live feed.
     std::unique_ptr<CellRenderer> renderer_;
+
+    // Renderer for best snapshot.
+    std::unique_ptr<CellRenderer> bestRenderer_;
+
+    // Tracking state for best snapshot capture.
+    std::unique_ptr<WorldData> lastRenderedWorld_;
+    bool hasRenderedWorld_ = false;
+    int lastEval_ = -1;
+    int lastGeneration_ = -1;
+    double lastBestFitness_ = -1.0;
+
+    // Best snapshot data.
+    std::unique_ptr<WorldData> bestWorldData_;
+    double bestFitness_ = 0.0;
+    int bestGeneration_ = 0;
 
     // Panel content (created lazily).
     std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
@@ -93,6 +111,7 @@ private:
     void showPanelContent(IconId panelId);
     void createCorePanel(lv_obj_t* container);
     void createEvolutionConfigPanel(lv_obj_t* container);
+    void renderBestWorld();
 };
 
 } // namespace Ui
