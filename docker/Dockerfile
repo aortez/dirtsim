@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     libyuv-dev \
     libsdl2-dev \
     sudo \
+    ccache \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure password-free sudo for all users.

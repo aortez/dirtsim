@@ -23,6 +23,10 @@ PROJECT_ROOT := $(shell cd .. && pwd)
 # SSH key directory (override with SSH_DIR=/path/to/.ssh).
 SSH_DIR := $(HOME)/.ssh
 
+# Ccache directory and size limit.
+CCACHE_DIR ?= /home/data/linux1/ccache/dirtsim
+CCACHE_MAXSIZE ?= 500M
+
 # Run as the current user to avoid permission issues.
 DOCKER_USER := $(shell id -u):$(shell id -g)
 
@@ -31,7 +35,10 @@ DOCKER_RUN := docker run --rm \
 	--user $(DOCKER_USER) \
 	-v $(PROJECT_ROOT):/workspace \
 	-v $(SSH_DIR):$(SSH_DIR):ro \
+	-v $(CCACHE_DIR):$(CCACHE_DIR) \
 	-e HOME=$(HOME) \
+	-e CCACHE_DIR=$(CCACHE_DIR) \
+	-e CCACHE_MAXSIZE=$(CCACHE_MAXSIZE) \
 	-w /workspace/apps \
 	$(IMAGE)
 
@@ -57,11 +64,11 @@ build-image:
 
 build-debug: build-image
 	@echo "Building dirtsim (debug) in Docker..."
-	$(DOCKER_RUN) make -j$$(nproc) debug
+	$(DOCKER_RUN) bash -c "ccache -z && make -j\$$(nproc) debug && ccache -s"
 
 build-release: build-image
 	@echo "Building dirtsim (release) in Docker..."
-	$(DOCKER_RUN) make -j$$(nproc) release
+	$(DOCKER_RUN) bash -c "ccache -z && make -j\$$(nproc) release && ccache -s"
 
 test: build-image
 	@echo "Running tests in Docker..."
@@ -81,7 +88,10 @@ shell: build-image
 		--user $(DOCKER_USER) \
 		-v $(PROJECT_ROOT):/workspace \
 		-v $(SSH_DIR):$(SSH_DIR):ro \
+		-v $(CCACHE_DIR):$(CCACHE_DIR) \
 		-e HOME=$(HOME) \
+		-e CCACHE_DIR=$(CCACHE_DIR) \
+		-e CCACHE_MAXSIZE=$(CCACHE_MAXSIZE) \
 		-w /workspace/apps \
 		$(IMAGE) \
 		/bin/bash
