@@ -67,7 +67,9 @@ sudo chown -R $USER:$USER ../apps/build-debug
 
 ## Caching
 
-For CI performance, use Docker layer caching:
+The current CI setup uses Docker's built-in layer caching, which works well on self-hosted runners with persistent local storage. The daily rebuild schedule (2 AM UTC) keeps the cache warm for PR checks.
+
+**Advanced option:** For more aggressive caching (e.g., multi-runner setups), use explicit cache export/import with Buildx:
 
 ```yaml
 - name: Set up Docker Buildx
@@ -82,4 +84,4 @@ For CI performance, use Docker layer caching:
     cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 ```
 
-See `.github/workflows/docker-build.yml` for the full CI setup.
+See `.github/workflows/docker-build.yml` for the actual CI setup.
