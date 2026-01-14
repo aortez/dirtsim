@@ -50,7 +50,7 @@ jobs:
         echo "- **Build time:** ${{ env.BUILD_TIME }}s" >> $GITHUB_STEP_SUMMARY
         echo "- **ccache stats:**" >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
-        docker run --rm -v $HOME/.ccache/dirtsim:$HOME/.ccache/dirtsim -e CCACHE_DIR=$HOME/.ccache/dirtsim dirtsim-builder:$(make -s --eval='print-tag: ; @echo $(IMAGE_TAG)' print-tag) ccache -s >> $GITHUB_STEP_SUMMARY
+        make ccache-stats >> $GITHUB_STEP_SUMMARY
         echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Run unit tests

@@ -9,7 +9,7 @@
 #   make clean-image    # Remove Docker image
 #   make help           # Show this help
 
-.PHONY: help build-image build-debug build-release test format shell clean-image
+.PHONY: help build-image build-debug build-release test format format-check ccache-stats shell clean-image
 
 # Image name and tag.
 IMAGE_NAME := dirtsim-builder
@@ -81,6 +81,9 @@ format: build-image
 format-check: build-image
 	@echo "Checking code formatting in Docker..."
 	$(DOCKER_RUN) bash -c "make format && git diff --quiet || (echo 'Code formatting issues detected. Run make format locally.' && git diff && exit 1)"
+
+ccache-stats: build-image
+	@$(DOCKER_RUN) ccache -s
 
 shell: build-image
 	@echo "Starting interactive shell in Docker container..."
