@@ -146,6 +146,15 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     spdlog::info("=== Light Equilibrium Test (Cliff Edge) ===");
     spdlog::info("Duck at ({}, {}), shining into open air", DUCK_X, DUCK_Y);
 
+    // Log the physics config.
+    const auto& cfg = light->getConfig();
+    spdlog::info(
+        "LightHandHeld config: weight={:.2f}, inertia={:.2f}, max_torque={:.2f}, damping={:.2f}",
+        cfg.weight,
+        cfg.inertia,
+        cfg.max_torque,
+        cfg.damping);
+
     // Run until equilibrium (angular velocity near zero).
     constexpr int MAX_FRAMES = 600; // 10 seconds.
     int equilibrium_frame = -1;
@@ -157,17 +166,23 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
         float omega = light->getAngularVelocity();
         float pitch = light->getPitch();
 
-        // Log periodically.
-        if (frame % 60 == 0) {
-            auto facing = duck->getFacing();
+        // Log more frequently at start to see physics settling, then periodically.
+        bool should_log = (frame < 30 && frame % 5 == 0) || (frame % 60 == 0);
+        if (should_log) {
+            // Get spotlight state for position info.
+            SpotLight* spot = world->getLightManager().getLight<SpotLight>(light->getLightId());
+            float spot_dir = spot ? spot->direction : 0.0f;
+            float spot_y = spot ? spot->position.y : 0.0f;
+
             spdlog::info(
-                "Frame {:4d}: pitch={:+.3f}rad ({:+5.1f}°) ω={:+.4f} facing=({:+.1f}, {:+.1f})",
+                "Frame {:4d}: pitch={:+.4f}rad ({:+6.2f}°) ω={:+.5f} spot_dir={:+.4f}rad "
+                "spot_y={:.2f}",
                 frame,
                 pitch,
                 pitch * 180.0 / M_PI,
                 omega,
-                facing.x,
-                facing.y);
+                spot_dir,
+                spot_y);
         }
 
         // Detect equilibrium: angular velocity very small.
@@ -229,19 +244,63 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     Timers timers;
     calc.calculate(*world, world->getGrid(), light_config, timers);
 
-    // Print the lightmap for visual debugging.
+    // Print combined WORLD + LIGHTMAP side by side for visual debugging.
     spdlog::info("");
-    spdlog::info("=== LIGHTMAP (spotlight only, no ambient/sun) ===");
+    spdlog::info("=== COMBINED VIEW: WORLD (left) | LIGHTMAP (right) ===");
+    spdlog::info("Duck marked as 'D' in both views. Shades: ' '=dark, '@'=bright");
+    spdlog::info("");
+
+    // Build world string (same as printWorld but into a vector of strings).
+    std::vector<std::string> world_lines;
+    const WorldData& wdata = world->getData();
+    for (int y = 0; y < wdata.height; ++y) {
+        std::string row_str;
+        for (int x = 0; x < wdata.width; ++x) {
+            // Mark duck position.
+            if (x == DUCK_X && y == DUCK_Y) {
+                row_str += 'D';
+            }
+            else {
+                const Cell& cell = wdata.at(x, y);
+                if (cell.material_type == Material::EnumType::Wall) {
+                    row_str += 'W';
+                }
+                else if (cell.material_type == Material::EnumType::Air || cell.isEmpty()) {
+                    row_str += '.';
+                }
+                else {
+                    row_str += '?';
+                }
+            }
+        }
+        world_lines.push_back(row_str);
+    }
+
+    // Build lightmap string with duck marked.
     std::string lightmap = calc.lightMapString(*world);
-    // Print with row numbers.
+    std::vector<std::string> light_lines;
     std::istringstream iss(lightmap);
     std::string line;
-    int row = 0;
-    spdlog::info("    01234567890123456789");
+    int row_idx = 0;
     while (std::getline(iss, line)) {
-        spdlog::info("{:2d}: {}", row++, line);
+        // Mark duck position in lightmap.
+        if (row_idx == DUCK_Y && DUCK_X < static_cast<int>(line.size())) {
+            line[DUCK_X] = 'D';
+        }
+        light_lines.push_back(line);
+        row_idx++;
     }
-    spdlog::info("Shades: ' '=dark, '@'=bright");
+
+    // Print header with column numbers.
+    spdlog::info("      WORLD                 LIGHTMAP");
+    spdlog::info("    01234567890123456789  01234567890123456789");
+
+    // Print side by side.
+    for (int y = 0; y < static_cast<int>(world_lines.size()); ++y) {
+        std::string world_row = (y < static_cast<int>(world_lines.size())) ? world_lines[y] : "";
+        std::string light_row = (y < static_cast<int>(light_lines.size())) ? light_lines[y] : "";
+        spdlog::info("{:2d}: {}  {}", y, world_row, light_row);
+    }
 
     // Print spotlight info.
     SpotLight* spotlight = world->getLightManager().getLight<SpotLight>(light->getLightId());
