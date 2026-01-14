@@ -14,7 +14,7 @@ namespace Ui {
 
 ScenarioPanel::ScenarioPanel(
     lv_obj_t* container,
-    Network::WebSocketService* wsService,
+    Network::WebSocketServiceInterface* wsService,
     Scenario::EnumType initialScenarioId,
     const ScenarioConfig& initialConfig,
     DisplayDimensionsGetter dimensionsGetter)

@@ -9,7 +9,7 @@ namespace Ui {
 
 TreeGerminationControls::TreeGerminationControls(
     lv_obj_t* container,
-    Network::WebSocketService* wsService,
+    Network::WebSocketServiceInterface* wsService,
     const Config::TreeGermination& config)
     : ScenarioControlsBase(container, wsService, "tree_germination")
 {

@@ -12,7 +12,7 @@ namespace DirtSim {
 
 // Forward declaration.
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -39,7 +39,7 @@ class CoreControls {
 public:
     CoreControls(
         lv_obj_t* container,
-        Network::WebSocketService* wsService,
+        Network::WebSocketServiceInterface* wsService,
         EventSink& eventSink,
         CoreControlsState& sharedState,
         UiComponentManager* uiManager);
@@ -50,7 +50,7 @@ public:
 
 private:
     lv_obj_t* container_;
-    Network::WebSocketService* wsService_;
+    Network::WebSocketServiceInterface* wsService_;
     EventSink& eventSink_;
     CoreControlsState& state_;
     UiComponentManager* uiManager_;

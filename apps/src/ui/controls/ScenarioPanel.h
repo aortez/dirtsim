@@ -13,7 +13,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -28,7 +28,7 @@ class ScenarioPanel {
 public:
     ScenarioPanel(
         lv_obj_t* container,
-        Network::WebSocketService* wsService,
+        Network::WebSocketServiceInterface* wsService,
         Scenario::EnumType initialScenarioId,
         const ScenarioConfig& initialConfig,
         DisplayDimensionsGetter dimensionsGetter);
@@ -38,7 +38,7 @@ public:
 
 private:
     lv_obj_t* container_;
-    Network::WebSocketService* wsService_;
+    Network::WebSocketServiceInterface* wsService_;
     DisplayDimensionsGetter dimensionsGetter_;
 
     // View controller for modal navigation.

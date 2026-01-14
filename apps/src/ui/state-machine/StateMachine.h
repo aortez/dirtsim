@@ -20,7 +20,7 @@ namespace DirtSim {
 class H264Encoder;
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Server {
@@ -65,14 +65,14 @@ public:
     _lv_display_t* display = nullptr;
     EventProcessor eventProcessor;
 
-    std::unique_ptr<Network::WebSocketService> wsService_;
+    std::unique_ptr<Network::WebSocketServiceInterface> wsService_;
 
     std::unique_ptr<UiComponentManager> uiManager_;
     std::unique_ptr<RemoteInputDevice> remoteInputDevice_;
 
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
 
-    Network::WebSocketService& getWebSocketService();
+    Network::WebSocketServiceInterface& getWebSocketService();
     bool hasWebSocketService() const { return wsService_ != nullptr; }
 
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }

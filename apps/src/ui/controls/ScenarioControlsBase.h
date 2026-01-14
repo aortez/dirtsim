@@ -7,7 +7,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -25,7 +25,7 @@ class ScenarioControlsBase {
 public:
     ScenarioControlsBase(
         lv_obj_t* parentContainer,
-        Network::WebSocketService* wsService,
+        Network::WebSocketServiceInterface* wsService,
         const std::string& scenarioId);
 
     virtual ~ScenarioControlsBase();
@@ -48,7 +48,7 @@ public:
 protected:
     lv_obj_t* parentContainer_;
     lv_obj_t* controlsContainer_; // Our container, deleted in destructor.
-    Network::WebSocketService* wsService_;
+    Network::WebSocketServiceInterface* wsService_;
     std::string scenarioId_;
 
     // Flag to prevent update loops during UI sync.

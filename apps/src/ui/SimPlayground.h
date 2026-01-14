@@ -21,7 +21,7 @@ namespace DirtSim {
 struct PhysicsSettings;
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -53,7 +53,9 @@ class ExpandablePanel;
 class SimPlayground {
 public:
     SimPlayground(
-        UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink);
+        UiComponentManager* uiManager,
+        Network::WebSocketServiceInterface* wsService,
+        EventSink& eventSink);
     ~SimPlayground();
 
     /**
@@ -101,7 +103,7 @@ public:
 
 private:
     UiComponentManager* uiManager_;
-    Network::WebSocketService* wsService_;
+    Network::WebSocketServiceInterface* wsService_;
     EventSink& eventSink_;
 
     // State for CoreControls that persists across panel switches.

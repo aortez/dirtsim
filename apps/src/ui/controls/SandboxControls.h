@@ -7,7 +7,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -20,7 +20,9 @@ namespace Ui {
 class SandboxControls : public ScenarioControlsBase {
 public:
     SandboxControls(
-        lv_obj_t* container, Network::WebSocketService* wsService, const Config::Sandbox& config);
+        lv_obj_t* container,
+        Network::WebSocketServiceInterface* wsService,
+        const Config::Sandbox& config);
     ~SandboxControls() override;
 
     /**

@@ -13,7 +13,7 @@ namespace Ui {
 
 std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
     lv_obj_t* parent,
-    Network::WebSocketService* wsService,
+    Network::WebSocketServiceInterface* wsService,
     Scenario::EnumType scenarioId,
     const ScenarioConfig& config,
     DisplayDimensionsGetter dimensionsGetter)

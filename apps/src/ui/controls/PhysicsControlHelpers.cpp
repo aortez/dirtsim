@@ -691,7 +691,8 @@ void updateControlsFromSettings(
     }
 }
 
-void syncSettingsToServer(Network::WebSocketService* wsService, const PhysicsSettings& settings)
+void syncSettingsToServer(
+    Network::WebSocketServiceInterface* wsService, const PhysicsSettings& settings)
 {
     if (!wsService || !wsService->isConnected()) {
         LOG_WARN(Controls, "Cannot sync settings - not connected");
@@ -710,7 +711,7 @@ void syncSettingsToServer(Network::WebSocketService* wsService, const PhysicsSet
     }
 }
 
-PhysicsSettings fetchSettingsFromServer(Network::WebSocketService* wsService)
+PhysicsSettings fetchSettingsFromServer(Network::WebSocketServiceInterface* wsService)
 {
     if (!wsService || !wsService->isConnected()) {
         LOG_WARN(Controls, "Cannot fetch settings - not connected");

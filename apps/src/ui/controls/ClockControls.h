@@ -11,7 +11,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -38,7 +38,7 @@ class ClockControls : public ScenarioControlsBase {
 public:
     ClockControls(
         lv_obj_t* container,
-        Network::WebSocketService* wsService,
+        Network::WebSocketServiceInterface* wsService,
         const Config::Clock& config,
         DisplayDimensionsGetter dimensionsGetter = nullptr);
     ~ClockControls() override;

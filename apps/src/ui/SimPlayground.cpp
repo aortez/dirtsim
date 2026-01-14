@@ -24,7 +24,9 @@ namespace DirtSim {
 namespace Ui {
 
 SimPlayground::SimPlayground(
-    UiComponentManager* uiManager, Network::WebSocketService* wsService, EventSink& eventSink)
+    UiComponentManager* uiManager,
+    Network::WebSocketServiceInterface* wsService,
+    EventSink& eventSink)
     : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
 {
     renderer_ = std::make_unique<CellRenderer>();

@@ -6,7 +6,7 @@
 namespace DirtSim {
 namespace Ui {
 
-PhysicsPanel::PhysicsPanel(lv_obj_t* container, Network::WebSocketService* wsService)
+PhysicsPanel::PhysicsPanel(lv_obj_t* container, Network::WebSocketServiceInterface* wsService)
     : container_(container), wsService_(wsService), settings_(getDefaultPhysicsSettings())
 {
     // Cache all section configs upfront.

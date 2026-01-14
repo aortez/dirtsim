@@ -6,7 +6,9 @@ namespace DirtSim {
 namespace Ui {
 
 RainingControls::RainingControls(
-    lv_obj_t* container, Network::WebSocketService* wsService, const Config::Raining& config)
+    lv_obj_t* container,
+    Network::WebSocketServiceInterface* wsService,
+    const Config::Raining& config)
     : ScenarioControlsBase(container, wsService, "raining")
 {
     // Create widgets.

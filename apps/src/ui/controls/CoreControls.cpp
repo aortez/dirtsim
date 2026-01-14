@@ -21,7 +21,7 @@ namespace Ui {
 
 CoreControls::CoreControls(
     lv_obj_t* container,
-    Network::WebSocketService* wsService,
+    Network::WebSocketServiceInterface* wsService,
     EventSink& eventSink,
     CoreControlsState& sharedState,
     UiComponentManager* uiManager)

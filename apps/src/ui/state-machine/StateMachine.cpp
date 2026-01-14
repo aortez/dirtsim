@@ -595,7 +595,7 @@ double StateMachine::getUiFps() const
         fsmState.getVariant());
 }
 
-Network::WebSocketService& StateMachine::getWebSocketService()
+Network::WebSocketServiceInterface& StateMachine::getWebSocketService()
 {
     assert(wsService_ && "wsService_ is null!");
     return *wsService_.get();

@@ -10,7 +10,9 @@ namespace DirtSim {
 namespace Ui {
 
 ScenarioControlsBase::ScenarioControlsBase(
-    lv_obj_t* parentContainer, Network::WebSocketService* wsService, const std::string& scenarioId)
+    lv_obj_t* parentContainer,
+    Network::WebSocketServiceInterface* wsService,
+    const std::string& scenarioId)
     : parentContainer_(parentContainer), wsService_(wsService), scenarioId_(scenarioId)
 {
     createContainer();

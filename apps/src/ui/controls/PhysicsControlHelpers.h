@@ -9,7 +9,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -91,9 +91,10 @@ Control* findControl(lv_obj_t* widget, std::unordered_map<lv_obj_t*, Control*>& 
 void updateControlsFromSettings(
     Control* controlsArray, size_t controlCount, const PhysicsSettings& settings);
 
-void syncSettingsToServer(Network::WebSocketService* wsService, const PhysicsSettings& settings);
+void syncSettingsToServer(
+    Network::WebSocketServiceInterface* wsService, const PhysicsSettings& settings);
 
-PhysicsSettings fetchSettingsFromServer(Network::WebSocketService* wsService);
+PhysicsSettings fetchSettingsFromServer(Network::WebSocketServiceInterface* wsService);
 
 } // namespace PhysicsControlHelpers
 } // namespace Ui

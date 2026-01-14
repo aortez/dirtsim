@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BinaryProtocol.h"
+#include "WebSocketServiceInterface.h"
 #include "core/CommandWithCallback.h"
 #include "core/RenderMessage.h"
 #include "core/Result.h"
@@ -49,7 +50,7 @@ enum class Protocol {
  * - Template-based handler registration (server side)
  * - Async callbacks for unsolicited messages
  */
-class WebSocketService {
+class WebSocketService : public WebSocketServiceInterface {
 public:
     using MessageCallback = std::function<void(const std::string&)>;
     using BinaryCallback = std::function<void(const std::vector<std::byte>&)>;
@@ -74,18 +75,19 @@ public:
         HandlerInvoker invokeHandler)>;
 
     WebSocketService();
-    ~WebSocketService();
+    virtual ~WebSocketService();
 
     WebSocketService(const WebSocketService&) = delete;
     WebSocketService& operator=(const WebSocketService&) = delete;
 
-    Result<std::monostate, std::string> connect(const std::string& url, int timeoutMs = 5000);
+    Result<std::monostate, std::string> connect(
+        const std::string& url, int timeoutMs = 5000) override;
 
-    void disconnect();
+    void disconnect() override;
 
-    bool isConnected() const;
+    bool isConnected() const override;
 
-    std::string getUrl() const { return url_; }
+    std::string getUrl() const override { return url_; }
 
     void setProtocol(Protocol protocol) { protocol_ = protocol; }
 
@@ -115,7 +117,7 @@ public:
     /**
      * @brief Send raw binary message (fire-and-forget - prefer sync over this).
      */
-    Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& data);
+    Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& data) override;
 
     /**
      * @brief Send typed command and receive typed response (recommended).
@@ -180,18 +182,21 @@ public:
      * @return Result with response envelope on success, error on failure.
      */
     Result<MessageEnvelope, std::string> sendBinaryAndReceive(
-        const MessageEnvelope& envelope, int timeoutMs = 5000);
+        const MessageEnvelope& envelope, int timeoutMs = 5000) override;
 
     // =========================================================================
     // Callbacks for async/unsolicited messages.
     // =========================================================================
 
     void onMessage(MessageCallback callback) { messageCallback_ = callback; }
-    void onBinary(BinaryCallback callback) { binaryCallback_ = callback; }
-    void onServerCommand(ServerCommandCallback callback) { serverCommandCallback_ = callback; }
-    void onConnected(ConnectionCallback callback) { connectedCallback_ = callback; }
-    void onDisconnected(ConnectionCallback callback) { disconnectedCallback_ = callback; }
-    void onError(ErrorCallback callback) { errorCallback_ = callback; }
+    void onBinary(BinaryCallback callback) override { binaryCallback_ = callback; }
+    void onServerCommand(ServerCommandCallback callback) override
+    {
+        serverCommandCallback_ = callback;
+    }
+    void onConnected(ConnectionCallback callback) override { connectedCallback_ = callback; }
+    void onDisconnected(ConnectionCallback callback) override { disconnectedCallback_ = callback; }
+    void onError(ErrorCallback callback) override { errorCallback_ = callback; }
 
     /**
      * @brief Set callback for server-side client disconnect notifications.
@@ -210,7 +215,10 @@ public:
      * Allows server/UI to inject their command deserializer without coupling
      * WebSocketService to specific command types.
      */
-    void setJsonDeserializer(JsonDeserializer deserializer) { jsonDeserializer_ = deserializer; }
+    void setJsonDeserializer(JsonDeserializer deserializer) override
+    {
+        jsonDeserializer_ = deserializer;
+    }
 
     /**
      * @brief Set JSON command dispatcher for handling deserialized commands.
@@ -233,17 +241,17 @@ public:
      * @param port Port to listen on.
      * @return Result with success or error message.
      */
-    Result<std::monostate, std::string> listen(uint16_t port);
+    Result<std::monostate, std::string> listen(uint16_t port) override;
 
     /**
      * @brief Stop listening for connections.
      */
-    void stopListening();
+    void stopListening() override;
 
     /**
      * @brief Check if server is currently listening.
      */
-    bool isListening() const;
+    bool isListening() const override;
 
     void broadcastBinary(const std::vector<std::byte>& data);
 
@@ -267,7 +275,7 @@ public:
      * @return Result indicating success or error.
      */
     Result<std::monostate, std::string> sendToClient(
-        const std::string& connectionId, const std::string& message);
+        const std::string& connectionId, const std::string& message) override;
 
     Result<std::monostate, std::string> sendToClient(
         const std::string& connectionId, const std::vector<std::byte>& data);

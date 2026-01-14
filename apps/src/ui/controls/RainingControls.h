@@ -9,7 +9,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -22,7 +22,9 @@ namespace Ui {
 class RainingControls : public ScenarioControlsBase {
 public:
     RainingControls(
-        lv_obj_t* container, Network::WebSocketService* wsService, const Config::Raining& config);
+        lv_obj_t* container,
+        Network::WebSocketServiceInterface* wsService,
+        const Config::Raining& config);
     ~RainingControls() override;
 
     /**

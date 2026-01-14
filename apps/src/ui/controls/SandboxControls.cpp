@@ -14,7 +14,9 @@ namespace DirtSim {
 namespace Ui {
 
 SandboxControls::SandboxControls(
-    lv_obj_t* container, Network::WebSocketService* wsService, const Config::Sandbox& config)
+    lv_obj_t* container,
+    Network::WebSocketServiceInterface* wsService,
+    const Config::Sandbox& config)
     : ScenarioControlsBase(container, wsService, "sandbox")
 {
     // Create widgets with initial config.

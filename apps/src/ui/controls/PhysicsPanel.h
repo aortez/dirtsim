@@ -11,7 +11,7 @@
 namespace DirtSim {
 
 namespace Network {
-class WebSocketService;
+class WebSocketServiceInterface;
 }
 
 namespace Ui {
@@ -34,14 +34,14 @@ namespace Ui {
  */
 class PhysicsPanel {
 public:
-    PhysicsPanel(lv_obj_t* container, Network::WebSocketService* wsService);
+    PhysicsPanel(lv_obj_t* container, Network::WebSocketServiceInterface* wsService);
     ~PhysicsPanel();
 
     void updateFromSettings(const PhysicsSettings& settings);
 
 private:
     lv_obj_t* container_;
-    Network::WebSocketService* wsService_;
+    Network::WebSocketServiceInterface* wsService_;
 
     // View controller for modal navigation.
     std::unique_ptr<PanelViewController> viewController_;

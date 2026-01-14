@@ -10,7 +10,7 @@ namespace Ui {
 
 ClockControls::ClockControls(
     lv_obj_t* container,
-    Network::WebSocketService* wsService,
+    Network::WebSocketServiceInterface* wsService,
     const Config::Clock& config,
     DisplayDimensionsGetter dimensionsGetter)
     : ScenarioControlsBase(container, wsService, "clock"),
