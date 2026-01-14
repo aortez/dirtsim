@@ -20,9 +20,11 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldLightCalculator.h"
+#include <cmath>
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -756,3 +758,124 @@ TEST_F(WorldLightCalculatorTest, AirScatteringSoftensOverhangShadow)
     // With diffusion (air scattering), light should reach under overhang.
     EXPECT_GT(with_diffusion, no_diffusion) << "Air scattering should bring light under overhang";
 }
+
+// =============================================================================
+// SpotLight Arc Tests (Parameterized)
+// =============================================================================
+
+struct SpotLightTestCase {
+    std::string name;
+    float direction;                   // Radians from +x axis.
+    float arc_width;                   // Arc width in radians.
+    std::vector<Vector2i> expect_lit;  // Positions that should be lit.
+    std::vector<Vector2i> expect_dark; // Positions that should be dark.
+};
+
+class SpotLightArcTest : public ::testing::TestWithParam<SpotLightTestCase> {
+protected:
+    WorldLightCalculator calc;
+    LightConfig config;
+    ::Timers timers;
+
+    void SetUp() override
+    {
+        config = {
+            .air_scatter_rate = 0.0f,
+            .ambient_color = ColorNames::black(),
+            .ambient_intensity = 0.0f,
+            .diffusion_iterations = 0,
+            .diffusion_rate = 0.0f,
+            .sky_access_enabled = false,
+            .sky_access_falloff = 0.0f,
+            .sun_color = ColorNames::white(),
+            .sun_enabled = false,
+            .sun_intensity = 0.0f,
+        };
+    }
+};
+
+TEST_P(SpotLightArcTest, ArcIlluminatesExpectedRegions)
+{
+    const auto& tc = GetParam();
+
+    World world(21, 21);
+    WorldData& data = world.getData();
+
+    // Block sun at top.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 0).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    world.advanceTime(0.0001);
+
+    // SpotLight at center.
+    SpotLight spot;
+    spot.position = Vector2f{ 10.0f, 10.0f };
+    spot.color = ColorNames::white();
+    spot.intensity = 1.0f;
+    spot.radius = 12.0f;
+    spot.attenuation = 0.08f;
+    spot.direction = tc.direction;
+    spot.arc_width = tc.arc_width;
+    world.getLightManager().addLight(spot);
+
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Print lightmap for debugging.
+    spdlog::info("=== SpotLightArcTest: {} ===", tc.name);
+    spdlog::info(
+        "direction={:.1f}° arc_width={:.1f}°",
+        tc.direction * 180.0f / M_PI,
+        tc.arc_width * 180.0f / M_PI);
+    std::string lightmap = calc.lightMapString(world);
+    std::istringstream iss(lightmap);
+    std::string line;
+    int row = 0;
+    while (std::getline(iss, line)) {
+        spdlog::info("{:2d}: {}", row++, line);
+    }
+
+    // Check expected lit positions.
+    for (const auto& pos : tc.expect_lit) {
+        float brightness = ColorNames::brightness(data.colors.at(pos.x, pos.y));
+        EXPECT_GT(brightness, 0.05f)
+            << tc.name << ": Position (" << pos.x << "," << pos.y << ") should be LIT";
+    }
+
+    // Check expected dark positions.
+    for (const auto& pos : tc.expect_dark) {
+        float brightness = ColorNames::brightness(data.colors.at(pos.x, pos.y));
+        EXPECT_LT(brightness, 0.02f)
+            << tc.name << ": Position (" << pos.x << "," << pos.y << ") should be DARK";
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ArcConfigurations,
+    SpotLightArcTest,
+    ::testing::Values(
+        // 30° arc facing right - narrow beam.
+        SpotLightTestCase{ .name = "30deg_facing_right",
+                           .direction = 0.0f,
+                           .arc_width = static_cast<float>(30.0 * M_PI / 180.0),
+                           .expect_lit = { { 14, 10 } },                          // Right.
+                           .expect_dark = { { 6, 10 }, { 10, 6 }, { 10, 14 } } }, // Left, up, down.
+
+        // 180° arc facing right - right hemisphere lit.
+        SpotLightTestCase{
+            .name = "180deg_facing_right",
+            .direction = 0.0f,
+            .arc_width = static_cast<float>(M_PI),
+            .expect_lit = { { 14, 10 }, { 13, 7 }, { 13, 13 } }, // Right, up-right, down-right.
+            .expect_dark = { { 6, 10 } } },                      // Left.
+
+        // 280° arc with gap in top-left quadrant (screen coords: y-down).
+        // Top-left on screen is ~225° (up-left), so direction points opposite at 45°.
+        SpotLightTestCase{
+            .name = "280deg_gap_topleft",
+            .direction = static_cast<float>(M_PI / 4.0),
+            .arc_width = static_cast<float>(280.0 * M_PI / 180.0),
+            .expect_lit = { { 14, 10 }, { 6, 10 }, { 10, 14 } }, // Right, left, down.
+            .expect_dark = { { 7, 7 } } }                        // Top-left diagonal (in gap).
+        ),
+    [](const ::testing::TestParamInfo<SpotLightTestCase>& info) { return info.param.name; });
