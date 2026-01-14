@@ -146,6 +146,11 @@ sudo apt-get install -y \
 log_info "Installing kas..."
 pip3 install --user kas
 
+# Enable unprivileged user namespaces (required for Yocto on Ubuntu 24.04).
+log_info "Configuring user namespaces for Yocto..."
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/99-yocto.conf > /dev/null
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
 # Create runner directory.
 RUNNER_DIR="$HOME/actions-runner"
 mkdir -p "$RUNNER_DIR"
