@@ -1,17 +1,23 @@
 ## Project Overview
 
-DirtSim is a grid/cell-based playground for experimenting with artificial life, Yocto, and LVGL. It features multiple material types (AIR, DIRT, LEAF, METAL, ROOT, SAND, SEED, WALL, WATER, WOOD) with realistic physics including pressure, cohesion, adhesion, friction, and viscosity.
+DirtSim is a grid/cell-based playground for experimenting with artificial life.
+
+It attempts to simulate both fluid and rigid body dynamics.
+
+It runs on Linux X86 under X11, wayland, and framebuffer.
+
+It also designed as an embedded application, running great on Raspberry Pi 4 and 5.
+
+It also has a very nice clock mode, just hacked in because why not make use of the weird grid physics.
 
 ![Dirt Simulation](dirt_sim.png)
-
-The simulation serves as a substrate for artificial life experiments, currently featuring tree organisms that germinate, grow, and respond to their environment.
 
 ## Target Hardware
 
 * Raspberry Pi 4 or 5
 * Pi4 display - MPI4008 4" HDMI touchscreen (480x800)
 * Pi5 display - HyperPixel 4.0 DPI (480x800)
-* Single unified image auto-detects hardware
+* Unified image auto-detects hardware
 
 ## Repository Structure
 
@@ -29,8 +35,6 @@ The main application lives here. It's a client/server architecture:
 - **CLI**: Command-line tool for control, testing, and benchmarking
 
 ### yocto/ - Pi Image Building
-
-Custom Yocto layer for building bootable images for Raspberry Pi deployment. Includes recipes for the simulation and supporting infrastructure.
 
 ## Quick Start
 
@@ -54,7 +58,7 @@ make debug                           # Build
 
 ## Remote Deployment
 
-The simulation runs on a Raspberry Pi 4 or 5, accessible at `dirtsim.local` (or custom hostname set during flash):
+Accessible at `dirtsim.local` (or custom hostname set during flash):
 
 ```bash
 # Deploy from workstation (Yocto-based full system)
