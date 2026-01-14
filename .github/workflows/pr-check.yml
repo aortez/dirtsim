@@ -49,6 +49,8 @@ jobs:
   deploy-and-smoke-test:
     runs-on: self-hosted
     needs: build-and-test
+    env:
+      PATH: ${{ format('{0}/.local/bin:{1}', env.HOME, env.PATH) }}
 
     steps:
     - name: Checkout code
