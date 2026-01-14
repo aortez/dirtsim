@@ -1,17 +1,18 @@
 {
-  "name": "sparkle-duck-yocto",
+  "name": "dirtsim-yocto",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Yocto build and flash tools for Sparkle Duck",
+  "description": "Yocto build and flash tools for DirtSim",
   "scripts": {
+    "build": "kas build kas-dirtsim.yml",
     "deploy": "node scripts/deploy-apps.mjs",
     "flash": "node scripts/flash.mjs",
     "update": "node scripts/update.mjs",
     "yolo": "node scripts/yolo-update.mjs"
   },
   "bin": {
-    "sd-flash": "./scripts/flash.mjs"
+    "ds-flash": "./scripts/flash.mjs"
   },
   "dependencies": {
     "consola": "^3.4.2"

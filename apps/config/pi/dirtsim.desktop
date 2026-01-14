@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=DirtSim
+Comment=Cell-based multi-material physics simulation
+Exec=/home/oldman/workspace/dirtsim/apps/build-debug/bin/cli run-all
+Icon=/home/oldman/.local/share/icons/dirtsim.png
+Terminal=false
+Categories=Science;Simulation;
+StartupNotify=true

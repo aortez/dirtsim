@@ -1,6 +1,6 @@
 # GitHub Actions CI Setup
 
-This document describes how to set up continuous integration for the sparkle-duck project using GitHub Actions with a self-hosted runner.
+This document describes how to set up continuous integration for the dirtsim project using GitHub Actions with a self-hosted runner.
 
 ## Overview
 
@@ -45,8 +45,8 @@ From your build server:
 
 ```bash
 # Clone the repository.
-git clone https://github.com/YOUR_USERNAME/sparkle-duck.git
-cd sparkle-duck/dirtsim
+git clone https://github.com/YOUR_USERNAME/dirtsim.git
+cd dirtsim/dirtsim
 
 # Copy the example environment file.
 cp .github/.env.example .github/.env
@@ -86,7 +86,7 @@ sudo ./svc.sh status
 ```
 
 You should also see the runner listed at:
-`https://github.com/YOUR_USERNAME/sparkle-duck/settings/actions/runners`
+`https://github.com/YOUR_USERNAME/dirtsim/settings/actions/runners`
 
 ### Manual Setup (Alternative)
 
@@ -131,7 +131,7 @@ sudo ./svc.sh uninstall
 ```
 
 Get a removal token from:
-`https://github.com/YOUR_USERNAME/sparkle-duck/settings/actions/runners`
+`https://github.com/YOUR_USERNAME/dirtsim/settings/actions/runners`
 
 ## Configuration
 
@@ -157,7 +157,7 @@ Available configuration options (all optional except GITHUB_TOKEN):
 - `GITHUB_TOKEN`: Your GitHub personal access token (required).
 - `REPO_OWNER`: Repository owner (auto-detected if not set).
 - `REPO_NAME`: Repository name (auto-detected if not set).
-- `RUNNER_NAME`: Name for this runner (default: `sparkle-duck-runner-<hostname>`).
+- `RUNNER_NAME`: Name for this runner (default: `dirtsim-runner-<hostname>`).
 - `RUNNER_LABELS`: Comma-separated list of labels (default: `self-hosted,linux,x64`).
 - `RUNNER_WORK_DIR`: Working directory for jobs (default: `_work`).
 
@@ -181,7 +181,7 @@ Edit `.github/workflows/pr-check.yml` to:
 
 - Check runner logs in `~/actions-runner/_diag/`.
 - Ensure all dependencies are installed.
-- Test the build manually: `cd ~/actions-runner/_work/sparkle-duck/sparkle-duck && make debug`.
+- Test the build manually: `cd ~/actions-runner/_work/dirtsim/dirtsim && make debug`.
 
 ### Permission Issues
 
@@ -218,14 +218,14 @@ To run multiple runners (e.g., on different machines), create separate `.env` fi
 # On machine 1 (fast build server).
 cp .github/.env.example .github/.env
 # Edit .github/.env:
-#   RUNNER_NAME=sparkle-duck-fast
+#   RUNNER_NAME=dirtsim-fast
 #   RUNNER_LABELS=self-hosted,linux,x64,fast-build
 ./.github/scripts/setup-runner.sh
 
 # On machine 2 (slower build server).
 cp .github/.env.example .github/.env
 # Edit .github/.env:
-#   RUNNER_NAME=sparkle-duck-slow
+#   RUNNER_NAME=dirtsim-slow
 #   RUNNER_LABELS=self-hosted,linux,x64,slow-build
 ./.github/scripts/setup-runner.sh
 ```

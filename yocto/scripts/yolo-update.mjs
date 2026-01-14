@@ -1,482 +1,81 @@
 #!/usr/bin/env node
 /**
- * YOLO remote update - push image over network and dd directly to disk.
+ * YOLO remote update - push image over network and flash via A/B update.
  *
- * This is the "hold my mead" approach: we scp the image to the Pi,
- * verify the checksum, then dd it to the boot disk while running.
- * If it works, great! If not, pull the disk and reflash.
+ * This is the "hold my mead" approach: we scp the rootfs image to the Pi,
+ * verify the checksum, then flash it to the inactive partition.
+ * If it works, great! If not, the previous slot still works.
+ *
+ * No local sudo required! All privileged operations happen on the Pi.
  *
  * Usage:
- *   npm run yolo                    # Build + push + flash + reboot
- *   npm run yolo -- --clean         # Force rebuild (cleans image sstate)
- *   npm run yolo -- --clean-all     # Force full rebuild (cleans server + image)
- *   npm run yolo -- --skip-build    # Push existing image (skip kas build)
- *   npm run yolo -- --dry-run       # Show what would happen
- *   npm run yolo -- --help          # Show help
+ *   npm run yolo                              # Build + push + flash + reboot
+ *   npm run yolo -- --target 192.168.1.50    # Target a specific host
+ *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
+ *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + image)
+ *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
+ *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
+ *   npm run yolo -- --dry-run                 # Show what would happen
+ *   npm run yolo -- --help                    # Show help
  */
 
-import { execSync, spawn } from 'child_process';
-import { existsSync, statSync, readFileSync, readdirSync, createReadStream, mkdtempSync, unlinkSync, rmdirSync } from 'fs';
+import { execSync } from 'child_process';
+import { existsSync, statSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
-import { createInterface } from 'readline';
-import { createHash } from 'crypto';
 import { tmpdir } from 'os';
 import { createConsola } from 'consola';
 
-// Custom reporter with detailed timestamps (HH:MM:SS.mmm).
-const timestampReporter = {
-  log(logObj) {
-    const d = new Date(logObj.date);
-    const hours = String(d.getHours()).padStart(2, '0');
-    const minutes = String(d.getMinutes()).padStart(2, '0');
-    const seconds = String(d.getSeconds()).padStart(2, '0');
-    const ms = String(d.getMilliseconds()).padStart(3, '0');
-    const timestamp = `${hours}:${minutes}:${seconds}.${ms}`;
+// Shared utilities from pi-base.
+import {
+  colors,
+  log,
+  info,
+  success,
+  warn,
+  error,
+  formatBytes,
+  setupConsolaLogging,
+  banner,
+  skull,
+  loadConfig,
+  run,
+  createCleanupManager,
+  checkRemoteReachable,
+  getRemoteTmpSpace,
+  getRemoteBootDevice,
+  getRemoteBootTime,
+  waitForReboot,
+  transferImage,
+  verifyRemoteChecksum,
+  calculateChecksum,
+  remoteFlashWithKey,
+} from '../pi-base/scripts/lib/index.mjs';
 
-    // Badge based on type.
-    const badge = logObj.type === 'success' ? '✔' :
-                  logObj.type === 'error' ? '✖' :
-                  logObj.type === 'warn' ? '⚠' :
-                  logObj.type === 'info' ? 'ℹ' :
-                  logObj.type === 'start' ? '▶' : ' ';
-
-    // Color based on type.
-    const color = logObj.type === 'success' ? '\x1b[32m' :
-                  logObj.type === 'error' ? '\x1b[31m' :
-                  logObj.type === 'warn' ? '\x1b[33m' :
-                  logObj.type === 'info' ? '\x1b[36m' : '';
-
-    const reset = '\x1b[0m';
-    const dim = '\x1b[2m';
-
-    console.log(`${dim}[${timestamp}]${reset} ${color}${badge}${reset} ${logObj.args.join(' ')}`);
-  },
-};
-
-const consola = createConsola({
-  reporters: [timestampReporter],
-});
-
+// Path setup.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
+const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 
-// Remote target configuration.
-const REMOTE_HOST = 'dirtsim.local';
+// Remote target configuration (defaults).
+const DEFAULT_HOST = 'dirtsim.local';
 const REMOTE_USER = 'dirtsim';
-const REMOTE_TARGET = `${REMOTE_USER}@${REMOTE_HOST}`;
 const REMOTE_DEVICE = '/dev/sda';
 const REMOTE_TMP = '/tmp';
 
-// Colors for terminal output (still needed for some custom formatting).
-const colors = {
-  reset: '\x1b[0m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m',
-  bold: '\x1b[1m',
-  dim: '\x1b[2m',
-};
+// Set up consola with timestamp reporter.
+const timestampReporter = setupConsolaLogging();
+const consola = createConsola({ reporters: [timestampReporter] });
 
-// Wrap consola for our needs.
-const log = (msg) => console.log(msg);
-const info = (msg) => consola.info(msg);
-const success = (msg) => consola.success(msg);
-const warn = (msg) => consola.warn(msg);
-const error = (msg) => consola.error(msg);
-
-function banner(title) {
-  consola.box(title);
-}
-
-function skull() {
-  log('');
-  log(`${colors.yellow}    ☠️  YOLO MODE - NO SAFETY NET  ☠️${colors.reset}`);
-  log(`${colors.dim}    If this fails, pull the disk and reflash.${colors.reset}`);
-  log('');
-}
+// Set up cleanup manager for signal handling.
+const cleanup = createCleanupManager();
+cleanup.installSignalHandlers();
 
 // ============================================================================
-// Signal Handling and Cleanup
-// ============================================================================
-
-// Track resources for cleanup on Ctrl+C.
-let activeLoopDevice = null;
-let activeMountPoint = null;
-let activeTempDir = null;
-let inCriticalSection = false;
-
-function emergencyCleanup() {
-  // If we're in the critical section (dd running), refuse to exit.
-  if (inCriticalSection) {
-    log('');
-    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
-    log(`${colors.bold}${colors.red}  ⚠️  CANNOT INTERRUPT - dd IS WRITING TO DISK!${colors.reset}`);
-    log(`${colors.bold}${colors.red}  Ctrl+C disabled to prevent disk corruption.${colors.reset}`);
-    log(`${colors.bold}${colors.red}  Wait for reboot to complete...${colors.reset}`);
-    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
-    log('');
-    return; // Don't exit!
-  }
-
-  log('');
-  warn('Ctrl+C detected - cleaning up...');
-
-  try {
-    if (activeMountPoint) {
-      info(`Unmounting ${activeMountPoint}...`);
-      execSync(`sudo umount ${activeMountPoint} 2>/dev/null || true`, { stdio: 'pipe' });
-    }
-    if (activeLoopDevice) {
-      info(`Detaching ${activeLoopDevice}...`);
-      execSync(`sudo losetup -d ${activeLoopDevice} 2>/dev/null || true`, { stdio: 'pipe' });
-    }
-    if (activeTempDir) {
-      info(`Removing temp directory...`);
-      execSync(`rm -rf ${activeTempDir}`, { stdio: 'pipe' });
-    }
-    success('Cleanup complete.');
-  } catch (err) {
-    error(`Cleanup failed: ${err.message}`);
-  }
-
-  log('');
-  process.exit(130); // Standard exit code for SIGINT.
-}
-
-// Handle Ctrl+C gracefully.
-process.on('SIGINT', emergencyCleanup);
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-/**
- * Format bytes to human readable string.
- */
-function formatBytes(bytes) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  while (bytes >= 1024 && i < units.length - 1) {
-    bytes /= 1024;
-    i++;
-  }
-  return `${bytes.toFixed(1)} ${units[i]}`;
-}
-
-/**
- * Prompt user for input.
- */
-async function prompt(question) {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise(resolve => {
-    rl.question(question, answer => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-/**
- * Run a command with inherited stdio.
- */
-async function run(cmd, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(cmd, args, { stdio: 'inherit', cwd: YOCTO_DIR, ...options });
-    proc.on('close', code => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`${cmd} exited with code ${code}`));
-      }
-    });
-    proc.on('error', reject);
-  });
-}
-
-/**
- * Run a command and capture output.
- */
-function runCapture(cmd, options = {}) {
-  try {
-    return execSync(cmd, { encoding: 'utf-8', stdio: 'pipe', ...options }).trim();
-  } catch (err) {
-    return null;
-  }
-}
-
-/**
- * Run a command on the remote host via SSH.
- */
-function ssh(command, options = {}) {
-  const sshCmd = `ssh -o ConnectTimeout=5 -o BatchMode=yes ${REMOTE_TARGET} "${command}"`;
-  return runCapture(sshCmd, options);
-}
-
-/**
- * Run a command on the remote host via SSH, with inherited stdio for progress.
- */
-async function sshRun(command) {
-  return run('ssh', [
-    '-o', 'ConnectTimeout=10',
-    '-o', 'BatchMode=yes',
-    REMOTE_TARGET,
-    command,
-  ]);
-}
-
-/**
- * Calculate SHA256 checksum of a file.
- */
-async function calculateChecksum(filePath) {
-  return new Promise((resolve, reject) => {
-    const hash = createHash('sha256');
-    const stream = createReadStream(filePath);
-
-    stream.on('data', data => hash.update(data));
-    stream.on('end', () => resolve(hash.digest('hex')));
-    stream.on('error', reject);
-  });
-}
-
-// ============================================================================
-// SSH Key Configuration
-// ============================================================================
-
-/**
- * Load flash configuration from .flash-config.json.
- */
-function loadConfig() {
-  try {
-    if (!existsSync(CONFIG_FILE)) {
-      return null;
-    }
-    const content = readFileSync(CONFIG_FILE, 'utf-8');
-    const config = JSON.parse(content);
-    if (!config.ssh_key_path || !existsSync(config.ssh_key_path)) {
-      return null;
-    }
-    return config;
-  } catch {
-    return null;
-  }
-}
-
-// ============================================================================
-// Image Preparation (Local Customization)
-// ============================================================================
-
-/**
- * Extract rootfs partition from .wic image and inject SSH key.
- * For A/B updates, we only need the rootfs partition.
- * Returns path to the prepared rootfs image (ext4.gz).
- */
-async function prepareRootfs(imagePath, config) {
-  banner('Extracting and preparing rootfs...');
-
-  const workDir = mkdtempSync(join(tmpdir(), 'yolo-rootfs-'));
-  activeTempDir = workDir;
-  const wicPath = join(workDir, 'image.wic');
-  const rootfsRaw = join(workDir, 'rootfs.ext4');
-  const mountPoint = join(workDir, 'mnt');
-  const preparedRootfsPath = join(workDir, 'rootfs.ext4.gz');
-
-  try {
-    // Decompress image.
-    info('Decompressing image...');
-    execSync(`gunzip -c "${imagePath}" > "${wicPath}"`, { stdio: 'pipe' });
-
-    // Set up loop device with partition scanning.
-    info('Setting up loop device...');
-    const loopDevice = execSync(`sudo losetup -fP --show "${wicPath}"`, {
-      encoding: 'utf-8',
-      stdio: 'pipe',
-    }).trim();
-    activeLoopDevice = loopDevice;
-
-    try {
-      // Extract partition 2 (rootfs_a) - this is what we'll flash to inactive slot.
-      info('Extracting rootfs partition...');
-      const rootfsPartition = `${loopDevice}p2`;
-
-      // Use dd to extract just the rootfs partition to a file.
-      execSync(`sudo dd if="${rootfsPartition}" of="${rootfsRaw}" bs=4M`, { stdio: 'pipe' });
-
-      // Now mount the extracted rootfs to inject SSH key.
-      const rootfsLoop = execSync(`sudo losetup -f --show "${rootfsRaw}"`, {
-        encoding: 'utf-8',
-        stdio: 'pipe',
-      }).trim();
-
-      try {
-        execSync(`mkdir -p "${mountPoint}"`, { stdio: 'pipe' });
-        info('Mounting extracted rootfs...');
-        execSync(`sudo mount "${rootfsLoop}" "${mountPoint}"`, { stdio: 'pipe' });
-        activeMountPoint = mountPoint;
-
-        try {
-          // Inject SSH key.
-          if (config && config.ssh_key_path) {
-            info(`Injecting SSH key: ${basename(config.ssh_key_path)}`);
-            const sshKey = readFileSync(config.ssh_key_path, 'utf-8').trim();
-            const authorizedKeysPath = join(mountPoint, 'home/dirtsim/.ssh/authorized_keys');
-
-            execSync(`echo '${sshKey}' | sudo tee "${authorizedKeysPath}" > /dev/null`, { stdio: 'pipe' });
-            execSync(`sudo chmod 600 "${authorizedKeysPath}"`, { stdio: 'pipe' });
-            execSync(`sudo chown 1000:1000 "${authorizedKeysPath}"`, { stdio: 'pipe' });
-            success('SSH key injected!');
-          }
-
-        } finally {
-          // Unmount.
-          info('Unmounting...');
-          execSync(`sudo umount "${mountPoint}"`, { stdio: 'pipe' });
-          activeMountPoint = null;
-        }
-
-        // Sync and detach rootfs loop device.
-        execSync('sync', { stdio: 'pipe' });
-        execSync(`sudo losetup -d "${rootfsLoop}"`, { stdio: 'pipe' });
-
-      } catch (err) {
-        // Cleanup rootfs loop on error.
-        execSync(`sudo losetup -d "${rootfsLoop}" 2>/dev/null || true`, { stdio: 'pipe' });
-        throw err;
-      }
-
-    } finally {
-      // Detach main loop device.
-      info('Detaching loop device...');
-      execSync(`sudo losetup -d "${loopDevice}"`, { stdio: 'pipe' });
-      activeLoopDevice = null;
-    }
-
-    // Compress the rootfs.
-    info('Compressing rootfs...');
-    execSync(`gzip -c "${rootfsRaw}" > "${preparedRootfsPath}"`, { stdio: 'pipe' });
-
-    // Clean up.
-    unlinkSync(wicPath);
-    unlinkSync(rootfsRaw);
-    rmdirSync(mountPoint);
-
-    success('Rootfs prepared!');
-    return { preparedRootfsPath, workDir };
-
-  } catch (err) {
-    // Clean up on error.
-    try {
-      execSync(`sudo umount "${mountPoint}" 2>/dev/null || true`, { stdio: 'pipe' });
-      execSync(`sudo losetup -D 2>/dev/null || true`, { stdio: 'pipe' });
-      if (existsSync(wicPath)) unlinkSync(wicPath);
-      if (existsSync(rootfsRaw)) unlinkSync(rootfsRaw);
-      if (existsSync(mountPoint)) rmdirSync(mountPoint);
-      if (existsSync(workDir)) rmdirSync(workDir);
-    } catch {
-      // Ignore cleanup errors.
-    }
-    throw err;
-  }
-}
-
-/**
- * Clean up prepared image temp files.
- */
-function cleanupPreparedImage(workDir) {
-  try {
-    execSync(`rm -rf "${workDir}"`, { stdio: 'pipe' });
-  } catch {
-    warn(`Failed to clean up temp directory: ${workDir}`);
-  }
-}
-
-// ============================================================================
-// Image Discovery
-// ============================================================================
-
-/**
- * Find the latest .wic.gz image file.
- */
-function findLatestImage() {
-  if (!existsSync(IMAGE_DIR)) {
-    return null;
-  }
-
-  const files = readdirSync(IMAGE_DIR)
-    .filter(f => f.endsWith('.wic.gz') && !f.includes('->'))
-    .map(f => ({
-      name: f,
-      path: join(IMAGE_DIR, f),
-      stat: statSync(join(IMAGE_DIR, f)),
-    }))
-    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-
-  // Prefer our custom image.
-  const dirtsimImage = files.find(f => f.name === 'dirtsim-image-raspberrypi5.rootfs.wic.gz');
-  if (dirtsimImage) {
-    return dirtsimImage;
-  }
-
-  return files[0] || null;
-}
-
-// ============================================================================
-// Pre-flight Checks
-// ============================================================================
-
-/**
- * Check if the remote host is reachable.
- */
-function checkRemoteReachable() {
-  info(`Checking if ${REMOTE_HOST} is reachable...`);
-
-  const result = runCapture(`ping -c 1 -W 2 ${REMOTE_HOST}`);
-  if (result === null) {
-    return false;
-  }
-
-  // Also check SSH.
-  const sshResult = ssh('echo ok');
-  return sshResult === 'ok';
-}
-
-/**
- * Get available space in /tmp on remote (in bytes).
- * Uses -k flag for BusyBox compatibility (returns KB).
- */
-function getRemoteTmpSpace() {
-  // Use awk with escaped braces for SSH.
-  const result = ssh("df -k " + REMOTE_TMP + " | tail -1 | awk '{ print \\$4 }'");
-  if (result) {
-    const kb = parseInt(result, 10);
-    if (!isNaN(kb)) {
-      // Result is in KB, convert to bytes.
-      return kb * 1024;
-    }
-  }
-  return 0;
-}
-
-/**
- * Get the boot device on the remote system.
- */
-function getRemoteBootDevice() {
-  // Find what device / is mounted from.
-  const result = ssh(`mount | grep ' / ' | cut -d' ' -f1 | sed 's/[0-9]*$//'`);
-  return result || REMOTE_DEVICE;
-}
-
-// ============================================================================
-// Build Phase
+// Build Phase (Project-Specific)
 // ============================================================================
 
 /**
@@ -484,7 +83,7 @@ function getRemoteBootDevice() {
  */
 async function cleanImage() {
   info('Cleaning dirtsim-image sstate to force rebuild...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image'], { cwd: YOCTO_DIR });
   success('Clean complete!');
 }
 
@@ -492,8 +91,8 @@ async function cleanImage() {
  * Clean both server and image sstate for a full rebuild.
  */
 async function cleanAll() {
-  info('Cleaning sparkle-duck-server and dirtsim-image sstate...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate sparkle-duck-server dirtsim-image']);
+  info('Cleaning dirtsim-server and dirtsim-image sstate...');
+  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image'], { cwd: YOCTO_DIR });
   success('Clean complete!');
 }
 
@@ -501,7 +100,7 @@ async function cleanAll() {
  * Run the Yocto build.
  */
 async function build(forceClean = false, forceCleanAll = false) {
-  banner('Building dirtsim-image...');
+  banner('Building dirtsim-image...', consola);
 
   if (forceCleanAll) {
     await cleanAll();
@@ -509,221 +108,429 @@ async function build(forceClean = false, forceCleanAll = false) {
     await cleanImage();
   }
 
-  await run('kas', ['build', 'kas-dirtsim.yml']);
+  await run('kas', ['build', 'kas-dirtsim.yml'], { cwd: YOCTO_DIR });
   success('Build complete!');
 }
 
 // ============================================================================
-// Transfer Phase
+// Image Discovery (Project-Specific)
 // ============================================================================
 
 /**
- * Transfer image to remote host.
+ * Find the latest .ext4.gz rootfs image file.
+ * This is the standalone rootfs that can be flashed without local sudo.
  */
-async function transferImage(imagePath, checksum, dryRun = false) {
-  const imageName = basename(imagePath);
-  const remoteImagePath = `${REMOTE_TMP}/${imageName}`;
-  const remoteChecksumPath = `${REMOTE_TMP}/${imageName}.sha256`;
-
-  banner('Transferring image to Pi...');
-
-  info(`Source: ${imageName}`);
-  info(`Target: ${REMOTE_TARGET}:${remoteImagePath}`);
-  log('');
-
-  if (dryRun) {
-    log(`${colors.yellow}DRY RUN - would execute:${colors.reset}`);
-    log(`  scp ${imagePath} ${REMOTE_TARGET}:${remoteImagePath}`);
-    log('');
-    return { remoteImagePath, remoteChecksumPath };
+function findLatestRootfs() {
+  if (!existsSync(IMAGE_DIR)) {
+    return null;
   }
 
-  // Transfer the image with progress.
-  await run('scp', [
-    '-o', 'ConnectTimeout=10',
-    '-o', 'BatchMode=yes',
-    imagePath,
-    `${REMOTE_TARGET}:${remoteImagePath}`,
-  ]);
+  const files = readdirSync(IMAGE_DIR)
+    .filter(f => f.endsWith('.ext4.gz') && !f.includes('->'))
+    .map(f => ({
+      name: f,
+      path: join(IMAGE_DIR, f),
+      stat: statSync(join(IMAGE_DIR, f)),
+    }))
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
 
-  success('Image transferred!');
-
-  // Write checksum file on remote.
-  info('Writing checksum file...');
-  ssh(`echo '${checksum}  ${imageName}' > ${remoteChecksumPath}`);
-
-  return { remoteImagePath, remoteChecksumPath };
-}
-
-/**
- * Verify checksum on remote host.
- */
-function verifyRemoteChecksum(remoteImagePath, remoteChecksumPath) {
-  info('Verifying checksum on Pi...');
-
-  const result = ssh(`cd ${REMOTE_TMP} && sha256sum -c ${basename(remoteChecksumPath)}`);
-
-  if (result && result.includes('OK')) {
-    success('Checksum verified!');
-    return true;
-  }
-
-  error('Checksum verification failed!');
-  return false;
+  return files[0] || null;
 }
 
 // ============================================================================
-// Flash Phase (The YOLO Part)
+// Profile Support
 // ============================================================================
 
 /**
- * Flash the image on the remote host.
- * This is the point of no return.
+ * Get available profiles from the profiles directory.
+ * @returns {string[]} Array of profile names.
  */
-async function remoteFlash(remoteImagePath, device, dryRun = false, skipConfirm = false) {
-  banner('Flashing image on Pi...');
-  skull();
+function getAvailableProfiles() {
+  if (!existsSync(PROFILES_DIR)) {
+    return [];
+  }
+  try {
+    return readdirSync(PROFILES_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch {
+    return [];
+  }
+}
 
-  if (dryRun) {
-    log(`${colors.yellow}DRY RUN - would execute:${colors.reset}`);
-    log('');
-    log(`  # A/B Update using ab-update helper`);
-    log(`  ab-update ${remoteImagePath}`);
-    log('');
-    log(`  # Reboot to activate new slot`);
-    log(`  sudo systemctl reboot`);
-    log('');
-    return;
+/**
+ * Recursively get all files in a directory with their relative paths.
+ * @param {string} dir - Directory to scan.
+ * @param {string} base - Base path for relative paths.
+ * @returns {Array<{localPath: string, remotePath: string}>}
+ */
+function getProfileFiles(dir, base = '') {
+  const results = [];
+  const entries = readdirSync(dir, { withFileTypes: true });
+
+  for (const entry of entries) {
+    const localPath = join(dir, entry.name);
+    const remotePath = base ? `${base}/${entry.name}` : entry.name;
+
+    if (entry.isDirectory()) {
+      results.push(...getProfileFiles(localPath, remotePath));
+    } else {
+      results.push({ localPath, remotePath: `/${remotePath}` });
+    }
   }
 
-  // Final confirmation.
-  log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
-  log(`${colors.bold}${colors.red}  THIS WILL OVERWRITE ${device} ON ${REMOTE_HOST}${colors.reset}`);
-  log(`${colors.bold}${colors.red}  The system may become unresponsive during the write.${colors.reset}`);
-  log(`${colors.bold}${colors.red}  If it fails, you'll need to pull the disk and reflash.${colors.reset}`);
-  log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════════════════${colors.reset}`);
+  return results;
+}
+
+/**
+ * Apply a profile to an ext4 rootfs image using e2tools (no sudo required).
+ * @param {string} rootfsPath - Path to the .ext4.gz file.
+ * @param {string} profileName - Name of the profile to apply.
+ * @returns {string} Path to the modified .ext4.gz file (in temp directory).
+ */
+function applyProfileToRootfs(rootfsPath, profileName) {
+  const profileDir = join(PROFILES_DIR, profileName);
+  if (!existsSync(profileDir)) {
+    throw new Error(`Profile not found: ${profileName}`);
+  }
+
+  // Create temp directory for work.
+  const workDir = join(tmpdir(), `dirtsim-profile-${Date.now()}`);
+  execSync(`mkdir -p "${workDir}"`, { stdio: 'pipe' });
+
+  const ext4Path = join(workDir, 'rootfs.ext4');
+  const outputPath = join(workDir, 'rootfs.ext4.gz');
+
+  try {
+    // Decompress.
+    info('Decompressing rootfs for profile overlay...');
+    execSync(`gunzip -c "${rootfsPath}" > "${ext4Path}"`, { stdio: 'pipe' });
+
+    // Get all files from the profile.
+    const files = getProfileFiles(profileDir);
+
+    if (files.length === 0) {
+      warn(`Profile ${profileName} has no files to apply`);
+    } else {
+      info(`Applying ${files.length} file(s) from profile: ${profileName}`);
+
+      // Create directories and copy files using e2tools.
+      const dirsCreated = new Set();
+
+      for (const file of files) {
+        // Ensure parent directories exist.
+        const parentDir = dirname(file.remotePath);
+        if (parentDir !== '/' && !dirsCreated.has(parentDir)) {
+          // e2mkdir needs each level created, so create the full path.
+          const parts = parentDir.split('/').filter(p => p);
+          let currentPath = '';
+          for (const part of parts) {
+            currentPath += `/${part}`;
+            if (!dirsCreated.has(currentPath)) {
+              try {
+                execSync(`e2mkdir "${ext4Path}:${currentPath}"`, { stdio: 'pipe' });
+              } catch {
+                // Directory might already exist, that's fine.
+              }
+              dirsCreated.add(currentPath);
+            }
+          }
+        }
+
+        // Copy file.
+        execSync(`e2cp "${file.localPath}" "${ext4Path}:${file.remotePath}"`, { stdio: 'pipe' });
+        success(`  ${file.remotePath}`);
+      }
+    }
+
+    // Recompress.
+    info('Recompressing rootfs...');
+    execSync(`gzip -c "${ext4Path}" > "${outputPath}"`, { stdio: 'pipe' });
+
+    // Clean up uncompressed file.
+    unlinkSync(ext4Path);
+
+    success(`Profile ${profileName} applied!`);
+    return outputPath;
+
+  } catch (err) {
+    // Clean up on error.
+    try {
+      execSync(`rm -rf "${workDir}"`, { stdio: 'pipe' });
+    } catch {
+      // Ignore cleanup errors.
+    }
+    throw err;
+  }
+}
+
+// ============================================================================
+// Fast Deploy Mode (Direct ninja + scp + restart)
+// ============================================================================
+
+// Build directory paths for ninja builds.
+const WORK_DIR = join(YOCTO_DIR, 'build/tmp/work');
+const ARCH_PATTERNS = ['cortexa72-poky-linux', 'cortexa76-poky-linux'];
+
+// Cross-toolchain strip for reducing binary size.
+const STRIP_TOOL = join(YOCTO_DIR, 'build/tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip');
+
+/**
+ * Find the build directory for a recipe.
+ * Returns the most recently modified build directory across architectures.
+ */
+function findBuildDir(recipe) {
+  for (const arch of ARCH_PATTERNS) {
+    const buildDir = join(WORK_DIR, arch, recipe, 'git/build');
+    if (existsSync(buildDir)) {
+      return buildDir;
+    }
+  }
+  return null;
+}
+
+/**
+ * Find the binary path for a recipe.
+ */
+function findBinary(recipe, binaryName) {
+  const buildDir = findBuildDir(recipe);
+  if (!buildDir) return null;
+
+  const binaryPath = join(buildDir, 'bin', binaryName);
+  return existsSync(binaryPath) ? binaryPath : null;
+}
+
+/**
+ * Fast deploy: ninja build + scp binaries + restart services.
+ * Skips rootfs regeneration, image creation, and flash/reboot.
+ */
+async function fastDeploy(remoteHost, remoteTarget, dryRun) {
+  const startTime = Date.now();
+
+  log('');
+  log(`${colors.bold}${colors.cyan}Sparkle Duck Fast Deploy${colors.reset}`);
+  log(`${colors.dim}(ninja build + scp + restart)${colors.reset}`);
+  if (dryRun) {
+    log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
+  }
   log('');
 
-  if (!skipConfirm) {
-    const confirm = await prompt(`Type "yolo" to proceed: `);
-    if (confirm.toLowerCase() !== 'yolo') {
-      error('Aborted.');
+  // Check Pi is reachable.
+  if (!checkRemoteReachable(remoteHost, remoteTarget)) {
+    error(`Cannot reach ${remoteHost}`);
+    error('Make sure the Pi is running and accessible via SSH.');
+    process.exit(1);
+  }
+  success(`${remoteHost} is reachable`);
+
+  // Find build directories.
+  const uiBuildDir = findBuildDir('dirtsim-ui');
+  const serverBuildDir = findBuildDir('dirtsim-server');
+
+  if (!uiBuildDir && !serverBuildDir) {
+    error('No build directories found.');
+    error('Run a full build first: ./update.sh --target <host>');
+    process.exit(1);
+  }
+
+  // Build with ninja.
+  banner('Building with ninja...', consola);
+
+  const targets = [];
+  if (uiBuildDir) {
+    info(`UI build dir: ${uiBuildDir}`);
+    targets.push({ name: 'dirtsim-ui', buildDir: uiBuildDir, target: 'dirtsim-ui' });
+    targets.push({ name: 'dirtsim-cli', buildDir: uiBuildDir, target: 'cli' });
+  }
+  if (serverBuildDir) {
+    info(`Server build dir: ${serverBuildDir}`);
+    targets.push({ name: 'dirtsim-server', buildDir: serverBuildDir, target: 'dirtsim-server' });
+  }
+
+  for (const t of targets) {
+    if (!dryRun) {
+      try {
+        info(`Building ${t.name}...`);
+        execSync(`ninja ${t.target}`, { cwd: t.buildDir, stdio: 'inherit' });
+      } catch (err) {
+        error(`Failed to build ${t.name}`);
+        process.exit(1);
+      }
+    } else {
+      info(`Would build ${t.name} in ${t.buildDir}`);
+    }
+  }
+  success('Build complete!');
+
+  // Find binaries.
+  const binaries = [];
+  const uiBinary = findBinary('dirtsim-ui', 'dirtsim-ui');
+  const serverBinary = findBinary('dirtsim-server', 'dirtsim-server');
+  const cliBinary = findBinary('dirtsim-ui', 'cli');  // CLI is built with UI.
+
+  if (uiBinary) {
+    const stat = statSync(uiBinary);
+    binaries.push({
+      name: 'dirtsim-ui',
+      path: uiBinary,
+      size: stat.size,
+      service: 'dirtsim-ui',
+      remotePath: '/usr/bin/dirtsim-ui',
+    });
+  }
+  if (serverBinary) {
+    const stat = statSync(serverBinary);
+    binaries.push({
+      name: 'dirtsim-server',
+      path: serverBinary,
+      size: stat.size,
+      service: 'dirtsim-server',
+      remotePath: '/usr/bin/dirtsim-server',
+    });
+  }
+  if (cliBinary) {
+    const stat = statSync(cliBinary);
+    binaries.push({
+      name: 'dirtsim-cli',
+      path: cliBinary,
+      size: stat.size,
+      service: null,  // No service for CLI.
+      remotePath: '/usr/bin/dirtsim-cli',
+    });
+  }
+
+  if (binaries.length === 0) {
+    error('No binaries found after build.');
+    process.exit(1);
+  }
+
+  // Strip and transfer binaries.
+  banner('Stripping and transferring binaries...', consola);
+
+  const hasStrip = existsSync(STRIP_TOOL);
+  if (!hasStrip) {
+    warn('Cross-strip tool not found, transferring unstripped binaries (slower).');
+  }
+
+  for (const bin of binaries) {
+    info(`${bin.name}: ${formatBytes(bin.size)} (unstripped)`);
+
+    if (!dryRun) {
+      try {
+        // Strip to temp file to avoid modifying build output.
+        const strippedPath = `/tmp/${bin.name}.stripped`;
+        if (hasStrip) {
+          execSync(`cp "${bin.path}" "${strippedPath}" && "${STRIP_TOOL}" "${strippedPath}"`, { stdio: 'pipe' });
+          const strippedStat = statSync(strippedPath);
+          info(`${bin.name}: ${formatBytes(strippedStat.size)} (stripped)`);
+          execSync(`scp -o BatchMode=yes "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          unlinkSync(strippedPath);
+        } else {
+          execSync(`scp -o BatchMode=yes "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+        }
+        success(`${bin.name} transferred`);
+      } catch (err) {
+        error(`Failed to transfer ${bin.name}`);
+        process.exit(1);
+      }
+    } else {
+      info(`Would strip and scp ${bin.path} to ${remoteTarget}:/tmp/${bin.name}`);
+    }
+  }
+
+  // Deploy config files if .local overrides exist.
+  banner('Checking for config overrides...', consola);
+
+  const APPS_CONFIG_DIR = join(YOCTO_DIR, '../apps/config');
+  const configFiles = [];
+
+  for (const configName of ['server.json.local', 'ui.json.local']) {
+    const localPath = join(APPS_CONFIG_DIR, configName);
+    if (existsSync(localPath)) {
+      configFiles.push({
+        name: configName,
+        path: localPath,
+        remotePath: `/etc/dirtsim/${configName}`,
+      });
+    }
+  }
+
+  if (configFiles.length > 0) {
+    info(`Found ${configFiles.length} config override(s) to deploy`);
+    for (const cfg of configFiles) {
+      info(`  ${cfg.name}`);
+      if (!dryRun) {
+        try {
+          execSync(`scp -o BatchMode=yes "${cfg.path}" "${remoteTarget}:/tmp/${cfg.name}"`, { stdio: 'pipe' });
+          // Copy and set permissions so dirtsim user can read the config files.
+          execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo cp /tmp/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`, { stdio: 'pipe' });
+          success(`${cfg.name} deployed`);
+        } catch (err) {
+          error(`Failed to deploy ${cfg.name}`);
+          process.exit(1);
+        }
+      } else {
+        info(`Would scp ${cfg.path} to ${remoteTarget}:${cfg.remotePath}`);
+      }
+    }
+
+    // Run config setup service to fix all permissions (config files + home dirs).
+    if (!dryRun) {
+      try {
+        info('Running config setup to fix permissions...');
+        execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl restart dirtsim-config-setup.service"`, { stdio: 'pipe' });
+        success('Permissions fixed');
+      } catch (err) {
+        warn('Config setup service not available (needs full deployment)');
+      }
+    }
+  } else {
+    info('No .local config overrides found');
+  }
+
+  // Stop services, copy binaries, start services.
+  banner('Restarting services...', consola);
+
+  const serviceNames = binaries.map(b => b.service).filter(s => s).join(' ');
+  const copyCommands = binaries.map(b => `sudo cp /tmp/${b.name} ${b.remotePath}`).join(' && ');
+
+  const remoteCmd = `sudo systemctl stop ${serviceNames} && ${copyCommands} && sudo systemctl start ${serviceNames}`;
+
+  // Delete old binaries before copying to avoid "no space" errors when rootfs is tight.
+  const deleteCommands = binaries.map(b => `sudo rm -f ${b.remotePath}`).join(' && ');
+
+  if (!dryRun) {
+    try {
+      info('Stopping services...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl stop ${serviceNames}"`, { stdio: 'pipe' });
+
+      info('Removing old binaries...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${deleteCommands}"`, { stdio: 'pipe' });
+
+      info('Copying new binaries...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${copyCommands}"`, { stdio: 'pipe' });
+
+      info('Starting services...');
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl start ${serviceNames}"`, { stdio: 'pipe' });
+
+      success('Services restarted!');
+    } catch (err) {
+      error('Failed to restart services');
+      error(err.message);
       process.exit(1);
     }
   } else {
-    log(`${colors.yellow}🍺 Hold my mead... here we go!${colors.reset}`);
+    info(`Would run on Pi: ${deleteCommands} && ${remoteCmd}`);
   }
 
-  // ENTERING CRITICAL SECTION - Ctrl+C disabled from here.
-  inCriticalSection = true;
-
+  // Done!
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
   log('');
-  info('Running A/B update on Pi...');
+  log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  success(`Fast deploy complete in ${elapsed}s!`);
+  info(`Connect with: ssh ${remoteTarget}`);
+  log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
   log('');
-
-  // Run ab-update which flashes to inactive partition and switches boot slot.
-  // This is SAFE because we're writing to the inactive partition, not the running one.
-  try {
-    const updateCmd = `ab-update ${remoteImagePath}`;
-    await sshRun(updateCmd);
-
-    success('A/B update complete!');
-    log('');
-    info('Rebooting to activate new rootfs...');
-
-    // Reboot to new slot.
-    ssh('sudo systemctl reboot');
-
-  } catch (err) {
-    error(`A/B update failed: ${err.message}`);
-    throw err;
-  }
-
-  // Give it a moment to start rebooting.
-  await new Promise(resolve => setTimeout(resolve, 2000));
-}
-
-// ============================================================================
-// Wait for Reboot
-// ============================================================================
-
-/**
- * Get the boot time of the remote system (seconds since epoch).
- */
-function getRemoteBootTime() {
-  // Use /proc/stat btime which is boot time in seconds since epoch.
-  const result = ssh("awk '/btime/ {print \\$2}' /proc/stat");
-  if (result) {
-    const btime = parseInt(result, 10);
-    if (!isNaN(btime)) {
-      return btime;
-    }
-  }
-  return 0;
-}
-
-/**
- * Wait for the device to come back online after a reboot.
- * Verifies that the system actually rebooted by checking boot time.
- */
-async function waitForReboot(originalBootTime, timeoutSec = 120) {
-  banner('Waiting for Pi to reboot...');
-
-  const startTime = Date.now();
-  const timeoutMs = timeoutSec * 1000;
-  let dots = 0;
-  let sawOffline = false;
-
-  // Wait a bit for the system to go down.
-  info('Waiting for shutdown...');
-
-  while (Date.now() - startTime < timeoutMs) {
-    process.stdout.write(`\r  Waiting${'.'.repeat(dots % 4).padEnd(4)} (${Math.floor((Date.now() - startTime) / 1000)}s)`);
-    dots++;
-
-    const sshResult = ssh('echo ok');
-
-    if (sshResult !== 'ok') {
-      // System is offline.
-      if (!sawOffline) {
-        process.stdout.write('\r' + ' '.repeat(50) + '\r');
-        info('System went offline...');
-        sawOffline = true;
-      }
-    } else if (sawOffline) {
-      // System came back - verify it actually rebooted.
-      const newBootTime = getRemoteBootTime();
-      if (newBootTime > originalBootTime) {
-        process.stdout.write('\r' + ' '.repeat(50) + '\r');
-        success(`${REMOTE_HOST} is back online!`);
-        info(`Boot time changed: ${originalBootTime} -> ${newBootTime}`);
-        return true;
-      } else {
-        // Same boot time - didn't actually reboot!
-        process.stdout.write('\r' + ' '.repeat(50) + '\r');
-        warn('System responded but boot time unchanged - reboot may have failed!');
-        return false;
-      }
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  }
-
-  process.stdout.write('\r' + ' '.repeat(50) + '\r');
-
-  // Final check - maybe it rebooted quickly before we noticed it went offline.
-  const finalBootTime = getRemoteBootTime();
-  if (finalBootTime > originalBootTime) {
-    success(`${REMOTE_HOST} is back online!`);
-    info(`Boot time changed: ${originalBootTime} -> ${finalBootTime}`);
-    return true;
-  }
-
-  warn(`Timeout waiting for reboot after ${timeoutSec}s`);
-  if (finalBootTime === originalBootTime) {
-    error('Boot time unchanged - reboot did NOT happen!');
-  }
-  return false;
 }
 
 // ============================================================================
@@ -738,44 +545,76 @@ async function main() {
   const forceCleanAll = args.includes('--clean-all');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
+  const fastMode = args.includes('--fast');
+
+  // Parse --target <hostname> argument.
+  const targetIdx = args.indexOf('--target');
+  const remoteHost = (targetIdx !== -1 && args[targetIdx + 1]) ? args[targetIdx + 1] : DEFAULT_HOST;
+  const remoteTarget = `${REMOTE_USER}@${remoteHost}`;
+
+  // Parse --profile <name> argument.
+  const profileIdx = args.indexOf('--profile');
+  const specifiedProfile = (profileIdx !== -1 && args[profileIdx + 1]) ? args[profileIdx + 1] : null;
 
   if (args.includes('-h') || args.includes('--help')) {
+    const profiles = getAvailableProfiles();
+    const profileList = profiles.length > 0 ? profiles.join(', ') : '(none)';
+
     log('Usage: npm run yolo [options]');
     log('');
     log('Push a Yocto image to the Pi over the network and flash it live.');
+    log('No local sudo required - all privileged operations happen on the Pi.');
     log('');
     log('Options:');
-    log('  --skip-build     Skip kas build, use existing image');
-    log('  --clean          Force rebuild by cleaning image sstate first');
-    log('  --clean-all      Force full rebuild (cleans server + image sstate)');
-    log('  --dry-run        Show what would happen without doing it');
-    log('  --hold-my-mead   Skip confirmation prompt (for scripts)');
-    log('  -h, --help       Show this help');
+    log('  --target <host>    Target hostname or IP (default: dirtsim.local)');
+    log('  --profile <name>   Apply a configuration profile (e.g., production)');
+    log('  --skip-build       Skip kas build, use existing image');
+    log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
+    log('                     Skips rootfs/image creation (~10s vs ~2min)');
+    log('  --clean            Force rebuild by cleaning image sstate first');
+    log('  --clean-all        Force full rebuild (cleans server + image sstate)');
+    log('  --dry-run          Show what would happen without doing it');
+    log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
+    log('  -h, --help         Show this help');
     log('');
-    log('This is the YOLO approach - if it fails, pull the disk and reflash.');
+    log(`Available profiles: ${profileList}`);
+    log('');
+    log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
+  }
+
+  // Fast mode: ninja build + scp + restart (skip rootfs/image/flash).
+  // Profiles require rootfs modification, which fast mode skips.
+  if (fastMode && specifiedProfile) {
+    error('Cannot use --fast with --profile');
+    error('--fast only copies binaries (no rootfs modification)');
+    error('--profile requires rootfs overlay (use full update instead)');
+    process.exit(1);
+  }
+
+  if (fastMode) {
+    await fastDeploy(remoteHost, remoteTarget, dryRun);
+    return;
   }
 
   log('');
   log(`${colors.bold}${colors.cyan}Sparkle Duck YOLO Update${colors.reset}`);
+  log(`${colors.dim}(no local sudo required)${colors.reset}`);
   if (dryRun) {
     log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
   }
   skull();
 
   // Pre-flight checks.
-  if (!checkRemoteReachable()) {
-    error(`Cannot reach ${REMOTE_HOST}`);
+  if (!checkRemoteReachable(remoteHost, remoteTarget)) {
+    error(`Cannot reach ${remoteHost}`);
     error('Make sure the Pi is running and accessible via SSH.');
     process.exit(1);
   }
-  success(`${REMOTE_HOST} is reachable`);
-
-  // Heat up sudo access for the deploy later.
-  execSync(`sudo echo "I'm sudo"`, { stdio: 'pipe' });
+  success(`${remoteHost} is reachable`);
 
   // Detect boot device.
-  const bootDevice = getRemoteBootDevice();
+  const bootDevice = getRemoteBootDevice(remoteTarget, REMOTE_DEVICE);
   info(`Boot device: ${bootDevice}`);
 
   // Build phase.
@@ -783,110 +622,168 @@ async function main() {
     await build(forceClean, forceCleanAll);
   }
 
-  // Find image.
-  const image = findLatestImage();
-  if (!image) {
-    error('No image found. Run "kas build kas-dirtsim.yml" first.');
+  // Find rootfs image (ext4.gz - no extraction needed).
+  const rootfs = findLatestRootfs();
+  if (!rootfs) {
+    error('No rootfs image found (*.ext4.gz).');
+    error('Make sure IMAGE_FSTYPES includes "ext4.gz" and run "kas build kas-dirtsim.yml".');
     process.exit(1);
   }
 
   log('');
-  info(`Image: ${image.name}`);
-  info(`Size: ${formatBytes(image.stat.size)}`);
-  info(`Built: ${image.stat.mtime.toLocaleString()}`);
+  info(`Rootfs: ${rootfs.name}`);
+  info(`Size: ${formatBytes(rootfs.stat.size)}`);
+  info(`Built: ${rootfs.stat.mtime.toLocaleString()}`);
 
-  // Load SSH key config for image customization.
-  const config = loadConfig();
+  // Apply profile if specified.
+  let rootfsToUse = rootfs.path;
+  let profileWorkDir = null;
+
+  if (specifiedProfile) {
+    const availableProfiles = getAvailableProfiles();
+    if (!availableProfiles.includes(specifiedProfile)) {
+      error(`Unknown profile: ${specifiedProfile}`);
+      info(`Available profiles: ${availableProfiles.join(', ') || '(none)'}`);
+      process.exit(1);
+    }
+
+    if (!dryRun) {
+      banner(`Applying profile: ${specifiedProfile}`, consola);
+      rootfsToUse = applyProfileToRootfs(rootfs.path, specifiedProfile);
+      profileWorkDir = dirname(rootfsToUse);
+
+      // Update size info.
+      const modifiedStat = statSync(rootfsToUse);
+      info(`Modified rootfs size: ${formatBytes(modifiedStat.size)}`);
+    } else {
+      info(`Would apply profile: ${specifiedProfile}`);
+    }
+  }
+
+  // Load SSH key config for remote injection.
+  const config = loadConfig(CONFIG_FILE);
+  let sshKeyPath = null;
+
   if (!config) {
     warn('No SSH key configured. Run "npm run flash -- --reconfigure" first.');
     warn('Image will be flashed without SSH key - you may be locked out!');
-    const proceed = await prompt('Continue anyway? (y/N): ');
-    if (proceed.toLowerCase() !== 'y') {
-      error('Aborted.');
-      process.exit(1);
-    }
-  } else {
-    info(`SSH key: ${basename(config.ssh_key_path)}`);
-  }
-
-  // Extract rootfs and inject SSH key.
-  let rootfsToTransfer = image.path;
-  let workDir = null;
-
-  if (!dryRun && config) {
-    const prepared = await prepareRootfs(image.path, config);
-    rootfsToTransfer = prepared.preparedRootfsPath;
-    workDir = prepared.workDir;
-  }
-
-  try {
-    // Get the size of the prepared rootfs.
-    const rootfsSize = statSync(rootfsToTransfer).size;
-
-    // Check remote has enough space.
-    const remoteSpace = getRemoteTmpSpace();
-    if (remoteSpace < rootfsSize) {
-      error(`Not enough space in ${REMOTE_TMP} on ${REMOTE_HOST}`);
-      error(`Need: ${formatBytes(rootfsSize)}, Have: ${formatBytes(remoteSpace)}`);
-      process.exit(1);
-    }
-    success(`Remote has enough space (${formatBytes(remoteSpace)} available)`);
-
-    // Calculate checksum of prepared rootfs.
-    info('Calculating checksum...');
-    const checksum = await calculateChecksum(rootfsToTransfer);
-    success(`Checksum: ${checksum.substring(0, 16)}...`);
-
-    // Transfer.
-    const { remoteImagePath, remoteChecksumPath } = await transferImage(rootfsToTransfer, checksum, dryRun);
-
-    // Verify (skip in dry-run since we didn't actually transfer).
+    // Skip prompt in dry-run mode.
     if (!dryRun) {
-      if (!verifyRemoteChecksum(remoteImagePath, remoteChecksumPath)) {
-        error('Transfer corrupted! Aborting.');
+      const { prompt } = await import('../pi-base/scripts/lib/cli-utils.mjs');
+      const proceed = await prompt('Continue anyway? (y/N): ');
+      if (proceed.toLowerCase() !== 'y') {
+        error('Aborted.');
         process.exit(1);
       }
     }
+  } else {
+    sshKeyPath = config.ssh_key_path;
+    info(`SSH key: ${basename(sshKeyPath)}`);
+  }
 
-    // Flash!
-    await remoteFlash(remoteImagePath, bootDevice, dryRun, holdMyMead);
+  // Check remote has enough space.
+  const remoteSpace = getRemoteTmpSpace(remoteTarget, REMOTE_TMP);
+  if (remoteSpace < rootfs.stat.size) {
+    error(`Not enough space in ${REMOTE_TMP} on ${remoteHost}`);
+    error(`Need: ${formatBytes(rootfs.stat.size)}, Have: ${formatBytes(remoteSpace)}`);
+    process.exit(1);
+  }
+  success(`Remote has enough space (${formatBytes(remoteSpace)} available)`);
 
-    if (!dryRun) {
-      // Wait for reboot.
-      const online = await waitForReboot(120);
+  // Calculate checksum.
+  info('Calculating checksum...');
+  const checksum = await calculateChecksum(rootfsToUse);
+  success(`Checksum: ${checksum.substring(0, 16)}...`);
 
-      // EXITING CRITICAL SECTION - Ctrl+C re-enabled.
-      inCriticalSection = false;
+  // Transfer rootfs.
+  banner('Transferring rootfs to Pi...', consola);
+  const { remoteImagePath, remoteChecksumPath } = await transferImage(
+    rootfsToUse, checksum, remoteTarget, REMOTE_TMP, dryRun
+  );
 
-      log('');
-      if (online) {
-        log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-        success('YOLO update complete!');
-        info(`Connect with: ssh ${REMOTE_TARGET}`);
-        log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-      } else {
-        log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
-        warn('Pi did not come back online within timeout.');
-        warn('It may still be booting, or you may need to reflash.');
-        log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
-      }
-    } else {
-      log('');
-      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-      success('Dry run complete!');
-      info('Run without --dry-run to actually flash.');
-      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
-    }
-
-    log('');
-
-  } finally {
-    // Clean up prepared image temp files.
-    if (workDir) {
-      cleanupPreparedImage(workDir);
-      activeTempDir = null;
+  // Verify (skip in dry-run since we didn't actually transfer).
+  if (!dryRun) {
+    if (!verifyRemoteChecksum(remoteImagePath, remoteChecksumPath, remoteTarget)) {
+      error('Transfer corrupted! Aborting.');
+      process.exit(1);
     }
   }
+
+  // Transfer SSH key if configured.
+  let remoteKeyPath = null;
+  if (sshKeyPath && !dryRun) {
+    info('Transferring SSH key...');
+    remoteKeyPath = `${REMOTE_TMP}/authorized_keys`;
+    execSync(`scp -o BatchMode=yes "${sshKeyPath}" "${remoteTarget}:${remoteKeyPath}"`, { stdio: 'pipe' });
+    success('SSH key transferred');
+  }
+
+  // Check if ab-update-with-key exists on remote, transfer if needed.
+  // This handles the bootstrap case where the Pi doesn't have the new script yet.
+  let remoteUpdateScript = 'ab-update-with-key';
+  if (!dryRun) {
+    try {
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "which ab-update-with-key"`, { stdio: 'pipe' });
+    } catch {
+      info('ab-update-with-key not found on Pi, transferring...');
+      const localScript = join(YOCTO_DIR, 'pi-base/yocto/meta-pi-base/recipes-support/ab-boot/files/ab-update-with-key');
+      const remoteScriptPath = `${REMOTE_TMP}/ab-update-with-key`;
+      execSync(`scp -o BatchMode=yes "${localScript}" "${remoteTarget}:${remoteScriptPath}"`, { stdio: 'pipe' });
+      execSync(`ssh -o BatchMode=yes ${remoteTarget} "chmod +x ${remoteScriptPath}"`, { stdio: 'pipe' });
+      remoteUpdateScript = remoteScriptPath;
+      success('Update script transferred');
+    }
+  }
+
+  // Get boot time before flash for reboot verification.
+  const originalBootTime = getRemoteBootTime(remoteTarget);
+
+  // Flash with key injection on the Pi (no local sudo needed!).
+  banner('Flashing image on Pi...', consola);
+  cleanup.enterCriticalSection();
+  await remoteFlashWithKey(remoteImagePath, remoteKeyPath, REMOTE_USER, remoteTarget, dryRun, holdMyMead, remoteUpdateScript);
+
+  if (!dryRun) {
+    // Wait for reboot.
+    banner('Waiting for Pi to reboot...', consola);
+    const online = await waitForReboot(remoteTarget, remoteHost, originalBootTime, 120);
+
+    // Exiting critical section - Ctrl+C re-enabled.
+    cleanup.exitCriticalSection();
+
+    log('');
+    if (online) {
+      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+      success('YOLO update complete!');
+      if (specifiedProfile) {
+        success(`Profile: ${specifiedProfile}`);
+      }
+      info(`Connect with: ssh ${remoteTarget}`);
+      log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+    } else {
+      log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
+      warn('Pi did not come back online within timeout.');
+      warn('It may still be booting, or you may need to reflash.');
+      log(`${colors.bold}${colors.yellow}════════════════════════════════════════════════════════════════${colors.reset}`);
+    }
+  } else {
+    log('');
+    log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+    success('Dry run complete!');
+    info('Run without --dry-run to actually flash.');
+    log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
+  }
+
+  // Clean up profile work directory.
+  if (profileWorkDir) {
+    try {
+      execSync(`rm -rf "${profileWorkDir}"`, { stdio: 'pipe' });
+    } catch {
+      // Ignore cleanup errors.
+    }
+  }
+
+  log('');
 }
 
 main().catch(err => {

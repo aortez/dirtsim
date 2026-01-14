@@ -1,5 +1,0 @@
-# labwc autostart script.
-# Runs after the Wayland compositor is ready.
-
-# Start Sparkle Duck after compositor is ready.
-systemctl --user restart sparkle-duck.service

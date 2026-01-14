@@ -5,6 +5,7 @@
 !.env.example
 !.github/
 !yocto/.gitignore
+!apps/.clang-format
 
 .cmake/
 .idea/

@@ -1,0 +1,159 @@
+#pragma once
+
+#include "MaterialMove.h"
+#include "MaterialType.h"
+#include "Vector2d.h"
+#include "WorldCalculatorBase.h"
+
+#include <cstdint>
+#include <vector>
+
+namespace DirtSim {
+
+class Cell;
+class World;
+
+/**
+ * @brief Calculates pressure forces for World physics.
+ *
+ * See GridMechanics.md for more info.
+ *
+ */
+class WorldPressureCalculator : public WorldCalculatorBase {
+public:
+    /**
+     * @brief Enum for pressure gradient calculation directions.
+     */
+    enum class PressureGradientDirections { Four, Eight };
+
+    // Default constructor - calculator is stateless.
+    WorldPressureCalculator() = default;
+
+    // Blocked transfer data for dynamic pressure accumulation.
+    struct BlockedTransfer {
+        int fromX, fromY;      // Source cell coordinates.
+        int toX, toY;          // Target cell coordinates.
+        float transfer_amount; // Amount that was blocked.
+        Vector2f velocity;     // Velocity at time of blocking.
+        float energy;          // Kinetic energy of blocked transfer.
+    };
+
+    // Pressure-specific constants.
+    static constexpr double SLICE_THICKNESS = 1.0;
+    static constexpr double HYDROSTATIC_MULTIPLIER = 1.0;
+    static constexpr double DYNAMIC_MULTIPLIER = 1;
+    static constexpr double MIN_PRESSURE_THRESHOLD = 0.001; // Ignore pressures below this.
+
+    void injectGravityPressure(World& world, float deltaTime);
+
+    /**
+     * @brief Queue a blocked transfer for dynamic pressure accumulation.
+     * @param transfer BlockedTransfer data including source, target, and energy.
+     */
+    void queueBlockedTransfer(const BlockedTransfer& transfer);
+
+    /**
+     * @brief Process blocked transfers and accumulate dynamic pressure.
+     * @param world World providing access to grid and cells (non-const for modifications).
+     * @param blocked_transfers Vector of blocked transfers to process.
+     *
+     * Converts blocked kinetic energy into dynamic pressure at source cells.
+     * Updates pressure gradients based on blocked transfer directions.
+     */
+    void processBlockedTransfers(
+        World& world, const std::vector<BlockedTransfer>& blocked_transfers);
+
+    /**
+     * @brief Calculate pressure gradient at a cell position.
+     * @param world World providing access to grid and cells.
+     * @param x X coordinate of cell.
+     * @param y Y coordinate of cell.
+     * @return Pressure gradient vector pointing from high to low pressure.
+     *
+     * Calculates the pressure gradient by comparing total pressure (hydrostatic + dynamic)
+     * with neighboring cells. The gradient points in the direction of decreasing pressure.
+     */
+    Vector2f calculatePressureGradient(const World& world, int x, int y) const;
+
+    /**
+     * @brief Calculate expected gravity gradient at a cell position.
+     * @param world World providing access to grid and cells.
+     * @param x X coordinate of cell.
+     * @param y Y coordinate of cell.
+     * @return Gravity gradient vector representing expected equilibrium pressure gradient.
+     *
+     * Calculates the expected pressure gradient due to gravity based on material density
+     * differences with neighbors. In equilibrium, this should balance the pressure gradient.
+     */
+    Vector2d calculateGravityGradient(const World& world, int x, int y) const;
+
+    /**
+     * @brief Generate virtual gravity transfers for pressure accumulation.
+     * @param world World providing access to grid and cells (non-const for modifications).
+     * @param deltaTime Time step for the current frame.
+     *
+     * Creates virtual blocked transfers from gravity forces acting on material.
+     * Even when material is at rest, gravity is always trying to pull it down.
+     * If the downward path is blocked, this gravitational force converts to pressure.
+     * This allows dynamic pressure to naturally model hydrostatic-like behavior.
+     */
+    void generateVirtualGravityTransfers(World& world, float deltaTime);
+
+    /**
+     * @brief Apply pressure decay to dynamic pressure values.
+     * @param world World providing access to grid and cells (non-const for modifications).
+     * @param deltaTime Time step for the current frame.
+     *
+     * Decays dynamic pressure over time. Hydrostatic pressure does not decay.
+     * This should be called after material moves are complete.
+     */
+    void applyPressureDecay(World& world, float deltaTime);
+
+    /**
+     * @brief Apply pressure diffusion between neighboring cells.
+     * @param world World providing access to grid and cells (non-const for modifications).
+     * @param deltaTime Time step for the current frame.
+     *
+     * Implements material-specific pressure propagation using 4-neighbor diffusion.
+     * Pressure spreads from high to low pressure regions based on material
+     * diffusion coefficients. Walls act as barriers with zero flux.
+     */
+    void applyPressureDiffusion(World& world, float deltaTime);
+
+    /**
+     * @brief Calculate material-based reflection coefficient.
+     * @param materialType Type of material hitting the wall.
+     * @param impactEnergy Kinetic energy of the impact.
+     * @return Reflection coefficient [0,1] based on material elasticity and impact energy.
+     *
+     * Calculates how much energy is reflected when material hits a wall.
+     * Takes into account material elasticity and applies energy-dependent damping.
+     */
+    float calculateReflectionCoefficient(Material::EnumType materialType, float impactEnergy) const;
+
+    // Queue of blocked transfers.
+    std::vector<BlockedTransfer> blocked_transfers_;
+
+private:
+    // Configuration for pressure gradient calculation.
+    PressureGradientDirections gradient_directions_ = PressureGradientDirections::Eight;
+
+    // Constants for pressure-driven flow.
+    static constexpr double PRESSURE_FLOW_RATE = 1.0;     // Flow rate multiplier.
+    static constexpr double BACKGROUND_DECAY_RATE = 0.02; // 2% decay per timestep.
+
+    /**
+     * @brief Get surrounding fluid density for buoyancy calculation.
+     * @param world World providing access to grid and cells.
+     * @param x X coordinate of cell.
+     * @param y Y coordinate of cell.
+     * @return Average density of surrounding fluid materials.
+     *
+     * Checks all 8 neighbors and returns average density of fluid materials (WATER, AIR).
+     * Used when USE_COLUMN_BASED_BUOYANCY = false for more accurate buoyancy at
+     * horizontal fluid boundaries. Returns 1.0 (water density) if no fluid neighbors found.
+     */
+    double getSurroundingFluidDensity(const World& world, int x, int y) const;
+};
+
+} // namespace DirtSim
