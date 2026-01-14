@@ -38,7 +38,20 @@ jobs:
 
     - name: Build debug version
       working-directory: docker
-      run: make build-debug
+      run: |
+        START=$(date +%s)
+        make build-debug
+        echo "BUILD_TIME=$(($(date +%s) - START))" >> $GITHUB_ENV
+
+    - name: Build stats
+      working-directory: docker
+      run: |
+        echo "### Build Stats" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build time:** ${{ env.BUILD_TIME }}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **ccache stats:**" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        docker run --rm -v /home/data/linux1/ccache/dirtsim:/home/data/linux1/ccache/dirtsim -e CCACHE_DIR=/home/data/linux1/ccache/dirtsim dirtsim-builder:$(make -s --eval='print-tag: ; @echo $(IMAGE_TAG)' print-tag) ccache -s >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Run unit tests
       working-directory: docker
