@@ -16,16 +16,9 @@ jobs:
     runs-on: self-hosted
 
     steps:
-    - name: Fix permissions on build artifacts
-      run: |
-        # Fix any permission issues from previous builds.
-        cd $GITHUB_WORKSPACE || true
-        chmod -R u+w . 2>/dev/null || true
-
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        clean: true
         submodules: recursive
         fetch-depth: 0
 
@@ -57,16 +50,9 @@ jobs:
     needs: build-and-test
 
     steps:
-    - name: Fix permissions on build artifacts
-      run: |
-        # Fix any permission issues from previous builds.
-        cd $GITHUB_WORKSPACE || true
-        chmod -R u+w . 2>/dev/null || true
-
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        clean: true
         submodules: recursive
         fetch-depth: 0
 
