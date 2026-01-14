@@ -334,5 +334,4 @@ Evolve in challenging conditions (falling debris, floods, competition) to produc
 ## Related Documents
 
 - `evolution-framework.md` - Overall architecture (states, repository, API).
-- `neural-net-brain-plan.md` - Neural network architecture.
 - `plant.md` - Tree organism design and brain interface.
