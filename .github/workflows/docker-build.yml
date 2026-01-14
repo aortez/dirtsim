@@ -9,10 +9,6 @@ on:
   workflow_dispatch:
   workflow_call:
 
-concurrency:
-  group: self-hosted-runner-queue
-  cancel-in-progress: false
-
 jobs:
   build-and-cache:
     runs-on: self-hosted
