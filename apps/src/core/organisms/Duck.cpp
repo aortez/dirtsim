@@ -567,6 +567,9 @@ void Duck::setHandheldLight(std::unique_ptr<LightHandHeld> light)
 
 void Duck::updateHandheldLight(World& world, double deltaTime)
 {
+    // Distance outside cell edge to position the light.
+    constexpr float LIGHT_EDGE_OFFSET = 0.1f;
+
     if (!handheld_light_) {
         return;
     }
@@ -575,11 +578,20 @@ void Duck::updateHandheldLight(World& world, double deltaTime)
         return;
     }
 
-    // Use sub-cell position from cell's COM for smooth light movement.
     const Cell& cell = world.getData().at(anchor_cell_.x, anchor_cell_.y);
-    Vector2d position{ static_cast<double>(anchor_cell_.x) + 0.5 + cell.com.x * 0.5,
-                       static_cast<double>(anchor_cell_.y) + 0.5 + cell.com.y * 0.5 };
     const bool facing_right = facing_.x > 0.0f;
+
+    // Position light just outside the cell edge in facing direction.
+    // Y still uses COM for smooth vertical movement.
+    Vector2d position;
+    if (facing_right) {
+        position.x = static_cast<double>(anchor_cell_.x) + 1.0 + LIGHT_EDGE_OFFSET;
+    }
+    else {
+        position.x = static_cast<double>(anchor_cell_.x) - LIGHT_EDGE_OFFSET;
+    }
+    position.y = static_cast<double>(anchor_cell_.y) + 0.5 + cell.com.y * 0.5;
+
     handheld_light_->update(world.getLightManager(), position, facing_right, deltaTime);
 }
 
