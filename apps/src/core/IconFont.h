@@ -93,6 +93,7 @@ public:
     static constexpr const char* CUBE = "\xEF\x86\xB2";      // U+F1B2
     static constexpr const char* CUBES = "\xEF\x86\xB3";     // U+F1B3
     static constexpr const char* GLOBE = "\xEF\x82\xAC";     // U+F0AC
+    static constexpr const char* WIFI = "\xEF\x87\xAB";      // U+F1EB
 
     // Status & Feedback.
     static constexpr const char* SKULL = "\xEF\x95\x8C";                // U+F54C

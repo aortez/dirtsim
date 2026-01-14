@@ -336,6 +336,12 @@ void UiComponentManager::createMainMenuLayout()
     menuIconRail_ = std::make_unique<IconRail>(menuMainRow_, eventSink_);
 
     // -------------------------------------------------------------------------
+    // Expandable Panel (250px wide, hidden by default).
+    // Used for network diagnostics and other settings in the menu.
+    // -------------------------------------------------------------------------
+    menuExpandablePanel_ = std::make_unique<ExpandablePanel>(menuMainRow_);
+
+    // -------------------------------------------------------------------------
     // Content Area (fills remaining space).
     // -------------------------------------------------------------------------
     menuContentArea_ = lv_obj_create(menuMainRow_);
@@ -346,7 +352,7 @@ void UiComponentManager::createMainMenuLayout()
     lv_obj_set_style_bg_opa(menuContentArea_, LV_OPA_TRANSP, 0);
     lv_obj_clear_flag(menuContentArea_, LV_OBJ_FLAG_SCROLLABLE);
 
-    SLOG_INFO("UiComponentManager: Created main menu layout with IconRail");
+    SLOG_INFO("UiComponentManager: Created main menu layout with IconRail and ExpandablePanel");
 }
 
 } // namespace Ui

@@ -61,9 +61,14 @@ public:
     lv_obj_t* getMenuContentArea();
 
     /**
-     * @brief Get the expandable panel component.
+     * @brief Get the expandable panel component (simulation screen).
      */
     ExpandablePanel* getExpandablePanel() { return expandablePanel_.get(); }
+
+    /**
+     * @brief Get the expandable panel component (main menu screen).
+     */
+    ExpandablePanel* getMenuExpandablePanel() { return menuExpandablePanel_.get(); }
 
     /**
      * @brief Get container for world display area (canvas grid).
@@ -159,9 +164,10 @@ private:
     lv_obj_t* currentScreen = nullptr;
 
     // New icon-based layout components.
-    std::unique_ptr<IconRail> iconRail_;     // For simulation screen.
-    std::unique_ptr<IconRail> menuIconRail_; // For main menu screen.
-    std::unique_ptr<ExpandablePanel> expandablePanel_;
+    std::unique_ptr<IconRail> iconRail_;                   // For simulation screen.
+    std::unique_ptr<IconRail> menuIconRail_;               // For main menu screen.
+    std::unique_ptr<ExpandablePanel> expandablePanel_;     // For simulation screen.
+    std::unique_ptr<ExpandablePanel> menuExpandablePanel_; // For main menu screen.
 
     // Simulation screen layout containers.
     lv_obj_t* simMainRow_ = nullptr;     // Main horizontal row (icon rail + rest).

@@ -458,6 +458,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ExpandablePanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/LogPanel.cpp
+    src/ui/controls/NetworkDiagnosticsPanel.cpp
     src/ui/controls/PhysicsControlHelpers.cpp
     src/ui/controls/PhysicsPanel.cpp
     src/ui/controls/RainingControls.cpp

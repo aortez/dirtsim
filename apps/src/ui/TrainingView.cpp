@@ -386,6 +386,7 @@ void TrainingView::showPanelContent(IconId panelId)
             createEvolutionConfigPanel(container);
             break;
 
+        case IconId::NETWORK:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:

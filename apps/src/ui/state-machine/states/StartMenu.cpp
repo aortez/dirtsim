@@ -7,6 +7,7 @@
 #include "ui/RemoteInputDevice.h"
 #include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
+#include "ui/controls/ExpandablePanel.h"
 #include "ui/controls/IconRail.h"
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/rendering/JuliaFractal.h"
@@ -64,10 +65,10 @@ void StartMenu::onEnter(StateMachine& sm)
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
 
-    // Configure IconRail to show SCENARIO and EVOLUTION icons.
+    // Configure IconRail to show SCENARIO, EVOLUTION, and NETWORK icons.
     if (IconRail* iconRail = uiManager->getMenuIconRail()) {
-        iconRail->setVisibleIcons({ IconId::SCENARIO, IconId::EVOLUTION });
-        LOG_INFO(State, "Configured IconRail with SCENARIO and EVOLUTION icons");
+        iconRail->setVisibleIcons({ IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
+        LOG_INFO(State, "Configured IconRail with NETWORK, SCENARIO, and EVOLUTION icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -164,6 +165,9 @@ void StartMenu::onEnter(StateMachine& sm)
 void StartMenu::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting");
+
+    // Clean up network panel.
+    networkPanel_.reset();
 
     // Clean up sparkle button.
     startButton_.reset();
@@ -304,19 +308,45 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.previousId),
         static_cast<int>(evt.selectedId));
 
-    // Icon clicks trigger state transitions.
+    auto* uiManager = sm.getUiComponentManager();
+
+    // Handle NETWORK icon specially - it toggles a panel.
+    if (evt.selectedId == IconId::NETWORK) {
+        LOG_INFO(State, "Network icon selected, showing diagnostics panel");
+
+        // Show the expandable panel and create network diagnostics content.
+        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+            panel->clearContent();
+            networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
+            panel->show();
+        }
+        return std::move(*this); // Don't deselect - panel should stay open.
+    }
+
+    // Handle deselection of NETWORK (either clicking it again or clicking another icon).
+    if (evt.previousId == IconId::NETWORK) {
+        LOG_INFO(State, "Network icon deselected, hiding panel");
+        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+            panel->hide();
+            panel->clearContent();
+        }
+        networkPanel_.reset();
+    }
+
+    // SCENARIO and EVOLUTION are action triggers - fire and deselect.
     if (evt.selectedId == IconId::SCENARIO) {
         LOG_INFO(State, "Scenario icon clicked, starting simulation");
         sm.queueEvent(StartButtonClickedEvent{});
+        // Deselect action icons after firing.
+        if (auto* iconRail = uiManager->getMenuIconRail()) {
+            iconRail->deselectAll();
+        }
     }
     else if (evt.selectedId == IconId::EVOLUTION) {
         LOG_INFO(State, "Evolution icon clicked, starting training");
         sm.queueEvent(TrainButtonClickedEvent{});
-    }
-
-    // StartMenu icons are action triggers, not panel toggles - deselect after firing.
-    if (evt.selectedId != IconId::COUNT) {
-        if (auto* iconRail = sm.getUiComponentManager()->getMenuIconRail()) {
+        // Deselect action icons after firing.
+        if (auto* iconRail = uiManager->getMenuIconRail()) {
             iconRail->deselectAll();
         }
     }
