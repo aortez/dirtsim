@@ -68,23 +68,15 @@ jobs:
 
     - name: Configure SSH for dirtsim.local
       run: |
-        echo "HOME is: $HOME"
-        echo "User is: $(whoami)"
         mkdir -p ~/.ssh
+        echo "${{ secrets.DIRTSIM_SSH_KEY }}" > ~/.ssh/dirtsim_key
+        chmod 600 ~/.ssh/dirtsim_key
         cat >> ~/.ssh/config <<EOF
         Host dirtsim.local
           StrictHostKeyChecking no
           UserKnownHostsFile /dev/null
+          IdentityFile ~/.ssh/dirtsim_key
         EOF
-        echo "SSH config created:"
-        cat ~/.ssh/config
-
-    - name: Test SSH connectivity
-      run: |
-        echo "Testing ping..."
-        ping -c 1 -W 2 dirtsim.local || echo "Ping failed"
-        echo "Testing SSH..."
-        ssh -o BatchMode=yes dirtsim@dirtsim.local 'echo "SSH works"' || echo "SSH failed"
 
     - name: Deploy and smoke test on dirtsim.local
       working-directory: yocto
