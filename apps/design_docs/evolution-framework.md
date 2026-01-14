@@ -277,20 +277,21 @@ See `src/server/api/Genome*.h` for full definitions.
 
 ### Running Simulation with Specific Genome
 
-Extended `SeedAdd` command to accept an optional `genome_id`. The flow:
+The `TreeGerminationConfig` includes a `genome_id` field. When set, `TreeGerminationScenario::setup()` looks up the genome in `GenomeRepository` and creates a `NeuralNetBrain` from it.
 
+**Flow for "View Best" from Training state:**
 ```
-GenomeSet{id=<uuid>, weights=[...]}
-SimRun{scenario=TreeGermination, start_paused=true}
-SeedAdd{x, y, genome_id=<uuid>}
-SimResume
+SimRun{scenario=TreeGermination}
+ScenarioConfigSet{config=TreeGermination{genome_id=<uuid>}}
+Reset{}
 ```
 
-If `genome_id` is provided, the handler looks up the genome in `GenomeRepository` and creates a `NeuralNetBrain` for the tree. If not provided or not found, falls back to default `RuleBasedBrain`.
+The Reset re-runs `setup()` which now uses the genome_id from the updated config.
 
 | Command | Description | Status |
 |---------|-------------|--------|
-| `SeedAdd` | Plant seed with optional genome | ✅ Implemented |
+| `ScenarioConfigSet` | Set scenario config (including genome_id) | ✅ Implemented |
+| `Reset` | Re-run scenario setup with current config | ✅ Implemented |
 
 ## Persistence
 
@@ -370,14 +371,12 @@ void Server::initialize() {
 6. Every 10 generations, server stores best genome in repository
 
 7. User clicks "View Best"
-   a. UI sends EvolutionPause
-   b. UI sends GenomeGetBest
-   c. UI sends SimRun with genome_id
-   d. Server transitions to StateSimRunning (evolution paused)
-   e. User watches tree grow
-   f. User clicks "Back"
-   g. UI sends EvolutionResume
-   h. Server continues evolution
+   a. UI sends EvolutionStop (if still running)
+   b. UI sends SimRun{scenario=TreeGermination}
+   c. UI sends ScenarioConfigSet{genome_id=best_genome_id}
+   d. UI sends Reset (re-runs setup with genome)
+   e. UI transitions to SimRunning state
+   f. User watches tree grow
 
 8. Evolution completes or user clicks "Stop"
    a. Server stores final best genome
@@ -629,15 +628,15 @@ class TrainingRunner {
   - Added TrainButtonClickedEvent to UI event system.
   - StartMenu transitions to Training on button click.
 - Added StateMachine::TestMode for unit testing UI states. ✅
-- Subscribe to EvolutionProgress broadcasts from server. ❌
-- Render training UI: ❌
+- Subscribe to EvolutionProgress broadcasts from server. ✅
+- Render training UI: ✅
   - Generation progress bar.
   - Current evaluation progress bar.
   - Best fitness (this gen, all time).
   - Average fitness.
-  - Mini preview of best tree (optional, can defer).
-- Controls: Pause, Resume, Stop buttons. ❌
-- "View Best" button (pauses evolution, transitions to SimRunning with genome). ❌
+  - Mini preview of current tree (live world view).
+- Controls: Start, Stop, Quit buttons. ✅
+- "View Best" button (stops evolution, transitions to SimRunning with genome). ✅
 
 **Tests:**
 - State transitions correctly on server events. ✅ (3 tests)
@@ -673,15 +672,16 @@ Per genome: id(4) + metadata_len(4) + metadata(JSON) + weight_count(4) + weights
 ### Phase 8: Integration & Polish
 
 **Work:**
-- Extend SimRun to accept optional genome_id.
-- "View Best" flow: pause → get best → SimRun with genome → back resumes.
-- Scenario selector for training (default: tree_germination).
-- Resume training from saved population (optional, can defer).
-- Error handling and edge cases.
+- TreeGerminationConfig includes genome_id field. ✅
+- ScenarioConfigSet API updates config at runtime. ✅
+- "View Best" flow: stop evolution → SimRun → ScenarioConfigSet → Reset. ✅
+- Scenario selector for training (default: tree_germination). ✅
+- Resume training from saved population (optional, can defer). ❌
+- Error handling and edge cases. ❌
 
 **Tests:**
-- SimRun with genome_id spawns tree with correct brain.
-- Full training → view → resume flow works end-to-end.
+- ScenarioConfigSet + Reset spawns tree with correct brain. (manual testing) ✅
+- Full training → view flow works end-to-end. (manual testing) ✅
 
 ### Dependencies
 
