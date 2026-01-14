@@ -330,6 +330,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
     src/core/scenarios/clock_scenario/DrainManager.cpp
+    src/core/scenarios/clock_scenario/GlowConfig.cpp
+    src/core/scenarios/clock_scenario/GlowManager.cpp
     src/core/scenarios/clock_scenario/MarqueeTypes.cpp
     src/core/scenarios/clock_scenario/MeltdownEvent.cpp
     src/core/scenarios/clock_scenario/ObstacleManager.cpp

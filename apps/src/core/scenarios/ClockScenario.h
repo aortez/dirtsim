@@ -129,22 +129,47 @@ private:
     int calculateTotalWidth() const;
     void recalculateDimensions();
     void clearDigits(World& world);
-    void drawCharacter(World& world, const std::string& utf8Char, int start_x, int start_y);
-    void drawCharacterBinary(World& world, const std::string& utf8Char, int start_x, int start_y);
+    void drawCharacter(
+        World& world,
+        const std::string& utf8Char,
+        int start_x,
+        int start_y,
+        std::vector<Vector2i>& outDigitPositions);
+    void drawCharacterBinary(
+        World& world,
+        const std::string& utf8Char,
+        int start_x,
+        int start_y,
+        std::vector<Vector2i>& outDigitPositions);
     void drawCharacterWithMaterials(
-        World& world, const std::string& utf8Char, int start_x, int start_y);
+        World& world,
+        const std::string& utf8Char,
+        int start_x,
+        int start_y,
+        std::vector<Vector2i>& outDigitPositions);
     bool getCharacterPixel(const std::string& utf8Char, int row, int col) const;
-    void placeDigitPixel(World& world, int x, int y, Material::EnumType renderMaterial);
-    void drawTimeString(World& world, const std::string& time_str);
-    void drawTime(World& world);
+    void placeDigitPixel(
+        World& world,
+        int x,
+        int y,
+        Material::EnumType renderMaterial,
+        std::vector<Vector2i>& outDigitPositions);
+    void drawTimeString(
+        World& world, const std::string& time_str, std::vector<Vector2i>& outDigitPositions);
+    void drawTime(World& world, std::vector<Vector2i>& outDigitPositions);
     std::string getCurrentTimeString() const;
 
     // Event system helpers.
-    void updateEvents(World& world, double deltaTime);
+    void updateEvents(World& world, double deltaTime, std::vector<Vector2i>& digitPositions);
     void tryTriggerPeriodicEvents(World& world);
     void tryTriggerTimeChangeEvents(World& world);
     void startEvent(World& world, ClockEventType type);
-    void updateEvent(World& world, ClockEventType type, ActiveEvent& event, double deltaTime);
+    void updateEvent(
+        World& world,
+        ClockEventType type,
+        ActiveEvent& event,
+        double deltaTime,
+        std::vector<Vector2i>& digitPositions);
     void endEvent(World& world, ClockEventType type, ActiveEvent& event);
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
@@ -153,12 +178,20 @@ private:
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
     void updateColorShowcaseEvent(World& world, ColorShowcaseEventState& state, double deltaTime);
-    void updateDigitSlideEvent(World& world, DigitSlideEventState& state, double deltaTime);
+    void updateDigitSlideEvent(
+        World& world,
+        DigitSlideEventState& state,
+        double deltaTime,
+        std::vector<Vector2i>& digitPositions);
     void updateDuckEvent(
         World& world, DuckEventState& state, double& remaining_time, double deltaTime);
     void spawnDuck(World& world, DuckEventState& state);
     void updateMarqueeEvent(
-        World& world, MarqueeEventState& state, double& remaining_time, double deltaTime);
+        World& world,
+        MarqueeEventState& state,
+        double& remaining_time,
+        double deltaTime,
+        std::vector<Vector2i>& digitPositions);
     void updateMeltdownEvent(
         World& world, MeltdownEventState& state, double& remaining_time, double deltaTime);
     void updateRainEvent(World& world, RainEventState& state, double deltaTime);

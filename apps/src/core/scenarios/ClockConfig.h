@@ -2,6 +2,7 @@
 
 #include "../MaterialType.h"
 #include "../ReflectEnumJson.h"
+#include "clock_scenario/GlowConfig.h"
 
 #include <zpp_bits.h>
 
@@ -44,19 +45,9 @@ inline const char* getDisplayName(ClockFont font)
 }
 
 struct Clock {
-    using serialize = zpp::bits::members<20>;
+    using serialize = zpp::bits::members<21>;
 
-    double horizontalScale = 1.1;
-    double verticalScale = 2.0;
-    uint8_t timezoneIndex = 2;
-    ClockFont font = ClockFont::DotMatrix;
-    bool showSeconds = false;
     bool autoScale = true;
-    uint32_t targetDisplayWidth = 752;
-    uint32_t targetDisplayHeight = 480;
-    uint32_t marginPixels = 20;
-    double eventFrequency = 0.5;
-    double colorsPerSecond = 4.0; // Color cycle rate when colorCycleEnabled is true.
     bool colorCycleEnabled = false;
     bool colorShowcaseEnabled = false;
     bool digitSlideEnabled = false;
@@ -64,8 +55,19 @@ struct Clock {
     bool marqueeEnabled = false;
     bool meltdownEnabled = false;
     bool rainEnabled = false;
-    Material::EnumType digitMaterial = Material::EnumType::Metal; // Render color for clock digits.
-    uint8_t digitEmissiveness = 10;                               // Digit glow intensity (0-20).
+    bool showSeconds = false;
+    ClockFont font = ClockFont::DotMatrix;
+    double colorsPerSecond = 4.0;
+    double eventFrequency = 0.5;
+    double horizontalScale = 1.1;
+    double verticalScale = 2.0;
+    GlowConfig glowConfig;
+    Material::EnumType digitMaterial = Material::EnumType::Metal;
+    uint32_t marginPixels = 20;
+    uint32_t targetDisplayHeight = 480;
+    uint32_t targetDisplayWidth = 752;
+    uint8_t digitEmissiveness = 10;
+    uint8_t timezoneIndex = 2;
 };
 
 } // namespace DirtSim::Config

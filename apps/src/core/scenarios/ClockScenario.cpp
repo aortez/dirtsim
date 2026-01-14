@@ -454,7 +454,8 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 
             // Redraw walls at new boundaries and digits at new centered positions.
             redrawWalls(world);
-            drawTime(world);
+            std::vector<Vector2i> tempDigitPositions;
+            drawTime(world, tempDigitPositions);
         }
 
         // Handle manual event toggling.
@@ -624,8 +625,8 @@ void ClockScenario::setup(World& world)
     // Draw walls using centralized wall system.
     redrawWalls(world);
 
-    // Draw initial time (emissive will be set on first tick).
-    drawTime(world);
+    std::vector<Vector2i> tempDigitPositions;
+    drawTime(world, tempDigitPositions);
 
     // Add static torch lights at corners.
     world.getLightManager().clear();
@@ -661,9 +662,11 @@ void ClockScenario::tick(World& world, double deltaTime)
     first_tick_done_ = true;
     redrawWalls(world);
 
+    std::vector<Vector2i> digitPositions;
+
     // Update event system first so digit slide can detect time changes
     // before drawTime() updates last_drawn_time_.
-    updateEvents(world, deltaTime);
+    updateEvents(world, deltaTime, digitPositions);
 
     // Process scheduled door removals.
     door_manager_.update();
@@ -679,7 +682,7 @@ void ClockScenario::tick(World& world, double deltaTime)
     }
 
     if (!isMeltdownActive() && !isEventActive(ClockEventType::MARQUEE) && !digit_slide_animating) {
-        drawTime(world);
+        drawTime(world, digitPositions);
     }
 
     // Manage floor drain based on water level.
@@ -788,34 +791,38 @@ void ClockScenario::clearDigits(World& world)
 }
 
 void ClockScenario::drawCharacter(
-    World& world, const std::string& utf8Char, int start_x, int start_y)
+    World& world,
+    const std::string& utf8Char,
+    int start_x,
+    int start_y,
+    std::vector<Vector2i>& outDigitPositions)
 {
     if (utf8Char.empty() || utf8Char == " ") {
         return;
     }
 
-    // Color fonts use material grid rendering for all characters.
     if (config_.font == Config::ClockFont::NotoColorEmoji) {
-        drawCharacterWithMaterials(world, utf8Char, start_x, start_y);
+        drawCharacterWithMaterials(world, utf8Char, start_x, start_y, outDigitPositions);
         return;
     }
 
-    // Binary fonts use pattern-based rendering.
-    drawCharacterBinary(world, utf8Char, start_x, start_y);
+    drawCharacterBinary(world, utf8Char, start_x, start_y, outDigitPositions);
 }
 
 void ClockScenario::drawCharacterBinary(
-    World& world, const std::string& utf8Char, int start_x, int start_y)
+    World& world,
+    const std::string& utf8Char,
+    int start_x,
+    int start_y,
+    std::vector<Vector2i>& outDigitPositions)
 {
     if (utf8Char.empty() || utf8Char == " ") {
         return;
     }
 
-    // Determine character dimensions based on type.
     int width = (utf8Char == ":") ? getColonWidth() : getDigitWidth();
     int height = getDigitHeight();
 
-    // Render character using pixel patterns.
     for (int row = 0; row < height; ++row) {
         for (int col = 0; col < width; ++col) {
             int x = start_x + col;
@@ -826,7 +833,7 @@ void ClockScenario::drawCharacterBinary(
             }
 
             if (getCharacterPixel(utf8Char, row, col)) {
-                placeDigitPixel(world, x, y, config_.digitMaterial);
+                placeDigitPixel(world, x, y, config_.digitMaterial, outDigitPositions);
             }
         }
     }
@@ -901,14 +908,17 @@ bool ClockScenario::getCharacterPixel(const std::string& utf8Char, int row, int 
 }
 
 void ClockScenario::drawCharacterWithMaterials(
-    World& world, const std::string& utf8Char, int start_x, int start_y)
+    World& world,
+    const std::string& utf8Char,
+    int start_x,
+    int start_y,
+    std::vector<Vector2i>& outDigitPositions)
 {
     ensureFontSamplerInitialized();
 
     int dw = getDigitWidth();
     int dh = getDigitHeight();
 
-    // Sample and downsample the character to digit size.
     auto materialGrid = font_sampler_->sampleAndDownsample(utf8Char, dw, dh, 0.5f);
 
     if (materialGrid.width == 0 || materialGrid.height == 0) {
@@ -921,42 +931,39 @@ void ClockScenario::drawCharacterWithMaterials(
             int x = start_x + col;
             int y = start_y + row;
 
-            // Bounds check.
             if (x < 0 || x >= world.getData().width || y < 0 || y >= world.getData().height) {
                 continue;
             }
 
             Material::EnumType mat = materialGrid.at(col, row);
 
-            // Skip AIR - leave background unchanged.
             if (mat == Material::EnumType::Air) {
                 continue;
             }
 
-            placeDigitPixel(world, x, y, mat);
+            placeDigitPixel(world, x, y, mat, outDigitPositions);
         }
     }
 }
 
-void ClockScenario::placeDigitPixel(World& world, int x, int y, Material::EnumType renderMaterial)
+void ClockScenario::placeDigitPixel(
+    World& world,
+    int x,
+    int y,
+    Material::EnumType renderMaterial,
+    std::vector<Vector2i>& outDigitPositions)
 {
-    // Use WALL (immobile) but render as the specified material.
     world.replaceMaterialAtCell(
         { static_cast<int16_t>(x), static_cast<int16_t>(y) }, Material::EnumType::Wall);
     world.getData().at(x, y).render_as = static_cast<int8_t>(renderMaterial);
-
-    // Make digit cells emissive so they glow in darkness.
-    uint32_t color = getMaterialColor(renderMaterial);
-    float intensity = static_cast<float>(config_.digitEmissiveness);
-    world.getLightCalculator().setEmissive(x, y, color, intensity);
+    outDigitPositions.push_back({ x, y });
 }
 
-void ClockScenario::drawTimeString(World& world, const std::string& time_str)
+void ClockScenario::drawTimeString(
+    World& world, const std::string& time_str, std::vector<Vector2i>& outDigitPositions)
 {
-    // Clear previous digits.
     clearDigits(world);
 
-    // Use layoutString for proper UTF-8 handling and positioning.
     const CharacterMetrics& metrics = getMetrics();
     auto getWidth = metrics.widthFunction();
 
@@ -965,18 +972,17 @@ void ClockScenario::drawTimeString(World& world, const std::string& time_str)
     int start_x = (world.getData().width - total_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
-    // Layout and draw characters.
     auto placements = layoutString(time_str, getWidth);
     for (const auto& placement : placements) {
         int x = start_x + static_cast<int>(placement.x);
-        drawCharacter(world, placement.text, x, start_y);
+        drawCharacter(world, placement.text, x, start_y, outDigitPositions);
     }
 }
 
-void ClockScenario::drawTime(World& world)
+void ClockScenario::drawTime(World& world, std::vector<Vector2i>& outDigitPositions)
 {
     std::string time_str = getCurrentTimeString();
-    drawTimeString(world, time_str);
+    drawTimeString(world, time_str, outDigitPositions);
     last_drawn_time_ = time_str;
 }
 
@@ -1048,21 +1054,19 @@ void ClockScenario::clearTimeOverride()
 // Event System
 // ============================================================================
 
-void ClockScenario::updateEvents(World& world, double deltaTime)
+void ClockScenario::updateEvents(
+    World& world, double deltaTime, std::vector<Vector2i>& digitPositions)
 {
-    // Events disabled if frequency is 0.
     if (config_.eventFrequency <= 0.0) {
         return;
     }
 
-    // Decrement cooldowns.
     for (auto& [type, cooldown] : event_cooldowns_) {
         if (cooldown > 0.0) {
             cooldown -= deltaTime;
         }
     }
 
-    // Check for time change - set flag and trigger OnTimeChange events.
     std::string current_time = getCurrentTimeString();
     time_changed_this_frame_ = (current_time != last_trigger_check_time_);
     if (time_changed_this_frame_) {
@@ -1070,18 +1074,16 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
         tryTriggerTimeChangeEvents(world);
     }
 
-    // Periodic trigger check (once per second).
     time_since_last_trigger_check_ += deltaTime;
     if (time_since_last_trigger_check_ >= 1.0) {
         time_since_last_trigger_check_ = 0.0;
         tryTriggerPeriodicEvents(world);
     }
 
-    // Update active events and collect ones that need to end.
     std::vector<ClockEventType> events_to_end;
 
     for (auto& [type, event] : active_events_) {
-        updateEvent(world, type, event, deltaTime);
+        updateEvent(world, type, event, deltaTime, digitPositions);
 
         event.remaining_time -= deltaTime;
         if (event.remaining_time <= 0.0) {
@@ -1089,7 +1091,6 @@ void ClockScenario::updateEvents(World& world, double deltaTime)
         }
     }
 
-    // End expired events.
     for (auto type : events_to_end) {
         auto it = active_events_.find(type);
         if (it != active_events_.end()) {
@@ -1308,7 +1309,11 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 }
 
 void ClockScenario::updateEvent(
-    World& world, ClockEventType /*type*/, ActiveEvent& event, double deltaTime)
+    World& world,
+    ClockEventType /*type*/,
+    ActiveEvent& event,
+    double deltaTime,
+    std::vector<Vector2i>& digitPositions)
 {
     std::visit(
         [&](auto& state) {
@@ -1320,13 +1325,13 @@ void ClockScenario::updateEvent(
                 updateColorShowcaseEvent(world, state, deltaTime);
             }
             else if constexpr (std::is_same_v<T, DigitSlideEventState>) {
-                updateDigitSlideEvent(world, state, deltaTime);
+                updateDigitSlideEvent(world, state, deltaTime, digitPositions);
             }
             else if constexpr (std::is_same_v<T, DuckEventState>) {
                 updateDuckEvent(world, state, event.remaining_time, deltaTime);
             }
             else if constexpr (std::is_same_v<T, MarqueeEventState>) {
-                updateMarqueeEvent(world, state, event.remaining_time, deltaTime);
+                updateMarqueeEvent(world, state, event.remaining_time, deltaTime, digitPositions);
             }
             else if constexpr (std::is_same_v<T, MeltdownEventState>) {
                 updateMeltdownEvent(world, state, event.remaining_time, deltaTime);
@@ -1359,37 +1364,32 @@ void ClockScenario::updateColorShowcaseEvent(
 }
 
 void ClockScenario::updateDigitSlideEvent(
-    World& world, DigitSlideEventState& state, double deltaTime)
+    World& world,
+    DigitSlideEventState& state,
+    double deltaTime,
+    std::vector<Vector2i>& digitPositions)
 {
     std::string current_time = getCurrentTimeString();
 
-    // Check if time changed and start a new slide animation if needed.
     checkAndStartSlide(state.slide_state, last_drawn_time_, current_time);
 
-    // Update animation and render if active.
     if (state.slide_state.active) {
         const CharacterMetrics& metrics = getMetrics();
         auto getWidth = metrics.widthFunction();
         MarqueeFrame frame = updateVerticalSlide(state.slide_state, deltaTime, getWidth);
 
-        // Clear previous digits.
         clearDigits(world);
 
-        // Get font dimensions.
         int dh = metrics.getHeight();
 
-        // Calculate centering (same as drawTimeString).
         int content_width = calculateStringWidth(current_time, getWidth);
         int start_x = (world.getData().width - content_width) / 2;
         int start_y = (world.getData().height - dh) / 2;
 
-        // Draw each character from the frame.
         for (const auto& placement : frame.placements) {
-            // Apply centering.
             int x = start_x + static_cast<int>(placement.x);
             int y = start_y + static_cast<int>(placement.y);
 
-            // Skip if off-screen (clipping).
             if (y + dh < 0 || y >= world.getData().height) {
                 continue;
             }
@@ -1398,14 +1398,11 @@ void ClockScenario::updateDigitSlideEvent(
                 continue;
             }
 
-            drawCharacter(world, placement.text, x, y);
+            drawCharacter(world, placement.text, x, y, digitPositions);
         }
     }
 
-    // Keep track of last drawn time for next comparison.
-    // Note: last_drawn_time_ is updated by drawTime() normally, but we need to track it here too.
     if (!state.slide_state.active) {
-        // Animation finished, update time string for next change detection.
         state.slide_state.new_time_str = current_time;
     }
 }
@@ -1416,40 +1413,37 @@ void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, dou
 }
 
 void ClockScenario::updateMarqueeEvent(
-    World& world, MarqueeEventState& state, double& remaining_time, double deltaTime)
+    World& world,
+    MarqueeEventState& state,
+    double& remaining_time,
+    double deltaTime,
+    std::vector<Vector2i>& digitPositions)
 {
     std::string time_str = getCurrentTimeString();
     const CharacterMetrics& metrics = getMetrics();
     auto getWidth = metrics.widthFunction();
     MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime, getWidth);
 
-    // Clear previous digits.
     clearDigits(world);
 
-    // Get font dimensions.
     int dh = metrics.getHeight();
 
-    // Calculate centering (same as drawTimeString).
     int content_width = static_cast<int>(state.scroll_state.content_width);
     int start_x = (world.getData().width - content_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
-    // Draw each character from the frame, offset by viewport and centering.
     for (const auto& placement : frame.placements) {
-        // Apply centering and viewport offset.
         double screen_x = start_x + placement.x - frame.viewportX;
         int charWidth = getWidth(placement.text);
 
-        // Skip if off-screen.
         if (screen_x + charWidth < 0 || screen_x >= static_cast<double>(world.getData().width)) {
             continue;
         }
 
         int x = static_cast<int>(screen_x);
-        drawCharacter(world, placement.text, x, start_y);
+        drawCharacter(world, placement.text, x, start_y, digitPositions);
     }
 
-    // Signal event completion after drawing the final frame.
     if (frame.finished) {
         remaining_time = 0.0;
     }
@@ -1837,7 +1831,8 @@ void ClockScenario::convertStrayDigitMaterialToWater(
     World& world, Material::EnumType digit_material)
 {
     ClockEvents::endMeltdown(world, digit_material);
-    drawTime(world);
+    std::vector<Vector2i> tempDigitPositions;
+    drawTime(world, tempDigitPositions);
 }
 
 double ClockScenario::countWaterInBottomThird(const World& world) const
