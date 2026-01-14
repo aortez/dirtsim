@@ -1,0 +1,9 @@
+{
+  "startupConfig": {
+    "_variant_type": "Sandbox",
+    "quadrantEnabled": true,
+    "waterColumnEnabled": false,
+    "rightThrowEnabled": true,
+    "rainRate": 0.0
+  }
+}
