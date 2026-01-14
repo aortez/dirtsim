@@ -1,9 +1,7 @@
 #include "DrainManager.h"
 
 #include "core/Cell.h"
-#include "core/ColorNames.h"
 #include "core/FragmentationParams.h"
-#include "core/LightTypes.h"
 #include "core/MaterialType.h"
 #include "core/Vector2.h"
 #include "core/World.h"
@@ -21,7 +19,6 @@ void DrainManager::reset()
     endX_ = 0;
     currentSize_ = 0;
     lastSizeChange_ = {};
-    light_.reset();
 }
 
 void DrainManager::update(
@@ -37,7 +34,6 @@ void DrainManager::update(
     }
 
     updateSize(world, waterAmount);
-    updateLight(world);
     updateCells(world, deltaTime, extraDrainMaterial, rng);
 
     if (open_) {
@@ -152,52 +148,6 @@ void DrainManager::updateSize(World& world, double waterAmount)
     }
     else if (wasOpen && !open_) {
         spdlog::info("DrainManager: Drain closed (water: {:.1f})", waterAmount);
-    }
-}
-
-void DrainManager::updateLight(World& world)
-{
-    if (!open_) {
-        if (light_) {
-            spdlog::info("DrainManager: Drain light removed");
-            light_.reset();
-        }
-        return;
-    }
-
-    const WorldData& data = world.getData();
-    int drainY = data.height - 1;
-    double lightX = static_cast<double>(startX_ + endX_) / 2.0;
-    double lightY = static_cast<double>(drainY);
-    float intensity = static_cast<float>(currentSize_) / kMaxSize * 1.5f;
-
-    if (!light_) {
-        light_ = world.getLightManager().createLight(
-            SpotLight{ .position = Vector2d{ lightX, lightY },
-                       .color = ColorNames::stormGlow(),
-                       .intensity = intensity,
-                       .radius = 35.0f,
-                       .attenuation = 0.02f,
-                       .direction = static_cast<float>(-M_PI / 2.0),
-                       .arc_width = 1.2f,
-                       .focus = 0.7f });
-        spdlog::info(
-            "DrainManager: Drain light created at ({:.1f}, {:.1f}), intensity={:.2f}, id={}",
-            lightX,
-            lightY,
-            intensity,
-            light_->id());
-        return;
-    }
-
-    // Update existing light intensity.
-    SpotLight* spot = light_->get<SpotLight>();
-    if (spot && spot->intensity != intensity) {
-        spdlog::info(
-            "DrainManager: Drain light intensity updated: {:.2f} -> {:.2f}",
-            spot->intensity,
-            intensity);
-        spot->intensity = intensity;
     }
 }
 
