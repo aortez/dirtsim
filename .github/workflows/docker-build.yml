@@ -1,0 +1,48 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build-and-cache:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        clean: true
+
+    - name: Build Docker image
+      working-directory: docker
+      run: make build-image
+
+    - name: Verify image
+      working-directory: docker
+      run: |
+        # Get the image tag from Makefile.
+        IMAGE_TAG=$(make -s -f Makefile --eval='print-tag: ; @echo $(IMAGE_TAG)' print-tag)
+        echo "Verifying image: dirtsim-builder:$IMAGE_TAG"
+        docker images | grep dirtsim-builder
+        docker run --rm "dirtsim-builder:$IMAGE_TAG" cmake --version
+
+    - name: Clean up old dirtsim-builder images
+      run: |
+        # Remove dirtsim-builder images older than 2 days.
+        # Keeps recent images to support multiple active branches with different dependencies.
+        echo "Cleaning up dirtsim-builder images older than 2 days..."
+        for id in $(docker images dirtsim-builder --format "{{.ID}}"); do
+          created=$(docker inspect --format='{{.Created}}' "$id")
+          if [ $(date -d "$created" +%s) -lt $(date -d '2 days ago' +%s) ]; then
+            echo "Removing old image $id (created $created)"
+            docker rmi -f "$id" || true
+          fi
+        done
+        echo "Cleanup complete. Remaining dirtsim-builder images:"
+        docker images dirtsim-builder
