@@ -25,15 +25,16 @@ RUN apt-get update && apt-get install -y \
     libfreetype-dev \
     libyuv-dev \
     libsdl2-dev \
+    sudo \
     && rm -rf /var/lib/apt/lists/*
+
+# Configure password-free sudo for all users.
+RUN echo 'ALL ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
 # Set up SSH for remote testing.
 RUN apt-get update && apt-get install -y \
     openssh-client \
     && rm -rf /var/lib/apt/lists/*
-
-# Create .ssh directory with proper permissions.
-RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
 # Configure git to trust the workspace directory.
 RUN git config --global --add safe.directory /workspace

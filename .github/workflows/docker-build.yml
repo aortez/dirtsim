@@ -6,15 +6,8 @@ on:
     paths:
       - 'docker/**'
       - '.github/workflows/docker-build.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'docker/**'
-      - '.github/workflows/docker-build.yml'
-  schedule:
-    # Rebuild daily at 2 AM UTC to keep cache fresh.
-    - cron: '0 2 * * *'
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: self-hosted-runner-queue
@@ -23,7 +16,6 @@ concurrency:
 jobs:
   build-and-cache:
     runs-on: self-hosted
-    if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
 
     steps:
     - name: Checkout code
@@ -38,8 +30,11 @@ jobs:
     - name: Verify image
       working-directory: docker
       run: |
+        # Get the image tag from Makefile.
+        IMAGE_TAG=$(make -s -f Makefile --eval='print-tag: ; @echo $(IMAGE_TAG)' print-tag)
+        echo "Verifying image: dirtsim-builder:$IMAGE_TAG"
         docker images | grep dirtsim-builder
-        docker run --rm dirtsim-builder:latest cmake --version
+        docker run --rm "dirtsim-builder:$IMAGE_TAG" cmake --version
 
     - name: Clean up old dirtsim-builder images
       run: |

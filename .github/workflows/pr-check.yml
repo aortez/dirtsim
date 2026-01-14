@@ -12,8 +12,12 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-docker-image:
+    uses: ./.github/workflows/docker-build.yml
+
   build-and-test:
     runs-on: self-hosted
+    needs: build-docker-image
     if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push'
 
     steps:
@@ -27,10 +31,6 @@ jobs:
     - name: Merge target branch
       if: github.event_name == 'pull_request'
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
-
-    - name: Build Docker image
-      working-directory: docker
-      run: make build-image
 
     - name: Check code formatting
       working-directory: docker

@@ -13,7 +13,8 @@
 
 # Image name and tag.
 IMAGE_NAME := dirtsim-builder
-IMAGE_TAG := latest
+# Tag with hash of Dockerfile + date so images rebuild daily and per-branch.
+IMAGE_TAG ?= $(shell (cat Dockerfile; date +%Y-%m-%d) | sha256sum | cut -c1-16)
 IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
 
 # Get the project root (parent of docker directory).
@@ -22,10 +23,15 @@ PROJECT_ROOT := $(shell cd .. && pwd)
 # SSH key directory (override with SSH_DIR=/path/to/.ssh).
 SSH_DIR := $(HOME)/.ssh
 
+# Run as the current user to avoid permission issues.
+DOCKER_USER := $(shell id -u):$(shell id -g)
+
 # Base docker run command.
 DOCKER_RUN := docker run --rm \
+	--user $(DOCKER_USER) \
 	-v $(PROJECT_ROOT):/workspace \
-	-v $(SSH_DIR):/root/.ssh:ro \
+	-v $(SSH_DIR):$(SSH_DIR):ro \
+	-e HOME=$(HOME) \
 	-w /workspace/apps \
 	$(IMAGE)
 
@@ -72,8 +78,10 @@ format-check: build-image
 shell: build-image
 	@echo "Starting interactive shell in Docker container..."
 	docker run --rm -it \
+		--user $(DOCKER_USER) \
 		-v $(PROJECT_ROOT):/workspace \
-		-v $(SSH_DIR):/root/.ssh:ro \
+		-v $(SSH_DIR):$(SSH_DIR):ro \
+		-e HOME=$(HOME) \
 		-w /workspace/apps \
 		$(IMAGE) \
 		/bin/bash
