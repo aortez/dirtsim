@@ -136,7 +136,12 @@ sudo apt-get install -y \
     nodejs \
     npm \
     pkg-config \
+    python3-pip \
     wayland-protocols
+
+# Install kas for Yocto builds.
+log_info "Installing kas..."
+pip3 install --user kas
 
 # Create runner directory.
 RUNNER_DIR="$HOME/actions-runner"
