@@ -16,12 +16,11 @@ jobs:
     runs-on: self-hosted
 
     steps:
-    - name: Reset git state
+    - name: Fix workspace permissions
       run: |
-        cd $GITHUB_WORKSPACE || exit 0
-        git reset --hard HEAD || true
-        git clean -fd || true
-      continue-on-error: true
+        # Recursively fix all permissions so checkout can delete files.
+        find $GITHUB_WORKSPACE -type d -exec chmod u+rwx {} + 2>/dev/null || true
+        find $GITHUB_WORKSPACE -type f -exec chmod u+rw {} + 2>/dev/null || true
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -58,12 +57,11 @@ jobs:
     needs: build-and-test
 
     steps:
-    - name: Reset git state
+    - name: Fix workspace permissions
       run: |
-        cd $GITHUB_WORKSPACE || exit 0
-        git reset --hard HEAD || true
-        git clean -fd || true
-      continue-on-error: true
+        # Recursively fix all permissions so checkout can delete files.
+        find $GITHUB_WORKSPACE -type d -exec chmod u+rwx {} + 2>/dev/null || true
+        find $GITHUB_WORKSPACE -type f -exec chmod u+rw {} + 2>/dev/null || true
 
     - name: Checkout code
       uses: actions/checkout@v4
