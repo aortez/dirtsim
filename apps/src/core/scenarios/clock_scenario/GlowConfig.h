@@ -8,11 +8,11 @@ namespace DirtSim {
 
 struct GlowConfig {
     uint32_t digitColor = 0;
-    float digitIntensity = 0.0f;
-    float floorIntensity = 0.0f;
-    float obstacleIntensity = 0.0f;
-    float wallIntensity = 0.0f;
-    float waterIntensity = 0.0f;
+    float digitIntensity = 2.0f;
+    float floorIntensity = 0.15f;
+    float obstacleIntensity = 0.6f;
+    float wallIntensity = 0.2f;
+    float waterIntensity = 0.5f;
 
     using serialize = zpp::bits::members<6>;
 };

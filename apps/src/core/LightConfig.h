@@ -1,8 +1,7 @@
 #pragma once
 
-#include "ReflectSerializer.h"
 #include <cstdint>
-#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
 
 namespace DirtSim {
 
@@ -20,15 +19,7 @@ struct LightConfig {
 };
 
 LightConfig getDefaultLightConfig();
-
-inline void to_json(nlohmann::json& j, const LightConfig& config)
-{
-    j = ReflectSerializer::to_json(config);
-}
-
-inline void from_json(const nlohmann::json& j, LightConfig& config)
-{
-    config = ReflectSerializer::from_json<LightConfig>(j);
-}
+void to_json(nlohmann::json& j, const LightConfig& config);
+void from_json(const nlohmann::json& j, LightConfig& config);
 
 } // namespace DirtSim

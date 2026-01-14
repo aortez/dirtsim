@@ -1,5 +1,6 @@
 #include "ClockScenario.h"
 #include "clock_scenario/CharacterMetrics.h"
+#include "clock_scenario/GlowManager.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
 #include "core/ColorNames.h"
@@ -697,26 +698,53 @@ void ClockScenario::tick(World& world, double deltaTime)
     }
     drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
 
-    // Make all water cells glow softly (visible rain against dark clock background).
-    if (config_.rainEnabled) {
-        auto& lightCalc = world.getLightCalculator();
-        constexpr float kWaterGlowIntensity = 0.8f;
-        const WorldData& glowData = world.getData();
-
-        for (int y = 1; y < glowData.height - 1; ++y) {
-            for (int x = 1; x < glowData.width - 1; ++x) {
-                if (glowData.at(x, y).material_type == Material::EnumType::Water) {
-                    lightCalc.setEmissive(x, y, ColorNames::stormGlow(), kWaterGlowIntensity);
-                }
-            }
-        }
-    }
-
     // Manage storm lighting (lightning flashes based on water in top third).
     if (config_.rainEnabled) {
         double topWater = countWaterInTopThird(world);
         double stormIntensity = std::min(topWater / 10.0, 1.0);
         storm_manager_.update(world.getLightCalculator(), deltaTime, stormIntensity, rng_);
+    }
+
+    // Apply glow to all emissive cells.
+    {
+        const WorldData& glowData = world.getData();
+        std::vector<WallSpec> wallSpecs = generateWallSpecs(glowData);
+
+        std::vector<Vector2i> floorPositions;
+        std::vector<Vector2i> obstaclePositions;
+        std::vector<Vector2i> wallPositions;
+
+        for (const auto& spec : wallSpecs) {
+            Vector2i pos{ spec.x, spec.y };
+            switch (spec.render_as) {
+                case Material::EnumType::Dirt:
+                    floorPositions.push_back(pos);
+                    break;
+                case Material::EnumType::Wall:
+                    obstaclePositions.push_back(pos);
+                    break;
+                case Material::EnumType::Wood:
+                    wallPositions.push_back(pos);
+                    break;
+                case Material::EnumType::Air:
+                case Material::EnumType::Leaf:
+                case Material::EnumType::Metal:
+                case Material::EnumType::Root:
+                case Material::EnumType::Sand:
+                case Material::EnumType::Seed:
+                case Material::EnumType::Water:
+                    break;
+            }
+        }
+
+        GlowConfig glowConfig = config_.glowConfig;
+        glowConfig.digitColor = getMaterialColor(config_.digitMaterial);
+        if (!config_.rainEnabled) {
+            glowConfig.waterIntensity = 0.0f;
+        }
+
+        GlowManager::apply(
+            world, digitPositions, floorPositions, obstaclePositions, wallPositions, glowConfig);
     }
 
     // Debug check: verify all WOOD cells have an associated organism.

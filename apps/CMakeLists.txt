@@ -229,6 +229,7 @@ set(DIRTSIM_CORE_SOURCES
     src/core/MaterialType.cpp
     src/core/PhysicsSettings.cpp
     src/core/RenderMessage.cpp
+    src/core/ScenarioConfig.cpp
     src/core/ScenarioId.cpp
     src/core/StateMachineBase.cpp
     src/core/SystemMetrics.cpp
@@ -271,6 +272,7 @@ target_compile_options(dirtsim-core PRIVATE ${DIRTSIM_WARNINGS})
 # Server library - physics engine and server logic.
 add_library(dirtsim-server-lib STATIC
     # Server state machine.
+    src/server/ServerConfig.cpp
     src/server/StateMachine.cpp
     src/server/EventProcessor.cpp
     src/server/states/Error.cpp
@@ -324,6 +326,7 @@ add_library(dirtsim-server-lib STATIC
     # Scenarios.
     src/core/scenarios/ScenarioRegistry.cpp
     src/core/scenarios/BenchmarkScenario.cpp
+    src/core/scenarios/ClockConfig.cpp
     src/core/scenarios/ClockScenario.cpp
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp

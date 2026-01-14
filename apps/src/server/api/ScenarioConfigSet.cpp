@@ -1,5 +1,6 @@
 #include "ScenarioConfigSet.h"
 #include "core/ReflectSerializer.h"
+#include "core/VariantSerializer.h"
 
 namespace DirtSim {
 namespace Api {

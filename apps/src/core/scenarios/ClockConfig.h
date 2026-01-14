@@ -1,7 +1,6 @@
 #pragma once
 
 #include "../MaterialType.h"
-#include "../ReflectEnumJson.h"
 #include "clock_scenario/GlowConfig.h"
 
 #include <zpp_bits.h>
@@ -20,29 +19,7 @@ enum class ClockFont : uint8_t {
 };
 
 // Returns the display name for a ClockFont value.
-// Add new entries here when adding fonts to the enum.
-inline const char* getDisplayName(ClockFont font)
-{
-    switch (font) {
-        case ClockFont::DotMatrix:
-            return "Dot Matrix";
-        case ClockFont::Montserrat24:
-            return "Montserrat 24";
-        case ClockFont::NotoColorEmoji:
-            return "Noto Emoji";
-        case ClockFont::Segment7:
-            return "7-Segment";
-        case ClockFont::Segment7ExtraTall:
-            return "7-Seg X-Tall";
-        case ClockFont::Segment7Jumbo:
-            return "7-Seg Jumbo";
-        case ClockFont::Segment7Large:
-            return "7-Seg Large";
-        case ClockFont::Segment7Tall:
-            return "7-Seg Tall";
-    }
-    return "Unknown";
-}
+const char* getDisplayName(ClockFont font);
 
 struct Clock {
     using serialize = zpp::bits::members<21>;
