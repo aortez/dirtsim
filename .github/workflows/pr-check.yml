@@ -16,6 +16,13 @@ jobs:
     runs-on: self-hosted
 
     steps:
+    - name: Reset git state
+      run: |
+        cd $GITHUB_WORKSPACE || exit 0
+        git reset --hard HEAD || true
+        git clean -fd || true
+      continue-on-error: true
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
@@ -51,6 +58,13 @@ jobs:
     needs: build-and-test
 
     steps:
+    - name: Reset git state
+      run: |
+        cd $GITHUB_WORKSPACE || exit 0
+        git reset --hard HEAD || true
+        git clean -fd || true
+      continue-on-error: true
+
     - name: Checkout code
       uses: actions/checkout@v4
       with:
