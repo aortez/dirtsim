@@ -133,6 +133,8 @@ sudo apt-get install -y \
     libwayland-dev \
     libx11-dev \
     libxkbcommon-dev \
+    nodejs \
+    npm \
     pkg-config \
     wayland-protocols
 
