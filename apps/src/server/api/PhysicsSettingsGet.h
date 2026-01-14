@@ -14,14 +14,13 @@ namespace PhysicsSettingsGet {
 
 DEFINE_API_NAME(PhysicsSettingsGet);
 
-struct Okay;
+struct Okay; // Forward declaration for API_COMMAND() macro.
 
 struct Command {
-    API_COMMAND_NAME();
+    API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
     using serialize = zpp::bits::members<0>;
-    using OkayType = Okay;
 };
 
 struct Okay {

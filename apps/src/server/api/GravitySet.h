@@ -16,9 +16,9 @@ namespace GravitySet {
 DEFINE_API_NAME(GravitySet);
 
 struct Command {
+    API_COMMAND_T(std::monostate);
     double gravity;
 
-    API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

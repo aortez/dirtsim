@@ -11,10 +11,12 @@
 #include "server/api/ApiError.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/RenderFormatSet.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/states/State.h"
 #include <gtest/gtest.h>
+#include <map>
 #include <optional>
 
 using namespace DirtSim;
@@ -24,14 +26,59 @@ using namespace DirtSim::Ui::State;
 /**
  * @brief Mock WebSocketService for testing command sending.
  *
- * Inherits from WebSocketServiceInterface to provide testable implementation.
- * Tracks sent commands and provides canned success responses.
+ * Type-safe mock that uses Command::OkayType to tie commands to responses.
+ * Tests configure expected responses, mock returns them when commands are sent.
  */
 class MockWebSocketService : public Network::WebSocketServiceInterface {
 public:
     MockWebSocketService() = default;
 
-    // Connection methods.
+    // =========================================================================
+    // Type-safe response configuration.
+    // =========================================================================
+
+    /**
+     * @brief Configure success response for a command type.
+     * @tparam CommandType The command struct (e.g., Api::EvolutionStart::Command).
+     * @param okay The success response value.
+     */
+    template <typename CommandType>
+    void expectSuccess(const typename CommandType::OkayType& okay)
+    {
+        auto response = Result<typename CommandType::OkayType, ApiError>::okay(okay);
+        responses_[std::string(CommandType::name())] =
+            Network::make_response_envelope(0, std::string(CommandType::name()), response);
+    }
+
+    /**
+     * @brief Configure error response for a command type.
+     * @tparam CommandType The command struct (e.g., Api::EvolutionStart::Command).
+     * @param message The error message.
+     */
+    template <typename CommandType>
+    void expectError(const std::string& message)
+    {
+        ApiError error;
+        error.message = message;
+        auto response = Result<typename CommandType::OkayType, ApiError>::error(error);
+        responses_[std::string(CommandType::name())] =
+            Network::make_response_envelope(0, std::string(CommandType::name()), response);
+    }
+
+    /**
+     * @brief Get list of commands that were sent.
+     */
+    const std::vector<std::string>& sentCommands() const { return sentCommands_; }
+
+    /**
+     * @brief Clear sent commands (for multi-phase tests).
+     */
+    void clearSentCommands() { sentCommands_.clear(); }
+
+    // =========================================================================
+    // WebSocketServiceInterface implementation.
+    // =========================================================================
+
     Result<std::monostate, std::string> connect(
         const std::string& /*url*/, int /*timeoutMs*/ = 5000) override
     {
@@ -42,7 +89,6 @@ public:
     bool isConnected() const override { return connected_; }
     std::string getUrl() const override { return "ws://mock:8080"; }
 
-    // Server methods (no-ops for UI testing).
     Result<std::monostate, std::string> listen(uint16_t /*port*/) override
     {
         return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -50,7 +96,6 @@ public:
     bool isListening() const override { return false; }
     void stopListening() override {}
 
-    // Send methods.
     Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& /*data*/) override
     {
         return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -61,71 +106,39 @@ public:
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
-    // Callback registration (no-ops).
     void onConnected(ConnectionCallback /*callback*/) override {}
     void onDisconnected(ConnectionCallback /*callback*/) override {}
     void onError(ErrorCallback /*callback*/) override {}
     void onBinary(BinaryCallback /*callback*/) override {}
     void onServerCommand(ServerCommandCallback /*callback*/) override {}
-
-    // Deserializer (no-op).
     void setJsonDeserializer(JsonDeserializer /*deserializer*/) override {}
 
-    // Capture sent commands by name.
-    std::vector<std::string> sentCommands_;
-
-    // Override template sendCommand to bypass serialization and return typed responses.
-    template <typename Okay, typename Command>
-    Result<Result<Okay, ApiError>, std::string> sendCommand(
-        const Command& /*cmd*/, int /*timeoutMs*/ = 5000)
-    {
-        // Capture command name.
-        sentCommands_.push_back(Command::apiCommandName());
-
-        // Return properly-typed success response (default-constructed Okay).
-        Okay okayValue{};
-        auto result = Result<Okay, ApiError>::okay(okayValue);
-        return Result<Result<Okay, ApiError>, std::string>::okay(result);
-    }
-
-    // Implement sendBinaryAndReceive - returns properly serialized responses by command type.
+    /**
+     * @brief Core mock method - returns configured response for command.
+     */
     Result<Network::MessageEnvelope, std::string> sendBinaryAndReceive(
         const Network::MessageEnvelope& envelope, int /*timeoutMs*/ = 5000) override
     {
-        // Capture command name.
         sentCommands_.push_back(envelope.message_type);
 
-        // Create proper serialized response based on command type.
-        if (envelope.message_type == "EvolutionStart") {
-            Api::EvolutionStart::Okay okayValue{ .started = true };
-            auto result = Result<Api::EvolutionStart::Okay, ApiError>::okay(okayValue);
-            auto response =
-                Network::make_response_envelope(envelope.id, envelope.message_type, result);
+        auto it = responses_.find(envelope.message_type);
+        if (it != responses_.end()) {
+            auto response = it->second;
+            response.id = envelope.id; // Match correlation ID.
             return Result<Network::MessageEnvelope, std::string>::okay(response);
         }
-        else if (envelope.message_type == "EvolutionStop") {
-            auto result = Result<std::monostate, ApiError>::okay(std::monostate{});
-            auto response =
-                Network::make_response_envelope(envelope.id, envelope.message_type, result);
-            return Result<Network::MessageEnvelope, std::string>::okay(response);
-        }
-        else if (envelope.message_type == "RenderFormatSet") {
-            // RenderFormatSet uses monostate for success response.
-            auto result = Result<std::monostate, ApiError>::okay(std::monostate{});
-            auto response =
-                Network::make_response_envelope(envelope.id, envelope.message_type, result);
-            return Result<Network::MessageEnvelope, std::string>::okay(response);
-        }
-        else {
-            // Unknown command - fail test with clear message.
-            ADD_FAILURE() << "MockWebSocketService: Unknown command type: "
-                          << envelope.message_type;
-            return Result<Network::MessageEnvelope, std::string>::error("Unknown command");
-        }
+
+        // No configured response - fail test with clear message.
+        ADD_FAILURE() << "MockWebSocketService: No response configured for: "
+                      << envelope.message_type;
+        return Result<Network::MessageEnvelope, std::string>::error(
+            "No response configured for: " + envelope.message_type);
     }
 
 private:
     bool connected_ = true;
+    std::map<std::string, Network::MessageEnvelope> responses_;
+    std::vector<std::string> sentCommands_;
 };
 
 /**
@@ -229,8 +242,8 @@ TEST_F(StateTrainingTest, EvolutionProgressUpdatesState)
     // Execute: Send event to Training state.
     State::Any result = trainingState.onEvent(evt, *stateMachine);
 
-    // Verify: State did not transition (nullopt means stay).
-    EXPECT_FALSE(result.getVariant().index() != 6)
+    // Verify: State did not transition (stays in Training).
+    EXPECT_TRUE(std::holds_alternative<Training>(result.getVariant()))
         << "Training + EvolutionProgress should not transition";
 
     // Verify: Progress was captured.
@@ -267,6 +280,11 @@ TEST_F(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
  */
 TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
 {
+    // Setup: Configure expected responses.
+    mockWs->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    mockWs->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
     // Setup: Create Training state.
     Training trainingState;
 
@@ -284,8 +302,8 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
         << "Training + StartEvolutionButtonClicked should stay in Training";
 
     // Verify: EvolutionStart command was sent.
-    ASSERT_GE(mockWs->sentCommands_.size(), 1) << "Should send at least EvolutionStart command";
-    EXPECT_EQ(mockWs->sentCommands_[0], "EvolutionStart");
+    ASSERT_GE(mockWs->sentCommands().size(), 1) << "Should send at least EvolutionStart command";
+    EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStart");
 }
 
 /**
@@ -293,6 +311,9 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
  */
 TEST_F(StateTrainingTest, StopButtonSendsCommandAndTransitions)
 {
+    // Setup: Configure expected response.
+    mockWs->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
+
     // Setup: Create Training state.
     Training trainingState;
 
@@ -307,6 +328,6 @@ TEST_F(StateTrainingTest, StopButtonSendsCommandAndTransitions)
         << "Training + StopButtonClicked should transition to StartMenu";
 
     // Verify: EvolutionStop command was sent.
-    ASSERT_EQ(mockWs->sentCommands_.size(), 1) << "Should send EvolutionStop command";
-    EXPECT_EQ(mockWs->sentCommands_[0], "EvolutionStop");
+    ASSERT_EQ(mockWs->sentCommands().size(), 1) << "Should send EvolutionStop command";
+    EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStop");
 }

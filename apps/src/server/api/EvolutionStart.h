@@ -17,12 +17,14 @@ namespace EvolutionStart {
 
 DEFINE_API_NAME(EvolutionStart);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     EvolutionConfig evolution;
     MutationConfig mutation;
     Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

@@ -14,13 +14,15 @@ namespace ScenarioConfigSet {
 
 DEFINE_API_NAME(ScenarioConfigSet);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 /**
  * @brief Command to update scenario configuration.
  */
 struct Command {
     ScenarioConfig config; // New configuration to apply.
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

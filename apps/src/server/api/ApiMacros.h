@@ -30,6 +30,32 @@ namespace DirtSim {
     }
 
 /**
+ * @brief Add name() and OkayType to Command structs.
+ *
+ * Usage: API_COMMAND() inside Command struct definitions (not Okay structs).
+ * Provides name() method and OkayType typedef for type-safe mock testing.
+ * For commands with custom OkayType (e.g., std::monostate), use API_COMMAND_T(Type).
+ */
+#define API_COMMAND()                        \
+    static constexpr std::string_view name() \
+    {                                        \
+        return api_name;                     \
+    }                                        \
+    using OkayType = Okay
+
+/**
+ * @brief Add name() and custom OkayType to Command structs.
+ *
+ * Usage: API_COMMAND_T(std::monostate) for commands without an Okay struct.
+ */
+#define API_COMMAND_T(Type)                  \
+    static constexpr std::string_view name() \
+    {                                        \
+        return api_name;                     \
+    }                                        \
+    using OkayType = Type
+
+/**
  * @brief Add automatic JSON serialization using reflection.
  *
  * Usage: API_JSON_SERIALIZABLE(TypeName) inside Command/Okay struct definitions.

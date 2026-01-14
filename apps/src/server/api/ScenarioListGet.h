@@ -17,13 +17,15 @@ namespace ScenarioListGet {
 
 DEFINE_API_NAME(ScenarioListGet);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 /**
  * @brief Command to get list of available scenarios.
  *
  * No parameters required.
  */
 struct Command {
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

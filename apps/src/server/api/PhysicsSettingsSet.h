@@ -16,9 +16,9 @@ namespace PhysicsSettingsSet {
 DEFINE_API_NAME(PhysicsSettingsSet);
 
 struct Command {
+    API_COMMAND_T(std::monostate);
     PhysicsSettings settings;
 
-    API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

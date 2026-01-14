@@ -16,11 +16,11 @@ namespace SeedAdd {
 DEFINE_API_NAME(SeedAdd);
 
 struct Command {
+    API_COMMAND_T(std::monostate);
     int x;
     int y;
     std::optional<std::string> genome_id; // UUID from GenomeRepository for tree brain.
 
-    API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

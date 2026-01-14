@@ -15,9 +15,9 @@ namespace SpawnDirtBall {
 DEFINE_API_NAME(SpawnDirtBall);
 
 struct Command {
+    API_COMMAND_T(std::monostate);
     // No parameters needed - just spawn a dirt ball at the default location.
 
-    API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

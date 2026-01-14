@@ -23,9 +23,9 @@ DEFINE_API_NAME(FingerUp);
  * the finger session tracking state for this finger_id.
  */
 struct Command {
+    API_COMMAND_T(std::monostate);
     uint32_t finger_id; // Must match a previous FingerDown finger_id.
 
-    API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

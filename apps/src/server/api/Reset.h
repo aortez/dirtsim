@@ -16,7 +16,7 @@ namespace Reset {
 DEFINE_API_NAME(Reset);
 
 struct Command {
-    API_COMMAND_NAME();
+    API_COMMAND_T(std::monostate);
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

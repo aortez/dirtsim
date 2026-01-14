@@ -17,12 +17,14 @@ namespace GenomeSet {
 
 DEFINE_API_NAME(GenomeSet);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     GenomeId id{};                          // UUID for this genome (required).
     std::vector<double> weights;            // Genome weights.
     std::optional<GenomeMetadata> metadata; // Optional metadata.
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

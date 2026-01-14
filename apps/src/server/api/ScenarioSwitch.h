@@ -15,10 +15,12 @@ namespace ScenarioSwitch {
 
 DEFINE_API_NAME(ScenarioSwitch);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     Scenario::EnumType scenario_id;
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
     using serialize = zpp::bits::members<1>;

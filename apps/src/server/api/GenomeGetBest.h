@@ -17,8 +17,10 @@ namespace GenomeGetBest {
 
 DEFINE_API_NAME(GenomeGetBest);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

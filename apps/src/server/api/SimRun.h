@@ -18,6 +18,8 @@ namespace SimRun {
 
 DEFINE_API_NAME(SimRun);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     double timestep = 0.016;
     int max_steps = -1;
@@ -26,7 +28,7 @@ struct Command {
         scenario_id;           // Optional scenario (nullopt = use server config default).
     bool start_paused = false; // Load scenario but don't start advancing.
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

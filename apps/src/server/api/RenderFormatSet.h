@@ -16,11 +16,13 @@ namespace RenderFormatSet {
 
 DEFINE_API_NAME(RenderFormatSet);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     RenderFormat::EnumType format;
     std::string connectionId;
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 

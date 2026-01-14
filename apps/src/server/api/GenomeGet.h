@@ -16,10 +16,12 @@ namespace GenomeGet {
 
 DEFINE_API_NAME(GenomeGet);
 
+struct Okay; // Forward declaration for API_COMMAND() macro.
+
 struct Command {
     GenomeId id{};
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
