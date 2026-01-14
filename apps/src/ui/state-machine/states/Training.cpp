@@ -1,11 +1,15 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/Reset.h"
+#include "server/api/ScenarioConfigSet.h"
+#include "server/api/SimRun.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -229,6 +233,58 @@ State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
     }
 
     return std::move(*this);
+}
+
+State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(State, "View Best clicked, genome_id={}", evt.genomeId.toShortString());
+
+    DIRTSIM_ASSERT(sm.hasWebSocketService(), "WebSocketService must exist");
+    auto& wsService = sm.getWebSocketService();
+    DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected");
+
+    // Stop evolution if running.
+    if (evolutionStarted_) {
+        Api::EvolutionStop::Command stopCmd;
+        auto stopResult = wsService.sendCommand<Api::EvolutionStop::OkayType>(stopCmd, 2000);
+        DIRTSIM_ASSERT(
+            stopResult.isValue() && stopResult.value().isValue(), "EvolutionStop failed");
+        evolutionStarted_ = false;
+    }
+
+    // Start simulation with TreeGermination scenario.
+    Api::SimRun::Command simRunCmd{ .timestep = 0.016,
+                                    .max_steps = -1,
+                                    .max_frame_ms = 16,
+                                    .scenario_id = Scenario::EnumType::TreeGermination,
+                                    .start_paused = false };
+
+    auto simResult = wsService.sendCommand<Api::SimRun::Okay>(simRunCmd, 2000);
+    if (simResult.isError() || simResult.value().isError()) {
+        LOG_ERROR(State, "SimRun failed");
+        return std::move(*this);
+    }
+
+    // Set scenario config with the genome_id.
+    Config::TreeGermination treeConfig{ .brain_type = Config::TreeBrainType::NEURAL_NET,
+                                        .neural_seed = 0,
+                                        .genome_id = evt.genomeId };
+    Api::ScenarioConfigSet::Command configCmd{ .config = treeConfig };
+
+    auto configResult = wsService.sendCommand<Api::ScenarioConfigSet::OkayType>(configCmd, 2000);
+    if (configResult.isError() || configResult.value().isError()) {
+        LOG_ERROR(State, "ScenarioConfigSet failed");
+    }
+
+    // Reset to re-run setup with new config.
+    Api::Reset::Command resetCmd;
+    auto resetResult = wsService.sendCommand<Api::Reset::OkayType>(resetCmd, 2000);
+    if (resetResult.isError()) {
+        LOG_ERROR(State, "Reset failed");
+    }
+
+    LOG_INFO(State, "Transitioning to SimRunning with best genome");
+    return SimRunning{};
 }
 
 } // namespace State

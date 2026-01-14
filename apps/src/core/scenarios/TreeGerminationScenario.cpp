@@ -6,13 +6,16 @@
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
+#include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
 
-TreeGerminationScenario::TreeGerminationScenario()
+TreeGerminationScenario::TreeGerminationScenario(GenomeRepository& genomeRepository)
+    : genomeRepository_(genomeRepository)
 {
     metadata_.name = "Tree Germination";
     metadata_.description = "9x9 world with seed growing into balanced tree";
@@ -85,7 +88,22 @@ void TreeGerminationScenario::setup(World& world)
 
     // Create brain based on config.
     std::unique_ptr<TreeBrain> brain;
-    if (config_.brain_type == Config::TreeBrainType::NEURAL_NET) {
+    if (!config_.genome_id.isNil()) {
+        auto genome = genomeRepository_.get(config_.genome_id);
+        if (genome) {
+            brain = std::make_unique<NeuralNetBrain>(*genome);
+            spdlog::info(
+                "TreeGerminationScenario: Using NeuralNetBrain from genome {}",
+                config_.genome_id.toShortString());
+        }
+        else {
+            spdlog::warn(
+                "TreeGerminationScenario: Genome {} not found, falling back to RuleBasedBrain",
+                config_.genome_id.toShortString());
+            brain = std::make_unique<RuleBasedBrain>();
+        }
+    }
+    else if (config_.brain_type == Config::TreeBrainType::NEURAL_NET) {
         brain = std::make_unique<NeuralNetBrain>(config_.neural_seed);
         spdlog::info(
             "TreeGerminationScenario: Using NeuralNetBrain with seed {}", config_.neural_seed);

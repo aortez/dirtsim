@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/UUID.h"
+
 #include <cstdint>
 #include <zpp_bits.h>
 
@@ -13,8 +15,9 @@ enum class TreeBrainType : uint8_t {
 struct TreeGermination {
     TreeBrainType brain_type = TreeBrainType::RULE_BASED;
     uint32_t neural_seed = 42;
+    UUID genome_id; // If not nil, load genome from repository for NeuralNetBrain.
 
-    using serialize = zpp::bits::members<2>;
+    using serialize = zpp::bits::members<3>;
 };
 
 } // namespace DirtSim::Config

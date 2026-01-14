@@ -272,8 +272,11 @@ void StateMachine::updateAnimations()
 void StateMachine::handleEvent(const Event& event)
 {
     {
+        // High-frequency events log at DEBUG to avoid spam.
+        const bool isHighFrequency = std::holds_alternative<UiUpdateEvent>(event)
+            || std::holds_alternative<EvolutionProgressReceivedEvent>(event);
         const std::string msg = "Handling global event: " + getEventName(event);
-        if (getEventName(event) == "UiUpdateEvent") {
+        if (isHighFrequency) {
             LOG_DEBUG(State, "{}", msg);
         }
         else {

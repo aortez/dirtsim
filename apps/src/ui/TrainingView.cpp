@@ -86,7 +86,7 @@ void TrainingView::createUI()
 
     // Status label.
     statusLabel_ = lv_label_create(statsPanel);
-    lv_label_set_text(statusLabel_, "Ready - Press Start");
+    lv_label_set_text(statusLabel_, "Ready");
     lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
     lv_obj_set_style_pad_bottom(statusLabel_, 8, 0);
@@ -257,7 +257,7 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
          && progress.currentEval >= progress.populationSize);
 
     if (isComplete) {
-        setEvolutionCompleted();
+        setEvolutionCompleted(progress.bestGenomeId);
     }
 
     char buf[64];
@@ -416,15 +416,15 @@ void TrainingView::clearPanelContent()
 
 void TrainingView::createCorePanel(lv_obj_t* container)
 {
-    evolutionControls_ =
-        std::make_unique<EvolutionControls>(container, eventSink_, evolutionStarted_);
-    LOG_INFO(Controls, "TrainingView: Created Core controls panel");
+    evolutionControls_ = std::make_unique<EvolutionControls>(
+        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
+    LOG_INFO(Controls, "TrainingView: Created Training Home panel");
 }
 
 void TrainingView::createEvolutionConfigPanel(lv_obj_t* container)
 {
-    evolutionConfigPanel_ =
-        std::make_unique<EvolutionConfigPanel>(container, eventSink_, evolutionStarted_);
+    evolutionConfigPanel_ = std::make_unique<EvolutionConfigPanel>(
+        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
     LOG_INFO(Controls, "TrainingView: Created Evolution config panel");
 }
 
@@ -438,7 +438,7 @@ void TrainingView::setEvolutionStarted(bool started)
             lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
         }
         else {
-            lv_label_set_text(statusLabel_, "Ready - Press Start");
+            lv_label_set_text(statusLabel_, "Ready");
             lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
         }
     }
@@ -452,7 +452,7 @@ void TrainingView::setEvolutionStarted(bool started)
     }
 }
 
-void TrainingView::setEvolutionCompleted()
+void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
 {
     evolutionStarted_ = false;
 
@@ -464,7 +464,7 @@ void TrainingView::setEvolutionCompleted()
 
     // Update panels to show completion and re-enable controls.
     if (evolutionControls_) {
-        evolutionControls_->setEvolutionCompleted();
+        evolutionControls_->setEvolutionCompleted(bestGenomeId);
     }
     if (evolutionConfigPanel_) {
         evolutionConfigPanel_->setEvolutionCompleted();

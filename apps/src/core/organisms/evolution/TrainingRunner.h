@@ -7,9 +7,10 @@
 
 namespace DirtSim {
 
+class GenomeRepository;
 class ScenarioRunner;
-class World;
 class Tree;
+class World;
 struct EvolutionConfig;
 
 /**
@@ -36,7 +37,10 @@ public:
     };
 
     TrainingRunner(
-        const Genome& genome, Scenario::EnumType scenarioId, const EvolutionConfig& config);
+        const Genome& genome,
+        Scenario::EnumType scenarioId,
+        const EvolutionConfig& config,
+        GenomeRepository& genomeRepository);
     ~TrainingRunner();
 
     TrainingRunner(const TrainingRunner&) = delete;

@@ -1,6 +1,7 @@
 #include "core/GridOfCells.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ScenarioRegistry.h"
 
 #include <gtest/gtest.h>
@@ -42,7 +43,8 @@ TEST(CacheCorrectnessTest, CachedAndNonCachedProduceIdenticalResults)
         GridOfCells::USE_CACHE = use_cache;
 
         // Get benchmark scenario metadata to determine world size.
-        ScenarioRegistry registry = ScenarioRegistry::createDefault();
+        GenomeRepository genomeRepository;
+        ScenarioRegistry registry = ScenarioRegistry::createDefault(genomeRepository);
         const ScenarioMetadata* metadata = registry.getMetadata(Scenario::EnumType::Benchmark);
         if (!metadata) {
             spdlog::error("Benchmark scenario not found!");

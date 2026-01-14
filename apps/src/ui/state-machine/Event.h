@@ -20,6 +20,7 @@
 #include "core/PhysicsSettings.h"
 #include "core/api/UiUpdateEvent.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/EvolutionProgress.h"
 #include <concepts>
 #include <string>
@@ -124,6 +125,11 @@ struct StopButtonClickedEvent {
     static constexpr const char* name() { return "StopButtonClickedEvent"; }
 };
 
+struct ViewBestButtonClickedEvent {
+    GenomeId genomeId;
+    static constexpr const char* name() { return "ViewBestButtonClickedEvent"; }
+};
+
 /**
  * @brief Physics settings received from server.
  */
@@ -187,6 +193,7 @@ using Event = std::variant<
     StartEvolutionButtonClickedEvent,
     StopButtonClickedEvent,
     TrainButtonClickedEvent,
+    ViewBestButtonClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates

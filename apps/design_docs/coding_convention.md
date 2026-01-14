@@ -16,7 +16,10 @@ Never comment @params or @returns - we can see those already.
 
 Documenation in code - should be rare and only to explain strange things.  Instead prefer to add docs to the top of headers.
 
-Don't number sections in code "phase 3" etc, just say "next phase", as the numbers just end up being wrong and or noise in diffs.
+## Why??? Comments from LLMS/chatbots/CLAUDE/gemini/etc
+Comments tend to rot quickly when working with LLMS because they have limited context - their current task is their entire world. They don't think over time about the best place to leave documentation and they think what they're doing is so important that they need to write about it everywhere in a comment. Because they leave them everywhere, and not in key places, they end up becoming obsolete pretty quickly. When working with LLMs, incorrect comments leads to garbage output. Don't leave comments so you don't generate garbage.
+
+Instead of leaving a comment, just say it before you make the edit!
 
 **Case conventions:**
 - Types (classes, structs, enums): UpperCamelCase (`ServerConfig`, `ClockFont`)

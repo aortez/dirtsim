@@ -12,26 +12,13 @@ namespace DirtSim {
 
 namespace {
 
-// Track whether FreeType has been initialized.
-bool g_freetypeInitialized = false;
-
-void ensureFreeTypeInitialized()
+void ensureLvglInitialized()
 {
-#if LV_USE_FREETYPE
-    if (!g_freetypeInitialized) {
-        // Try to initialize FreeType. If it's already initialized (by FontSampler
-        // or elsewhere), that's fine - the font creation will still work.
-        lv_result_t result = lv_freetype_init(LV_FREETYPE_CACHE_FT_GLYPH_CNT);
-        if (result == LV_RESULT_OK) {
-            spdlog::info("IconFont: FreeType initialized");
-        }
-        else {
-            // Already initialized is fine, just log it.
-            spdlog::debug("IconFont: FreeType already initialized elsewhere");
-        }
-        g_freetypeInitialized = true;
+    // Note: lv_freetype_init() is called automatically by lv_init() in LVGL.
+    // We just need to ensure LVGL itself is initialized.
+    if (!lv_is_initialized()) {
+        lv_init();
     }
-#endif
 }
 
 } // namespace
@@ -67,7 +54,7 @@ std::string IconFont::findFontPath()
 IconFont::IconFont(int size)
 {
 #if LV_USE_FREETYPE
-    ensureFreeTypeInitialized();
+    ensureLvglInitialized();
 
     std::string path = findFontPath();
     DIRTSIM_ASSERT(!path.empty(), "FontAwesome TTF not found! Check assets/fonts/fa-solid-900.ttf");

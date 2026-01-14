@@ -32,6 +32,7 @@ struct Training {
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
+    Any onEvent(const ViewBestButtonClickedEvent& evt, StateMachine& sm);
 
     static constexpr const char* name() { return "Training"; }
 

@@ -258,9 +258,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 return { CommandResult::SUCCESS, "Seed production successful" };
             }
             else if constexpr (std::is_same_v<T, WaitCommand>) {
-                spdlog::debug(
-                    "Tree {}: Waited for {} seconds", tree.getId(), command.duration_seconds);
-                return { CommandResult::SUCCESS, "Wait completed" };
+                // WaitCommand is instant - no action taken.
+                return { CommandResult::SUCCESS, "Wait" };
+            }
+            else if constexpr (std::is_same_v<T, CancelCommand>) {
+                // CancelCommand should be handled by Tree::processBrainDecision, not here.
+                return { CommandResult::SUCCESS, "Cancel" };
             }
 
             return { CommandResult::INVALID_TARGET, "Unknown command type" };

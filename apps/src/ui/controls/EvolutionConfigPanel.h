@@ -1,24 +1,32 @@
 #pragma once
 
-#include "core/organisms/evolution/EvolutionConfig.h"
 #include "lvgl/lvgl.h"
 #include "ui/PanelViewController.h"
 #include <memory>
 
 namespace DirtSim {
+
+struct EvolutionConfig;
+struct MutationConfig;
+
 namespace Ui {
 
 class EventSink;
 
 /**
- * @brief Evolution configuration panel with Start button.
+ * @brief Evolution configuration panel.
  *
- * Provides controls for configuring evolution parameters before starting
- * a training run. Opens from the EVOLUTION icon in the Training state.
+ * Provides controls for configuring evolution parameters.
+ * Opens from the EVOLUTION icon in the Training state.
  */
 class EvolutionConfigPanel {
 public:
-    EvolutionConfigPanel(lv_obj_t* container, EventSink& eventSink, bool evolutionStarted);
+    EvolutionConfigPanel(
+        lv_obj_t* container,
+        EventSink& eventSink,
+        bool evolutionStarted,
+        EvolutionConfig& evolutionConfig,
+        MutationConfig& mutationConfig);
     ~EvolutionConfigPanel();
 
     void setEvolutionStarted(bool started);
@@ -32,12 +40,11 @@ private:
 
     bool evolutionStarted_ = false;
 
-    // Config values (will be editable later).
-    EvolutionConfig evolutionConfig_;
-    MutationConfig mutationConfig_;
+    // Shared configs (owned by TrainingView).
+    EvolutionConfig& evolutionConfig_;
+    MutationConfig& mutationConfig_;
 
     // UI elements.
-    lv_obj_t* startButton_ = nullptr;
     lv_obj_t* statusLabel_ = nullptr;
 
     // Config steppers.
@@ -48,9 +55,8 @@ private:
     lv_obj_t* maxSimTimeStepper_ = nullptr;
 
     void createMainView(lv_obj_t* view);
-    void updateStartButtonVisibility();
+    void updateControlsEnabled();
 
-    static void onStartClicked(lv_event_t* e);
     static void onPopulationChanged(lv_event_t* e);
     static void onGenerationsChanged(lv_event_t* e);
     static void onMutationRateChanged(lv_event_t* e);

@@ -1,6 +1,7 @@
 #include "NeuralNetBrain.h"
 
 #include "Genome.h"
+#include "core/Assert.h"
 #include "core/organisms/TreeCommands.h"
 #include "core/organisms/TreeSensoryData.h"
 
@@ -13,20 +14,27 @@ namespace DirtSim {
 
 namespace {
 
-constexpr int INPUT_SIZE = 2256;
+// Input layout:
+//   - 15×15×10 = 2250 (material histograms)
+//   - 6 (internal state: energy, water, age, stage, scale_factor, reserved)
+//   - 7 (current action one-hot, all zeros if idle)
+//   - 1 (action progress, 0.0 to 1.0)
+constexpr int INPUT_SIZE = 2264;
 constexpr int HIDDEN_SIZE = 48;
-constexpr int OUTPUT_SIZE = 231;
+
+// Output layout:
+//   - 7 (command logits: Wait, Cancel, GrowWood, GrowLeaf, GrowRoot, Reinforce, ProduceSeed)
+//   - 225 (position logits)
+constexpr int OUTPUT_SIZE = 232;
 
 constexpr int W_IH_SIZE = INPUT_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;
 constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
 
-constexpr int NUM_ACTIONS = 6;
+constexpr int NUM_COMMANDS = 7;
 constexpr int NUM_POSITIONS = 225;
 constexpr int GRID_SIZE = 15;
 constexpr int NUM_MATERIALS = 10;
-
-enum class ActionType { WOOD = 0, LEAF, ROOT, REINFORCE, SEED, WAIT };
 
 double relu(double x)
 {
@@ -130,33 +138,52 @@ struct NeuralNetBrain::Impl {
         input.push_back(sensory.scale_factor / 10.0);
         input.push_back(0.0); // Reserved for future use.
 
+        // Current action one-hot encoding (7 values).
+        // Note: Wait and Cancel are never "in progress", so these will be 0.
+        for (int i = 0; i < NUM_COMMANDS; i++) {
+            if (sensory.current_action.has_value()
+                && static_cast<int>(sensory.current_action.value()) == i) {
+                input.push_back(1.0);
+            }
+            else {
+                input.push_back(0.0);
+            }
+        }
+
+        // Action progress (0.0 to 1.0).
+        input.push_back(sensory.action_progress);
+
         return input;
     }
 
     TreeCommand interpretOutput(const std::vector<double>& output, const TreeSensoryData& sensory)
     {
-        // First 6 outputs are action logits.
-        int action_idx = 0;
-        double max_action = output[0];
-        for (int i = 1; i < NUM_ACTIONS; i++) {
-            if (output[i] > max_action) {
-                max_action = output[i];
-                action_idx = i;
+        // First 7 outputs are command logits - use argmax.
+        int command_idx = 0;
+        double max_command = output[0];
+        for (int i = 1; i < NUM_COMMANDS; i++) {
+            if (output[i] > max_command) {
+                max_command = output[i];
+                command_idx = i;
             }
         }
 
-        auto action = static_cast<ActionType>(action_idx);
+        auto command_type = static_cast<TreeCommandType>(command_idx);
 
-        if (action == ActionType::WAIT) {
-            return WaitCommand{ .duration_seconds = 0.2 };
+        // Handle instant commands (no position needed).
+        if (command_type == TreeCommandType::WaitCommand) {
+            return WaitCommand{};
+        }
+        if (command_type == TreeCommandType::CancelCommand) {
+            return CancelCommand{};
         }
 
-        // Next 225 outputs are position logits.
+        // Action commands need position - extract from next 225 outputs.
         int pos_idx = 0;
-        double max_pos = output[NUM_ACTIONS];
+        double max_pos = output[NUM_COMMANDS];
         for (int i = 1; i < NUM_POSITIONS; i++) {
-            if (output[NUM_ACTIONS + i] > max_pos) {
-                max_pos = output[NUM_ACTIONS + i];
+            if (output[NUM_COMMANDS + i] > max_pos) {
+                max_pos = output[NUM_COMMANDS + i];
                 pos_idx = i;
             }
         }
@@ -168,22 +195,26 @@ struct NeuralNetBrain::Impl {
         Vector2i world_pos{ sensory.world_offset.x + static_cast<int>(nx * sensory.scale_factor),
                             sensory.world_offset.y + static_cast<int>(ny * sensory.scale_factor) };
 
-        switch (action) {
-            case ActionType::WOOD:
+        // Build action command based on type.
+        switch (command_type) {
+            case TreeCommandType::WaitCommand:
+                return WaitCommand{};
+            case TreeCommandType::CancelCommand:
+                return CancelCommand{};
+            case TreeCommandType::GrowWoodCommand:
                 return GrowWoodCommand{ .target_pos = world_pos };
-            case ActionType::LEAF:
+            case TreeCommandType::GrowLeafCommand:
                 return GrowLeafCommand{ .target_pos = world_pos };
-            case ActionType::ROOT:
+            case TreeCommandType::GrowRootCommand:
                 return GrowRootCommand{ .target_pos = world_pos };
-            case ActionType::REINFORCE:
+            case TreeCommandType::ReinforceCellCommand:
                 return ReinforceCellCommand{ .position = world_pos };
-            case ActionType::SEED:
+            case TreeCommandType::ProduceSeedCommand:
                 return ProduceSeedCommand{ .position = world_pos };
-            case ActionType::WAIT:
-                return WaitCommand{ .duration_seconds = 0.2 };
         }
 
-        return WaitCommand{ .duration_seconds = 0.2 };
+        DIRTSIM_ASSERT(false, "Unreachable: all TreeCommandType enum values handled");
+        return WaitCommand{};
     }
 };
 

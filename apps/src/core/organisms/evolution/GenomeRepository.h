@@ -1,6 +1,7 @@
 #pragma once
 
 #include "GenomeMetadata.h"
+#include "core/organisms/brains/Genome.h"
 
 #include <optional>
 #include <unordered_map>
@@ -8,8 +9,6 @@
 #include <vector>
 
 namespace DirtSim {
-
-struct Genome;
 
 /**
  * Storage and retrieval for evolved genomes.

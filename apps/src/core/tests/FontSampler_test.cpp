@@ -519,5 +519,34 @@ TEST_F(FontSamplerTest, DISABLED_DownsampleEmoji)
     }
 }
 
+// Verify that bitmap font auto-detection expands canvas when needed.
+TEST_F(FontSamplerTest, BitmapFontAutoDetection_ExpandsCanvasForNativeSize)
+{
+    // NotoColorEmoji has 109px native bitmaps.
+    // Pass intentionally wrong params (32px font, 36x36 canvas).
+    // Auto-detection should expand canvas to fit the native 109px glyphs.
+    FontSampler sampler("fonts/NotoColorEmoji.ttf", 32, 36, 36, 0.3f);
+
+    // Canvas should have been auto-expanded to at least 109+11=120px.
+    EXPECT_GE(sampler.getWidth(), 109) << "Canvas width should be expanded for bitmap font";
+    EXPECT_GE(sampler.getHeight(), 109) << "Canvas height should be expanded for bitmap font";
+
+    // Verify we can actually sample an emoji without clipping.
+    auto grid = sampler.sampleUtf8CharacterMaterialGrid("\xF0\x9F\xA6\x86", 0.5f); // Duck emoji.
+    EXPECT_GT(grid.width, 0) << "Should be able to sample emoji";
+    EXPECT_GT(grid.height, 0) << "Should be able to sample emoji";
+
+    // Count non-AIR materials - should have substantial content.
+    int nonAirCount = 0;
+    for (int y = 0; y < grid.height; ++y) {
+        for (int x = 0; x < grid.width; ++x) {
+            if (grid.at(x, y) != Material::EnumType::Air) {
+                nonAirCount++;
+            }
+        }
+    }
+    EXPECT_GT(nonAirCount, 100) << "Emoji should have substantial non-AIR content";
+}
+
 } // namespace
 } // namespace DirtSim

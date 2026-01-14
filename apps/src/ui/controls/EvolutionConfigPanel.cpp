@@ -1,6 +1,5 @@
 #include "EvolutionConfigPanel.h"
-#include "core/LoggingChannels.h"
-#include "ui/state-machine/Event.h"
+#include "core/organisms/evolution/EvolutionConfig.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
@@ -9,8 +8,16 @@ namespace DirtSim {
 namespace Ui {
 
 EvolutionConfigPanel::EvolutionConfigPanel(
-    lv_obj_t* container, EventSink& eventSink, bool evolutionStarted)
-    : container_(container), eventSink_(eventSink), evolutionStarted_(evolutionStarted)
+    lv_obj_t* container,
+    EventSink& eventSink,
+    bool evolutionStarted,
+    EvolutionConfig& evolutionConfig,
+    MutationConfig& mutationConfig)
+    : container_(container),
+      eventSink_(eventSink),
+      evolutionStarted_(evolutionStarted),
+      evolutionConfig_(evolutionConfig),
+      mutationConfig_(mutationConfig)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -105,31 +112,11 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
     lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_pad_top(statusLabel_, 8, 0);
 
-    // Start button.
-    startButton_ = LVGLBuilder::actionButton(view)
-                       .text("Start Training")
-                       .icon(LV_SYMBOL_PLAY)
-                       .mode(LVGLBuilder::ActionMode::Push)
-                       .size(80)
-                       .backgroundColor(0x00AA66)
-                       .callback(onStartClicked, this)
-                       .buildOrLog();
-
-    updateStartButtonVisibility();
+    updateControlsEnabled();
 }
 
-void EvolutionConfigPanel::updateStartButtonVisibility()
+void EvolutionConfigPanel::updateControlsEnabled()
 {
-    // Hide start button and disable steppers when training is running.
-    if (startButton_) {
-        if (evolutionStarted_) {
-            lv_obj_add_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-        else {
-            lv_obj_clear_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
     // Disable steppers during training.
     auto setStepperEnabled = [](lv_obj_t* stepper, bool enabled) {
         if (!stepper) return;
@@ -163,7 +150,7 @@ void EvolutionConfigPanel::updateStartButtonVisibility()
 void EvolutionConfigPanel::setEvolutionStarted(bool started)
 {
     evolutionStarted_ = started;
-    updateStartButtonVisibility();
+    updateControlsEnabled();
 }
 
 void EvolutionConfigPanel::setEvolutionCompleted()
@@ -171,27 +158,13 @@ void EvolutionConfigPanel::setEvolutionCompleted()
     evolutionStarted_ = false;
 
     // Enable controls (same as setEvolutionStarted(false)).
-    updateStartButtonVisibility();
+    updateControlsEnabled();
 
     // But show "Complete!" instead of empty status.
     if (statusLabel_) {
         lv_label_set_text(statusLabel_, "Complete!");
         lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
     }
-}
-
-void EvolutionConfigPanel::onStartClicked(lv_event_t* e)
-{
-    EvolutionConfigPanel* self = static_cast<EvolutionConfigPanel*>(lv_event_get_user_data(e));
-    if (!self) return;
-
-    spdlog::info("EvolutionConfigPanel: Start button clicked");
-
-    // Fire event with current config.
-    StartEvolutionButtonClickedEvent evt;
-    evt.evolution = self->evolutionConfig_;
-    evt.mutation = self->mutationConfig_;
-    self->eventSink_.queueEvent(evt);
 }
 
 void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)

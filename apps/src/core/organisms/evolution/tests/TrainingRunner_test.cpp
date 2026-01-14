@@ -1,6 +1,7 @@
 #include "core/ScenarioId.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include <gtest/gtest.h>
 #include <random>
@@ -13,13 +14,15 @@ protected:
 
     std::mt19937 rng_;
     EvolutionConfig config_;
+    GenomeRepository genomeRepository_;
 };
 
 // Proves the core design - that we can step incrementally without blocking.
 TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
 {
     config_.maxSimulationTime = 1.0;
-    TrainingRunner runner(Genome::random(rng_), Scenario::EnumType::TreeGermination, config_);
+    TrainingRunner runner(
+        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
 
     // Step once - should return quickly, still running.
     auto status1 = runner.step(1);
@@ -39,7 +42,8 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
 TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 {
     config_.maxSimulationTime = 0.048; // 3 frames - quick completion.
-    TrainingRunner runner(Genome::random(rng_), Scenario::EnumType::TreeGermination, config_);
+    TrainingRunner runner(
+        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
 
     // Step until complete.
     TrainingRunner::Status status;

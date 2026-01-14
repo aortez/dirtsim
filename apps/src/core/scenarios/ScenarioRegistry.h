@@ -9,20 +9,21 @@
 #include <string>
 #include <vector>
 
+namespace DirtSim {
+class GenomeRepository;
+}
+
 /**
  * Central registry for all available scenarios.
  * Uses factory pattern to create fresh scenario instances (not singletons).
  * Owned by StateMachine to provide isolated registries for testing.
+ * Holds reference to GenomeRepository for scenarios that need genome access.
  */
 class ScenarioRegistry {
 public:
-    ScenarioRegistry() = default;
+    explicit ScenarioRegistry(DirtSim::GenomeRepository& genomeRepository);
 
-    /**
-     * @brief Create a registry populated with all available scenarios.
-     * @return Initialized registry with all scenario factories.
-     */
-    static ScenarioRegistry createDefault();
+    static ScenarioRegistry createDefault(DirtSim::GenomeRepository& genomeRepository);
 
     // Register a scenario factory function with the given ID.
     using ScenarioFactory = std::function<std::unique_ptr<DirtSim::ScenarioRunner>()>;
@@ -47,8 +48,11 @@ public:
     // Clear all registered scenarios (mainly for testing).
     void clear();
 
+    DirtSim::GenomeRepository& getGenomeRepository() { return genomeRepository_; }
+
 private:
-    // Storage for scenario metadata and factories.
+    DirtSim::GenomeRepository& genomeRepository_;
+
     struct ScenarioEntry {
         DirtSim::ScenarioMetadata metadata;
         ScenarioFactory factory;

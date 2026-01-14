@@ -49,7 +49,7 @@ void Tree::update(World& world, double deltaTime)
 {
     age_seconds_ += deltaTime;
 
-    // Execute commands and brain logic.
+    // Tick down current command timer.
     if (current_command_.has_value()) {
         time_remaining_seconds_ -= deltaTime;
         if (time_remaining_seconds_ <= 0.0) {
@@ -58,9 +58,8 @@ void Tree::update(World& world, double deltaTime)
         }
     }
 
-    if (!current_command_.has_value()) {
-        decideNextAction(world);
-    }
+    // Brain runs every tick - it can propose new commands or cancel current ones.
+    processBrainDecision(world);
 
     updateResources(world);
 
@@ -86,36 +85,38 @@ void Tree::executeCommand(World& world)
     }
 }
 
-void Tree::decideNextAction(const World& world)
+void Tree::processBrainDecision(World& world)
 {
-    // Gather sensory data and ask brain for next command.
+    // Gather sensory data.
     TreeSensoryData sensory = gatherSensoryData(world);
+
+    // Ask brain for decision.
     TreeCommand command = brain_->decide(sensory);
 
-    // Enqueue command.
-    current_command_ = command;
-
+    // Handle the command.
     std::visit(
         [&](auto&& cmd) {
             using T = std::decay_t<decltype(cmd)>;
 
-            if constexpr (std::is_same_v<T, GrowWoodCommand>) {
-                time_remaining_seconds_ = cmd.execution_time_seconds;
+            if constexpr (std::is_same_v<T, WaitCommand>) {
+                // Do nothing this tick.
             }
-            else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
-                time_remaining_seconds_ = cmd.execution_time_seconds;
+            else if constexpr (std::is_same_v<T, CancelCommand>) {
+                // Cancel in-progress action.
+                if (current_command_.has_value()) {
+                    LOG_INFO(Brain, "Tree {}: Cancelled current action", id_);
+                    current_command_.reset();
+                    time_remaining_seconds_ = 0.0;
+                    total_command_time_seconds_ = 0.0;
+                }
             }
-            else if constexpr (std::is_same_v<T, GrowRootCommand>) {
-                time_remaining_seconds_ = cmd.execution_time_seconds;
-            }
-            else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                time_remaining_seconds_ = cmd.execution_time_seconds;
-            }
-            else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
-                time_remaining_seconds_ = cmd.execution_time_seconds;
-            }
-            else if constexpr (std::is_same_v<T, WaitCommand>) {
-                time_remaining_seconds_ = cmd.duration_seconds;
+            else {
+                // Action command - only start if idle.
+                if (!current_command_.has_value()) {
+                    current_command_ = cmd;
+                    time_remaining_seconds_ = cmd.execution_time_seconds;
+                    total_command_time_seconds_ = time_remaining_seconds_;
+                }
             }
         },
         command);
@@ -275,11 +276,26 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     data.total_energy = total_energy_;
     data.total_water = total_water_;
 
+    // Current action state.
     if (current_command_.has_value()) {
+        data.current_action = getCommandType(*current_command_);
+
+        // Calculate progress (0.0 to 1.0).
+        if (total_command_time_seconds_ > 0.0) {
+            data.action_progress = 1.0 - (time_remaining_seconds_ / total_command_time_seconds_);
+            data.action_progress = std::clamp(data.action_progress, 0.0, 1.0);
+        }
+
         std::visit(
             [&](auto&& cmd) {
                 using T = std::decay_t<decltype(cmd)>;
-                if constexpr (std::is_same_v<T, GrowWoodCommand>) {
+                if constexpr (std::is_same_v<T, WaitCommand>) {
+                    data.current_thought = "Waiting";
+                }
+                else if constexpr (std::is_same_v<T, CancelCommand>) {
+                    data.current_thought = "Cancelling";
+                }
+                else if constexpr (std::is_same_v<T, GrowWoodCommand>) {
                     data.current_thought = "Growing WOOD at (" + std::to_string(cmd.target_pos.x)
                         + ", " + std::to_string(cmd.target_pos.y) + ")";
                 }
@@ -299,13 +315,12 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                     data.current_thought = "Producing SEED at (" + std::to_string(cmd.position.x)
                         + ", " + std::to_string(cmd.position.y) + ")";
                 }
-                else if constexpr (std::is_same_v<T, WaitCommand>) {
-                    data.current_thought = "Waiting";
-                }
             },
             *current_command_);
     }
     else {
+        data.current_action = std::nullopt;
+        data.action_progress = 0.0;
         data.current_thought = "Idle";
     }
 

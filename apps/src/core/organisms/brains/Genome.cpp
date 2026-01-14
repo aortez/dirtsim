@@ -6,9 +6,11 @@ namespace DirtSim {
 
 namespace {
 
-constexpr int INPUT_SIZE = 2256; // 15*15*10 + 6 state values.
+// Input layout: 2250 materials + 6 state + 7 command one-hot + 1 progress.
+constexpr int INPUT_SIZE = 2264;
 constexpr int HIDDEN_SIZE = 48;
-constexpr int OUTPUT_SIZE = 231; // 6 actions + 225 positions.
+// Output layout: 7 commands + 225 positions.
+constexpr int OUTPUT_SIZE = 232;
 
 constexpr int W_IH_SIZE = INPUT_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;

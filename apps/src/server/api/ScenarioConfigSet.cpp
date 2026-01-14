@@ -1,4 +1,5 @@
 #include "ScenarioConfigSet.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace Api {
@@ -6,25 +7,17 @@ namespace ScenarioConfigSet {
 
 nlohmann::json Command::toJson() const
 {
-    nlohmann::json j;
-    DirtSim::to_json(j["config"], config);
-    return j;
+    return ReflectSerializer::to_json(*this);
 }
 
 Command Command::fromJson(const nlohmann::json& j)
 {
-    Command cmd;
-    if (j.contains("config")) {
-        DirtSim::from_json(j["config"], cmd.config);
-    }
-    return cmd;
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
 {
-    nlohmann::json j;
-    j["success"] = success;
-    return j;
+    return ReflectSerializer::to_json(*this);
 }
 
 } // namespace ScenarioConfigSet

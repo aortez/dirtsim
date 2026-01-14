@@ -59,7 +59,7 @@ struct StateMachine::Impl {
 
     std::vector<SubscribedClient> subscribedClients_;
 
-    Impl() : scenarioRegistry_(ScenarioRegistry::createDefault()) {}
+    Impl() : scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_)) {}
 };
 
 StateMachine::StateMachine() : pImpl()

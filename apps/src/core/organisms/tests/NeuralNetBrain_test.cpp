@@ -1,3 +1,4 @@
+#include "core/organisms/TreeBrain.h"
 #include "core/organisms/TreeCommands.h"
 #include "core/organisms/TreeSensoryData.h"
 #include "core/organisms/brains/Genome.h"
@@ -22,6 +23,8 @@ protected:
             .total_energy = 100.0,
             .total_water = 50.0,
             .current_thought = {},
+            .current_action = std::nullopt,
+            .action_progress = 0.0,
         };
 
         // Fill with some test data - mostly AIR with some DIRT at bottom.
@@ -47,8 +50,9 @@ TEST_F(NeuralNetBrainTest, DecideReturnsValidCommand)
 
     TreeCommand cmd = brain.decide(sensory);
 
-    // Should return one of the valid command types.
+    // Should be one of the valid command types.
     bool is_valid = std::holds_alternative<WaitCommand>(cmd)
+        || std::holds_alternative<CancelCommand>(cmd)
         || std::holds_alternative<GrowWoodCommand>(cmd)
         || std::holds_alternative<GrowLeafCommand>(cmd)
         || std::holds_alternative<GrowRootCommand>(cmd)
@@ -108,9 +112,9 @@ TEST_F(NeuralNetBrainTest, SetGenomeChangesOutput)
 
     TreeCommand cmd2 = brain.decide(sensory);
 
-    // Both commands should be valid.
-    EXPECT_LT(cmd1.index(), 6u);
-    EXPECT_LT(cmd2.index(), 6u);
+    // Both should be valid commands (any of 7 types).
+    EXPECT_LT(cmd1.index(), 7u);
+    EXPECT_LT(cmd2.index(), 7u);
 }
 
 TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
@@ -118,8 +122,9 @@ TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
     NeuralNetBrain brain(42);
     Genome g = brain.getGenome();
 
-    // 2256 * 48 + 48 + 48 * 231 + 231 = 108288 + 48 + 11088 + 231 = 119655.
-    EXPECT_EQ(g.weights.size(), 119655u);
+    // New size with action feedback inputs and cancel output:
+    // (2264 * 48) + 48 + (48 * 232) + 232 = 108672 + 48 + 11136 + 232 = 120088.
+    EXPECT_EQ(g.weights.size(), 120088u);
 }
 
 TEST_F(NeuralNetBrainTest, ConstantGenomeProducesConsistentOutput)

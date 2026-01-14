@@ -41,3 +41,14 @@ void from_json(const nlohmann::json& j, std::variant<Ts...>& variant)
 }
 
 } // namespace DirtSim
+
+namespace nlohmann {
+
+template <typename... Ts>
+struct adl_serializer<std::variant<Ts...>> {
+    static void to_json(json& j, const std::variant<Ts...>& v) { DirtSim::to_json(j, v); }
+
+    static void from_json(const json& j, std::variant<Ts...>& v) { DirtSim::from_json(j, v); }
+};
+
+} // namespace nlohmann

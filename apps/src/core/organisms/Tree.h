@@ -71,11 +71,12 @@ private:
     double total_water_ = 0.0;
     std::optional<TreeCommand> current_command_;
     double time_remaining_seconds_ = 0.0;
+    double total_command_time_seconds_ = 0.0; // Original duration for progress calculation.
     std::unique_ptr<TreeBrain> brain_;
     std::unique_ptr<RigidBodyComponent> rigidBody_;
 
     void executeCommand(World& world);
-    void decideNextAction(const World& world);
+    void processBrainDecision(World& world);
     void updateResources(const World& world);
 };
 

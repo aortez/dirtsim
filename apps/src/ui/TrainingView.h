@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/controls/IconRail.h"
 #include <memory>
 
@@ -48,12 +50,16 @@ public:
     void renderWorld(const WorldData& worldData);
 
     void setEvolutionStarted(bool started);
-    void setEvolutionCompleted();
+    void setEvolutionCompleted(GenomeId bestGenomeId);
 
 private:
     bool evolutionStarted_ = false;
     UiComponentManager* uiManager_;
     EventSink& eventSink_;
+
+    // Shared evolution configuration (owned here, referenced by panels).
+    EvolutionConfig evolutionConfig_;
+    MutationConfig mutationConfig_;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;

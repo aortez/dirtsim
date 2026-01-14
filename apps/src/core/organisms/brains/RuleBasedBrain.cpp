@@ -13,6 +13,12 @@ static constexpr int CELLS_PER_ROOT = 3;
 
 TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
 {
+    // RuleBasedBrain doesn't use the action feedback - it just proposes commands when idle.
+    // If already executing, don't propose anything (return empty decision).
+    if (sensory.current_action.has_value()) {
+        return WaitCommand{}; // No command, no cancel - let current action continue.
+    }
+
     if (sensory.stage == GrowthStage::SEED) {
         if (!has_contacted_dirt_) {
             Vector2i seed = sensory.seed_position;
@@ -48,7 +54,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
                 }
             }
 
-            return WaitCommand{ .duration_seconds = 0.2 };
+            return WaitCommand{};
         }
 
         double observation_time = sensory.age_seconds - dirt_contact_age_seconds_;
@@ -71,11 +77,11 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
                     "RuleBasedBrain: Cannot grow ROOT at ({}, {}) - blocked or out of bounds",
                     root_target_pos_.x,
                     root_target_pos_.y);
-                return WaitCommand{ .duration_seconds = 1.0 };
+                return WaitCommand{};
             }
         }
 
-        return WaitCommand{ .duration_seconds = 0.2 };
+        return WaitCommand{};
     }
 
     if (sensory.stage == GrowthStage::GERMINATION) {
@@ -99,11 +105,11 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
                     "RuleBasedBrain: Cannot grow WOOD at ({}, {}) - blocked or out of bounds",
                     wood_pos.x,
                     wood_pos.y);
-                return WaitCommand{ .duration_seconds = 1.0 };
+                return WaitCommand{};
             }
         }
 
-        return WaitCommand{ .duration_seconds = 2.0 };
+        return WaitCommand{};
     }
 
     // Analyze tree structure for realistic growth (re-derived each frame).
@@ -255,7 +261,7 @@ TreeCommand RuleBasedBrain::decide(const TreeSensoryData& sensory)
         return GrowWoodCommand{ .target_pos = pos, .execution_time_seconds = 3.0 };
     }
 
-    return WaitCommand{ .duration_seconds = 2.0 };
+    return WaitCommand{};
 }
 
 GrowthSuitability RuleBasedBrain::checkGrowthSuitability(

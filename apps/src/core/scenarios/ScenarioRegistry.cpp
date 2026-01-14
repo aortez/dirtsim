@@ -1,6 +1,7 @@
 #include "ScenarioRegistry.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/BenchmarkScenario.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/DamBreakScenario.h"
@@ -14,9 +15,13 @@
 
 using namespace DirtSim;
 
-ScenarioRegistry ScenarioRegistry::createDefault()
+ScenarioRegistry::ScenarioRegistry(GenomeRepository& genomeRepository)
+    : genomeRepository_(genomeRepository)
+{}
+
+ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeRepository)
 {
-    ScenarioRegistry registry;
+    ScenarioRegistry registry(genomeRepository);
 
     // Register all scenarios with metadata and factory functions.
     // Each registration creates a lambda that produces fresh instances.
@@ -56,8 +61,10 @@ ScenarioRegistry ScenarioRegistry::createDefault()
     });
 
     registry.registerScenario(
-        Scenario::EnumType::TreeGermination, TreeGerminationScenario{}.getMetadata(), []() {
-            return std::make_unique<TreeGerminationScenario>();
+        Scenario::EnumType::TreeGermination,
+        TreeGerminationScenario{ genomeRepository }.getMetadata(),
+        [&genomeRepository]() {
+            return std::make_unique<TreeGerminationScenario>(genomeRepository);
         });
 
     registry.registerScenario(

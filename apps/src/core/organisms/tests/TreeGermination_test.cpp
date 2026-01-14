@@ -9,6 +9,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeBrain.h"
 #include "core/organisms/TreeCommands.h"
+#include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <gtest/gtest.h>
 #include <iomanip>
@@ -23,10 +24,11 @@ protected:
     void SetUp() override
     {
         world = std::make_unique<World>(9, 9);
-        ScenarioRegistry registry = ScenarioRegistry::createDefault();
+        ScenarioRegistry registry = ScenarioRegistry::createDefault(genomeRepository_);
         scenario = registry.createScenario(Scenario::EnumType::TreeGermination);
     }
 
+    GenomeRepository genomeRepository_;
     std::unique_ptr<World> world;
     std::unique_ptr<ScenarioRunner> scenario;
 };
@@ -400,8 +402,13 @@ class ScriptedGrowWoodBrain : public TreeBrain {
 public:
     ScriptedGrowWoodBrain(std::vector<Vector2i> targets) : targets_(std::move(targets)) {}
 
-    TreeCommand decide(const TreeSensoryData& /*sensory*/) override
+    TreeCommand decide(const TreeSensoryData& sensory) override
     {
+        // If already executing, wait.
+        if (sensory.current_action.has_value()) {
+            return WaitCommand{};
+        }
+
         if (command_index_ < targets_.size()) {
             GrowWoodCommand cmd;
             cmd.target_pos = targets_[command_index_];
@@ -409,10 +416,8 @@ public:
             command_index_++;
             return cmd;
         }
-        // After all growth commands, just wait forever.
-        WaitCommand wait;
-        wait.duration_seconds = 1000.0;
-        return wait;
+        // After all growth commands, just wait.
+        return WaitCommand{};
     }
 
 private:
@@ -792,8 +797,13 @@ public:
         : targets_(std::move(targets)), growth_time_(growth_time)
     {}
 
-    TreeCommand decide(const TreeSensoryData& /*sensory*/) override
+    TreeCommand decide(const TreeSensoryData& sensory) override
     {
+        // If already executing, wait.
+        if (sensory.current_action.has_value()) {
+            return WaitCommand{};
+        }
+
         if (command_index_ < targets_.size()) {
             GrowWoodCommand cmd;
             cmd.target_pos = targets_[command_index_];
@@ -801,10 +811,8 @@ public:
             command_index_++;
             return cmd;
         }
-        // After all growth commands, wait forever.
-        WaitCommand wait;
-        wait.duration_seconds = 1000.0;
-        return wait;
+        // After all growth commands, wait.
+        return WaitCommand{};
     }
 
     size_t getCommandIndex() const { return command_index_; }

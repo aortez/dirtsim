@@ -7,14 +7,64 @@
 
 #if LV_USE_FREETYPE
 #include "lvgl/src/libs/freetype/lv_freetype.h"
+#include <ft2build.h>
+#include FT_FREETYPE_H
 #endif
 
 namespace DirtSim {
 
 namespace {
 
-// Track whether FreeType has been initialized.
-bool g_freetypeInitialized = false;
+#if LV_USE_FREETYPE
+// Probe a font file to detect if it's a non-scalable bitmap font.
+// Returns the native bitmap height if it's a bitmap font, or 0 if scalable.
+int probeNativeBitmapSize(const std::string& fontPath)
+{
+    FT_Library library;
+    if (FT_Init_FreeType(&library) != 0) {
+        spdlog::warn("FontSampler: Failed to init FreeType for probing");
+        return 0;
+    }
+
+    FT_Face face;
+    if (FT_New_Face(library, fontPath.c_str(), 0, &face) != 0) {
+        spdlog::warn("FontSampler: Failed to load font for probing: {}", fontPath);
+        FT_Done_FreeType(library);
+        return 0;
+    }
+
+    int nativeSize = 0;
+
+    // Check if font is scalable (vector font) or bitmap-only.
+    if (!FT_IS_SCALABLE(face)) {
+        // Bitmap font - query available sizes.
+        if (face->num_fixed_sizes > 0) {
+            // Use the largest available bitmap strike.
+            int maxHeight = 0;
+            for (int i = 0; i < face->num_fixed_sizes; ++i) {
+                int height = face->available_sizes[i].height;
+                if (height > maxHeight) {
+                    maxHeight = height;
+                }
+            }
+            nativeSize = maxHeight;
+            spdlog::info(
+                "FontSampler: Probed bitmap font '{}' - {} fixed sizes, using {}px",
+                fontPath,
+                face->num_fixed_sizes,
+                nativeSize);
+        }
+    }
+    else {
+        spdlog::debug("FontSampler: '{}' is scalable (vector font)", fontPath);
+    }
+
+    FT_Done_Face(face);
+    FT_Done_FreeType(library);
+
+    return nativeSize;
+}
+#endif
 
 } // namespace
 
@@ -67,16 +117,47 @@ FontSampler::FontSampler(
 #if LV_USE_FREETYPE
     initFreeType();
 
+    // Probe font to detect if it's a non-scalable bitmap font.
+    int nativeSize = probeNativeBitmapSize(fontPath);
+    int effectiveFontSize = fontSize;
+
+    if (nativeSize > 0) {
+        // Bitmap font detected - use native size and ensure canvas is large enough.
+        effectiveFontSize = nativeSize;
+
+        // Canvas needs margin for the full glyph (some padding for positioning).
+        int requiredCanvasSize = nativeSize + 11;
+        if (targetWidth_ < requiredCanvasSize) {
+            spdlog::info(
+                "FontSampler: Auto-expanding canvas width {} -> {} for bitmap font",
+                targetWidth_,
+                requiredCanvasSize);
+            targetWidth_ = requiredCanvasSize;
+        }
+        if (targetHeight_ < requiredCanvasSize) {
+            spdlog::info(
+                "FontSampler: Auto-expanding canvas height {} -> {} for bitmap font",
+                targetHeight_,
+                requiredCanvasSize);
+            targetHeight_ = requiredCanvasSize;
+        }
+    }
+
     // Create FreeType font from file. Use BITMAP mode for color emoji support.
     ownedFont_ = lv_freetype_font_create(
         fontPath.c_str(),
         LV_FREETYPE_FONT_RENDER_MODE_BITMAP,
-        static_cast<uint32_t>(fontSize),
+        static_cast<uint32_t>(effectiveFontSize),
         LV_FREETYPE_FONT_STYLE_NORMAL);
 
     if (ownedFont_) {
         font_ = ownedFont_;
-        spdlog::info("FontSampler: Loaded FreeType font from {} (size {})", fontPath, fontSize);
+        spdlog::info(
+            "FontSampler: Loaded FreeType font from {} (size {}, canvas {}x{})",
+            fontPath,
+            effectiveFontSize,
+            targetWidth_,
+            targetHeight_);
     }
     else {
         spdlog::error("FontSampler: Failed to load font from {}", fontPath);
@@ -195,17 +276,11 @@ void FontSampler::destroyCanvas()
 
 void FontSampler::initFreeType()
 {
+    // Note: lv_freetype_init() is called automatically by lv_init() in LVGL.
+    // We don't need to call it manually - just ensure LVGL is initialized.
 #if LV_USE_FREETYPE
-    if (!g_freetypeInitialized) {
-        // Initialize FreeType with glyph cache. Use the configured cache size.
-        lv_result_t result = lv_freetype_init(LV_FREETYPE_CACHE_FT_GLYPH_CNT);
-        if (result == LV_RESULT_OK) {
-            g_freetypeInitialized = true;
-            spdlog::info("FontSampler: FreeType initialized successfully");
-        }
-        else {
-            spdlog::error("FontSampler: Failed to initialize FreeType");
-        }
+    if (!lv_is_initialized()) {
+        lv_init();
     }
 #endif
 }

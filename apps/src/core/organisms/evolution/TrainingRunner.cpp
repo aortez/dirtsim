@@ -1,5 +1,6 @@
 #include "TrainingRunner.h"
 #include "EvolutionConfig.h"
+#include "GenomeRepository.h"
 #include "core/World.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
@@ -10,11 +11,14 @@
 namespace DirtSim {
 
 TrainingRunner::TrainingRunner(
-    const Genome& genome, Scenario::EnumType scenarioId, const EvolutionConfig& config)
+    const Genome& genome,
+    Scenario::EnumType scenarioId,
+    const EvolutionConfig& config,
+    GenomeRepository& genomeRepository)
     : maxTime_(config.maxSimulationTime)
 {
     // Create scenario from registry.
-    auto registry = ScenarioRegistry::createDefault();
+    auto registry = ScenarioRegistry::createDefault(genomeRepository);
     scenario_ = registry.createScenario(scenarioId);
 
     // Create world with scenario's required dimensions.

@@ -1,8 +1,11 @@
 #pragma once
 
+#include "TreeCommands.h"
 #include "core/Vector2i.h"
 #include <array>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <string>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -13,7 +16,7 @@ enum class GrowthStage : uint8_t { SEED, GERMINATION, SAPLING, MATURE, DECLINE }
  * Tree-specific sensory data.
  *
  * Contains a 15x15 grid of material histograms representing the tree's
- * view of the world around it, plus tree-specific state.
+ * view of the world around it, plus tree-specific state and action feedback.
  */
 struct TreeSensoryData {
     static constexpr int GRID_SIZE = 15;
@@ -37,7 +40,11 @@ struct TreeSensoryData {
     double total_water = 0.0;
     std::string current_thought;
 
-    using serialize = zpp::bits::members<11>;
+    // Current action state.
+    std::optional<TreeCommandType> current_action; // nullopt if idle.
+    double action_progress = 0.0;                  // 0.0 to 1.0, how far along current action is.
+
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const GrowthStage& stage);
