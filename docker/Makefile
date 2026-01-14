@@ -24,7 +24,7 @@ PROJECT_ROOT := $(shell cd .. && pwd)
 SSH_DIR := $(HOME)/.ssh
 
 # Ccache directory and size limit.
-CCACHE_DIR ?= /home/data/linux1/ccache/dirtsim
+CCACHE_DIR ?= $(HOME)/.ccache/dirtsim
 CCACHE_MAXSIZE ?= 500M
 
 # Run as the current user to avoid permission issues.

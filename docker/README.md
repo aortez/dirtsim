@@ -67,7 +67,7 @@ sudo chown -R $USER:$USER ../apps/build-debug
 
 ## Caching
 
-The current CI setup uses Docker's built-in layer caching, which works well on self-hosted runners with persistent local storage. The daily rebuild schedule (2 AM UTC) keeps the cache warm for PR checks.
+The current CI setup uses Docker's built-in layer caching, which works well on self-hosted runners with persistent local storage. The image tag includes the current date, so a new image is built automatically on the first PR of each day or when the Dockerfile changes.
 
 **Advanced option:** For more aggressive caching (e.g., multi-runner setups), use explicit cache export/import with Buildx:
 
