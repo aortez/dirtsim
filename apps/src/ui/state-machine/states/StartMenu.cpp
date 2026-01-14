@@ -65,10 +65,11 @@ void StartMenu::onEnter(StateMachine& sm)
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
 
-    // Configure IconRail to show SCENARIO, EVOLUTION, and NETWORK icons.
+    // Configure IconRail to show CORE, NETWORK, SCENARIO, and EVOLUTION icons.
     if (IconRail* iconRail = uiManager->getMenuIconRail()) {
-        iconRail->setVisibleIcons({ IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
-        LOG_INFO(State, "Configured IconRail with NETWORK, SCENARIO, and EVOLUTION icons");
+        iconRail->setVisibleIcons(
+            { IconId::CORE, IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
+        LOG_INFO(State, "Configured IconRail with CORE, NETWORK, SCENARIO, and EVOLUTION icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -129,21 +130,6 @@ void StartMenu::onEnter(StateMachine& sm)
 
     LOG_INFO(State, "Created fractal info panel");
 
-    // Create Quit button in top-left corner.
-    quitButtonContainer_ = LVGLBuilder::actionButton(container)
-                               .text("Quit")
-                               .icon(LV_SYMBOL_CLOSE)
-                               .mode(LVGLBuilder::ActionMode::Push)
-                               .size(80)
-                               .backgroundColor(0xCC0000)
-                               .callback(onQuitButtonClicked, &sm)
-                               .buildOrLog();
-    if (quitButtonContainer_) {
-        lv_obj_align(quitButtonContainer_, LV_ALIGN_TOP_LEFT, 20, 20);
-    }
-
-    LOG_INFO(State, "Created Quit button");
-
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
     lv_label_set_text(touchDebugLabel_, "Touch: ---, ---");
@@ -166,8 +152,9 @@ void StartMenu::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting");
 
-    // Clean up network panel.
+    // Clean up panels.
     networkPanel_.reset();
+    corePanel_.reset();
 
     // Clean up sparkle button.
     startButton_.reset();
@@ -251,19 +238,6 @@ void StartMenu::onNextFractalClicked(lv_event_t* e)
     startMenu->fractal_->advanceToNextFractal();
 }
 
-void StartMenu::onQuitButtonClicked(lv_event_t* e)
-{
-    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
-
-    LOG_INFO(State, "Quit button clicked");
-
-    // Queue UI-local exit event (works in all states).
-    UiApi::Exit::Cwc cwc;
-    cwc.callback = [](auto&&) {}; // No response needed.
-    sm->queueEvent(cwc);
-}
-
 void StartMenu::onTouchEvent(lv_event_t* e)
 {
     auto* label = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
@@ -310,11 +284,32 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* uiManager = sm.getUiComponentManager();
 
-    // Handle NETWORK icon specially - it toggles a panel.
+    // Handle CORE icon - opens core panel with quit button.
+    if (evt.selectedId == IconId::CORE) {
+        LOG_INFO(State, "Core icon selected, showing core panel");
+
+        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+            panel->clearContent();
+            corePanel_ = std::make_unique<StartMenuCorePanel>(panel->getContentArea(), sm);
+            panel->show();
+        }
+        return std::move(*this); // Don't deselect - panel should stay open.
+    }
+
+    // Handle deselection of CORE.
+    if (evt.previousId == IconId::CORE) {
+        LOG_INFO(State, "Core icon deselected, hiding panel");
+        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+            panel->hide();
+            panel->clearContent();
+        }
+        corePanel_.reset();
+    }
+
+    // Handle NETWORK icon - opens network diagnostics panel.
     if (evt.selectedId == IconId::NETWORK) {
         LOG_INFO(State, "Network icon selected, showing diagnostics panel");
 
-        // Show the expandable panel and create network diagnostics content.
         if (auto* panel = uiManager->getMenuExpandablePanel()) {
             panel->clearContent();
             networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
@@ -323,7 +318,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         return std::move(*this); // Don't deselect - panel should stay open.
     }
 
-    // Handle deselection of NETWORK (either clicking it again or clicking another icon).
+    // Handle deselection of NETWORK.
     if (evt.previousId == IconId::NETWORK) {
         LOG_INFO(State, "Network icon deselected, hiding panel");
         if (auto* panel = uiManager->getMenuExpandablePanel()) {
