@@ -431,9 +431,16 @@ std::string WorldLightCalculator::lightMapString(const World& world) const
 
     for (int y = 0; y < data.height; ++y) {
         for (int x = 0; x < data.width; ++x) {
-            const float b = ColorNames::brightness(data.colors.at(x, y));
-            const int idx = std::min(9, static_cast<int>(b * 10));
-            result += shades[idx];
+            const Cell& cell = data.at(x, y);
+            const float opacity = cell.material().light.opacity;
+            if (opacity > 0.5f) {
+                result += 'X';
+            }
+            else {
+                const float b = ColorNames::brightness(data.colors.at(x, y));
+                const int idx = std::min(9, static_cast<int>(b * 10));
+                result += shades[idx];
+            }
         }
         result += '\n';
     }
@@ -544,9 +551,15 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
     const float dir_x = dx / dist;
     const float dir_y = dy / dist;
 
-    // Current cell.
-    int cell_x = static_cast<int>(std::floor(x0));
-    int cell_y = static_cast<int>(std::floor(y0));
+    // Offset start position by tiny epsilon to avoid exact-boundary edge cases.
+    // This ensures DDA algorithm traverses cells correctly regardless of start position.
+    constexpr float EPSILON = 1e-5f;
+    const float x0_adj = x0 + dir_x * EPSILON;
+    const float y0_adj = y0 + dir_y * EPSILON;
+
+    // Current cell - must use adjusted position for consistency with tMax.
+    int cell_x = static_cast<int>(std::floor(x0_adj));
+    int cell_y = static_cast<int>(std::floor(y0_adj));
 
     // Step direction.
     const int step_x = (dir_x > 0) ? 1 : -1;
@@ -559,20 +572,20 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
     // tMax: how far along ray to next grid line.
     float tMaxX, tMaxY;
     if (dir_x > 0) {
-        tMaxX = (std::ceil(x0) - x0) / dir_x;
+        tMaxX = (std::floor(x0_adj) + 1.0f - x0_adj) / dir_x;
     }
     else if (dir_x < 0) {
-        tMaxX = (x0 - std::floor(x0)) / -dir_x;
+        tMaxX = (x0_adj - std::floor(x0_adj)) / -dir_x;
     }
     else {
         tMaxX = 1e9f;
     }
 
     if (dir_y > 0) {
-        tMaxY = (std::ceil(y0) - y0) / dir_y;
+        tMaxY = (std::floor(y0_adj) + 1.0f - y0_adj) / dir_y;
     }
     else if (dir_y < 0) {
-        tMaxY = (y0 - std::floor(y0)) / -dir_y;
+        tMaxY = (y0_adj - std::floor(y0_adj)) / -dir_y;
     }
     else {
         tMaxY = 1e9f;
