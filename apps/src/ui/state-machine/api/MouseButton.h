@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/ReflectEnumJson.h"
 #include <cstdint>
 
 namespace DirtSim {

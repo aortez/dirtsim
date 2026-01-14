@@ -315,18 +315,21 @@ MyData data2 = ReflectSerializer::from_json<MyData>(j);
 
 ReflectSerializer uses qlibs/reflect for compile-time introspection. It works automatically with any aggregate type - no manual field listing needed. See existing usage in Cell, WorldData, Vector2d, and API command/response types.
 
-**Use ReflectEnumJson for automatic enum serialization:**
+**Enum serialization is automatic.** ReflectSerializer handles enum fields directly using reflect's compile-time enum introspection. Define an enum anywhere, include it in a struct, and it serializes to/from string names automatically:
 ```cpp
-#include "ReflectEnumJson.h"
-
 enum class MyEnum : uint8_t { Foo = 0, Bar = 1, Baz = 2 };
 
-// Automatic serialization - just works!
-nlohmann::json j = MyEnum::Bar;   // "Bar"
-MyEnum e = j.get<MyEnum>();       // MyEnum::Bar
+struct MyData {
+    MyEnum mode = MyEnum::Foo;
+};
+
+// Enum serializes as string name automatically.
+MyData data{.mode = MyEnum::Bar};
+nlohmann::json j = ReflectSerializer::to_json(data);  // {"mode": "Bar"}
+MyData data2 = ReflectSerializer::from_json<MyData>(j);
 ```
 
-ReflectEnumJson uses qlibs/reflect's compile-time enum reflection. Sequential enums starting at 0 work automatically. For non-sequential or non-zero-based enums, specialize `reflect::enum_min`/`reflect::enum_max`.
+Sequential enums starting at 0 work automatically. For non-sequential or non-zero-based enums, specialize `reflect::enum_min`/`reflect::enum_max`.
 
 For C++ APIs, always start with the C++ object, populate it with designated initializers when possible, then convert it as needed in the sending later.
 

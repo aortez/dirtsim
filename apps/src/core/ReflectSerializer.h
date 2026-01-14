@@ -51,6 +51,10 @@ nlohmann::json to_json(const T& obj)
                     j[name] = *value;
                 }
             }
+            else if constexpr (std::is_enum_v<MemberType>) {
+                // Handle enums directly using reflect.
+                j[name] = std::string(reflect::enum_name(value));
+            }
             else {
                 j[name] = value;
             }
@@ -80,6 +84,23 @@ T from_json(const nlohmann::json& j)
                 if (j.contains(name) && !j[name].is_null()) {
                     using InnerType = typename MemberType::value_type;
                     reflect::get<I>(obj) = j[name].get<InnerType>();
+                }
+            }
+            else if constexpr (std::is_enum_v<MemberType>) {
+                // Handle enums directly using reflect.
+                if (j.contains(name)) {
+                    auto str = j[name].get<std::string>();
+                    bool found = false;
+                    for (const auto& [value, enumName] : reflect::enumerators<MemberType>) {
+                        if (enumName == str) {
+                            reflect::get<I>(obj) = static_cast<MemberType>(value);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        throw std::runtime_error("Invalid enum value: " + str);
+                    }
                 }
             }
             else {
