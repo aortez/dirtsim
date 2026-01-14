@@ -118,15 +118,23 @@ log_info "Setting up GitHub Actions runner for ${REPO_OWNER}/${REPO_NAME}"
 log_info "Installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y \
+    build-essential \
+    clang-format \
+    cmake \
     curl \
     jq \
-    build-essential \
-    cmake \
-    pkg-config \
+    libavahi-client-dev \
     libboost-dev \
-    clang-format \
+    libfreetype-dev \
+    libopenh264-dev \
+    libsdl2-dev \
+    libsdl2-image-dev \
+    libyuv-dev \
     libwayland-dev \
-    libxkbcommon-dev
+    libx11-dev \
+    libxkbcommon-dev \
+    pkg-config \
+    wayland-protocols
 
 # Create runner directory.
 RUNNER_DIR="$HOME/actions-runner"
