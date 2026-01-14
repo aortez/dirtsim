@@ -78,6 +78,13 @@ jobs:
           IdentityFile ~/.ssh/dirtsim_key
         EOF
 
+        # Create .flash-config.json for deploy script.
+        cat > yocto/.flash-config.json <<EOF
+        {
+          "ssh_key_path": "$HOME/.ssh/dirtsim_key"
+        }
+        EOF
+
     - name: Deploy and smoke test on dirtsim.local
       working-directory: yocto
       run: |
