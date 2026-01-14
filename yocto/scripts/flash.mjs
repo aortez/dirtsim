@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 /**
- * Flash script for Sparkle Duck Yocto images.
+ * Flash script for DirtSim Yocto images.
+ *
+ * Uses shared utilities from sparkle-duck-shared (pi-base submodule).
  *
  * Features:
  * - Flashes Yocto image to USB/SD card.
  * - Injects your SSH public key for passwordless login.
+ * - Prompts for WiFi credentials and injects them for first-boot connectivity.
  * - Backs up and restores /data partition from the disk (WiFi credentials, logs, config).
  * - Remembers your key preference in .flash-config.json.
  *
@@ -16,436 +19,102 @@
  *   npm run flash -- --reconfigure      # Re-select SSH key
  */
 
-import { execSync, spawn } from 'child_process';
-import { existsSync, readdirSync, statSync, readFileSync, writeFileSync, mkdtempSync, rmdirSync } from 'fs';
 import { join, dirname, basename } from 'path';
 import { fileURLToPath } from 'url';
-import { createInterface } from 'readline';
-import { homedir, tmpdir } from 'os';
+import { execSync } from 'child_process';
+import { existsSync, mkdtempSync, rmdirSync, readdirSync, readFileSync } from 'fs';
+import { tmpdir } from 'os';
 
-// Colors for terminal output.
-const colors = {
-  reset: '\x1b[0m',
-  red: '\x1b[31m',
-  green: '\x1b[32m',
-  yellow: '\x1b[33m',
-  blue: '\x1b[34m',
-  cyan: '\x1b[36m',
-  bold: '\x1b[1m',
-};
+// Import shared utilities from pi-base.
+import {
+  colors,
+  log,
+  info,
+  success,
+  warn,
+  error,
+  prompt,
+  formatBytes,
+  loadConfig,
+  saveConfig,
+  configureSSHKey,
+  readSshKey,
+  hasDataPartition,
+  backupDataPartition,
+  restoreDataPartition,
+  cleanupBackup,
+  setHostname,
+  getBlockDevices,
+  findLatestImage,
+  flashImage,
+  getWifiCredentials,
+  injectWifiCredentials,
+  validateDeviceIdentity,
+  isLargeDevice,
+} from '../pi-base/scripts/lib/index.mjs';
 
-function log(msg) { console.log(msg); }
-function info(msg) { console.log(`${colors.blue}ℹ${colors.reset} ${msg}`); }
-function success(msg) { console.log(`${colors.green}✓${colors.reset} ${msg}`); }
-function warn(msg) { console.log(`${colors.yellow}⚠${colors.reset} ${msg}`); }
-function error(msg) { console.log(`${colors.red}✗${colors.reset} ${msg}`); }
-
+// Project-specific configuration.
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
 const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
+const WIFI_CREDS_FILE = join(YOCTO_DIR, 'wifi-creds.local');
+const DEFAULT_HOSTNAME = 'dirtsim';
+const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
+const IMAGE_SUFFIX = '.wic.gz';
+const PREFERRED_IMAGES = [
+  'dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz',
+  'core-image-base-raspberrypi-dirtsim.rootfs.wic.gz',
+];
 
-// ============================================================================
-// Configuration Management
-// ============================================================================
-
-/**
- * Load flash configuration from .flash-config.json.
- * Returns null if file doesn't exist or is invalid.
- */
-function loadConfig() {
-  try {
-    if (!existsSync(CONFIG_FILE)) {
-      return null;
-    }
-    const content = readFileSync(CONFIG_FILE, 'utf-8');
-    const config = JSON.parse(content);
-    // Validate required fields.
-    if (!config.ssh_key_path || typeof config.ssh_key_path !== 'string') {
-      return null;
-    }
-    // Check that the key file still exists.
-    if (!existsSync(config.ssh_key_path)) {
-      warn(`Configured SSH key no longer exists: ${config.ssh_key_path}`);
-      return null;
-    }
-    return config;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Save flash configuration to .flash-config.json.
- */
-function saveConfig(config) {
-  try {
-    writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2) + '\n');
-    return true;
-  } catch (err) {
-    warn(`Failed to save config: ${err.message}`);
-    return false;
-  }
-}
-
-/**
- * Find available SSH public keys in ~/.ssh/.
- */
-function findSshKeys() {
-  const sshDir = join(homedir(), '.ssh');
-  if (!existsSync(sshDir)) {
-    return [];
-  }
-
-  try {
-    return readdirSync(sshDir)
-      .filter(f => f.endsWith('.pub'))
-      .map(f => ({
-        name: f,
-        path: join(sshDir, f),
-      }))
-      .filter(k => existsSync(k.path));
-  } catch {
-    return [];
-  }
-}
-
-/**
- * Read the contents of an SSH public key file.
- */
-function readSshKey(keyPath) {
-  try {
-    return readFileSync(keyPath, 'utf-8').trim();
-  } catch (err) {
-    error(`Failed to read SSH key: ${err.message}`);
-    return null;
-  }
-}
-
-// ============================================================================
-// Image and Device Discovery
-// ============================================================================
-
-/**
- * Find the latest .wic.gz image file.
- */
-function findLatestImage() {
-  if (!existsSync(IMAGE_DIR)) {
-    return null;
-  }
-
-  const files = readdirSync(IMAGE_DIR)
-    .filter(f => f.endsWith('.wic.gz') && !f.includes('->'))
-    .map(f => ({
-      name: f,
-      path: join(IMAGE_DIR, f),
-      // Follow symlinks to get real file for mtime.
-      stat: statSync(join(IMAGE_DIR, f)),
-    }))
-    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-
-  // Prefer our custom image, fall back to core-image-base.
-  const dirtsimImage = files.find(f => f.name === 'dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz');
-  if (dirtsimImage) {
-    return dirtsimImage;
-  }
-  const coreImage = files.find(f => f.name === 'core-image-base-raspberrypi-dirtsim.rootfs.wic.gz');
-  if (coreImage) {
-    return coreImage;
-  }
-
-  return files[0] || null;
-}
-
-/**
- * Get list of block devices suitable for flashing.
- * Returns removable devices and excludes the system disk.
- */
-function getBlockDevices() {
-  try {
-    const output = execSync('lsblk -d -o NAME,SIZE,TYPE,RM,TRAN,MODEL -J', {
-      encoding: 'utf-8',
-    });
-    const data = JSON.parse(output);
-
-    return data.blockdevices
-      .filter(dev => {
-        // Only disk types.
-        if (dev.type !== 'disk') return false;
-        // Skip loop devices.
-        if (dev.name.startsWith('loop')) return false;
-        // Skip nvme (usually system disk).
-        if (dev.name.startsWith('nvme')) return false;
-        // Prefer removable (RM=1) or USB transport.
-        return dev.rm === true || dev.rm === '1' || dev.tran === 'usb';
-      })
-      .map(dev => ({
-        device: `/dev/${dev.name}`,
-        size: dev.size,
-        model: dev.model || 'Unknown',
-        transport: dev.tran || 'unknown',
-        removable: dev.rm === true || dev.rm === '1',
-      }));
-  } catch (err) {
-    error(`Failed to list block devices: ${err.message}`);
-    return [];
-  }
-}
-
-// ============================================================================
-// Utilities
-// ============================================================================
-
-/**
- * Format bytes to human readable string.
- */
-function formatBytes(bytes) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  let i = 0;
-  while (bytes >= 1024 && i < units.length - 1) {
-    bytes /= 1024;
-    i++;
-  }
-  return `${bytes.toFixed(1)} ${units[i]}`;
-}
-
-/**
- * Prompt user for input.
- */
-async function prompt(question) {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise(resolve => {
-    rl.question(question, answer => {
-      rl.close();
-      resolve(answer.trim());
-    });
-  });
-}
-
-/**
- * Check if bmaptool is available.
- */
-function hasBmaptool() {
-  try {
-    execSync('which bmaptool', { encoding: 'utf-8', stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ============================================================================
-// Local Data Partition Backup/Restore
-// ============================================================================
-
-/**
- * Check if the device has a data partition (partition 4) with content.
- * Returns true if data partition exists and has files.
- */
-function hasDataPartition(device) {
-  const dataPartition = `${device}4`;
-  try {
-    // Check if partition exists.
-    execSync(`test -b ${dataPartition}`, { stdio: 'pipe' });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Backup /data from the local disk's partition 4 before flashing.
- * Returns the backup directory path, or null on failure.
- */
-function backupDataPartition(device) {
-  const dataPartition = `${device}4`;
-  const backupDir = mkdtempSync(join(tmpdir(), 'dirtsim-data-backup-'));
-  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-data-mount-'));
-
-  try {
-    info(`Backing up data partition from ${dataPartition}...`);
-
-    // Mount the data partition.
-    execSync(`sudo mount ${dataPartition} ${mountPoint}`, { stdio: 'pipe' });
-
-    // Copy contents to backup dir, preserving ownership info in extended attributes.
-    // We use --fake-super to store ownership as xattrs since we're not root.
-    execSync(`sudo rsync -a --fake-super ${mountPoint}/ ${backupDir}/`, { stdio: 'pipe' });
-
-    // Fix ownership of backup dir itself so we can list it.
-    execSync(`sudo chown $(id -u):$(id -g) ${backupDir}`, { stdio: 'pipe' });
-
-    // Verify we got something useful (more than just lost+found).
-    const files = readdirSync(backupDir).filter(f => f !== 'lost+found');
-    if (files.length === 0) {
-      info('Data partition is empty (nothing to backup)');
-      rmdirSync(backupDir, { recursive: true });
-      return null;
-    }
-
-    success(`Backed up ${files.length} items from data partition`);
-    return backupDir;
-
-  } catch (err) {
-    warn(`Backup failed: ${err.message}`);
-    try {
-      rmdirSync(backupDir, { recursive: true });
-    } catch {
-      // Ignore cleanup errors.
-    }
-    return null;
-
-  } finally {
-    // Always unmount.
-    try {
-      execSync(`sudo umount ${mountPoint} 2>/dev/null || true`, { stdio: 'pipe' });
-      rmdirSync(mountPoint);
-    } catch {
-      // Ignore cleanup errors.
-    }
-  }
-}
-
-/**
- * Restore backed up data to the data partition on the flashed device.
- */
-function restoreDataPartition(device, backupDir, dryRun = false) {
-  const dataPartition = `${device}4`;
-
-  log('');
-  info('Restoring data to new image...');
-
-  if (dryRun) {
-    log(`  Would mount ${dataPartition}`);
-    log(`  Would restore data from ${backupDir}`);
-    log(`  Would unmount`);
-    return true;
-  }
-
-  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-data-restore-'));
-
-  try {
-    // Mount the data partition.
-    info(`Mounting ${dataPartition}...`);
-    execSync(`sudo mount ${dataPartition} ${mountPoint}`, { stdio: 'pipe' });
-
-    // Restore the backup, using --fake-super to restore ownership from xattrs.
-    info('Copying backed up data...');
-    execSync(`sudo rsync -a --fake-super ${backupDir}/ ${mountPoint}/`, { stdio: 'pipe' });
-
-    success('Data restored!');
-    return true;
-
-  } catch (err) {
-    error(`Restore failed: ${err.message}`);
-    return false;
-
-  } finally {
-    // Always try to unmount and clean up.
-    try {
-      info('Unmounting data partition...');
-      execSync(`sudo umount ${mountPoint}`, { stdio: 'pipe' });
-      rmdirSync(mountPoint);
-    } catch (err) {
-      warn(`Cleanup warning: ${err.message}`);
-    }
-  }
-}
-
-/**
- * Clean up backup directory.
- */
-function cleanupBackup(backupDir) {
-  if (backupDir) {
-    try {
-      execSync(`rm -rf ${backupDir}`, { stdio: 'pipe' });
-    } catch {
-      // Ignore cleanup errors.
-    }
-  }
-}
-
-// ============================================================================
-// SSH Key Configuration
-// ============================================================================
-
-/**
- * Interactively select an SSH key and save to config.
- */
-async function configureSSHKey() {
-  log('');
-  log(`${colors.bold}${colors.cyan}SSH Key Configuration${colors.reset}`);
-  log('');
-  info('The image uses SSH key authentication (no passwords).');
-  info('Select which public key to install on the device.');
-  log('');
-
-  const keys = findSshKeys();
-
-  if (keys.length === 0) {
-    error('No SSH public keys found in ~/.ssh/');
-    error('Generate one with: ssh-keygen -t ed25519');
-    process.exit(1);
-  }
-
-  log(`${colors.bold}Available SSH keys:${colors.reset}`);
-  log('');
-  keys.forEach((key, i) => {
-    log(`  ${colors.cyan}${i + 1})${colors.reset} ${key.name}`);
-  });
-  log('');
-
-  const choice = await prompt(`Select key (1-${keys.length}): `);
-  const index = parseInt(choice, 10) - 1;
-
-  if (isNaN(index) || index < 0 || index >= keys.length) {
-    error('Invalid selection.');
-    process.exit(1);
-  }
-
-  const selectedKey = keys[index];
-  const config = { ssh_key_path: selectedKey.path };
-
-  if (saveConfig(config)) {
-    success(`SSH key configured: ${selectedKey.name}`);
-    info(`Config saved to: ${basename(CONFIG_FILE)}`);
-  }
-
-  return config;
-}
+// User configuration - matches what's created in dirtsim-image.bb.
+const SSH_USERNAME = 'dirtsim';
+const SSH_UID = 1000;
 
 /**
  * Get or create SSH key configuration.
  */
 async function ensureSSHKeyConfig(forceReconfigure = false) {
   if (forceReconfigure) {
-    return await configureSSHKey();
+    return await configureSSHKey(CONFIG_FILE);
   }
 
-  const config = loadConfig();
+  const config = loadConfig(CONFIG_FILE);
   if (config) {
     info(`Using SSH key: ${basename(config.ssh_key_path)}`);
     return config;
   }
 
   info('No SSH key configured yet.');
-  return await configureSSHKey();
+  return await configureSSHKey(CONFIG_FILE);
 }
 
-// ============================================================================
-// SSH Key Injection
-// ============================================================================
+/**
+ * Get available profiles from the profiles directory.
+ * @returns {string[]} Array of profile names.
+ */
+function getAvailableProfiles() {
+  if (!existsSync(PROFILES_DIR)) {
+    return [];
+  }
+  try {
+    return readdirSync(PROFILES_DIR, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name);
+  } catch {
+    return [];
+  }
+}
 
 /**
- * Inject SSH key into the flashed device's rootfs.
- * Mounts partition 2 (rootfs), writes authorized_keys, unmounts.
+ * Inject SSH key and apply profile to rootfs in a single mount operation.
+ * @param {string} device - The device (e.g., /dev/sdb).
+ * @param {string} sshKeyPath - Path to the SSH public key.
+ * @param {string} profileName - Profile name to apply (or null for none).
+ * @param {boolean} dryRun - If true, only show what would happen.
  */
-async function injectSSHKey(device, sshKeyPath, dryRun = false) {
+async function injectRootfsConfig(device, sshKeyPath, profileName, dryRun = false) {
   const rootfsPartition = `${device}2`;
   const sshKey = readSshKey(sshKeyPath);
 
@@ -454,11 +123,14 @@ async function injectSSHKey(device, sshKeyPath, dryRun = false) {
   }
 
   log('');
-  info('Injecting SSH key into image...');
+  info('Configuring rootfs...');
 
   if (dryRun) {
     log(`  Would mount ${rootfsPartition}`);
-    log(`  Would write key to /home/dirtsim/.ssh/authorized_keys`);
+    log(`  Would write SSH key to /home/${SSH_USERNAME}/.ssh/authorized_keys`);
+    if (profileName) {
+      log(`  Would apply profile: ${profileName}`);
+    }
     log(`  Would unmount`);
     return;
   }
@@ -471,59 +143,24 @@ async function injectSSHKey(device, sshKeyPath, dryRun = false) {
     info(`Mounting ${rootfsPartition}...`);
     execSync(`sudo mount ${rootfsPartition} ${mountPoint}`, { stdio: 'pipe' });
 
-    // Write the SSH key.
-    const authorizedKeysPath = join(mountPoint, 'home/dirtsim/.ssh/authorized_keys');
-    info(`Writing SSH key to authorized_keys...`);
+    // Inject SSH key.
+    const authorizedKeysPath = join(mountPoint, `home/${SSH_USERNAME}/.ssh/authorized_keys`);
+    info('Injecting SSH key...');
     execSync(`echo '${sshKey}' | sudo tee ${authorizedKeysPath} > /dev/null`, { stdio: 'pipe' });
     execSync(`sudo chmod 600 ${authorizedKeysPath}`, { stdio: 'pipe' });
-    execSync(`sudo chown 1000:1000 ${authorizedKeysPath}`, { stdio: 'pipe' });
-
+    execSync(`sudo chown ${SSH_UID}:${SSH_UID} ${authorizedKeysPath}`, { stdio: 'pipe' });
     success('SSH key injected!');
 
-  } finally {
-    // Always try to unmount and clean up.
-    try {
-      info('Unmounting...');
-      execSync(`sudo umount ${mountPoint}`, { stdio: 'pipe' });
-      rmdirSync(mountPoint);
-    } catch (err) {
-      warn(`Cleanup warning: ${err.message}`);
+    // Apply profile if specified.
+    if (profileName) {
+      const profileDir = join(PROFILES_DIR, profileName);
+      if (!existsSync(profileDir)) {
+        throw new Error(`Profile not found: ${profileName}`);
+      }
+      info(`Applying profile: ${profileName}...`);
+      execSync(`sudo rsync -a "${profileDir}/" "${mountPoint}/"`, { stdio: 'pipe' });
+      success(`Profile applied: ${profileName}`);
     }
-  }
-}
-
-/**
- * Set hostname for the device by writing to boot partition.
- * Mounts partition 1 (boot), writes hostname.txt, unmounts.
- */
-async function setHostname(device, hostname, dryRun = false) {
-  const bootPartition = `${device}1`;
-
-  log('');
-  info('Setting device hostname...');
-
-  if (dryRun) {
-    log(`  Would mount ${bootPartition}`);
-    log(`  Would write hostname "${hostname}" to /boot/hostname.txt`);
-    log(`  Would unmount`);
-    return;
-  }
-
-  // Create temporary mount point.
-  const mountPoint = mkdtempSync(join(tmpdir(), 'dirtsim-boot-'));
-
-  try {
-    // Mount the boot partition.
-    info(`Mounting ${bootPartition}...`);
-    execSync(`sudo mount ${bootPartition} ${mountPoint}`, { stdio: 'pipe' });
-
-    // Write the hostname.
-    const hostnameFilePath = join(mountPoint, 'hostname.txt');
-    info(`Writing hostname "${hostname}" to hostname.txt...`);
-    execSync(`echo '${hostname}' | sudo tee ${hostnameFilePath} > /dev/null`, { stdio: 'pipe' });
-    execSync(`sudo chmod 644 ${hostnameFilePath}`, { stdio: 'pipe' });
-
-    success(`Hostname set to: ${hostname}`);
 
   } finally {
     // Always try to unmount and clean up.
@@ -536,118 +173,13 @@ async function setHostname(device, hostname, dryRun = false) {
     }
   }
 }
-
-// ============================================================================
-// Flash Operation
-// ============================================================================
-
-/**
- * Flash the image to the device.
- */
-async function flashImage(imagePath, bmapPath, device, dryRun = false) {
-  const useBmap = hasBmaptool() && existsSync(bmapPath);
-
-  log('');
-  if (dryRun) {
-    log(`${colors.bold}${colors.yellow}═══════════════════════════════════════════════════${colors.reset}`);
-    log(`${colors.bold}${colors.yellow}  DRY RUN - No changes will be made${colors.reset}`);
-    log(`${colors.bold}${colors.yellow}═══════════════════════════════════════════════════${colors.reset}`);
-  } else {
-    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════${colors.reset}`);
-    log(`${colors.bold}${colors.red}  WARNING: This will ERASE ALL DATA on ${device}${colors.reset}`);
-    log(`${colors.bold}${colors.red}═══════════════════════════════════════════════════${colors.reset}`);
-  }
-  log('');
-
-  info(`Image: ${imagePath}`);
-  info(`Target: ${device}`);
-  info(`Method: ${useBmap ? 'bmaptool (fast)' : 'dd (slower)'}`);
-  log('');
-
-  if (dryRun) {
-    info('Dry run complete. Would execute:');
-    log('');
-    if (useBmap) {
-      log(`  sudo umount ${device}* 2>/dev/null || true`);
-      log(`  sudo bmaptool copy --bmap "${bmapPath}" "${imagePath}" "${device}"`);
-    } else {
-      log(`  sudo umount ${device}* 2>/dev/null || true`);
-      log(`  gunzip -c "${imagePath}" | sudo dd of="${device}" bs=4M status=progress conv=fsync`);
-    }
-    log(`  sync`);
-    log('');
-    return;
-  }
-
-  const confirm = await prompt(`Type "${device}" to confirm: `);
-  if (confirm !== device) {
-    error('Confirmation failed. Aborting.');
-    process.exit(1);
-  }
-
-  log('');
-
-  // Unmount any partitions on the device.
-  try {
-    info('Unmounting any mounted partitions...');
-    execSync(`sudo umount ${device}* 2>/dev/null || true`, { stdio: 'inherit' });
-  } catch {
-    // Ignore unmount errors.
-  }
-
-  if (useBmap) {
-    // Use bmaptool for faster flashing.
-    const cmd = `sudo bmaptool copy --bmap "${bmapPath}" "${imagePath}" "${device}"`;
-    info(`Running: ${cmd}`);
-    log('');
-
-    const proc = spawn('sudo', [
-      'bmaptool', 'copy',
-      '--bmap', bmapPath,
-      imagePath,
-      device,
-    ], { stdio: 'inherit' });
-
-    await new Promise((resolve, reject) => {
-      proc.on('close', code => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`bmaptool exited with code ${code}`));
-        }
-      });
-    });
-  } else {
-    // Fall back to dd.
-    const cmd = `gunzip -c "${imagePath}" | sudo dd of="${device}" bs=4M status=progress conv=fsync`;
-    info(`Running: ${cmd}`);
-    log('');
-
-    const proc = spawn('sh', ['-c', cmd], { stdio: 'inherit' });
-
-    await new Promise((resolve, reject) => {
-      proc.on('close', code => {
-        if (code === 0) {
-          resolve();
-        } else {
-          reject(new Error(`dd exited with code ${code}`));
-        }
-      });
-    });
-  }
-
-  // Final sync to ensure all writes are flushed.
-  info('Syncing...');
-  execSync('sync', { stdio: 'inherit' });
-}
-
-// ============================================================================
-// Main Entry Point
-// ============================================================================
 
 function showHelp() {
+  const profiles = getAvailableProfiles();
+  const profileList = profiles.length > 0 ? profiles.join(', ') : '(none)';
+
   console.log(`
-Sparkle Duck Yocto Flash Tool
+DirtSim Yocto Flash Tool
 
 Flash Yocto images to USB/SD cards with SSH key injection.
 
@@ -655,22 +187,44 @@ Usage:
   npm run flash [options]
 
 Options:
-  --device <dev>   Flash directly to device (still confirms)
-  --list           List available devices and exit
-  --dry-run        Show what would happen without flashing
-  --reconfigure    Re-select SSH key
-  -h, --help       Show this help
+  --device <dev>     Flash directly to device (still confirms)
+  --profile <name>   Apply a configuration profile (e.g., production)
+  --interactive      Force interactive prompts (ignore config file)
+  --list             List available devices and exit
+  --dry-run          Show what would happen without flashing
+  --reconfigure      Re-select SSH key
+  -h, --help         Show this help
+
+Available profiles: ${profileList}
 
 Examples:
-  npm run flash                       # Interactive device selection
-  npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
-  npm run flash -- --list             # Just list devices
-  npm run flash -- --dry-run          # Preview without flashing
+  npm run flash                              # Use config file or interactive
+  npm run flash -- --profile production      # Flash with production profile
+  npm run flash -- --interactive             # Force interactive mode
+  npm run flash -- --device /dev/sdb         # Direct flash (still confirms)
+  npm run flash -- --list                    # Just list devices
+  npm run flash -- --dry-run                 # Preview without flashing
 
-Features:
-  - Injects your SSH public key for passwordless login
-  - Backs up and restores /data partition (WiFi credentials, logs)
-  - Remembers your key preference in .flash-config.json
+Configuration:
+  Defaults can be set in .flash-config.json:
+    - device: Auto-select device (e.g., "/dev/sda")
+    - device_serial: Stored serial number for device identity verification
+    - hostname: Pre-set hostname
+    - profile: Default profile to apply (e.g., "production")
+    - backup_data: Auto-backup data partition (true/false)
+    - skip_confirmation: Skip final confirmation (true/false)
+
+  Copy .flash-config.json.example to .flash-config.json to get started.
+
+Safety Features:
+  - Device identity: The serial number is saved after first flash. If a different
+    device appears at the same path, you must type "YES" to confirm.
+  - Large device warning: Devices larger than 200GB require typing "YES" to flash.
+
+Profiles:
+  Profiles are directories in yocto/profiles/ containing files to overlay onto the
+  rootfs. For example, profiles/production/ might contain systemd drop-in files
+  that enable auto-restart on crash.
 `);
 }
 
@@ -687,11 +241,14 @@ async function main() {
   const listOnly = args.includes('--list');
   const dryRun = args.includes('--dry-run');
   const reconfigure = args.includes('--reconfigure');
+  const interactive = args.includes('--interactive');
   const deviceIndex = args.indexOf('--device');
   const specifiedDevice = deviceIndex !== -1 ? args[deviceIndex + 1] : null;
+  const profileIndex = args.indexOf('--profile');
+  const specifiedProfile = profileIndex !== -1 ? args[profileIndex + 1] : null;
 
   log('');
-  log(`${colors.bold}${colors.cyan}Sparkle Duck Yocto Flash Tool${colors.reset}`);
+  log(`${colors.bold}${colors.cyan}DirtSim Yocto Flash Tool${colors.reset}`);
   if (dryRun) {
     log(`${colors.yellow}(dry-run mode - no changes will be made)${colors.reset}`);
   }
@@ -701,9 +258,9 @@ async function main() {
   const config = await ensureSSHKeyConfig(reconfigure);
 
   // Find image.
-  const image = findLatestImage();
+  const image = findLatestImage(IMAGE_DIR, IMAGE_SUFFIX, PREFERRED_IMAGES);
   if (!image) {
-    error('No image found. Run "kas build kas-dirtsim.yml" first.');
+    error('No image found. Run "npm run build" first.');
     process.exit(1);
   }
 
@@ -741,8 +298,9 @@ async function main() {
     process.exit(0);
   }
 
-  // Select device.
+  // Select device (priority: CLI flag > config file > interactive prompt).
   let targetDevice;
+  let selectedDeviceInfo;
 
   if (specifiedDevice) {
     // Verify specified device is in our list.
@@ -752,7 +310,67 @@ async function main() {
       process.exit(1);
     }
     targetDevice = specifiedDevice;
-  } else {
+    selectedDeviceInfo = found;
+  } else if (!interactive && config.device) {
+    // Use device from config file (unless --interactive is set).
+    const found = devices.find(d => d.device === config.device);
+    if (!found) {
+      warn(`Configured device ${config.device} not found, falling back to interactive selection.`);
+    } else {
+      // Validate device identity using serial number.
+      const validation = validateDeviceIdentity(found, config);
+      if (!validation.valid) {
+        log('');
+        warn(`⚠️  Device identity check failed!`);
+        log('');
+
+        // Show what matches vs what doesn't.
+        const modelMatches = config.device_model && config.device_model === found.model;
+        const sizeMatches = config.device_size && config.device_size === found.size;
+
+        if (modelMatches) {
+          success(`   Model: ${found.model} ✓`);
+        } else if (config.device_model) {
+          warn(`   Model: ${found.model} (was: ${config.device_model})`);
+        } else {
+          info(`   Model: ${found.model}`);
+        }
+
+        if (sizeMatches) {
+          success(`   Size:  ${found.size} ✓`);
+        } else if (config.device_size) {
+          warn(`   Size:  ${found.size} (was: ${config.device_size})`);
+        } else {
+          info(`   Size:  ${found.size}`);
+        }
+
+        warn(`   Serial: ${found.serial || 'none'} (was: ${config.device_serial})`);
+        log('');
+
+        const confirmSerial = await prompt(`Type "YES" to confirm this is the correct device: `);
+        if (confirmSerial !== 'YES') {
+          error('Aborted. Device identity not confirmed.');
+          process.exit(1);
+        }
+
+        // Update the stored identity since user confirmed.
+        config.device_serial = found.serial;
+        config.device_model = found.model;
+        config.device_size = found.size;
+        saveConfig(CONFIG_FILE, config);
+        info(`Updated stored identity for ${config.device}`);
+      }
+
+      targetDevice = config.device;
+      selectedDeviceInfo = found;
+      info(`Using device from config: ${targetDevice}`);
+      if (found.serial) {
+        info(`Serial: ${found.serial}`);
+      }
+    }
+  }
+
+  if (!targetDevice) {
     // Interactive selection.
     const choice = await prompt(`Select device (1-${devices.length}) or 'q' to quit: `);
 
@@ -768,15 +386,32 @@ async function main() {
     }
 
     targetDevice = devices[index].device;
+    selectedDeviceInfo = devices[index];
   }
 
-  // Prompt for hostname (interactive mode only).
-  let hostname = 'dirtsim';
-  if (!specifiedDevice && !dryRun) {
+  // Safety check for large devices (> 200GB).
+  if (isLargeDevice(selectedDeviceInfo)) {
+    log('');
+    warn(`⚠️  WARNING: Large device detected!`);
+    warn(`   ${selectedDeviceInfo.device}: ${selectedDeviceInfo.size} (${selectedDeviceInfo.model})`);
+    warn(`   This is larger than 200GB - are you sure this isn't your main drive?`);
+    log('');
+
+    const confirmLarge = await prompt(`Type "YES" (in caps) to confirm flashing this large device: `);
+    if (confirmLarge !== 'YES') {
+      error('Aborted. Large device not confirmed.');
+      process.exit(1);
+    }
+  }
+
+  // Get hostname (priority: config file > prompt > default).
+  let hostname = (!interactive && config.hostname) ? config.hostname : DEFAULT_HOSTNAME;
+
+  // Prompt for hostname if interactive mode or not specified in config.
+  if ((interactive || !config.hostname) && !specifiedDevice && !dryRun) {
     log('');
     const hostnameInput = await prompt(`Device hostname (default: ${hostname}): `);
     if (hostnameInput && hostnameInput.trim()) {
-      // Validate hostname.
       const cleaned = hostnameInput.trim();
       if (/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(cleaned)) {
         hostname = cleaned;
@@ -785,20 +420,35 @@ async function main() {
       }
     }
 
-    // Save hostname to config for use by update.mjs verification.
+    // Save hostname to config.
     config.hostname = hostname;
-    saveConfig(config);
+    saveConfig(CONFIG_FILE, config);
+  } else if (!interactive && config.hostname) {
+    info(`Using hostname from config: ${hostname}`);
   }
 
   // Check if we can backup /data from the disk before flashing.
   let backupDir = null;
+  let willRestoreBackup = false;
   if (!dryRun && hasDataPartition(targetDevice)) {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
-    const doBackup = await prompt('Backup /data before flashing? (Y/n): ');
-    if (doBackup.toLowerCase() !== 'n') {
+
+    // Use config value if specified (and not in interactive mode), otherwise prompt.
+    let shouldBackup = (!interactive && config.backup_data !== undefined) ? config.backup_data : null;
+
+    if (shouldBackup === null) {
+      const doBackup = await prompt('Backup /data before flashing? (Y/n): ');
+      shouldBackup = doBackup.toLowerCase() !== 'n';
+    } else {
+      info(`Using backup setting from config: ${shouldBackup ? 'yes' : 'no'}`);
+    }
+
+    if (shouldBackup) {
       backupDir = backupDataPartition(targetDevice);
-      if (!backupDir) {
+      if (backupDir) {
+        willRestoreBackup = true;
+      } else {
         const continueAnyway = await prompt('Continue without backup? (y/N): ');
         if (continueAnyway.toLowerCase() !== 'y') {
           info('Aborted.');
@@ -808,15 +458,47 @@ async function main() {
     }
   }
 
+  // Get WiFi credentials if we won't be restoring a backup (which contains WiFi config).
+  let wifiCredentials = null;
+  if (!dryRun && !willRestoreBackup) {
+    wifiCredentials = await getWifiCredentials(WIFI_CREDS_FILE);
+  }
+
+  // Resolve profile (CLI flag > config file > none).
+  let profile = specifiedProfile || (!interactive && config.profile) || null;
+  if (profile) {
+    const availableProfiles = getAvailableProfiles();
+    if (!availableProfiles.includes(profile)) {
+      error(`Unknown profile: ${profile}`);
+      info(`Available profiles: ${availableProfiles.join(', ') || '(none)'}`);
+      process.exit(1);
+    }
+    info(`Profile: ${profile}`);
+  }
+
   // Flash!
   try {
-    await flashImage(image.path, bmapPath, targetDevice, dryRun);
+    await flashImage(image.path, targetDevice, {
+      dryRun,
+      bmapPath: existsSync(bmapPath) ? bmapPath : null,
+      skipConfirm: (!interactive && config.skip_confirmation) || false,
+    });
 
-    // Inject SSH key after flashing.
-    await injectSSHKey(targetDevice, config.ssh_key_path, dryRun);
+    // Inject SSH key and apply profile after flashing.
+    await injectRootfsConfig(targetDevice, config.ssh_key_path, profile, dryRun);
 
     // Set hostname.
     await setHostname(targetDevice, hostname, dryRun);
+
+    // Inject WiFi credentials if provided.
+    if (wifiCredentials) {
+      await injectWifiCredentials(
+        targetDevice,
+        wifiCredentials.ssid,
+        wifiCredentials.password,
+        dryRun
+      );
+    }
 
     // Restore /data if we have a backup.
     if (backupDir) {
@@ -829,16 +511,37 @@ async function main() {
       success('Dry run complete!');
       info('Run without --dry-run to actually flash.');
     } else {
+      // Save device identity for future verification.
+      const identityChanged =
+        selectedDeviceInfo.serial !== config.device_serial ||
+        selectedDeviceInfo.model !== config.device_model ||
+        selectedDeviceInfo.size !== config.device_size;
+
+      if (identityChanged) {
+        config.device_serial = selectedDeviceInfo.serial;
+        config.device_model = selectedDeviceInfo.model;
+        config.device_size = selectedDeviceInfo.size;
+        saveConfig(CONFIG_FILE, config);
+      }
+
       log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       success('Flash complete!');
+      if (profile) {
+        success(`Profile: ${profile}`);
+      }
       if (backupDir) {
         success('/data restored - WiFi credentials preserved!');
+      } else if (wifiCredentials) {
+        success(`WiFi "${wifiCredentials.ssid}" configured!`);
       }
       log(`${colors.bold}${colors.green}═══════════════════════════════════════════════════${colors.reset}`);
       log('');
       info('You can now eject the drive and boot your Raspberry Pi.');
-      info(`Login: ssh dirtsim@${hostname}.local`);
+      info(`Login: ssh ${SSH_USERNAME}@${hostname}.local`);
       info(`SSH key: ${basename(config.ssh_key_path)}`);
+      if (profile) {
+        info(`Profile: ${profile}`);
+      }
     }
   } catch (err) {
     // Clean up backup on failure.

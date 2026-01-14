@@ -1,0 +1,17 @@
+logging-config.json.local
+node_modules/
+
+# Yocto build artifacts.
+oe-logs
+oe-workdir
+
+# Build artifacts.
+build/
+build-debug/
+build-release/
+_deps/
+
+# Cross-compilation artifacts.
+build-aarch64-debug/
+build-aarch64-release/
+sysroot-aarch64/

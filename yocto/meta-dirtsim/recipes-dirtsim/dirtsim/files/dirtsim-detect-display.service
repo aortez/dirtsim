@@ -1,0 +1,13 @@
+[Unit]
+Description=Detect display type and configure dirtsim-ui
+DefaultDependencies=no
+Before=dirtsim-ui.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/dirtsim-detect-display.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

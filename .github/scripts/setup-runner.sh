@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # Self-hosted GitHub Actions runner setup script.
-# This script installs and configures a GitHub Actions runner for the sparkle-duck repository.
+# This script installs and configures a GitHub Actions runner for the dirtsim repository.
 #
 # Usage:
 #   1. Copy .env.example to .env and fill in your values:
@@ -84,7 +84,7 @@ fi
 
 # Configuration.
 RUNNER_VERSION="2.321.0"
-RUNNER_NAME="${RUNNER_NAME:-sparkle-duck-runner-$(hostname)}"
+RUNNER_NAME="${RUNNER_NAME:-dirtsim-runner-$(hostname)}"
 RUNNER_WORK_DIR="${RUNNER_WORK_DIR:-_work}"
 RUNNER_LABELS="${RUNNER_LABELS:-self-hosted,linux,x64}"
 
@@ -118,15 +118,23 @@ log_info "Setting up GitHub Actions runner for ${REPO_OWNER}/${REPO_NAME}"
 log_info "Installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y \
+    build-essential \
+    clang-format \
+    cmake \
     curl \
     jq \
-    build-essential \
-    cmake \
-    pkg-config \
+    libavahi-client-dev \
     libboost-dev \
-    clang-format \
+    libfreetype-dev \
+    libopenh264-dev \
+    libsdl2-dev \
+    libsdl2-image-dev \
+    libyuv-dev \
     libwayland-dev \
-    libxkbcommon-dev
+    libx11-dev \
+    libxkbcommon-dev \
+    pkg-config \
+    wayland-protocols
 
 # Create runner directory.
 RUNNER_DIR="$HOME/actions-runner"

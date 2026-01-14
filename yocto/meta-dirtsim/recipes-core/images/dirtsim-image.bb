@@ -1,32 +1,27 @@
 SUMMARY = "Dirt Simulation base image for Raspberry Pi"
 DESCRIPTION = "A minimal console image with NetworkManager, SSH, and \
-development tools for the Sparkle Duck dirt simulation project."
+development tools for the DirtSim physics simulation."
 LICENSE = "MIT"
 
-inherit core-image
+# Inherit pi-base-image for A/B boot, NetworkManager, SSH, Bluetooth, and WiFi provisioning.
+inherit pi-base-image
 
-# ============================================================================
-# Image Features
-# ============================================================================
-# ssh-server-openssh: OpenSSH server for remote access.
-# NOTE: debug-tweaks removed for security - we use SSH keys instead.
-IMAGE_FEATURES += " \
-    ssh-server-openssh \
-"
+# USB boot (not SD card).
+BOOT_DEVICE = "sda"
+
+# Set default hostname (can be overridden by /boot/hostname.txt at boot).
+HOSTNAME_DEFAULT = "dirtsim"
 
 # ============================================================================
 # User Configuration
 # ============================================================================
-# Create 'dirtsim' user with sudo access.  SSH key is injected at flash time.
+# Create 'dirtsim' user with sudo and input access. SSH key is injected at flash time.
 inherit extrausers
 
 EXTRA_USERS_PARAMS = " \
-    useradd -m -s /bin/bash -G sudo dirtsim; \
+    useradd -m -s /bin/bash -G sudo,input dirtsim; \
     usermod -p '*' dirtsim; \
 "
-
-# Ensure sudo is installed.
-IMAGE_INSTALL:append = " sudo"
 
 # Set up dirtsim home directory with correct ownership and permissions.
 setup_dirtsim_home() {
@@ -35,10 +30,10 @@ setup_dirtsim_home() {
     touch ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
     chmod 600 ${IMAGE_ROOTFS}/home/dirtsim/.ssh/authorized_keys
 
-    # Sparkle Duck application directory (logs, config, etc.).
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/logs
-    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/sparkle-duck/config
+    # DirtSim application directory (logs, config, etc.).
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim/logs
+    install -d -m 755 ${IMAGE_ROOTFS}/home/dirtsim/dirtsim/config
 
     # Fix ownership of entire home directory (including .profile from base-files).
     chown -R 1000:1000 ${IMAGE_ROOTFS}/home/dirtsim
@@ -46,21 +41,9 @@ setup_dirtsim_home() {
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_dirtsim_home;"
 
 # ============================================================================
-# A/B Boot Initialization
-# ============================================================================
-# On first boot, mark that we're running from slot A.
-setup_ab_boot() {
-    # Create initial boot_slot marker (will be on boot partition after flash).
-    # This gets copied to /boot when the boot partition is mounted.
-    install -d ${IMAGE_ROOTFS}/boot
-    echo "a" > ${IMAGE_ROOTFS}/boot/boot_slot
-}
-ROOTFS_POSTPROCESS_COMMAND:append = " setup_ab_boot;"
-
-# ============================================================================
 # HyperPixel Backlight Fix
 # ============================================================================
-# The HyperPixel backlight doesn't auto-enable at boot.  This service fixes it.
+# The HyperPixel backlight doesn't auto-enable at boot. This service fixes it.
 setup_hyperpixel_backlight() {
     install -d ${IMAGE_ROOTFS}/etc/systemd/system
 
@@ -99,45 +82,41 @@ disable_fb_console() {
 ROOTFS_POSTPROCESS_COMMAND:append = " disable_fb_console;"
 
 # ============================================================================
-# Network Management
+# Coredump Collection
 # ============================================================================
-# NetworkManager provides nmcli/nmtui for network configuration.
-IMAGE_INSTALL:append = " \
-    networkmanager \
-    networkmanager-nmtui \
-    networkmanager-nmcli \
-"
+# Enable crash dump collection for field debugging. Cores are compressed and
+# stored in /var/lib/systemd/coredump/, accessible via coredumpctl.
+# Note: coredumpctl is part of systemd when PACKAGECONFIG includes "coredump"
+# (configured in kas-dirtsim.yml). No separate package needed.
+setup_coredump_config() {
+    install -d ${IMAGE_ROOTFS}/etc/systemd
+    cat > ${IMAGE_ROOTFS}/etc/systemd/coredump.conf << 'EOF'
+[Coredump]
+Storage=external
+Compress=yes
+MaxUse=500M
+KeepFree=100M
+EOF
+
+    # Store coredumps on /data partition (more space than rootfs).
+    # The symlink points to /data/coredumps, created at boot via tmpfiles.d
+    # (can't create in rootfs since /data is a separate mounted partition).
+    rm -rf ${IMAGE_ROOTFS}/var/lib/systemd/coredump
+    ln -s /data/coredumps ${IMAGE_ROOTFS}/var/lib/systemd/coredump
+
+    # Create tmpfiles.d entry to make /data/coredumps at boot.
+    install -d ${IMAGE_ROOTFS}/usr/lib/tmpfiles.d
+    echo "d /data/coredumps 0755 root root -" > ${IMAGE_ROOTFS}/usr/lib/tmpfiles.d/dirtsim-coredump.conf
+}
+ROOTFS_POSTPROCESS_COMMAND:append = " setup_coredump_config;"
 
 # ============================================================================
-# Persistent Data
+# Additional Development & Debug Tools
 # ============================================================================
-# Mounts /data partition which survives A/B updates.
-# WiFi credentials, logs, and config are stored here.
+# Tools beyond what pi-base-image provides.
 IMAGE_INSTALL:append = " \
-    persistent-data \
-"
-
-# ============================================================================
-# Service Discovery
-# ============================================================================
-# Avahi for mDNS - find the Pi as "dirtsim.local" on the network.
-IMAGE_INSTALL:append = " \
-    avahi-daemon \
-    avahi-utils \
-"
-
-# ============================================================================
-# Development & Debug Tools
-# ============================================================================
-# Useful tools for poking around on the device.
-IMAGE_INSTALL:append = " \
-    ab-boot-manager \
-    curl \
     file \
-    htop \
     jq \
-    less \
-    nano \
     nmon \
     rsync \
     screen \
@@ -148,7 +127,7 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# WiFi Support
+# WiFi Firmware
 # ============================================================================
 # Firmware for the Pi's onboard WiFi.
 IMAGE_INSTALL:append = " \
@@ -157,18 +136,10 @@ IMAGE_INSTALL:append = " \
 "
 
 # ============================================================================
-# Stage 2: Dirt Simulation Server
+# DirtSim Application
 # ============================================================================
-# Headless physics simulation with WebSocket API on port 8080.
+# Headless physics simulation with WebSocket API and LVGL display client.
 IMAGE_INSTALL:append = " \
-    sparkle-duck-server \
-"
-
-# ============================================================================
-# Stage 3: Dirt Simulation UI
-# ============================================================================
-# LVGL-based display client using framebuffer backend (no compositor needed).
-# Connects to server on localhost:8080 and renders the simulation.
-IMAGE_INSTALL:append = " \
-    sparkle-duck-ui \
+    dirtsim-server \
+    dirtsim-ui \
 "

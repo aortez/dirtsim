@@ -1,9 +1,12 @@
-[submodule "test-lvgl/lvgl"]
-	path = dirtsim/lvgl
+[submodule "apps/lvgl"]
+	path = apps/lvgl
 	url = https://github.com/lvgl/lvgl.git
-[submodule "test-lvgl/spdlog"]
-	path = dirtsim/spdlog
+[submodule "apps/spdlog"]
+	path = apps/spdlog
 	url = https://github.com/gabime/spdlog.git
-[submodule "test-lvgl/external/args"]
-	path = dirtsim/external/args
+[submodule "apps/external/args"]
+	path = apps/external/args
 	url = https://github.com/Taywee/args.git
+[submodule "yocto/pi-base"]
+	path = yocto/pi-base
+	url = ../sparkle-duck-shared

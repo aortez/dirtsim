@@ -1,0 +1,14 @@
+[Unit]
+Description=DirtSim Physics Simulation Server
+After=network-online.target avahi-daemon.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dirtsim
+WorkingDirectory=/data/dirtsim
+ExecStart=/usr/bin/dirtsim-server -p 8080
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

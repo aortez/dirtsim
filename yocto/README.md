@@ -1,6 +1,6 @@
-# Sparkle Duck Yocto Build
+# DirtSim Yocto Build
 
-A custom Yocto Linux image for running the Sparkle Duck dirt simulation on Raspberry Pi 4 and Pi 5.
+A custom Yocto Linux image for running the DirtSim dirt simulation on Raspberry Pi 4 and Pi 5.
 
 **Hardware Support:**
 - **Pi4:** MPI4008 4" HDMI touchscreen (480x800, resistive touch via ADS7846)
@@ -12,7 +12,7 @@ A custom Yocto Linux image for running the Sparkle Duck dirt simulation on Raspb
 Build a minimal, purpose-built Linux image that:
 - Boots fast and runs lean
 - Contains only what we need for the dirt sim
-- Can be updated atomically (A/B partitions via Mender)
+- Can be updated atomically (A/B partitions)
 - Eliminates the cruft of a general-purpose distro
 
 ## Development Stages
@@ -34,7 +34,7 @@ Build a minimal, purpose-built Linux image that:
 ### Stage 2: Roots ✅
 *Headless dirt sim server.*
 
-- [x] `sparkle-duck-server` recipe builds
+- [x] `dirtsim-server` recipe builds
 - [x] systemd service auto-starts server on boot
 - [x] WebSocket accessible from network (port 8080)
 - [x] CLI tool can control remotely
@@ -45,13 +45,37 @@ Build a minimal, purpose-built Linux image that:
 *Full graphical UI on display.*
 
 - [x] LVGL rendering via framebuffer (no compositor needed!)
-- [x] `sparkle-duck-ui` auto-starts and connects to server
+- [x] `dirtsim-ui` auto-starts and connects to server
 - [x] Disabled getty on tty1 (UI owns the framebuffer)
 - [x] Touch input working (both Pi4 ADS7846 and Pi5 Goodix)
 - [x] Auto-detect Pi model and configure display rotation/touch device
 - [ ] WebRTC streaming to garden dashboard
 
 **Success criteria:** Walk up to the Pi, see dirt falling, touch works. ✅
+
+### Recent Improvements (Dec 2025)
+
+**WiFi Provisioning via BLE:**
+- [x] Integrated `wifi-provisioner` daemon (Improv WiFi protocol over BLE)
+- [x] Auto-advertises on boot when WiFi disconnected
+- [x] Web Bluetooth from phone → provision credentials → Pi connects
+- [x] Tested end-to-end on Pi 5
+
+**Image Refactoring:**
+- [x] dirtsim-image now inherits pi-base-image (-71 lines, removed duplication)
+- [x] Bluetooth support (bluez5) added to base image
+- [x] systemd-networkd disabled (fixes 120s boot delay)
+- [x] Automatic inclusion of shared infrastructure (A/B boot, persistent data, etc.)
+
+**API Improvements:**
+- [x] Removed scenario_id from SimRun command (server uses configured scenario)
+- [x] Added ScenarioSwitch command (switch scenarios at runtime)
+- [x] Added ScenariosListGet command (UI requests from server dynamically)
+- [x] Removed static SCENARIO_METADATA duplication (single source of truth)
+- [x] Fixed server.json config installation and permissions
+
+**Tooling:**
+- [x] Added `tail_remote_logs.sh` for remote debugging
 
 ---
 
@@ -88,42 +112,111 @@ build/tmp/deploy/images/raspberrypi-dirtsim/dirtsim-image-raspberrypi-dirtsim.ro
 The flash tool writes the image, injects your SSH public key, and sets the device hostname.
 
 ```bash
-npm run flash                       # Interactive device selection
+npm run flash                       # Use config file or interactive
+npm run flash -- --interactive      # Force interactive mode (ignore config)
 npm run flash -- --device /dev/sdb  # Direct flash (still confirms)
 npm run flash -- --list             # Just list available devices
 npm run flash -- --dry-run          # Show what would happen
 npm run flash -- --reconfigure      # Re-select SSH key
 ```
 
+**Configuration File:**
+
+The flash script uses `.flash-config.json` to store preferences. To set up automated flashing:
+
+```bash
+cp .flash-config.json.example .flash-config.json
+# Edit .flash-config.json with your preferences
+```
+
+Supported config fields:
+- `ssh_key_path` (required): Path to SSH public key
+- `device` (optional): Auto-select device (e.g., `/dev/sda`)
+- `device_serial` (auto): Stored serial number for device identity verification
+- `hostname` (optional): Pre-set hostname
+- `backup_data` (optional): Auto-backup data partition (`true`/`false`)
+- `skip_confirmation` (optional): Skip final confirmation (`true`/`false`)
+
+Use `--interactive` to override the config file and force interactive prompts.
+
+**Safety Features:**
+
+The flash script includes safety checks to prevent accidentally flashing the wrong drive:
+
+- **Device identity verification:** After your first flash, the script saves the device's serial number. If a different physical device later appears at the same path (e.g., you unplugged your SD card and plugged in an external drive), you must type "YES" to confirm.
+- **Large device warning:** Devices larger than 200GB require typing "YES" to flash, since these are unlikely to be SD cards or small USB drives.
+
 **First-time setup:** The script prompts you to:
 1. Select an SSH public key from `~/.ssh/` (saved to `.flash-config.json`)
 2. Enter a hostname for this device (e.g., `dirtsim1`, `dirtsim2`)
+3. Enter WiFi credentials (or skip if reflashing with existing data partition)
 
 The hostname is written to `/boot/hostname.txt` and applied on first boot. You can also manually edit this file on the SD card before booting.
+
+**WiFi Credentials:**
+
+For automated flashing, create a `wifi-creds.local` file:
+```bash
+cp pi-base/wifi-creds.local.example wifi-creds.local
+# Edit wifi-creds.local with your SSID and password
+```
+
+The file format is JSON:
+```json
+{
+  "ssid": "MyNetworkName",
+  "password": "MySecretPassword"
+}
+```
+
+If the file doesn't exist, the script prompts interactively. WiFi credentials are stored in the `/data` partition and persist across A/B updates.
 
 ### Remote Update (A/B System)
 
 The image uses **A/B partitions** for safe remote updates - no more corrupted filesystems! The disk has two rootfs partitions (sda2/sda3). Updates are written to the inactive partition while the system runs from the active one.
 
 ```bash
-npm run yolo                       # Build + flash to inactive slot + reboot
-npm run yolo -- --clean            # Force rebuild (cleans sstate first)
-npm run yolo -- --skip-build       # Flash existing image (skip kas build)
-npm run yolo -- --hold-my-mead     # Skip confirmation prompt (for scripts)
-npm run yolo -- --dry-run          # Show what would happen
+npm run yolo                            # Build + flash to inactive slot + reboot
+npm run yolo -- --target 192.168.1.50   # Target a specific host (default: dirtsim.local)
+npm run yolo -- --fast                  # Fast dev deploy (~10s, see below)
+npm run yolo -- --clean                 # Force rebuild (cleans sstate first)
+npm run yolo -- --skip-build            # Flash existing image (skip kas build)
+npm run yolo -- --hold-my-mead          # Skip confirmation prompt (for scripts)
+npm run yolo -- --dry-run               # Show what would happen
 ```
 
-### Quick Deploy (Userspace Apps)
+### Fast Dev Deploy (--fast)
 
-For fast iteration on application code without rebuilding the full image:
+For rapid iteration on application code (~10s instead of ~2min):
 
 ```bash
-npm run deploy          # Deploy both server and UI (~20-60s)
+./update.sh --target dirtsim.local --fast   # Build + deploy + restart (~10s)
+```
+
+**What it does:**
+1. Runs `ninja` directly (bypasses kas/bitbake overhead)
+2. Strips binaries (109MB → 5.5MB, 151MB → 3.8MB)
+3. SCPs stripped binaries to Pi
+4. Restarts services (no reboot needed)
+
+**When to use:**
+- App code changes only (C++ in `apps/`)
+- Pi is already running with SSH access
+- You ran a full build at least once (ninja build dirs exist)
+
+**When NOT to use:**
+- Kernel, systemd, or new package changes (need full update)
+- First deployment to a new device (need flash)
+
+### Quick Deploy (Legacy)
+
+The older `npm run deploy` also works but is slower (~60s) as it still uses bitbake:
+
+```bash
+npm run deploy          # Deploy both server and UI (~60s)
 npm run deploy server   # Deploy server only
 npm run deploy ui       # Deploy UI only
 ```
-
-This cross-compiles via Yocto, SCPs binaries to the Pi, and restarts services. Much faster than a full YOLO update when you're just changing application code.
 
 **How it works:**
 1. Builds the image (unless `--skip-build`)
@@ -161,7 +254,7 @@ Or add this to your `~/.ssh/config` for a shorter command:
 Host dirtsim
     HostName dirtsim.local
     User dirtsim
-    IdentityFile ~/.ssh/id_ed25519_sparkle_duck
+    IdentityFile ~/.ssh/id_ed25519_dirtsim
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
 ```
@@ -176,8 +269,8 @@ The image uses **A/B partitions** for safe remote updates, plus a **persistent d
 
 ```
 /dev/sda1  - boot (150MB, FAT32, shared by both slots)
-/dev/sda2  - rootfs_a (800MB, ext4)
-/dev/sda3  - rootfs_b (800MB, ext4)
+/dev/sda2  - rootfs_a (2GB, ext4)
+/dev/sda3  - rootfs_b (2GB, ext4)
 /dev/sda4  - data (100MB, ext4, persistent across updates)
 ```
 
@@ -233,11 +326,18 @@ yocto/
 ├── README.md                 # This file
 ├── kas-dirtsim.yml           # KAS build configuration
 ├── package.json              # npm scripts for flash/update
+├── wifi-creds.local          # WiFi credentials (gitignored, create from example)
 ├── scripts/
 │   ├── deploy-apps.mjs       # Quick deploy userspace apps
-│   ├── flash.mjs             # Flash image + inject SSH key
+│   ├── flash.mjs             # Flash image + inject SSH key + WiFi
 │   ├── update.mjs            # Build + flash + verify (sneakernet)
 │   └── yolo-update.mjs       # Remote update over network
+├── pi-base/                  # Shared infrastructure (git submodule)
+│   ├── yocto/meta-pi-base/   # Shared Yocto layer
+│   │   ├── wic/sdimage-ab.wks.in  # A/B partition layout
+│   │   └── recipes-support/  # ab-boot, persistent-data, hostname-setup
+│   ├── scripts/lib/          # Shared flash utilities (JS)
+│   └── wifi-creds.local.example
 ├── meta-dirtsim/             # Our custom Yocto layer
 │   ├── conf/
 │   │   └── layer.conf
@@ -251,15 +351,10 @@ yocto/
 │   │   └── openssh/          # SSH hardening
 │   ├── recipes-extended/
 │   │   └── sudo/             # Passwordless sudo for dirtsim
-│   ├── recipes-support/
-│   │   ├── ab-boot/          # A/B partition management
-│   │   └── persistent-data/  # /data partition mount + WiFi persistence
 │   ├── recipes-dirtsim/
-│   │   └── sparkle-duck/     # Server and UI recipes
-│   ├── recipes-multimedia/
-│   │   └── libyuv/           # Video encoding dependency
-│   └── wic/
-│       └── sdimage-ab.wks    # Partition layout (boot, rootfs_a, rootfs_b, data)
+│   │   └── dirtsim/          # Server and UI recipes
+│   └── recipes-multimedia/
+│       └── libyuv/           # Video encoding dependency
 └── build/                    # Build output (gitignored)
 ```
 
@@ -274,6 +369,7 @@ Using **Scarthgap (5.0)** - confirmed working on Raspberry Pi 5.
 | poky | Core Yocto (bitbake, oe-core) |
 | meta-raspberrypi | Pi 5 BSP |
 | meta-openembedded | Additional recipes (NetworkManager, etc.) |
+| meta-pi-base | Shared infrastructure (A/B boot, persistent data, hostname) |
 | meta-dirtsim | Our custom layer and image |
 
 ---
@@ -308,8 +404,8 @@ A single image works on both Pi4 and Pi5 by using hardware auto-detection:
 
 **Boot-time detection:**
 - `/proc/device-tree/model` contains Pi model string
-- `sparkle-duck-detect-display.service` reads model and writes `/etc/sparkle-duck/display.conf`
-- UI service loads config via `EnvironmentFile=-/etc/sparkle-duck/display.conf`
+- `dirtsim-detect-display.service` reads model and writes `/etc/dirtsim/display.conf`
+- UI service loads config via `EnvironmentFile=-/etc/dirtsim/display.conf`
 
 **Per-hardware configuration:**
 - **Pi4:** 90° rotation, `/dev/input/touchscreen0` (ADS7846)
@@ -347,8 +443,8 @@ Safe remote updates via dual rootfs partitions plus persistent data:
 **Layout:**
 ```
 /dev/sda1 - boot (150MB, shared)
-/dev/sda2 - rootfs_a (800MB)
-/dev/sda3 - rootfs_b (800MB)
+/dev/sda2 - rootfs_a (2GB)
+/dev/sda3 - rootfs_b (2GB)
 /dev/sda4 - data (100MB, persistent)
 ```
 
@@ -365,10 +461,11 @@ When running `npm run flash`, the script:
 3. Flashes the new image (overwrites everything)
 4. Restores `/data` contents to the new partition 4
 
-**Tools:**
+**Tools (from pi-base layer):**
 - `ab-boot-manager` - manages active/inactive slots, shows data partition status
 - `ab-update` - wrapper for safe partition flashing
-- `persistent-data` recipe - systemd units for mounting `/data` and bind-mounting NetworkManager connections
+- `persistent-data` - systemd units for mounting `/data` and bind-mounting NetworkManager connections
+- `hostname-setup` - sets hostname from `/boot/hostname.txt` at boot
 
 **BusyBox compatibility:** Uses `/proc/cmdline` parsing instead of `findmnt`.
 
@@ -387,7 +484,7 @@ Each device gets unique hostname via `/boot/hostname.txt`:
 
 1. Flash script prompts for hostname (default: `dirtsim`)
 2. Writes hostname to `/boot/hostname.txt`
-3. `sparkle-duck-set-hostname.service` reads file on boot
+3. `hostname-setup` service (from pi-base) reads file on boot
 4. Validates and applies hostname
 
 Alternative: Manually edit `/boot/hostname.txt` before first boot.
