@@ -119,9 +119,11 @@ log_info "Installing dependencies..."
 sudo apt-get update
 sudo apt-get install -y \
     build-essential \
+    chrpath \
     clang-format \
     cmake \
     curl \
+    gawk \
     jq \
     libavahi-client-dev \
     libboost-dev \
@@ -133,6 +135,7 @@ sudo apt-get install -y \
     libwayland-dev \
     libx11-dev \
     libxkbcommon-dev \
+    liblz4-tool \
     nodejs \
     npm \
     pkg-config \
