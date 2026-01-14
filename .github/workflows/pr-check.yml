@@ -66,6 +66,15 @@ jobs:
       working-directory: yocto
       run: npm install
 
+    - name: Configure SSH for dirtsim.local
+      run: |
+        mkdir -p ~/.ssh
+        cat >> ~/.ssh/config <<EOF
+        Host dirtsim.local
+          StrictHostKeyChecking no
+          UserKnownHostsFile /dev/null
+        EOF
+
     - name: Deploy and smoke test on dirtsim.local
       working-directory: yocto
       run: npm run smoke-test
