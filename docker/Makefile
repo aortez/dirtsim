@@ -82,7 +82,7 @@ format-check: build-image
 	@echo "Checking code formatting in Docker..."
 	$(DOCKER_RUN) bash -c "make format && git diff --quiet || (echo 'Code formatting issues detected. Run make format locally.' && git diff && exit 1)"
 
-ccache-stats: build-image
+ccache-stats:
 	@$(DOCKER_RUN) ccache -s
 
 shell: build-image
