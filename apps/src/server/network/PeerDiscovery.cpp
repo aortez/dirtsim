@@ -271,14 +271,16 @@ bool PeerDiscovery::start()
 
 void PeerDiscovery::stop()
 {
-    if (!pImpl_->running_) {
-        return;
-    }
-
+    // Signal thread to stop.
     pImpl_->running_ = false;
+
+    // Wake up the poll if it's running.
     if (pImpl_->poll_) {
         avahi_simple_poll_quit(pImpl_->poll_);
     }
+
+    // Always join the thread if it exists, even if running_ was set to false
+    // by the thread itself (e.g., when Avahi daemon is not available).
     if (pImpl_->thread_.joinable()) {
         pImpl_->thread_.join();
     }

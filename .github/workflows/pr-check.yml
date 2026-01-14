@@ -12,8 +12,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-docker-image:
+    uses: ./.github/workflows/docker-build.yml
+
   build-and-test:
     runs-on: self-hosted
+    needs: build-docker-image
+    if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
     steps:
     - name: Checkout code
@@ -28,20 +33,26 @@ jobs:
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
 
     - name: Check code formatting
-      working-directory: apps
-      run: |
-        # Check if any files would change after formatting.
-        make format
-        if ! git diff --quiet; then
-          echo "Code formatting issues detected. Run 'make format' locally."
-          git diff
-          exit 1
-        fi
+      working-directory: docker
+      run: make format-check
 
     - name: Build debug version
-      working-directory: apps
-      run: make -j$(nproc) debug
+      working-directory: docker
+      run: |
+        START=$(date +%s)
+        make build-debug
+        echo "BUILD_TIME=$(($(date +%s) - START))" >> $GITHUB_ENV
+
+    - name: Build stats
+      working-directory: docker
+      run: |
+        echo "### Build Stats" >> $GITHUB_STEP_SUMMARY
+        echo "- **Build time:** ${{ env.BUILD_TIME }}s" >> $GITHUB_STEP_SUMMARY
+        echo "- **ccache stats:**" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        make ccache-stats >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
 
     - name: Run unit tests
-      working-directory: apps
-      run: ./build-debug/bin/dirtsim-tests
+      working-directory: docker
+      run: make test
