@@ -8,6 +8,7 @@
     "build": "kas build kas-dirtsim.yml",
     "deploy": "node scripts/deploy-apps.mjs",
     "flash": "node scripts/flash.mjs",
+    "smoke-test": "node scripts/deploy-and-smoke-test.mjs",
     "update": "node scripts/update.mjs",
     "yolo": "node scripts/yolo-update.mjs"
   },
