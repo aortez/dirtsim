@@ -592,7 +592,6 @@ Can be found here:
 - Implement fragmentation on high energy impacts (see WorldCollisionCalculator).
 - mass as a gravity source!  allan.pizza but in a grid!!!
 - reinstall lottie - it would be sweet to mess with these animations. Or sample them for quantized display.
-- make training UI have option to show current training run and also picture from end of best run so far.
 - Add CI test that deploys to a remote unit, then verifies that both the UI and server come up properly.
 - tune the color of the icon bar when minimized.  Make it darker.  dim the button some.
 

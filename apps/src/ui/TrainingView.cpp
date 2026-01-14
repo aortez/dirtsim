@@ -10,7 +10,6 @@
 #include "rendering/RenderMode.h"
 #include "server/api/EvolutionProgress.h"
 #include "state-machine/EventSink.h"
-#include "ui/ui_builders/LVGLBuilder.h"
 #include <lvgl/lvgl.h>
 #include <memory>
 
@@ -189,9 +188,6 @@ void TrainingView::createUI()
     lv_obj_set_style_text_color(averageLabel_, lv_color_hex(0xAAAACC), 0);
     lv_obj_set_style_text_font(averageLabel_, &lv_font_montserrat_12, 0);
 
-    // Remove cumulative time label (not needed in compact view).
-    cumulativeTimeLabel_ = nullptr;
-
     // ========== BOTTOM: Two world views side by side ==========
     lv_obj_t* bottomRow = lv_obj_create(mainLayout);
     lv_obj_set_size(bottomRow, LV_PCT(100), LV_SIZE_CONTENT);
@@ -284,7 +280,6 @@ void TrainingView::destroyUI()
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
-    cumulativeTimeLabel_ = nullptr;
     etaLabel_ = nullptr;
     evalLabel_ = nullptr;
     evaluationBar_ = nullptr;
