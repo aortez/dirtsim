@@ -110,6 +110,32 @@ make test ARGS='--gtest_filter=StateIdle*'
 make test-asan
 ```
 
+## CLI Tool
+
+The CLI tool provides remote control, testing, and automation capabilities:
+
+```bash
+# Launch server + UI together
+./build-debug/bin/cli run-all
+
+# Send commands to server or UI
+./build-debug/bin/cli server StatusGet
+./build-debug/bin/cli server SimRun '{"scenario_id": "sandbox"}'
+./build-debug/bin/cli ui StatusGet
+
+# Take a screenshot
+./build-debug/bin/cli screenshot output.png
+
+# Remote control (Raspberry Pi)
+./build-debug/bin/cli --address ws://dirtsim.local:8080 server StatusGet
+./build-debug/bin/cli screenshot --address ws://dirtsim.local:7070 remote.png
+
+# Clean up all dirtsim processes
+./build-debug/bin/cli cleanup
+```
+
+**See [src/cli/README.md](src/cli/README.md) for complete documentation.**
+
 ## Development
 
 ### Code Formatting
