@@ -1,6 +1,5 @@
 #pragma once
 
-#include "core/WorldData.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/controls/IconRail.h"
@@ -10,6 +9,8 @@ typedef struct _lv_obj_t lv_obj_t;
 typedef struct _lv_event_t lv_event_t;
 
 namespace DirtSim {
+
+struct WorldData;
 
 namespace Api {
 struct EvolutionProgress;
@@ -86,13 +87,14 @@ private:
     std::unique_ptr<CellRenderer> bestRenderer_;
 
     // Tracking state for best snapshot capture.
-    WorldData lastRenderedWorld_;
+    std::unique_ptr<WorldData> lastRenderedWorld_;
+    bool hasRenderedWorld_ = false;
     int lastEval_ = -1;
     int lastGeneration_ = -1;
     double lastBestFitness_ = -1.0;
 
     // Best snapshot data.
-    WorldData bestWorldData_;
+    std::unique_ptr<WorldData> bestWorldData_;
     double bestFitness_ = 0.0;
     int bestGeneration_ = 0;
 

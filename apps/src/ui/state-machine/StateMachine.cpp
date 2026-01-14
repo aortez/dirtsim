@@ -2,6 +2,7 @@
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
 #include "core/encoding/H264Encoder.h"
@@ -81,10 +82,7 @@ void StateMachine::setupWebSocketService()
 
     // Get concrete WebSocketService for template method access.
     auto* ws = getConcreteWebSocketService();
-    if (!ws) {
-        LOG_ERROR(Network, "wsService_ is not a WebSocketService (might be a mock)");
-        return;
-    }
+    DIRTSIM_ASSERT(ws != nullptr, "Failed to cast wsService_ to WebSocketService");
 
     // Register handlers for UI commands that come from CLI (port 7070).
     // All UI commands are queued to the state machine for processing.

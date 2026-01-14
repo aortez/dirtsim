@@ -16,6 +16,10 @@
 namespace DirtSim {
 namespace Ui {
 
+namespace {
+constexpr double FITNESS_IMPROVEMENT_EPSILON = 0.001;
+}
+
 TrainingView::TrainingView(UiComponentManager* uiManager, EventSink& eventSink)
     : uiManager_(uiManager), eventSink_(eventSink)
 {
@@ -295,7 +299,8 @@ void TrainingView::destroyUI()
 void TrainingView::renderWorld(const WorldData& worldData)
 {
     // Store for potential best snapshot capture.
-    lastRenderedWorld_ = worldData;
+    lastRenderedWorld_ = std::make_unique<WorldData>(worldData);
+    hasRenderedWorld_ = true;
 
     if (!renderer_ || !worldContainer_) {
         return;
@@ -309,13 +314,15 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
 
     // Detect evaluation change with fitness improvement for best snapshot.
+    // Note: Depends on renderWorld() being called first to populate lastRenderedWorld_.
     const bool evalChanged = (progress.currentEval != lastEval_)
         || (progress.generation != lastGeneration_ && progress.currentEval == 0);
-    const bool fitnessImproved = (progress.bestFitnessAllTime > lastBestFitness_ + 0.001);
+    const bool fitnessImproved =
+        (progress.bestFitnessAllTime > lastBestFitness_ + FITNESS_IMPROVEMENT_EPSILON);
 
-    if (evalChanged && fitnessImproved && lastRenderedWorld_.width > 0) {
+    if (evalChanged && fitnessImproved && hasRenderedWorld_) {
         // Last rendered frame is the final frame of the new best!
-        bestWorldData_ = lastRenderedWorld_;
+        bestWorldData_ = std::make_unique<WorldData>(*lastRenderedWorld_);
         bestFitness_ = progress.bestFitnessAllTime;
         bestGeneration_ = progress.generation;
         renderBestWorld();
@@ -550,12 +557,12 @@ void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
 
 void TrainingView::renderBestWorld()
 {
-    if (!bestRenderer_ || !bestWorldContainer_) {
+    if (!bestRenderer_ || !bestWorldContainer_ || !bestWorldData_) {
         return;
     }
 
     // Render the best world snapshot.
-    bestRenderer_->renderWorldData(bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
+    bestRenderer_->renderWorldData(*bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
 
     // Update the label to show fitness info.
     if (bestFitnessLabel_) {
