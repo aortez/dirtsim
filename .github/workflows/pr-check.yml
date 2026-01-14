@@ -80,6 +80,6 @@ jobs:
 
     - name: Deploy and smoke test on dirtsim.local
       working-directory: yocto
-      env:
-        PATH: $HOME/.local/bin:$PATH
-      run: npm run smoke-test
+      run: |
+        export PATH="$HOME/.local/bin:$PATH"
+        npm run smoke-test
