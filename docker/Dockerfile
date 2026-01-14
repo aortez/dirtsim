@@ -35,6 +35,9 @@ RUN apt-get update && apt-get install -y \
 # Create .ssh directory with proper permissions.
 RUN mkdir -p /root/.ssh && chmod 700 /root/.ssh
 
+# Configure git to trust the workspace directory.
+RUN git config --global --add safe.directory /workspace
+
 # Set working directory.
 WORKDIR /workspace
 
