@@ -1,0 +1,41 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-build.yml'
+  schedule:
+    # Rebuild daily at 2 AM UTC to keep cache fresh.
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-cache:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        clean: true
+
+    - name: Build Docker image
+      working-directory: docker
+      run: make build-image
+
+    - name: Verify image
+      working-directory: docker
+      run: |
+        docker images | grep dirtsim-builder
+        docker run --rm dirtsim-builder:latest cmake --version

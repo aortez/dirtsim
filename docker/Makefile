@@ -1,0 +1,83 @@
+# Docker orchestration for dirtsim builds.
+# Usage:
+#   make build-image    # Build the Docker image
+#   make build-debug    # Build dirtsim debug in container
+#   make build-release  # Build dirtsim release in container
+#   make test           # Run tests in container
+#   make format         # Format code in container
+#   make shell          # Interactive shell in container
+#   make clean-image    # Remove Docker image
+#   make help           # Show this help
+
+.PHONY: help build-image build-debug build-release test format shell clean-image
+
+# Image name and tag.
+IMAGE_NAME := dirtsim-builder
+IMAGE_TAG := latest
+IMAGE := $(IMAGE_NAME):$(IMAGE_TAG)
+
+# Get the project root (parent of docker directory).
+PROJECT_ROOT := $(shell cd .. && pwd)
+
+# SSH key directory (override with SSH_DIR=/path/to/.ssh).
+SSH_DIR := $(HOME)/.ssh
+
+# Base docker run command.
+DOCKER_RUN := docker run --rm \
+	-v $(PROJECT_ROOT):/workspace \
+	-v $(SSH_DIR):/root/.ssh:ro \
+	-w /workspace/apps \
+	$(IMAGE)
+
+help:
+	@echo "Docker build targets:"
+	@echo "  make build-image    - Build the Docker image with all dependencies"
+	@echo "  make build-debug    - Build dirtsim (debug) inside Docker container"
+	@echo "  make build-release  - Build dirtsim (release) inside Docker container"
+	@echo "  make test           - Run unit tests inside Docker container"
+	@echo "  make format         - Format code inside Docker container"
+	@echo "  make format-check   - Check code formatting inside Docker container"
+	@echo "  make shell          - Start interactive bash shell in container"
+	@echo "  make clean-image    - Remove Docker image"
+	@echo ""
+	@echo "Example workflow:"
+	@echo "  make build-image    # First time only (or when deps change)"
+	@echo "  make build-debug    # Build the project"
+	@echo "  make test           # Run tests"
+
+build-image:
+	@echo "Building Docker image $(IMAGE)..."
+	docker build -t $(IMAGE) -f Dockerfile ..
+
+build-debug: build-image
+	@echo "Building dirtsim (debug) in Docker..."
+	$(DOCKER_RUN) make -j$$(nproc) debug
+
+build-release: build-image
+	@echo "Building dirtsim (release) in Docker..."
+	$(DOCKER_RUN) make -j$$(nproc) release
+
+test: build-image
+	@echo "Running tests in Docker..."
+	$(DOCKER_RUN) ./build-debug/bin/dirtsim-tests
+
+format: build-image
+	@echo "Formatting code in Docker..."
+	$(DOCKER_RUN) make format
+
+format-check: build-image
+	@echo "Checking code formatting in Docker..."
+	$(DOCKER_RUN) bash -c "make format && git diff --quiet || (echo 'Code formatting issues detected. Run make format locally.' && git diff && exit 1)"
+
+shell: build-image
+	@echo "Starting interactive shell in Docker container..."
+	docker run --rm -it \
+		-v $(PROJECT_ROOT):/workspace \
+		-v $(SSH_DIR):/root/.ssh:ro \
+		-w /workspace/apps \
+		$(IMAGE) \
+		/bin/bash
+
+clean-image:
+	@echo "Removing Docker image $(IMAGE)..."
+	docker rmi $(IMAGE) || true
