@@ -48,52 +48,29 @@ This enables recording/mock processors to verify brain behavior without running 
 
 ### Tree Commands
 
-Trees execute commands that take time to complete. Each command is a simple aggregate type for easy serialization.
+Trees execute commands that take time to complete. Energy costs are determined by TreeCommandProcessor.
 
 ```cpp
-// TreeTypes.h
+// TreeCommands.h
 
-struct GrowWoodCommand {
-    Vector2i target_pos;
-    uint32_t execution_time = 50;  // timesteps
-    double energy_cost = 10.0;
-};
+struct WaitCommand {};    // Do nothing this tick.
+struct CancelCommand {};  // Cancel in-progress action.
 
-struct GrowLeafCommand {
-    Vector2i target_pos;
-    uint32_t execution_time = 30;
-    double energy_cost = 8.0;
-};
-
-struct GrowRootCommand {
-    Vector2i target_pos;
-    uint32_t execution_time = 60;
-    double energy_cost = 12.0;
-};
-
-struct ReinforceCellCommand {
-    Vector2i position;
-    uint32_t execution_time = 30;
-    double energy_cost = 5.0;
-};
-
-struct ProduceSeedCommand {
-    Vector2i position;
-    uint32_t execution_time = 100;
-    double energy_cost = 50.0;
-};
-
-struct WaitCommand {
-    uint32_t duration = 10;
-};
+// Action commands have execution time and target position.
+struct GrowWoodCommand { Vector2i target_pos; double execution_time_seconds = 3.0; };
+struct GrowLeafCommand { Vector2i target_pos; double execution_time_seconds = 0.5; };
+struct GrowRootCommand { Vector2i target_pos; double execution_time_seconds = 2.0; };
+struct ReinforceCellCommand { Vector2i position; double execution_time_seconds = 0.5; };
+struct ProduceSeedCommand { Vector2i position; double execution_time_seconds = 2.0; };
 
 using TreeCommand = std::variant<
+    WaitCommand,
+    CancelCommand,
     GrowWoodCommand,
     GrowLeafCommand,
     GrowRootCommand,
     ReinforceCellCommand,
-    ProduceSeedCommand,
-    WaitCommand
+    ProduceSeedCommand
 >;
 ```
 
