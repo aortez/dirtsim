@@ -124,7 +124,7 @@ TEST_F(DuckLedgeStabilityTest, LightEquilibriumOnLedge)
     // Create and attach handheld light.
     LightManager& lights = world->getLightManager();
     SpotLight spot{
-        .position = Vector2d{ static_cast<double>(DUCK_X), static_cast<double>(DUCK_Y) },
+        .position = Vector2f{ static_cast<float>(DUCK_X), static_cast<float>(DUCK_Y) },
         .color = 0xFFFF00FF,
         .intensity = 1.0f,
         .radius = 12.0f,
@@ -344,7 +344,7 @@ TEST_F(DuckLedgeStabilityTest, FlashlightRespondsToDuckJump)
     // Attach flashlight.
     LightManager& lights = world->getLightManager();
     SpotLight spot{
-        .position = Vector2d{ 10.0, 9.0 },
+        .position = Vector2f{ 10.0f, 9.0f },
         .color = 0xFFFF00FF,
         .intensity = 1.0f,
         .radius = 15.0f,
@@ -423,4 +423,142 @@ TEST_F(DuckLedgeStabilityTest, FlashlightRespondsToDuckJump)
         << "Flashlight pitch should change during jump, but range was only " << pitch_range
         << " rad (" << (pitch_range * 180.0 / M_PI) << "°). "
         << "This suggests acceleration isn't reaching the flashlight physics.";
+}
+
+/**
+ * Test: Light position should have sub-cell precision as duck moves.
+ *
+ * This tests that the light position changes smoothly within a cell,
+ * not just when the duck moves to a new cell.
+ */
+TEST_F(DuckLedgeStabilityTest, LightPositionSubCellPrecision)
+{
+    constexpr int WIDTH = 30;
+    constexpr int HEIGHT = 10;
+    constexpr int FLOOR_Y = 8;
+
+    // Create flat floor world.
+    auto world = std::make_unique<World>(WIDTH, HEIGHT);
+    for (int y = 1; y < HEIGHT - 1; ++y) {
+        for (int x = 1; x < WIDTH - 1; ++x) {
+            world->getData().at(x, y).replaceMaterial(Material::EnumType::Air, 0.0);
+        }
+    }
+    for (int x = 1; x < WIDTH - 1; ++x) {
+        world->getData().at(x, FLOOR_Y).replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    printWorld(*world, "Flat floor for sub-cell light test");
+
+    OrganismManager& manager = world->getOrganismManager();
+    auto test_brain = std::make_unique<TestDuckBrain>();
+    test_brain->setAction(DuckAction::RUN_RIGHT);
+
+    constexpr int DUCK_START_X = 5;
+    constexpr int DUCK_Y = FLOOR_Y - 1;
+    OrganismId duck_id = manager.createDuck(*world, DUCK_START_X, DUCK_Y, std::move(test_brain));
+    Duck* duck = manager.getDuck(duck_id);
+    ASSERT_NE(duck, nullptr);
+
+    // Attach flashlight.
+    LightManager& lights = world->getLightManager();
+    SpotLight spot{
+        .position = Vector2f{ static_cast<float>(DUCK_START_X), static_cast<float>(DUCK_Y) },
+        .color = 0xFFFF00FF,
+        .intensity = 1.0f,
+        .radius = 10.0f,
+        .attenuation = 0.1f,
+        .direction = 0.0f,
+        .arc_width = 0.8f,
+        .focus = 0.5f,
+    };
+    LightHandle handle = lights.createLight(spot);
+    duck->setHandheldLight(std::make_unique<LightHandHeld>(std::move(handle)));
+
+    LightHandHeld* light = duck->getHandheldLight();
+    ASSERT_NE(light, nullptr);
+
+    SpotLight* spotlight = lights.getLight<SpotLight>(light->getLightId());
+    ASSERT_NE(spotlight, nullptr);
+
+    constexpr double DT = 0.016;
+
+    spdlog::info("");
+    spdlog::info("=== Light Sub-Cell Position Test ===");
+    spdlog::info("Duck walks right, tracking light position each frame");
+
+    // Track unique light positions to verify sub-cell precision.
+    std::vector<float> light_x_positions;
+    int last_anchor_x = duck->getAnchorCell().x;
+    int cell_changes = 0;
+
+    // Run until duck moves at least 3 cells.
+    constexpr int MAX_FRAMES = 300;
+    for (int frame = 0; frame < MAX_FRAMES; ++frame) {
+        world->advanceTime(DT);
+
+        Vector2i anchor = duck->getAnchorCell();
+        float light_x = spotlight->position.x;
+        float light_y = spotlight->position.y;
+
+        // Get cell COM for debugging.
+        const Cell& cell = world->getData().at(anchor.x, anchor.y);
+
+        // Log every frame to see the sub-cell movement.
+        if (frame < 60 || frame % 10 == 0) {
+            spdlog::info(
+                "Frame {:3d}: anchor=({},{}), com=({:+.3f},{:+.3f}), light=({:.3f},{:.3f})",
+                frame,
+                anchor.x,
+                anchor.y,
+                cell.com.x,
+                cell.com.y,
+                light_x,
+                light_y);
+        }
+
+        light_x_positions.push_back(light_x);
+
+        // Track cell changes.
+        if (anchor.x != last_anchor_x) {
+            spdlog::info(
+                "*** CELL CHANGE: {} -> {} at frame {} ***", last_anchor_x, anchor.x, frame);
+            cell_changes++;
+            last_anchor_x = anchor.x;
+        }
+
+        // Stop after 3 cell changes.
+        if (cell_changes >= 3) {
+            break;
+        }
+    }
+
+    // Count unique x positions (with some tolerance for floating point).
+    std::vector<float> unique_positions;
+    for (float pos : light_x_positions) {
+        bool is_unique = true;
+        for (float existing : unique_positions) {
+            if (std::abs(pos - existing) < 0.001f) {
+                is_unique = false;
+                break;
+            }
+        }
+        if (is_unique) {
+            unique_positions.push_back(pos);
+        }
+    }
+
+    spdlog::info("");
+    spdlog::info("=== RESULTS ===");
+    spdlog::info("Total frames: {}", light_x_positions.size());
+    spdlog::info("Cell changes: {}", cell_changes);
+    spdlog::info("Unique light x positions: {}", unique_positions.size());
+
+    // If sub-cell precision is working, we should have many unique positions.
+    // If it's quantized to cells, we'd only have ~cell_changes+1 positions.
+    EXPECT_GT(unique_positions.size(), static_cast<size_t>(cell_changes + 1))
+        << "Light position should have sub-cell precision. "
+        << "Expected many unique positions, but only got " << unique_positions.size() << " for "
+        << cell_changes << " cell changes. "
+        << "This suggests the light position is quantized to cell boundaries.";
 }

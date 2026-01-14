@@ -20,6 +20,7 @@ struct RotatingLight;
 template <typename T>
 struct Vector2;
 using Vector2d = Vector2<double>;
+using Vector2f = Vector2<float>;
 class World;
 struct WorldData;
 
@@ -58,17 +59,17 @@ private:
     void applySunlight(World& world, const GridOfCells& grid, uint32_t sun_color, float intensity);
     void clearLight(World& world);
     float getSpotAngularFactor(
-        const Vector2d& light_pos,
+        const Vector2f& light_pos,
         float direction,
         float arc_width,
         float focus,
-        const Vector2d& target_pos) const;
+        const Vector2f& target_pos) const;
     void storeRawLight(World& world);
     ColorNames::RgbF traceRay(
         const GridOfCells& grid,
         const WorldData& data,
-        int x0,
-        int y0,
+        float x0,
+        float y0,
         int x1,
         int y1,
         ColorNames::RgbF color) const;

@@ -8,6 +8,7 @@
 #include "MaterialType.h"
 #include "ScopeTimer.h"
 #include "Timers.h"
+#include "Vector2.h"
 #include "World.h"
 #include "WorldData.h"
 
@@ -514,53 +515,87 @@ void WorldLightCalculator::applyEmissiveOverlay(World& world)
 ColorNames::RgbF WorldLightCalculator::traceRay(
     const GridOfCells& grid,
     const WorldData& data,
-    int x0,
-    int y0,
+    float x0,
+    float y0,
     int x1,
     int y1,
     ColorNames::RgbF color) const
 {
-    // Bresenham's line algorithm to trace from light source to target.
+    // DDA-style grid traversal from sub-cell light position to target cell center.
     // Accumulates opacity and tinting as light passes through materials.
-    const int dx = std::abs(x1 - x0);
-    const int dy = std::abs(y1 - y0);
-    const int sx = (x0 < x1) ? 1 : -1;
-    const int sy = (y0 < y1) ? 1 : -1;
-    int err = dx - dy; // Modified during line stepping.
-
-    int x = x0; // Current position, modified during stepping.
-    int y = y0;
     const int width = grid.getWidth();
     const int height = grid.getHeight();
     const ColorNames::RgbF white{ 1.0f, 1.0f, 1.0f };
 
-    // Skip the source cell itself.
-    while (x != x1 || y != y1) {
-        const int e2 = 2 * err;
-        if (e2 > -dy) {
-            err -= dy;
-            x += sx;
-        }
-        if (e2 < dx) {
-            err += dx;
-            y += sy;
-        }
+    // Target is cell center.
+    const float target_x = static_cast<float>(x1) + 0.5f;
+    const float target_y = static_cast<float>(y1) + 0.5f;
 
-        // Stop if we've reached the target.
-        if (x == x1 && y == y1) {
+    // Ray direction.
+    const float dx = target_x - x0;
+    const float dy = target_y - y0;
+    const float dist = std::sqrt(dx * dx + dy * dy);
+
+    if (dist < 0.001f) {
+        return color; // Start and end are the same point.
+    }
+
+    // Normalized direction.
+    const float dir_x = dx / dist;
+    const float dir_y = dy / dist;
+
+    // Current cell.
+    int cell_x = static_cast<int>(std::floor(x0));
+    int cell_y = static_cast<int>(std::floor(y0));
+
+    // Step direction.
+    const int step_x = (dir_x > 0) ? 1 : -1;
+    const int step_y = (dir_y > 0) ? 1 : -1;
+
+    // tDelta: how far along ray (in units of dist) to cross one cell.
+    const float tDeltaX = (dir_x != 0.0f) ? std::abs(1.0f / dir_x) : 1e9f;
+    const float tDeltaY = (dir_y != 0.0f) ? std::abs(1.0f / dir_y) : 1e9f;
+
+    // tMax: how far along ray to next grid line.
+    float tMaxX, tMaxY;
+    if (dir_x > 0) {
+        tMaxX = (std::ceil(x0) - x0) / dir_x;
+    }
+    else if (dir_x < 0) {
+        tMaxX = (x0 - std::floor(x0)) / -dir_x;
+    }
+    else {
+        tMaxX = 1e9f;
+    }
+
+    if (dir_y > 0) {
+        tMaxY = (std::ceil(y0) - y0) / dir_y;
+    }
+    else if (dir_y < 0) {
+        tMaxY = (y0 - std::floor(y0)) / -dir_y;
+    }
+    else {
+        tMaxY = 1e9f;
+    }
+
+    // Traverse grid cells along ray.
+    const int max_steps = width + height; // Safety limit.
+    for (int step = 0; step < max_steps; ++step) {
+        // Check if we've reached the target cell.
+        if (cell_x == x1 && cell_y == y1) {
             break;
         }
 
-        // Bounds check - if we step outside the grid, stop tracing.
-        if (x < 0 || x >= width || y < 0 || y >= height) {
+        // Bounds check.
+        if (cell_x < 0 || cell_x >= width || cell_y < 0 || cell_y >= height) {
             return ColorNames::RgbF{};
         }
 
         // Get material and fill ratio at this cell.
-        const uint64_t packed = grid.getMaterialNeighborhood(x, y).raw();
+        const uint64_t packed = grid.getMaterialNeighborhood(cell_x, cell_y).raw();
         const Material::EnumType mat = static_cast<Material::EnumType>((packed >> 16) & 0xF);
         const auto& light_props = Material::getProperties(mat).light;
-        const Cell& cell = data.cells[static_cast<size_t>(y) * width + x];
+        const Cell& cell = data.cells[static_cast<size_t>(cell_y) * width + cell_x];
         const float fill = cell.fill_ratio;
 
         // Scale opacity by fill ratio - partially filled cells are more transparent.
@@ -577,6 +612,16 @@ ColorNames::RgbF WorldLightCalculator::traceRay(
         if (color.r < 0.001f && color.g < 0.001f && color.b < 0.001f) {
             return ColorNames::RgbF{};
         }
+
+        // Step to next cell.
+        if (tMaxX < tMaxY) {
+            tMaxX += tDeltaX;
+            cell_x += step_x;
+        }
+        else {
+            tMaxY += tDeltaY;
+            cell_y += step_y;
+        }
     }
 
     return color;
@@ -592,25 +637,30 @@ void WorldLightCalculator::applyPointLight(
     const int width = data.width;
     const int height = data.height;
 
-    const int light_x = static_cast<int>(light.position.x);
-    const int light_y = static_cast<int>(light.position.y);
+    // Keep sub-cell precision for light position.
+    const float light_x = light.position.x;
+    const float light_y = light.position.y;
 
-    if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
+    // Bounds check uses truncated position for grid validity.
+    const int light_cell_x = static_cast<int>(light_x);
+    const int light_cell_y = static_cast<int>(light_y);
+    if (light_cell_x < 0 || light_cell_x >= width || light_cell_y < 0 || light_cell_y >= height) {
         return;
     }
 
     const int radius_int = static_cast<int>(std::ceil(light.radius));
     const RgbF light_color = toRgbF(light.color) * light.intensity;
 
-    const int min_x = std::max(0, light_x - radius_int);
-    const int max_x = std::min(width - 1, light_x + radius_int);
-    const int min_y = std::max(0, light_y - radius_int);
-    const int max_y = std::min(height - 1, light_y + radius_int);
+    const int min_x = std::max(0, light_cell_x - radius_int);
+    const int max_x = std::min(width - 1, light_cell_x + radius_int);
+    const int min_y = std::max(0, light_cell_y - radius_int);
+    const int max_y = std::min(height - 1, light_cell_y + radius_int);
 
     for (int y = min_y; y <= max_y; ++y) {
         for (int x = min_x; x <= max_x; ++x) {
-            const float dx = static_cast<float>(x - light_x);
-            const float dy = static_cast<float>(y - light_y);
+            // Distance from sub-cell light position to cell center.
+            const float dx = (static_cast<float>(x) + 0.5f) - light_x;
+            const float dy = (static_cast<float>(y) + 0.5f) - light_y;
             const float dist = std::sqrt(dx * dx + dy * dy);
 
             if (dist > light.radius) {
@@ -634,37 +684,43 @@ void WorldLightCalculator::applySpotLight(
     const int width = data.width;
     const int height = data.height;
 
-    const int light_x = static_cast<int>(light.position.x);
-    const int light_y = static_cast<int>(light.position.y);
+    // Keep sub-cell precision for light position.
+    const float light_x = light.position.x;
+    const float light_y = light.position.y;
 
-    if (light_x < 0 || light_x >= width || light_y < 0 || light_y >= height) {
+    // Bounds check uses truncated position for grid validity.
+    const int light_cell_x = static_cast<int>(light_x);
+    const int light_cell_y = static_cast<int>(light_y);
+    if (light_cell_x < 0 || light_cell_x >= width || light_cell_y < 0 || light_cell_y >= height) {
         return;
     }
 
     const int radius_int = static_cast<int>(std::ceil(light.radius));
     const RgbF light_color = toRgbF(light.color) * light.intensity;
 
-    const int min_x = std::max(0, light_x - radius_int);
-    const int max_x = std::min(width - 1, light_x + radius_int);
-    const int min_y = std::max(0, light_y - radius_int);
-    const int max_y = std::min(height - 1, light_y + radius_int);
+    const int min_x = std::max(0, light_cell_x - radius_int);
+    const int max_x = std::min(width - 1, light_cell_x + radius_int);
+    const int min_y = std::max(0, light_cell_y - radius_int);
+    const int max_y = std::min(height - 1, light_cell_y + radius_int);
 
     for (int y = min_y; y <= max_y; ++y) {
         for (int x = min_x; x <= max_x; ++x) {
-            const float dx = static_cast<float>(x - light_x);
-            const float dy = static_cast<float>(y - light_y);
+            // Distance from sub-cell light position to cell center.
+            const float dx = (static_cast<float>(x) + 0.5f) - light_x;
+            const float dy = (static_cast<float>(y) + 0.5f) - light_y;
             const float dist = std::sqrt(dx * dx + dy * dy);
 
             if (dist > light.radius) {
                 continue;
             }
 
+            // Angular factor uses sub-cell positions for smooth spotlight direction.
             const float angular_factor = getSpotAngularFactor(
-                light.position,
+                Vector2f{ light_x, light_y },
                 light.direction,
                 light.arc_width,
                 light.focus,
-                Vector2d{ static_cast<double>(x), static_cast<double>(y) });
+                Vector2f{ static_cast<float>(x) + 0.5f, static_cast<float>(y) + 0.5f });
             if (angular_factor <= 0.0f) {
                 continue;
             }
@@ -693,13 +749,13 @@ void WorldLightCalculator::applyRotatingLight(
 }
 
 float WorldLightCalculator::getSpotAngularFactor(
-    const Vector2d& light_pos,
+    const Vector2f& light_pos,
     float direction,
     float arc_width,
     float focus,
-    const Vector2d& target_pos) const
+    const Vector2f& target_pos) const
 {
-    const Vector2d to_target = target_pos - light_pos;
+    const Vector2f to_target = target_pos - light_pos;
     const float target_angle = std::atan2(to_target.y, to_target.x);
 
     float angle_diff = target_angle - direction;

@@ -253,8 +253,14 @@ void Body::updateAttachedLights(World& world, double deltaTime)
         return;
     }
 
+    // Use sub-cell position from cell's COM for smooth light movement.
     Vector2i anchor = getAnchorCell();
-    Vector2d anchor_pos{ static_cast<double>(anchor.x), static_cast<double>(anchor.y) };
+    Vector2f anchor_pos{ static_cast<float>(anchor.x) + 0.5f, static_cast<float>(anchor.y) + 0.5f };
+    if (world.getData().inBounds(anchor.x, anchor.y)) {
+        const Cell& cell = world.getData().at(anchor.x, anchor.y);
+        anchor_pos.x += cell.com.x * 0.5f;
+        anchor_pos.y += cell.com.y * 0.5f;
+    }
     LightManager& lights = world.getLightManager();
 
     for (auto& attachment : attached_lights_) {

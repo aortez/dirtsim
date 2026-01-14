@@ -575,7 +575,10 @@ void Duck::updateHandheldLight(World& world, double deltaTime)
         return;
     }
 
-    Vector2d position{ static_cast<double>(anchor_cell_.x), static_cast<double>(anchor_cell_.y) };
+    // Use sub-cell position from cell's COM for smooth light movement.
+    const Cell& cell = world.getData().at(anchor_cell_.x, anchor_cell_.y);
+    Vector2d position{ static_cast<double>(anchor_cell_.x) + 0.5 + cell.com.x * 0.5,
+                       static_cast<double>(anchor_cell_.y) + 0.5 + cell.com.y * 0.5 };
     const bool facing_right = facing_.x > 0.0f;
     handheld_light_->update(world.getLightManager(), position, facing_right, deltaTime);
 }

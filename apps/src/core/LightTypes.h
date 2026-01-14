@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Vector2d.h"
+#include "Vector2.h"
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -14,7 +14,7 @@ namespace DirtSim {
  * directions. Light intensity falls off with distance squared.
  */
 struct PointLight {
-    Vector2d position;
+    Vector2f position;
     uint32_t color = 0xFFFFFFFF;
     float intensity = 1.0f;
     float radius = 20.0f;
@@ -28,7 +28,7 @@ struct PointLight {
  * Direction is measured in radians from the positive x-axis.
  */
 struct SpotLight {
-    Vector2d position;
+    Vector2f position;
     uint32_t color = 0xFFFFFFFF;
     float intensity = 1.0f;
     float radius = 20.0f;
@@ -45,7 +45,7 @@ struct SpotLight {
  * each frame. Set rotation_speed to zero for manual direction control.
  */
 struct RotatingLight {
-    Vector2d position;
+    Vector2f position;
     uint32_t color = 0xFFFFFFFF;
     float intensity = 1.0f;
     float radius = 20.0f;
