@@ -7,6 +7,7 @@
 #include <nlohmann/json.hpp>
 #include <string>
 #include <variant>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
@@ -14,6 +15,8 @@ namespace UiApi {
 namespace ScreenGrab {
 
 DEFINE_API_NAME(ScreenGrab);
+
+struct Okay;
 
 // Output format for screen capture.
 enum class Format : uint8_t {
@@ -68,9 +71,11 @@ struct Command {
     Format format = Format::Png; // Output format: Raw (ARGB8888), H264, or Png.
     int quality = 23;            // H.264 CRF quality (0-51, lower = better). Ignored for Raw/Png.
 
-    API_COMMAND_NAME();
+    API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
+
+    using serialize = zpp::bits::members<3>;
 };
 
 struct Okay {
@@ -84,6 +89,8 @@ struct Okay {
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
+
+    using serialize = zpp::bits::members<6>;
 };
 
 using OkayType = Okay;

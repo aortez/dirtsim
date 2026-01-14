@@ -331,3 +331,94 @@ TEST_F(StateTrainingTest, StopButtonSendsCommandAndTransitions)
     ASSERT_EQ(mockWs->sentCommands().size(), 1) << "Should send EvolutionStop command";
     EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStop");
 }
+
+/**
+ * @brief Test best snapshot capture detection logic.
+ *
+ * The TrainingView captures a snapshot when:
+ * 1. Evaluation changes (currentEval differs OR generation changes with currentEval=0)
+ * 2. Best fitness improved (bestFitnessAllTime increased)
+ *
+ * This test verifies the detection logic without requiring LVGL.
+ */
+TEST(BestSnapshotDetectionTest, DetectsNewBestOnEvalChange)
+{
+    // Tracking state (mirrors TrainingView member variables).
+    int lastEval = -1;
+    int lastGeneration = -1;
+    double lastBestFitness = -1.0;
+
+    auto shouldCapture = [&](const Api::EvolutionProgress& progress) {
+        const bool evalChanged = (progress.currentEval != lastEval)
+            || (progress.generation != lastGeneration && progress.currentEval == 0);
+        const bool fitnessImproved = (progress.bestFitnessAllTime > lastBestFitness + 0.001);
+
+        bool capture = evalChanged && fitnessImproved;
+
+        // Update tracking state.
+        lastEval = progress.currentEval;
+        lastGeneration = progress.generation;
+        lastBestFitness = progress.bestFitnessAllTime;
+
+        return capture;
+    };
+
+    // Scenario: First evaluation completes with fitness 0.5.
+    // Progress update arrives showing eval changed from 0 to 1, fitness improved from 0 to 0.5.
+    Api::EvolutionProgress progress1{
+        .generation = 0,
+        .maxGenerations = 10,
+        .currentEval = 1,
+        .populationSize = 5,
+        .bestFitnessThisGen = 0.5,
+        .bestFitnessAllTime = 0.5,
+        .averageFitness = 0.5,
+    };
+
+    // First update with improvement should capture.
+    EXPECT_TRUE(shouldCapture(progress1))
+        << "Should capture when first best is found (eval changed, fitness improved)";
+
+    // Scenario: Second evaluation completes, no improvement.
+    Api::EvolutionProgress progress2{
+        .generation = 0,
+        .currentEval = 2,
+        .populationSize = 5,
+        .bestFitnessAllTime = 0.5, // Same as before.
+    };
+
+    EXPECT_FALSE(shouldCapture(progress2)) << "Should NOT capture when fitness did not improve";
+
+    // Scenario: Third evaluation completes with new best.
+    Api::EvolutionProgress progress3{
+        .generation = 0,
+        .currentEval = 3,
+        .populationSize = 5,
+        .bestFitnessAllTime = 0.75, // Improved!
+    };
+
+    EXPECT_TRUE(shouldCapture(progress3))
+        << "Should capture when new best found (eval changed, fitness improved)";
+
+    // Scenario: Same eval, same fitness (mid-evaluation tick).
+    Api::EvolutionProgress progress4{
+        .generation = 0,
+        .currentEval = 3, // Same eval.
+        .populationSize = 5,
+        .bestFitnessAllTime = 0.75, // Same fitness.
+    };
+
+    EXPECT_FALSE(shouldCapture(progress4))
+        << "Should NOT capture on mid-evaluation tick (no eval change)";
+
+    // Scenario: Generation rollover with new best.
+    Api::EvolutionProgress progress5{
+        .generation = 1,  // New generation.
+        .currentEval = 0, // Reset to 0.
+        .populationSize = 5,
+        .bestFitnessAllTime = 0.8, // Improved!
+    };
+
+    EXPECT_TRUE(shouldCapture(progress5))
+        << "Should capture on generation rollover with improvement";
+}

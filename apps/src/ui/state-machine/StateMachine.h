@@ -20,8 +20,9 @@ namespace DirtSim {
 class H264Encoder;
 
 namespace Network {
+class WebSocketService;
 class WebSocketServiceInterface;
-}
+} // namespace Network
 
 namespace Server {
 class PeerAdvertisement;
@@ -73,6 +74,7 @@ public:
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
 
     Network::WebSocketServiceInterface& getWebSocketService();
+    Network::WebSocketService* getConcreteWebSocketService();
     bool hasWebSocketService() const { return wsService_ != nullptr; }
 
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }

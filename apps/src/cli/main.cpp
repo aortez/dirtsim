@@ -537,69 +537,51 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        // Send ScreenGrab command with PNG format.
-        nlohmann::json screenGrabBody;
-        screenGrabBody["format"] = "png";
-        screenGrabBody["scale"] = 1.0;
+        // Build typed ScreenGrab command.
+        UiApi::ScreenGrab::Command cmd{
+            .scale = 1.0,
+            .format = UiApi::ScreenGrab::Format::Png,
+            .quality = 23,
+        };
 
-        Client::CommandDispatcher dispatcher;
-        auto responseResult =
-            dispatcher.dispatch(Client::Target::Ui, client, "ScreenGrab", screenGrabBody);
-        if (responseResult.isError()) {
-            std::cerr << "ScreenGrab command failed: " << responseResult.errorValue().message
-                      << std::endl;
+        auto result = client.sendCommand(cmd, timeoutMs);
+        if (result.isError()) {
+            std::cerr << "ScreenGrab command failed: " << result.errorValue() << std::endl;
             client.disconnect();
             return 1;
         }
 
-        // Parse response and extract PNG data.
-        try {
-            nlohmann::json responseJson = nlohmann::json::parse(responseResult.value());
+        // Extract typed response from Result.
+        auto okay = result.value();
 
-            if (!responseJson.contains("value") || !responseJson["value"].contains("data")) {
-                std::cerr << "Invalid ScreenGrab response format" << std::endl;
-                client.disconnect();
-                return 1;
-            }
-
-            std::string base64Data = responseJson["value"]["data"].get<std::string>();
-            uint32_t width = responseJson["value"]["width"].get<uint32_t>();
-            uint32_t height = responseJson["value"]["height"].get<uint32_t>();
-            std::string format = responseJson["value"]["format"].get<std::string>();
-
-            if (format != "png") {
-                std::cerr << "Unexpected format: " << format << " (expected png)" << std::endl;
-                client.disconnect();
-                return 1;
-            }
-
-            // Decode base64 to PNG bytes.
-            auto pngData = base64Decode(base64Data);
-            if (pngData.empty()) {
-                std::cerr << "Failed to decode base64 data" << std::endl;
-                client.disconnect();
-                return 1;
-            }
-
-            // Write PNG to file.
-            std::ofstream outFile(outputFile, std::ios::binary);
-            if (!outFile) {
-                std::cerr << "Failed to open output file: " << outputFile << std::endl;
-                client.disconnect();
-                return 1;
-            }
-
-            outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
-            outFile.close();
-
-            std::cerr << "✓ Screenshot saved to " << outputFile << " (" << width << "x" << height
-                      << ", " << pngData.size() << " bytes)" << std::endl;
-        }
-        catch (const std::exception& e) {
-            std::cerr << "Error processing screenshot: " << e.what() << std::endl;
+        // Verify format.
+        if (okay.format != UiApi::ScreenGrab::Format::Png) {
+            std::cerr << "Unexpected format in response" << std::endl;
             client.disconnect();
             return 1;
         }
+
+        // Decode base64 to PNG bytes.
+        auto pngData = base64Decode(okay.data);
+        if (pngData.empty()) {
+            std::cerr << "Failed to decode base64 data" << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        // Write PNG to file.
+        std::ofstream outFile(outputFile, std::ios::binary);
+        if (!outFile) {
+            std::cerr << "Failed to open output file: " << outputFile << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+        outFile.close();
+
+        std::cerr << "✓ Screenshot saved to " << outputFile << " (" << okay.width << "x"
+                  << okay.height << ", " << pngData.size() << " bytes)" << std::endl;
 
         client.disconnect();
         return 0;
