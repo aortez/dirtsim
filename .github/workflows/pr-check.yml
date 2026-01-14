@@ -19,7 +19,8 @@ jobs:
     - name: Fix permissions on build artifacts
       run: |
         # Fix any permission issues from previous builds.
-        chmod -R u+w apps/build-debug apps/build-release yocto/build 2>/dev/null || true
+        cd $GITHUB_WORKSPACE || true
+        chmod -R u+w . 2>/dev/null || true
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -59,7 +60,8 @@ jobs:
     - name: Fix permissions on build artifacts
       run: |
         # Fix any permission issues from previous builds.
-        chmod -R u+w apps/build-debug apps/build-release yocto/build 2>/dev/null || true
+        cd $GITHUB_WORKSPACE || true
+        chmod -R u+w . 2>/dev/null || true
 
     - name: Checkout code
       uses: actions/checkout@v4
