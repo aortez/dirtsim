@@ -18,12 +18,12 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSin
     // Define our icon configuration with FontAwesome icons and per-icon colors.
     // Order determines display order in the rail.
     iconConfigs_ = {
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },      // Light green.
         { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },        // Light blue.
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 }, // Orchid/purple.
+        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },         // Orange.
         { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },           // Dark turquoise.
         { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },            // Silver.
-        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },      // Light green.
-        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },         // Orange.
         { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },         // Lime green.
     };
 

@@ -3,6 +3,7 @@
 #include "StateForward.h"
 #include "ui/controls/NetworkDiagnosticsPanel.h"
 #include "ui/controls/SparklingDuckButton.h"
+#include "ui/controls/StartMenuCorePanel.h"
 #include "ui/state-machine/Event.h"
 #include <lvgl/lvgl.h>
 #include <memory>
@@ -42,20 +43,19 @@ struct StartMenu {
 private:
     static void onDisplayResized(lv_event_t* e);
     static void onNextFractalClicked(lv_event_t* e);
-    static void onQuitButtonClicked(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     JuliaFractal* fractal_ = nullptr;                  // Fractal background animation.
     std::unique_ptr<SparklingDuckButton> startButton_; // Animated start button.
     std::unique_ptr<NetworkDiagnosticsPanel> networkPanel_; // Network diagnostics panel.
+    std::unique_ptr<StartMenuCorePanel> corePanel_;         // Core controls panel (quit, etc.).
     lv_obj_t* touchDebugLabel_ = nullptr;                   // Touch coordinate debug display.
     lv_obj_t* infoPanel_ = nullptr;                         // Bottom-left info panel container.
     lv_obj_t* infoLabel_ = nullptr;                         // Fractal info label.
     lv_obj_t* nextFractalButton_ = nullptr;                 // Button to advance fractal.
-    lv_obj_t* quitButtonContainer_ = nullptr; // Quit button container (top-left corner).
-    int updateFrameCount_ = 0;                // Frame counter for periodic logging.
-    int labelUpdateCounter_ = 0;              // Frame counter for label updates (~1/sec).
+    int updateFrameCount_ = 0;                              // Frame counter for periodic logging.
+    int labelUpdateCounter_ = 0; // Frame counter for label updates (~1/sec).
 };
 
 } // namespace State
