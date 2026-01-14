@@ -19,9 +19,9 @@ jobs:
     - name: Fix workspace permissions
       run: |
         # Recursively fix all permissions so checkout can delete files.
-        echo "Workspace: $GITHUB_WORKSPACE"
-        ls -la $GITHUB_WORKSPACE || echo "Workspace doesn't exist yet"
-        chmod -R u+rwX $GITHUB_WORKSPACE || echo "chmod failed"
+        # Use sudo because build artifacts may have restrictive permissions.
+        sudo chmod -R u+rwX $GITHUB_WORKSPACE || true
+        sudo chown -R $(whoami):$(whoami) $GITHUB_WORKSPACE || true
 
     - name: Checkout code
       uses: actions/checkout@v4
@@ -61,9 +61,9 @@ jobs:
     - name: Fix workspace permissions
       run: |
         # Recursively fix all permissions so checkout can delete files.
-        echo "Workspace: $GITHUB_WORKSPACE"
-        ls -la $GITHUB_WORKSPACE || echo "Workspace doesn't exist yet"
-        chmod -R u+rwX $GITHUB_WORKSPACE || echo "chmod failed"
+        # Use sudo because build artifacts may have restrictive permissions.
+        sudo chmod -R u+rwX $GITHUB_WORKSPACE || true
+        sudo chown -R $(whoami):$(whoami) $GITHUB_WORKSPACE || true
 
     - name: Checkout code
       uses: actions/checkout@v4
