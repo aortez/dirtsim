@@ -1,5 +1,6 @@
 #include "IconRail.h"
 #include "core/Assert.h"
+#include "core/ColorNames.h"
 #include "core/IconFont.h"
 #include "core/LoggingChannels.h"
 #include "ui/state-machine/Event.h"
@@ -7,13 +8,19 @@
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 
+namespace {
+uint32_t rgbaToRgb(uint32_t rgba)
+{
+    return rgba >> 8;
+}
+} // namespace
+
 namespace DirtSim {
 namespace Ui {
 
 IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSink)
 {
-    // Load FontAwesome at icon size (slightly smaller than button for padding).
-    iconFont_ = std::make_unique<IconFont>(ICON_SIZE - 24);
+    iconFont_ = std::make_unique<IconFont>(ICON_SIZE - 36);
 
     // Define our icon configuration with FontAwesome icons and per-icon colors.
     // Order determines display order in the rail.
@@ -77,7 +84,7 @@ void IconRail::createIcons(lv_obj_t* parent)
         container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
     lv_obj_set_style_pad_row(container_, GAP, 0);
-    lv_obj_set_style_bg_color(container_, lv_color_hex(BG_COLOR), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_radius(container_, 0, 0);
@@ -224,6 +231,8 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
+
+    resetAutoShrinkTimer();
 }
 
 void IconRail::selectIcon(IconId id)
@@ -233,6 +242,7 @@ void IconRail::selectIcon(IconId id)
     IconId previousId = selectedId_;
     selectedId_ = id;
     updateButtonVisuals();
+    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -246,6 +256,7 @@ void IconRail::deselectAll()
     IconId previousId = selectedId_;
     selectedId_ = IconId::COUNT;
     updateButtonVisuals();
+    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -269,15 +280,13 @@ void IconRail::createModeButtons()
     expandButton_ = LVGLBuilder::actionButton(screen)
                         .icon(LV_SYMBOL_RIGHT)
                         .mode(LVGLBuilder::ActionMode::Push)
-                        .size(MINIMIZED_RAIL_WIDTH - 4)
+                        .size(LVGLBuilder::Style::ACTION_SIZE)
                         .glowColor(0x808080)
                         .textColor(0xFFFFFF)
                         .buildOrLog();
 
     if (expandButton_) {
-        // Size: extends past the rail edge for visibility.
-        const int extensionAmount = 24;
-        const int expandWidth = MINIMIZED_RAIL_WIDTH + extensionAmount;
+        const int expandWidth = LVGLBuilder::Style::ACTION_SIZE;
         const int expandHeight = LVGLBuilder::Style::ACTION_SIZE * 2;
         lv_obj_set_size(expandButton_, expandWidth, expandHeight);
 
@@ -354,18 +363,29 @@ void IconRail::applyMode()
 
     bool minimized = (mode_ == RailMode::Minimized);
 
-    // Resize container and adjust layout.
+    // Animate width transition.
+    int targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH;
+    int currentWidth = lv_obj_get_width(container_);
+    if (currentWidth != targetWidth) {
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, container_);
+        lv_anim_set_values(&a, currentWidth, targetWidth);
+        lv_anim_set_time(&a, MODE_ANIM_DURATION_MS);
+        lv_anim_set_exec_cb(
+            &a, [](void* obj, int32_t v) { lv_obj_set_width(static_cast<lv_obj_t*>(obj), v); });
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    }
+
+    // Update styles immediately.
     if (minimized) {
-        lv_obj_set_width(container_, MINIMIZED_RAIL_WIDTH);
-        lv_obj_set_style_pad_all(container_, 2, 0); // Small padding around button.
-        // Center the expand button vertically.
+        lv_obj_set_style_pad_all(container_, 2, 0);
         lv_obj_set_flex_align(
             container_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
     else {
-        lv_obj_set_width(container_, RAIL_WIDTH);
         lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
-        // Icons start at top.
         lv_obj_set_flex_align(
             container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
@@ -401,6 +421,38 @@ void IconRail::applyMode()
     if (expandButton_) {
         if (minimized) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
+
+            lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
+            if (innerBtn) {
+                lv_anim_del(expandButton_, nullptr);
+                lv_obj_set_style_opa(expandButton_, LV_OPA_COVER, 0);
+                lv_anim_t opaAnim;
+                lv_anim_init(&opaAnim);
+                lv_anim_set_var(&opaAnim, expandButton_);
+                lv_anim_set_values(&opaAnim, LV_OPA_COVER, LV_OPA_30);
+                lv_anim_set_time(&opaAnim, 500);
+                lv_anim_set_exec_cb(&opaAnim, [](void* obj, int32_t v) {
+                    lv_obj_set_style_opa(static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+                });
+                lv_anim_set_path_cb(&opaAnim, lv_anim_path_ease_out);
+                lv_anim_start(&opaAnim);
+
+                lv_obj_t* iconLabel = lv_obj_get_child(innerBtn, 0);
+                if (iconLabel) {
+                    lv_obj_set_style_text_opa(iconLabel, LV_OPA_70, 0);
+                    lv_anim_t textOpaAnim;
+                    lv_anim_init(&textOpaAnim);
+                    lv_anim_set_var(&textOpaAnim, iconLabel);
+                    lv_anim_set_values(&textOpaAnim, LV_OPA_70, LV_OPA_COVER);
+                    lv_anim_set_time(&textOpaAnim, 500);
+                    lv_anim_set_exec_cb(&textOpaAnim, [](void* obj, int32_t v) {
+                        lv_obj_set_style_text_opa(
+                            static_cast<lv_obj_t*>(obj), static_cast<lv_opa_t>(v), 0);
+                    });
+                    lv_anim_set_path_cb(&textOpaAnim, lv_anim_path_ease_out);
+                    lv_anim_start(&textOpaAnim);
+                }
+            }
         }
         else {
             lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);

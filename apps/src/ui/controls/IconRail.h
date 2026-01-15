@@ -42,6 +42,9 @@ struct IconConfig {
  */
 class IconRail {
 public:
+    static constexpr int RAIL_WIDTH = 108;
+    static constexpr int MINIMIZED_RAIL_WIDTH = 0;
+
     /**
      * @brief Construct the icon rail.
      * @param parent Parent LVGL object to attach to.
@@ -113,17 +116,10 @@ private:
 
     // Auto-shrink timer (minimizes rail after inactivity).
     lv_timer_t* autoShrinkTimer_ = nullptr;
-    static constexpr uint32_t AUTO_SHRINK_TIMEOUT_MS = 10000; // 10 seconds.
-
-    // Colors.
-    static constexpr uint32_t BG_COLOR = 0x303030;
-    static constexpr uint32_t SELECTED_COLOR = 0x0066CC;
-    static constexpr uint32_t ICON_COLOR = 0xFFFFFF;
+    static constexpr uint32_t AUTO_SHRINK_TIMEOUT_MS = 10000;
+    static constexpr uint32_t MODE_ANIM_DURATION_MS = 250;
 
     // Dimensions optimized for HyperPixel 4.0 (480px height).
-    // With 4 icons: 4×96 + 3×12 = 420px (fits nicely with room to spare).
-    static constexpr int RAIL_WIDTH = 108;
-    static constexpr int MINIMIZED_RAIL_WIDTH = 40; // Half of ACTION_SIZE.
     static constexpr int ICON_SIZE = 96;
     static constexpr int GAP = 12;
     static constexpr int SWIPE_ZONE_WIDTH = 80; // Width of invisible swipe detection area.

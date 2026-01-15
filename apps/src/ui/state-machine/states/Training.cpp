@@ -89,7 +89,7 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
     return std::move(*this);
 }
 
-State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
+State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 {
     LOG_INFO(
         State,
@@ -97,9 +97,44 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
         static_cast<int>(evt.previousId),
         static_cast<int>(evt.selectedId));
 
-    // Forward to TrainingView to handle panel content.
-    if (view_) {
-        view_->onIconSelected(evt.selectedId, evt.previousId);
+    auto* uiManager = sm.getUiComponentManager();
+    auto* panel = uiManager->getExpandablePanel();
+
+    if (!panel || !view_) {
+        return std::move(*this);
+    }
+
+    // Closing panel (deselected icon).
+    if (evt.selectedId == IconId::COUNT) {
+        view_->clearPanelContent();
+        panel->clearContent();
+        panel->hide();
+        return std::move(*this);
+    }
+
+    // Opening or switching panel.
+    view_->clearPanelContent();
+    panel->clearContent();
+
+    switch (evt.selectedId) {
+        case IconId::CORE:
+            view_->createCorePanel();
+            panel->show();
+            break;
+
+        case IconId::EVOLUTION:
+            view_->createEvolutionConfigPanel();
+            panel->show();
+            break;
+
+        case IconId::TREE:
+        case IconId::NETWORK:
+        case IconId::PHYSICS:
+        case IconId::PLAY:
+        case IconId::SCENARIO:
+        case IconId::COUNT:
+            LOG_WARN(State, "Unhandled icon selection: {}", static_cast<int>(evt.selectedId));
+            break;
     }
 
     return std::move(*this);
@@ -252,12 +287,18 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
         evolutionStarted_ = false;
     }
 
-    // Start simulation with TreeGermination scenario.
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+
     Api::SimRun::Command simRunCmd{ .timestep = 0.016,
                                     .max_steps = -1,
                                     .max_frame_ms = 16,
                                     .scenario_id = Scenario::EnumType::TreeGermination,
-                                    .start_paused = false };
+                                    .start_paused = false,
+                                    .container_size = containerSize };
 
     auto simResult = wsService.sendCommand<Api::SimRun::Okay>(simRunCmd, 2000);
     if (simResult.isError() || simResult.value().isError()) {

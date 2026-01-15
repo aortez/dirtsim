@@ -39,18 +39,16 @@ public:
     explicit TrainingView(UiComponentManager* uiManager, EventSink& eventSink);
     ~TrainingView();
 
-    /**
-     * @brief Handle icon selection change from state machine.
-     * Shows/hides panel content based on selected icon.
-     */
-    void onIconSelected(IconId selectedId, IconId previousId);
-
     void updateProgress(const Api::EvolutionProgress& progress);
 
     void renderWorld(const WorldData& worldData);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
+
+    void clearPanelContent();
+    void createCorePanel();
+    void createEvolutionConfigPanel();
 
 private:
     bool evolutionStarted_ = false;
@@ -102,15 +100,8 @@ private:
     std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
     std::unique_ptr<EvolutionControls> evolutionControls_;
 
-    // Currently active panel.
-    IconId activePanel_ = IconId::COUNT;
-
     void createUI();
     void destroyUI();
-    void clearPanelContent();
-    void showPanelContent(IconId panelId);
-    void createCorePanel(lv_obj_t* container);
-    void createEvolutionConfigPanel(lv_obj_t* container);
     void renderBestWorld();
 };
 
