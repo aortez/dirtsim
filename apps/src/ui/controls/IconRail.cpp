@@ -420,7 +420,6 @@ void IconRail::applyMode()
 
             lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
             if (innerBtn) {
-                LOG_INFO(Controls, "Starting opacity animation on expand button");
                 lv_anim_del(expandButton_, nullptr);
                 lv_obj_set_style_opa(expandButton_, LV_OPA_COVER, 0);
                 lv_anim_t opaAnim;
