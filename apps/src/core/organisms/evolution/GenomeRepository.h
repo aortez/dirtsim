@@ -3,19 +3,46 @@
 #include "GenomeMetadata.h"
 #include "core/organisms/brains/Genome.h"
 
+#include <filesystem>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
+
+// Forward declaration to avoid including sqlite_modern_cpp in header.
+namespace sqlite {
+class database;
+}
 
 namespace DirtSim {
 
 /**
  * Storage and retrieval for evolved genomes.
  * Persists across server state changes, tracks the best performer.
+ *
+ * Two modes:
+ * - In-memory only (default constructor): For tests and temporary use.
+ * - Persistent (path constructor): Write-through to SQLite database.
  */
 class GenomeRepository {
 public:
+    // Default constructor - in-memory only, no persistence.
+    GenomeRepository();
+
+    // Construct with SQLite persistence at the given path.
+    // Creates the database and schema if it doesn't exist.
+    // Loads existing genomes from the database on construction.
+    explicit GenomeRepository(const std::filesystem::path& dbPath);
+
+    ~GenomeRepository();
+
+    // Move-only (database connection is not copyable).
+    GenomeRepository(GenomeRepository&&) noexcept;
+    GenomeRepository& operator=(GenomeRepository&&) noexcept;
+    GenomeRepository(const GenomeRepository&) = delete;
+    GenomeRepository& operator=(const GenomeRepository&) = delete;
+
     // Store a genome with metadata at the given ID. Overwrites if ID exists.
     void store(GenomeId id, const Genome& genome, const GenomeMetadata& meta);
 
@@ -44,10 +71,25 @@ public:
     size_t count() const;
     bool empty() const;
 
+    // Check if persistence is enabled.
+    bool isPersistent() const;
+
 private:
+    // In-memory storage (always present for fast access).
     std::unordered_map<GenomeId, Genome> genomes_;
     std::unordered_map<GenomeId, GenomeMetadata> metadata_;
     std::optional<GenomeId> bestId_;
+
+    // Optional SQLite database for persistence.
+    std::unique_ptr<sqlite::database> db_;
+
+    // Database operations.
+    void initSchema();
+    void loadFromDb();
+    void persistGenome(GenomeId id, const Genome& genome, const GenomeMetadata& meta);
+    void deleteGenome(GenomeId id);
+    void persistBestId();
+    void clearDb();
 };
 
 } // namespace DirtSim

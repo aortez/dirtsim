@@ -9,6 +9,7 @@
 #include "api/FingerDown.h"
 #include "api/FingerMove.h"
 #include "api/FingerUp.h"
+#include "api/GenomeDelete.h"
 #include "api/GenomeGet.h"
 #include "api/GenomeGetBest.h"
 #include "api/GenomeList.h"
@@ -419,6 +420,7 @@ public:
         DirtSim::Api::FingerDown::Cwc,
         DirtSim::Api::FingerMove::Cwc,
         DirtSim::Api::FingerUp::Cwc,
+        DirtSim::Api::GenomeDelete::Cwc,
         DirtSim::Api::GenomeGet::Cwc,
         DirtSim::Api::GenomeGetBest::Cwc,
         DirtSim::Api::GenomeList::Cwc,

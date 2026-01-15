@@ -1,13 +1,16 @@
 #pragma once
 
 #include "core/ScenarioConfig.h"
+
+#include <filesystem>
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 
 namespace DirtSim {
 
 struct ServerConfig {
-    // Default to Sandbox scenario (not Benchmark which requires 200x200).
     ScenarioConfig startupConfig = Config::Sandbox{};
+    std::optional<std::filesystem::path> dataDir;
 };
 
 void from_json(const nlohmann::json& j, ServerConfig& cfg);

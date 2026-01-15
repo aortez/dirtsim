@@ -43,6 +43,19 @@ struct SubscribedClient {
     RenderFormat::EnumType renderFormat;
 };
 
+namespace {
+
+std::filesystem::path getDefaultDataDir()
+{
+    const char* home = std::getenv("HOME");
+    if (!home) {
+        home = "/tmp";
+    }
+    return std::filesystem::path(home) / ".dirtsim";
+}
+
+} // namespace
+
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     std::unique_ptr<GamepadManager> gamepadManager_;
@@ -59,21 +72,33 @@ struct StateMachine::Impl {
 
     std::vector<SubscribedClient> subscribedClients_;
 
-    Impl() : scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_)) {}
+    explicit Impl(const std::optional<std::filesystem::path>& dataDir)
+        : genomeRepository_(initGenomeRepository(dataDir)),
+          scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_))
+    {}
+
+private:
+    static GenomeRepository initGenomeRepository(
+        const std::optional<std::filesystem::path>& dataDir)
+    {
+        auto dir = dataDir.value_or(getDefaultDataDir());
+        std::filesystem::create_directories(dir);
+        auto dbPath = dir / "genomes.db";
+        spdlog::info("GenomeRepository: Using database at {}", dbPath.string());
+        return GenomeRepository(dbPath);
+    }
 };
 
-StateMachine::StateMachine() : pImpl()
+StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) : pImpl(dataDir)
 {
-    // Initialize with default config (can be overwritten by loading from file).
     serverConfig = std::make_unique<ServerConfig>();
+    serverConfig->dataDir = dataDir;
 
     LOG_INFO(
         State,
         "Server::StateMachine initialized in headless mode in state: {}",
         getCurrentStateName());
-    // Note: World will be created by SimRunning state when simulation starts.
 
-    // Start peer discovery for mDNS service browsing.
     if (pImpl->peerDiscovery_.start()) {
         spdlog::info("PeerDiscovery started successfully");
     }
@@ -337,6 +362,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::FingerMove::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::FingerUp::Cwc>(
         [this](Api::FingerUp::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::GenomeDelete::Cwc>(
+        [this](Api::GenomeDelete::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeGet::Cwc>(
         [this](Api::GenomeGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeGetBest::Cwc>(
@@ -695,6 +722,26 @@ void StateMachine::handleEvent(const Event& event)
         response.success = true;
         response.overwritten = overwritten;
         cwc.sendResponse(Api::GenomeSet::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle GenomeDelete globally (works in any state).
+    if (std::holds_alternative<Api::GenomeDelete::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::GenomeDelete::Cwc>(event.getVariant());
+        auto& repo = getGenomeRepository();
+
+        bool existed = repo.exists(cwc.command.id);
+        if (existed) {
+            repo.remove(cwc.command.id);
+            LOG_INFO(State, "GenomeDelete: Deleted genome {}", cwc.command.id.toShortString());
+        }
+        else {
+            LOG_INFO(State, "GenomeDelete: Genome {} not found", cwc.command.id.toShortString());
+        }
+
+        Api::GenomeDelete::Okay response;
+        response.success = existed;
+        cwc.sendResponse(Api::GenomeDelete::Response::okay(std::move(response)));
         return;
     }
 

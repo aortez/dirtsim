@@ -7,6 +7,7 @@
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/State.h"
+#include <filesystem>
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
@@ -20,9 +21,19 @@ using namespace DirtSim::Server::State;
  */
 class StateEvolutionTest : public ::testing::Test {
 protected:
-    void SetUp() override { stateMachine = std::make_unique<StateMachine>(); }
+    void SetUp() override
+    {
+        testDataDir_ = std::filesystem::temp_directory_path() / "dirtsim-test";
+        stateMachine = std::make_unique<StateMachine>(testDataDir_);
+    }
 
-    void TearDown() override { stateMachine.reset(); }
+    void TearDown() override
+    {
+        stateMachine.reset();
+        std::filesystem::remove_all(testDataDir_);
+    }
+
+    std::filesystem::path testDataDir_;
 
     std::unique_ptr<StateMachine> stateMachine;
 };

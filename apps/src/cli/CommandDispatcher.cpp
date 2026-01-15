@@ -19,6 +19,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::FingerDown::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerMove::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::FingerUp::Command, std::monostate>(serverHandlers_);
+    registerCommand<Api::GenomeDelete::Command, Api::GenomeDelete::Okay>(serverHandlers_);
     registerCommand<Api::GenomeGet::Command, Api::GenomeGet::Okay>(serverHandlers_);
     registerCommand<Api::GenomeGetBest::Command, Api::GenomeGetBest::Okay>(serverHandlers_);
     registerCommand<Api::GenomeList::Command, Api::GenomeList::Okay>(serverHandlers_);
