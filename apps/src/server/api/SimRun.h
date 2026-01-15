@@ -5,6 +5,7 @@
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 #include "core/ScenarioId.h"
+#include "core/Vector2.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -27,12 +28,13 @@ struct Command {
     std::optional<Scenario::EnumType>
         scenario_id;           // Optional scenario (nullopt = use server config default).
     bool start_paused = false; // Load scenario but don't start advancing.
+    Vector2s container_size;   // UI container size in pixels (0,0 = use defaults).
 
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 struct Okay {

@@ -62,9 +62,12 @@ int IntegrationTest::run(const std::string& serverPath, const std::string& uiPat
 
     // Start simulation (creates World and transitions to SimRunning).
     std::cout << "Starting simulation..." << std::endl;
-    const DirtSim::Api::SimRun::Command simCmd{
-        .timestep = 0.016, .max_steps = 1, .max_frame_ms = 0, .scenario_id = std::nullopt
-    };
+    const DirtSim::Api::SimRun::Command simCmd{ .timestep = 0.016,
+                                                .max_steps = 1,
+                                                .max_frame_ms = 0,
+                                                .scenario_id = std::nullopt,
+                                                .start_paused = false,
+                                                .container_size = {} };
     auto simEnvelope = DirtSim::Network::make_command_envelope(1, simCmd);
     auto simResult = client.sendBinaryAndReceive(simEnvelope, 5000);
     if (simResult.isError()) {

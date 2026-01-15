@@ -35,9 +35,7 @@ protected:
     {
         // Create Idle and transition to SimRunning.
         Idle idleState;
-        Api::SimRun::Command cmd{
-            0.016, 150, 0, std::nullopt
-        }; // max_frame_ms=0 for unlimited speed testing.
+        Api::SimRun::Command cmd{ 0.016, 150, 0, std::nullopt, false, {} };
         Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
         State::Any state = idleState.onEvent(cwc, *stateMachine);
 
@@ -78,9 +76,7 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 {
     // Setup: Create SimRunning state with Sandbox scenario (applied by Idle).
     Idle idleState;
-    Api::SimRun::Command cmd{
-        0.016, 100, 0, std::nullopt
-    }; // Defaults to scenario_id from server config.
+    Api::SimRun::Command cmd{ 0.016, 100, 0, std::nullopt, false, {} };
     Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
     State::Any state = idleState.onEvent(cwc, *stateMachine);
     SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
@@ -408,7 +404,7 @@ TEST_F(StateSimRunningTest, SimRun_UpdatesRunParameters)
 
     // Execute: Send SimRun with new parameters.
     bool callbackInvoked = false;
-    Api::SimRun::Command cmd{ 0.032, 50, 0, std::nullopt }; // Different timestep and target.
+    Api::SimRun::Command cmd{ 0.032, 50, 0, std::nullopt, false, {} };
     Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue());

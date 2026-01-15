@@ -230,6 +230,11 @@ uint32_t lavaGlow();
 uint32_t seedGlow();
 uint32_t stormGlow();
 
+// UI grays.
+uint32_t uiGrayDark();
+uint32_t uiGrayLight();
+uint32_t uiGrayMedium();
+
 // Utility.
 uint32_t white();
 uint32_t black();

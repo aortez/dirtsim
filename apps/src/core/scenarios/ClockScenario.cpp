@@ -338,7 +338,6 @@ void ClockScenario::recalculateDimensions()
             world_height = static_cast<int>(std::ceil(world_width / display_aspect));
         }
 
-        // Use scale=1 (each font pixel = 1 cell).
         config_.horizontalScale = 1.0;
         config_.verticalScale = 1.0;
 
@@ -355,7 +354,6 @@ void ClockScenario::recalculateDimensions()
             world_height);
     }
     else {
-        // Manual scale mode (original behavior).
         metadata_.requiredWidth =
             static_cast<uint32_t>(std::ceil(clock_width * config_.horizontalScale));
         metadata_.requiredHeight =
@@ -408,52 +406,29 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         config_ = incoming;
 
         if (layout_changed) {
-            // Layout changes require full reset (digit sizes change).
+            // Layout changes require recalculating dimensions and redrawing.
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Layout changed, full reset to {}x{} (font={}, showSeconds={})",
-                metadata_.requiredWidth,
-                metadata_.requiredHeight,
+                "ClockScenario: Layout changed, resetting (font={}, showSeconds={})",
                 static_cast<int>(config_.font),
                 config_.showSeconds);
 
             cancelAllEvents(world);
-            world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
             reset(world);
         }
         else if (dimensions_changed) {
-            // Dimension-only changes can be handled incrementally.
-            // Keep events running - duck can keep walking.
             recalculateDimensions();
 
             spdlog::info(
-                "ClockScenario: Dimensions changed, incremental resize to {}x{} (display={}x{})",
-                metadata_.requiredWidth,
-                metadata_.requiredHeight,
+                "ClockScenario: Dimensions changed (display={}x{})",
                 config_.targetDisplayWidth,
                 config_.targetDisplayHeight);
 
-            // Before resize: Clear digits (they'll be repositioned after resize).
             clearDigits(world);
-
-            world.resizeGrid(metadata_.requiredWidth, metadata_.requiredHeight);
-
-            // After resize: Reset manager states (positions may be invalid now).
             drain_manager_.reset();
             storm_manager_.reset();
 
-            // Clear stray WALL cells from interior (old boundaries may now be inside).
-            WorldData& data = world.getData();
-            for (int y = 1; y < data.height - 1; ++y) {
-                for (int x = 1; x < data.width - 1; ++x) {
-                    if (data.at(x, y).material_type == Material::EnumType::Wall) {
-                        data.at(x, y) = Cell();
-                    }
-                }
-            }
-
-            // Redraw walls at new boundaries and digits at new centered positions.
             redrawWalls(world);
             std::vector<Vector2i> tempDigitPositions;
             drawTime(world, tempDigitPositions);

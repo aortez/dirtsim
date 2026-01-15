@@ -371,9 +371,19 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
         return StartMenu{};
     }
 
-    const Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = std::nullopt
-    };
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+    LOG_INFO(State, "Container size for SimRun: {}x{}", containerSize.x, containerSize.y);
+
+    const Api::SimRun::Command cmd{ .timestep = 0.016,
+                                    .max_steps = -1,
+                                    .max_frame_ms = 16,
+                                    .scenario_id = std::nullopt,
+                                    .start_paused = false,
+                                    .container_size = containerSize };
 
     // Retry logic for autoRun to handle server startup race condition.
     const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
@@ -454,10 +464,18 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
         return StartMenu{};
     }
 
-    // Send sim_run command to DSSM server via binary protocol.
-    const DirtSim::Api::SimRun::Command cmd{
-        .timestep = 0.016, .max_steps = -1, .max_frame_ms = 16, .scenario_id = std::nullopt
-    };
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+
+    const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
+                                             .max_steps = -1,
+                                             .max_frame_ms = 16,
+                                             .scenario_id = std::nullopt,
+                                             .start_paused = false,
+                                             .container_size = containerSize };
 
     const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);
     if (result.isError()) {
