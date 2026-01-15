@@ -75,19 +75,16 @@ void ClockControls::createMainView(lv_obj_t* view)
                       .callback(onFontButtonClicked, this)
                       .buildOrLog();
 
-    // Timezone selector button.
-    std::string timezoneText =
-        std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
-
-    timezoneButton_ = LVGLBuilder::actionButton(view)
-                          .text(timezoneText.c_str())
-                          .icon(LV_SYMBOL_RIGHT)
-                          .width(LV_PCT(95))
-                          .height(LVGLBuilder::Style::ACTION_SIZE)
-                          .layoutRow()
-                          .alignLeft()
-                          .callback(onTimezoneButtonClicked, this)
-                          .buildOrLog();
+    // Target digit height percentage stepper.
+    targetDigitHeightPercentStepper_ = LVGLBuilder::actionStepper(view)
+                                           .label("Height %")
+                                           .range(0, 100)
+                                           .step(5)
+                                           .value(0)
+                                           .valueFormat("%.0f")
+                                           .width(LV_PCT(95))
+                                           .callback(onTargetDigitHeightPercentChanged, this)
+                                           .buildOrLog();
 
     // Digit material selector button.
     std::string materialText = std::string("Digit Color: ")
@@ -108,13 +105,13 @@ void ClockControls::createMainView(lv_obj_t* view)
                                .label("Glow")
                                .range(0, 20)
                                .step(1)
-                               .value(10)
+                               .value(2)
                                .valueFormat("%.0f")
                                .width(LV_PCT(95))
                                .callback(onEmissivenessChanged, this)
                                .buildOrLog();
 
-    // Row for Show Seconds and Melt buttons.
+    // Row for Show Seconds and Meltdown buttons.
     lv_obj_t* secondsRow = lv_obj_create(view);
     lv_obj_set_size(secondsRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(secondsRow, LV_FLEX_FLOW_ROW);
@@ -135,14 +132,16 @@ void ClockControls::createMainView(lv_obj_t* view)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
 
-    // Melt button (one-shot trigger).
-    meltButton_ = LVGLBuilder::actionButton(secondsRow)
-                      .text(LV_SYMBOL_WARNING "\nMelt")
-                      .size(80)
-                      .textColor(0xFFA500) // Construction orange.
-                      .glowColor(0xFF4400) // Orange glow for meltdown.
-                      .callback(onMeltClicked, this)
-                      .buildOrLog();
+    // Meltdown toggle.
+    meltdownSwitch_ = LVGLBuilder::actionButton(secondsRow)
+                          .text(LV_SYMBOL_WARNING "\nMelt")
+                          .mode(LVGLBuilder::ActionMode::Toggle)
+                          .size(80)
+                          .checked(false)
+                          .textColor(0xFFA500) // Construction orange.
+                          .glowColor(0xFF4400) // Orange glow for meltdown.
+                          .callback(onMeltdownToggled, this)
+                          .buildOrLog();
 
     // Event toggle row.
     lv_obj_t* eventRow = lv_obj_create(view);
@@ -241,6 +240,20 @@ void ClockControls::createMainView(lv_obj_t* view)
                          .glowColor(0x44FF44) // Green glow for marquee scroll.
                          .callback(onMarqueeToggled, this)
                          .buildOrLog();
+
+    // Timezone selector button (at end).
+    std::string timezoneText =
+        std::string("Timezone: ") + ClockScenario::TIMEZONES[currentTimezoneIndex_].label;
+
+    timezoneButton_ = LVGLBuilder::actionButton(view)
+                          .text(timezoneText.c_str())
+                          .icon(LV_SYMBOL_RIGHT)
+                          .width(LV_PCT(95))
+                          .height(LVGLBuilder::Style::ACTION_SIZE)
+                          .layoutRow()
+                          .alignLeft()
+                          .callback(onTimezoneButtonClicked, this)
+                          .buildOrLog();
 }
 
 void ClockControls::createFontSelectionView(lv_obj_t* view)
@@ -413,6 +426,16 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
         LOG_DEBUG(Controls, "ClockControls: Updated font to index {}", currentFontIndex_);
     }
 
+    // Update target digit height percent stepper.
+    if (targetDigitHeightPercentStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            targetDigitHeightPercentStepper_, config.targetDigitHeightPercent);
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated target digit height percent to {}",
+            config.targetDigitHeightPercent);
+    }
+
     // Update timezone selection and button text.
     currentTimezoneIndex_ = config.timezoneIndex;
     if (timezoneButton_) {
@@ -433,6 +456,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     if (secondsSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(secondsSwitch_, config.showSeconds);
         LOG_DEBUG(Controls, "ClockControls: Updated seconds button to {}", config.showSeconds);
+    }
+
+    // Update meltdown button.
+    if (meltdownSwitch_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(meltdownSwitch_, config.meltdownEnabled);
+        LOG_DEBUG(Controls, "ClockControls: Updated meltdown button to {}", config.meltdownEnabled);
     }
 
     // Update color cycle button.
@@ -497,8 +526,12 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
 
     // Update emissiveness stepper.
     if (emissivenessStepper_) {
-        LVGLBuilder::ActionStepperBuilder::setValue(emissivenessStepper_, config.digitEmissiveness);
-        LOG_DEBUG(Controls, "ClockControls: Updated emissiveness to {}", config.digitEmissiveness);
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            emissivenessStepper_, static_cast<int32_t>(config.glowConfig.digitIntensity));
+        LOG_DEBUG(
+            Controls,
+            "ClockControls: Updated emissiveness to {}",
+            config.glowConfig.digitIntensity);
     }
 
     // Cache current config.
@@ -526,13 +559,24 @@ Config::Clock ClockControls::getCurrentConfig() const
 
     // Get emissiveness from stepper.
     if (emissivenessStepper_) {
-        config.digitEmissiveness =
-            static_cast<uint8_t>(LVGLBuilder::ActionStepperBuilder::getValue(emissivenessStepper_));
+        config.glowConfig.digitIntensity =
+            static_cast<float>(LVGLBuilder::ActionStepperBuilder::getValue(emissivenessStepper_));
+    }
+
+    // Get target digit height percent from stepper.
+    if (targetDigitHeightPercentStepper_) {
+        config.targetDigitHeightPercent = static_cast<uint8_t>(
+            LVGLBuilder::ActionStepperBuilder::getValue(targetDigitHeightPercentStepper_));
     }
 
     // Get showSeconds from button.
     if (secondsSwitch_) {
         config.showSeconds = LVGLBuilder::ActionButtonBuilder::isChecked(secondsSwitch_);
+    }
+
+    // Get meltdown enabled from button.
+    if (meltdownSwitch_) {
+        config.meltdownEnabled = LVGLBuilder::ActionButtonBuilder::isChecked(meltdownSwitch_);
     }
 
     // Get color cycle enabled from button.
@@ -708,6 +752,30 @@ void ClockControls::onTimezoneBackClicked(lv_event_t* e)
     self->viewController_->showView("main");
 }
 
+void ClockControls::onTargetDigitHeightPercentChanged(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onTargetDigitHeightPercentChanged called with null self");
+        return;
+    }
+
+    // Don't send updates during initialization.
+    if (self->initializing_) {
+        spdlog::debug(
+            "ClockControls: Ignoring target digit height percent change during initialization");
+        return;
+    }
+
+    int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->targetDigitHeightPercentStepper_);
+    spdlog::info("ClockControls: Target digit height percent changed to {}", value);
+
+    // Get complete current config and send update.
+    Config::Clock config = self->getCurrentConfig();
+    self->sendConfigUpdate(config);
+}
+
 void ClockControls::onDigitMaterialButtonClicked(lv_event_t* e)
 {
     ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
@@ -817,25 +885,25 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
     self->sendConfigUpdate(config);
 }
 
-void ClockControls::onMeltClicked(lv_event_t* e)
+void ClockControls::onMeltdownToggled(lv_event_t* e)
 {
     ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
     if (!self) {
-        spdlog::error("ClockControls: onMeltClicked called with null self");
+        spdlog::error("ClockControls: onMeltdownToggled called with null self");
         return;
     }
 
     // Don't send updates during initialization.
     if (self->initializing_) {
-        spdlog::debug("ClockControls: Ignoring melt click during initialization");
+        spdlog::debug("ClockControls: Ignoring meltdown toggle during initialization");
         return;
     }
 
-    spdlog::info("ClockControls: Melt button clicked - triggering meltdown");
+    bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->meltdownSwitch_);
+    spdlog::info("ClockControls: Meltdown toggled to {}", enabled ? "ON" : "OFF");
 
-    // Get current config and set meltdown trigger.
+    // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
-    config.meltdownEnabled = true;
     self->sendConfigUpdate(config);
 }
 
