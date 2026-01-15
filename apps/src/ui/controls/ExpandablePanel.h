@@ -68,9 +68,6 @@ private:
 
     // Dimensions.
     static constexpr int PANEL_WIDTH = 250;
-
-    // Colors.
-    static constexpr uint32_t BG_COLOR = 0x404040;
 };
 
 } // namespace Ui

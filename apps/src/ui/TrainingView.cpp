@@ -309,6 +309,50 @@ void TrainingView::renderWorld(const WorldData& worldData)
     renderer_->renderWorldData(worldData, worldContainer_, false, RenderMode::SHARP);
 }
 
+void TrainingView::clearPanelContent()
+{
+    evolutionConfigPanel_.reset();
+    evolutionControls_.reset();
+}
+
+void TrainingView::createCorePanel()
+{
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+        return;
+    }
+
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        return;
+    }
+
+    evolutionControls_ = std::make_unique<EvolutionControls>(
+        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
+    LOG_INFO(Controls, "TrainingView: Created Training Home panel");
+}
+
+void TrainingView::createEvolutionConfigPanel()
+{
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+        return;
+    }
+
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        return;
+    }
+
+    evolutionConfigPanel_ = std::make_unique<EvolutionConfigPanel>(
+        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
+    LOG_INFO(Controls, "TrainingView: Created Evolution config panel");
+}
+
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
 {
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
@@ -419,97 +463,6 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
         snprintf(buf, sizeof(buf), "Avg: %.2f", progress.averageFitness);
         lv_label_set_text(averageLabel_, buf);
     }
-}
-
-void TrainingView::onIconSelected(IconId selectedId, IconId previousId)
-{
-    LOG_INFO(
-        Controls,
-        "TrainingView: Icon selection {} -> {}",
-        static_cast<int>(previousId),
-        static_cast<int>(selectedId));
-
-    // Show panel content for selected icon.
-    if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
-        showPanelContent(selectedId);
-    }
-    else if (selectedId == IconId::COUNT) {
-        // No icon selected - clear panel.
-        clearPanelContent();
-    }
-}
-
-void TrainingView::showPanelContent(IconId panelId)
-{
-    if (panelId == activePanel_) return; // Already showing this panel.
-
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
-        return;
-    }
-
-    // Clear existing content.
-    clearPanelContent();
-
-    // Get content area.
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
-        return;
-    }
-
-    // Create content for the selected panel.
-    switch (panelId) {
-        case IconId::CORE:
-            createCorePanel(container);
-            break;
-
-        case IconId::EVOLUTION:
-            createEvolutionConfigPanel(container);
-            break;
-
-        case IconId::NETWORK:
-        case IconId::PHYSICS:
-        case IconId::PLAY:
-        case IconId::SCENARIO:
-        case IconId::TREE:
-        case IconId::COUNT:
-            LOG_WARN(Controls, "TrainingView: Unhandled panel id {}", static_cast<int>(panelId));
-            break;
-    }
-
-    // Show panel to display content.
-    panel->show();
-
-    activePanel_ = panelId;
-}
-
-void TrainingView::clearPanelContent()
-{
-    evolutionConfigPanel_.reset();
-    evolutionControls_.reset();
-
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (panel) {
-        panel->clearContent();
-    }
-
-    activePanel_ = IconId::COUNT;
-}
-
-void TrainingView::createCorePanel(lv_obj_t* container)
-{
-    evolutionControls_ = std::make_unique<EvolutionControls>(
-        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
-    LOG_INFO(Controls, "TrainingView: Created Training Home panel");
-}
-
-void TrainingView::createEvolutionConfigPanel(lv_obj_t* container)
-{
-    evolutionConfigPanel_ = std::make_unique<EvolutionConfigPanel>(
-        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
-    LOG_INFO(Controls, "TrainingView: Created Evolution config panel");
 }
 
 void TrainingView::setEvolutionStarted(bool started)

@@ -94,6 +94,20 @@ uint32_t stormGlow()
     return 0xAADDFFFF;
 }
 
+// UI grays.
+uint32_t uiGrayDark()
+{
+    return 0x1C1C1CFF;
+}
+uint32_t uiGrayLight()
+{
+    return 0x606060FF;
+}
+uint32_t uiGrayMedium()
+{
+    return 0x303030FF;
+}
+
 // Utility.
 uint32_t white()
 {
