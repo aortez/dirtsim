@@ -7,8 +7,10 @@
 #include "core/StateMachineInterface.h"
 #include "core/organisms/OrganismType.h"
 
+#include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,7 +45,7 @@ class Any;
 
 class StateMachine : public StateMachineBase, public StateMachineInterface<Event> {
 public:
-    StateMachine();
+    explicit StateMachine(const std::optional<std::filesystem::path>& dataDir = std::nullopt);
     ~StateMachine();
 
     void mainLoopRun();
