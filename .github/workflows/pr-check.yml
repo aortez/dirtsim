@@ -60,8 +60,8 @@ jobs:
 
   yocto-deploy-smoke:
     runs-on: self-hosted
-    needs: build-docker-image
-    if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: build-and-test
+    if: needs.build-and-test.result == 'success' && (contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'workflow_dispatch')
 
     steps:
     - name: Checkout code
