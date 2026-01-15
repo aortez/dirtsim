@@ -3,6 +3,7 @@
 #include "core/LoggingChannels.h"
 #include "core/UUID.h"
 #include "core/World.h"
+#include "core/WorldData.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
@@ -43,6 +44,48 @@ int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize
     }
 
     return bestIdx;
+}
+
+Vector2i findSpawnCell(World& world)
+{
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const int centerX = width / 2;
+    const int centerY = height / 2;
+
+    const auto isSpawnable = [&world, &data](int x, int y) {
+        if (!data.inBounds(x, y)) {
+            return false;
+        }
+        if (!data.at(x, y).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ x, y });
+    };
+
+    if (isSpawnable(centerX, centerY)) {
+        return { centerX, centerY };
+    }
+
+    for (int y = centerY - 1; y >= 0; --y) {
+        if (isSpawnable(centerX, y)) {
+            return { centerX, y };
+        }
+    }
+
+    for (int y = centerY + 1; y < height; ++y) {
+        if (isSpawnable(centerX, y)) {
+            return { centerX, y };
+        }
+    }
+
+    if (world.getOrganismManager().hasOrganism({ centerX, centerY })) {
+        DIRTSIM_ASSERT(false, "Evolution: Spawn location already occupied");
+    }
+
+    data.at(centerX, centerY).clear();
+    return { centerX, centerY };
 }
 } // namespace
 
@@ -245,12 +288,7 @@ void Evolution::startEvaluation(StateMachine& dsm)
     evalWorld_->setScenario(evalScenario_.get());
     evalScenarioConfig_ = evalScenario_->getConfig();
 
-    const int centerX = width / 2;
-    const int centerY = height / 2;
-    Vector2i center{ centerX, centerY };
-    if (evalWorld_->getOrganismManager().hasOrganism(center)) {
-        DIRTSIM_ASSERT(false, "Evolution: Spawn location already occupied");
-    }
+    const Vector2i spawnCell = findSpawnCell(*evalWorld_);
 
     const Individual& individual = population[currentEval];
     const std::string variant = individual.brainVariant.value_or("");
@@ -263,7 +301,7 @@ void Evolution::startEvaluation(StateMachine& dsm)
         DIRTSIM_ASSERT(genomePtr != nullptr, "Evolution: Genome required but missing");
     }
 
-    evalOrganismId_ = entry->spawn(*evalWorld_, centerX, centerY, genomePtr);
+    evalOrganismId_ = entry->spawn(*evalWorld_, spawnCell.x, spawnCell.y, genomePtr);
     DIRTSIM_ASSERT(evalOrganismId_ != INVALID_ORGANISM_ID, "Evolution: Spawn failed");
 
     const Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);

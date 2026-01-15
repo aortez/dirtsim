@@ -82,7 +82,7 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
     EXPECT_GE(status.maxEnergy, 0.0);
 }
 
-TEST_F(TrainingRunnerTest, SpawnFailsWhenCenterOccupied)
+TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAbove)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::TreeGermination;
@@ -96,11 +96,17 @@ TEST_F(TrainingRunnerTest, SpawnFailsWhenCenterOccupied)
     ASSERT_NE(runner.getWorld(), nullptr);
 
     World* world = runner.getWorld();
-    const int centerX = world->getData().width / 2;
-    const int centerY = world->getData().height / 2;
-    world->getOrganismManager().createTree(*world, centerX, centerY);
+    auto& data = world->getData();
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
 
-    EXPECT_DEATH({ runner.step(1); }, ".*");
+    data.at(centerX, centerY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    data.at(centerX, centerY - 1).clear();
+
+    runner.step(0);
+
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX, centerY - 1 }));
+    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
 }
 
 } // namespace DirtSim

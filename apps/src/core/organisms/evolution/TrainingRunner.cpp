@@ -11,6 +11,50 @@
 
 namespace DirtSim {
 
+namespace {
+Vector2i findSpawnCell(World& world)
+{
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const int centerX = width / 2;
+    const int centerY = height / 2;
+
+    const auto isSpawnable = [&world, &data](int x, int y) {
+        if (!data.inBounds(x, y)) {
+            return false;
+        }
+        if (!data.at(x, y).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ x, y });
+    };
+
+    if (isSpawnable(centerX, centerY)) {
+        return { centerX, centerY };
+    }
+
+    for (int y = centerY - 1; y >= 0; --y) {
+        if (isSpawnable(centerX, y)) {
+            return { centerX, y };
+        }
+    }
+
+    for (int y = centerY + 1; y < height; ++y) {
+        if (isSpawnable(centerX, y)) {
+            return { centerX, y };
+        }
+    }
+
+    if (world.getOrganismManager().hasOrganism({ centerX, centerY })) {
+        DIRTSIM_ASSERT(false, "TrainingRunner: Spawn location already occupied");
+    }
+
+    data.at(centerX, centerY).clear();
+    return { centerX, centerY };
+}
+} // namespace
+
 TrainingRunner::TrainingRunner(
     const TrainingSpec& trainingSpec,
     const Individual& individual,
@@ -119,13 +163,7 @@ void TrainingRunner::spawnEvaluationOrganism()
     DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before spawn");
     DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before spawn");
 
-    const int centerX = world_->getData().width / 2;
-    const int centerY = world_->getData().height / 2;
-    Vector2i center{ centerX, centerY };
-
-    if (world_->getOrganismManager().hasOrganism(center)) {
-        DIRTSIM_ASSERT(false, "TrainingRunner: Spawn location already occupied");
-    }
+    const Vector2i spawnCell = findSpawnCell(*world_);
 
     const std::string variant = individual_.brain.brainVariant.value_or("");
     const BrainRegistryEntry* entry =
@@ -138,7 +176,7 @@ void TrainingRunner::spawnEvaluationOrganism()
         DIRTSIM_ASSERT(genomePtr != nullptr, "TrainingRunner: Genome required but missing");
     }
 
-    organismId_ = entry->spawn(*world_, centerX, centerY, genomePtr);
+    organismId_ = entry->spawn(*world_, spawnCell.x, spawnCell.y, genomePtr);
     DIRTSIM_ASSERT(organismId_ != INVALID_ORGANISM_ID, "TrainingRunner: Spawn failed");
 
     const Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
