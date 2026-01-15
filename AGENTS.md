@@ -1,44 +1,56 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `apps/`: Main DirtSim application (server, UI, CLI) and design docs.
+## Start Here
+- Read `README.md` for repo overview.
+- For app work, read `apps/CLAUDE.md`, `apps/README.md`, and `apps/design_docs/coding_convention.md`.
+- For deployment details, see `yocto/README.md`.
+
+## Project Structure
+- `apps/`: main simulation app (server, UI, CLI) and design docs.
 - `apps/src/`: C++ source for core, server, UI, and CLI.
-- `apps/design_docs/`: Architecture, physics, and coding conventions.
 - `apps/src/cli/README.md`: CLI usage and command reference.
 - `yocto/`: Yocto layer and deployment tooling for Raspberry Pi images.
 - `docker/`: Docker build environment for CI/local development.
-- `docs/`: Supplemental documentation.
+- `docs/`: supplemental documentation.
 
-## Build, Test, and Development Commands
-Run commands from `apps/` unless noted.
-- `make debug`: Build debug binaries into `build-debug/`.
-- `make release`: Build optimized binaries into `build-release/`.
-- `./build-debug/bin/cli run-all`: Run server + UI locally.
-- `make test`: Build and run unit tests (GoogleTest).
-- `make format`: Apply repository formatting rules.
-- `cd yocto && npm run yolo -- --hold-my-mead`: Build/deploy Pi image.
+## Build, Run, Test (run from `apps/` unless noted)
+- `make debug` / `make release`: build binaries into `build-debug/` or `build-release/`.
+- `./build-debug/bin/cli run-all`: run server + UI locally.
+- `./build-debug/bin/cli integration_test`: quick smoke test for server/UI/CLI.
+- `make test`: run unit tests (GoogleTest); filter with `make test ARGS='--gtest_filter=State*'`.
+- `make format`: apply formatting rules.
+- `./build-debug/bin/cli cleanup`: stop local dirtsim processes.
 
-## Coding Style & Naming Conventions
-- Case: `UpperCamelCase` for types, `lowerCamelCase` for functions/members.
-- Comments end in periods; prefer sparse header/class docs over inline comments.
-- JSON is only for transport (network/file I/O); use typed structs internally.
-- CLI output: machine-readable results to stdout, logs/errors to stderr.
-- Prefer alphabetical ordering of related items when it improves readability.
+## Remote Testing & Deployment
+- Default device host: `dirtsim.local` (server `:8080`, UI `:7070`).
+- Test host: `dirtsim2.local` via SSH; CLI, server, and UI are installed there.
+- Full yolo update (A/B image update + reboot):
+  - `cd yocto && npm run yolo -- --target dirtsim2.local --hold-my-mead`
+- Fast yolo update (app-only, no reboot; requires prior full build):
+  - `cd yocto && npm run yolo -- --target dirtsim2.local --fast`
+  - `cd yocto && ./update.sh --target dirtsim2.local --fast`
+- Tail remote logs:
+  - `./tail_remote_logs.sh dirtsim2.local`
+  - `ssh dirtsim2.local "sudo journalctl -u dirtsim-server.service -u dirtsim-ui.service -f --no-pager"`
+- Remote CLI status checks:
+  - `ssh dirtsim2.local "dirtsim-cli server StatusGet"`
+  - `ssh dirtsim2.local "dirtsim-cli ui StatusGet"`
 
-## Testing Guidelines
-- Framework: GoogleTest; test files are typically named `*_test.cpp`.
-- Run all tests: `make test`.
-- Filter tests: `make test ARGS='--gtest_filter=State*'`.
-- Direct run: `./build-debug/bin/dirtsim-tests --gtest_filter=StateIdle*`.
+## Coding Conventions (condensed)
+- Comments end in periods; keep inline comments rare and focus docs at file/class scope.
+- Case: `UpperCamelCase` types, `lowerCamelCase` functions/members.
+- JSON is only for transport boundaries; convert to typed structs internally.
+- CLI output: machine-readable data to stdout, logs/errors to stderr.
+- Prefer alphabetical ordering where it improves readability.
+- Favor poka-yoke/root-cause prevention over patching symptoms.
+- Prefer const, early exits, and RAII; avoid `std::move` unless required; use designated initializers.
+- Keep implementations in `.cpp` when possible; use forward declarations and `unique_ptr`/`shared_ptr` to cut compile chains.
+- Use logging macros (`LOG_*`, `SLOG_*`) instead of manual `spdlog` prefixes.
 
-## Commit & Pull Request Guidelines
-- Commit messages are short, imperative sentences; issues/PRs often noted
-  in parentheses (e.g., `Polish IconRail UI and add auto-sizing world dimensions (#48)`).
-- PRs should describe behavior changes, link related issues, and include
-  screenshots or clips for UI changes when applicable.
-- Install hooks for formatting/lint/tests: `cd apps && ./hooks/install-hooks.sh`.
+## Commit & PR Notes
+- Commit messages are short, imperative sentences.
+- PRs describe behavior changes and include screenshots/clips for UI changes when applicable.
+- Install hooks with `cd apps && ./hooks/install-hooks.sh`.
 
-## Deployment & Remote Notes
-- Default services run on `dirtsim.local`; server UI endpoints: `:8080`/`:7070`.
-- Use CLI for remote checks:
-  `./build-debug/bin/cli --address ws://dirtsim.local:8080 server StatusGet`.
+## Logs
+- Log file: `dirtsim.log` next to executables; console defaults to INFO and file includes DEBUG/TRACE.
