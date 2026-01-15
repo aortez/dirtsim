@@ -10,6 +10,7 @@
 #include "FingerDown.h"
 #include "FingerMove.h"
 #include "FingerUp.h"
+#include "GenomeDelete.h"
 #include "GenomeGet.h"
 #include "GenomeGetBest.h"
 #include "GenomeList.h"
@@ -68,6 +69,7 @@ using ApiCommand = std::variant<
     Api::FingerDown::Command,
     Api::FingerMove::Command,
     Api::FingerUp::Command,
+    Api::GenomeDelete::Command,
     Api::GenomeGet::Command,
     Api::GenomeGetBest::Command,
     Api::GenomeList::Command,

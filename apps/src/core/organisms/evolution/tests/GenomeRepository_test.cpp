@@ -3,6 +3,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 
+#include <filesystem>
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
@@ -160,4 +161,208 @@ TEST_F(GenomeRepositoryTest, StoreOverwritesExistingGenome)
     ASSERT_TRUE(meta.has_value());
     EXPECT_EQ(meta->name, "updated");
     EXPECT_DOUBLE_EQ(meta->fitness, 9.0);
+}
+
+// ============================================================================
+// Persistence Tests - verify SQLite write-through behavior.
+// ============================================================================
+
+class GenomeRepositoryPersistenceTest : public ::testing::Test {
+protected:
+    std::filesystem::path dbPath_;
+
+    void SetUp() override
+    {
+        // Create a unique temp file for each test.
+        dbPath_ = std::filesystem::temp_directory_path()
+            / ("genome_test_" + UUID::generate().toString() + ".db");
+    }
+
+    void TearDown() override
+    {
+        // Clean up the test database.
+        std::filesystem::remove(dbPath_);
+    }
+
+    Genome createTestGenome(float value) { return Genome::constant(value); }
+
+    GenomeMetadata createTestMetadata(const std::string& name, double fitness)
+    {
+        return GenomeMetadata{
+            .name = name,
+            .fitness = fitness,
+            .generation = 42,
+            .createdTimestamp = 1234567890,
+            .scenarioId = Scenario::EnumType::TreeGermination,
+            .notes = "test notes",
+        };
+    }
+};
+
+TEST_F(GenomeRepositoryPersistenceTest, IsPersistentReturnsTrueWhenPathProvided)
+{
+    GenomeRepository repo(dbPath_);
+    EXPECT_TRUE(repo.isPersistent());
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, IsPersistentReturnsFalseForInMemory)
+{
+    GenomeRepository repo;
+    EXPECT_FALSE(repo.isPersistent());
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, GenomePersistsAcrossReopen)
+{
+    GenomeId id = UUID::generate();
+    auto genome = createTestGenome(0.42f);
+    auto meta = createTestMetadata("persistent_genome", 3.14);
+
+    // Store in first instance.
+    {
+        GenomeRepository repo(dbPath_);
+        repo.store(id, genome, meta);
+        EXPECT_EQ(repo.count(), 1u);
+    }
+
+    // Reopen and verify data persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        EXPECT_EQ(repo.count(), 1u);
+        EXPECT_TRUE(repo.exists(id));
+
+        auto retrieved = repo.get(id);
+        ASSERT_TRUE(retrieved.has_value());
+        EXPECT_EQ(retrieved->weights.size(), genome.weights.size());
+        // Check first few weights match.
+        for (size_t i = 0; i < 10 && i < retrieved->weights.size(); i++) {
+            EXPECT_FLOAT_EQ(retrieved->weights[i], genome.weights[i]);
+        }
+
+        auto retrievedMeta = repo.getMetadata(id);
+        ASSERT_TRUE(retrievedMeta.has_value());
+        EXPECT_EQ(retrievedMeta->name, "persistent_genome");
+        EXPECT_DOUBLE_EQ(retrievedMeta->fitness, 3.14);
+        EXPECT_EQ(retrievedMeta->generation, 42);
+        EXPECT_EQ(retrievedMeta->notes, "test notes");
+    }
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, BestIdPersistsAcrossReopen)
+{
+    GenomeId id1 = UUID::generate();
+    GenomeId id2 = UUID::generate();
+
+    // Store genomes and mark one as best.
+    {
+        GenomeRepository repo(dbPath_);
+        repo.store(id1, createTestGenome(0.1f), createTestMetadata("first", 1.0));
+        repo.store(id2, createTestGenome(0.2f), createTestMetadata("second", 2.0));
+        repo.markAsBest(id2);
+        EXPECT_EQ(*repo.getBestId(), id2);
+    }
+
+    // Reopen and verify best ID persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        ASSERT_TRUE(repo.getBestId().has_value());
+        EXPECT_EQ(*repo.getBestId(), id2);
+    }
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, RemovePersistsAcrossReopen)
+{
+    GenomeId id1 = UUID::generate();
+    GenomeId id2 = UUID::generate();
+
+    // Store two genomes, remove one.
+    {
+        GenomeRepository repo(dbPath_);
+        repo.store(id1, createTestGenome(0.1f), createTestMetadata("keep", 1.0));
+        repo.store(id2, createTestGenome(0.2f), createTestMetadata("remove", 2.0));
+        repo.remove(id2);
+        EXPECT_EQ(repo.count(), 1u);
+    }
+
+    // Reopen and verify removal persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        EXPECT_EQ(repo.count(), 1u);
+        EXPECT_TRUE(repo.exists(id1));
+        EXPECT_FALSE(repo.exists(id2));
+    }
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, ClearPersistsAcrossReopen)
+{
+    // Store some genomes then clear.
+    {
+        GenomeRepository repo(dbPath_);
+        repo.store(UUID::generate(), createTestGenome(0.1f), createTestMetadata("a", 1.0));
+        repo.store(UUID::generate(), createTestGenome(0.2f), createTestMetadata("b", 2.0));
+        repo.clear();
+        EXPECT_EQ(repo.count(), 0u);
+    }
+
+    // Reopen and verify clear persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        EXPECT_EQ(repo.count(), 0u);
+        EXPECT_TRUE(repo.empty());
+    }
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, MultipleGenomesPersist)
+{
+    std::vector<GenomeId> ids;
+    for (int i = 0; i < 5; i++) {
+        ids.push_back(UUID::generate());
+    }
+
+    // Store multiple genomes.
+    {
+        GenomeRepository repo(dbPath_);
+        for (int i = 0; i < 5; i++) {
+            repo.store(
+                ids[i],
+                createTestGenome(static_cast<float>(i) * 0.1f),
+                createTestMetadata("genome_" + std::to_string(i), static_cast<double>(i)));
+        }
+        EXPECT_EQ(repo.count(), 5u);
+    }
+
+    // Reopen and verify all persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        EXPECT_EQ(repo.count(), 5u);
+        for (int i = 0; i < 5; i++) {
+            EXPECT_TRUE(repo.exists(ids[i]));
+            auto meta = repo.getMetadata(ids[i]);
+            ASSERT_TRUE(meta.has_value());
+            EXPECT_EQ(meta->name, "genome_" + std::to_string(i));
+        }
+    }
+}
+
+TEST_F(GenomeRepositoryPersistenceTest, OverwritePersistsAcrossReopen)
+{
+    GenomeId id = UUID::generate();
+
+    // Store then overwrite.
+    {
+        GenomeRepository repo(dbPath_);
+        repo.store(id, createTestGenome(0.1f), createTestMetadata("original", 1.0));
+        repo.store(id, createTestGenome(0.9f), createTestMetadata("updated", 9.0));
+        EXPECT_EQ(repo.count(), 1u);
+    }
+
+    // Reopen and verify overwrite persisted.
+    {
+        GenomeRepository repo(dbPath_);
+        EXPECT_EQ(repo.count(), 1u);
+
+        auto meta = repo.getMetadata(id);
+        ASSERT_TRUE(meta.has_value());
+        EXPECT_EQ(meta->name, "updated");
+        EXPECT_DOUBLE_EQ(meta->fitness, 9.0);
+    }
 }

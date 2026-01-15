@@ -4,18 +4,16 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include "core/organisms/brains/WeightType.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include <nlohmann/json.hpp>
-#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace Api {
 
-namespace GenomeGet {
+namespace GenomeDelete {
 
-DEFINE_API_NAME(GenomeGet);
+DEFINE_API_NAME(GenomeDelete);
 
 struct Okay; // Forward declaration for API_COMMAND() macro.
 
@@ -30,21 +28,18 @@ struct Command {
 };
 
 struct Okay {
-    bool found = false;
-    GenomeId id{};
-    std::vector<WeightType> weights;
-    GenomeMetadata metadata;
+    bool success = false; // True if genome existed and was deleted.
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<1>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace GenomeGet
+} // namespace GenomeDelete
 } // namespace Api
 } // namespace DirtSim
