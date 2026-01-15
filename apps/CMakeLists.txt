@@ -50,20 +50,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Find Boost.
+# Find packages.
 find_package(Boost REQUIRED)
 
-# Find Avahi for mDNS peer discovery.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(AVAHI REQUIRED avahi-client)
 
-# Find OpenH264 for H.264 video encoding.
 pkg_check_modules(OPENH264 REQUIRED openh264)
-
-# Find FreeType for font rendering (color emoji support).
+pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 pkg_check_modules(FREETYPE REQUIRED freetype2)
 
-# libyuv for YUV color space conversion (no pkg-config, link directly).
 # Headers at /usr/include/libyuv.h, library at /usr/lib/x86_64-linux-gnu/libyuv.so
 
 # Find OpenMP for parallel physics calculations.
@@ -81,6 +77,14 @@ FetchContent_Declare(
     GIT_TAG v4.4.25
 )
 FetchContent_MakeAvailable(zpp_bits)
+
+# Add sqlite_modern_cpp for type-safe SQLite access (header-only wrapper).
+FetchContent_Declare(
+    sqlite_modern_cpp
+    GIT_REPOSITORY https://github.com/SqliteModernCpp/sqlite_modern_cpp.git
+    GIT_TAG v3.2
+)
+FetchContent_MakeAvailable(sqlite_modern_cpp)
 
 # qlibs/reflect is header-only, downloaded to src/core/reflect
 
@@ -294,6 +298,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/FingerDown.cpp
     src/server/api/FingerMove.cpp
     src/server/api/FingerUp.cpp
+    src/server/api/GenomeDelete.cpp
     src/server/api/GenomeGet.cpp
     src/server/api/GenomeGetBest.cpp
     src/server/api/GenomeList.cpp
@@ -397,8 +402,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/components/RigidBodyPhysicsComponent.cpp
 )
 target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
-target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
-target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${AVAHI_LIBRARIES})
+target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${sqlite_modern_cpp_SOURCE_DIR}/hdr ${SQLITE3_INCLUDE_DIRS})
+target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${AVAHI_LIBRARIES} ${SQLITE3_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
 target_compile_options(dirtsim-server-lib PRIVATE ${DIRTSIM_WARNINGS})
 
@@ -533,6 +538,7 @@ add_executable(cli
     src/cli/BenchmarkRunner.cpp
     src/cli/CleanupRunner.cpp
     src/cli/CommandDispatcher.cpp
+    src/cli/GenomeDbBenchmark.cpp
     src/cli/IntegrationTest.cpp
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp
@@ -596,6 +602,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckBuoyancy_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
+    src/core/organisms/tests/Genome_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp

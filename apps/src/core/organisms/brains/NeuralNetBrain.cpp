@@ -1,6 +1,7 @@
 #include "NeuralNetBrain.h"
 
 #include "Genome.h"
+#include "WeightType.h"
 #include "core/Assert.h"
 #include "core/organisms/TreeCommands.h"
 #include "core/organisms/TreeSensoryData.h"
@@ -44,12 +45,13 @@ double relu(double x)
 } // namespace
 
 struct NeuralNetBrain::Impl {
-    std::vector<double> w_ih;
-    std::vector<double> b_h;
-    std::vector<double> w_ho;
-    std::vector<double> b_o;
+    std::vector<WeightType> w_ih;
+    std::vector<WeightType> b_h;
+    std::vector<WeightType> w_ho;
+    std::vector<WeightType> b_o;
 
-    Impl() : w_ih(W_IH_SIZE, 0.0), b_h(B_H_SIZE, 0.0), w_ho(W_HO_SIZE, 0.0), b_o(OUTPUT_SIZE, 0.0)
+    Impl()
+        : w_ih(W_IH_SIZE, 0.0f), b_h(B_H_SIZE, 0.0f), w_ho(W_HO_SIZE, 0.0f), b_o(OUTPUT_SIZE, 0.0f)
     {}
 
     void loadFromGenome(const Genome& g)

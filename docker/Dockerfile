@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     libfreetype-dev \
     libyuv-dev \
     libsdl2-dev \
+    libsqlite3-dev \
     sudo \
     ccache \
     && rm -rf /var/lib/apt/lists/*
