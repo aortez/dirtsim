@@ -37,6 +37,7 @@ DEPENDS = " \
     openh264 \
     openssl \
     pkgconfig-native \
+    sqlite3 \
     xkeyboard-config \
 "
 

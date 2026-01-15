@@ -23,6 +23,7 @@ DEPENDS = " \
     openh264 \
     openssl \
     pkgconfig-native \
+    sqlite3 \
 "
 
 # CMake configuration for server-only build.
@@ -73,4 +74,5 @@ RDEPENDS:${PN} = " \
     libsdl2 \
     libyuv \
     openh264 \
+    sqlite3 \
 "

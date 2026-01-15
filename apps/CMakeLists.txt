@@ -538,6 +538,7 @@ add_executable(cli
     src/cli/BenchmarkRunner.cpp
     src/cli/CleanupRunner.cpp
     src/cli/CommandDispatcher.cpp
+    src/cli/GenomeDbBenchmark.cpp
     src/cli/IntegrationTest.cpp
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp

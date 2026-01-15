@@ -2,6 +2,7 @@
 #include "CleanupRunner.h"
 #include "CommandDispatcher.h"
 #include "CommandRegistry.h"
+#include "GenomeDbBenchmark.h"
 #include "IntegrationTest.h"
 #include "RunAllRunner.h"
 #include "TrainRunner.h"
@@ -109,6 +110,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "benchmark", "Run performance benchmark (launches server)" },
     { "cleanup", "Clean up rogue dirtsim processes" },
     { "gamepad-test", "Test gamepad input (prints state to console)" },
+    { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "integration_test", "Run integration test (launches server + UI)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
@@ -239,6 +241,13 @@ int main(int argc, char** argv)
         "compare-cache",
         "Benchmark: Run twice to compare cached vs non-cached performance",
         { "compare-cache" });
+
+    args::ValueFlag<int> genomeCount(
+        parser,
+        "count",
+        "Genome benchmark: number of genomes for perf test (default: 100)",
+        { "count" },
+        100);
 
     args::Positional<std::string> target(parser, "target", "Target component: 'server' or 'ui'");
     args::Positional<std::string> command(parser, "command", getCommandListHelp());
@@ -450,7 +459,22 @@ int main(int argc, char** argv)
         return 0;
     }
 
-    // Handle integration_test command (auto-launches server and UI).
+    if (targetName == "genome-db-benchmark") {
+        if (!verbose) {
+            spdlog::set_level(spdlog::level::info);
+        }
+
+        int count = genomeCount ? args::get(genomeCount) : 100;
+
+        Client::GenomeDbBenchmark benchmark;
+        auto results = benchmark.run(count);
+
+        nlohmann::json output = ReflectSerializer::to_json(results);
+        std::cout << output.dump(2) << std::endl;
+
+        return results.correctnessPassed ? 0 : 1;
+    }
+
     if (targetName == "integration_test") {
         // Find server and UI binaries (assume they're in same directory as CLI).
         std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
@@ -818,7 +842,7 @@ int main(int argc, char** argv)
     if (targetName != "server" && targetName != "ui") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "integration_test, run-all, test_binary, train\n\n";
+                     "genome-db-benchmark, integration_test, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
