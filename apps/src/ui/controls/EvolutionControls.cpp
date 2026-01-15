@@ -44,15 +44,15 @@ void EvolutionControls::createMainView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 12, 0);
 
-    // Start button - only visible when evolution is NOT running.
-    startButton_ = LVGLBuilder::actionButton(view)
-                       .text("Start Training")
-                       .icon(LV_SYMBOL_PLAY)
-                       .mode(LVGLBuilder::ActionMode::Push)
-                       .size(80)
-                       .backgroundColor(0x00AA66)
-                       .callback(onStartClicked, this)
-                       .buildOrLog();
+    // Quit button - always visible, returns to start menu.
+    quitButton_ = LVGLBuilder::actionButton(view)
+                      .text("Quit")
+                      .icon(LV_SYMBOL_STOP)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .size(80)
+                      .backgroundColor(0xCC0000)
+                      .callback(onQuitClicked, this)
+                      .buildOrLog();
 
     // Stop button - only visible when evolution is running.
     stopButton_ = LVGLBuilder::actionButton(view)
@@ -74,15 +74,15 @@ void EvolutionControls::createMainView(lv_obj_t* view)
                           .callback(onViewBestClicked, this)
                           .buildOrLog();
 
-    // Quit button - always visible, returns to start menu.
-    quitButton_ = LVGLBuilder::actionButton(view)
-                      .text("Quit")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onQuitClicked, this)
-                      .buildOrLog();
+    // Start button - only visible when evolution is NOT running.
+    startButton_ = LVGLBuilder::actionButton(view)
+                       .text("Start Training")
+                       .icon(LV_SYMBOL_PLAY)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .size(80)
+                       .backgroundColor(0x00AA66)
+                       .callback(onStartClicked, this)
+                       .buildOrLog();
 
     updateButtonVisibility();
 }
