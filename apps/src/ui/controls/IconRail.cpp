@@ -557,7 +557,6 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     // Only request shrink if no icon is selected and currently expanded.
     if (self->selectedId_ == IconId::COUNT && self->mode_ == RailMode::Normal) {
         LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
-        // Queue event for state machine to handle (don't touch LVGL objects from timer).
         if (self->eventSink_) {
             self->eventSink_->queueEvent(RailAutoShrinkRequestEvent{});
         }
