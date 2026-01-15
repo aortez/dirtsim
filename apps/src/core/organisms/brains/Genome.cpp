@@ -20,7 +20,7 @@ constexpr int TOTAL_WEIGHTS = W_IH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
 
 } // namespace
 
-Genome::Genome() : weights(TOTAL_WEIGHTS, 0.0)
+Genome::Genome() : weights(TOTAL_WEIGHTS, 0.0f)
 {}
 
 Genome Genome::random(std::mt19937& rng)
@@ -28,11 +28,11 @@ Genome Genome::random(std::mt19937& rng)
     Genome g;
 
     // Xavier initialization: stddev = sqrt(2 / (fan_in + fan_out)).
-    double ih_stddev = std::sqrt(2.0 / (INPUT_SIZE + HIDDEN_SIZE));
-    double ho_stddev = std::sqrt(2.0 / (HIDDEN_SIZE + OUTPUT_SIZE));
+    WeightType ih_stddev = std::sqrt(2.0f / (INPUT_SIZE + HIDDEN_SIZE));
+    WeightType ho_stddev = std::sqrt(2.0f / (HIDDEN_SIZE + OUTPUT_SIZE));
 
-    std::normal_distribution<double> ih_dist(0.0, ih_stddev);
-    std::normal_distribution<double> ho_dist(0.0, ho_stddev);
+    std::normal_distribution<WeightType> ih_dist(0.0f, ih_stddev);
+    std::normal_distribution<WeightType> ho_dist(0.0f, ho_stddev);
 
     int idx = 0;
 
@@ -43,7 +43,7 @@ Genome Genome::random(std::mt19937& rng)
 
     // b_h biases (zero init).
     for (int i = 0; i < B_H_SIZE; i++) {
-        g.weights[idx++] = 0.0;
+        g.weights[idx++] = 0.0f;
     }
 
     // W_ho weights.
@@ -53,13 +53,13 @@ Genome Genome::random(std::mt19937& rng)
 
     // b_o biases (zero init).
     for (int i = 0; i < B_O_SIZE; i++) {
-        g.weights[idx++] = 0.0;
+        g.weights[idx++] = 0.0f;
     }
 
     return g;
 }
 
-Genome Genome::constant(double value)
+Genome Genome::constant(WeightType value)
 {
     Genome g;
     g.weights.assign(TOTAL_WEIGHTS, value);

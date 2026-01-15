@@ -596,6 +596,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/DuckBuoyancy_test.cpp
     src/core/organisms/tests/DuckJump_test.cpp
     src/core/organisms/tests/DuckLedgeStability_test.cpp
+    src/core/organisms/tests/Genome_test.cpp
     src/core/organisms/tests/Goose_test.cpp
     src/core/organisms/tests/MultiCellOrganism_test.cpp
     src/core/organisms/tests/OrganismCollision_test.cpp

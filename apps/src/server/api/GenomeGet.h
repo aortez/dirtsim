@@ -4,6 +4,7 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/organisms/brains/WeightType.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include <nlohmann/json.hpp>
 #include <vector>
@@ -31,7 +32,7 @@ struct Command {
 struct Okay {
     bool found = false;
     GenomeId id{};
-    std::vector<double> weights; // Flattened genome weights for serialization.
+    std::vector<WeightType> weights;
     GenomeMetadata metadata;
 
     API_COMMAND_NAME();

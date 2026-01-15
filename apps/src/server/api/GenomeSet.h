@@ -4,6 +4,7 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/organisms/brains/WeightType.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include <nlohmann/json.hpp>
 #include <optional>
@@ -21,7 +22,7 @@ struct Okay; // Forward declaration for API_COMMAND() macro.
 
 struct Command {
     GenomeId id{};                          // UUID for this genome (required).
-    std::vector<double> weights;            // Genome weights.
+    std::vector<WeightType> weights;        // Genome weights.
     std::optional<GenomeMetadata> metadata; // Optional metadata.
 
     API_COMMAND();
