@@ -862,6 +862,23 @@ TEST_F(ClockScenarioTest, AutoScale_WorldMatchesDisplayAspect)
         << "World aspect " << world_aspect << " should match display " << display_aspect;
 }
 
+TEST_F(ClockScenarioTest, AutoScale_ConfigUpdateResizesWorld)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    config.targetDigitHeightPercent = 50;
+
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+    const WorldData& data = world_->getData();
+
+    EXPECT_EQ(data.width, static_cast<int>(metadata.requiredWidth));
+    EXPECT_EQ(data.height, static_cast<int>(metadata.requiredHeight));
+}
+
 TEST_F(ClockScenarioTest, AutoScale_AllFontsRenderAtTargetPercent)
 {
     const uint8_t target_percent = 50; // Digits should be 50% of display height.

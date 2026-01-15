@@ -271,11 +271,13 @@ void ClockScenario::recalculateDimensions()
 
         if (display_aspect > clock_aspect) {
             world_height = base_height;
-            world_width = static_cast<int>(std::ceil(world_height * display_aspect));
+            world_width =
+                std::max(base_width, static_cast<int>(std::round(world_height * display_aspect)));
         }
         else {
             world_width = base_width;
-            world_height = static_cast<int>(std::ceil(world_width / display_aspect));
+            world_height =
+                std::max(base_height, static_cast<int>(std::round(world_width / display_aspect)));
         }
 
         spdlog::info(
@@ -320,11 +322,32 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             || (incoming.targetDigitHeightPercent != config_.targetDigitHeightPercent)
             || (incoming.marginPixels != config_.marginPixels);
 
+        auto resizeWorldToMetadata = [&](World& world_to_resize) {
+            if (metadata_.requiredWidth == 0 || metadata_.requiredHeight == 0) {
+                return;
+            }
+
+            const WorldData& data = world_to_resize.getData();
+            if (data.width == static_cast<int>(metadata_.requiredWidth)
+                && data.height == static_cast<int>(metadata_.requiredHeight)) {
+                return;
+            }
+
+            spdlog::info(
+                "ClockScenario: Resizing world to {}x{}",
+                metadata_.requiredWidth,
+                metadata_.requiredHeight);
+            world_to_resize.resizeGrid(
+                static_cast<int16_t>(metadata_.requiredWidth),
+                static_cast<int16_t>(metadata_.requiredHeight));
+        };
+
         config_ = incoming;
 
         if (layout_changed) {
             // Layout changes require recalculating dimensions and redrawing.
             recalculateDimensions();
+            resizeWorldToMetadata(world);
 
             spdlog::info(
                 "ClockScenario: Layout changed, resetting (font={}, showSeconds={})",
@@ -336,6 +359,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         }
         else if (dimensions_changed) {
             recalculateDimensions();
+            resizeWorldToMetadata(world);
 
             spdlog::info(
                 "ClockScenario: Dimensions changed (display={}x{})",
