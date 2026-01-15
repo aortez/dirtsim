@@ -119,5 +119,6 @@ RDEPENDS:${PN} = " \
     libsdl2 \
     libyuv \
     openh264 \
+    sqlite3 \
     xkeyboard-config \
 "
