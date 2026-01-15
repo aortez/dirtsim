@@ -45,30 +45,14 @@ public:
      */
     lv_obj_t* getSimulationContainer();
 
-    /**
-     * @brief Get the icon rail component (simulation screen).
-     */
     IconRail* getIconRail() { return iconRail_.get(); }
-
-    /**
-     * @brief Get the icon rail component (main menu screen).
-     */
-    IconRail* getMenuIconRail() { return menuIconRail_.get(); }
 
     /**
      * @brief Get the content area for main menu (where fractal/buttons go).
      */
     lv_obj_t* getMenuContentArea();
 
-    /**
-     * @brief Get the expandable panel component (simulation screen).
-     */
     ExpandablePanel* getExpandablePanel() { return expandablePanel_.get(); }
-
-    /**
-     * @brief Get the expandable panel component (main menu screen).
-     */
-    ExpandablePanel* getMenuExpandablePanel() { return menuExpandablePanel_.get(); }
 
     /**
      * @brief Get container for world display area (canvas grid).
@@ -163,21 +147,17 @@ private:
     // Current active screen.
     lv_obj_t* currentScreen = nullptr;
 
-    // New icon-based layout components.
-    std::unique_ptr<IconRail> iconRail_;                   // For simulation screen.
-    std::unique_ptr<IconRail> menuIconRail_;               // For main menu screen.
-    std::unique_ptr<ExpandablePanel> expandablePanel_;     // For simulation screen.
-    std::unique_ptr<ExpandablePanel> menuExpandablePanel_; // For main menu screen.
+    // Shared UI components (live on top layer, independent of screens).
+    std::unique_ptr<IconRail> iconRail_;
+    std::unique_ptr<ExpandablePanel> expandablePanel_;
 
     // Simulation screen layout containers.
-    lv_obj_t* simMainRow_ = nullptr;     // Main horizontal row (icon rail + rest).
-    lv_obj_t* simDisplayArea_ = nullptr; // Contains world + neural grid.
+    lv_obj_t* simDisplayArea_ = nullptr;
     lv_obj_t* simWorldDisplayArea_ = nullptr;
     lv_obj_t* simNeuralGridDisplayArea_ = nullptr;
 
     // Main menu screen layout containers.
-    lv_obj_t* menuMainRow_ = nullptr;     // Main horizontal row (icon rail + content).
-    lv_obj_t* menuContentArea_ = nullptr; // Content area (fractal, buttons, etc.).
+    lv_obj_t* menuContentArea_ = nullptr;
 
     bool neuralGridVisible_ = false;
 
@@ -191,10 +171,7 @@ private:
      */
     void cleanupScreen(lv_obj_t*& screen);
 
-    /**
-     * @brief Create the simulation screen layout structure.
-     * Called lazily when first simulation container is requested.
-     */
+    void createSharedComponents();
     void createSimulationLayout();
 
     /**

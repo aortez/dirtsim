@@ -66,7 +66,7 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_t* container = uiManager->getMenuContentArea();
 
     // Configure IconRail to show CORE, NETWORK, SCENARIO, and EVOLUTION icons.
-    if (IconRail* iconRail = uiManager->getMenuIconRail()) {
+    if (IconRail* iconRail = uiManager->getIconRail()) {
         iconRail->setVisibleIcons(
             { IconId::CORE, IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
         LOG_INFO(State, "Configured IconRail with CORE, NETWORK, SCENARIO, and EVOLUTION icons");
@@ -288,7 +288,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     if (evt.selectedId == IconId::CORE) {
         LOG_INFO(State, "Core icon selected, showing core panel");
 
-        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             corePanel_ = std::make_unique<StartMenuCorePanel>(panel->getContentArea(), sm);
             panel->show();
@@ -299,7 +299,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     // Handle deselection of CORE.
     if (evt.previousId == IconId::CORE) {
         LOG_INFO(State, "Core icon deselected, hiding panel");
-        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
             panel->hide();
             panel->clearContent();
         }
@@ -310,7 +310,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     if (evt.selectedId == IconId::NETWORK) {
         LOG_INFO(State, "Network icon selected, showing diagnostics panel");
 
-        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
             panel->show();
@@ -321,7 +321,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     // Handle deselection of NETWORK.
     if (evt.previousId == IconId::NETWORK) {
         LOG_INFO(State, "Network icon deselected, hiding panel");
-        if (auto* panel = uiManager->getMenuExpandablePanel()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
             panel->hide();
             panel->clearContent();
         }
@@ -333,7 +333,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         LOG_INFO(State, "Scenario icon clicked, starting simulation");
         sm.queueEvent(StartButtonClickedEvent{});
         // Deselect action icons after firing.
-        if (auto* iconRail = uiManager->getMenuIconRail()) {
+        if (auto* iconRail = uiManager->getIconRail()) {
             iconRail->deselectAll();
         }
     }
@@ -341,7 +341,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         LOG_INFO(State, "Evolution icon clicked, starting training");
         sm.queueEvent(TrainButtonClickedEvent{});
         // Deselect action icons after firing.
-        if (auto* iconRail = uiManager->getMenuIconRail()) {
+        if (auto* iconRail = uiManager->getIconRail()) {
             iconRail->deselectAll();
         }
     }
@@ -354,7 +354,7 @@ State::Any StartMenu::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMa
     LOG_INFO(State, "Auto-shrink requested, minimizing menu IconRail");
 
     // Process auto-shrink in main thread (safe to modify LVGL objects).
-    if (auto* iconRail = sm.getUiComponentManager()->getMenuIconRail()) {
+    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
         iconRail->setMode(RailMode::Minimized);
     }
 
