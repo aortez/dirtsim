@@ -5,6 +5,7 @@
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/clock_scenario/CharacterMetrics.h"
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <map>
 
 using namespace DirtSim;
@@ -61,6 +62,47 @@ protected:
 
     std::unique_ptr<ClockScenario> scenario_;
     std::unique_ptr<World> world_;
+
+    void setEventConfig(
+        Config::Clock& config,
+        std::initializer_list<ClockEventType> enabled_events,
+        double frequency = 1.0)
+    {
+        config.colorCycleEnabled = false;
+        config.colorShowcaseEnabled = false;
+        config.digitSlideEnabled = false;
+        config.duckEnabled = false;
+        config.marqueeEnabled = false;
+        config.meltdownEnabled = false;
+        config.rainEnabled = false;
+        config.eventFrequency = frequency;
+
+        for (ClockEventType type : enabled_events) {
+            switch (type) {
+                case ClockEventType::COLOR_CYCLE:
+                    config.colorCycleEnabled = true;
+                    break;
+                case ClockEventType::COLOR_SHOWCASE:
+                    config.colorShowcaseEnabled = true;
+                    break;
+                case ClockEventType::DIGIT_SLIDE:
+                    config.digitSlideEnabled = true;
+                    break;
+                case ClockEventType::DUCK:
+                    config.duckEnabled = true;
+                    break;
+                case ClockEventType::MARQUEE:
+                    config.marqueeEnabled = true;
+                    break;
+                case ClockEventType::MELTDOWN:
+                    config.meltdownEnabled = true;
+                    break;
+                case ClockEventType::RAIN:
+                    config.rainEnabled = true;
+                    break;
+            }
+        }
+    }
 };
 
 // =============================================================================
@@ -136,14 +178,7 @@ TEST_F(ClockScenarioTest, DuckEvent_StartsWhenEnabled)
 {
     // Get the current config and enable duck.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.duckEnabled = true;
-    config.eventFrequency = 1.0;
-    config.colorCycleEnabled = false;
-    config.colorShowcaseEnabled = false;
-    config.digitSlideEnabled = false;
-    config.marqueeEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
+    setEventConfig(config, { ClockEventType::DUCK });
     scenario_->setConfig(config, *world_);
 
     // Wait for the periodic trigger check.
@@ -534,14 +569,7 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
     scenario_->setTimeOverride("1 2 : 3 4");
 
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0; // Enable events.
-    config.colorCycleEnabled = false;
-    config.colorShowcaseEnabled = false;
-    config.duckEnabled = false;
-    config.marqueeEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
+    setEventConfig(config, { ClockEventType::DIGIT_SLIDE });
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -616,14 +644,7 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
     };
 
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorCycleEnabled = false;
-    config.colorShowcaseEnabled = false;
-    config.digitSlideEnabled = false;
-    config.duckEnabled = false;
-    config.marqueeEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
-    config.eventFrequency = 1.0;
+    setEventConfig(config, {});
     scenario_->setConfig(config, *world_);
 
     // Set a deterministic time and capture default digit positions.
@@ -644,14 +665,7 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
 
     // Start marquee event on the next time change.
     config = std::get<Config::Clock>(scenario_->getConfig());
-    config.marqueeEnabled = true;
-    config.eventFrequency = 1.0;
-    config.colorCycleEnabled = false;
-    config.colorShowcaseEnabled = false;
-    config.digitSlideEnabled = false;
-    config.duckEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
+    setEventConfig(config, { ClockEventType::MARQUEE });
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -726,14 +740,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
 
     // Enable both showcase and slide events.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorShowcaseEnabled = true;
-    config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0; // Enable events.
-    config.colorCycleEnabled = false;
-    config.duckEnabled = false;
-    config.marqueeEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
+    setEventConfig(config, { ClockEventType::COLOR_SHOWCASE, ClockEventType::DIGIT_SLIDE });
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -818,14 +825,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     // Enable both showcase and marquee events.
     scenario_->setTimeOverride("1 2 : 3 4");
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorShowcaseEnabled = true;
-    config.marqueeEnabled = true;
-    config.eventFrequency = 1.0;
-    config.colorCycleEnabled = false;
-    config.digitSlideEnabled = false;
-    config.duckEnabled = false;
-    config.meltdownEnabled = false;
-    config.rainEnabled = false;
+    setEventConfig(config, { ClockEventType::COLOR_SHOWCASE, ClockEventType::MARQUEE });
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
