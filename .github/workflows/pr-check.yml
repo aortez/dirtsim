@@ -76,6 +76,8 @@ jobs:
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
 
     - name: Yocto build + deploy
+      env:
+        DIRTSIM_YOCTO_DOCKER: "1"
       run: ./update.sh --target dirtsim.local --docker
 
     - name: Smoke test
