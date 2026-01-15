@@ -56,3 +56,27 @@ jobs:
     - name: Run unit tests
       working-directory: docker
       run: make test
+
+  yocto-deploy-smoke:
+    runs-on: self-hosted
+    needs: build-docker-image
+    if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        clean: false
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Merge target branch
+      if: github.event_name == 'pull_request'
+      run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
+
+    - name: Yocto build + deploy
+      run: ./update.sh --target dirtsim.local --docker
+
+    - name: Smoke test
+      working-directory: yocto
+      run: node scripts/smoke-test.mjs --target dirtsim.local

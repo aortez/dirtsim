@@ -16,7 +16,7 @@
 .env
 .github/.env
 
-*.json
+/*.json
 !yocto/package.json
 *.log
 
