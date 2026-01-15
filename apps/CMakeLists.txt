@@ -394,6 +394,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
     src/core/organisms/evolution/Selection.cpp
+    src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp
     src/core/organisms/components/LightHandHeld.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
@@ -614,6 +615,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeNeuralNetwork_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
+    src/core/organisms/evolution/tests/FitnessResult_test.cpp
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
@@ -654,4 +656,3 @@ target_compile_options(dirtsim-tests-slow PRIVATE ${DIRTSIM_WARNINGS})
 enable_testing()
 add_test(NAME dirtsim-tests COMMAND dirtsim-tests)
 add_test(NAME dirtsim-tests-slow COMMAND dirtsim-tests-slow)
-

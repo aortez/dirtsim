@@ -198,7 +198,15 @@ Run evolution training with JSON configuration:
     "populationSize": 20,
     "tournamentSize": 3
   },
-  "scenarioId": "TreeGermination"
+  "scenarioId": "TreeGermination",
+  "organismType": "TREE",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 20,
+      "randomCount": 20
+    }
+  ]
 }'
 
 # Train on remote server
@@ -220,7 +228,15 @@ Run evolution training with JSON configuration:
     "sigma": 0.05,
     "resetRate": 0.0005
   },
-  "scenarioId": "TreeGermination"
+  "scenarioId": "TreeGermination",
+  "organismType": "TREE",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 50,
+      "randomCount": 50
+    }
+  ]
 }
 ```
 
