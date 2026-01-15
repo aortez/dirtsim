@@ -102,3 +102,28 @@ TEST_F(StateIdleTest, ExitCommandTransitionsToShutdown)
     ASSERT_TRUE(callbackInvoked) << "Response callback should be invoked";
     ASSERT_TRUE(capturedResponse.isValue()) << "Response should be success";
 }
+
+TEST_F(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
+{
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::SimRun::Command cmd;
+    cmd.timestep = 0.016;
+    cmd.max_steps = -1;
+    cmd.scenario_id = Scenario::EnumType::Clock;
+    cmd.container_size = Vector2s{ 800, 480 };
+
+    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
+
+    State::Any newState = idleState.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
+    ASSERT_NE(simRunning.world, nullptr);
+
+    EXPECT_EQ(simRunning.world->getData().width, 800 / 16);
+    EXPECT_EQ(simRunning.world->getData().height, 480 / 16);
+
+    ASSERT_TRUE(callbackInvoked);
+}

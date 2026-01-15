@@ -86,13 +86,30 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         return Idle{};
     }
 
-    // Use scenario's required dimensions if specified, otherwise use defaults.
-    uint32_t worldWidth = metadata->requiredWidth > 0 ? metadata->requiredWidth : dsm.defaultWidth;
-    uint32_t worldHeight =
-        metadata->requiredHeight > 0 ? metadata->requiredHeight : dsm.defaultHeight;
+    // Determine world dimensions: container-based > scenario requirements > defaults.
+    uint32_t worldWidth = dsm.defaultWidth;
+    uint32_t worldHeight = dsm.defaultHeight;
+
+    if (cwc.command.container_size.x > 0 && cwc.command.container_size.y > 0) {
+        constexpr int targetCellSize = 16;
+        worldWidth = static_cast<uint32_t>(cwc.command.container_size.x / targetCellSize);
+        worldHeight = static_cast<uint32_t>(cwc.command.container_size.y / targetCellSize);
+        worldWidth = std::max(worldWidth, 10u);
+        worldHeight = std::max(worldHeight, 10u);
+    }
+    else if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
+        worldWidth = metadata->requiredWidth;
+        worldHeight = metadata->requiredHeight;
+    }
 
     // Create world with appropriate dimensions.
-    LOG_INFO(State, "Creating new World {}x{}", worldWidth, worldHeight);
+    LOG_INFO(
+        State,
+        "Creating World {}x{} (container: {}x{})",
+        worldWidth,
+        worldHeight,
+        cwc.command.container_size.x,
+        cwc.command.container_size.y);
     newState.world = std::make_unique<World>(worldWidth, worldHeight);
 
     // Create scenario instance from factory.

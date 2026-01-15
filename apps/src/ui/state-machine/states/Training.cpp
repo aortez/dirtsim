@@ -252,12 +252,18 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
         evolutionStarted_ = false;
     }
 
-    // Start simulation with TreeGermination scenario.
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+
     Api::SimRun::Command simRunCmd{ .timestep = 0.016,
                                     .max_steps = -1,
                                     .max_frame_ms = 16,
                                     .scenario_id = Scenario::EnumType::TreeGermination,
-                                    .start_paused = false };
+                                    .start_paused = false,
+                                    .container_size = containerSize };
 
     auto simResult = wsService.sendCommand<Api::SimRun::Okay>(simRunCmd, 2000);
     if (simResult.isError() || simResult.value().isError()) {

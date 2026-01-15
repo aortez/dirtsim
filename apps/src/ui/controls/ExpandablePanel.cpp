@@ -1,6 +1,14 @@
 #include "ExpandablePanel.h"
+#include "core/ColorNames.h"
 #include "core/LoggingChannels.h"
 #include <spdlog/spdlog.h>
+
+namespace {
+uint32_t rgbaToRgb(uint32_t rgba)
+{
+    return rgba >> 8;
+}
+} // namespace
 
 namespace DirtSim {
 namespace Ui {
@@ -16,7 +24,7 @@ ExpandablePanel::ExpandablePanel(lv_obj_t* parent)
 
     // Style the container.
     lv_obj_set_size(container_, PANEL_WIDTH, LV_PCT(100));
-    lv_obj_set_style_bg_color(container_, lv_color_hex(BG_COLOR), 0);
+    lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_radius(container_, 0, 0);
