@@ -138,6 +138,12 @@ TEST_F(ClockScenarioTest, DuckEvent_StartsWhenEnabled)
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.duckEnabled = true;
     config.eventFrequency = 1.0;
+    config.colorCycleEnabled = false;
+    config.colorShowcaseEnabled = false;
+    config.digitSlideEnabled = false;
+    config.marqueeEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     scenario_->setConfig(config, *world_);
 
     // Wait for the periodic trigger check.
@@ -530,6 +536,12 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.digitSlideEnabled = true;
     config.eventFrequency = 1.0; // Enable events.
+    config.colorCycleEnabled = false;
+    config.colorShowcaseEnabled = false;
+    config.duckEnabled = false;
+    config.marqueeEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -603,6 +615,17 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
         return positions;
     };
 
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.colorCycleEnabled = false;
+    config.colorShowcaseEnabled = false;
+    config.digitSlideEnabled = false;
+    config.duckEnabled = false;
+    config.marqueeEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
+    config.eventFrequency = 1.0;
+    scenario_->setConfig(config, *world_);
+
     // Set a deterministic time and capture default digit positions.
     scenario_->setTimeOverride("1 2 : 3 4");
     scenario_->tick(*world_, 0.016);
@@ -620,9 +643,15 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
     scenario_->setTimeOverride("1 2 : 3 4");
 
     // Start marquee event on the next time change.
-    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config = std::get<Config::Clock>(scenario_->getConfig());
     config.marqueeEnabled = true;
     config.eventFrequency = 1.0;
+    config.colorCycleEnabled = false;
+    config.colorShowcaseEnabled = false;
+    config.digitSlideEnabled = false;
+    config.duckEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -700,6 +729,11 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     config.colorShowcaseEnabled = true;
     config.digitSlideEnabled = true;
     config.eventFrequency = 1.0; // Enable events.
+    config.colorCycleEnabled = false;
+    config.duckEnabled = false;
+    config.marqueeEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -787,6 +821,11 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     config.colorShowcaseEnabled = true;
     config.marqueeEnabled = true;
     config.eventFrequency = 1.0;
+    config.colorCycleEnabled = false;
+    config.digitSlideEnabled = false;
+    config.duckEnabled = false;
+    config.meltdownEnabled = false;
+    config.rainEnabled = false;
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
@@ -976,6 +1015,7 @@ TEST_F(ClockScenarioTest, AutoScale_TargetHeightPrioritizedOverAspect)
 {
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.autoScale = true;
+    config.font = Config::ClockFont::DotMatrix;
     config.targetDigitHeightPercent = 50;
     config.targetDisplayWidth = 800;
     config.targetDisplayHeight = 480;
