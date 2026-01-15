@@ -3,8 +3,9 @@
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
 #include "core/scenarios/ClockScenario.h"
-#include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/clock_scenario/CharacterMetrics.h"
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <map>
 
 using namespace DirtSim;
@@ -13,18 +14,39 @@ class ClockScenarioTest : public ::testing::Test {
 protected:
     void SetUp() override
     {
-        // Create scenario with default event configs but random triggering disabled.
+        // Create scenario with deterministic triggers; events only fire when enabled.
         scenario_ = std::make_unique<ClockScenario>(ClockEventConfigs{
-            .color_cycle = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
-            .color_showcase = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
-            .digit_slide = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .color_cycle = { .timing = { .trigger_type = EventTriggerType::OnTimeChange,
+                                         .duration = 5.0,
+                                         .chance = 1.0,
+                                         .cooldown = 1.0 } },
+            .color_showcase = { .timing = { .trigger_type = EventTriggerType::OnTimeChange,
+                                            .duration = 5.0,
+                                            .chance = 1.0,
+                                            .cooldown = 1.0 } },
+            .digit_slide = { .timing = { .trigger_type = EventTriggerType::OnTimeChange,
+                                         .duration = 5.0,
+                                         .chance = 1.0,
+                                         .cooldown = 1.0 } },
             .duck = {
-                .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 },
+                .timing = { .trigger_type = EventTriggerType::Periodic,
+                            .duration = 5.0,
+                            .chance = 1.0,
+                            .cooldown = 1.0 },
                 .floor_obstacles_enabled = false,
             },
-            .marquee = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
-            .meltdown = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
-            .rain = { .timing = { .duration = 5.0, .chance = 0.0, .cooldown = 1.0 } },
+            .marquee = { .timing = { .trigger_type = EventTriggerType::OnTimeChange,
+                                     .duration = 5.0,
+                                     .chance = 1.0,
+                                     .cooldown = 1.0 } },
+            .meltdown = { .timing = { .trigger_type = EventTriggerType::OnTimeChange,
+                                      .duration = 5.0,
+                                      .chance = 1.0,
+                                      .cooldown = 1.0 } },
+            .rain = { .timing = { .trigger_type = EventTriggerType::Periodic,
+                                  .duration = 5.0,
+                                  .chance = 1.0,
+                                  .cooldown = 1.0 } },
         });
 
         // Get required dimensions from scenario metadata.
@@ -34,13 +56,53 @@ protected:
         // Apply scenario setup.
         scenario_->setup(*world_);
 
-        // Run one tick to set first_tick_done_ = true.
-        // This is required for manual event toggling via setConfig() to work.
+        // Run one tick to initialize event timing.
         scenario_->tick(*world_, 0.016);
     }
 
     std::unique_ptr<ClockScenario> scenario_;
     std::unique_ptr<World> world_;
+
+    void setEventConfig(
+        Config::Clock& config,
+        std::initializer_list<ClockEventType> enabled_events,
+        double frequency = 1.0)
+    {
+        config.colorCycleEnabled = false;
+        config.colorShowcaseEnabled = false;
+        config.digitSlideEnabled = false;
+        config.duckEnabled = false;
+        config.marqueeEnabled = false;
+        config.meltdownEnabled = false;
+        config.rainEnabled = false;
+        config.eventFrequency = frequency;
+
+        for (ClockEventType type : enabled_events) {
+            switch (type) {
+                case ClockEventType::COLOR_CYCLE:
+                    config.colorCycleEnabled = true;
+                    break;
+                case ClockEventType::COLOR_SHOWCASE:
+                    config.colorShowcaseEnabled = true;
+                    break;
+                case ClockEventType::DIGIT_SLIDE:
+                    config.digitSlideEnabled = true;
+                    break;
+                case ClockEventType::DUCK:
+                    config.duckEnabled = true;
+                    break;
+                case ClockEventType::MARQUEE:
+                    config.marqueeEnabled = true;
+                    break;
+                case ClockEventType::MELTDOWN:
+                    config.meltdownEnabled = true;
+                    break;
+                case ClockEventType::RAIN:
+                    config.rainEnabled = true;
+                    break;
+            }
+        }
+    }
 };
 
 // =============================================================================
@@ -112,15 +174,24 @@ TEST_F(ClockScenarioTest, Setup_NoActiveEvents)
 // Duck Event Tests
 // =============================================================================
 
-TEST_F(ClockScenarioTest, DuckEvent_CanStartManually)
+TEST_F(ClockScenarioTest, DuckEvent_StartsWhenEnabled)
 {
     // Get the current config and enable duck.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.duckEnabled = true;
-    config.eventFrequency = 0.0; // Disable random triggering.
+    setEventConfig(config, { ClockEventType::DUCK });
     scenario_->setConfig(config, *world_);
 
-    // Duck event should now be active.
+    // Wait for the periodic trigger check.
+    double elapsed = 0.0;
+    const double dt = 0.25;
+    const double max_wait = 2.0;
+
+    while (!scenario_->isEventActive(ClockEventType::DUCK) && elapsed < max_wait) {
+        scenario_->tick(*world_, dt);
+        world_->advanceTime(dt);
+        elapsed += dt;
+    }
+
     EXPECT_TRUE(scenario_->isEventActive(ClockEventType::DUCK));
     EXPECT_EQ(scenario_->getActiveEventCount(), 1u);
 }
@@ -129,14 +200,12 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 {
     // Create scenario with short duck duration for faster test.
     // Duration of 0.5s will timeout before the door even finishes opening.
-    // Note: chance = 0.0 prevents random triggering; we don't set
-    // eventFrequency = 0.0 because that would skip updateEvents() entirely.
     auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
         .digit_slide = {},
         .duck = {
-            .timing = { .duration = 0.5, .chance = 0.0, .cooldown = 0.0 },
+            .timing = { .duration = 0.5, .chance = 1.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
         .marquee = {},
@@ -146,12 +215,23 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
     const auto& metadata = short_scenario->getMetadata();
     auto short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     short_scenario->setup(*short_world);
-    short_scenario->tick(*short_world, 0.016); // Enable manual event toggling.
+    short_scenario->tick(*short_world, 0.016); // Initialize event timing.
 
-    // Start duck event manually.
+    // Enable duck events and wait for the periodic trigger check.
     auto config = std::get<Config::Clock>(short_scenario->getConfig());
     config.duckEnabled = true;
+    config.eventFrequency = 1.0;
     short_scenario->setConfig(config, *short_world);
+
+    double start_wait = 0.0;
+    const double dt = 0.05; // Small timesteps for accuracy.
+    const double max_wait = 2.0;
+
+    while (!short_scenario->isEventActive(ClockEventType::DUCK) && start_wait < max_wait) {
+        short_scenario->tick(*short_world, dt);
+        short_world->advanceTime(dt);
+        start_wait += dt;
+    }
 
     ASSERT_TRUE(short_scenario->isEventActive(ClockEventType::DUCK));
 
@@ -161,7 +241,6 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 
     // Advance time past the event duration.
     double elapsed = 0.0;
-    const double dt = 0.05; // Small timesteps for accuracy.
     int ticks = 0;
 
     // Run for duration + buffer time.
@@ -182,7 +261,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 
 TEST_F(ClockScenarioTest, DuckEvent_DoesNotTriggerRandomlyWhenDisabled)
 {
-    // With eventFrequency = 0 and chance = 0, no events should trigger.
+    // With eventFrequency = 0, no events should trigger.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.eventFrequency = 0.0;
     scenario_->setConfig(config, *world_);
@@ -210,7 +289,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
         .color_showcase = {},
         .digit_slide = {},
         .duck = {
-            .timing = { .duration = 15.0, .chance = 0.0, .cooldown = 0.0 },
+            .timing = { .duration = 15.0, .chance = 1.0, .cooldown = 0.0 },
             .floor_obstacles_enabled = false,
         },
         .marquee = {},
@@ -221,7 +300,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     const auto& metadata = test_scenario->getMetadata();
     auto test_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     test_scenario->setup(*test_world);
-    test_scenario->tick(*test_world, 0.016); // Enable manual event toggling.
+    test_scenario->tick(*test_world, 0.016); // Initialize event timing.
 
     const WorldData& data = test_world->getData();
     const uint32_t world_width = data.width;
@@ -254,7 +333,18 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     // Start duck event.
     auto config = std::get<Config::Clock>(test_scenario->getConfig());
     config.duckEnabled = true;
+    config.eventFrequency = 1.0;
     test_scenario->setConfig(config, *test_world);
+
+    double start_wait = 0.0;
+    const double dt = 0.05; // Small timesteps for accuracy.
+    const double max_wait = 2.0;
+
+    while (!test_scenario->isEventActive(ClockEventType::DUCK) && start_wait < max_wait) {
+        test_scenario->tick(*test_world, dt);
+        test_world->advanceTime(dt);
+        start_wait += dt;
+    }
 
     ASSERT_TRUE(test_scenario->isEventActive(ClockEventType::DUCK));
 
@@ -271,7 +361,6 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
 
     // Run simulation and track all frames.
     double elapsed = 0.0;
-    const double dt = 0.05;       // Small timesteps for accuracy.
     const double max_time = 25.0; // Safety limit.
 
     while (test_scenario->isEventActive(ClockEventType::DUCK) && elapsed < max_time) {
@@ -385,10 +474,14 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
     // Track material counts for digit cells across all frames.
     std::map<Material::EnumType, int> material_counts;
 
-    // Start color cycle event via config toggle.
+    // Start color cycle on the next time change.
+    scenario_->setTimeOverride("1 2 : 3 4");
     auto config = std::get<Config::Clock>(scenario_->getConfig());
     config.colorCycleEnabled = true;
+    config.eventFrequency = 1.0;
     scenario_->setConfig(config, *world_);
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_CYCLE));
 
@@ -476,15 +569,17 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
     scenario_->setTimeOverride("1 2 : 3 4");
 
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0; // Enable events.
+    setEventConfig(config, { ClockEventType::DIGIT_SLIDE });
     scenario_->setConfig(config, *world_);
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DIGIT_SLIDE));
 
     // Run a few ticks to establish the initial state.
     for (int i = 0; i < 5; ++i) {
         scenario_->tick(*world_, 0.016);
+        world_->advanceTime(0.016);
     }
 
     // Record initial Y positions.
@@ -501,9 +596,11 @@ TEST_F(ClockScenarioTest, DigitSlideEvent_AnimatesWhenTimeChanges)
 
     // Tick once to trigger the animation.
     scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     // Now tick partway through the animation (animation takes 0.5s at speed 2.0).
     scenario_->tick(*world_, 0.2);
+    world_->advanceTime(0.2);
 
     // Get positions mid-animation.
     auto mid_positions = getDigitYPositions(world_->getData());
@@ -546,16 +643,32 @@ TEST_F(ClockScenarioTest, MarqueeEvent_EndsWithDigitsAtDefaultPosition)
         return positions;
     };
 
-    // Record default digit positions before starting marquee.
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    setEventConfig(config, {});
+    scenario_->setConfig(config, *world_);
+
+    // Set a deterministic time and capture default digit positions.
+    scenario_->setTimeOverride("1 2 : 3 4");
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
+
     auto initial_positions = getDigitPositions(world_->getData());
     ASSERT_FALSE(initial_positions.empty()) << "Should have digit cells before marquee";
 
     std::cout << "Initial digit cells: " << initial_positions.size() << "\n";
 
-    // Start marquee event.
-    auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.marqueeEnabled = true;
+    // Prime time tracking so the next tick counts as a change without changing the final time.
+    scenario_->setTimeOverride("9 9 : 9 9");
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
+    scenario_->setTimeOverride("1 2 : 3 4");
+
+    // Start marquee event on the next time change.
+    config = std::get<Config::Clock>(scenario_->getConfig());
+    setEventConfig(config, { ClockEventType::MARQUEE });
     scenario_->setConfig(config, *world_);
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::MARQUEE));
 
@@ -627,10 +740,10 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
 
     // Enable both showcase and slide events.
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorShowcaseEnabled = true;
-    config.digitSlideEnabled = true;
-    config.eventFrequency = 1.0; // Enable events.
+    setEventConfig(config, { ClockEventType::COLOR_SHOWCASE, ClockEventType::DIGIT_SLIDE });
     scenario_->setConfig(config, *world_);
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_SHOWCASE));
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DIGIT_SLIDE));
@@ -638,6 +751,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
     // Run a few ticks to establish initial state.
     for (int i = 0; i < 5; ++i) {
         scenario_->tick(*world_, 0.016);
+        world_->advanceTime(0.016);
     }
 
     // Record the initial showcase material.
@@ -653,6 +767,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithSlide_MaintainsConsistentMaterial)
 
     // Tick once to detect the time change and start animation.
     scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     // Sample materials during the slide animation (should take ~0.5s at speed 2.0).
     // We sample multiple times during the animation to catch any flashing.
@@ -708,11 +823,12 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     };
 
     // Enable both showcase and marquee events.
+    scenario_->setTimeOverride("1 2 : 3 4");
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorShowcaseEnabled = true;
-    config.marqueeEnabled = true;
-    config.eventFrequency = 1.0;
+    setEventConfig(config, { ClockEventType::COLOR_SHOWCASE, ClockEventType::MARQUEE });
     scenario_->setConfig(config, *world_);
+    scenario_->tick(*world_, 0.016);
+    world_->advanceTime(0.016);
 
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::COLOR_SHOWCASE));
     ASSERT_TRUE(scenario_->isEventActive(ClockEventType::MARQUEE));
@@ -720,6 +836,7 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     // Run a few ticks and get the showcase material.
     for (int i = 0; i < 5; ++i) {
         scenario_->tick(*world_, 0.016);
+        world_->advanceTime(0.016);
     }
 
     auto initial_materials = getDigitMaterials(world_->getData());
@@ -761,4 +878,200 @@ TEST_F(ClockScenarioTest, ShowcaseWithMarquee_MaintainsConsistentMaterial)
     // Should see at most 2 materials (no rapid cycling).
     EXPECT_LE(material_counts.size(), 2u)
         << "Should see at most 2 different materials during marquee (no rapid cycling)";
+}
+
+// =============================================================================
+// Auto-Scale and Font Sizing Tests
+// =============================================================================
+
+TEST_F(ClockScenarioTest, AutoScale_WorldMatchesDisplayAspect)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+    double world_aspect = static_cast<double>(metadata.requiredWidth) / metadata.requiredHeight;
+    double display_aspect = 800.0 / 480.0;
+
+    // World aspect should match display aspect (within rounding tolerance).
+    EXPECT_NEAR(world_aspect, display_aspect, 0.1)
+        << "World aspect " << world_aspect << " should match display " << display_aspect;
+}
+
+TEST_F(ClockScenarioTest, AutoScale_ConfigUpdateResizesWorld)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    config.targetDigitHeightPercent = 50;
+
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+    const WorldData& data = world_->getData();
+
+    EXPECT_EQ(data.width, static_cast<int>(metadata.requiredWidth));
+    EXPECT_EQ(data.height, static_cast<int>(metadata.requiredHeight));
+}
+
+TEST_F(ClockScenarioTest, AutoScale_AllFontsRenderAtTargetPercent)
+{
+    const uint8_t target_percent = 50; // Digits should be 50% of display height.
+    const uint32_t display_width = 800;
+    const uint32_t display_height = 480;
+    const double expected_pixel_height = display_height * target_percent / 100.0; // 240px
+
+    std::vector<Config::ClockFont> fonts = {
+        Config::ClockFont::DotMatrix,         Config::ClockFont::Segment7,
+        Config::ClockFont::Segment7Tall,      Config::ClockFont::Segment7Large,
+        Config::ClockFont::Segment7ExtraTall, Config::ClockFont::Segment7Jumbo,
+        Config::ClockFont::Montserrat24,
+    };
+
+    std::map<Config::ClockFont, double> actual_pixel_heights;
+
+    for (auto font : fonts) {
+        auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
+
+        auto config = std::get<Config::Clock>(test_scenario->getConfig());
+        config.autoScale = true;
+        config.font = font;
+        config.targetDisplayWidth = display_width;
+        config.targetDisplayHeight = display_height;
+        config.targetDigitHeightPercent = target_percent;
+
+        // Trigger dimension recalculation.
+        auto test_world = std::make_unique<World>(1, 1);
+        test_scenario->setConfig(config, *test_world);
+
+        const auto& metadata = test_scenario->getMetadata();
+
+        // Calculate actual pixel height:
+        // pixel_height = cell_height * (display_height / world_height)
+        int cell_height = getFont(font).digitHeight;
+        double pixels_per_cell = static_cast<double>(display_height) / metadata.requiredHeight;
+        double pixel_height = cell_height * pixels_per_cell;
+
+        actual_pixel_heights[font] = pixel_height;
+
+        std::cout << getDisplayName(font) << ": cells=" << cell_height
+                  << ", world_h=" << metadata.requiredHeight << ", px/cell=" << pixels_per_cell
+                  << ", digit_px=" << pixel_height << "\n";
+    }
+
+    // All fonts should render at approximately the target height.
+    // Target mode prioritizes height accuracy over aspect ratio.
+    for (const auto& [font, height] : actual_pixel_heights) {
+        EXPECT_NEAR(height, expected_pixel_height, 20.0)
+            << getDisplayName(font) << " rendered at " << height << "px, expected "
+            << expected_pixel_height << "px";
+    }
+}
+
+TEST_F(ClockScenarioTest, AutoScale_ZeroPercentUsesDefaultBehavior)
+{
+    // With percent=0, should fall back to filling display (current behavior).
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.targetDigitHeightPercent = 0;
+    config.font = Config::ClockFont::Segment7; // 7 cells tall.
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+
+    // Current behavior: world sized to clock + buffer, aspect-matched to display.
+    // Segment7 clock is roughly 25x7 cells, so world should be small.
+    EXPECT_LT(metadata.requiredHeight, 50u)
+        << "Without target height, world should be compact (clock + buffer)";
+}
+
+TEST_F(ClockScenarioTest, AutoScale_100PercentFillsDisplay)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.targetDigitHeightPercent = 100;
+    config.font = Config::ClockFont::Segment7; // 7 cells tall.
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+
+    int cell_height = getFont(Config::ClockFont::Segment7).digitHeight;
+    double pixels_per_cell = static_cast<double>(480) / metadata.requiredHeight;
+    double pixel_height = cell_height * pixels_per_cell;
+
+    // At 100%, digits should be close to 480px (may be slightly less due to buffer).
+    EXPECT_GT(pixel_height, 400.0) << "100% should nearly fill display height";
+}
+
+TEST_F(ClockScenarioTest, AutoScale_TargetHeightPrioritizedOverAspect)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    config.autoScale = true;
+    config.font = Config::ClockFont::DotMatrix;
+    config.targetDigitHeightPercent = 50;
+    config.targetDisplayWidth = 800;
+    config.targetDisplayHeight = 480;
+    scenario_->setConfig(config, *world_);
+
+    const auto& metadata = scenario_->getMetadata();
+
+    // In target height mode, aspect ratio is NOT enforced.
+    // World is sized to achieve target height, which may differ from display aspect.
+    // This allows all fonts (wide and narrow) to hit the same pixel height.
+    int cell_height = getFont(Config::ClockFont::DotMatrix).digitHeight;
+    double pixels_per_cell = static_cast<double>(480) / metadata.requiredHeight;
+    double pixel_height = cell_height * pixels_per_cell;
+
+    // The target height should be achieved accurately.
+    EXPECT_NEAR(pixel_height, 240.0, 10.0)
+        << "Target height mode should prioritize achieving 50% = 240px";
+}
+
+TEST_F(ClockScenarioTest, AutoScale_TargetPercentScalesWithDisplay)
+{
+    const uint8_t target_percent = 40;
+
+    struct DisplaySize {
+        uint32_t width, height;
+    };
+    std::vector<DisplaySize> displays = {
+        { 800, 480 },
+        { 1920, 1080 },
+        { 320, 240 },
+    };
+
+    for (const auto& display : displays) {
+        auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
+
+        auto config = std::get<Config::Clock>(test_scenario->getConfig());
+        config.autoScale = true;
+        config.font = Config::ClockFont::Segment7;
+        config.targetDisplayWidth = display.width;
+        config.targetDisplayHeight = display.height;
+        config.targetDigitHeightPercent = target_percent;
+
+        auto test_world = std::make_unique<World>(1, 1);
+        test_scenario->setConfig(config, *test_world);
+
+        const auto& metadata = test_scenario->getMetadata();
+
+        int cell_height = getFont(Config::ClockFont::Segment7).digitHeight;
+        double pixels_per_cell = static_cast<double>(display.height) / metadata.requiredHeight;
+        double pixel_height = cell_height * pixels_per_cell;
+        double expected = display.height * target_percent / 100.0;
+
+        std::cout << display.width << "x" << display.height << ": expected=" << expected
+                  << "px, actual=" << pixel_height << "px\n";
+
+        EXPECT_NEAR(pixel_height, expected, 15.0) << "At " << display.width << "x" << display.height
+                                                  << ", 40% should be " << expected << "px";
+    }
 }

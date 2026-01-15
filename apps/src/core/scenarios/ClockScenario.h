@@ -7,6 +7,7 @@
 #include "clock_scenario/ColorShowcaseEvent.h"
 #include "clock_scenario/DoorManager.h"
 #include "clock_scenario/DrainManager.h"
+#include "clock_scenario/EventManager.h"
 #include "clock_scenario/MeltdownEvent.h"
 #include "clock_scenario/ObstacleManager.h"
 #include "clock_scenario/RainEvent.h"
@@ -90,12 +91,8 @@ private:
     std::optional<std::string> time_override_; // For testing.
 
     // Event system.
-    std::map<ClockEventType, ActiveEvent> active_events_;
-    std::map<ClockEventType, double> event_cooldowns_;
-    double time_since_last_trigger_check_ = 0.0;
-    std::string last_trigger_check_time_;  // For detecting time changes.
-    bool time_changed_this_frame_ = false; // Set each frame, used by event updates.
-    bool first_tick_done_ = false;         // Prevents events from triggering before first tick.
+    EventManager event_manager_;
+    bool first_tick_done_ = false;
 
     // Managers for sub-systems.
     DoorManager door_manager_;
@@ -114,17 +111,12 @@ private:
     void ensureFontSamplerInitialized() const;
     const std::vector<std::vector<bool>>& getSampledDigitPattern(int digit) const;
 
-    // CharacterMetrics cache (lazy-initialized, recreated if font changes).
-    mutable std::unique_ptr<CharacterMetrics> metrics_cache_;
-    mutable Config::ClockFont metrics_cache_font_ = Config::ClockFont::DotMatrix;
     const CharacterMetrics& getMetrics() const;
-
-    // Font dimension helpers.
-    int getDigitWidth() const;
-    int getDigitHeight() const;
-    int getDigitGap() const;
-    int getColonWidth() const;
     int getColonPadding() const;
+    int getColonWidth() const;
+    int getDigitGap() const;
+    int getDigitHeight() const;
+    int getDigitWidth() const;
 
     int calculateTotalWidth() const;
     void recalculateDimensions();
@@ -163,6 +155,7 @@ private:
     void updateEvents(World& world, double deltaTime, std::vector<Vector2i>& digitPositions);
     void tryTriggerPeriodicEvents(World& world);
     void tryTriggerTimeChangeEvents(World& world);
+    bool isEventAllowed(ClockEventType type) const;
     void startEvent(World& world, ClockEventType type);
     void updateEvent(
         World& world,
@@ -170,7 +163,7 @@ private:
         ActiveEvent& event,
         double deltaTime,
         std::vector<Vector2i>& digitPositions);
-    void endEvent(World& world, ClockEventType type, ActiveEvent& event);
+    void endEvent(World& world, ClockEventType type, ActiveEvent& event, bool setCooldown = true);
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
     double countWaterInTopThird(const World& world) const;

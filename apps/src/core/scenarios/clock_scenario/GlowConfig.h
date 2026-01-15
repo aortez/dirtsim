@@ -8,7 +8,7 @@ namespace DirtSim {
 
 struct GlowConfig {
     uint32_t digitColor = 0;
-    float digitIntensity = 2.0f;
+    float digitIntensity = 3.0f;
     float floorIntensity = 1.0f;
     float obstacleIntensity = 2.0f;
     float wallIntensity = 1.0f;

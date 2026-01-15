@@ -1,127 +1,121 @@
 #include "CharacterMetrics.h"
 
 #include "core/scenarios/ClockFontPatterns.h"
+#include <array>
 
 namespace DirtSim {
 
-CharacterMetrics::CharacterMetrics(Config::ClockFont font) : font_(font)
+CharacterMetrics::CharacterMetrics(Config::ClockFont f) : font(f)
 {
-    initDimensions();
-}
-
-void CharacterMetrics::initDimensions()
-{
-    switch (font_) {
+    switch (font) {
         case Config::ClockFont::DotMatrix:
-            digitWidth_ = ClockFonts::DOT_MATRIX_WIDTH;
-            digitHeight_ = ClockFonts::DOT_MATRIX_HEIGHT;
-            colonWidth_ = ClockFonts::DOT_MATRIX_COLON_WIDTH;
-            gap_ = ClockFonts::DOT_MATRIX_GAP;
-            colonPadding_ = ClockFonts::DOT_MATRIX_COLON_PADDING;
+            colonPadding = ClockFonts::DOT_MATRIX_COLON_PADDING;
+            colonWidth = ClockFonts::DOT_MATRIX_COLON_WIDTH;
+            digitHeight = ClockFonts::DOT_MATRIX_HEIGHT;
+            digitWidth = ClockFonts::DOT_MATRIX_WIDTH;
+            gap = ClockFonts::DOT_MATRIX_GAP;
             break;
 
         case Config::ClockFont::Montserrat24:
-            digitWidth_ = ClockFonts::MONTSERRAT24_WIDTH;
-            digitHeight_ = ClockFonts::MONTSERRAT24_HEIGHT;
-            colonWidth_ = ClockFonts::MONTSERRAT24_COLON_WIDTH;
-            gap_ = ClockFonts::MONTSERRAT24_GAP;
-            colonPadding_ = ClockFonts::MONTSERRAT24_COLON_PADDING;
+            colonPadding = ClockFonts::MONTSERRAT24_COLON_PADDING;
+            colonWidth = ClockFonts::MONTSERRAT24_COLON_WIDTH;
+            digitHeight = ClockFonts::MONTSERRAT24_HEIGHT;
+            digitWidth = ClockFonts::MONTSERRAT24_WIDTH;
+            gap = ClockFonts::MONTSERRAT24_GAP;
             break;
 
         case Config::ClockFont::NotoColorEmoji:
-            digitWidth_ = ClockFonts::NOTO_EMOJI_WIDTH;
-            digitHeight_ = ClockFonts::NOTO_EMOJI_HEIGHT;
-            colonWidth_ = ClockFonts::NOTO_EMOJI_COLON_WIDTH;
-            gap_ = ClockFonts::NOTO_EMOJI_GAP;
-            colonPadding_ = ClockFonts::NOTO_EMOJI_COLON_PADDING;
+            colonPadding = ClockFonts::NOTO_EMOJI_COLON_PADDING;
+            colonWidth = ClockFonts::NOTO_EMOJI_COLON_WIDTH;
+            digitHeight = ClockFonts::NOTO_EMOJI_HEIGHT;
+            digitWidth = ClockFonts::NOTO_EMOJI_WIDTH;
+            gap = ClockFonts::NOTO_EMOJI_GAP;
             break;
 
         case Config::ClockFont::Segment7:
-            digitWidth_ = ClockFonts::SEGMENT7_WIDTH;
-            digitHeight_ = ClockFonts::SEGMENT7_HEIGHT;
-            colonWidth_ = ClockFonts::SEGMENT7_COLON_WIDTH;
-            gap_ = ClockFonts::SEGMENT7_GAP;
-            colonPadding_ = ClockFonts::SEGMENT7_COLON_PADDING;
+            colonPadding = ClockFonts::SEGMENT7_COLON_PADDING;
+            colonWidth = ClockFonts::SEGMENT7_COLON_WIDTH;
+            digitHeight = ClockFonts::SEGMENT7_HEIGHT;
+            digitWidth = ClockFonts::SEGMENT7_WIDTH;
+            gap = ClockFonts::SEGMENT7_GAP;
             break;
 
         case Config::ClockFont::Segment7ExtraTall:
-            digitWidth_ = ClockFonts::SEGMENT7_EXTRA_TALL_WIDTH;
-            digitHeight_ = ClockFonts::SEGMENT7_EXTRA_TALL_HEIGHT;
-            colonWidth_ = ClockFonts::SEGMENT7_EXTRA_TALL_COLON_WIDTH;
-            gap_ = ClockFonts::SEGMENT7_EXTRA_TALL_GAP;
-            colonPadding_ = ClockFonts::SEGMENT7_EXTRA_TALL_COLON_PADDING;
+            colonPadding = ClockFonts::SEGMENT7_EXTRA_TALL_COLON_PADDING;
+            colonWidth = ClockFonts::SEGMENT7_EXTRA_TALL_COLON_WIDTH;
+            digitHeight = ClockFonts::SEGMENT7_EXTRA_TALL_HEIGHT;
+            digitWidth = ClockFonts::SEGMENT7_EXTRA_TALL_WIDTH;
+            gap = ClockFonts::SEGMENT7_EXTRA_TALL_GAP;
             break;
 
         case Config::ClockFont::Segment7Jumbo:
-            digitWidth_ = ClockFonts::SEGMENT7_JUMBO_WIDTH;
-            digitHeight_ = ClockFonts::SEGMENT7_JUMBO_HEIGHT;
-            colonWidth_ = ClockFonts::SEGMENT7_JUMBO_COLON_WIDTH;
-            gap_ = ClockFonts::SEGMENT7_JUMBO_GAP;
-            colonPadding_ = ClockFonts::SEGMENT7_JUMBO_COLON_PADDING;
+            colonPadding = ClockFonts::SEGMENT7_JUMBO_COLON_PADDING;
+            colonWidth = ClockFonts::SEGMENT7_JUMBO_COLON_WIDTH;
+            digitHeight = ClockFonts::SEGMENT7_JUMBO_HEIGHT;
+            digitWidth = ClockFonts::SEGMENT7_JUMBO_WIDTH;
+            gap = ClockFonts::SEGMENT7_JUMBO_GAP;
             break;
 
         case Config::ClockFont::Segment7Large:
-            digitWidth_ = ClockFonts::SEGMENT7_LARGE_WIDTH;
-            digitHeight_ = ClockFonts::SEGMENT7_LARGE_HEIGHT;
-            colonWidth_ = ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
-            gap_ = ClockFonts::SEGMENT7_LARGE_GAP;
-            colonPadding_ = ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
+            colonPadding = ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
+            colonWidth = ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
+            digitHeight = ClockFonts::SEGMENT7_LARGE_HEIGHT;
+            digitWidth = ClockFonts::SEGMENT7_LARGE_WIDTH;
+            gap = ClockFonts::SEGMENT7_LARGE_GAP;
             break;
 
         case Config::ClockFont::Segment7Tall:
-            digitWidth_ = ClockFonts::SEGMENT7_TALL_WIDTH;
-            digitHeight_ = ClockFonts::SEGMENT7_TALL_HEIGHT;
-            colonWidth_ = ClockFonts::SEGMENT7_TALL_COLON_WIDTH;
-            gap_ = ClockFonts::SEGMENT7_TALL_GAP;
-            colonPadding_ = ClockFonts::SEGMENT7_TALL_COLON_PADDING;
+            colonPadding = ClockFonts::SEGMENT7_TALL_COLON_PADDING;
+            colonWidth = ClockFonts::SEGMENT7_TALL_COLON_WIDTH;
+            digitHeight = ClockFonts::SEGMENT7_TALL_HEIGHT;
+            digitWidth = ClockFonts::SEGMENT7_TALL_WIDTH;
+            gap = ClockFonts::SEGMENT7_TALL_GAP;
             break;
     }
 }
 
-int CharacterMetrics::getWidth(const std::string& utf8Char) const
+int CharacterMetrics::charWidth(const std::string& utf8Char) const
 {
     if (utf8Char.empty()) {
         return 0;
     }
-
-    // Colon has special width.
     if (utf8Char == ":") {
-        return colonWidth_;
+        return colonWidth;
     }
-
-    // Space uses gap width.
     if (utf8Char == " ") {
-        return gap_;
+        return gap;
     }
-
-    // All other characters use digit width.
-    return digitWidth_;
-}
-
-int CharacterMetrics::getHeight() const
-{
-    return digitHeight_;
-}
-
-int CharacterMetrics::getGap() const
-{
-    return gap_;
-}
-
-int CharacterMetrics::getColonPadding() const
-{
-    return colonPadding_;
+    return digitWidth;
 }
 
 bool CharacterMetrics::isColorFont() const
 {
-    return font_ == Config::ClockFont::NotoColorEmoji;
+    return font == Config::ClockFont::NotoColorEmoji;
+}
+
+bool CharacterMetrics::usesFontSampler() const
+{
+    return font == Config::ClockFont::Montserrat24 || font == Config::ClockFont::NotoColorEmoji;
 }
 
 std::function<int(const std::string&)> CharacterMetrics::widthFunction() const
 {
-    // Capture by value since CharacterMetrics might be temporary.
-    return [metrics = *this](const std::string& utf8Char) { return metrics.getWidth(utf8Char); };
+    return [metrics = *this](const std::string& utf8Char) { return metrics.charWidth(utf8Char); };
+}
+
+const CharacterMetrics& getFont(Config::ClockFont font)
+{
+    static const std::array<CharacterMetrics, 8> metrics = {
+        CharacterMetrics(Config::ClockFont::DotMatrix),
+        CharacterMetrics(Config::ClockFont::Montserrat24),
+        CharacterMetrics(Config::ClockFont::NotoColorEmoji),
+        CharacterMetrics(Config::ClockFont::Segment7),
+        CharacterMetrics(Config::ClockFont::Segment7ExtraTall),
+        CharacterMetrics(Config::ClockFont::Segment7Jumbo),
+        CharacterMetrics(Config::ClockFont::Segment7Large),
+        CharacterMetrics(Config::ClockFont::Segment7Tall),
+    };
+    return metrics[static_cast<size_t>(font)];
 }
 
 } // namespace DirtSim

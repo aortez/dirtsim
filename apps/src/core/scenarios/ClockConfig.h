@@ -25,15 +25,15 @@ struct Clock {
     using serialize = zpp::bits::members<21>;
 
     bool autoScale = true;
-    bool colorCycleEnabled = false;
-    bool colorShowcaseEnabled = false;
-    bool digitSlideEnabled = false;
-    bool duckEnabled = false;
-    bool marqueeEnabled = false;
-    bool meltdownEnabled = false;
-    bool rainEnabled = false;
+    bool colorCycleEnabled = true;
+    bool colorShowcaseEnabled = true;
+    bool digitSlideEnabled = true;
+    bool duckEnabled = true;
+    bool marqueeEnabled = true;
+    bool meltdownEnabled = true;
+    bool rainEnabled = true;
     bool showSeconds = false;
-    ClockFont font = ClockFont::DotMatrix;
+    ClockFont font = ClockFont::Segment7Large;
     double colorsPerSecond = 4.0;
     double eventFrequency = 0.5;
     double horizontalScale = 1.1;
@@ -43,7 +43,7 @@ struct Clock {
     uint32_t marginPixels = 20;
     uint32_t targetDisplayHeight = 480;
     uint32_t targetDisplayWidth = 752;
-    uint8_t digitEmissiveness = 10;
+    uint8_t targetDigitHeightPercent = 0;
     uint8_t timezoneIndex = 2;
 };
 

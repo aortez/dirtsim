@@ -78,12 +78,12 @@ ClockScenario::~ClockScenario() = default;
 
 bool ClockScenario::isEventActive(ClockEventType type) const
 {
-    return active_events_.contains(type);
+    return event_manager_.isEventActive(type);
 }
 
 size_t ClockScenario::getActiveEventCount() const
 {
-    return active_events_.size();
+    return event_manager_.getActiveEventCount();
 }
 
 const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) const
@@ -110,117 +110,23 @@ const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) cons
 
 int ClockScenario::getDigitWidth() const
 {
-    switch (config_.font) {
-        case Config::ClockFont::DotMatrix:
-            return ClockFonts::DOT_MATRIX_WIDTH;
-        case Config::ClockFont::Montserrat24:
-            return ClockFonts::MONTSERRAT24_WIDTH;
-        case Config::ClockFont::NotoColorEmoji:
-            return ClockFonts::NOTO_EMOJI_WIDTH;
-        case Config::ClockFont::Segment7:
-            return ClockFonts::SEGMENT7_WIDTH;
-        case Config::ClockFont::Segment7ExtraTall:
-            return ClockFonts::SEGMENT7_EXTRA_TALL_WIDTH;
-        case Config::ClockFont::Segment7Jumbo:
-            return ClockFonts::SEGMENT7_JUMBO_WIDTH;
-        case Config::ClockFont::Segment7Large:
-            return ClockFonts::SEGMENT7_LARGE_WIDTH;
-        case Config::ClockFont::Segment7Tall:
-            return ClockFonts::SEGMENT7_TALL_WIDTH;
-    }
-    return ClockFonts::SEGMENT7_WIDTH;
+    return getFont(config_.font).digitWidth;
 }
-
 int ClockScenario::getDigitHeight() const
 {
-    switch (config_.font) {
-        case Config::ClockFont::DotMatrix:
-            return ClockFonts::DOT_MATRIX_HEIGHT;
-        case Config::ClockFont::Montserrat24:
-            return ClockFonts::MONTSERRAT24_HEIGHT;
-        case Config::ClockFont::NotoColorEmoji:
-            return ClockFonts::NOTO_EMOJI_HEIGHT;
-        case Config::ClockFont::Segment7:
-            return ClockFonts::SEGMENT7_HEIGHT;
-        case Config::ClockFont::Segment7ExtraTall:
-            return ClockFonts::SEGMENT7_EXTRA_TALL_HEIGHT;
-        case Config::ClockFont::Segment7Jumbo:
-            return ClockFonts::SEGMENT7_JUMBO_HEIGHT;
-        case Config::ClockFont::Segment7Large:
-            return ClockFonts::SEGMENT7_LARGE_HEIGHT;
-        case Config::ClockFont::Segment7Tall:
-            return ClockFonts::SEGMENT7_TALL_HEIGHT;
-    }
-    return ClockFonts::SEGMENT7_HEIGHT;
+    return getFont(config_.font).digitHeight;
 }
-
 int ClockScenario::getDigitGap() const
 {
-    switch (config_.font) {
-        case Config::ClockFont::DotMatrix:
-            return ClockFonts::DOT_MATRIX_GAP;
-        case Config::ClockFont::Montserrat24:
-            return ClockFonts::MONTSERRAT24_GAP;
-        case Config::ClockFont::NotoColorEmoji:
-            return ClockFonts::NOTO_EMOJI_GAP;
-        case Config::ClockFont::Segment7:
-            return ClockFonts::SEGMENT7_GAP;
-        case Config::ClockFont::Segment7ExtraTall:
-            return ClockFonts::SEGMENT7_EXTRA_TALL_GAP;
-        case Config::ClockFont::Segment7Jumbo:
-            return ClockFonts::SEGMENT7_JUMBO_GAP;
-        case Config::ClockFont::Segment7Large:
-            return ClockFonts::SEGMENT7_LARGE_GAP;
-        case Config::ClockFont::Segment7Tall:
-            return ClockFonts::SEGMENT7_TALL_GAP;
-    }
-    return ClockFonts::SEGMENT7_GAP;
+    return getFont(config_.font).gap;
 }
-
 int ClockScenario::getColonWidth() const
 {
-    switch (config_.font) {
-        case Config::ClockFont::DotMatrix:
-            return ClockFonts::DOT_MATRIX_COLON_WIDTH;
-        case Config::ClockFont::Montserrat24:
-            return ClockFonts::MONTSERRAT24_COLON_WIDTH;
-        case Config::ClockFont::NotoColorEmoji:
-            return ClockFonts::NOTO_EMOJI_COLON_WIDTH;
-        case Config::ClockFont::Segment7:
-            return ClockFonts::SEGMENT7_COLON_WIDTH;
-        case Config::ClockFont::Segment7ExtraTall:
-            return ClockFonts::SEGMENT7_EXTRA_TALL_COLON_WIDTH;
-        case Config::ClockFont::Segment7Jumbo:
-            return ClockFonts::SEGMENT7_JUMBO_COLON_WIDTH;
-        case Config::ClockFont::Segment7Large:
-            return ClockFonts::SEGMENT7_LARGE_COLON_WIDTH;
-        case Config::ClockFont::Segment7Tall:
-            return ClockFonts::SEGMENT7_TALL_COLON_WIDTH;
-    }
-    return ClockFonts::SEGMENT7_COLON_WIDTH;
+    return getFont(config_.font).colonWidth;
 }
-
 int ClockScenario::getColonPadding() const
 {
-    switch (config_.font) {
-        case Config::ClockFont::DotMatrix:
-            return ClockFonts::DOT_MATRIX_COLON_PADDING;
-        case Config::ClockFont::Montserrat24:
-            return ClockFonts::MONTSERRAT24_COLON_PADDING;
-        case Config::ClockFont::NotoColorEmoji:
-            return ClockFonts::NOTO_EMOJI_COLON_PADDING;
-        case Config::ClockFont::Segment7:
-            return ClockFonts::SEGMENT7_COLON_PADDING;
-        case Config::ClockFont::Segment7ExtraTall:
-            return ClockFonts::SEGMENT7_EXTRA_TALL_COLON_PADDING;
-        case Config::ClockFont::Segment7Jumbo:
-            return ClockFonts::SEGMENT7_JUMBO_COLON_PADDING;
-        case Config::ClockFont::Segment7Large:
-            return ClockFonts::SEGMENT7_LARGE_COLON_PADDING;
-        case Config::ClockFont::Segment7Tall:
-            return ClockFonts::SEGMENT7_TALL_COLON_PADDING;
-    }
-    return ClockFonts::SEGMENT7_COLON_PADDING;
+    return getFont(config_.font).colonPadding;
 }
 
 void ClockScenario::ensureFontSamplerInitialized() const
@@ -291,17 +197,7 @@ const std::vector<std::vector<bool>>& ClockScenario::getSampledDigitPattern(int 
 
 const CharacterMetrics& ClockScenario::getMetrics() const
 {
-    // Recreate metrics if font changed.
-    if (metrics_cache_ && metrics_cache_font_ != config_.font) {
-        metrics_cache_.reset();
-    }
-
-    if (!metrics_cache_) {
-        metrics_cache_ = std::make_unique<CharacterMetrics>(config_.font);
-        metrics_cache_font_ = config_.font;
-    }
-
-    return *metrics_cache_;
+    return getFont(config_.font);
 }
 
 void ClockScenario::recalculateDimensions()
@@ -309,51 +205,9 @@ void ClockScenario::recalculateDimensions()
     int clock_width = calculateTotalWidth();
     int clock_height = getDigitHeight();
 
-    // Buffer cells around clock edges.
     constexpr int BUFFER = 4;
 
-    // Auto-scale mode: size world to match display aspect ratio.
-    if (config_.autoScale && config_.targetDisplayWidth > 0 && config_.targetDisplayHeight > 0) {
-        // Use FULL display aspect (what CellRenderer uses to fill the screen).
-        // Margins just provide minimum buffer around clock, not affect aspect.
-        double display_aspect =
-            static_cast<double>(config_.targetDisplayWidth) / config_.targetDisplayHeight;
-
-        // Base world size: clock + buffer.
-        int base_width = clock_width + 2 * BUFFER;
-        int base_height = clock_height + 2 * BUFFER;
-        double clock_aspect = static_cast<double>(base_width) / base_height;
-
-        // Adjust world to match display aspect ratio.
-        // This ensures CellRenderer fills the display without gray bands.
-        int world_width, world_height;
-        if (display_aspect > clock_aspect) {
-            // Display is wider than clock - expand width.
-            world_height = base_height;
-            world_width = static_cast<int>(std::ceil(world_height * display_aspect));
-        }
-        else {
-            // Display is taller than clock - expand height.
-            world_width = base_width;
-            world_height = static_cast<int>(std::ceil(world_width / display_aspect));
-        }
-
-        config_.horizontalScale = 1.0;
-        config_.verticalScale = 1.0;
-
-        metadata_.requiredWidth = static_cast<uint32_t>(world_width);
-        metadata_.requiredHeight = static_cast<uint32_t>(world_height);
-
-        spdlog::info(
-            "ClockScenario: Auto-scale - display={}x{}, clock={}x{}, world={}x{} (aspect matched)",
-            config_.targetDisplayWidth,
-            config_.targetDisplayHeight,
-            clock_width,
-            clock_height,
-            world_width,
-            world_height);
-    }
-    else {
+    if (!config_.autoScale || config_.targetDisplayWidth == 0 || config_.targetDisplayHeight == 0) {
         metadata_.requiredWidth =
             static_cast<uint32_t>(std::ceil(clock_width * config_.horizontalScale));
         metadata_.requiredHeight =
@@ -367,7 +221,79 @@ void ClockScenario::recalculateDimensions()
             config_.verticalScale,
             metadata_.requiredWidth,
             metadata_.requiredHeight);
+        return;
     }
+
+    double display_aspect =
+        static_cast<double>(config_.targetDisplayWidth) / config_.targetDisplayHeight;
+
+    int world_width, world_height;
+
+    if (config_.targetDigitHeightPercent > 0) {
+        // Target height mode: prioritize achieving target height over aspect ratio matching.
+        // pixel_height = cell_height * (display_height / world_height) = target
+        // Solving: world_height = cell_height * display_height / target_pixels
+        //
+        // Gray bars may appear on sides if clock aspect doesn't match display aspect.
+        // This trade-off ensures all fonts render at the same pixel height.
+        double target_pixels =
+            config_.targetDisplayHeight * config_.targetDigitHeightPercent / 100.0;
+
+        // Calculate world height to achieve exact target.
+        world_height =
+            static_cast<int>(std::ceil(clock_height * config_.targetDisplayHeight / target_pixels));
+
+        // Ensure height accommodates clock.
+        if (world_height < clock_height) {
+            world_height = clock_height;
+        }
+
+        // Width: just ensure clock fits (don't force display aspect).
+        world_width = clock_width;
+
+        spdlog::info(
+            "ClockScenario: Target height {}% - display={}x{}, clock={}x{}, world={}x{} (height "
+            "prioritized, aspect={})",
+            config_.targetDigitHeightPercent,
+            config_.targetDisplayWidth,
+            config_.targetDisplayHeight,
+            clock_width,
+            clock_height,
+            world_width,
+            world_height,
+            static_cast<double>(world_width) / world_height);
+    }
+    else {
+        // Aspect-matching mode: size world to fit clock tightly, matching display aspect.
+        int base_width = clock_width + 2 * BUFFER;
+        int base_height = clock_height + 2 * BUFFER;
+        double clock_aspect = static_cast<double>(base_width) / base_height;
+
+        if (display_aspect > clock_aspect) {
+            world_height = base_height;
+            world_width =
+                std::max(base_width, static_cast<int>(std::round(world_height * display_aspect)));
+        }
+        else {
+            world_width = base_width;
+            world_height =
+                std::max(base_height, static_cast<int>(std::round(world_width / display_aspect)));
+        }
+
+        spdlog::info(
+            "ClockScenario: Auto-scale - display={}x{}, clock={}x{}, world={}x{} (aspect matched)",
+            config_.targetDisplayWidth,
+            config_.targetDisplayHeight,
+            clock_width,
+            clock_height,
+            world_width,
+            world_height);
+    }
+
+    config_.horizontalScale = 1.0;
+    config_.verticalScale = 1.0;
+    metadata_.requiredWidth = static_cast<uint32_t>(world_width);
+    metadata_.requiredHeight = static_cast<uint32_t>(world_height);
 }
 
 const ScenarioMetadata& ClockScenario::getMetadata() const
@@ -393,21 +319,35 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         bool dimensions_changed = (incoming.autoScale != config_.autoScale)
             || (incoming.targetDisplayWidth != config_.targetDisplayWidth)
             || (incoming.targetDisplayHeight != config_.targetDisplayHeight)
+            || (incoming.targetDigitHeightPercent != config_.targetDigitHeightPercent)
             || (incoming.marginPixels != config_.marginPixels);
 
-        // Track event toggle changes before updating config_.
-        bool color_cycle_was_enabled = config_.colorCycleEnabled;
-        bool color_showcase_was_enabled = config_.colorShowcaseEnabled;
-        bool digit_slide_was_enabled = config_.digitSlideEnabled;
-        bool duck_was_enabled = config_.duckEnabled;
-        bool marquee_was_enabled = config_.marqueeEnabled;
-        bool rain_was_enabled = config_.rainEnabled;
+        auto resizeWorldToMetadata = [&](World& world_to_resize) {
+            if (metadata_.requiredWidth == 0 || metadata_.requiredHeight == 0) {
+                return;
+            }
+
+            const WorldData& data = world_to_resize.getData();
+            if (data.width == static_cast<int>(metadata_.requiredWidth)
+                && data.height == static_cast<int>(metadata_.requiredHeight)) {
+                return;
+            }
+
+            spdlog::info(
+                "ClockScenario: Resizing world to {}x{}",
+                metadata_.requiredWidth,
+                metadata_.requiredHeight);
+            world_to_resize.resizeGrid(
+                static_cast<int16_t>(metadata_.requiredWidth),
+                static_cast<int16_t>(metadata_.requiredHeight));
+        };
 
         config_ = incoming;
 
         if (layout_changed) {
             // Layout changes require recalculating dimensions and redrawing.
             recalculateDimensions();
+            resizeWorldToMetadata(world);
 
             spdlog::info(
                 "ClockScenario: Layout changed, resetting (font={}, showSeconds={})",
@@ -419,6 +359,7 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         }
         else if (dimensions_changed) {
             recalculateDimensions();
+            resizeWorldToMetadata(world);
 
             spdlog::info(
                 "ClockScenario: Dimensions changed (display={}x{})",
@@ -434,146 +375,28 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
             drawTime(world, tempDigitPositions);
         }
 
-        // Handle manual event toggling.
-        // Skip event triggering during initial config load (before first tick).
-        // Events enabled in config will trigger naturally via tryTriggerPeriodicEvents
-        // or tryTriggerTimeChangeEvents after the simulation starts.
-        if (first_tick_done_) {
-            // Color cycle event toggle.
-            if (config_.colorCycleEnabled && !color_cycle_was_enabled) {
-                // User enabled color cycle - start it if not already active.
-                if (!active_events_.contains(ClockEventType::COLOR_CYCLE)) {
-                    event_cooldowns_[ClockEventType::COLOR_CYCLE] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::COLOR_CYCLE);
-                    spdlog::info("ClockScenario: Color cycle manually enabled");
-                }
+        // Stop any running events that are no longer allowed.
+        auto stopEventIfDisabled = [&](ClockEventType type, bool enabled, const char* label) {
+            if (enabled) {
+                return;
             }
-            else if (!config_.colorCycleEnabled && color_cycle_was_enabled) {
-                // User disabled color cycle - stop it if active.
-                auto it = active_events_.find(ClockEventType::COLOR_CYCLE);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::COLOR_CYCLE, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::COLOR_CYCLE] =
-                        0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Color cycle manually disabled");
-                }
+            ActiveEvent* event = event_manager_.getActiveEvent(type);
+            if (!event) {
+                return;
             }
+            endEvent(world, type, *event, false);
+            event_manager_.removeActiveEvent(type);
+            spdlog::info("ClockScenario: {} disabled", label);
+        };
 
-            // Color showcase event toggle.
-            if (config_.colorShowcaseEnabled && !color_showcase_was_enabled) {
-                // User enabled color showcase - start it if not already active.
-                if (!active_events_.contains(ClockEventType::COLOR_SHOWCASE)) {
-                    event_cooldowns_[ClockEventType::COLOR_SHOWCASE] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::COLOR_SHOWCASE);
-                    spdlog::info("ClockScenario: Color showcase manually enabled");
-                }
-            }
-            else if (!config_.colorShowcaseEnabled && color_showcase_was_enabled) {
-                // User disabled color showcase - stop it if active.
-                auto it = active_events_.find(ClockEventType::COLOR_SHOWCASE);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::COLOR_SHOWCASE, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::COLOR_SHOWCASE] =
-                        0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Color showcase manually disabled");
-                }
-            }
-
-            // Rain event toggle.
-            if (config_.rainEnabled && !rain_was_enabled) {
-                // User enabled rain - start it if not already active.
-                if (!active_events_.contains(ClockEventType::RAIN)) {
-                    event_cooldowns_[ClockEventType::RAIN] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::RAIN);
-                    spdlog::info("ClockScenario: Rain manually enabled");
-                }
-            }
-            else if (!config_.rainEnabled && rain_was_enabled) {
-                // User disabled rain - stop it if active.
-                auto it = active_events_.find(ClockEventType::RAIN);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::RAIN, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::RAIN] = 0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Rain manually disabled");
-                }
-            }
-
-            // Digit slide event toggle.
-            if (config_.digitSlideEnabled && !digit_slide_was_enabled) {
-                // User enabled digit slide - start it if not already active.
-                if (!active_events_.contains(ClockEventType::DIGIT_SLIDE)) {
-                    event_cooldowns_[ClockEventType::DIGIT_SLIDE] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::DIGIT_SLIDE);
-                    spdlog::info("ClockScenario: Digit slide manually enabled");
-                }
-            }
-            else if (!config_.digitSlideEnabled && digit_slide_was_enabled) {
-                // User disabled digit slide - stop it if active.
-                auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::DIGIT_SLIDE, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::DIGIT_SLIDE] =
-                        0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Digit slide manually disabled");
-                }
-            }
-
-            // Duck event toggle.
-            if (config_.duckEnabled && !duck_was_enabled) {
-                // User enabled duck - start it if not already active.
-                if (!active_events_.contains(ClockEventType::DUCK)) {
-                    event_cooldowns_[ClockEventType::DUCK] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::DUCK);
-                    spdlog::info("ClockScenario: Duck manually enabled");
-                }
-            }
-            else if (!config_.duckEnabled && duck_was_enabled) {
-                // User disabled duck - stop it if active.
-                auto it = active_events_.find(ClockEventType::DUCK);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::DUCK, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::DUCK] = 0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Duck manually disabled");
-                }
-            }
-
-            // Marquee event toggle.
-            if (config_.marqueeEnabled && !marquee_was_enabled) {
-                // User enabled marquee - start it if not already active.
-                if (!active_events_.contains(ClockEventType::MARQUEE)) {
-                    event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::MARQUEE);
-                    spdlog::info("ClockScenario: Marquee manually enabled");
-                }
-            }
-            else if (!config_.marqueeEnabled && marquee_was_enabled) {
-                // User disabled marquee - stop it if active.
-                auto it = active_events_.find(ClockEventType::MARQUEE);
-                if (it != active_events_.end()) {
-                    endEvent(world, ClockEventType::MARQUEE, it->second);
-                    active_events_.erase(it);
-                    event_cooldowns_[ClockEventType::MARQUEE] = 0.0; // No cooldown for manual stop.
-                    spdlog::info("ClockScenario: Marquee manually disabled");
-                }
-            }
-
-            // Meltdown event trigger (one-shot).
-            if (config_.meltdownEnabled) {
-                // User triggered meltdown - start it if not already active.
-                if (!active_events_.contains(ClockEventType::MELTDOWN)) {
-                    event_cooldowns_[ClockEventType::MELTDOWN] = 0.0; // Clear cooldown.
-                    startEvent(world, ClockEventType::MELTDOWN);
-                    spdlog::info("ClockScenario: Meltdown manually triggered");
-                }
-                // Reset the trigger flag immediately.
-                config_.meltdownEnabled = false;
-            }
-        }
+        stopEventIfDisabled(ClockEventType::COLOR_CYCLE, config_.colorCycleEnabled, "Color cycle");
+        stopEventIfDisabled(
+            ClockEventType::COLOR_SHOWCASE, config_.colorShowcaseEnabled, "Color showcase");
+        stopEventIfDisabled(ClockEventType::DIGIT_SLIDE, config_.digitSlideEnabled, "Digit slide");
+        stopEventIfDisabled(ClockEventType::DUCK, config_.duckEnabled, "Duck");
+        stopEventIfDisabled(ClockEventType::MARQUEE, config_.marqueeEnabled, "Marquee");
+        stopEventIfDisabled(ClockEventType::MELTDOWN, config_.meltdownEnabled, "Meltdown");
+        stopEventIfDisabled(ClockEventType::RAIN, config_.rainEnabled, "Rain");
 
         spdlog::info("ClockScenario: Config updated");
     }
@@ -585,6 +408,9 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
 void ClockScenario::setup(World& world)
 {
     spdlog::info("ClockScenario::setup - initializing clock display");
+
+    std::string current_time = getCurrentTimeString();
+    event_manager_.updateTimeTracking(current_time, 0.0);
 
     // Dark lighting - emissive digits glow against dim background.
     auto& light = world.getPhysicsSettings().light;
@@ -650,9 +476,9 @@ void ClockScenario::tick(World& world, double deltaTime)
     // Check if digit slide is animating (takes over rendering like marquee).
     bool digit_slide_animating = false;
     if (isEventActive(ClockEventType::DIGIT_SLIDE)) {
-        auto it = active_events_.find(ClockEventType::DIGIT_SLIDE);
-        if (it != active_events_.end()) {
-            const auto& state = std::get<DigitSlideEventState>(it->second.state);
+        ActiveEvent* event = event_manager_.getActiveEvent(ClockEventType::DIGIT_SLIDE);
+        if (event) {
+            const auto& state = std::get<DigitSlideEventState>(event->state);
             digit_slide_animating = state.slide_state.active;
         }
     }
@@ -662,19 +488,18 @@ void ClockScenario::tick(World& world, double deltaTime)
     }
 
     // Manage floor drain based on water level.
-    // Runs after events so drain clearing catches any floor restored by obstacle clearing.
     double waterAmount = countWaterInBottomThird(world);
     std::optional<Material::EnumType> meltMaterial = std::nullopt;
     if (isMeltdownActive()) {
-        auto it = active_events_.find(ClockEventType::MELTDOWN);
-        if (it != active_events_.end()) {
-            meltMaterial = std::get<MeltdownEventState>(it->second.state).digit_material;
+        ActiveEvent* event = event_manager_.getActiveEvent(ClockEventType::MELTDOWN);
+        if (event) {
+            meltMaterial = std::get<MeltdownEventState>(event->state).digit_material;
         }
     }
     drain_manager_.update(world, deltaTime, waterAmount, meltMaterial, rng_);
 
     // Manage storm lighting (lightning flashes based on water in top third).
-    if (config_.rainEnabled) {
+    if (isEventActive(ClockEventType::RAIN)) {
         double topWater = countWaterInTopThird(world);
         double stormIntensity = std::min(topWater / 10.0, 1.0);
         storm_manager_.update(world.getLightCalculator(), deltaTime, stormIntensity, rng_);
@@ -714,7 +539,7 @@ void ClockScenario::tick(World& world, double deltaTime)
 
         GlowConfig glowConfig = config_.glowConfig;
         glowConfig.digitColor = getMaterialColor(config_.digitMaterial);
-        if (!config_.rainEnabled) {
+        if (!isEventActive(ClockEventType::RAIN)) {
             glowConfig.waterIntensity = 0.0f;
         }
 
@@ -971,7 +796,7 @@ void ClockScenario::drawTimeString(
     auto getWidth = metrics.widthFunction();
 
     int total_width = calculateStringWidth(time_str, getWidth);
-    int dh = metrics.getHeight();
+    int dh = metrics.digitHeight;
     int start_x = (world.getData().width - total_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
@@ -1064,28 +889,23 @@ void ClockScenario::updateEvents(
         return;
     }
 
-    for (auto& [type, cooldown] : event_cooldowns_) {
-        if (cooldown > 0.0) {
-            cooldown -= deltaTime;
-        }
-    }
+    event_manager_.updateCooldowns(deltaTime);
 
     std::string current_time = getCurrentTimeString();
-    time_changed_this_frame_ = (current_time != last_trigger_check_time_);
-    if (time_changed_this_frame_) {
-        last_trigger_check_time_ = current_time;
+    event_manager_.updateTimeTracking(current_time, deltaTime);
+
+    if (event_manager_.hasTimeChangedThisFrame()) {
         tryTriggerTimeChangeEvents(world);
     }
 
-    time_since_last_trigger_check_ += deltaTime;
-    if (time_since_last_trigger_check_ >= 1.0) {
-        time_since_last_trigger_check_ = 0.0;
+    if (event_manager_.shouldCheckPeriodicTriggers()) {
+        event_manager_.resetTriggerCheckTimer();
         tryTriggerPeriodicEvents(world);
     }
 
     std::vector<ClockEventType> events_to_end;
 
-    for (auto& [type, event] : active_events_) {
+    for (auto& [type, event] : event_manager_.getActiveEvents()) {
         updateEvent(world, type, event, deltaTime, digitPositions);
 
         event.remaining_time -= deltaTime;
@@ -1095,12 +915,33 @@ void ClockScenario::updateEvents(
     }
 
     for (auto type : events_to_end) {
-        auto it = active_events_.find(type);
-        if (it != active_events_.end()) {
-            endEvent(world, type, it->second);
-            active_events_.erase(it);
+        ActiveEvent* event = event_manager_.getActiveEvent(type);
+        if (event) {
+            endEvent(world, type, *event);
+            event_manager_.removeActiveEvent(type);
         }
     }
+}
+
+bool ClockScenario::isEventAllowed(ClockEventType type) const
+{
+    switch (type) {
+        case ClockEventType::COLOR_CYCLE:
+            return config_.colorCycleEnabled;
+        case ClockEventType::COLOR_SHOWCASE:
+            return config_.colorShowcaseEnabled;
+        case ClockEventType::DIGIT_SLIDE:
+            return config_.digitSlideEnabled;
+        case ClockEventType::DUCK:
+            return config_.duckEnabled;
+        case ClockEventType::MARQUEE:
+            return config_.marqueeEnabled;
+        case ClockEventType::MELTDOWN:
+            return config_.meltdownEnabled;
+        case ClockEventType::RAIN:
+            return config_.rainEnabled;
+    }
+    return false;
 }
 
 void ClockScenario::tryTriggerPeriodicEvents(World& world)
@@ -1121,11 +962,15 @@ void ClockScenario::tryTriggerPeriodicEvents(World& world)
             continue;
         }
 
-        if (active_events_.contains(type)) {
+        if (!isEventAllowed(type)) {
             continue;
         }
 
-        if (event_cooldowns_.contains(type) && event_cooldowns_[type] > 0.0) {
+        if (event_manager_.isEventActive(type)) {
+            continue;
+        }
+
+        if (event_manager_.isOnCooldown(type)) {
             continue;
         }
 
@@ -1154,11 +999,15 @@ void ClockScenario::tryTriggerTimeChangeEvents(World& world)
             continue;
         }
 
-        if (active_events_.contains(type)) {
+        if (!isEventAllowed(type)) {
             continue;
         }
 
-        if (event_cooldowns_.contains(type) && event_cooldowns_[type] > 0.0) {
+        if (event_manager_.isEventActive(type)) {
+            continue;
+        }
+
+        if (event_manager_.isOnCooldown(type)) {
             continue;
         }
 
@@ -1182,7 +1031,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             ClockEvents::startColorCycle(state, config_.colorsPerSecond);
         config_.digitMaterial = starting_material;
         event.state = state;
-        config_.colorCycleEnabled = true; // Sync config flag.
         spdlog::info(
             "ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
             eventTiming.duration,
@@ -1197,7 +1045,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
-        config_.rainEnabled = true; // Sync config flag.
         spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventTiming.duration);
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
@@ -1207,7 +1054,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             ClockEvents::startColorShowcase(state, showcase_materials, rng_);
         config_.digitMaterial = starting_material;
         event.state = state;
-        config_.colorShowcaseEnabled = true; // Sync config flag.
         spdlog::info(
             "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at "
             "index {})",
@@ -1224,7 +1070,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         // Initialize with current time so the next change triggers animation.
         slide_event_state.slide_state.new_time_str = getCurrentTimeString();
         event.state = slide_event_state;
-        config_.digitSlideEnabled = true; // Sync config flag.
         spdlog::info(
             "ClockScenario: Starting DIGIT_SLIDE event (speed: {})",
             event_configs_.digit_slide.animation_speed);
@@ -1241,7 +1086,6 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             event_configs_.marquee.scroll_speed,
             metrics.widthFunction());
         event.state = marquee_state;
-        config_.marqueeEnabled = true; // Sync config flag.
         spdlog::info(
             "ClockScenario: Starting MARQUEE event (duration: {}s, speed: {})",
             eventTiming.duration,
@@ -1304,11 +1148,10 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT");
 
         event.state = std::move(duck_state);
-        config_.duckEnabled = true; // Sync config flag.
         spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventTiming.duration);
     }
 
-    active_events_[type] = std::move(event);
+    event_manager_.addActiveEvent(type, std::move(event));
 }
 
 void ClockScenario::updateEvent(
@@ -1359,8 +1202,8 @@ void ClockScenario::updateColorShowcaseEvent(
     World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
 {
     const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-    auto new_material =
-        ClockEvents::updateColorShowcase(state, showcase_materials, time_changed_this_frame_);
+    auto new_material = ClockEvents::updateColorShowcase(
+        state, showcase_materials, event_manager_.hasTimeChangedThisFrame());
     if (new_material) {
         config_.digitMaterial = *new_material;
     }
@@ -1383,7 +1226,7 @@ void ClockScenario::updateDigitSlideEvent(
 
         clearDigits(world);
 
-        int dh = metrics.getHeight();
+        int dh = metrics.digitHeight;
 
         int content_width = calculateStringWidth(current_time, getWidth);
         int start_x = (world.getData().width - content_width) / 2;
@@ -1429,7 +1272,7 @@ void ClockScenario::updateMarqueeEvent(
 
     clearDigits(world);
 
-    int dh = metrics.getHeight();
+    int dh = metrics.digitHeight;
 
     int content_width = static_cast<int>(state.scroll_state.content_width);
     int start_x = (world.getData().width - content_width) / 2;
@@ -1686,29 +1529,10 @@ static const char* eventTypeName(ClockEventType type)
     return "UNKNOWN";
 }
 
-void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& event)
+void ClockScenario::endEvent(
+    World& world, ClockEventType type, ActiveEvent& event, bool setCooldown)
 {
     spdlog::info("ClockScenario: Ending {} event", eventTypeName(type));
-
-    // Sync config flags.
-    if (type == ClockEventType::COLOR_CYCLE) {
-        config_.colorCycleEnabled = false;
-    }
-    else if (type == ClockEventType::COLOR_SHOWCASE) {
-        config_.colorShowcaseEnabled = false;
-    }
-    else if (type == ClockEventType::DIGIT_SLIDE) {
-        config_.digitSlideEnabled = false;
-    }
-    else if (type == ClockEventType::DUCK) {
-        config_.duckEnabled = false;
-    }
-    else if (type == ClockEventType::MARQUEE) {
-        config_.marqueeEnabled = false;
-    }
-    else if (type == ClockEventType::RAIN) {
-        config_.rainEnabled = false;
-    }
 
     if (type == ClockEventType::COLOR_CYCLE) {
         // Restore default digit material.
@@ -1746,21 +1570,22 @@ void ClockScenario::endEvent(World& world, ClockEventType type, ActiveEvent& eve
         spdlog::info("ClockScenario: COLOR_SHOWCASE ended, restored digit material to METAL");
     }
 
-    // Set cooldown for this event type.
-    const auto& timing = getEventTiming(type);
-    event_cooldowns_[type] = timing.cooldown;
-
-    spdlog::info(
-        "ClockScenario: Event {} on cooldown for {:.1f}s", eventTypeName(type), timing.cooldown);
+    if (setCooldown) {
+        const auto& timing = getEventTiming(type);
+        event_manager_.setCooldown(type, timing.cooldown);
+        spdlog::info(
+            "ClockScenario: Event {} on cooldown for {:.1f}s",
+            eventTypeName(type),
+            timing.cooldown);
+    }
 }
 
 void ClockScenario::cancelAllEvents(World& world)
 {
     spdlog::info("ClockScenario: Canceling all events");
 
-    for (auto& [type, event] : active_events_) {
+    for (auto& [type, event] : event_manager_.getActiveEvents()) {
         if (type == ClockEventType::COLOR_CYCLE) {
-            // Restore default digit material.
             config_.digitMaterial = Material::EnumType::Metal;
         }
         else if (type == ClockEventType::DUCK) {
@@ -1769,38 +1594,25 @@ void ClockScenario::cancelAllEvents(World& world)
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
             }
 
-            // Remove door lights (RAII handles auto-cleanup).
             state.entrance_light.reset();
             state.exit_light.reset();
         }
         else if (type == ClockEventType::MELTDOWN) {
-            // Clean up any stray digit material from interrupted meltdown.
             auto& melt_state = std::get<MeltdownEventState>(event.state);
             convertStrayDigitMaterialToWater(world, melt_state.digit_material);
         }
     }
 
-    // Clear ALL organisms (in case any lingered from ended events or resize).
-    // This prevents orphaned organisms when world is reset/resized.
     world.getOrganismManager().clear();
 
-    // Clear config flags.
-    config_.colorCycleEnabled = false;
-    config_.colorShowcaseEnabled = false;
-    config_.digitSlideEnabled = false;
-    config_.duckEnabled = false;
-    config_.marqueeEnabled = false;
-    config_.rainEnabled = false;
-
-    active_events_.clear();
-    event_cooldowns_.clear();
+    event_manager_.clear();
     door_manager_.closeAllDoors(world);
     obstacle_manager_.clearAll(world);
 }
 
 bool ClockScenario::isMeltdownActive() const
 {
-    return active_events_.contains(ClockEventType::MELTDOWN);
+    return event_manager_.isEventActive(ClockEventType::MELTDOWN);
 }
 
 void ClockScenario::updateMeltdownEvent(
@@ -1819,7 +1631,7 @@ void ClockScenario::updateMeltdownEvent(
     // Make falling digit cells emissive so they glow while melting.
     const WorldData& data = world.getData();
     uint32_t color = getMaterialColor(config_.digitMaterial);
-    float intensity = static_cast<float>(config_.digitEmissiveness);
+    float intensity = config_.glowConfig.digitIntensity;
 
     for (int y = 1; y < data.height - 1; ++y) {
         for (int x = 1; x < data.width - 1; ++x) {

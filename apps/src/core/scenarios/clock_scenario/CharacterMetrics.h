@@ -7,41 +7,27 @@
 namespace DirtSim {
 
 /**
- * Provides character dimension queries for clock fonts.
+ * Font dimension and layout properties for clock rendering.
  *
- * Encapsulates font-specific width/height logic so layout code
- * doesn't need to know about individual font implementations.
+ * Use getFont() for convenient access: getFont(Config::ClockFont::Segment7).digitHeight
  */
 class CharacterMetrics {
 public:
     explicit CharacterMetrics(Config::ClockFont font);
 
-    // Character dimensions.
-    int getWidth(const std::string& utf8Char) const;
-    int getHeight() const;
+    Config::ClockFont font;
+    int colonPadding = 0;
+    int colonWidth = 0;
+    int digitHeight = 0;
+    int digitWidth = 0;
+    int gap = 0;
 
-    // Layout spacing.
-    int getGap() const;
-    int getColonPadding() const;
-
-    // Font type queries.
     bool isColorFont() const;
-    Config::ClockFont getFont() const { return font_; }
-
-    // Convenience: returns a width function suitable for layoutString().
+    bool usesFontSampler() const;
+    int charWidth(const std::string& utf8Char) const;
     std::function<int(const std::string&)> widthFunction() const;
-
-private:
-    Config::ClockFont font_;
-
-    // Cached dimensions for current font.
-    int digitWidth_ = 0;
-    int digitHeight_ = 0;
-    int colonWidth_ = 0;
-    int gap_ = 0;
-    int colonPadding_ = 0;
-
-    void initDimensions();
 };
+
+const CharacterMetrics& getFont(Config::ClockFont font);
 
 } // namespace DirtSim
