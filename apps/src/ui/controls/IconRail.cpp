@@ -231,6 +231,8 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
+
+    resetAutoShrinkTimer();
 }
 
 void IconRail::selectIcon(IconId id)
@@ -240,6 +242,7 @@ void IconRail::selectIcon(IconId id)
     IconId previousId = selectedId_;
     selectedId_ = id;
     updateButtonVisuals();
+    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -253,6 +256,7 @@ void IconRail::deselectAll()
     IconId previousId = selectedId_;
     selectedId_ = IconId::COUNT;
     updateButtonVisuals();
+    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
