@@ -148,6 +148,7 @@ private:
     lv_obj_t* currentScreen = nullptr;
 
     // Shared UI components (live on top layer, independent of screens).
+    lv_obj_t* railContainer_ = nullptr;
     std::unique_ptr<IconRail> iconRail_;
     std::unique_ptr<ExpandablePanel> expandablePanel_;
 
