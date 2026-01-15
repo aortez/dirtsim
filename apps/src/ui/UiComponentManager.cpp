@@ -24,21 +24,21 @@ void UiComponentManager::createSharedComponents()
     lv_obj_t* topLayer = lv_layer_top();
 
     // Container for rail + panel (horizontal row).
-    lv_obj_t* railContainer = lv_obj_create(topLayer);
-    lv_obj_set_size(railContainer, LV_SIZE_CONTENT, LV_PCT(100));
-    lv_obj_set_pos(railContainer, 0, 0);
-    lv_obj_set_flex_flow(railContainer, LV_FLEX_FLOW_ROW);
+    railContainer_ = lv_obj_create(topLayer);
+    lv_obj_set_size(railContainer_, LV_SIZE_CONTENT, LV_PCT(100));
+    lv_obj_set_pos(railContainer_, 0, 0);
+    lv_obj_set_flex_flow(railContainer_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        railContainer, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_set_style_pad_all(railContainer, 0, 0);
-    lv_obj_set_style_pad_gap(railContainer, 0, 0);
-    lv_obj_set_style_border_width(railContainer, 0, 0);
-    lv_obj_set_style_bg_opa(railContainer, LV_OPA_TRANSP, 0);
-    lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_FLOATING);
+        railContainer_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(railContainer_, 0, 0);
+    lv_obj_set_style_pad_gap(railContainer_, 0, 0);
+    lv_obj_set_style_border_width(railContainer_, 0, 0);
+    lv_obj_set_style_bg_opa(railContainer_, LV_OPA_TRANSP, 0);
+    lv_obj_clear_flag(railContainer_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(railContainer_, LV_OBJ_FLAG_FLOATING);
 
-    iconRail_ = std::make_unique<IconRail>(railContainer, eventSink_);
-    expandablePanel_ = std::make_unique<ExpandablePanel>(railContainer);
+    iconRail_ = std::make_unique<IconRail>(railContainer_, eventSink_);
+    expandablePanel_ = std::make_unique<ExpandablePanel>(railContainer_);
 
     SLOG_INFO("Created shared IconRail and ExpandablePanel on top layer");
 }
@@ -47,9 +47,15 @@ UiComponentManager::~UiComponentManager()
 {
     SLOG_INFO("UiComponentManager cleanup started");
 
-    // Reset unique_ptrs first (they'll clean up LVGL objects via callbacks).
+    // Reset unique_ptrs first (they'll clean up timers and overlay objects).
     iconRail_.reset();
     expandablePanel_.reset();
+
+    // Delete railContainer (cascades to all child LVGL objects on top layer).
+    if (railContainer_) {
+        lv_obj_delete(railContainer_);
+        railContainer_ = nullptr;
+    }
 
     // Clean up any screens we created (not the default one).
     if (simulationScreen && simulationScreen != lv_disp_get_scr_act(display)) {
