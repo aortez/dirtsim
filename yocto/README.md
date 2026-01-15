@@ -102,6 +102,19 @@ cd yocto
 kas build kas-dirtsim.yml
 ```
 
+### Building in Docker
+
+If you want an isolated build environment, use the Docker builder:
+
+```bash
+cd yocto
+npm run docker-build
+```
+
+Useful options:
+- `npm run docker-build -- --clean` to force a rebuild of the image sstate.
+- `npm run docker-build -- --shell` to open an interactive shell in the container.
+
 The output image will be at:
 ```
 build/tmp/deploy/images/raspberrypi-dirtsim/dirtsim-image-raspberrypi-dirtsim.rootfs.wic.gz
@@ -178,6 +191,7 @@ The image uses **A/B partitions** for safe remote updates - no more corrupted fi
 ```bash
 npm run yolo                            # Build + flash to inactive slot + reboot
 npm run yolo -- --target 192.168.1.50   # Target a specific host (default: dirtsim.local)
+npm run yolo -- --docker                # Build inside the Docker image
 npm run yolo -- --fast                  # Fast dev deploy (~10s, see below)
 npm run yolo -- --clean                 # Force rebuild (cleans sstate first)
 npm run yolo -- --skip-build            # Flash existing image (skip kas build)

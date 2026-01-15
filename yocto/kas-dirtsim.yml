@@ -86,6 +86,12 @@ local_conf_header:
     # Shared state cache (speeds up rebuilds).
     SSTATE_DIR = "${TOPDIR}/../sstate-cache"
 
+    # Ccache for faster rebuilds (local cache).
+    INHERIT += "ccache"
+    CCACHE_DIR ?= "${TOPDIR}/../.ccache/dirtsim-yocto"
+    CCACHE_MAXSIZE ?= "20G"
+    PSEUDO_IGNORE_PATHS:append = ":${CCACHE_DIR}"
+
     # Disable SPDX generation (requires user namespaces which may not be available).
     INHERIT:remove = "create-spdx"
 
