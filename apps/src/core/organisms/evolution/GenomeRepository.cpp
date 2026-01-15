@@ -11,6 +11,26 @@ namespace DirtSim {
 // Schema version for future migrations.
 constexpr int SCHEMA_VERSION = 1;
 
+namespace {
+
+// DRY helper for database operations with error handling.
+template <typename Func>
+void execDb(sqlite::database& db, const char* operation, Func&& func)
+{
+    try {
+        func(db);
+    }
+    catch (const sqlite::sqlite_exception& e) {
+        spdlog::error(
+            "GenomeRepository: {} failed: {} (code {})", operation, e.what(), e.get_code());
+    }
+    catch (const std::exception& e) {
+        spdlog::error("GenomeRepository: {} failed: {}", operation, e.what());
+    }
+}
+
+} // namespace
+
 GenomeRepository::GenomeRepository() = default;
 
 GenomeRepository::GenomeRepository(const std::filesystem::path& dbPath)
@@ -120,26 +140,35 @@ void GenomeRepository::persistGenome(GenomeId id, const Genome& genome, const Ge
     nlohmann::json metaJ = meta;
     std::string metaJson = metaJ.dump();
 
-    // Use INSERT OR REPLACE for upsert behavior.
-    *db_ << "INSERT OR REPLACE INTO genomes (id, weights, metadata_json) VALUES (?, ?, ?)" << idStr
-         << genome.weights << metaJson;
+    execDb(*db_, "persistGenome", [&](sqlite::database& db) {
+        db << "INSERT OR REPLACE INTO genomes (id, weights, metadata_json) VALUES (?, ?, ?)"
+           << idStr << genome.weights << metaJson;
+    });
 }
 
 void GenomeRepository::deleteGenome(GenomeId id)
 {
-    *db_ << "DELETE FROM genomes WHERE id = ?" << id.toString();
+    execDb(*db_, "deleteGenome", [&](sqlite::database& db) {
+        db << "DELETE FROM genomes WHERE id = ?" << id.toString();
+    });
 }
 
 void GenomeRepository::persistBestId()
 {
     std::string value = bestId_ ? bestId_->toString() : "";
-    *db_ << "INSERT OR REPLACE INTO repository_state (key, value) VALUES ('best_id', ?)" << value;
+    execDb(*db_, "persistBestId", [&](sqlite::database& db) {
+        db << "INSERT OR REPLACE INTO repository_state (key, value) VALUES ('best_id', ?)" << value;
+    });
 }
 
 void GenomeRepository::clearDb()
 {
-    *db_ << "DELETE FROM genomes";
-    *db_ << "DELETE FROM repository_state WHERE key = 'best_id'";
+    execDb(*db_, "clearDb", [&](sqlite::database& db) {
+        db << "BEGIN TRANSACTION";
+        db << "DELETE FROM genomes";
+        db << "DELETE FROM repository_state WHERE key = 'best_id'";
+        db << "COMMIT";
+    });
 }
 
 void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMetadata& meta)

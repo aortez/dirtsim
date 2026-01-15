@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.14)
 project(lvgl)
 
 # Export compile commands for clangd/LSP support.
