@@ -33,6 +33,7 @@
 #include <cmath>
 #include <limits>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {

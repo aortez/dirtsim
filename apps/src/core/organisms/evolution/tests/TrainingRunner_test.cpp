@@ -82,7 +82,7 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
     EXPECT_GE(status.maxEnergy, 0.0);
 }
 
-TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAboveAnyColumn)
+TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::TreeGermination;
@@ -93,26 +93,44 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAboveAnyColumn)
     individual.genome = Genome::random(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
-    ASSERT_NE(runner.getWorld(), nullptr);
-
     World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
     auto& data = world->getData();
     const int centerX = data.width / 2;
     const int centerY = data.height / 2;
+    const int width = data.width;
+    const int height = data.height;
 
-    data.at(centerX, centerY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    for (int x = 0; x < data.width; ++x) {
-        data.at(x, centerY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    for (int y = 0; y <= centerY; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
     }
-    data.at(centerX - 1, centerY - 1).clear();
+    for (int y = centerY + 1; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int expectedX = centerX - 1;
+    const int expectedY = centerY - 1;
+    const int fartherX = centerX - 3;
+    const int fartherY = centerY;
+    const int bottomX = centerX;
+    const int bottomY = centerY + 1;
+
+    data.at(expectedX, expectedY).clear();
+    data.at(fartherX, fartherY).clear();
+    data.at(bottomX, bottomY).clear();
 
     runner.step(0);
 
-    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX - 1, centerY - 1 }));
-    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ expectedX, expectedY }));
+    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
 }
 
-TEST_F(TrainingRunnerTest, SpawnFallsBackToSameRowWhenAboveHasNoAir)
+TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::TreeGermination;
@@ -123,23 +141,28 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToSameRowWhenAboveHasNoAir)
     individual.genome = Genome::random(rng_);
 
     TrainingRunner runner(spec, individual, config_, genomeRepository_);
-    ASSERT_NE(runner.getWorld(), nullptr);
-
     World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
     auto& data = world->getData();
     const int centerX = data.width / 2;
     const int centerY = data.height / 2;
+    const int width = data.width;
+    const int height = data.height;
 
-    data.at(centerX, centerY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    for (int x = 0; x < data.width; ++x) {
-        data.at(x, centerY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
     }
-    data.at(centerX - 1, centerY).clear();
+
+    const int bottomX = centerX + 1;
+    const int bottomY = centerY + 1;
+    data.at(bottomX, bottomY).clear();
 
     runner.step(0);
 
-    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX - 1, centerY }));
-    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
 }
 
 } // namespace DirtSim

@@ -23,7 +23,7 @@ ExpandablePanel::ExpandablePanel(lv_obj_t* parent)
     }
 
     // Style the container.
-    lv_obj_set_size(container_, PANEL_WIDTH, LV_PCT(100));
+    lv_obj_set_size(container_, width_, LV_PCT(100));
     lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
@@ -53,7 +53,7 @@ ExpandablePanel::ExpandablePanel(lv_obj_t* parent)
     lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
     lv_obj_add_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
 
-    LOG_INFO(Controls, "ExpandablePanel created ({}px wide, hidden)", PANEL_WIDTH);
+    LOG_INFO(Controls, "ExpandablePanel created ({}px wide, hidden)", width_);
 }
 
 ExpandablePanel::~ExpandablePanel()
@@ -91,6 +91,23 @@ void ExpandablePanel::clearContent()
         lv_obj_clean(contentArea_);
         LOG_DEBUG(Controls, "ExpandablePanel content cleared");
     }
+}
+
+void ExpandablePanel::setWidth(int width)
+{
+    if (width <= 0 || width_ == width) {
+        return;
+    }
+
+    width_ = width;
+    if (container_) {
+        lv_obj_set_width(container_, width_);
+    }
+}
+
+void ExpandablePanel::resetWidth()
+{
+    setWidth(PANEL_WIDTH);
 }
 
 } // namespace Ui

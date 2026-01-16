@@ -12,11 +12,14 @@
  *   npm run deploy server                       # Deploy server only
  *   npm run deploy ui                           # Deploy UI only
  *   npm run deploy -- --host dirtsim-clock.local  # Deploy to specific host
+ *   npm run deploy -- --docker                    # Build in Docker
  */
 
-import { execSync, spawn } from 'child_process';
+import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { createRequire } from 'module';
+
+import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
 
 const require = createRequire(import.meta.url);
 const consola = require('consola');
@@ -28,6 +31,8 @@ const PI_USER = 'dirtsim';
 let piHost = DEFAULT_HOST;
 const YOCTO_DIR = new URL('..', import.meta.url).pathname;
 const WORK_DIR = `${YOCTO_DIR}build/tmp/work`;
+let useDocker = false;
+let dockerImageRef = null;
 
 // Supported architectures (Pi5=cortexa76, Pi4=cortexa72).
 const ARCH_PATTERNS = ['cortexa76-poky-linux', 'cortexa72-poky-linux'];
@@ -101,14 +106,23 @@ Apps:
 
 Options:
   --host <host>  Target hostname (default: ${DEFAULT_HOST})
+  --docker       Build with the Docker Yocto image
   -h, --help     Show this help
 
 Examples:
   npm run deploy                                # Deploy both to dirtsim.local
   npm run deploy server                         # Deploy server only
   npm run deploy -- --host dirtsim-clock.local  # Deploy to different host
+  npm run deploy -- --docker                    # Build in Docker
   npm run deploy -- --host dirtsim-clock.local ui  # Deploy UI to different host
 `);
+}
+
+async function resolveDockerImage() {
+    if (!dockerImageRef) {
+        dockerImageRef = await ensureYoctoDockerImage();
+    }
+    return dockerImageRef;
 }
 
 async function checkPiReachable() {
@@ -128,10 +142,16 @@ async function buildApps(apps) {
     consola.start(`Building ${recipes}...`);
 
     // Force recompile and rebuild.
-    const cmd = `kas shell kas-dirtsim.yml -c "bitbake ${recipes} -c compile -f && bitbake ${recipes}"`;
+    const bitbakeCmd = `bitbake ${recipes} -c compile -f && bitbake ${recipes}`;
 
     try {
-        run(cmd, { cwd: YOCTO_DIR });
+        if (useDocker) {
+            const imageRef = await resolveDockerImage();
+            await runInYoctoDocker(['kas', 'shell', 'kas-dirtsim.yml', '-c', bitbakeCmd], { imageRef });
+        } else {
+            const cmd = `kas shell kas-dirtsim.yml -c "${bitbakeCmd}"`;
+            run(cmd, { cwd: YOCTO_DIR });
+        }
         consola.success('Build complete!');
         return true;
     } catch (error) {
@@ -190,6 +210,10 @@ async function deployApp(appName) {
 
 async function main() {
     const args = process.argv.slice(2);
+    const docker =
+        args.includes('--docker') ||
+        process.env.DIRTSIM_YOCTO_DOCKER === '1' ||
+        process.env.DIRTSIM_YOCTO_DOCKER === 'true';
 
     // Handle help.
     if (args.includes('-h') || args.includes('--help')) {
@@ -213,6 +237,11 @@ async function main() {
         apps = ['server'];
     } else if (args.includes('ui') && !args.includes('server')) {
         apps = ['ui'];
+    }
+
+    useDocker = docker;
+    if (useDocker) {
+        consola.info('Using Docker for Yocto build.');
     }
 
     consola.box(`Quick Deploy: ${apps.join(', ')} → ${piHost}`);

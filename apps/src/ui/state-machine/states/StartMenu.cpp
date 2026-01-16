@@ -23,6 +23,10 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
+namespace {
+constexpr int kNetworkPanelWidth = 320;
+}
+
 void StartMenu::onEnter(StateMachine& sm)
 {
     sm_ = &sm; // Store for callbacks.
@@ -290,6 +294,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
+            panel->resetWidth();
             corePanel_ = std::make_unique<StartMenuCorePanel>(panel->getContentArea(), sm);
             panel->show();
         }
@@ -302,6 +307,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->hide();
             panel->clearContent();
+            panel->resetWidth();
         }
         corePanel_.reset();
     }
@@ -312,6 +318,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
+            panel->setWidth(kNetworkPanelWidth);
             networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
             panel->show();
         }
@@ -324,6 +331,7 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->hide();
             panel->clearContent();
+            panel->resetWidth();
         }
         networkPanel_.reset();
     }

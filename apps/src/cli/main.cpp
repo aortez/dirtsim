@@ -11,6 +11,7 @@
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/network/WifiManager.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
@@ -112,6 +113,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "integration_test", "Run integration test (launches server + UI)" },
+    { "network", "WiFi status, saved/open networks, and connect (nmcli wrapper)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
@@ -153,6 +155,10 @@ std::string getExamplesHelp()
     for (const auto& cmd : CLI_COMMANDS) {
         examples += "  cli " + cmd.name + "\n";
     }
+    examples += "\nNetwork:\n";
+    examples += "  cli network status\n";
+    examples += "  cli network list\n";
+    examples += "  cli network connect \"MySSID\"\n";
 
     // Server API examples (show a few common ones).
     examples += "\nServer API Examples:\n";
@@ -249,7 +255,8 @@ int main(int argc, char** argv)
         { "count" },
         100);
 
-    args::Positional<std::string> target(parser, "target", "Target component: 'server' or 'ui'");
+    args::Positional<std::string> target(
+        parser, "target", "Target: 'server', 'ui', or a CLI command like 'network'");
     args::Positional<std::string> command(parser, "command", getCommandListHelp());
     args::Positional<std::string> params(
         parser, "params", "Optional JSON object with command parameters");
@@ -277,7 +284,7 @@ int main(int argc, char** argv)
 
     // Require target argument.
     if (!target) {
-        std::cerr << "Error: target is required ('server', 'ui', 'benchmark', etc.)\n\n";
+        std::cerr << "Error: target is required ('server', 'ui', 'network', etc.)\n\n";
         std::cerr << parser;
         return 1;
     }
@@ -846,11 +853,76 @@ int main(int argc, char** argv)
         return results.completed ? 0 : 1;
     }
 
+    if (targetName == "network") {
+        if (!command) {
+            std::cerr << "Error: command is required for network target\n\n";
+            std::cerr << "Usage: cli network status|list|connect <ssid>\n";
+            return 1;
+        }
+
+        const std::string subcommand = args::get(command);
+        Network::WifiManager wifi;
+
+        if (subcommand == "status") {
+            const auto statusResult = wifi.getStatus();
+            if (statusResult.isError()) {
+                std::cerr << "Error: " << statusResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json output = ReflectSerializer::to_json(statusResult.value());
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
+        if (subcommand == "list") {
+            const auto listResult = wifi.listNetworks();
+            if (listResult.isError()) {
+                std::cerr << "Error: " << listResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json networks = nlohmann::json::array();
+            for (const auto& network : listResult.value()) {
+                networks.push_back(ReflectSerializer::to_json(network));
+            }
+
+            nlohmann::json output;
+            output["networks"] = networks;
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
+        if (subcommand == "connect") {
+            if (!params) {
+                std::cerr << "Error: SSID is required for network connect\n\n";
+                std::cerr << "Usage: cli network connect \"MySSID\"\n";
+                return 1;
+            }
+
+            const std::string ssid = args::get(params);
+            const auto connectResult = wifi.connectBySsid(ssid);
+            if (connectResult.isError()) {
+                std::cerr << "Error: " << connectResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json output = ReflectSerializer::to_json(connectResult.value());
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
+        std::cerr << "Error: unknown network command '" << subcommand << "'\n";
+        std::cerr << "Valid commands: status, list, connect\n";
+        return 1;
+    }
+
     // Handle server/ui targets - normal command mode.
     if (targetName != "server" && targetName != "ui") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
-        std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "genome-db-benchmark, integration_test, run-all, test_binary, train\n\n";
+        std::cerr
+            << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
+               "genome-db-benchmark, integration_test, network, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
