@@ -9,8 +9,8 @@ namespace DirtSim {
 class GenomeRepository;
 
 /**
- * Tree Germination scenario - 9x9 world with seed growing into balanced tree.
- * If config.genome_id is set, loads genome from repository for the tree brain.
+ * Tree Germination scenario - 9x9 world with balanced tree-growth terrain.
+ * Organism spawning is handled externally (training or UI controls).
  */
 class TreeGerminationScenario : public ScenarioRunner {
 public:

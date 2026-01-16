@@ -787,7 +787,7 @@ int main(int argc, char** argv)
                 nlohmann::json configJson = nlohmann::json::parse(args::get(command));
                 config = Api::EvolutionStart::Command::fromJson(configJson);
             }
-            catch (const nlohmann::json::parse_error& e) {
+            catch (const std::exception& e) {
                 std::cerr << "Error parsing JSON config: " << e.what() << std::endl;
                 std::cerr << "\nExample config:\n";
                 std::cerr << R"({
@@ -802,7 +802,15 @@ int main(int argc, char** argv)
     "sigma": 0.05,
     "resetRate": 0.0005
   },
-  "scenarioId": "TreeGermination"
+  "scenarioId": "TreeGermination",
+  "organismType": "TREE",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 50,
+      "randomCount": 50
+    }
+  ]
 })" << std::endl;
                 return 1;
             }

@@ -1,42 +1,54 @@
 #pragma once
 
 #include "StateForward.h"
-#include "core/ScenarioId.h"
+#include "core/ScenarioConfig.h"
+#include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
 
 #include <chrono>
 #include <memory>
 #include <optional>
 #include <random>
+#include <string>
 #include <vector>
 
 namespace DirtSim {
 class World;
-}
+class ScenarioRunner;
+} // namespace DirtSim
 
 namespace DirtSim {
 namespace Server {
 namespace State {
 
 /**
- * Evolution state — runs genetic algorithm to evolve tree neural network brains.
+ * Evolution state — runs genetic algorithm to evolve organism brains.
  *
  * Each tick() advances one physics step of the current evaluation, allowing
  * the event loop to process commands between steps. This ensures responsive
  * handling of EvolutionStop and other commands during long evaluations.
  */
 struct Evolution {
+    struct Individual {
+        std::string brainKind;
+        std::optional<std::string> brainVariant;
+        std::optional<Genome> genome;
+        bool allowsMutation = false;
+    };
+
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
-    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
+    TrainingSpec trainingSpec;
 
     // Population.
-    std::vector<Genome> population;
+    std::vector<Individual> population;
     std::vector<double> fitnessScores;
     int generation = 0;
     int currentEval = 0;
@@ -52,13 +64,19 @@ struct Evolution {
 
     // Current evaluation state (for non-blocking tick).
     std::unique_ptr<World> evalWorld_;
-    OrganismId evalTreeId_{};
+    std::unique_ptr<ScenarioRunner> evalScenario_;
+    OrganismId evalOrganismId_{};
+    Vector2d evalSpawnPosition_{ 0.0, 0.0 };
+    Vector2d evalLastPosition_{ 0.0, 0.0 };
     double evalSimTime_ = 0.0;
     double evalMaxEnergy_ = 0.0;
+    ScenarioConfig evalScenarioConfig_ = Config::Empty{};
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
     double cumulativeSimTime_ = 0.0; // Total sim time across all completed individuals.
+
+    TrainingBrainRegistry brainRegistry_;
 
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
@@ -73,8 +91,8 @@ struct Evolution {
     static constexpr const char* name() { return "Evolution"; }
 
 private:
-    void initializePopulation();
-    void startEvaluation();
+    void initializePopulation(StateMachine& dsm);
+    void startEvaluation(StateMachine& dsm);
     void finishEvaluation(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);

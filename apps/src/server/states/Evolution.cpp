@@ -1,24 +1,22 @@
 #include "State.h"
 #include "core/Assert.h"
-#include "core/Cell.h"
 #include "core/LoggingChannels.h"
-#include "core/MaterialType.h"
-#include "core/ScenarioConfig.h"
 #include "core/UUID.h"
 #include "core/World.h"
+#include "core/WorldData.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
-#include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
-#include "core/organisms/evolution/Selection.h"
+#include "core/scenarios/ScenarioRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
 #include <algorithm>
 #include <ctime>
+#include <limits>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -27,15 +25,107 @@ namespace State {
 
 namespace {
 constexpr double TIMESTEP = 0.016; // 60 FPS physics.
+
+int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
+{
+    DIRTSIM_ASSERT(!fitness.empty(), "Tournament selection requires non-empty fitness list");
+    DIRTSIM_ASSERT(tournamentSize > 0, "Tournament size must be positive");
+
+    std::uniform_int_distribution<int> dist(0, static_cast<int>(fitness.size()) - 1);
+
+    int bestIdx = dist(rng);
+    double bestFitness = fitness[bestIdx];
+
+    for (int i = 1; i < tournamentSize; ++i) {
+        const int idx = dist(rng);
+        if (fitness[idx] > bestFitness) {
+            bestIdx = idx;
+            bestFitness = fitness[idx];
+        }
+    }
+
+    return bestIdx;
+}
+
+Vector2i findSpawnCell(World& world)
+{
+    auto& data = world.getData();
+    const int width = data.width;
+    const int height = data.height;
+    const int centerX = width / 2;
+    const int centerY = height / 2;
+
+    const auto isSpawnable = [&world, &data](int x, int y) {
+        if (!data.inBounds(x, y)) {
+            return false;
+        }
+        if (!data.at(x, y).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ x, y });
+    };
+
+    if (isSpawnable(centerX, centerY)) {
+        return { centerX, centerY };
+    }
+
+    auto findNearestInRows = [&](int startY, int endY) -> std::optional<Vector2i> {
+        if (startY > endY) {
+            return std::nullopt;
+        }
+
+        long long bestDistance = std::numeric_limits<long long>::max();
+        Vector2i best{ 0, 0 };
+        bool found = false;
+
+        for (int y = startY; y <= endY; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (!isSpawnable(x, y)) {
+                    continue;
+                }
+                const long long dx = static_cast<long long>(x) - centerX;
+                const long long dy = static_cast<long long>(y) - centerY;
+                const long long distance = dx * dx + dy * dy;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { x, y };
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            return std::nullopt;
+        }
+        return best;
+    };
+
+    if (auto above = findNearestInRows(0, centerY); above.has_value()) {
+        return above.value();
+    }
+
+    if (auto below = findNearestInRows(centerY + 1, height - 1); below.has_value()) {
+        return below.value();
+    }
+
+    if (world.getOrganismManager().hasOrganism({ centerX, centerY })) {
+        DIRTSIM_ASSERT(false, "Evolution: Spawn location already occupied");
+    }
+
+    data.at(centerX, centerY).clear();
+    return { centerX, centerY };
+}
 } // namespace
 
-void Evolution::onEnter(StateMachine& /*dsm*/)
+void Evolution::onEnter(StateMachine& dsm)
 {
     LOG_INFO(
         State,
-        "Evolution: Starting with population={}, generations={}",
+        "Evolution: Starting with population={}, generations={}, scenario={}, organism_type={}",
         evolutionConfig.populationSize,
-        evolutionConfig.maxGenerations);
+        evolutionConfig.maxGenerations,
+        toString(trainingSpec.scenarioId),
+        static_cast<int>(trainingSpec.organismType));
 
     // Record training start time.
     trainingStartTime_ = std::chrono::steady_clock::now();
@@ -43,8 +133,10 @@ void Evolution::onEnter(StateMachine& /*dsm*/)
     // Seed RNG.
     rng.seed(std::random_device{}());
 
+    brainRegistry_ = TrainingBrainRegistry::createDefault();
+
     // Initialize population.
-    initializePopulation();
+    initializePopulation(dsm);
 }
 
 void Evolution::onExit(StateMachine& dsm)
@@ -53,6 +145,7 @@ void Evolution::onExit(StateMachine& dsm)
 
     // Clean up any in-progress evaluation.
     evalWorld_.reset();
+    evalScenario_.reset();
 
     // Store final best genome.
     storeBestGenome(dsm);
@@ -74,7 +167,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 
     // Start a new evaluation if needed.
     if (!evalWorld_) {
-        startEvaluation();
+        startEvaluation(dsm);
     }
 
     // Advance one physics step.
@@ -85,23 +178,29 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     dsm.broadcastRenderMessage(
         evalWorld_->getData(),
         evalWorld_->getOrganismManager().getGrid(),
-        scenarioId,
-        Config::TreeGermination{});
+        trainingSpec.scenarioId,
+        evalScenarioConfig_);
 
     // Broadcast progress for real-time time display updates.
     broadcastProgress(dsm);
 
-    // Track max energy.
-    Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);
-    if (tree) {
-        evalMaxEnergy_ = std::max(evalMaxEnergy_, tree->getEnergy());
+    Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
+    if (organism) {
+        evalLastPosition_ = organism->position;
     }
 
-    // Check if evaluation complete (tree died or max time reached).
-    const bool treeDied = (tree == nullptr);
+    if (trainingSpec.organismType == OrganismType::TREE) {
+        Tree* tree = evalWorld_->getOrganismManager().getTree(evalOrganismId_);
+        if (tree) {
+            evalMaxEnergy_ = std::max(evalMaxEnergy_, tree->getEnergy());
+        }
+    }
+
+    // Check if evaluation complete (organism died or max time reached).
+    const bool organismDied = (organism == nullptr);
     const bool timeUp = (evalSimTime_ >= evolutionConfig.maxSimulationTime);
 
-    if (treeDied || timeUp) {
+    if (organismDied || timeUp) {
         finishEvaluation(dsm);
     }
 
@@ -123,17 +222,61 @@ Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
     return Shutdown{};
 }
 
-void Evolution::initializePopulation()
+void Evolution::initializePopulation(StateMachine& dsm)
 {
     population.clear();
     fitnessScores.clear();
 
-    population.reserve(evolutionConfig.populationSize);
-    fitnessScores.resize(evolutionConfig.populationSize, 0.0);
+    DIRTSIM_ASSERT(!trainingSpec.population.empty(), "Training population must not be empty");
 
-    for (int i = 0; i < evolutionConfig.populationSize; ++i) {
-        population.push_back(Genome::random(rng));
+    auto& repo = dsm.getGenomeRepository();
+    for (const auto& spec : trainingSpec.population) {
+        const std::string variant = spec.brainVariant.value_or("");
+        const BrainRegistryEntry* entry =
+            brainRegistry_.find(trainingSpec.organismType, spec.brainKind, variant);
+        DIRTSIM_ASSERT(entry != nullptr, "Training population brain kind not registered");
+
+        if (entry->requiresGenome) {
+            const int seedCount = static_cast<int>(spec.seedGenomes.size());
+            DIRTSIM_ASSERT(
+                spec.count == seedCount + spec.randomCount,
+                "Training population count must match seedGenomes + randomCount");
+
+            for (const auto& id : spec.seedGenomes) {
+                auto genome = repo.get(id);
+                DIRTSIM_ASSERT(genome.has_value(), "Training population seed genome missing");
+                population.push_back(Individual{ .brainKind = spec.brainKind,
+                                                 .brainVariant = spec.brainVariant,
+                                                 .genome = genome.value(),
+                                                 .allowsMutation = entry->allowsMutation });
+            }
+
+            for (int i = 0; i < spec.randomCount; ++i) {
+                population.push_back(Individual{ .brainKind = spec.brainKind,
+                                                 .brainVariant = spec.brainVariant,
+                                                 .genome = Genome::random(rng),
+                                                 .allowsMutation = entry->allowsMutation });
+            }
+        }
+        else {
+            DIRTSIM_ASSERT(
+                spec.seedGenomes.empty(),
+                "Training population seedGenomes must be empty for non-genome brains");
+            DIRTSIM_ASSERT(
+                spec.randomCount == 0,
+                "Training population randomCount must be 0 for non-genome brains");
+
+            for (int i = 0; i < spec.count; ++i) {
+                population.push_back(Individual{ .brainKind = spec.brainKind,
+                                                 .brainVariant = spec.brainVariant,
+                                                 .genome = std::nullopt,
+                                                 .allowsMutation = entry->allowsMutation });
+            }
+        }
     }
+
+    evolutionConfig.populationSize = static_cast<int>(population.size());
+    fitnessScores.resize(population.size(), 0.0);
 
     generation = 0;
     currentEval = 0;
@@ -141,40 +284,58 @@ void Evolution::initializePopulation()
 
     // Clear evaluation state.
     evalWorld_.reset();
+    evalScenario_.reset();
+    evalOrganismId_ = INVALID_ORGANISM_ID;
+    evalSpawnPosition_ = Vector2d{ 0.0, 0.0 };
+    evalLastPosition_ = Vector2d{ 0.0, 0.0 };
     evalSimTime_ = 0.0;
     evalMaxEnergy_ = 0.0;
+    evalScenarioConfig_ = Config::Empty{};
 }
 
-void Evolution::startEvaluation()
+void Evolution::startEvaluation(StateMachine& dsm)
 {
     DIRTSIM_ASSERT(
         currentEval < static_cast<int>(population.size()),
         "currentEval must be within population bounds");
 
-    // Create fresh 9x9 world for evaluation.
-    evalWorld_ = std::make_unique<World>(9, 9);
+    auto& registry = dsm.getScenarioRegistry();
+    const ScenarioMetadata* metadata = registry.getMetadata(trainingSpec.scenarioId);
+    DIRTSIM_ASSERT(metadata != nullptr, "Training scenario not found in registry");
+
+    const int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
+    const int height = metadata->requiredHeight > 0 ? metadata->requiredHeight : 9;
+
+    evalWorld_ = std::make_unique<World>(width, height);
     DIRTSIM_ASSERT(evalWorld_ != nullptr, "World creation must succeed");
 
-    // Clear to air.
-    for (int y = 0; y < evalWorld_->getData().height; ++y) {
-        for (int x = 0; x < evalWorld_->getData().width; ++x) {
-            evalWorld_->getData().at(x, y) = Cell();
-        }
+    evalScenario_ = registry.createScenario(trainingSpec.scenarioId);
+    DIRTSIM_ASSERT(evalScenario_ != nullptr, "Training scenario factory failed");
+
+    evalScenario_->setup(*evalWorld_);
+    evalWorld_->setScenario(evalScenario_.get());
+    evalScenarioConfig_ = evalScenario_->getConfig();
+
+    const Vector2i spawnCell = findSpawnCell(*evalWorld_);
+
+    const Individual& individual = population[currentEval];
+    const std::string variant = individual.brainVariant.value_or("");
+    const BrainRegistryEntry* entry =
+        brainRegistry_.find(trainingSpec.organismType, individual.brainKind, variant);
+    DIRTSIM_ASSERT(entry != nullptr, "Evolution: Brain kind is not registered");
+
+    const Genome* genomePtr = individual.genome.has_value() ? &individual.genome.value() : nullptr;
+    if (entry->requiresGenome) {
+        DIRTSIM_ASSERT(genomePtr != nullptr, "Evolution: Genome required but missing");
     }
 
-    // Add dirt at bottom 3 rows.
-    for (int y = 6; y < evalWorld_->getData().height; ++y) {
-        for (int x = 0; x < evalWorld_->getData().width; ++x) {
-            evalWorld_->addMaterialAtCell(
-                { static_cast<int16_t>(x), static_cast<int16_t>(y) },
-                Material::EnumType::Dirt,
-                1.0);
-        }
-    }
+    evalOrganismId_ = entry->spawn(*evalWorld_, spawnCell.x, spawnCell.y, genomePtr);
+    DIRTSIM_ASSERT(evalOrganismId_ != INVALID_ORGANISM_ID, "Evolution: Spawn failed");
 
-    // Create brain from genome and plant tree.
-    auto brain = std::make_unique<NeuralNetBrain>(population[currentEval]);
-    evalTreeId_ = evalWorld_->getOrganismManager().createTree(*evalWorld_, 4, 4, std::move(brain));
+    const Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
+    DIRTSIM_ASSERT(organism != nullptr, "Evolution: Spawned organism not found");
+    evalSpawnPosition_ = organism->position;
+    evalLastPosition_ = evalSpawnPosition_;
 
     // Reset evaluation tracking.
     evalSimTime_ = 0.0;
@@ -185,15 +346,25 @@ void Evolution::finishEvaluation(StateMachine& dsm)
 {
     // Get final lifespan.
     double lifespan = evalSimTime_;
-    Tree* tree = evalWorld_->getOrganismManager().getTree(evalTreeId_);
-    if (tree) {
-        lifespan = tree->getAge();
+    Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
+    if (organism) {
+        lifespan = organism->getAge();
     }
 
+    Vector2d delta{ evalLastPosition_.x - evalSpawnPosition_.x,
+                    evalLastPosition_.y - evalSpawnPosition_.y };
+    const double distanceTraveled = delta.mag();
+
     // Compute fitness.
-    const FitnessResult result{ .lifespan = lifespan, .maxEnergy = evalMaxEnergy_ };
-    const double fitness =
-        result.computeFitness(evolutionConfig.maxSimulationTime, evolutionConfig.energyReference);
+    const FitnessResult result{ .lifespan = lifespan,
+                                .distanceTraveled = distanceTraveled,
+                                .maxEnergy = evalMaxEnergy_ };
+    const double fitness = result.computeFitness(
+        evolutionConfig.maxSimulationTime,
+        evalWorld_->getData().width,
+        evalWorld_->getData().height,
+        evolutionConfig.energyReference,
+        trainingSpec.organismType == OrganismType::TREE);
 
     fitnessScores[currentEval] = fitness;
 
@@ -204,19 +375,25 @@ void Evolution::finishEvaluation(StateMachine& dsm)
     if (fitness > bestFitnessAllTime) {
         bestFitnessAllTime = fitness;
 
-        // Store this genome as best.
-        auto& repo = dsm.getGenomeRepository();
-        const GenomeMetadata meta{
-            .name = "gen_" + std::to_string(generation) + "_eval_" + std::to_string(currentEval),
-            .fitness = fitness,
-            .generation = generation,
-            .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-            .scenarioId = scenarioId,
-            .notes = "",
-        };
-        bestGenomeId = UUID::generate();
-        repo.store(bestGenomeId, population[currentEval], meta);
-        repo.markAsBest(bestGenomeId);
+        const Individual& individual = population[currentEval];
+        if (individual.genome.has_value()) {
+            auto& repo = dsm.getGenomeRepository();
+            const GenomeMetadata meta{
+                .name =
+                    "gen_" + std::to_string(generation) + "_eval_" + std::to_string(currentEval),
+                .fitness = fitness,
+                .generation = generation,
+                .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+                .scenarioId = trainingSpec.scenarioId,
+                .notes = "",
+            };
+            bestGenomeId = UUID::generate();
+            repo.store(bestGenomeId, individual.genome.value(), meta);
+            repo.markAsBest(bestGenomeId);
+        }
+        else {
+            bestGenomeId = INVALID_GENOME_ID;
+        }
 
         LOG_INFO(
             State,
@@ -239,6 +416,8 @@ void Evolution::finishEvaluation(StateMachine& dsm)
 
     // Clean up world.
     evalWorld_.reset();
+    evalScenario_.reset();
+    evalOrganismId_ = INVALID_ORGANISM_ID;
 
     // Advance to next individual.
     currentEval++;
@@ -266,21 +445,43 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     }
 
     // Selection and mutation: create offspring.
-    std::vector<Genome> offspring;
+    std::vector<Individual> offspring;
     std::vector<double> offspringFitness;
     offspring.reserve(evolutionConfig.populationSize);
     offspringFitness.reserve(evolutionConfig.populationSize);
 
     for (int i = 0; i < evolutionConfig.populationSize; ++i) {
-        const Genome parent =
-            tournamentSelect(population, fitnessScores, evolutionConfig.tournamentSize, rng);
-        offspring.push_back(mutate(parent, mutationConfig, rng));
+        const int parentIdx =
+            tournamentSelectIndex(fitnessScores, evolutionConfig.tournamentSize, rng);
+        const Individual& parent = population[parentIdx];
+
+        Individual child = parent;
+        if (parent.genome.has_value() && parent.allowsMutation) {
+            child.genome = mutate(parent.genome.value(), mutationConfig, rng);
+        }
+        offspring.push_back(std::move(child));
         offspringFitness.push_back(0.0); // Will be evaluated next generation.
     }
 
     // Elitist replacement: keep best from parents + offspring.
-    population = elitistReplace(
-        population, fitnessScores, offspring, offspringFitness, evolutionConfig.populationSize);
+    std::vector<std::pair<double, Individual>> pool;
+    pool.reserve(population.size() + offspring.size());
+    for (size_t i = 0; i < population.size(); ++i) {
+        pool.emplace_back(fitnessScores[i], population[i]);
+    }
+    for (size_t i = 0; i < offspring.size(); ++i) {
+        pool.emplace_back(offspringFitness[i], offspring[i]);
+    }
+
+    std::sort(
+        pool.begin(), pool.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+
+    population.clear();
+    population.reserve(evolutionConfig.populationSize);
+    const int count = std::min(evolutionConfig.populationSize, static_cast<int>(pool.size()));
+    for (int i = 0; i < count; ++i) {
+        population.push_back(pool[i].second);
+    }
 
     // Advance to next generation.
     generation++;
@@ -352,13 +553,20 @@ void Evolution::storeBestGenome(StateMachine& dsm)
     }
 
     // Find best in current population.
-    int bestIdx = 0;
-    double bestFit = fitnessScores[0];
-    for (int i = 1; i < static_cast<int>(fitnessScores.size()); ++i) {
-        if (fitnessScores[i] > bestFit) {
+    int bestIdx = -1;
+    double bestFit = 0.0;
+    for (int i = 0; i < static_cast<int>(fitnessScores.size()); ++i) {
+        if (!population[i].genome.has_value()) {
+            continue;
+        }
+        if (bestIdx < 0 || fitnessScores[i] > bestFit) {
             bestFit = fitnessScores[i];
             bestIdx = i;
         }
+    }
+
+    if (bestIdx < 0) {
+        return;
     }
 
     auto& repo = dsm.getGenomeRepository();
@@ -367,11 +575,11 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .fitness = bestFit,
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-        .scenarioId = scenarioId,
+        .scenarioId = trainingSpec.scenarioId,
         .notes = "",
     };
     const GenomeId id = UUID::generate();
-    repo.store(id, population[bestIdx], meta);
+    repo.store(id, population[bestIdx].genome.value(), meta);
 
     if (bestFit >= bestFitnessAllTime) {
         repo.markAsBest(id);

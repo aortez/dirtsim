@@ -76,8 +76,9 @@ TEST_F(TreeGerminationTest, SeedGerminates)
 {
     scenario->setup(*world);
 
-    OrganismId id{ 1 };
+    OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     const Tree* tree = world->getOrganismManager().getTree(id);
+    ASSERT_NE(tree, nullptr);
     EXPECT_EQ(tree->getStage(), GrowthStage::SEED);
 
     std::cout << "Initial state:\n"
@@ -124,8 +125,9 @@ TEST_F(TreeGerminationTest, SaplingGrowsBalanced)
 {
     scenario->setup(*world);
 
-    OrganismId id{ 1 };
+    OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     const Tree* tree = world->getOrganismManager().getTree(id);
+    ASSERT_NE(tree, nullptr);
 
     std::cout << "Initial state (Seed at: " << tree->getAnchorCell().x << ", "
               << tree->getAnchorCell().y << "):\n"
@@ -294,8 +296,9 @@ TEST_F(TreeGerminationTest, TreeStopsGrowingWhenOutOfEnergy)
 {
     scenario->setup(*world);
 
-    OrganismId id{ 1 };
+    OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     Tree* tree = world->getOrganismManager().getTree(id);
+    ASSERT_NE(tree, nullptr);
 
     const double initial_energy = 25.0;
     tree->setEnergy(initial_energy);
@@ -321,8 +324,9 @@ TEST_F(TreeGerminationTest, DISABLED_WoodCellsStayStationary)
 {
     scenario->setup(*world);
 
-    OrganismId id{ 1 };
+    OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     const Tree* tree = world->getOrganismManager().getTree(id);
+    ASSERT_NE(tree, nullptr);
 
     std::cout << "Initial state:\n"
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
@@ -641,8 +645,9 @@ TEST_F(TreeGerminationTest, DebugWoodFalling)
 {
     scenario->setup(*world);
 
-    OrganismId id{ 1 };
+    OrganismId id = world->getOrganismManager().createTree(*world, 4, 4);
     const Tree* tree = world->getOrganismManager().getTree(id);
+    ASSERT_NE(tree, nullptr);
 
     std::cout << "=== DEEP DEBUG: Wood Cell Physics ===\n\n";
     std::cout << "Initial state:\n"
@@ -839,8 +844,8 @@ TEST_F(TreeGerminationTest, ExtendedGrowthStability)
     std::cout << "Initial state (from TreeGermination scenario):\n"
               << WorldDiagramGeneratorEmoji::generateEmojiDiagram(*world) << "\n";
 
-    // Get the tree created by the scenario.
-    OrganismId tree_id{ 1 };
+    // Spawn the tree after setup.
+    OrganismId tree_id = world->getOrganismManager().createTree(*world, 4, 4);
     Tree* tree = world->getOrganismManager().getTree(tree_id);
     ASSERT_NE(tree, nullptr);
 

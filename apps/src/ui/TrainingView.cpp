@@ -330,7 +330,7 @@ void TrainingView::createCorePanel()
     }
 
     evolutionControls_ = std::make_unique<EvolutionControls>(
-        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_);
+        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_, trainingSpec_);
     LOG_INFO(Controls, "TrainingView: Created Training Home panel");
 }
 
