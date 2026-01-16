@@ -15,9 +15,9 @@ It also has a very nice clock mode, just hacked in because why not make use of t
 ## Target Hardware
 
 * Raspberry Pi 4 or 5
-* Pi4 display - MPI4008 4" HDMI touchscreen (480x800)
-* Pi5 display - HyperPixel 4.0 DPI (480x800)
+* MPI4008 4" HDMI touchscreen (480x800) or HyperPixel 4.0 DPI (480x800)
 * Unified image auto-detects hardware
+* Also runs natively on linux/x86
 
 ## Repository Structure
 
