@@ -9,6 +9,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "core/WorldData.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/WebSocketService.h"
@@ -36,6 +37,48 @@
 namespace DirtSim {
 namespace Server {
 namespace State {
+
+namespace {
+Vector2i resolveSeedPlacement(World& world, Vector2i requested)
+{
+    auto& data = world.getData();
+    const int x = requested.x;
+    const int y = requested.y;
+
+    const auto isSpawnable = [&world, &data](int cellX, int cellY) {
+        if (!data.inBounds(cellX, cellY)) {
+            return false;
+        }
+        if (!data.at(cellX, cellY).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ cellX, cellY });
+    };
+
+    if (isSpawnable(x, y)) {
+        return requested;
+    }
+
+    for (int yy = y - 1; yy >= 0; --yy) {
+        if (isSpawnable(x, yy)) {
+            return { x, yy };
+        }
+    }
+
+    for (int yy = y + 1; yy < data.height; ++yy) {
+        if (isSpawnable(x, yy)) {
+            return { x, yy };
+        }
+    }
+
+    if (world.getOrganismManager().hasOrganism({ x, y })) {
+        DIRTSIM_ASSERT(false, "SeedAdd: Spawn location already occupied");
+    }
+
+    data.at(x, y).clear();
+    return requested;
+}
+} // namespace
 
 void SimRunning::onEnter(StateMachine& dsm)
 {
@@ -761,10 +804,21 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
         }
     }
 
+    const Vector2i requested{ cwc.command.x, cwc.command.y };
+    const Vector2i spawnCell = resolveSeedPlacement(*world, requested);
+    if (spawnCell.x != requested.x || spawnCell.y != requested.y) {
+        spdlog::info(
+            "SeedAdd: Adjusted spawn from ({}, {}) to ({}, {})",
+            requested.x,
+            requested.y,
+            spawnCell.x,
+            spawnCell.y);
+    }
+
     // Plant seed as tree organism.
-    spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    OrganismId tree_id = world->getOrganismManager().createTree(
-        *world, cwc.command.x, cwc.command.y, std::move(brain));
+    spdlog::info("SeedAdd: Planting seed at ({}, {})", spawnCell.x, spawnCell.y);
+    OrganismId tree_id =
+        world->getOrganismManager().createTree(*world, spawnCell.x, spawnCell.y, std::move(brain));
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
