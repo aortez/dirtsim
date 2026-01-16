@@ -1,11 +1,12 @@
-#include "core/ScenarioId.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeRepository.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingRunner.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include <gtest/gtest.h>
 #include <random>
 
@@ -24,8 +25,16 @@ protected:
 TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
 {
     config_.maxSimulationTime = 1.0;
-    TrainingRunner runner(
-        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = Genome::random(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
 
     // Step once - should return quickly, still running.
     auto status1 = runner.step(1);
@@ -45,8 +54,16 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
 TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 {
     config_.maxSimulationTime = 0.048; // 3 frames - quick completion.
-    TrainingRunner runner(
-        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = Genome::random(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
 
     // Step until complete.
     TrainingRunner::Status status;
@@ -61,13 +78,21 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 
     // Verify fitness metrics are populated.
     EXPECT_NEAR(status.lifespan, config_.maxSimulationTime, 0.02);
+    EXPECT_GE(status.distanceTraveled, 0.0);
     EXPECT_GE(status.maxEnergy, 0.0);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
 {
-    TrainingRunner runner(
-        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = Genome::random(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
     World* world = runner.getWorld();
     ASSERT_NE(world, nullptr);
 
@@ -107,8 +132,15 @@ TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
 
 TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
 {
-    TrainingRunner runner(
-        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = Genome::random(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
     World* world = runner.getWorld();
     ASSERT_NE(world, nullptr);
 

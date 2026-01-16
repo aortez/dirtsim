@@ -13,12 +13,14 @@ EvolutionControls::EvolutionControls(
     EventSink& eventSink,
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
-    MutationConfig& mutationConfig)
+    MutationConfig& mutationConfig,
+    TrainingSpec& trainingSpec)
     : container_(container),
       eventSink_(eventSink),
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
-      mutationConfig_(mutationConfig)
+      mutationConfig_(mutationConfig),
+      trainingSpec_(trainingSpec)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -129,8 +131,8 @@ void EvolutionControls::setEvolutionStarted(bool started)
 void EvolutionControls::setEvolutionCompleted(GenomeId bestGenomeId)
 {
     evolutionStarted_ = false;
-    evolutionCompleted_ = true;
     bestGenomeId_ = bestGenomeId;
+    evolutionCompleted_ = !bestGenomeId.isNil() && trainingSpec_.organismType == OrganismType::TREE;
     updateButtonVisibility();
 }
 
@@ -145,6 +147,7 @@ void EvolutionControls::onStartClicked(lv_event_t* e)
     StartEvolutionButtonClickedEvent evt;
     evt.evolution = self->evolutionConfig_;
     evt.mutation = self->mutationConfig_;
+    evt.training = self->trainingSpec_;
     self->eventSink_.queueEvent(evt);
 }
 

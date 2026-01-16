@@ -1,16 +1,127 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "core/organisms/evolution/GenomeRepository.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
+#include "server/api/ApiError.h"
 #include "server/network/PeerDiscovery.h"
 
 namespace DirtSim {
 namespace Server {
 namespace State {
+
+namespace {
+
+std::optional<ApiError> validateTrainingConfig(
+    const Api::EvolutionStart::Command& command,
+    ScenarioRegistry& registry,
+    GenomeRepository& repo,
+    TrainingSpec& outSpec,
+    int& outPopulationSize)
+{
+    outSpec.scenarioId = command.scenarioId;
+    outSpec.organismType = command.organismType;
+    outSpec.population = command.population;
+
+    const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
+    if (!metadata) {
+        return ApiError(
+            std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
+    }
+
+    if (outSpec.population.empty()) {
+        if (command.evolution.populationSize <= 0) {
+            return ApiError("populationSize must be > 0 when population is empty");
+        }
+
+        PopulationSpec defaultSpec;
+        defaultSpec.count = command.evolution.populationSize;
+
+        switch (outSpec.organismType) {
+            case OrganismType::TREE:
+                defaultSpec.brainKind = TrainingBrainKind::NeuralNet;
+                defaultSpec.randomCount = defaultSpec.count;
+                break;
+            case OrganismType::DUCK:
+                defaultSpec.brainKind = TrainingBrainKind::Random;
+                break;
+            case OrganismType::GOOSE:
+                defaultSpec.brainKind = TrainingBrainKind::Random;
+                break;
+            default:
+                return ApiError("Unsupported organismType for training");
+        }
+
+        outSpec.population.push_back(defaultSpec);
+    }
+
+    TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
+
+    outPopulationSize = 0;
+    for (const auto& spec : outSpec.population) {
+        if (spec.count <= 0) {
+            return ApiError("Population entry count must be > 0");
+        }
+        if (spec.brainKind.empty()) {
+            return ApiError("Population entry brainKind must not be empty");
+        }
+
+        const std::string variant = spec.brainVariant.value_or("");
+        const BrainRegistryEntry* entry =
+            brainRegistry.find(outSpec.organismType, spec.brainKind, variant);
+        if (!entry) {
+            std::string message = "Brain kind not registered: " + spec.brainKind;
+            if (!variant.empty()) {
+                message += " (" + variant + ")";
+            }
+            return ApiError(message);
+        }
+
+        if (entry->requiresGenome) {
+            if (spec.randomCount < 0) {
+                return ApiError("randomCount must be >= 0");
+            }
+            const int seedCount = static_cast<int>(spec.seedGenomes.size());
+            if (spec.count != seedCount + spec.randomCount) {
+                return ApiError("Population count must match seedGenomes + randomCount");
+            }
+
+            for (const auto& id : spec.seedGenomes) {
+                if (id.isNil()) {
+                    return ApiError("Seed genome ID is nil");
+                }
+                if (!repo.exists(id)) {
+                    return ApiError("Seed genome not found: " + id.toShortString());
+                }
+            }
+        }
+        else {
+            if (!spec.seedGenomes.empty()) {
+                return ApiError("seedGenomes are not allowed for this brain kind");
+            }
+            if (spec.randomCount != 0) {
+                return ApiError("randomCount must be 0 for this brain kind");
+            }
+        }
+
+        outPopulationSize += spec.count;
+    }
+
+    if (outPopulationSize <= 0) {
+        return ApiError("Population size must be > 0");
+    }
+
+    return std::nullopt;
+}
+
+} // namespace
 
 void Idle::onEnter(StateMachine& /*dsm*/)
 {
@@ -23,21 +134,36 @@ void Idle::onExit(StateMachine& /*dsm*/)
     LOG_INFO(State, "Exiting");
 }
 
-State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& /*dsm*/)
+State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
 {
     LOG_INFO(State, "EvolutionStart command received");
+
+    TrainingSpec trainingSpec;
+    int populationSize = 0;
+    auto error = validateTrainingConfig(
+        cwc.command,
+        dsm.getScenarioRegistry(),
+        dsm.getGenomeRepository(),
+        trainingSpec,
+        populationSize);
+    if (error.has_value()) {
+        DIRTSIM_ASSERT(false, error->message);
+        return Idle{};
+    }
 
     Evolution newState;
     newState.evolutionConfig = cwc.command.evolution;
     newState.mutationConfig = cwc.command.mutation;
-    newState.scenarioId = cwc.command.scenarioId;
+    newState.trainingSpec = std::move(trainingSpec);
+    newState.evolutionConfig.populationSize = populationSize;
 
     LOG_INFO(
         State,
-        "Starting evolution: population={}, generations={}, scenario={}",
-        cwc.command.evolution.populationSize,
+        "Starting evolution: population={}, generations={}, scenario={}, organism_type={}",
+        newState.evolutionConfig.populationSize,
         cwc.command.evolution.maxGenerations,
-        toString(cwc.command.scenarioId));
+        toString(newState.trainingSpec.scenarioId),
+        static_cast<int>(newState.trainingSpec.organismType));
 
     cwc.sendResponse(Api::EvolutionStart::Response::okay({ .started = true }));
     return newState;
