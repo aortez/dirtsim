@@ -100,7 +100,7 @@ Vector2i findSpawnCell(World& world)
         return best;
     };
 
-    if (auto above = findNearestInRows(0, centerY - 1); above.has_value()) {
+    if (auto above = findNearestInRows(0, centerY); above.has_value()) {
         return above.value();
     }
 

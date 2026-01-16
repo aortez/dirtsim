@@ -112,4 +112,34 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAboveAnyColumn)
     EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
 }
 
+TEST_F(TrainingRunnerTest, SpawnFallsBackToSameRowWhenAboveHasNoAir)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::NeuralNet;
+    individual.genome = Genome::random(rng_);
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+    ASSERT_NE(runner.getWorld(), nullptr);
+
+    World* world = runner.getWorld();
+    auto& data = world->getData();
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
+
+    data.at(centerX, centerY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, centerY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    }
+    data.at(centerX - 1, centerY).clear();
+
+    runner.step(0);
+
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX - 1, centerY }));
+    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
+}
+
 } // namespace DirtSim

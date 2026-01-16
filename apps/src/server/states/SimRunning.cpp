@@ -93,7 +93,7 @@ Vector2i resolveSeedPlacement(World& world, Vector2i requested)
         return best;
     };
 
-    if (auto above = findNearestInRows(0, y - 1); above.has_value()) {
+    if (auto above = findNearestInRows(0, y); above.has_value()) {
         return above.value();
     }
 
