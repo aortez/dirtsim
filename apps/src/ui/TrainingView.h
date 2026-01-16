@@ -2,6 +2,7 @@
 
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "ui/controls/IconRail.h"
 #include <memory>
 
@@ -22,6 +23,7 @@ class CellRenderer;
 class EvolutionConfigPanel;
 class EvolutionControls;
 class EventSink;
+class TrainingPopulationPanel;
 class UiComponentManager;
 
 /**
@@ -49,6 +51,7 @@ public:
     void clearPanelContent();
     void createCorePanel();
     void createEvolutionConfigPanel();
+    void createTrainingPopulationPanel();
 
 private:
     bool evolutionStarted_ = false;
@@ -58,6 +61,7 @@ private:
     // Shared evolution configuration (owned here, referenced by panels).
     EvolutionConfig evolutionConfig_;
     MutationConfig mutationConfig_;
+    TrainingSpec trainingSpec_;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
@@ -99,6 +103,7 @@ private:
     // Panel content (created lazily).
     std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
     std::unique_ptr<EvolutionControls> evolutionControls_;
+    std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
     void createUI();
     void destroyUI();

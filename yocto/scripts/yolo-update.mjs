@@ -14,6 +14,7 @@
  *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
  *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + image)
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
+ *   npm run yolo -- --docker                  # Build with Docker image
  *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
  *   npm run yolo -- --dry-run                 # Show what would happen
  *   npm run yolo -- --help                    # Show help
@@ -51,6 +52,7 @@ import {
   calculateChecksum,
   remoteFlashWithKey,
 } from '../pi-base/scripts/lib/index.mjs';
+import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
 
 // Path setup.
 const __filename = fileURLToPath(import.meta.url);
@@ -78,12 +80,32 @@ cleanup.installSignalHandlers();
 // Build Phase (Project-Specific)
 // ============================================================================
 
+let useDocker = false;
+let dockerImageRef = null;
+
+async function resolveDockerImage() {
+  if (!dockerImageRef) {
+    dockerImageRef = await ensureYoctoDockerImage();
+  }
+  return dockerImageRef;
+}
+
+async function runKas(args) {
+  if (useDocker) {
+    const imageRef = await resolveDockerImage();
+    await runInYoctoDocker(['kas', ...args], { imageRef });
+    return;
+  }
+
+  await run('kas', args, { cwd: YOCTO_DIR });
+}
+
 /**
  * Clean the image sstate to force a rebuild.
  */
 async function cleanImage() {
   info('Cleaning dirtsim-image sstate to force rebuild...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image'], { cwd: YOCTO_DIR });
+  await runKas(['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
   success('Clean complete!');
 }
 
@@ -92,7 +114,7 @@ async function cleanImage() {
  */
 async function cleanAll() {
   info('Cleaning dirtsim-server and dirtsim-image sstate...');
-  await run('kas', ['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image'], { cwd: YOCTO_DIR });
+  await runKas(['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image']);
   success('Clean complete!');
 }
 
@@ -108,7 +130,7 @@ async function build(forceClean = false, forceCleanAll = false) {
     await cleanImage();
   }
 
-  await run('kas', ['build', 'kas-dirtsim.yml'], { cwd: YOCTO_DIR });
+  await runKas(['build', 'kas-dirtsim.yml']);
   success('Build complete!');
 }
 
@@ -538,7 +560,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
 // ============================================================================
 
 async function main() {
-  const args = process.argv.slice(2);
+  const args = process.argv.slice(2).map(arg => arg.replace(/\r/g, ''));
 
   const skipBuild = args.includes('--skip-build');
   const forceClean = args.includes('--clean');
@@ -546,6 +568,10 @@ async function main() {
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
   const fastMode = args.includes('--fast');
+  const docker =
+    args.some(arg => arg === '--docker' || arg.startsWith('--docker=')) ||
+    process.env.DIRTSIM_YOCTO_DOCKER === '1' ||
+    process.env.DIRTSIM_YOCTO_DOCKER === 'true';
 
   // Parse --target <hostname> argument.
   const targetIdx = args.indexOf('--target');
@@ -569,6 +595,7 @@ async function main() {
     log('  --target <host>    Target hostname or IP (default: dirtsim.local)');
     log('  --profile <name>   Apply a configuration profile (e.g., production)');
     log('  --skip-build       Skip kas build, use existing image');
+    log('  --docker           Build with the Docker Yocto image');
     log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
     log('                     Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean            Force rebuild by cleaning image sstate first');
@@ -581,6 +608,15 @@ async function main() {
     log('');
     log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
+  }
+
+  useDocker = docker;
+  if (fastMode && useDocker) {
+    warn('Ignoring --docker in --fast mode (fast deploy runs locally).');
+    useDocker = false;
+  }
+  if (useDocker) {
+    info('Using Docker for Yocto build.');
   }
 
   // Fast mode: ninja build + scp + restart (skip rootfs/image/flash).

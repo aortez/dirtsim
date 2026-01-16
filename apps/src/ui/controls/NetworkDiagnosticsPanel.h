@@ -1,6 +1,11 @@
 #pragma once
 
+#include "core/network/WifiManager.h"
 #include "lvgl/lvgl.h"
+#include <cstddef>
+#include <memory>
+#include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -48,11 +53,50 @@ private:
     lv_obj_t* container_;
     lv_obj_t* addressLabel_ = nullptr;
     lv_obj_t* refreshButton_ = nullptr;
+    lv_obj_t* wifiStatusLabel_ = nullptr;
+    lv_obj_t* networksContainer_ = nullptr;
+    lv_timer_t* refreshTimer_ = nullptr;
+
+    struct ConnectContext {
+        NetworkDiagnosticsPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
+    struct PendingRefreshData {
+        Result<Network::WifiStatus, std::string> statusResult;
+        Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
+    };
+
+    struct AsyncState {
+        std::mutex mutex;
+        bool refreshInProgress = false;
+        std::optional<PendingRefreshData> pendingRefresh;
+        std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
+    };
+
+    std::vector<Network::WifiNetworkInfo> networks_;
+    std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
+    std::shared_ptr<AsyncState> asyncState_;
+    bool connectInProgress_ = false;
+    std::string connectingSsid_;
 
     void createUI();
+    bool startAsyncRefresh();
+    void startAsyncConnect(const Network::WifiNetworkInfo& network);
+    void applyPendingUpdates();
+    void setLoadingState();
+    void setRefreshButtonEnabled(bool enabled);
     void updateAddressDisplay();
+    void updateNetworkDisplay(
+        const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);
+    void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
+
+    std::string formatNetworkDetails(const Network::WifiNetworkInfo& info) const;
+    std::string statusText(const Network::WifiNetworkInfo& info) const;
 
     static void onRefreshClicked(lv_event_t* e);
+    static void onRefreshTimer(lv_timer_t* timer);
+    static void onConnectClicked(lv_event_t* e);
 };
 
 } // namespace Ui

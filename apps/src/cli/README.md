@@ -36,6 +36,7 @@ The CLI provides several operation modes:
 - **Train Mode**: Run evolution training with JSON configuration
 - **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
 - **Integration Test Mode**: Automated server + UI lifecycle testing
+- **Network Mode**: WiFi status, saved/open networks, and connect (nmcli wrapper)
 
 ## Usage
 
@@ -125,6 +126,25 @@ Capture PNG screenshots from the UI display:
 - Recording evolution training progress
 - Remote monitoring of headless Pi deployments
 
+### Network Mode
+
+Query WiFi state and manage saved/open networks:
+
+```bash
+# Status (connected SSID if present)
+./build-debug/bin/cli network status
+
+# Saved + open networks
+./build-debug/bin/cli network list
+
+# Connect to a saved or open network by SSID
+./build-debug/bin/cli network connect "MySSID"
+```
+
+**Output**: JSON only (stdout), errors to stderr.
+
+**Note**: These commands run locally and require `nmcli`.
+
 ### Benchmark Mode
 
 Automated performance testing with server auto-launch:
@@ -198,7 +218,15 @@ Run evolution training with JSON configuration:
     "populationSize": 20,
     "tournamentSize": 3
   },
-  "scenarioId": "TreeGermination"
+  "scenarioId": "TreeGermination",
+  "organismType": "TREE",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 20,
+      "randomCount": 20
+    }
+  ]
 }'
 
 # Train on remote server
@@ -220,7 +248,15 @@ Run evolution training with JSON configuration:
     "sigma": 0.05,
     "resetRate": 0.0005
   },
-  "scenarioId": "TreeGermination"
+  "scenarioId": "TreeGermination",
+  "organismType": "TREE",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 50,
+      "randomCount": 50
+    }
+  ]
 }
 ```
 

@@ -18,6 +18,15 @@ make test
 make shell
 ```
 
+## Yocto Builds
+
+The same Docker image can build the Yocto image:
+
+```bash
+cd yocto
+npm run docker-build
+```
+
 ## Available Targets
 
 - `make build-image` - Build the Docker image with all dependencies

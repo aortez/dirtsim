@@ -251,6 +251,7 @@ set(DIRTSIM_CORE_SOURCES
 
     # Network layer.
     src/core/network/WebSocketService.cpp
+    src/core/network/WifiManager.cpp
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
@@ -338,6 +339,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
     src/core/scenarios/clock_scenario/DrainManager.cpp
+    src/core/scenarios/clock_scenario/EventManager.cpp
     src/core/scenarios/clock_scenario/GlowConfig.cpp
     src/core/scenarios/clock_scenario/GlowManager.cpp
     src/core/scenarios/clock_scenario/MarqueeTypes.cpp
@@ -393,6 +395,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
     src/core/organisms/evolution/Selection.cpp
+    src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp
     src/core/organisms/components/LightHandHeld.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
@@ -479,6 +482,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/StartMenuCorePanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
+    src/ui/controls/TrainingPopulationPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
     src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
@@ -613,6 +617,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeNeuralNetwork_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
+    src/core/organisms/evolution/tests/FitnessResult_test.cpp
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp
     src/core/organisms/evolution/tests/Selection_test.cpp
@@ -653,4 +658,3 @@ target_compile_options(dirtsim-tests-slow PRIVATE ${DIRTSIM_WARNINGS})
 enable_testing()
 add_test(NAME dirtsim-tests COMMAND dirtsim-tests)
 add_test(NAME dirtsim-tests-slow COMMAND dirtsim-tests-slow)
-

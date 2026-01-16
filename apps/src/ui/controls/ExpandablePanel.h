@@ -15,6 +15,7 @@ namespace Ui {
  */
 class ExpandablePanel {
 public:
+    static constexpr int DefaultWidth = 250;
     /**
      * @brief Construct the expandable panel.
      * @param parent Parent LVGL object to attach to.
@@ -59,15 +60,23 @@ public:
     /**
      * @brief Get the panel width.
      */
-    int getWidth() const { return PANEL_WIDTH; }
+    int getWidth() const { return width_; }
+
+    /**
+     * @brief Set the panel width.
+     */
+    void setWidth(int width);
+
+    /**
+     * @brief Reset the panel width to default.
+     */
+    void resetWidth();
 
 private:
     lv_obj_t* container_ = nullptr;
     lv_obj_t* contentArea_ = nullptr;
     bool visible_ = false;
-
-    // Dimensions.
-    static constexpr int PANEL_WIDTH = 250;
+    int width_ = DefaultWidth;
 };
 
 } // namespace Ui

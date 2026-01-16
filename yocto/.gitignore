@@ -31,5 +31,11 @@ node_modules/
 .flash-config.json
 !.flash-config.json.example
 
+# Docker Yocto home directory for container builds.
+.docker-home/
+
+# Yocto ccache (container-safe path).
+.ccache/
+
 # WiFi credentials (sensitive - use wifi-creds.local.example from pi-base as template).
 wifi-creds.local
