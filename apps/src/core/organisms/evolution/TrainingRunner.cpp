@@ -8,6 +8,7 @@
 #include "core/organisms/Tree.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include <limits>
 
 namespace DirtSim {
 
@@ -34,16 +35,43 @@ Vector2i findSpawnCell(World& world)
         return { centerX, centerY };
     }
 
-    for (int y = centerY - 1; y >= 0; --y) {
-        if (isSpawnable(centerX, y)) {
-            return { centerX, y };
+    auto findNearestInRows = [&](int startY, int endY) -> std::optional<Vector2i> {
+        if (startY > endY) {
+            return std::nullopt;
         }
+
+        long long bestDistance = std::numeric_limits<long long>::max();
+        Vector2i best{ 0, 0 };
+        bool found = false;
+
+        for (int y = startY; y <= endY; ++y) {
+            for (int x = 0; x < width; ++x) {
+                if (!isSpawnable(x, y)) {
+                    continue;
+                }
+                const long long dx = static_cast<long long>(x) - centerX;
+                const long long dy = static_cast<long long>(y) - centerY;
+                const long long distance = dx * dx + dy * dy;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { x, y };
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            return std::nullopt;
+        }
+        return best;
+    };
+
+    if (auto above = findNearestInRows(0, centerY - 1); above.has_value()) {
+        return above.value();
     }
 
-    for (int y = centerY + 1; y < height; ++y) {
-        if (isSpawnable(centerX, y)) {
-            return { centerX, y };
-        }
+    if (auto below = findNearestInRows(centerY + 1, height - 1); below.has_value()) {
+        return below.value();
     }
 
     if (world.getOrganismManager().hasOrganism({ centerX, centerY })) {

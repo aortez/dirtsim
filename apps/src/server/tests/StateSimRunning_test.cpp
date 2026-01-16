@@ -488,7 +488,7 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 /**
  * @brief Test that SeedAdd falls back to the nearest air cell above.
  */
-TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAbove)
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAboveAnyColumn)
 {
     SimRunning simRunning = createSimRunningWithWorld();
     applyCleanScenario(simRunning);
@@ -498,7 +498,10 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAbove)
 
     auto& data = simRunning.world->getData();
     data.at(testX, testY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    data.at(testX, testY - 1).clear();
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, testY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    }
+    data.at(testX - 1, testY - 1).clear();
 
     bool callbackInvoked = false;
     Api::SeedAdd::Command cmd;
@@ -516,7 +519,7 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAbove)
 
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
-    const Cell& cellAbove = simRunning.world->getData().at(testX, testY - 1);
+    const Cell& cellAbove = simRunning.world->getData().at(testX - 1, testY - 1);
     EXPECT_EQ(cellAbove.material_type, Material::EnumType::Seed);
     EXPECT_GT(cellAbove.fill_ratio, 0.9f);
 

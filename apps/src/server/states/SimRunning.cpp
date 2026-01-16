@@ -31,6 +31,7 @@
 #include "server/api/SimStop.h"
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -44,6 +45,8 @@ Vector2i resolveSeedPlacement(World& world, Vector2i requested)
     auto& data = world.getData();
     const int x = requested.x;
     const int y = requested.y;
+    const int width = data.width;
+    const int height = data.height;
 
     const auto isSpawnable = [&world, &data](int cellX, int cellY) {
         if (!data.inBounds(cellX, cellY)) {
@@ -59,16 +62,43 @@ Vector2i resolveSeedPlacement(World& world, Vector2i requested)
         return requested;
     }
 
-    for (int yy = y - 1; yy >= 0; --yy) {
-        if (isSpawnable(x, yy)) {
-            return { x, yy };
+    auto findNearestInRows = [&](int startY, int endY) -> std::optional<Vector2i> {
+        if (startY > endY) {
+            return std::nullopt;
         }
+
+        long long bestDistance = std::numeric_limits<long long>::max();
+        Vector2i best{ 0, 0 };
+        bool found = false;
+
+        for (int yy = startY; yy <= endY; ++yy) {
+            for (int xx = 0; xx < width; ++xx) {
+                if (!isSpawnable(xx, yy)) {
+                    continue;
+                }
+                const long long dx = static_cast<long long>(xx) - x;
+                const long long dy = static_cast<long long>(yy) - y;
+                const long long distance = dx * dx + dy * dy;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { xx, yy };
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            return std::nullopt;
+        }
+        return best;
+    };
+
+    if (auto above = findNearestInRows(0, y - 1); above.has_value()) {
+        return above.value();
     }
 
-    for (int yy = y + 1; yy < data.height; ++yy) {
-        if (isSpawnable(x, yy)) {
-            return { x, yy };
-        }
+    if (auto below = findNearestInRows(y + 1, height - 1); below.has_value()) {
+        return below.value();
     }
 
     if (world.getOrganismManager().hasOrganism({ x, y })) {

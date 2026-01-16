@@ -82,7 +82,7 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
     EXPECT_GE(status.maxEnergy, 0.0);
 }
 
-TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAbove)
+TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAboveAnyColumn)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::TreeGermination;
@@ -101,11 +101,14 @@ TEST_F(TrainingRunnerTest, SpawnFallsBackToNearestAirAbove)
     const int centerY = data.height / 2;
 
     data.at(centerX, centerY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    data.at(centerX, centerY - 1).clear();
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, centerY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    }
+    data.at(centerX - 1, centerY - 1).clear();
 
     runner.step(0);
 
-    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX, centerY - 1 }));
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ centerX - 1, centerY - 1 }));
     EXPECT_FALSE(world->getOrganismManager().hasOrganism({ centerX, centerY }));
 }
 
