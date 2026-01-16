@@ -30,12 +30,84 @@
 #include "server/api/SimStop.h"
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Server {
 namespace State {
+
+namespace {
+std::optional<Vector2i> findNearestSpawnableInRows(
+    World& world, Vector2i requested, int startY, int endY)
+{
+    auto& data = world.getData();
+    const int width = data.width;
+
+    if (startY > endY) {
+        return std::nullopt;
+    }
+
+    const auto isSpawnable = [&world, &data](int cellX, int cellY) {
+        if (!data.inBounds(cellX, cellY)) {
+            return false;
+        }
+        if (!data.at(cellX, cellY).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ cellX, cellY });
+    };
+
+    long long bestDistance = std::numeric_limits<long long>::max();
+    Vector2i best{ 0, 0 };
+    bool found = false;
+
+    for (int y = startY; y <= endY; ++y) {
+        for (int x = 0; x < width; ++x) {
+            if (!isSpawnable(x, y)) {
+                continue;
+            }
+            const long long dx = static_cast<long long>(x) - requested.x;
+            const long long dy = static_cast<long long>(y) - requested.y;
+            const long long distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                best = { x, y };
+                found = true;
+            }
+        }
+    }
+
+    if (!found) {
+        return std::nullopt;
+    }
+    return best;
+}
+
+Vector2i resolveSeedPlacement(World& world, Vector2i requested)
+{
+    auto& data = world.getData();
+    const int height = data.height;
+
+    if (auto top = findNearestSpawnableInRows(world, requested, 0, requested.y); top.has_value()) {
+        return top.value();
+    }
+
+    if (auto bottom = findNearestSpawnableInRows(world, requested, requested.y + 1, height - 1);
+        bottom.has_value()) {
+        return bottom.value();
+    }
+
+    if (world.getOrganismManager().hasOrganism({ requested.x, requested.y })) {
+        DIRTSIM_ASSERT(false, "SeedAdd: Spawn location already occupied");
+    }
+
+    data.at(requested.x, requested.y).clear();
+    return requested;
+}
+} // namespace
 
 void SimRunning::onEnter(StateMachine& dsm)
 {
@@ -761,10 +833,21 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
         }
     }
 
+    const Vector2i requested{ cwc.command.x, cwc.command.y };
+    const Vector2i spawnCell = resolveSeedPlacement(*world, requested);
+    if (spawnCell.x != requested.x || spawnCell.y != requested.y) {
+        spdlog::info(
+            "SeedAdd: Adjusted spawn from ({}, {}) to ({}, {})",
+            requested.x,
+            requested.y,
+            spawnCell.x,
+            spawnCell.y);
+    }
+
     // Plant seed as tree organism.
-    spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    OrganismId tree_id = world->getOrganismManager().createTree(
-        *world, cwc.command.x, cwc.command.y, std::move(brain));
+    spdlog::info("SeedAdd: Planting seed at ({}, {})", spawnCell.x, spawnCell.y);
+    OrganismId tree_id =
+        world->getOrganismManager().createTree(*world, spawnCell.x, spawnCell.y, std::move(brain));
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));

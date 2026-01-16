@@ -486,6 +486,113 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 }
 
 /**
+ * @brief Test that SeedAdd uses the nearest air cell in the top half (including the source row).
+ */
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
+{
+    SimRunning simRunning = createSimRunningWithWorld();
+    applyCleanScenario(simRunning);
+
+    const int testX = 14;
+    const int testY = 14;
+
+    auto& data = simRunning.world->getData();
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y <= testY; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+    for (int y = testY + 1; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int expectedX = testX - 1;
+    const int expectedY = testY - 1;
+    const int fartherX = testX - 3;
+    const int fartherY = testY;
+    const int bottomX = testX;
+    const int bottomY = testY + 1;
+
+    data.at(expectedX, expectedY).clear();
+    data.at(fartherX, fartherY).clear();
+    data.at(bottomX, bottomY).clear();
+
+    bool callbackInvoked = false;
+    Api::SeedAdd::Command cmd;
+    cmd.x = testX;
+    cmd.y = testY;
+    Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+
+    ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
+
+    const Cell& cellTop = simRunning.world->getData().at(expectedX, expectedY);
+    EXPECT_EQ(cellTop.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellTop.fill_ratio, 0.9f);
+
+    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    EXPECT_TRUE(cellBottom.isAir());
+}
+
+/**
+ * @brief Test that SeedAdd uses the bottom half when the top half is full.
+ */
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
+{
+    SimRunning simRunning = createSimRunningWithWorld();
+    applyCleanScenario(simRunning);
+
+    const int testX = 14;
+    const int testY = 14;
+
+    auto& data = simRunning.world->getData();
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int bottomX = testX + 1;
+    const int bottomY = testY + 1;
+    data.at(bottomX, bottomY).clear();
+
+    bool callbackInvoked = false;
+    Api::SeedAdd::Command cmd;
+    cmd.x = testX;
+    cmd.y = testY;
+    Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+
+    ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
+
+    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    EXPECT_EQ(cellBottom.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellBottom.fill_ratio, 0.9f);
+}
+
+/**
  * @brief Test that SeedAdd rejects invalid coordinates.
  */
 TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)

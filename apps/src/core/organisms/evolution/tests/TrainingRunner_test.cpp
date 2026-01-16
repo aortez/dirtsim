@@ -1,4 +1,7 @@
 #include "core/ScenarioId.h"
+#include "core/World.h"
+#include "core/WorldData.h"
+#include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -59,6 +62,75 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
     // Verify fitness metrics are populated.
     EXPECT_NEAR(status.lifespan, config_.maxSimulationTime, 0.02);
     EXPECT_GE(status.maxEnergy, 0.0);
+}
+
+TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
+{
+    TrainingRunner runner(
+        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    auto& data = world->getData();
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y <= centerY; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+    for (int y = centerY + 1; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int expectedX = centerX - 1;
+    const int expectedY = centerY - 1;
+    const int fartherX = centerX - 3;
+    const int fartherY = centerY;
+    const int bottomX = centerX;
+    const int bottomY = centerY + 1;
+
+    data.at(expectedX, expectedY).clear();
+    data.at(fartherX, fartherY).clear();
+    data.at(bottomX, bottomY).clear();
+
+    runner.step(0);
+
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ expectedX, expectedY }));
+    EXPECT_FALSE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
+}
+
+TEST_F(TrainingRunnerTest, SpawnFallsBackToBottomHalfWhenTopHalfIsFull)
+{
+    TrainingRunner runner(
+        Genome::random(rng_), Scenario::EnumType::TreeGermination, config_, genomeRepository_);
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+
+    auto& data = world->getData();
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int bottomX = centerX + 1;
+    const int bottomY = centerY + 1;
+    data.at(bottomX, bottomY).clear();
+
+    runner.step(0);
+
+    EXPECT_TRUE(world->getOrganismManager().hasOrganism({ bottomX, bottomY }));
 }
 
 } // namespace DirtSim

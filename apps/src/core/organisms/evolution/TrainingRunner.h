@@ -65,6 +65,9 @@ public:
     bool isTreeAlive() const;
 
 private:
+    void spawnEvaluationTree();
+
+    Genome genome_;
     std::unique_ptr<World> world_;
     std::unique_ptr<ScenarioRunner> scenario_;
     OrganismId treeId_ = INVALID_ORGANISM_ID;
