@@ -67,6 +67,7 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
   const user = options.user || (userId !== null && groupId !== null ? `${userId}:${groupId}` : null);
   const workdir = options.workdir || YOCTO_DIR;
   const env = options.env || {};
+  const cacheRoot = options.cacheRoot || process.env.DIRTSIM_CACHE_ROOT;
   const extraArgs = options.extraArgs || [];
   const interactive = Boolean(options.interactive);
   const tty = Boolean(options.tty);
@@ -84,6 +85,13 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
 
   args.push('-v', `${PROJECT_ROOT}:${PROJECT_ROOT}`);
   args.push('-e', `HOME=${DOCKER_HOME}`);
+  if (cacheRoot) {
+    mkdirSync(cacheRoot, { recursive: true });
+    args.push('-v', `${cacheRoot}:${cacheRoot}`);
+    if (!env.DIRTSIM_CACHE_ROOT) {
+      env.DIRTSIM_CACHE_ROOT = cacheRoot;
+    }
+  }
   for (const [key, value] of Object.entries(env)) {
     args.push('-e', `${key}=${value}`);
   }

@@ -102,6 +102,16 @@ cd yocto
 kas build kas-dirtsim.yml
 ```
 
+### Cache Directories
+
+By default, Yocto downloads/sstate/ccache live under `yocto/`. To keep caches
+outside the repo (useful for CI or clean checkouts), set `DIRTSIM_CACHE_ROOT`
+before running `kas` or the Docker build:
+
+```bash
+export DIRTSIM_CACHE_ROOT=/home/data/yocto-cache
+```
+
 ### Building in Docker
 
 If you want an isolated build environment, use the Docker builder:
