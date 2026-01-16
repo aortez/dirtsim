@@ -59,12 +59,23 @@ public:
     /**
      * @brief Get the panel width.
      */
-    int getWidth() const { return PANEL_WIDTH; }
+    int getWidth() const { return width_; }
+
+    /**
+     * @brief Set the panel width.
+     */
+    void setWidth(int width);
+
+    /**
+     * @brief Reset the panel width to default.
+     */
+    void resetWidth();
 
 private:
     lv_obj_t* container_ = nullptr;
     lv_obj_t* contentArea_ = nullptr;
     bool visible_ = false;
+    int width_ = PANEL_WIDTH;
 
     // Dimensions.
     static constexpr int PANEL_WIDTH = 250;

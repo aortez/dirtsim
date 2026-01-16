@@ -251,6 +251,7 @@ set(DIRTSIM_CORE_SOURCES
 
     # Network layer.
     src/core/network/WebSocketService.cpp
+    src/core/network/WifiManager.cpp
 
     # Video encoding.
     src/core/encoding/H264Encoder.cpp
@@ -654,4 +655,3 @@ target_compile_options(dirtsim-tests-slow PRIVATE ${DIRTSIM_WARNINGS})
 enable_testing()
 add_test(NAME dirtsim-tests COMMAND dirtsim-tests)
 add_test(NAME dirtsim-tests-slow COMMAND dirtsim-tests-slow)
-
