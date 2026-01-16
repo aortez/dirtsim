@@ -107,6 +107,9 @@ void SimPlayground::showPanelContent(IconId panelId)
             // Evolution panel is only available in Training state.
             LOG_WARN(Controls, "Evolution panel not available in SimRunning state");
             return;
+        case IconId::POPULATION:
+            LOG_WARN(Controls, "Population panel not available in SimRunning state");
+            return;
         case IconId::NETWORK:
             // Network panel is only available in StartMenu state.
             LOG_DEBUG(Controls, "Network panel not available in SimRunning state");
