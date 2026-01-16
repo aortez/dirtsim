@@ -486,27 +486,46 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 }
 
 /**
- * @brief Test that SeedAdd falls back to the nearest air cell above.
+ * @brief Test that SeedAdd uses the nearest air cell in the top half (including the source row).
  */
-TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAboveAnyColumn)
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
 {
     SimRunning simRunning = createSimRunningWithWorld();
     applyCleanScenario(simRunning);
 
-    const uint32_t testX = 14;
-    const uint32_t testY = 14;
+    const int testX = 14;
+    const int testY = 14;
 
     auto& data = simRunning.world->getData();
-    data.at(testX, testY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    for (int x = 0; x < data.width; ++x) {
-        data.at(x, testY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y <= testY; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
     }
-    data.at(testX - 1, testY - 1).clear();
+    for (int y = testY + 1; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
+    }
+
+    const int expectedX = testX - 1;
+    const int expectedY = testY - 1;
+    const int fartherX = testX - 3;
+    const int fartherY = testY;
+    const int bottomX = testX;
+    const int bottomY = testY + 1;
+
+    data.at(expectedX, expectedY).clear();
+    data.at(fartherX, fartherY).clear();
+    data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
     Api::SeedAdd::Command cmd;
-    cmd.x = static_cast<int>(testX);
-    cmd.y = static_cast<int>(testY);
+    cmd.x = testX;
+    cmd.y = testY;
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
@@ -519,36 +538,43 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAboveAnyColumn)
 
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
-    const Cell& cellAbove = simRunning.world->getData().at(testX - 1, testY - 1);
-    EXPECT_EQ(cellAbove.material_type, Material::EnumType::Seed);
-    EXPECT_GT(cellAbove.fill_ratio, 0.9f);
+    const Cell& cellTop = simRunning.world->getData().at(expectedX, expectedY);
+    EXPECT_EQ(cellTop.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellTop.fill_ratio, 0.9f);
 
-    const Cell& cellAt = simRunning.world->getData().at(testX, testY);
-    EXPECT_EQ(cellAt.material_type, Material::EnumType::Dirt);
+    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    EXPECT_TRUE(cellBottom.isAir());
 }
 
 /**
- * @brief Test that SeedAdd falls back to the nearest air cell on the same row if above is blocked.
+ * @brief Test that SeedAdd uses the bottom half when the top half is full.
  */
-TEST_F(StateSimRunningTest, SeedAdd_FallsBackToSameRowWhenAboveHasNoAir)
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
 {
     SimRunning simRunning = createSimRunningWithWorld();
     applyCleanScenario(simRunning);
 
-    const uint32_t testX = 14;
-    const uint32_t testY = 14;
+    const int testX = 14;
+    const int testY = 14;
 
     auto& data = simRunning.world->getData();
-    data.at(testX, testY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
-    for (int x = 0; x < data.width; ++x) {
-        data.at(x, testY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    const int width = data.width;
+    const int height = data.height;
+
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            data.at(x, y).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+        }
     }
-    data.at(testX - 1, testY).clear();
+
+    const int bottomX = testX + 1;
+    const int bottomY = testY + 1;
+    data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
     Api::SeedAdd::Command cmd;
-    cmd.x = static_cast<int>(testX);
-    cmd.y = static_cast<int>(testY);
+    cmd.x = testX;
+    cmd.y = testY;
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
@@ -561,12 +587,9 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToSameRowWhenAboveHasNoAir)
 
     ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
 
-    const Cell& cellSameRow = simRunning.world->getData().at(testX - 1, testY);
-    EXPECT_EQ(cellSameRow.material_type, Material::EnumType::Seed);
-    EXPECT_GT(cellSameRow.fill_ratio, 0.9f);
-
-    const Cell& cellAt = simRunning.world->getData().at(testX, testY);
-    EXPECT_EQ(cellAt.material_type, Material::EnumType::Dirt);
+    const Cell& cellBottom = simRunning.world->getData().at(bottomX, bottomY);
+    EXPECT_EQ(cellBottom.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellBottom.fill_ratio, 0.9f);
 }
 
 /**

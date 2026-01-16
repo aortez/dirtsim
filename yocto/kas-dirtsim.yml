@@ -80,11 +80,20 @@ local_conf_header:
     BB_NUMBER_THREADS = "8"
     PARALLEL_MAKE = "-j 8"
 
+    # Cache root (override with DIRTSIM_CACHE_ROOT in the environment).
+    DIRTSIM_CACHE_ROOT = "${@os.getenv('DIRTSIM_CACHE_ROOT', '${TOPDIR}/..')}"
+
     # Download directory (shared across builds).
-    DL_DIR = "${TOPDIR}/../downloads"
+    DL_DIR = "${DIRTSIM_CACHE_ROOT}/downloads"
 
     # Shared state cache (speeds up rebuilds).
-    SSTATE_DIR = "${TOPDIR}/../sstate-cache"
+    SSTATE_DIR = "${DIRTSIM_CACHE_ROOT}/sstate-cache"
+
+    # Ccache for faster rebuilds (local cache).
+    INHERIT += "ccache"
+    CCACHE_DIR ?= "${DIRTSIM_CACHE_ROOT}/.ccache/dirtsim-yocto"
+    CCACHE_MAXSIZE ?= "20G"
+    PSEUDO_IGNORE_PATHS:append = ":${CCACHE_DIR}"
 
     # Disable SPDX generation (requires user namespaces which may not be available).
     INHERIT:remove = "create-spdx"

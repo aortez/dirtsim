@@ -9,6 +9,7 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <limits>
+#include <optional>
 
 namespace DirtSim {
 
