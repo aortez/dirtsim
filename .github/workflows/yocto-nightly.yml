@@ -1,0 +1,40 @@
+name: Yocto Nightly
+
+on:
+  schedule:
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  yocto-build:
+    runs-on: self-hosted
+    env:
+      DIRTSIM_CACHE_ROOT: /home/data/yocto-cache
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        clean: false
+        submodules: recursive
+        fetch-depth: 0
+
+    - name: Prepare Yocto cache
+      run: |
+        CACHE_ROOT="${DIRTSIM_CACHE_ROOT}"
+        mkdir -p "${CACHE_ROOT}/downloads" "${CACHE_ROOT}/sstate-cache" "${CACHE_ROOT}/.ccache/dirtsim-yocto"
+        find "${CACHE_ROOT}/sstate-cache" -type f -mtime +7 -delete || true
+        find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
+        find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
+
+    - name: Install Yocto npm deps
+      working-directory: yocto
+      run: npm install --no-package-lock
+
+    - name: Yocto build (docker)
+      working-directory: yocto
+      run: npm run docker-build

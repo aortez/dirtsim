@@ -6,8 +6,10 @@
   "description": "Yocto build and flash tools for DirtSim",
   "scripts": {
     "build": "kas build kas-dirtsim.yml",
+    "docker-build": "node scripts/docker-build.mjs",
     "deploy": "node scripts/deploy-apps.mjs",
     "flash": "node scripts/flash.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs",
     "update": "node scripts/update.mjs",
     "yolo": "node scripts/yolo-update.mjs"
   },
