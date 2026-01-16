@@ -107,7 +107,7 @@ void ExpandablePanel::setWidth(int width)
 
 void ExpandablePanel::resetWidth()
 {
-    setWidth(PANEL_WIDTH);
+    setWidth(DefaultWidth);
 }
 
 } // namespace Ui

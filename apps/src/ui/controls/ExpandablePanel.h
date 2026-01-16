@@ -15,6 +15,7 @@ namespace Ui {
  */
 class ExpandablePanel {
 public:
+    static constexpr int DefaultWidth = 250;
     /**
      * @brief Construct the expandable panel.
      * @param parent Parent LVGL object to attach to.
@@ -75,10 +76,7 @@ private:
     lv_obj_t* container_ = nullptr;
     lv_obj_t* contentArea_ = nullptr;
     bool visible_ = false;
-    int width_ = PANEL_WIDTH;
-
-    // Dimensions.
-    static constexpr int PANEL_WIDTH = 250;
+    int width_ = DefaultWidth;
 };
 
 } // namespace Ui

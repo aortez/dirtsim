@@ -8,6 +8,7 @@ namespace DirtSim {
 
 struct EvolutionConfig;
 struct MutationConfig;
+struct TrainingSpec;
 
 namespace Ui {
 
@@ -26,7 +27,8 @@ public:
         EventSink& eventSink,
         bool evolutionStarted,
         EvolutionConfig& evolutionConfig,
-        MutationConfig& mutationConfig);
+        MutationConfig& mutationConfig,
+        TrainingSpec& trainingSpec);
     ~EvolutionConfigPanel();
 
     void setEvolutionStarted(bool started);
@@ -43,6 +45,7 @@ private:
     // Shared configs (owned by TrainingView).
     EvolutionConfig& evolutionConfig_;
     MutationConfig& mutationConfig_;
+    TrainingSpec& trainingSpec_;
 
     // UI elements.
     lv_obj_t* statusLabel_ = nullptr;

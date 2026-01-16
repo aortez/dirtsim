@@ -23,6 +23,7 @@ class CellRenderer;
 class EvolutionConfigPanel;
 class EvolutionControls;
 class EventSink;
+class TrainingPopulationPanel;
 class UiComponentManager;
 
 /**
@@ -50,6 +51,7 @@ public:
     void clearPanelContent();
     void createCorePanel();
     void createEvolutionConfigPanel();
+    void createTrainingPopulationPanel();
 
 private:
     bool evolutionStarted_ = false;
@@ -101,6 +103,7 @@ private:
     // Panel content (created lazily).
     std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
     std::unique_ptr<EvolutionControls> evolutionControls_;
+    std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
     void createUI();
     void destroyUI();

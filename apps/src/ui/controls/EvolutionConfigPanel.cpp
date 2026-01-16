@@ -1,7 +1,10 @@
 #include "EvolutionConfigPanel.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -12,12 +15,14 @@ EvolutionConfigPanel::EvolutionConfigPanel(
     EventSink& eventSink,
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
-    MutationConfig& mutationConfig)
+    MutationConfig& mutationConfig,
+    TrainingSpec& trainingSpec)
     : container_(container),
       eventSink_(eventSink),
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
-      mutationConfig_(mutationConfig)
+      mutationConfig_(mutationConfig),
+      trainingSpec_(trainingSpec)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
 
@@ -174,6 +179,84 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
 
     int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->populationStepper_);
     self->evolutionConfig_.populationSize = value;
+    if (self->trainingSpec_.population.size() > 2) {
+        self->trainingSpec_.population.resize(2);
+    }
+
+    auto totalPopulation = [](const TrainingSpec& spec) {
+        int total = 0;
+        for (const auto& entry : spec.population) {
+            total += entry.count;
+        }
+        return total;
+    };
+
+    auto normalizeEntry = [](PopulationSpec& spec) {
+        const bool requiresGenome = (spec.brainKind == TrainingBrainKind::NeuralNet);
+        if (!requiresGenome) {
+            spec.seedGenomes.clear();
+            spec.randomCount = 0;
+            return;
+        }
+        if (static_cast<int>(spec.seedGenomes.size()) > spec.count) {
+            spec.seedGenomes.resize(spec.count);
+        }
+        spec.randomCount = spec.count - static_cast<int>(spec.seedGenomes.size());
+    };
+
+    auto ensureDefaultPopulation = [&](TrainingSpec& spec, int desiredTotal) {
+        if (!spec.population.empty()) {
+            return;
+        }
+        PopulationSpec entry;
+        switch (spec.organismType) {
+            case OrganismType::TREE:
+                entry.brainKind = TrainingBrainKind::NeuralNet;
+                break;
+            case OrganismType::DUCK:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+            case OrganismType::GOOSE:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+            default:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+        }
+        entry.count = desiredTotal;
+        normalizeEntry(entry);
+        spec.population.push_back(entry);
+    };
+
+    ensureDefaultPopulation(self->trainingSpec_, value);
+
+    int currentTotal = totalPopulation(self->trainingSpec_);
+    int delta = value - currentTotal;
+    if (delta != 0) {
+        PopulationSpec& primary = self->trainingSpec_.population[0];
+        if (delta > 0) {
+            primary.count += delta;
+        }
+        else {
+            int remaining = -delta;
+            const int minPrimary = 10;
+            const int reducible = std::max(0, primary.count - minPrimary);
+            const int reducePrimary = std::min(reducible, remaining);
+            primary.count -= reducePrimary;
+            remaining -= reducePrimary;
+            if (remaining > 0 && self->trainingSpec_.population.size() > 1) {
+                PopulationSpec& secondary = self->trainingSpec_.population[1];
+                secondary.count = std::max(0, secondary.count - remaining);
+                if (secondary.count == 0) {
+                    self->trainingSpec_.population.pop_back();
+                }
+            }
+        }
+    }
+
+    for (auto& entry : self->trainingSpec_.population) {
+        normalizeEntry(entry);
+    }
     spdlog::debug("EvolutionConfigPanel: Population changed to {}", value);
 }
 

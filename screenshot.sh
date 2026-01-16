@@ -13,6 +13,24 @@ ssh "$HOST" "dirtsim-cli screenshot $REMOTE_FILE"
 scp "$HOST:$REMOTE_FILE" "$LOCAL_FILE"
 
 # Copy to clipboard.
-xclip -selection clipboard -t image/png -i "$LOCAL_FILE"
+copy_to_clipboard() {
+    if [[ -n "${WAYLAND_DISPLAY-}" || -n "${SWAYSOCK-}" ]]; then
+        if command -v wl-copy >/dev/null 2>&1; then
+            wl-copy --type image/png < "$LOCAL_FILE"
+            return 0
+        fi
+        echo "wl-copy not found; falling back to xclip." >&2
+    fi
+
+    if command -v xclip >/dev/null 2>&1; then
+        xclip -selection clipboard -t image/png -i "$LOCAL_FILE"
+        return 0
+    fi
+
+    echo "No clipboard tool found (wl-copy or xclip)." >&2
+    return 1
+}
+
+copy_to_clipboard
 
 echo "Screenshot saved to $LOCAL_FILE and copied to clipboard."
