@@ -85,10 +85,15 @@ jobs:
         find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
 
-    - name: Yocto build + deploy
+    - name: Install Yocto npm deps
+      working-directory: yocto
+      run: npm install --no-package-lock
+
+    - name: Yocto deploy (apps only)
+      working-directory: yocto
       env:
         DIRTSIM_YOCTO_DOCKER: "1"
-      run: ./update.sh --target dirtsim.local --docker
+      run: npm run deploy -- --host dirtsim.local
 
     - name: Smoke test
       working-directory: yocto
