@@ -1,5 +1,7 @@
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "server/StateMachine.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
@@ -38,6 +40,25 @@ protected:
     std::unique_ptr<StateMachine> stateMachine;
 };
 
+namespace {
+
+TrainingSpec makeTrainingSpec(int populationSize)
+{
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = populationSize;
+    population.randomCount = populationSize;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+    spec.population.push_back(population);
+
+    return spec;
+}
+
+} // namespace
+
 /**
  * @brief Test that EvolutionStart command transitions Idle to Evolution.
  */
@@ -72,12 +93,51 @@ TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     Evolution& evolution = std::get<Evolution>(newState.getVariant());
     EXPECT_EQ(evolution.evolutionConfig.populationSize, 2);
     EXPECT_EQ(evolution.evolutionConfig.maxGenerations, 1);
-    EXPECT_EQ(evolution.scenarioId, Scenario::EnumType::TreeGermination);
+    EXPECT_EQ(evolution.trainingSpec.scenarioId, Scenario::EnumType::TreeGermination);
+    EXPECT_EQ(evolution.trainingSpec.organismType, OrganismType::TREE);
 
     // Verify: Response callback was invoked.
     ASSERT_TRUE(callbackInvoked) << "Response callback should be invoked";
     ASSERT_TRUE(capturedResponse.isValue()) << "Response should be success";
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
+}
+
+TEST_F(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
+{
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 1;
+    cmd.evolution.maxGenerations = 1;
+    cmd.scenarioId = Scenario::EnumType::TreeGermination;
+    cmd.organismType = OrganismType::TREE;
+
+    PopulationSpec spec;
+    spec.brainKind = TrainingBrainKind::NeuralNet;
+    spec.count = 1;
+    spec.seedGenomes.push_back(INVALID_GENOME_ID);
+    cmd.population.push_back(spec);
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& /*response*/) {});
+
+    EXPECT_DEATH({ idleState.onEvent(cwc, *stateMachine); }, ".*");
+}
+
+TEST_F(StateEvolutionTest, MissingBrainKindTriggersDeath)
+{
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+
+    PopulationSpec spec;
+    spec.brainKind = "MissingBrain";
+    spec.count = 1;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population.push_back(spec);
+
+    EXPECT_DEATH({ evolutionState.onEnter(*stateMachine); }, ".*");
 }
 
 /**
@@ -90,6 +150,7 @@ TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 0.1;
+    evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state (populates population).
     evolutionState.onEnter(*stateMachine);
@@ -126,6 +187,7 @@ TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016; // Single frame.
+    evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
     evolutionState.onEnter(*stateMachine);
@@ -147,6 +209,33 @@ TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
 
+TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
+{
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::RuleBased;
+    population.count = 2;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population.push_back(population);
+
+    evolutionState.onEnter(*stateMachine);
+
+    evolutionState.tick(*stateMachine);
+    evolutionState.tick(*stateMachine);
+
+    EXPECT_EQ(evolutionState.generation, 1);
+    for (const auto& individual : evolutionState.population) {
+        EXPECT_EQ(individual.brainKind, TrainingBrainKind::RuleBased);
+        EXPECT_FALSE(individual.genome.has_value());
+    }
+}
+
 /**
  * @brief Test that evolution completes and transitions to Idle.
  */
@@ -157,6 +246,7 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsToIdle)
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize the state.
     evolutionState.onEnter(*stateMachine);
@@ -196,7 +286,7 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
-    evolutionState.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize and run through one generation.
     evolutionState.onEnter(*stateMachine);
@@ -238,6 +328,7 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.1; // ~6 physics steps at 0.016s each.
+    evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
     evolutionState.onEnter(*stateMachine);
@@ -285,6 +376,7 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 1.0; // Very long - would be ~62 ticks.
+    evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize and tick once to start evaluation.
     evolutionState.onEnter(*stateMachine);
@@ -331,7 +423,7 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     evolutionState.evolutionConfig.populationSize = 3;
     evolutionState.evolutionConfig.maxGenerations = 3;
     evolutionState.evolutionConfig.maxSimulationTime = 1.0; // 1 second per organism.
-    evolutionState.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec = makeTrainingSpec(3);
 
     // Initialize.
     evolutionState.onEnter(*stateMachine);
@@ -394,6 +486,7 @@ TEST_F(StateEvolutionTest, ExitCommandTransitionsToShutdown)
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
+    evolutionState.trainingSpec = makeTrainingSpec(2);
     evolutionState.onEnter(*stateMachine);
 
     // Setup: Create Exit command.

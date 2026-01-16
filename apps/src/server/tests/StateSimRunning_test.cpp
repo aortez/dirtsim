@@ -486,6 +486,90 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 }
 
 /**
+ * @brief Test that SeedAdd falls back to the nearest air cell above.
+ */
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirAboveAnyColumn)
+{
+    SimRunning simRunning = createSimRunningWithWorld();
+    applyCleanScenario(simRunning);
+
+    const uint32_t testX = 14;
+    const uint32_t testY = 14;
+
+    auto& data = simRunning.world->getData();
+    data.at(testX, testY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, testY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    }
+    data.at(testX - 1, testY - 1).clear();
+
+    bool callbackInvoked = false;
+    Api::SeedAdd::Command cmd;
+    cmd.x = static_cast<int>(testX);
+    cmd.y = static_cast<int>(testY);
+    Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+
+    ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
+
+    const Cell& cellAbove = simRunning.world->getData().at(testX - 1, testY - 1);
+    EXPECT_EQ(cellAbove.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellAbove.fill_ratio, 0.9f);
+
+    const Cell& cellAt = simRunning.world->getData().at(testX, testY);
+    EXPECT_EQ(cellAt.material_type, Material::EnumType::Dirt);
+}
+
+/**
+ * @brief Test that SeedAdd falls back to the nearest air cell on the same row if above is blocked.
+ */
+TEST_F(StateSimRunningTest, SeedAdd_FallsBackToSameRowWhenAboveHasNoAir)
+{
+    SimRunning simRunning = createSimRunningWithWorld();
+    applyCleanScenario(simRunning);
+
+    const uint32_t testX = 14;
+    const uint32_t testY = 14;
+
+    auto& data = simRunning.world->getData();
+    data.at(testX, testY).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, testY - 1).replaceMaterial(Material::EnumType::Dirt, 1.0f);
+    }
+    data.at(testX - 1, testY).clear();
+
+    bool callbackInvoked = false;
+    Api::SeedAdd::Command cmd;
+    cmd.x = static_cast<int>(testX);
+    cmd.y = static_cast<int>(testY);
+    Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
+    });
+
+    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+
+    ASSERT_TRUE(callbackInvoked) << "SeedAdd callback should be invoked";
+
+    const Cell& cellSameRow = simRunning.world->getData().at(testX - 1, testY);
+    EXPECT_EQ(cellSameRow.material_type, Material::EnumType::Seed);
+    EXPECT_GT(cellSameRow.fill_ratio, 0.9f);
+
+    const Cell& cellAt = simRunning.world->getData().at(testX, testY);
+    EXPECT_EQ(cellAt.material_type, Material::EnumType::Dirt);
+}
+
+/**
  * @brief Test that SeedAdd rejects invalid coordinates.
  */
 TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)

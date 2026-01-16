@@ -55,7 +55,12 @@ public:
 
     // Organism interface.
     Vector2i getAnchorCell() const override { return anchor_cell_; }
-    void setAnchorCell(Vector2i pos) override { anchor_cell_ = pos; }
+    void setAnchorCell(Vector2i pos) override
+    {
+        anchor_cell_ = pos;
+        position.x = static_cast<double>(pos.x) + 0.5;
+        position.y = static_cast<double>(pos.y) + 0.5;
+    }
     void update(World& world, double deltaTime) override;
 
     // Duck-specific state.

@@ -27,7 +27,16 @@ TrainResults TrainRunner::run(
 {
     TrainResults results;
     results.scenarioId = config.scenarioId;
-    results.populationSize = config.evolution.populationSize;
+    if (!config.population.empty()) {
+        int total = 0;
+        for (const auto& spec : config.population) {
+            total += spec.count;
+        }
+        results.populationSize = total;
+    }
+    else {
+        results.populationSize = config.evolution.populationSize;
+    }
     results.totalGenerations = config.evolution.maxGenerations;
 
     // Determine connection address.

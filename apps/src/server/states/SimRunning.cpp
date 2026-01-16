@@ -9,6 +9,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "core/WorldData.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/WebSocketService.h"
@@ -30,12 +31,84 @@
 #include "server/api/SimStop.h"
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Server {
 namespace State {
+
+namespace {
+Vector2i resolveSeedPlacement(World& world, Vector2i requested)
+{
+    auto& data = world.getData();
+    const int x = requested.x;
+    const int y = requested.y;
+    const int width = data.width;
+    const int height = data.height;
+
+    const auto isSpawnable = [&world, &data](int cellX, int cellY) {
+        if (!data.inBounds(cellX, cellY)) {
+            return false;
+        }
+        if (!data.at(cellX, cellY).isAir()) {
+            return false;
+        }
+        return !world.getOrganismManager().hasOrganism({ cellX, cellY });
+    };
+
+    if (isSpawnable(x, y)) {
+        return requested;
+    }
+
+    auto findNearestInRows = [&](int startY, int endY) -> std::optional<Vector2i> {
+        if (startY > endY) {
+            return std::nullopt;
+        }
+
+        long long bestDistance = std::numeric_limits<long long>::max();
+        Vector2i best{ 0, 0 };
+        bool found = false;
+
+        for (int yy = startY; yy <= endY; ++yy) {
+            for (int xx = 0; xx < width; ++xx) {
+                if (!isSpawnable(xx, yy)) {
+                    continue;
+                }
+                const long long dx = static_cast<long long>(xx) - x;
+                const long long dy = static_cast<long long>(yy) - y;
+                const long long distance = dx * dx + dy * dy;
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { xx, yy };
+                    found = true;
+                }
+            }
+        }
+
+        if (!found) {
+            return std::nullopt;
+        }
+        return best;
+    };
+
+    if (auto above = findNearestInRows(0, y); above.has_value()) {
+        return above.value();
+    }
+
+    if (auto below = findNearestInRows(y + 1, height - 1); below.has_value()) {
+        return below.value();
+    }
+
+    if (world.getOrganismManager().hasOrganism({ x, y })) {
+        DIRTSIM_ASSERT(false, "SeedAdd: Spawn location already occupied");
+    }
+
+    data.at(x, y).clear();
+    return requested;
+}
+} // namespace
 
 void SimRunning::onEnter(StateMachine& dsm)
 {
@@ -761,10 +834,21 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
         }
     }
 
+    const Vector2i requested{ cwc.command.x, cwc.command.y };
+    const Vector2i spawnCell = resolveSeedPlacement(*world, requested);
+    if (spawnCell.x != requested.x || spawnCell.y != requested.y) {
+        spdlog::info(
+            "SeedAdd: Adjusted spawn from ({}, {}) to ({}, {})",
+            requested.x,
+            requested.y,
+            spawnCell.x,
+            spawnCell.y);
+    }
+
     // Plant seed as tree organism.
-    spdlog::info("SeedAdd: Planting seed at ({}, {})", cwc.command.x, cwc.command.y);
-    OrganismId tree_id = world->getOrganismManager().createTree(
-        *world, cwc.command.x, cwc.command.y, std::move(brain));
+    spdlog::info("SeedAdd: Planting seed at ({}, {})", spawnCell.x, spawnCell.y);
+    OrganismId tree_id =
+        world->getOrganismManager().createTree(*world, spawnCell.x, spawnCell.y, std::move(brain));
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));

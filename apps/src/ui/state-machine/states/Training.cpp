@@ -7,12 +7,12 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
-#include "server/api/Reset.h"
-#include "server/api/ScenarioConfigSet.h"
+#include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
+#include <algorithm>
 #include <atomic>
 
 namespace DirtSim {
@@ -170,9 +170,11 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(
         State,
-        "Starting evolution: population={}, generations={}",
+        "Starting evolution: population={}, generations={}, scenario={}, organism_type={}",
         evt.evolution.populationSize,
-        evt.evolution.maxGenerations);
+        evt.evolution.maxGenerations,
+        toString(evt.training.scenarioId),
+        static_cast<int>(evt.training.organismType));
 
     if (!sm.hasWebSocketService()) {
         LOG_ERROR(State, "No WebSocketService available");
@@ -187,9 +189,11 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     // Send EvolutionStart to server with provided config.
     Api::EvolutionStart::Command cmd;
-    cmd.scenarioId = Scenario::EnumType::TreeGermination;
     cmd.evolution = evt.evolution;
     cmd.mutation = evt.mutation;
+    cmd.scenarioId = evt.training.scenarioId;
+    cmd.organismType = evt.training.organismType;
+    cmd.population = evt.training.population;
 
     const auto result = wsService.sendCommand<Api::EvolutionStart::OkayType>(cmd, 5000);
     if (result.isError()) {
@@ -203,6 +207,8 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(State, "Evolution started on server");
     evolutionStarted_ = true;
+    lastTrainingSpec_ = evt.training;
+    hasTrainingSpec_ = true;
 
     // Subscribe to render stream for live training view.
     static std::atomic<uint64_t> nextId{ 1 };
@@ -274,6 +280,19 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
 {
     LOG_INFO(State, "View Best clicked, genome_id={}", evt.genomeId.toShortString());
 
+    if (!hasTrainingSpec_) {
+        LOG_WARN(State, "View Best ignored: no training spec available");
+        return std::move(*this);
+    }
+    if (lastTrainingSpec_.organismType != OrganismType::TREE) {
+        LOG_WARN(State, "View Best only supported for tree training");
+        return std::move(*this);
+    }
+    if (evt.genomeId.isNil()) {
+        LOG_WARN(State, "View Best ignored: genome_id is nil");
+        return std::move(*this);
+    }
+
     DIRTSIM_ASSERT(sm.hasWebSocketService(), "WebSocketService must exist");
     auto& wsService = sm.getWebSocketService();
     DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected");
@@ -296,7 +315,7 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
     Api::SimRun::Command simRunCmd{ .timestep = 0.016,
                                     .max_steps = -1,
                                     .max_frame_ms = 16,
-                                    .scenario_id = Scenario::EnumType::TreeGermination,
+                                    .scenario_id = lastTrainingSpec_.scenarioId,
                                     .start_paused = false,
                                     .container_size = containerSize };
 
@@ -306,22 +325,20 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
         return std::move(*this);
     }
 
-    // Set scenario config with the genome_id.
-    Config::TreeGermination treeConfig{ .brain_type = Config::TreeBrainType::NEURAL_NET,
-                                        .neural_seed = 0,
-                                        .genome_id = evt.genomeId };
-    Api::ScenarioConfigSet::Command configCmd{ .config = treeConfig };
+    constexpr int targetCellSize = 16;
+    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
+    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
+    const int centerX = worldWidth / 2;
+    const int centerY = worldHeight / 2;
 
-    auto configResult = wsService.sendCommand<Api::ScenarioConfigSet::OkayType>(configCmd, 2000);
-    if (configResult.isError() || configResult.value().isError()) {
-        LOG_ERROR(State, "ScenarioConfigSet failed");
-    }
+    Api::SeedAdd::Command seedCmd;
+    seedCmd.x = centerX;
+    seedCmd.y = centerY;
+    seedCmd.genome_id = evt.genomeId.toString();
 
-    // Reset to re-run setup with new config.
-    Api::Reset::Command resetCmd;
-    auto resetResult = wsService.sendCommand<Api::Reset::OkayType>(resetCmd, 2000);
-    if (resetResult.isError()) {
-        LOG_ERROR(State, "Reset failed");
+    auto seedResult = wsService.sendCommand<Api::SeedAdd::OkayType>(seedCmd, 2000);
+    if (seedResult.isError() || seedResult.value().isError()) {
+        LOG_ERROR(State, "SeedAdd failed");
     }
 
     LOG_INFO(State, "Transitioning to SimRunning with best genome");

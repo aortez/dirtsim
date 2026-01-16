@@ -293,6 +293,8 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
     evt.evolution.populationSize = 10;
     evt.evolution.maxGenerations = 5;
     evt.mutation.rate = 0.1;
+    evt.training.scenarioId = Scenario::EnumType::TreeGermination;
+    evt.training.organismType = OrganismType::TREE;
 
     // Execute: Send event to Training state.
     State::Any result = trainingState.onEvent(evt, *stateMachine);

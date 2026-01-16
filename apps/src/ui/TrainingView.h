@@ -2,6 +2,7 @@
 
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "ui/controls/IconRail.h"
 #include <memory>
 
@@ -58,6 +59,7 @@ private:
     // Shared evolution configuration (owned here, referenced by panels).
     EvolutionConfig evolutionConfig_;
     MutationConfig mutationConfig_;
+    TrainingSpec trainingSpec_;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;

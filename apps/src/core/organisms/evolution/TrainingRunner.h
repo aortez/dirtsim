@@ -1,20 +1,26 @@
 #pragma once
 
-#include "core/ScenarioId.h"
+#include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include <memory>
+#include <optional>
+#include <string>
 
 namespace DirtSim {
 
 class GenomeRepository;
+namespace Organism {
+class Body;
+}
 class ScenarioRunner;
-class Tree;
 class World;
 struct EvolutionConfig;
 
 /**
- * Incrementally evaluates a single genome by stepping a World one frame at a time.
+ * Incrementally evaluates a single organism by stepping a World one frame at a time.
  *
  * Unlike blocking evaluation, this allows the caller to:
  * - Process events between steps (cancel, pause).
@@ -25,20 +31,31 @@ class TrainingRunner {
 public:
     enum class State {
         Running,
-        TreeDied,
+        OrganismDied,
         TimeExpired,
     };
 
     struct Status {
         State state = State::Running;
         double simTime = 0.0;
+        double distanceTraveled = 0.0;
         double maxEnergy = 0.0;
         double lifespan = 0.0;
     };
 
+    struct BrainSpec {
+        std::string brainKind;
+        std::optional<std::string> brainVariant;
+    };
+
+    struct Individual {
+        BrainSpec brain;
+        std::optional<Genome> genome;
+    };
+
     TrainingRunner(
-        const Genome& genome,
-        Scenario::EnumType scenarioId,
+        const TrainingSpec& trainingSpec,
+        const Individual& individual,
         const EvolutionConfig& config,
         GenomeRepository& genomeRepository);
     ~TrainingRunner();
@@ -55,25 +72,32 @@ public:
     const World* getWorld() const { return world_.get(); }
     World* getWorld() { return world_.get(); }
 
-    const Tree* getTree() const;
+    const Organism::Body* getOrganism() const;
 
     double getSimTime() const { return simTime_; }
     double getMaxTime() const { return maxTime_; }
     float getProgress() const { return static_cast<float>(simTime_ / maxTime_); }
 
     double getCurrentMaxEnergy() const { return maxEnergy_; }
-    bool isTreeAlive() const;
+    bool isOrganismAlive() const;
 
 private:
+    void spawnEvaluationOrganism();
+
+    TrainingSpec trainingSpec_;
+    Individual individual_;
     std::unique_ptr<World> world_;
     std::unique_ptr<ScenarioRunner> scenario_;
-    OrganismId treeId_ = INVALID_ORGANISM_ID;
+    OrganismId organismId_ = INVALID_ORGANISM_ID;
 
     double simTime_ = 0.0;
     double maxTime_ = 600.0;
     double maxEnergy_ = 0.0;
+    Vector2d spawnPosition_{ 0.0, 0.0 };
+    Vector2d lastPosition_{ 0.0, 0.0 };
 
     State state_ = State::Running;
+    TrainingBrainRegistry brainRegistry_;
 
     static constexpr double TIMESTEP = 0.016;
 };

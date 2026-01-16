@@ -40,6 +40,8 @@ struct Training {
     std::unique_ptr<TrainingView> view_;
     StateMachine* sm_ = nullptr;
     bool evolutionStarted_ = false;
+    TrainingSpec lastTrainingSpec_;
+    bool hasTrainingSpec_ = false;
 };
 
 } // namespace State

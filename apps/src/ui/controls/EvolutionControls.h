@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "lvgl/lvgl.h"
 #include "ui/PanelViewController.h"
 #include <memory>
@@ -27,7 +28,8 @@ public:
         EventSink& eventSink,
         bool evolutionStarted,
         EvolutionConfig& evolutionConfig,
-        MutationConfig& mutationConfig);
+        MutationConfig& mutationConfig,
+        TrainingSpec& trainingSpec);
     ~EvolutionControls();
 
     void setEvolutionStarted(bool started);
@@ -46,6 +48,7 @@ private:
     // Shared configs (owned by TrainingView).
     EvolutionConfig& evolutionConfig_;
     MutationConfig& mutationConfig_;
+    TrainingSpec& trainingSpec_;
 
     lv_obj_t* startButton_ = nullptr;
     lv_obj_t* stopButton_ = nullptr;

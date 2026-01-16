@@ -21,6 +21,7 @@
 #include "core/api/UiUpdateEvent.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionProgress.h"
 #include <concepts>
 #include <string>
@@ -115,6 +116,7 @@ struct TrainButtonClickedEvent {
 struct StartEvolutionButtonClickedEvent {
     EvolutionConfig evolution;
     MutationConfig mutation;
+    TrainingSpec training;
     static constexpr const char* name() { return "StartEvolutionButtonClickedEvent"; }
 };
 
