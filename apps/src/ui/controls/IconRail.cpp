@@ -13,6 +13,8 @@ uint32_t rgbaToRgb(uint32_t rgba)
 {
     return rgba >> 8;
 }
+
+constexpr lv_opa_t DIMMED_ICON_OPA = LV_OPA_60;
 } // namespace
 
 namespace DirtSim {
@@ -163,12 +165,24 @@ void IconRail::onIconClicked(lv_event_t* e)
 
 void IconRail::updateButtonVisuals()
 {
+    const bool hasSelection = (selectedId_ != IconId::COUNT);
+
     for (size_t i = 0; i < buttons_.size() && i < iconConfigs_.size(); i++) {
         lv_obj_t* btnContainer = buttons_[i];
         if (!btnContainer) continue;
 
         bool isSelected = (iconConfigs_[i].id == selectedId_);
         LVGLBuilder::ActionButtonBuilder::setChecked(btnContainer, isSelected);
+
+        lv_obj_t* innerButton = lv_obj_get_child(btnContainer, 0);
+        if (!innerButton) continue;
+
+        lv_opa_t targetOpa = LV_OPA_COVER;
+        if (hasSelection && !isSelected) {
+            targetOpa = DIMMED_ICON_OPA;
+        }
+
+        lv_obj_set_style_opa(innerButton, targetOpa, 0);
     }
 }
 
