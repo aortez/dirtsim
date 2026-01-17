@@ -33,6 +33,7 @@ jobs:
             clang-format \
             libavahi-client-dev \
             libboost-dev \
+            libnm-dev \
             libopenh264-dev \
             libssl-dev \
             libwayland-dev \
