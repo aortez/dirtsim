@@ -42,6 +42,10 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::StateGet::Command, Api::StateGet::Okay>(serverHandlers_);
     registerCommand<Api::StatusGet::Command, Api::StatusGet::Okay>(serverHandlers_);
     registerCommand<Api::TimerStatsGet::Command, Api::TimerStatsGet::Okay>(serverHandlers_);
+    registerCommand<Api::TrainingResultDiscard::Command, Api::TrainingResultDiscard::Okay>(
+        serverHandlers_);
+    registerCommand<Api::TrainingResultSave::Command, Api::TrainingResultSave::Okay>(
+        serverHandlers_);
     registerCommand<Api::WorldResize::Command, std::monostate>(serverHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");

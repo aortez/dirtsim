@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <optional>
 
 using namespace DirtSim;
 
@@ -23,6 +24,10 @@ protected:
             .createdTimestamp = 1234567890,
             .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "",
+            .organismType = std::nullopt,
+            .brainKind = std::nullopt,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
         };
     }
 };
@@ -195,6 +200,10 @@ protected:
             .createdTimestamp = 1234567890,
             .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "test notes",
+            .organismType = std::nullopt,
+            .brainKind = std::nullopt,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
         };
     }
 };

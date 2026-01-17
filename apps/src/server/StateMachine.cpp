@@ -394,6 +394,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultAvailableAck::Cwc>(
+        [this](Api::TrainingResultAvailableAck::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultDiscard::Cwc>(
+        [this](Api::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultSave::Cwc>(
+        [this](Api::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::WorldResize::Cwc>(
         [this](Api::WorldResize::Cwc cwc) { queueEvent(cwc); });
 
@@ -707,6 +713,10 @@ void StateMachine::handleEvent(const Event& event)
             .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
             .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "",
+            .organismType = std::nullopt,
+            .brainKind = std::nullopt,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
         });
 
         repo.store(cwc.command.id, genome, meta);

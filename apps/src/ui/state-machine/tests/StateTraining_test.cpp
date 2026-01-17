@@ -309,7 +309,7 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
 }
 
 /**
- * @brief Test that StopButtonClicked sends EvolutionStop and transitions to StartMenu.
+ * @brief Test that StopTrainingClicked sends EvolutionStop and transitions to StartMenu.
  */
 TEST_F(StateTrainingTest, StopButtonSendsCommandAndTransitions)
 {
@@ -319,19 +319,76 @@ TEST_F(StateTrainingTest, StopButtonSendsCommandAndTransitions)
     // Setup: Create Training state.
     Training trainingState;
 
-    // Setup: Create StopButtonClicked event.
-    StopButtonClickedEvent evt;
+    // Setup: Create StopTrainingClicked event.
+    StopTrainingClickedEvent evt;
 
     // Execute: Send event to Training state.
     State::Any newState = trainingState.onEvent(evt, *stateMachine);
 
     // Verify: State transitioned to StartMenu.
     ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "Training + StopButtonClicked should transition to StartMenu";
+        << "Training + StopTrainingClicked should transition to StartMenu";
 
     // Verify: EvolutionStop command was sent.
     ASSERT_EQ(mockWs->sentCommands().size(), 1) << "Should send EvolutionStop command";
     EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStop");
+}
+
+/**
+ * @brief Test that QuitTrainingClicked sends EvolutionStop when running and transitions.
+ */
+TEST_F(StateTrainingTest, QuitButtonStopsWhenRunning)
+{
+    // Setup: Configure expected response.
+    mockWs->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    mockWs->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    mockWs->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
+
+    // Setup: Create Training state with running evolution.
+    Training trainingState;
+    trainingState.onEvent(
+        StartEvolutionButtonClickedEvent{ .evolution = EvolutionConfig{},
+                                          .mutation = MutationConfig{},
+                                          .training = TrainingSpec{} },
+        *stateMachine);
+    mockWs->clearSentCommands();
+
+    // Setup: Create QuitTrainingClicked event.
+    QuitTrainingClickedEvent evt;
+
+    // Execute: Send event to Training state.
+    State::Any newState = trainingState.onEvent(evt, *stateMachine);
+
+    // Verify: State transitioned to StartMenu.
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "Training + QuitTrainingClicked should transition to StartMenu";
+
+    // Verify: EvolutionStop command was sent.
+    ASSERT_EQ(mockWs->sentCommands().size(), 1) << "Should send EvolutionStop command";
+    EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStop");
+}
+
+/**
+ * @brief Test that QuitTrainingClicked does not send EvolutionStop when idle.
+ */
+TEST_F(StateTrainingTest, QuitButtonSkipsStopWhenIdle)
+{
+    // Setup: Create Training state (idle).
+    Training trainingState;
+
+    // Setup: Create QuitTrainingClicked event.
+    QuitTrainingClickedEvent evt;
+
+    // Execute: Send event to Training state.
+    State::Any newState = trainingState.onEvent(evt, *stateMachine);
+
+    // Verify: State transitioned to StartMenu.
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "Training + QuitTrainingClicked should transition to StartMenu";
+
+    // Verify: No EvolutionStop command was sent.
+    EXPECT_TRUE(mockWs->sentCommands().empty());
 }
 
 /**
