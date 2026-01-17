@@ -760,6 +760,11 @@ void TrainingView::hideTrainingResultModal()
     trainingResultSummary_ = Api::TrainingResultAvailable::Summary{};
 }
 
+bool TrainingView::isTrainingResultModalVisible() const
+{
+    return trainingResultOverlay_ != nullptr;
+}
+
 void TrainingView::updateTrainingResultSaveButton()
 {
     if (!trainingResultSaveButton_) {

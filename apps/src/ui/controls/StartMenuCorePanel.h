@@ -27,10 +27,12 @@ public:
 private:
     lv_obj_t* container_;
     EventSink& eventSink_;
+    lv_obj_t* nextFractalButton_ = nullptr;
     lv_obj_t* quitButton_ = nullptr;
 
     void createUI();
 
+    static void onNextFractalClicked(lv_event_t* e);
     static void onQuitClicked(lv_event_t* e);
 };
 

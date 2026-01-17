@@ -19,6 +19,8 @@ JOBS := $(shell nproc 2>/dev/null || echo 4)
 
 # Check if ccache is available.
 CCACHE := $(shell which ccache 2>/dev/null)
+# ccache temp directory to avoid permission issues under sandboxed builds.
+export CCACHE_TEMPDIR := /tmp/dirtsim-ccache-tmp
 
 # Build timing - stores start time in a temp file.
 BUILD_START_FILE := /tmp/.dirtsim-build-start
@@ -26,7 +28,10 @@ BUILD_START_FILE := /tmp/.dirtsim-build-start
 # Helper to start build timer and zero ccache stats.
 define start_build
 	@date +%s > $(BUILD_START_FILE)
-	@if [ -n "$(CCACHE)" ]; then ccache --zero-stats > /dev/null 2>&1; fi
+	@if [ -n "$(CCACHE)" ]; then \
+		mkdir -p "$(CCACHE_TEMPDIR)"; \
+		ccache --zero-stats > /dev/null 2>&1; \
+	fi
 endef
 
 # Helper to show build stats (time and ccache) at end of build.

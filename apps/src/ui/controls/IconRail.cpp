@@ -39,7 +39,6 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSin
 
     createIcons(parent);
     createModeButtons();
-    createAutoShrinkTimer();
 
     // Tree icon starts hidden (only shown when tree exists).
     setTreeIconVisible(false);
