@@ -26,9 +26,11 @@ struct StartMenu {
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
+    Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StartButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const NextFractalClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);
@@ -42,8 +44,8 @@ struct StartMenu {
 
 private:
     static void onDisplayResized(lv_event_t* e);
-    static void onNextFractalClicked(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
+    void updateInfoPanelVisibility(RailMode mode);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     JuliaFractal* fractal_ = nullptr;                  // Fractal background animation.
@@ -53,7 +55,6 @@ private:
     lv_obj_t* touchDebugLabel_ = nullptr;                   // Touch coordinate debug display.
     lv_obj_t* infoPanel_ = nullptr;                         // Bottom-left info panel container.
     lv_obj_t* infoLabel_ = nullptr;                         // Fractal info label.
-    lv_obj_t* nextFractalButton_ = nullptr;                 // Button to advance fractal.
     int updateFrameCount_ = 0;                              // Frame counter for periodic logging.
     int labelUpdateCounter_ = 0; // Frame counter for label updates (~1/sec).
 };

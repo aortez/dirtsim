@@ -2,6 +2,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
@@ -40,8 +41,61 @@ EvolutionConfigPanel::~EvolutionConfigPanel()
 
 void EvolutionConfigPanel::createMainView(lv_obj_t* view)
 {
+    lv_obj_t* columns = lv_obj_create(view);
+    lv_obj_set_size(columns, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(columns, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(columns, 0, 0);
+    lv_obj_set_style_pad_all(columns, 0, 0);
+    lv_obj_set_style_pad_column(columns, 12, 0);
+    lv_obj_set_style_pad_row(columns, 0, 0);
+    lv_obj_set_flex_flow(columns, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(columns, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(columns, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* leftColumn = lv_obj_create(columns);
+    lv_obj_set_size(leftColumn, LV_PCT(35), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(leftColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(leftColumn, 0, 0);
+    lv_obj_set_style_pad_all(leftColumn, 0, 0);
+    lv_obj_set_style_pad_row(leftColumn, 10, 0);
+    lv_obj_set_flex_flow(leftColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        leftColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(leftColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* rightColumn = lv_obj_create(columns);
+    lv_obj_set_size(rightColumn, LV_PCT(65), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(rightColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(rightColumn, 0, 0);
+    lv_obj_set_style_pad_all(rightColumn, 0, 0);
+    lv_obj_set_style_pad_row(rightColumn, 8, 0);
+    lv_obj_set_flex_flow(rightColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        rightColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(rightColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    startButton_ = LVGLBuilder::actionButton(leftColumn)
+                       .text("Start Training")
+                       .icon(LV_SYMBOL_PLAY)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .width(140)
+                       .height(80)
+                       .backgroundColor(0x00AA66)
+                       .callback(onStartClicked, this)
+                       .buildOrLog();
+
+    stopButton_ = LVGLBuilder::actionButton(leftColumn)
+                      .text("Stop")
+                      .icon(LV_SYMBOL_STOP)
+                      .mode(LVGLBuilder::ActionMode::Push)
+                      .width(140)
+                      .height(80)
+                      .backgroundColor(0xCC0000)
+                      .callback(onStopClicked, this)
+                      .buildOrLog();
+
     // Title.
-    lv_obj_t* titleLabel = lv_label_create(view);
+    lv_obj_t* titleLabel = lv_label_create(rightColumn);
     lv_label_set_text(titleLabel, "Evolution Config");
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xDA70D6), 0); // Orchid.
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
@@ -49,7 +103,7 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 8, 0);
 
     // Population Size stepper (10-200, step 10).
-    populationStepper_ = LVGLBuilder::actionStepper(view)
+    populationStepper_ = LVGLBuilder::actionStepper(rightColumn)
                              .label("Population")
                              .range(10, 200)
                              .step(10)
@@ -61,7 +115,7 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                              .buildOrLog();
 
     // Max Generations stepper (1-1000, step 10).
-    generationsStepper_ = LVGLBuilder::actionStepper(view)
+    generationsStepper_ = LVGLBuilder::actionStepper(rightColumn)
                               .label("Generations")
                               .range(1, 1000)
                               .step(10)
@@ -74,7 +128,7 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
 
     // Mutation Rate stepper (0-20% with 0.1% precision).
     // Internal value 0-200, displayed as 0.0-20.0%.
-    mutationRateStepper_ = LVGLBuilder::actionStepper(view)
+    mutationRateStepper_ = LVGLBuilder::actionStepper(rightColumn)
                                .label("Mutation Rate")
                                .range(0, 200)
                                .step(1)
@@ -86,7 +140,7 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                                .buildOrLog();
 
     // Tournament Size stepper (2-10, step 1).
-    tournamentSizeStepper_ = LVGLBuilder::actionStepper(view)
+    tournamentSizeStepper_ = LVGLBuilder::actionStepper(rightColumn)
                                  .label("Tournament Size")
                                  .range(2, 10)
                                  .step(1)
@@ -97,11 +151,11 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                                  .callback(onTournamentSizeChanged, this)
                                  .buildOrLog();
 
-    // Max Sim Time stepper (60-1800 seconds, step 30).
+    // Max Sim Time stepper (10-1800 seconds, step 30).
     // Displayed in seconds.
-    maxSimTimeStepper_ = LVGLBuilder::actionStepper(view)
+    maxSimTimeStepper_ = LVGLBuilder::actionStepper(rightColumn)
                              .label("Max Sim Time (s)")
-                             .range(60, 1800)
+                             .range(10, 1800)
                              .step(30)
                              .value(static_cast<int32_t>(evolutionConfig_.maxSimulationTime))
                              .valueFormat("%.0f")
@@ -111,7 +165,7 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                              .buildOrLog();
 
     // Status label (shows "Training in progress" when started).
-    statusLabel_ = lv_label_create(view);
+    statusLabel_ = lv_label_create(rightColumn);
     lv_label_set_text(statusLabel_, "");
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x00CC66), 0);
     lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_12, 0);
@@ -142,12 +196,35 @@ void EvolutionConfigPanel::updateControlsEnabled()
     setStepperEnabled(tournamentSizeStepper_, enabled);
     setStepperEnabled(maxSimTimeStepper_, enabled);
 
+    updateButtonVisibility();
+
     if (statusLabel_) {
         if (evolutionStarted_) {
             lv_label_set_text(statusLabel_, "Training in progress...");
         }
         else {
             lv_label_set_text(statusLabel_, "");
+        }
+    }
+}
+
+void EvolutionConfigPanel::updateButtonVisibility()
+{
+    if (startButton_) {
+        if (evolutionStarted_) {
+            lv_obj_add_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_clear_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (stopButton_) {
+        if (evolutionStarted_) {
+            lv_obj_clear_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_add_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
         }
     }
 }
@@ -300,6 +377,30 @@ void EvolutionConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
     int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->maxSimTimeStepper_);
     self->evolutionConfig_.maxSimulationTime = static_cast<double>(value);
     spdlog::debug("EvolutionConfigPanel: Max sim time changed to {}s", value);
+}
+
+void EvolutionConfigPanel::onStartClicked(lv_event_t* e)
+{
+    EvolutionConfigPanel* self = static_cast<EvolutionConfigPanel*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    spdlog::info("EvolutionConfigPanel: Start button clicked");
+
+    StartEvolutionButtonClickedEvent evt;
+    evt.evolution = self->evolutionConfig_;
+    evt.mutation = self->mutationConfig_;
+    evt.training = self->trainingSpec_;
+    self->eventSink_.queueEvent(evt);
+}
+
+void EvolutionConfigPanel::onStopClicked(lv_event_t* e)
+{
+    EvolutionConfigPanel* self = static_cast<EvolutionConfigPanel*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    spdlog::info("EvolutionConfigPanel: Stop button clicked");
+
+    self->eventSink_.queueEvent(StopTrainingClickedEvent{});
 }
 
 } // namespace Ui

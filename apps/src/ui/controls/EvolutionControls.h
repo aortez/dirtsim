@@ -8,9 +8,6 @@
 
 namespace DirtSim {
 
-struct EvolutionConfig;
-struct MutationConfig;
-
 namespace Ui {
 
 class EventSink;
@@ -18,7 +15,7 @@ class EventSink;
 /**
  * @brief Home panel for Training state.
  *
- * Provides Start, Stop, and Quit buttons for the training view.
+ * Provides View Best and Quit buttons for the training view.
  * This is the "home" panel for the Training state.
  */
 class EvolutionControls {
@@ -27,8 +24,6 @@ public:
         lv_obj_t* container,
         EventSink& eventSink,
         bool evolutionStarted,
-        EvolutionConfig& evolutionConfig,
-        MutationConfig& mutationConfig,
         TrainingSpec& trainingSpec);
     ~EvolutionControls();
 
@@ -46,20 +41,14 @@ private:
     GenomeId bestGenomeId_;
 
     // Shared configs (owned by TrainingView).
-    EvolutionConfig& evolutionConfig_;
-    MutationConfig& mutationConfig_;
     TrainingSpec& trainingSpec_;
 
-    lv_obj_t* startButton_ = nullptr;
-    lv_obj_t* stopButton_ = nullptr;
     lv_obj_t* viewBestButton_ = nullptr;
     lv_obj_t* quitButton_ = nullptr;
 
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();
 
-    static void onStartClicked(lv_event_t* e);
-    static void onStopClicked(lv_event_t* e);
     static void onViewBestClicked(lv_event_t* e);
     static void onQuitClicked(lv_event_t* e);
 };

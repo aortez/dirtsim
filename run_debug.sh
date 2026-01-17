@@ -6,6 +6,7 @@ LOG_LEVEL=""
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="$REPO_ROOT/apps"
 BIN_DIR="$APPS_DIR/build-debug/bin"
+CONFIG_DIR="$APPS_DIR/config"
 SERVER_MATCH="build-debug/bin/dirtsim-server"
 UI_MATCH="build-debug/bin/dirtsim-ui"
 
@@ -69,6 +70,9 @@ if [ -n "$LOG_LEVEL" ]; then
     echo "Starting with log level: $LOG_LEVEL"
 fi
 
+LOG_CONFIG="$CONFIG_DIR/logging-config.json.local"
+LOG_CONFIG_ARGS="--log-config $LOG_CONFIG"
+
 if [ ! -d "$BIN_DIR" ]; then
     echo "Build output not found at: $BIN_DIR"
     exit 1
@@ -89,9 +93,10 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Launch server in background.
-cd "$BIN_DIR"
+cd "$APPS_DIR"
+mkdir -p "$CONFIG_DIR"
 echo "Launching DSSM server on port 8080..."
-"$BIN_DIR/dirtsim-server" $LOG_ARGS -p 8080 &
+"$BIN_DIR/dirtsim-server" $LOG_ARGS $LOG_CONFIG_ARGS -p 8080 --config-dir "$CONFIG_DIR" &
 SERVER_PID=$!
 
 # Wait a moment for server to start.
@@ -117,4 +122,4 @@ echo ""
 # Run UI in foreground - when it exits, cleanup will run.
 # Backend is auto-detected from XDG_SESSION_TYPE / WAYLAND_DISPLAY.
 # Use -b to override if needed (e.g., -b x11 or -b wayland).
-"$BIN_DIR/dirtsim-ui" $LOG_ARGS --connect localhost:8080
+"$BIN_DIR/dirtsim-ui" $LOG_ARGS $LOG_CONFIG_ARGS --connect localhost:8080

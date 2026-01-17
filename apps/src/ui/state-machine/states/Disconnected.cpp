@@ -9,6 +9,7 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/TrainingResultAvailable.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -230,34 +231,48 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     });
 
     // Setup callback for server-pushed commands (e.g., DrawDebugToggle from gamepad).
-    wsService.onServerCommand(
-        [&sm](const std::string& messageType, const std::vector<std::byte>& payload) {
-            if (messageType == "DrawDebugToggle") {
-                LOG_INFO(Network, "Received DrawDebugToggle command from server");
-                UiApi::DrawDebugToggle::Cwc cwc;
-                sm.queueEvent(std::move(cwc));
+    wsService.onServerCommand([&sm](
+                                  const std::string& messageType,
+                                  const std::vector<std::byte>& payload) {
+        if (messageType == "DrawDebugToggle") {
+            LOG_INFO(Network, "Received DrawDebugToggle command from server");
+            UiApi::DrawDebugToggle::Cwc cwc;
+            sm.queueEvent(std::move(cwc));
+        }
+        else if (messageType == "EvolutionProgress") {
+            // Deserialize evolution progress broadcast.
+            try {
+                auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                LOG_DEBUG(
+                    Network,
+                    "Received EvolutionProgress: gen {}/{}, eval {}/{}",
+                    progress.generation,
+                    progress.maxGenerations,
+                    progress.currentEval,
+                    progress.populationSize);
+                sm.queueEvent(EvolutionProgressReceivedEvent{ progress });
             }
-            else if (messageType == "EvolutionProgress") {
-                // Deserialize evolution progress broadcast.
-                try {
-                    auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
-                    LOG_DEBUG(
-                        Network,
-                        "Received EvolutionProgress: gen {}/{}, eval {}/{}",
-                        progress.generation,
-                        progress.maxGenerations,
-                        progress.currentEval,
-                        progress.populationSize);
-                    sm.queueEvent(EvolutionProgressReceivedEvent{ progress });
-                }
-                catch (const std::exception& e) {
-                    LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
-                }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
             }
-            else {
-                LOG_WARN(Network, "Unknown server command: {}", messageType);
+        }
+        else if (messageType == "TrainingResultAvailable") {
+            try {
+                auto result = Network::deserialize_payload<Api::TrainingResultAvailable>(payload);
+                LOG_INFO(
+                    Network,
+                    "Received TrainingResultAvailable: candidates={}",
+                    result.candidates.size());
+                sm.queueEvent(TrainingResultAvailableReceivedEvent{ result });
             }
-        });
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize TrainingResultAvailable: {}", e.what());
+            }
+        }
+        else {
+            LOG_WARN(Network, "Unknown server command: {}", messageType);
+        }
+    });
 
     // Setup binary callback for RenderMessage pushes from server.
     wsService.onBinary([&sm](const std::vector<std::byte>& bytes) {

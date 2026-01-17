@@ -29,16 +29,21 @@ struct Training {
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm);
-    Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingResultAvailableReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
     Any onEvent(const ViewBestButtonClickedEvent& evt, StateMachine& sm);
+
+    bool isTrainingResultModalVisible() const;
 
     static constexpr const char* name() { return "Training"; }
 
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
-    StateMachine* sm_ = nullptr;
     bool evolutionStarted_ = false;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
