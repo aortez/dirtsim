@@ -3,6 +3,11 @@ set -e
 
 # Default log level.
 LOG_LEVEL=""
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APPS_DIR="$REPO_ROOT/apps"
+BIN_DIR="$APPS_DIR/build-debug/bin"
+SERVER_MATCH="build-debug/bin/dirtsim-server"
+UI_MATCH="build-debug/bin/dirtsim-ui"
 
 # Parse command line arguments.
 while [[ $# -gt 0 ]]; do
@@ -34,22 +39,22 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Check if our debug binaries are already running.
-# Use full path to avoid matching release builds or other processes.
-if pgrep -f "build-debug/bin/dirtsim-server" > /dev/null; then
+# Match the debug binary path to avoid release builds or other processes.
+if pgrep -f "$SERVER_MATCH" > /dev/null; then
     echo "Error: dirtsim-server (debug) is already running"
-    echo "Kill it with: pkill -f 'build-debug/bin/dirtsim-server'"
+    echo "Kill it with: pkill -f '$SERVER_MATCH'"
     exit 1
 fi
 
-if pgrep -f "build-debug/bin/dirtsim-ui" > /dev/null; then
+if pgrep -f "$UI_MATCH" > /dev/null; then
     echo "Error: dirtsim-ui (debug) is already running"
-    echo "Kill it with: pkill -f 'build-debug/bin/dirtsim-ui'"
+    echo "Kill it with: pkill -f '$UI_MATCH'"
     exit 1
 fi
 
 # Build debug version.
 echo "Building debug version..."
-if ! make debug; then
+if ! make -C "$APPS_DIR" debug; then
     echo "Build failed!"
     exit 1
 fi
@@ -64,14 +69,19 @@ if [ -n "$LOG_LEVEL" ]; then
     echo "Starting with log level: $LOG_LEVEL"
 fi
 
+if [ ! -d "$BIN_DIR" ]; then
+    echo "Build output not found at: $BIN_DIR"
+    exit 1
+fi
+
 # Function to clean up on exit.
 cleanup() {
     echo ""
     echo "Shutting down..."
     # Kill UI first (it's usually in foreground).
-    pkill -f "build-debug/bin/dirtsim-ui" 2>/dev/null || true
+    pkill -f "$UI_MATCH" 2>/dev/null || true
     # Kill server.
-    pkill -f "build-debug/bin/dirtsim-server" 2>/dev/null || true
+    pkill -f "$SERVER_MATCH" 2>/dev/null || true
     echo "Cleanup complete"
 }
 
@@ -79,8 +89,9 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Launch server in background.
+cd "$BIN_DIR"
 echo "Launching DSSM server on port 8080..."
-./build-debug/bin/dirtsim-server $LOG_ARGS -p 8080 &
+"$BIN_DIR/dirtsim-server" $LOG_ARGS -p 8080 &
 SERVER_PID=$!
 
 # Wait a moment for server to start.
@@ -106,5 +117,4 @@ echo ""
 # Run UI in foreground - when it exits, cleanup will run.
 # Backend is auto-detected from XDG_SESSION_TYPE / WAYLAND_DISPLAY.
 # Use -b to override if needed (e.g., -b x11 or -b wayland).
-./build-debug/bin/dirtsim-ui $LOG_ARGS --connect localhost:8080
-
+"$BIN_DIR/dirtsim-ui" $LOG_ARGS --connect localhost:8080
