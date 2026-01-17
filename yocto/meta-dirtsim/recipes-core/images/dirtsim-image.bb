@@ -51,21 +51,28 @@ setup_hyperpixel_backlight() {
     cat > ${IMAGE_ROOTFS}/etc/systemd/system/hyperpixel-backlight.service << 'EOF'
 [Unit]
 Description=Enable HyperPixel backlight
-After=systemd-modules-load.service
-DefaultDependencies=no
 
 [Service]
 Type=oneshot
 ExecStart=/bin/sh -c 'echo 0 > /sys/class/backlight/backlight/bl_power; echo 1 > /sys/class/backlight/backlight/brightness'
-RemainAfterExit=yes
+EOF
+
+    # Trigger the service once the backlight sysfs node appears.
+    cat > ${IMAGE_ROOTFS}/etc/systemd/system/hyperpixel-backlight.path << 'EOF'
+[Unit]
+Description=Watch for HyperPixel backlight sysfs
+
+[Path]
+PathExists=/sys/class/backlight/backlight
+Unit=hyperpixel-backlight.service
 
 [Install]
 WantedBy=sysinit.target
 EOF
 
-    # Enable the service.
+    # Enable the path unit.
     install -d ${IMAGE_ROOTFS}/etc/systemd/system/sysinit.target.wants
-    ln -sf ../hyperpixel-backlight.service ${IMAGE_ROOTFS}/etc/systemd/system/sysinit.target.wants/hyperpixel-backlight.service
+    ln -sf ../hyperpixel-backlight.path ${IMAGE_ROOTFS}/etc/systemd/system/sysinit.target.wants/hyperpixel-backlight.path
 }
 ROOTFS_POSTPROCESS_COMMAND:append = " setup_hyperpixel_backlight;"
 
