@@ -113,6 +113,13 @@ struct TrainButtonClickedEvent {
 };
 
 /**
+ * @brief User clicked Next Fractal button in StartMenu.
+ */
+struct NextFractalClickedEvent {
+    static constexpr const char* name() { return "NextFractalClickedEvent"; }
+};
+
+/**
  * @brief User clicked Start button in Training state to begin evolution.
  */
 struct StartEvolutionButtonClickedEvent {
@@ -222,6 +229,7 @@ using Event = std::variant<
     StopTrainingClickedEvent,
     QuitTrainingClickedEvent,
     TrainButtonClickedEvent,
+    NextFractalClickedEvent,
     ViewBestButtonClickedEvent,
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
