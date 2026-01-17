@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     clang-format \
     git \
     libavahi-client-dev \
+    libnm-dev \
     libopenh264-dev \
     libfreetype-dev \
     libyuv-dev \
