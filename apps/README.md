@@ -32,18 +32,19 @@ sudo apt-get install -y \
     libwayland-client0 \
     libwayland-cursor0 \
     libxkbcommon-dev \
+    libnm-dev \
     wayland-protocols \
     clang-format
 ```
 
 #### Arch Linux
 ```bash
-sudo pacman -S base-devel cmake pkgconf boost openssl libx11 wayland wayland-protocols xkbcommon clang
+sudo pacman -S base-devel cmake pkgconf boost openssl libx11 wayland wayland-protocols xkbcommon clang networkmanager
 ```
 
 #### Fedora/RHEL
 ```bash
-sudo dnf install gcc-c++ cmake pkgconfig boost-devel openssl-devel libX11-devel wayland-devel wayland-protocols-devel libxkbcommon-devel clang-tools-extra
+sudo dnf install gcc-c++ cmake pkgconfig boost-devel openssl-devel libX11-devel wayland-devel wayland-protocols-devel libxkbcommon-devel NetworkManager-libnm-devel clang-tools-extra
 ```
 
 ### 2. Initialize Git Submodules

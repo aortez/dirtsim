@@ -62,6 +62,18 @@ private:
         size_t index = 0;
     };
 
+    struct ForgetContext {
+        NetworkDiagnosticsPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
+    enum class AsyncActionKind { None, Connect, Forget };
+
+    struct AsyncActionState {
+        AsyncActionKind kind = AsyncActionKind::None;
+        std::string ssid;
+    };
+
     struct PendingRefreshData {
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
@@ -72,17 +84,23 @@ private:
         bool refreshInProgress = false;
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
+        std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
     };
 
     std::vector<Network::WifiNetworkInfo> networks_;
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
+    std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::shared_ptr<AsyncState> asyncState_;
-    bool connectInProgress_ = false;
-    std::string connectingSsid_;
+    AsyncActionState actionState_;
 
     void createUI();
     bool startAsyncRefresh();
     void startAsyncConnect(const Network::WifiNetworkInfo& network);
+    void startAsyncForget(const Network::WifiNetworkInfo& network);
+    bool beginAsyncAction(
+        AsyncActionKind kind, const Network::WifiNetworkInfo& network, const std::string& verb);
+    void endAsyncAction(AsyncActionKind kind);
+    bool isActionInProgress() const;
     void applyPendingUpdates();
     void setLoadingState();
     void setRefreshButtonEnabled(bool enabled);
@@ -97,6 +115,7 @@ private:
     static void onRefreshClicked(lv_event_t* e);
     static void onRefreshTimer(lv_timer_t* timer);
     static void onConnectClicked(lv_event_t* e);
+    static void onForgetClicked(lv_event_t* e);
 };
 
 } // namespace Ui

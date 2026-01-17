@@ -55,6 +55,7 @@ find_package(Boost REQUIRED)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(AVAHI REQUIRED avahi-client)
+pkg_check_modules(LIBNM REQUIRED libnm)
 
 pkg_check_modules(OPENH264 REQUIRED openh264)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
@@ -261,8 +262,8 @@ set(DIRTSIM_CORE_SOURCES
 )
 
 add_library(dirtsim-core STATIC ${DIRTSIM_CORE_SOURCES})
-target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS})
-target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} yuv lvgl)
+target_include_directories(dirtsim-core PUBLIC ${CMAKE_SOURCE_DIR}/src ${zpp_bits_SOURCE_DIR} ${OPENH264_INCLUDE_DIRS} ${LIBNM_INCLUDE_DIRS})
+target_link_libraries(dirtsim-core PUBLIC nlohmann_json::nlohmann_json spdlog::spdlog datachannel-static ${OPENH264_LIBRARIES} ${LIBNM_LIBRARIES} yuv lvgl)
 
 # Link SDL2 for gamepad support.
 target_include_directories(dirtsim-core PUBLIC ${SDL2_INCLUDE_DIRS})

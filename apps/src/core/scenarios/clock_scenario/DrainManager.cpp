@@ -264,6 +264,11 @@ void DrainManager::applyGravity(World& world)
 
 void DrainManager::sprayCell(World& world, Cell& cell, int16_t x, int16_t y)
 {
+    if (cell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
+        cell = Cell();
+        return;
+    }
+
     static const FragmentationParams kDrainFragParams{
         .radial_bias = 0.2,
         .min_arc = M_PI / 3.0,

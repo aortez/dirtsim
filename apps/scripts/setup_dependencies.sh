@@ -89,6 +89,7 @@ install_ubuntu_debian() {
         "libwayland-client0"
         "libwayland-cursor0"
         "libxkbcommon-dev"
+        "libnm-dev"
         "wayland-protocols"
         "clang-format"
         "git"
@@ -158,6 +159,7 @@ install_arch() {
         "boost"
         "openssl"
         "libx11"
+        "networkmanager"
         "wayland"
         "wayland-protocols"
         "xkbcommon"
@@ -200,6 +202,7 @@ install_fedora_rhel() {
         "boost-devel"
         "openssl-devel"
         "libX11-devel"
+        "NetworkManager-libnm-devel"
         "wayland-devel"
         "wayland-protocols-devel"
         "libxkbcommon-devel"
@@ -269,7 +272,7 @@ done
 
 # Check pkg-config libraries
 echo -e "\n${BLUE}Checking pkg-config libraries...${NC}"
-REQUIRED_LIBS=("x11" "wayland-client" "xkbcommon")
+REQUIRED_LIBS=("x11" "wayland-client" "xkbcommon" "libnm")
 
 for lib in "${REQUIRED_LIBS[@]}"; do
     if pkg-config --exists "$lib"; then
