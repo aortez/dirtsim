@@ -36,7 +36,7 @@ The CLI provides several operation modes:
 - **Train Mode**: Run evolution training with JSON configuration
 - **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
 - **Integration Test Mode**: Automated server + UI lifecycle testing
-- **Network Mode**: WiFi status, saved/open networks, and connect (nmcli wrapper)
+- **Network Mode**: WiFi status, saved/open networks, connect, and forget (NetworkManager)
 
 ## Usage
 
@@ -139,11 +139,24 @@ Query WiFi state and manage saved/open networks:
 
 # Connect to a saved or open network by SSID
 ./build-debug/bin/cli network connect "MySSID"
+
+# Connect with password (WPA2/WPA3)
+./build-debug/bin/cli network connect "MySSID" --password "secret"
+
+# Scan access points with channel/BSSID info
+./build-debug/bin/cli network scan
+
+# Disconnect active WiFi (optionally by SSID)
+./build-debug/bin/cli network disconnect
+./build-debug/bin/cli network disconnect "MySSID"
+
+# Forget a saved network (removes autoconnect profile)
+./build-debug/bin/cli network forget "MySSID"
 ```
 
 **Output**: JSON only (stdout), errors to stderr.
 
-**Note**: These commands run locally and require `nmcli`.
+**Note**: These commands run locally and require NetworkManager (`libnm`).
 
 ### Benchmark Mode
 

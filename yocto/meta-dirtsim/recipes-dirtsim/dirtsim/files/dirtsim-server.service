@@ -1,7 +1,6 @@
 [Unit]
 Description=DirtSim Physics Simulation Server
-After=network-online.target avahi-daemon.service
-Wants=network-online.target
+After=avahi-daemon.service
 
 [Service]
 Type=simple

@@ -34,6 +34,7 @@ DEPENDS = " \
     libinput \
     libsdl2 \
     libyuv \
+    networkmanager \
     openh264 \
     openssl \
     pkgconfig-native \
@@ -116,6 +117,7 @@ RDEPENDS:${PN} = " \
     freetype \
     libdrm \
     libinput \
+    libnm \
     libsdl2 \
     libyuv \
     openh264 \

@@ -83,6 +83,10 @@ void updateMeltdown(
         if (drain_open && x >= drain_start_x && x <= drain_end_x) {
             Cell& drain_cell = data.at(x, bottom_wall_y);
             if (drain_cell.material_type == digit_mat) {
+                if (drain_cell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
+                    drain_cell = Cell();
+                    continue;
+                }
                 // Convert to water and spray upward.
                 drain_cell.replaceMaterial(Material::EnumType::Water, drain_cell.fill_ratio);
 
@@ -105,6 +109,10 @@ void updateMeltdown(
         // Check cells adjacent to bottom wall (row above it).
         Cell& bottom_cell = data.at(x, above_bottom_y);
         if (bottom_cell.material_type == digit_mat) {
+            if (bottom_cell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
+                bottom_cell = Cell();
+                continue;
+            }
             // Convert to water and splash upward.
             bottom_cell.replaceMaterial(Material::EnumType::Water, bottom_cell.fill_ratio);
 

@@ -26,6 +26,7 @@
 #include <iomanip>
 #include <iostream>
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
@@ -113,7 +114,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "integration_test", "Run integration test (launches server + UI)" },
-    { "network", "WiFi status, saved/open networks, and connect (nmcli wrapper)" },
+    { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
@@ -158,7 +159,12 @@ std::string getExamplesHelp()
     examples += "\nNetwork:\n";
     examples += "  cli network status\n";
     examples += "  cli network list\n";
+    examples += "  cli network scan\n";
     examples += "  cli network connect \"MySSID\"\n";
+    examples += "  cli network connect \"MySSID\" --password \"secret\"\n";
+    examples += "  cli network disconnect\n";
+    examples += "  cli network disconnect \"MySSID\"\n";
+    examples += "  cli network forget \"MySSID\"\n";
 
     // Server API examples (show a few common ones).
     examples += "\nServer API Examples:\n";
@@ -254,6 +260,8 @@ int main(int argc, char** argv)
         "Genome benchmark: number of genomes for perf test (default: 100)",
         { "count" },
         100);
+    args::ValueFlag<std::string> networkPassword(
+        parser, "password", "Network: WiFi password for connect", { 'p', "password" });
 
     args::Positional<std::string> target(
         parser, "target", "Target: 'server', 'ui', or a CLI command like 'network'");
@@ -856,7 +864,7 @@ int main(int argc, char** argv)
     if (targetName == "network") {
         if (!command) {
             std::cerr << "Error: command is required for network target\n\n";
-            std::cerr << "Usage: cli network status|list|connect <ssid>\n";
+            std::cerr << "Usage: cli network status|list|scan|connect|disconnect|forget [ssid]\n";
             return 1;
         }
 
@@ -893,15 +901,41 @@ int main(int argc, char** argv)
             return 0;
         }
 
+        if (subcommand == "scan") {
+            const auto scanResult = wifi.listAccessPoints();
+            if (scanResult.isError()) {
+                std::cerr << "Error: " << scanResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json accessPoints = nlohmann::json::array();
+            for (const auto& ap : scanResult.value()) {
+                accessPoints.push_back(ReflectSerializer::to_json(ap));
+            }
+
+            nlohmann::json output;
+            output["access_points"] = accessPoints;
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
         if (subcommand == "connect") {
             if (!params) {
                 std::cerr << "Error: SSID is required for network connect\n\n";
-                std::cerr << "Usage: cli network connect \"MySSID\"\n";
+                std::cerr << "Usage: cli network connect \"MySSID\" [--password \"secret\"]\n";
                 return 1;
             }
 
             const std::string ssid = args::get(params);
-            const auto connectResult = wifi.connectBySsid(ssid);
+            std::optional<std::string> password;
+            if (networkPassword) {
+                const std::string value = args::get(networkPassword);
+                if (!value.empty()) {
+                    password = value;
+                }
+            }
+
+            const auto connectResult = wifi.connectBySsid(ssid, password);
             if (connectResult.isError()) {
                 std::cerr << "Error: " << connectResult.errorValue() << std::endl;
                 return 1;
@@ -912,8 +946,44 @@ int main(int argc, char** argv)
             return 0;
         }
 
+        if (subcommand == "disconnect") {
+            std::optional<std::string> ssid;
+            if (params) {
+                ssid = args::get(params);
+            }
+
+            const auto disconnectResult = wifi.disconnect(ssid);
+            if (disconnectResult.isError()) {
+                std::cerr << "Error: " << disconnectResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json output = ReflectSerializer::to_json(disconnectResult.value());
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
+        if (subcommand == "forget") {
+            if (!params) {
+                std::cerr << "Error: SSID is required for network forget\n\n";
+                std::cerr << "Usage: cli network forget \"MySSID\"\n";
+                return 1;
+            }
+
+            const std::string ssid = args::get(params);
+            const auto forgetResult = wifi.forget(ssid);
+            if (forgetResult.isError()) {
+                std::cerr << "Error: " << forgetResult.errorValue() << std::endl;
+                return 1;
+            }
+
+            nlohmann::json output = ReflectSerializer::to_json(forgetResult.value());
+            std::cout << output.dump(2) << std::endl;
+            return 0;
+        }
+
         std::cerr << "Error: unknown network command '" << subcommand << "'\n";
-        std::cerr << "Valid commands: status, list, connect\n";
+        std::cerr << "Valid commands: status, list, scan, connect, disconnect, forget\n";
         return 1;
     }
 

@@ -20,6 +20,7 @@ DEPENDS = " \
     freetype \
     libsdl2 \
     libyuv \
+    networkmanager \
     openh264 \
     openssl \
     pkgconfig-native \
@@ -71,6 +72,7 @@ FILES:${PN} = " \
 # Runtime dependencies.
 RDEPENDS:${PN} = " \
     avahi-daemon \
+    libnm \
     libsdl2 \
     libyuv \
     openh264 \

@@ -651,6 +651,19 @@ double WorldCollisionCalculator::fragmentSingleCell(
     double arc_width,
     const FragmentationParams& frag_params)
 {
+    if (num_frags < 2) {
+        return 0.0;
+    }
+    if (arc_width <= 0.0) {
+        return 0.0;
+    }
+    if (sourceCell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
+        return 0.0;
+    }
+    if (frag_params.spray_fraction <= 0.0) {
+        return 0.0;
+    }
+
     // Calculate frag angles spread evenly across the arc, centered on spray direction.
     // Fragments are distributed from -half_arc to +half_arc.
     std::vector<double> frag_angles;
@@ -677,6 +690,9 @@ double WorldCollisionCalculator::fragmentSingleCell(
     std::vector<FragTarget> frag_targets;
     const double frag_amount_each =
         (sourceCell.fill_ratio * frag_params.spray_fraction) / num_frags;
+    if (frag_amount_each <= 0.0) {
+        return 0.0;
+    }
 
     for (const double angle_offset : frag_angles) {
         const double frag_angle = base_angle + angle_offset;
@@ -726,6 +742,9 @@ double WorldCollisionCalculator::fragmentSingleCell(
         if (it != merged_targets.end()) {
             // Average velocities, sum amounts.
             double total_amount = it->second.amount + frag.amount;
+            if (total_amount <= 0.0) {
+                continue;
+            }
             it->second.velocity =
                 (it->second.velocity * it->second.amount + frag.velocity * frag.amount)
                 / total_amount;
@@ -800,6 +819,10 @@ double WorldCollisionCalculator::fragmentSingleCell(
         // Remove from source.
         sourceCell.fill_ratio -= to_transfer;
         total_sprayed += to_transfer;
+    }
+
+    if (sourceCell.fill_ratio < World::MIN_MATTER_THRESHOLD) {
+        sourceCell = Cell();
     }
 
     return total_sprayed;
