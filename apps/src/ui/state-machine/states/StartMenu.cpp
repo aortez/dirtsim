@@ -108,31 +108,23 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_set_style_border_color(infoPanel_, lv_color_hex(0x404040), 0);
     lv_obj_set_style_radius(infoPanel_, 8, 0);
 
-    // Set flex layout for horizontal stacking (button left, info right).
+    // Set flex layout for the info label.
     lv_obj_set_layout(infoPanel_, LV_LAYOUT_FLEX);
     lv_obj_set_flex_flow(infoPanel_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         infoPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_gap(infoPanel_, 15, 0);
 
-    // Create "Next Fractal" button (left side).
-    nextFractalButton_ = lv_btn_create(infoPanel_);
-    lv_obj_set_size(nextFractalButton_, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_pad_all(nextFractalButton_, 10, 0);
-    lv_obj_set_user_data(nextFractalButton_, this);
-    lv_obj_add_event_cb(nextFractalButton_, onNextFractalClicked, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t* btnLabel = lv_label_create(nextFractalButton_);
-    lv_label_set_text(btnLabel, "Next Fractal");
-    lv_obj_center(btnLabel);
-
-    // Create info label (right side).
+    // Create info label.
     infoLabel_ = lv_label_create(infoPanel_);
     lv_label_set_text(infoLabel_, "Loading fractal info...");
     lv_obj_set_style_text_color(infoLabel_, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_style_text_font(infoLabel_, &lv_font_montserrat_14, 0);
 
     LOG_INFO(State, "Created fractal info panel");
+    if (IconRail* iconRail = uiManager->getIconRail()) {
+        updateInfoPanelVisibility(iconRail->getMode());
+    }
 
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
@@ -232,16 +224,6 @@ void StartMenu::updateAnimations()
     }
 }
 
-void StartMenu::onNextFractalClicked(lv_event_t* e)
-{
-    auto* startMenu = static_cast<StartMenu*>(
-        lv_obj_get_user_data(static_cast<lv_obj_t*>(lv_event_get_target(e))));
-    if (!startMenu || !startMenu->fractal_) return;
-
-    LOG_INFO(State, "Next fractal button clicked");
-    startMenu->fractal_->advanceToNextFractal();
-}
-
 void StartMenu::onTouchEvent(lv_event_t* e)
 {
     auto* label = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
@@ -276,6 +258,18 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
     // Resize the fractal to match.
     fractal->resize(newWidth, newHeight);
+}
+
+void StartMenu::updateInfoPanelVisibility(RailMode mode)
+{
+    if (!infoPanel_) return;
+
+    if (mode == RailMode::Minimized) {
+        lv_obj_clear_flag(infoPanel_, LV_OBJ_FLAG_HIDDEN);
+    }
+    else {
+        lv_obj_add_flag(infoPanel_, LV_OBJ_FLAG_HIDDEN);
+    }
 }
 
 State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
@@ -369,6 +363,12 @@ State::Any StartMenu::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMa
     return std::move(*this);
 }
 
+State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*sm*/)
+{
+    updateInfoPanelVisibility(evt.newMode);
+    return std::move(*this);
+}
+
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Start button clicked, sending SimRun to server");
@@ -438,6 +438,18 @@ State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachi
     LOG_INFO(State, "Train button clicked, transitioning to Training");
 
     return Training{};
+}
+
+State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachine& /*sm*/)
+{
+    if (!fractal_) {
+        LOG_WARN(State, "Next fractal requested with no active fractal");
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "Next fractal requested from core panel");
+    fractal_->advanceToNextFractal();
+    return std::move(*this);
 }
 
 State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)

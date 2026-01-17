@@ -38,6 +38,8 @@ struct Training {
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
     Any onEvent(const ViewBestButtonClickedEvent& evt, StateMachine& sm);
 
+    bool isTrainingResultModalVisible() const;
+
     static constexpr const char* name() { return "Training"; }
 
     Api::EvolutionProgress progress;

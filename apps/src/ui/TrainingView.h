@@ -53,6 +53,7 @@ public:
         const Api::TrainingResultAvailable::Summary& summary,
         const std::vector<Api::TrainingResultAvailable::Candidate>& candidates);
     void hideTrainingResultModal();
+    bool isTrainingResultModalVisible() const;
 
     void clearPanelContent();
     void createCorePanel();

@@ -57,6 +57,11 @@ void Training::onExit(StateMachine& sm)
     view_.reset();
 }
 
+bool Training::isTrainingResultModalVisible() const
+{
+    return view_ && view_->isTrainingResultModalVisible();
+}
+
 State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
 {
     // Update progress from server broadcast.

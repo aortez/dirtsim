@@ -268,6 +268,61 @@ void StateMachine::updateAnimations()
     if (webRtcStreamer_ && webRtcStreamer_->hasClients()) {
         webRtcStreamer_->sendFrame();
     }
+
+    autoShrinkIfIdle();
+}
+
+bool StateMachine::isAutoShrinkBlocked() const
+{
+    if (uiManager_) {
+        auto* panel = uiManager_->getExpandablePanel();
+        if (panel && panel->isVisible()) {
+            return true;
+        }
+    }
+
+    return std::visit(
+        [](const auto& state) -> bool {
+            if constexpr (requires { state.isTrainingResultModalVisible(); }) {
+                return state.isTrainingResultModalVisible();
+            }
+            return false;
+        },
+        fsmState.getVariant());
+}
+
+void StateMachine::autoShrinkIfIdle()
+{
+    if (!display || !uiManager_) {
+        return;
+    }
+
+    uint32_t inactiveMs = lv_display_get_inactive_time(display);
+    if (lastInactiveMs_ != 0 && inactiveMs < lastInactiveMs_) {
+        LOG_DEBUG(
+            State,
+            "Auto-shrink activity detected, inactivity timer reset ({}ms -> {}ms)",
+            lastInactiveMs_,
+            inactiveMs);
+    }
+    lastInactiveMs_ = inactiveMs;
+
+    auto* iconRail = uiManager_->getIconRail();
+    if (!iconRail || iconRail->isMinimized()) {
+        return;
+    }
+
+    if (isAutoShrinkBlocked()) {
+        return;
+    }
+
+    if (inactiveMs < AutoShrinkTimeoutMs) {
+        return;
+    }
+
+    LOG_DEBUG(
+        State, "Auto-shrink idle timeout reached (inactive={}ms), minimizing IconRail", inactiveMs);
+    iconRail->setMode(RailMode::Minimized);
 }
 
 void StateMachine::handleEvent(const Event& event)
