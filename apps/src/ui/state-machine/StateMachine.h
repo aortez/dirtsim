@@ -97,11 +97,17 @@ public:
     }
 
 private:
+    static constexpr uint32_t AutoShrinkTimeoutMs = 10000;
+
     SystemMetrics systemMetrics_;
     Timers timers_;
     State::Any fsmState{ State::Startup{} };
     std::unique_ptr<H264Encoder> h264Encoder_;
     std::unique_ptr<Server::PeerAdvertisement> peerAd_;
+    uint32_t lastInactiveMs_ = 0;
+
+    bool isAutoShrinkBlocked() const;
+    void autoShrinkIfIdle();
 
     void transitionTo(State::Any newState);
 };
