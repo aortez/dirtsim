@@ -70,7 +70,7 @@ if [ -n "$LOG_LEVEL" ]; then
     echo "Starting with log level: $LOG_LEVEL"
 fi
 
-LOG_CONFIG="$CONFIG_DIR/logging-config.json"
+LOG_CONFIG="$CONFIG_DIR/logging-config.json.local"
 LOG_CONFIG_ARGS="--log-config $LOG_CONFIG"
 
 if [ ! -d "$BIN_DIR" ]; then
