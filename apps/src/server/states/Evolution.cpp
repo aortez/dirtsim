@@ -129,6 +129,10 @@ void Evolution::onEnter(StateMachine& dsm)
 
     // Record training start time.
     trainingStartTime_ = std::chrono::steady_clock::now();
+    trainingComplete_ = false;
+    finalAverageFitness_ = 0.0;
+    finalTrainingSeconds_ = 0.0;
+    trainingSessionId_ = UUID::generate();
 
     // Seed RNG.
     rng.seed(std::random_device{}());
@@ -153,11 +157,15 @@ void Evolution::onExit(StateMachine& dsm)
 
 std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
+    if (trainingComplete_) {
+        return buildUnsavedTrainingResult();
+    }
+
     // Check if evolution complete.
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
-        storeBestGenome(dsm);
-        return Idle{};
+        trainingComplete_ = true;
+        return buildUnsavedTrainingResult();
     }
 
     DIRTSIM_ASSERT(!population.empty(), "Population must not be empty");
@@ -202,6 +210,9 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
 
     if (organismDied || timeUp) {
         finishEvaluation(dsm);
+        if (trainingComplete_) {
+            return buildUnsavedTrainingResult();
+        }
     }
 
     return std::nullopt;
@@ -386,6 +397,10 @@ void Evolution::finishEvaluation(StateMachine& dsm)
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
                 .scenarioId = trainingSpec.scenarioId,
                 .notes = "",
+                .organismType = trainingSpec.organismType,
+                .brainKind = individual.brainKind,
+                .brainVariant = individual.brainVariant,
+                .trainingSessionId = trainingSessionId_,
             };
             bestGenomeId = UUID::generate();
             repo.store(bestGenomeId, individual.genome.value(), meta);
@@ -423,7 +438,24 @@ void Evolution::finishEvaluation(StateMachine& dsm)
     currentEval++;
 
     if (currentEval >= evolutionConfig.populationSize) {
-        advanceGeneration(dsm);
+        if (generation + 1 >= evolutionConfig.maxGenerations) {
+            double avgFitness = 0.0;
+            for (const double fitnessScore : fitnessScores) {
+                avgFitness += fitnessScore;
+            }
+            if (!fitnessScores.empty()) {
+                avgFitness /= fitnessScores.size();
+            }
+
+            auto now = std::chrono::steady_clock::now();
+            finalTrainingSeconds_ = std::chrono::duration<double>(now - trainingStartTime_).count();
+            finalAverageFitness_ = avgFitness;
+            trainingComplete_ = true;
+            generation = evolutionConfig.maxGenerations;
+        }
+        else {
+            advanceGeneration(dsm);
+        }
     }
 
     // Broadcast progress.
@@ -577,6 +609,10 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = trainingSpec.scenarioId,
         .notes = "",
+        .organismType = trainingSpec.organismType,
+        .brainKind = population[bestIdx].brainKind,
+        .brainVariant = population[bestIdx].brainVariant,
+        .trainingSessionId = trainingSessionId_,
     };
     const GenomeId id = UUID::generate();
     repo.store(id, population[bestIdx].genome.value(), meta);
@@ -588,6 +624,70 @@ void Evolution::storeBestGenome(StateMachine& dsm)
 
     LOG_INFO(
         State, "Evolution: Stored checkpoint genome (gen {}, fitness {:.4f})", generation, bestFit);
+}
+
+Any Evolution::buildUnsavedTrainingResult()
+{
+    UnsavedTrainingResult result;
+    result.summary.scenarioId = trainingSpec.scenarioId;
+    result.summary.organismType = trainingSpec.organismType;
+    result.summary.populationSize = evolutionConfig.populationSize;
+    result.summary.maxGenerations = evolutionConfig.maxGenerations;
+    result.summary.completedGenerations = evolutionConfig.maxGenerations;
+    result.summary.bestFitness = bestFitnessAllTime;
+    result.summary.averageFitness = finalAverageFitness_;
+    result.summary.totalTrainingSeconds = finalTrainingSeconds_;
+    result.summary.trainingSessionId = trainingSessionId_;
+
+    if (!trainingSpec.population.empty()) {
+        result.summary.primaryBrainKind = trainingSpec.population.front().brainKind;
+        result.summary.primaryBrainVariant = trainingSpec.population.front().brainVariant;
+        result.summary.primaryPopulationCount = trainingSpec.population.front().count;
+    }
+
+    const uint64_t now = static_cast<uint64_t>(std::time(nullptr));
+    const int generationIndex = std::max(0, evolutionConfig.maxGenerations - 1);
+
+    result.candidates.reserve(population.size());
+    for (size_t i = 0; i < population.size(); ++i) {
+        if (!population[i].genome.has_value()) {
+            continue;
+        }
+
+        UnsavedTrainingResult::Candidate candidate;
+        candidate.id = UUID::generate();
+        candidate.genome = population[i].genome.value();
+        candidate.fitness = fitnessScores[i];
+        candidate.brainKind = population[i].brainKind;
+        candidate.brainVariant = population[i].brainVariant;
+        candidate.generation = generationIndex;
+        candidate.metadata = GenomeMetadata{
+            .name = "",
+            .fitness = candidate.fitness,
+            .generation = generationIndex,
+            .createdTimestamp = now,
+            .scenarioId = trainingSpec.scenarioId,
+            .notes = "",
+            .organismType = trainingSpec.organismType,
+            .brainKind = candidate.brainKind,
+            .brainVariant = candidate.brainVariant,
+            .trainingSessionId = trainingSessionId_,
+        };
+        result.candidates.push_back(candidate);
+    }
+
+    std::sort(result.candidates.begin(), result.candidates.end(), [](const auto& a, const auto& b) {
+        return a.fitness > b.fitness;
+    });
+
+    for (size_t i = 0; i < result.candidates.size(); ++i) {
+        result.candidates[i].metadata.name =
+            "training_" + trainingSessionId_.toShortString() + "_rank_" + std::to_string(i + 1);
+    }
+
+    LOG_INFO(State, "Evolution: Training complete, {} saveable genomes", result.candidates.size());
+
+    return result;
 }
 
 } // namespace State

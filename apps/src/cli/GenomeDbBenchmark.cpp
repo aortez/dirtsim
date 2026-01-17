@@ -8,6 +8,7 @@
 #include "server/api/GenomeSet.h"
 
 #include <chrono>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include <vector>
 
@@ -82,6 +83,10 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .createdTimestamp = 0,
             .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "",
+            .organismType = std::nullopt,
+            .brainKind = std::nullopt,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
         };
 
         const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
@@ -136,6 +141,10 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .createdTimestamp = 0,
             .scenarioId = Scenario::EnumType::TreeGermination,
             .notes = "",
+            .organismType = std::nullopt,
+            .brainKind = std::nullopt,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
         };
 
         const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
@@ -235,6 +244,10 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .createdTimestamp = 0,
                 .scenarioId = Scenario::EnumType::TreeGermination,
                 .notes = "",
+                .organismType = std::nullopt,
+                .brainKind = std::nullopt,
+                .brainVariant = std::nullopt,
+                .trainingSessionId = std::nullopt,
             };
 
             const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
@@ -284,6 +297,10 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .createdTimestamp = 0,
                 .scenarioId = Scenario::EnumType::TreeGermination,
                 .notes = "",
+                .organismType = std::nullopt,
+                .brainKind = std::nullopt,
+                .brainVariant = std::nullopt,
+                .trainingSessionId = std::nullopt,
             };
 
             const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);

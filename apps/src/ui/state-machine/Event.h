@@ -26,6 +26,7 @@
 #include <concepts>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace DirtSim {
 namespace Ui {
@@ -123,13 +124,29 @@ struct StartEvolutionButtonClickedEvent {
 /**
  * @brief User clicked Stop button in Training state.
  */
-struct StopButtonClickedEvent {
-    static constexpr const char* name() { return "StopButtonClickedEvent"; }
+struct StopTrainingClickedEvent {
+    static constexpr const char* name() { return "StopTrainingClickedEvent"; }
+};
+
+/**
+ * @brief User clicked Quit button in Training state.
+ */
+struct QuitTrainingClickedEvent {
+    static constexpr const char* name() { return "QuitTrainingClickedEvent"; }
 };
 
 struct ViewBestButtonClickedEvent {
     GenomeId genomeId;
     static constexpr const char* name() { return "ViewBestButtonClickedEvent"; }
+};
+
+struct TrainingResultSaveClickedEvent {
+    std::vector<GenomeId> ids;
+    static constexpr const char* name() { return "TrainingResultSaveClickedEvent"; }
+};
+
+struct TrainingResultDiscardClickedEvent {
+    static constexpr const char* name() { return "TrainingResultDiscardClickedEvent"; }
 };
 
 /**
@@ -193,9 +210,12 @@ using Event = std::variant<
     ServerDisconnectedEvent,
     StartButtonClickedEvent,
     StartEvolutionButtonClickedEvent,
-    StopButtonClickedEvent,
+    StopTrainingClickedEvent,
+    QuitTrainingClickedEvent,
     TrainButtonClickedEvent,
     ViewBestButtonClickedEvent,
+    TrainingResultSaveClickedEvent,
+    TrainingResultDiscardClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates

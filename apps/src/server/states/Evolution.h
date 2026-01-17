@@ -75,6 +75,10 @@ struct Evolution {
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
     double cumulativeSimTime_ = 0.0; // Total sim time across all completed individuals.
+    double finalAverageFitness_ = 0.0;
+    double finalTrainingSeconds_ = 0.0;
+    bool trainingComplete_ = false;
+    UUID trainingSessionId_{};
 
     TrainingBrainRegistry brainRegistry_;
 
@@ -97,6 +101,7 @@ private:
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
     void storeBestGenome(StateMachine& dsm);
+    Any buildUnsavedTrainingResult();
 };
 
 } // namespace State

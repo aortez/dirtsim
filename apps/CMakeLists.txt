@@ -287,6 +287,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/states/SimPaused.cpp
     src/server/states/SimRunning.cpp
     src/server/states/Startup.cpp
+    src/server/states/UnsavedTrainingResult.cpp
 
     # Server API commands.
     src/server/api/CellGet.cpp
@@ -321,6 +322,9 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/TrainingResultDiscard.cpp
+    src/server/api/TrainingResultGet.cpp
+    src/server/api/TrainingResultSave.cpp
     src/server/api/WorldResize.cpp
 
     # Server network.
@@ -558,6 +562,7 @@ add_executable(dirtsim-tests
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
+    src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/tests/BinaryProtocol_test.cpp
     src/tests/BresenhamLine_test.cpp

@@ -9,6 +9,9 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/TrainingResultDiscard.h"
+#include "server/api/TrainingResultGet.h"
+#include "server/api/TrainingResultSave.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -22,8 +25,8 @@ namespace State {
 void Training::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training state (waiting for start command)");
-    sm_ = &sm;
     evolutionStarted_ = false;
+    trainingResultRequested_ = false;
 
     // Create training view.
     auto* uiManager = sm.getUiComponentManager();
@@ -53,10 +56,9 @@ void Training::onExit(StateMachine& sm)
     }
 
     view_.reset();
-    sm_ = nullptr;
 }
 
-State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
+State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm)
 {
     // Update progress from server broadcast.
     progress = evt.progress;
@@ -83,6 +85,36 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
     // Update UI progress bars and labels.
     if (view_) {
         view_->updateProgress(progress);
+    }
+
+    if (isComplete && !trainingResultRequested_) {
+        trainingResultRequested_ = true;
+
+        if (!sm.hasWebSocketService()) {
+            LOG_ERROR(State, "No WebSocketService available for TrainingResultGet");
+            return std::move(*this);
+        }
+        auto& wsService = sm.getWebSocketService();
+        if (!wsService.isConnected()) {
+            LOG_WARN(State, "Not connected to server, cannot fetch training result");
+            return std::move(*this);
+        }
+
+        Api::TrainingResultGet::Command cmd;
+        const auto result = wsService.sendCommand<Api::TrainingResultGet::OkayType>(cmd, 5000);
+        if (result.isError()) {
+            LOG_ERROR(State, "TrainingResultGet failed: {}", result.errorValue());
+            return std::move(*this);
+        }
+        if (result.value().isError()) {
+            LOG_ERROR(State, "TrainingResultGet error: {}", result.value().errorValue().message);
+            return std::move(*this);
+        }
+
+        if (view_) {
+            const auto& response = result.value().value();
+            view_->showTrainingResultModal(response.summary, response.candidates);
+        }
     }
 
     // Stay in Training state.
@@ -211,6 +243,7 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(State, "Evolution started on server");
     evolutionStarted_ = true;
+    trainingResultRequested_ = false;
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
 
@@ -231,12 +264,13 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
     // Update UI to show "running" state.
     if (view_) {
         view_->setEvolutionStarted(true);
+        view_->hideTrainingResultModal();
     }
 
     return std::move(*this);
 }
 
-State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& sm)
+State::Any Training::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Stop button clicked, stopping evolution");
 
@@ -257,6 +291,106 @@ State::Any Training::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine
     }
 
     return StartMenu{};
+}
+
+State::Any Training::onEvent(const QuitTrainingClickedEvent& /*evt*/, StateMachine& sm)
+{
+    if (!evolutionStarted_) {
+        LOG_INFO(State, "Quit button clicked, returning to start menu");
+        return StartMenu{};
+    }
+
+    LOG_INFO(State, "Quit button clicked, stopping evolution");
+
+    DIRTSIM_ASSERT(sm.hasWebSocketService(), "WebSocketService must exist");
+    auto& wsService = sm.getWebSocketService();
+    DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected to reach Training state");
+
+    Api::EvolutionStop::Command cmd;
+    const auto result = wsService.sendCommand<Api::EvolutionStop::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "Failed to send EvolutionStop: {}", result.errorValue());
+    }
+    else if (result.value().isError()) {
+        LOG_ERROR(State, "Server EvolutionStop error: {}", result.value().errorValue().message);
+    }
+    else {
+        LOG_INFO(State, "Evolution stopped on server");
+    }
+
+    return StartMenu{};
+}
+
+State::Any Training::onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(State, "Training result save requested (count={})", evt.ids.size());
+
+    if (evt.ids.empty()) {
+        LOG_WARN(State, "Training result save ignored: no ids provided");
+        return std::move(*this);
+    }
+
+    if (!sm.hasWebSocketService()) {
+        LOG_ERROR(State, "No WebSocketService available");
+        return std::move(*this);
+    }
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot save training result");
+        return std::move(*this);
+    }
+
+    Api::TrainingResultSave::Command cmd;
+    cmd.ids = evt.ids;
+    const auto result = wsService.sendCommand<Api::TrainingResultSave::OkayType>(cmd, 5000);
+    if (result.isError()) {
+        LOG_ERROR(State, "TrainingResultSave failed: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(State, "TrainingResultSave error: {}", result.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    trainingResultRequested_ = false;
+    if (view_) {
+        view_->hideTrainingResultModal();
+    }
+
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const TrainingResultDiscardClickedEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "Training result discard requested");
+
+    if (!sm.hasWebSocketService()) {
+        LOG_ERROR(State, "No WebSocketService available");
+        return std::move(*this);
+    }
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot discard training result");
+        return std::move(*this);
+    }
+
+    Api::TrainingResultDiscard::Command cmd;
+    const auto result = wsService.sendCommand<Api::TrainingResultDiscard::OkayType>(cmd, 5000);
+    if (result.isError()) {
+        LOG_ERROR(State, "TrainingResultDiscard failed: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(State, "TrainingResultDiscard error: {}", result.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    trainingResultRequested_ = false;
+    if (view_) {
+        view_->hideTrainingResultModal();
+    }
+
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
