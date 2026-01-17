@@ -199,7 +199,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
 
 void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& network)
 {
-    if (connectInProgress_) {
+    if (connectInProgress_ || forgetInProgress_) {
         return;
     }
 
@@ -232,6 +232,44 @@ void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& 
 
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingConnect = result;
+    }).detach();
+}
+
+void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& network)
+{
+    if (connectInProgress_ || forgetInProgress_) {
+        return;
+    }
+
+    forgetInProgress_ = true;
+    forgettingSsid_ = network.ssid;
+
+    if (wifiStatusLabel_) {
+        std::string text = "WiFi: forgetting";
+        if (!network.ssid.empty()) {
+            text += " " + network.ssid;
+        }
+        lv_label_set_text(wifiStatusLabel_, text.c_str());
+    }
+
+    setRefreshButtonEnabled(false);
+    if (!networks_.empty()) {
+        updateNetworkDisplay(
+            Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+    }
+
+    if (refreshTimer_) {
+        lv_timer_resume(refreshTimer_);
+    }
+
+    auto state = asyncState_;
+    Network::WifiNetworkInfo networkCopy = network;
+    std::thread([state, networkCopy]() {
+        Network::WifiManager wifiManager;
+        const auto result = wifiManager.forget(networkCopy.ssid);
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingForget = result;
     }).detach();
 }
 
@@ -297,6 +335,7 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
     lv_obj_clean(networksContainer_);
     networks_.clear();
     connectContexts_.clear();
+    forgetContexts_.clear();
 
     if (listResult.isError()) {
         std::string text = "WiFi unavailable: " + listResult.errorValue();
@@ -360,6 +399,16 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         lv_label_set_long_mode(detailsLabel, LV_LABEL_LONG_WRAP);
         lv_obj_set_width(detailsLabel, LV_PCT(100));
 
+        lv_obj_t* buttonColumn = lv_obj_create(row);
+        lv_obj_set_size(buttonColumn, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(buttonColumn, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_flex_align(
+            buttonColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_all(buttonColumn, 0, 0);
+        lv_obj_set_style_pad_row(buttonColumn, 6, 0);
+        lv_obj_set_style_bg_opa(buttonColumn, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(buttonColumn, 0, 0);
+
         std::string buttonText = "Connect";
         if (network.status == Network::WifiNetworkStatus::Open) {
             buttonText = "Join";
@@ -372,13 +421,18 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
             buttonText = "Connecting";
         }
 
+        const bool actionsDisabled = connectInProgress_ || forgetInProgress_;
+        const bool canForget = network.autoConnect || network.hasCredentials;
+        const bool isForgetting =
+            forgetInProgress_ && !forgettingSsid_.empty() && network.ssid == forgettingSsid_;
+
         auto context = std::make_unique<ConnectContext>();
         context->panel = this;
         context->index = i;
         connectContexts_.push_back(std::move(context));
         ConnectContext* contextPtr = connectContexts_.back().get();
 
-        lv_obj_t* buttonContainer = LVGLBuilder::actionButton(row)
+        lv_obj_t* buttonContainer = LVGLBuilder::actionButton(buttonColumn)
                                         .text(buttonText.c_str())
                                         .mode(LVGLBuilder::ActionMode::Push)
                                         .width(90)
@@ -389,9 +443,32 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         if (buttonContainer) {
             lv_obj_t* button = lv_obj_get_child(buttonContainer, 0);
             if (button
-                && (network.status == Network::WifiNetworkStatus::Connected
-                    || connectInProgress_)) {
+                && (network.status == Network::WifiNetworkStatus::Connected || actionsDisabled)) {
                 lv_obj_add_state(button, LV_STATE_DISABLED);
+            }
+        }
+
+        if (canForget) {
+            auto forgetContext = std::make_unique<ForgetContext>();
+            forgetContext->panel = this;
+            forgetContext->index = i;
+            forgetContexts_.push_back(std::move(forgetContext));
+            ForgetContext* forgetContextPtr = forgetContexts_.back().get();
+
+            const char* forgetText = isForgetting ? "Forgetting" : "Forget";
+            lv_obj_t* forgetContainer = LVGLBuilder::actionButton(buttonColumn)
+                                            .text(forgetText)
+                                            .mode(LVGLBuilder::ActionMode::Push)
+                                            .width(90)
+                                            .height(48)
+                                            .callback(onForgetClicked, forgetContextPtr)
+                                            .buildOrLog();
+
+            if (forgetContainer) {
+                lv_obj_t* button = lv_obj_get_child(forgetContainer, 0);
+                if (button && actionsDisabled) {
+                    lv_obj_add_state(button, LV_STATE_DISABLED);
+                }
             }
         }
     }
@@ -461,6 +538,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     }
 
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
+    std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
 
     {
@@ -468,8 +546,31 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         connectResult = asyncState_->pendingConnect;
         asyncState_->pendingConnect.reset();
 
+        forgetResult = asyncState_->pendingForget;
+        asyncState_->pendingForget.reset();
+
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
+    }
+
+    if (forgetResult.has_value()) {
+        forgetInProgress_ = false;
+        forgettingSsid_.clear();
+
+        if (forgetResult->isError()) {
+            LOG_WARN(Controls, "WiFi forget failed: {}", forgetResult->errorValue());
+            if (wifiStatusLabel_) {
+                lv_label_set_text(wifiStatusLabel_, "WiFi: forget failed");
+            }
+            if (!networks_.empty()) {
+                updateNetworkDisplay(
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+            }
+        }
+        else {
+            LOG_INFO(Controls, "WiFi forget completed for {}", forgetResult->value().ssid);
+            refresh();
+        }
     }
 
     if (connectResult.has_value()) {
@@ -502,11 +603,12 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
         refreshInProgress = asyncState_->refreshInProgress;
-        hasPending =
-            asyncState_->pendingRefresh.has_value() || asyncState_->pendingConnect.has_value();
+        hasPending = asyncState_->pendingRefresh.has_value()
+            || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value();
     }
 
-    if (!refreshInProgress && !connectInProgress_ && !hasPending && refreshTimer_) {
+    if (!refreshInProgress && !connectInProgress_ && !forgetInProgress_ && !hasPending
+        && refreshTimer_) {
         lv_timer_pause(refreshTimer_);
         setRefreshButtonEnabled(true);
     }
@@ -538,6 +640,24 @@ void NetworkDiagnosticsPanel::onConnectClicked(lv_event_t* e)
     }
 
     ctx->panel->startAsyncConnect(ctx->panel->networks_[ctx->index]);
+}
+
+void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    ForgetContext* ctx = static_cast<ForgetContext*>(lv_event_get_user_data(e));
+    if (!ctx || !ctx->panel) {
+        return;
+    }
+
+    if (ctx->index >= ctx->panel->networks_.size()) {
+        return;
+    }
+
+    ctx->panel->startAsyncForget(ctx->panel->networks_[ctx->index]);
 }
 
 } // namespace Ui
