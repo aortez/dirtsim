@@ -2,6 +2,7 @@
 
 #include <NetworkManager.h>
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <ctime>
@@ -48,28 +49,45 @@ gboolean onLoopTimeout(gpointer data)
     return G_SOURCE_REMOVE;
 }
 
-AsyncLoop createAsyncLoop(int timeoutSeconds)
-{
-    AsyncLoop loop;
-    loop.loop = g_main_loop_new(nullptr, FALSE);
-    if (timeoutSeconds > 0) {
-        loop.timeoutId =
-            g_timeout_add_seconds(static_cast<guint>(timeoutSeconds), onLoopTimeout, &loop);
+class AsyncLoopGuard {
+public:
+    explicit AsyncLoopGuard(int timeoutSeconds)
+    {
+        loop_ = std::make_unique<AsyncLoop>();
+        loop_->loop = g_main_loop_new(nullptr, FALSE);
+        if (timeoutSeconds > 0) {
+            loop_->timeoutId = g_timeout_add_seconds(
+                static_cast<guint>(timeoutSeconds), onLoopTimeout, loop_.get());
+        }
     }
-    return loop;
-}
 
-void destroyAsyncLoop(AsyncLoop& loop)
-{
-    if (loop.timeoutId != 0) {
-        g_source_remove(loop.timeoutId);
-        loop.timeoutId = 0;
+    AsyncLoopGuard(const AsyncLoopGuard&) = delete;
+    AsyncLoopGuard& operator=(const AsyncLoopGuard&) = delete;
+    AsyncLoopGuard(AsyncLoopGuard&&) = default;
+    AsyncLoopGuard& operator=(AsyncLoopGuard&&) = default;
+
+    ~AsyncLoopGuard()
+    {
+        if (!loop_) {
+            return;
+        }
+        if (loop_->timeoutId != 0) {
+            g_source_remove(loop_->timeoutId);
+            loop_->timeoutId = 0;
+        }
+        if (loop_->loop) {
+            g_main_loop_unref(loop_->loop);
+            loop_->loop = nullptr;
+        }
     }
-    if (loop.loop) {
-        g_main_loop_unref(loop.loop);
-        loop.loop = nullptr;
-    }
-}
+
+    AsyncLoop* get() const { return loop_.get(); }
+    GMainLoop* mainLoop() const { return loop_ ? loop_->loop : nullptr; }
+    bool timedOut() const { return loop_ ? loop_->timedOut : false; }
+
+private:
+    std::unique_ptr<AsyncLoop> loop_;
+};
 
 std::string formatError(GError* error, const std::string& fallback)
 {
@@ -191,6 +209,29 @@ std::string securityFromAccessPoint(NMAccessPoint* accessPoint)
     return "open";
 }
 
+bool isHexString(const std::string& value)
+{
+    if (value.empty()) {
+        return false;
+    }
+
+    return std::all_of(
+        value.begin(), value.end(), [](unsigned char c) { return std::isxdigit(c) != 0; });
+}
+
+NMWepKeyType wepKeyTypeForPassword(const std::string& password)
+{
+    const size_t length = password.size();
+    if (length == 5 || length == 13) {
+        return NM_WEP_KEY_TYPE_KEY;
+    }
+    if ((length == 10 || length == 26) && isHexString(password)) {
+        return NM_WEP_KEY_TYPE_KEY;
+    }
+
+    return NM_WEP_KEY_TYPE_PASSPHRASE;
+}
+
 std::string securityFromConnection(NMConnection* connection)
 {
     if (!connection) {
@@ -294,8 +335,8 @@ bool requestWifiScan(NMDeviceWifi* device, std::string& errorMessage)
         std::string* error = nullptr;
     };
 
-    auto loop = createAsyncLoop(5);
-    ScanContext context{ &loop, &errorMessage };
+    AsyncLoopGuard loop(5);
+    ScanContext context{ loop.get(), &errorMessage };
 
     nm_device_wifi_request_scan_async(
         device,
@@ -311,11 +352,10 @@ bool requestWifiScan(NMDeviceWifi* device, std::string& errorMessage)
         },
         &context);
 
-    g_main_loop_run(loop.loop);
-    if (loop.timedOut && errorMessage.empty()) {
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
         errorMessage = "WiFi scan timed out";
     }
-    destroyAsyncLoop(loop);
 
     return errorMessage.empty();
 }
@@ -524,14 +564,27 @@ GObjectPtr<NMConnection> buildConnectionForSsid(
     if (password.has_value()) {
         auto* settingSecurity = nm_setting_wireless_security_new();
         const std::string security = securityFromAccessPoint(accessPoint);
-        const char* keyMgmt = (security == "wpa3") ? "sae" : "wpa-psk";
-        g_object_set(
-            G_OBJECT(settingSecurity),
-            NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
-            keyMgmt,
-            NM_SETTING_WIRELESS_SECURITY_PSK,
-            password->c_str(),
-            nullptr);
+        if (security == "wep") {
+            g_object_set(
+                G_OBJECT(settingSecurity),
+                NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
+                "none",
+                NM_SETTING_WIRELESS_SECURITY_WEP_KEY0,
+                password->c_str(),
+                NM_SETTING_WIRELESS_SECURITY_WEP_KEY_TYPE,
+                wepKeyTypeForPassword(*password),
+                nullptr);
+        }
+        else {
+            const char* keyMgmt = (security == "wpa3") ? "sae" : "wpa-psk";
+            g_object_set(
+                G_OBJECT(settingSecurity),
+                NM_SETTING_WIRELESS_SECURITY_KEY_MGMT,
+                keyMgmt,
+                NM_SETTING_WIRELESS_SECURITY_PSK,
+                password->c_str(),
+                nullptr);
+        }
         nm_connection_add_setting(connection, NM_SETTING(settingSecurity));
     }
 
@@ -574,8 +627,8 @@ bool activateConnection(
 
     const char* specificObject = accessPoint ? nm_object_get_path(NM_OBJECT(accessPoint)) : nullptr;
 
-    auto loop = createAsyncLoop(10);
-    ActivateContext context{ &loop, nullptr, &errorMessage };
+    AsyncLoopGuard loop(10);
+    ActivateContext context{ loop.get(), nullptr, &errorMessage };
 
     nm_client_activate_connection_async(
         client,
@@ -595,12 +648,11 @@ bool activateConnection(
         },
         &context);
 
-    g_main_loop_run(loop.loop);
-    if (loop.timedOut && errorMessage.empty()) {
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
         errorMessage = "WiFi connection activation timed out";
     }
 
-    destroyAsyncLoop(loop);
     if (!context.active) {
         return false;
     }
@@ -629,8 +681,8 @@ bool addAndActivateConnection(
 
     const char* specificObject = accessPoint ? nm_object_get_path(NM_OBJECT(accessPoint)) : nullptr;
 
-    auto loop = createAsyncLoop(10);
-    AddContext context{ &loop, nullptr, &errorMessage };
+    AsyncLoopGuard loop(10);
+    AddContext context{ loop.get(), nullptr, &errorMessage };
 
     nm_client_add_and_activate_connection_async(
         client,
@@ -651,12 +703,11 @@ bool addAndActivateConnection(
         },
         &context);
 
-    g_main_loop_run(loop.loop);
-    if (loop.timedOut && errorMessage.empty()) {
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
         errorMessage = "WiFi connection timed out";
     }
 
-    destroyAsyncLoop(loop);
     if (!context.active) {
         return false;
     }
@@ -679,8 +730,8 @@ bool deactivateActiveConnection(
         std::string* error = nullptr;
     };
 
-    auto loop = createAsyncLoop(10);
-    DeactivateContext context{ &loop, false, &errorMessage };
+    AsyncLoopGuard loop(10);
+    DeactivateContext context{ loop.get(), false, &errorMessage };
 
     nm_client_deactivate_connection_async(
         client,
@@ -699,12 +750,11 @@ bool deactivateActiveConnection(
         },
         &context);
 
-    g_main_loop_run(loop.loop);
-    if (loop.timedOut && errorMessage.empty()) {
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
         errorMessage = "WiFi disconnect timed out";
     }
 
-    destroyAsyncLoop(loop);
     return context.success;
 }
 
@@ -721,8 +771,8 @@ bool deleteRemoteConnection(NMRemoteConnection* connection, std::string& errorMe
         std::string* error = nullptr;
     };
 
-    auto loop = createAsyncLoop(10);
-    DeleteContext context{ &loop, false, &errorMessage };
+    AsyncLoopGuard loop(10);
+    DeleteContext context{ loop.get(), false, &errorMessage };
 
     nm_remote_connection_delete_async(
         connection,
@@ -740,12 +790,11 @@ bool deleteRemoteConnection(NMRemoteConnection* connection, std::string& errorMe
         },
         &context);
 
-    g_main_loop_run(loop.loop);
-    if (loop.timedOut && errorMessage.empty()) {
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
         errorMessage = "WiFi forget timed out";
     }
 
-    destroyAsyncLoop(loop);
     return context.success;
 }
 
