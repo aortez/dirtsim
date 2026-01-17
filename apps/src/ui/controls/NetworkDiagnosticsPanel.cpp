@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <arpa/inet.h>
+#include <exception>
 #include <ifaddrs.h>
 #include <net/if.h>
 #include <optional>
@@ -185,9 +186,24 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
     auto state = asyncState_;
     std::thread([state]() {
         PendingRefreshData data;
-        Network::WifiManager wifiManager;
-        data.statusResult = wifiManager.getStatus();
-        data.listResult = wifiManager.listNetworks();
+        try {
+            Network::WifiManager wifiManager;
+            data.statusResult = wifiManager.getStatus();
+            data.listResult = wifiManager.listNetworks();
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "WiFi refresh exception: {}", e.what());
+            data.statusResult = Result<Network::WifiStatus, std::string>::error(e.what());
+            data.listResult =
+                Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(e.what());
+        }
+        catch (...) {
+            LOG_WARN(Controls, "WiFi refresh exception: unknown");
+            data.statusResult =
+                Result<Network::WifiStatus, std::string>::error("WiFi refresh failed");
+            data.listResult = Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(
+                "WiFi refresh failed");
+        }
 
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingRefresh = data;
@@ -199,36 +215,27 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
 
 void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& network)
 {
-    if (connectInProgress_ || forgetInProgress_) {
+    Network::WifiNetworkInfo networkCopy = network;
+    if (!beginAsyncAction(AsyncActionKind::Connect, networkCopy, "connecting to")) {
         return;
     }
 
-    connectInProgress_ = true;
-    connectingSsid_ = network.ssid;
-
-    if (wifiStatusLabel_) {
-        std::string text = "WiFi: connecting";
-        if (!network.ssid.empty()) {
-            text += " to " + network.ssid;
-        }
-        lv_label_set_text(wifiStatusLabel_, text.c_str());
-    }
-
-    setRefreshButtonEnabled(false);
-    if (!networks_.empty()) {
-        updateNetworkDisplay(
-            Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
-    }
-
-    if (refreshTimer_) {
-        lv_timer_resume(refreshTimer_);
-    }
-
     auto state = asyncState_;
-    Network::WifiNetworkInfo networkCopy = network;
     std::thread([state, networkCopy]() {
-        Network::WifiManager wifiManager;
-        const auto result = wifiManager.connect(networkCopy);
+        Result<Network::WifiConnectResult, std::string> result =
+            Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
+        try {
+            Network::WifiManager wifiManager;
+            result = wifiManager.connect(networkCopy);
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "WiFi connect exception: {}", e.what());
+            result = Result<Network::WifiConnectResult, std::string>::error(e.what());
+        }
+        catch (...) {
+            LOG_WARN(Controls, "WiFi connect exception: unknown");
+            result = Result<Network::WifiConnectResult, std::string>::error("WiFi connect failed");
+        }
 
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingConnect = result;
@@ -237,15 +244,45 @@ void NetworkDiagnosticsPanel::startAsyncConnect(const Network::WifiNetworkInfo& 
 
 void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& network)
 {
-    if (connectInProgress_ || forgetInProgress_) {
+    Network::WifiNetworkInfo networkCopy = network;
+    if (!beginAsyncAction(AsyncActionKind::Forget, networkCopy, "forgetting")) {
         return;
     }
 
-    forgetInProgress_ = true;
-    forgettingSsid_ = network.ssid;
+    auto state = asyncState_;
+    std::thread([state, networkCopy]() {
+        Result<Network::WifiForgetResult, std::string> result =
+            Result<Network::WifiForgetResult, std::string>::error("WiFi forget failed");
+        try {
+            Network::WifiManager wifiManager;
+            result = wifiManager.forget(networkCopy.ssid);
+        }
+        catch (const std::exception& e) {
+            LOG_WARN(Controls, "WiFi forget exception: {}", e.what());
+            result = Result<Network::WifiForgetResult, std::string>::error(e.what());
+        }
+        catch (...) {
+            LOG_WARN(Controls, "WiFi forget exception: unknown");
+            result = Result<Network::WifiForgetResult, std::string>::error("WiFi forget failed");
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingForget = result;
+    }).detach();
+}
+
+bool NetworkDiagnosticsPanel::beginAsyncAction(
+    AsyncActionKind kind, const Network::WifiNetworkInfo& network, const std::string& verb)
+{
+    if (isActionInProgress()) {
+        return false;
+    }
+
+    actionState_.kind = kind;
+    actionState_.ssid = network.ssid;
 
     if (wifiStatusLabel_) {
-        std::string text = "WiFi: forgetting";
+        std::string text = "WiFi: " + verb;
         if (!network.ssid.empty()) {
             text += " " + network.ssid;
         }
@@ -262,15 +299,22 @@ void NetworkDiagnosticsPanel::startAsyncForget(const Network::WifiNetworkInfo& n
         lv_timer_resume(refreshTimer_);
     }
 
-    auto state = asyncState_;
-    Network::WifiNetworkInfo networkCopy = network;
-    std::thread([state, networkCopy]() {
-        Network::WifiManager wifiManager;
-        const auto result = wifiManager.forget(networkCopy.ssid);
+    return true;
+}
 
-        std::lock_guard<std::mutex> lock(state->mutex);
-        state->pendingForget = result;
-    }).detach();
+void NetworkDiagnosticsPanel::endAsyncAction(AsyncActionKind kind)
+{
+    if (actionState_.kind != kind) {
+        return;
+    }
+
+    actionState_.kind = AsyncActionKind::None;
+    actionState_.ssid.clear();
+}
+
+bool NetworkDiagnosticsPanel::isActionInProgress() const
+{
+    return actionState_.kind != AsyncActionKind::None;
 }
 
 void NetworkDiagnosticsPanel::updateWifiStatus(
@@ -409,6 +453,13 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         lv_obj_set_style_bg_opa(buttonColumn, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(buttonColumn, 0, 0);
 
+        const bool isConnecting =
+            actionState_.kind == AsyncActionKind::Connect && network.ssid == actionState_.ssid;
+        const bool isForgetting =
+            actionState_.kind == AsyncActionKind::Forget && network.ssid == actionState_.ssid;
+        const bool actionsDisabled = isActionInProgress();
+        const bool canForget = network.autoConnect || network.hasCredentials;
+
         std::string buttonText = "Connect";
         if (network.status == Network::WifiNetworkStatus::Open) {
             buttonText = "Join";
@@ -416,15 +467,9 @@ void NetworkDiagnosticsPanel::updateNetworkDisplay(
         else if (network.status == Network::WifiNetworkStatus::Connected) {
             buttonText = "Connected";
         }
-        else if (
-            connectInProgress_ && !connectingSsid_.empty() && network.ssid == connectingSsid_) {
+        else if (isConnecting) {
             buttonText = "Connecting";
         }
-
-        const bool actionsDisabled = connectInProgress_ || forgetInProgress_;
-        const bool canForget = network.autoConnect || network.hasCredentials;
-        const bool isForgetting =
-            forgetInProgress_ && !forgettingSsid_.empty() && network.ssid == forgettingSsid_;
 
         auto context = std::make_unique<ConnectContext>();
         context->panel = this;
@@ -553,30 +598,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         asyncState_->pendingRefresh.reset();
     }
 
-    if (forgetResult.has_value()) {
-        forgetInProgress_ = false;
-        forgettingSsid_.clear();
-
-        if (forgetResult->isError()) {
-            LOG_WARN(Controls, "WiFi forget failed: {}", forgetResult->errorValue());
-            if (wifiStatusLabel_) {
-                lv_label_set_text(wifiStatusLabel_, "WiFi: forget failed");
-            }
-            if (!networks_.empty()) {
-                updateNetworkDisplay(
-                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
-            }
-        }
-        else {
-            LOG_INFO(Controls, "WiFi forget completed for {}", forgetResult->value().ssid);
-            refresh();
-        }
-    }
-
     if (connectResult.has_value()) {
-        connectInProgress_ = false;
-        connectingSsid_.clear();
-
+        endAsyncAction(AsyncActionKind::Connect);
         if (connectResult->isError()) {
             LOG_WARN(Controls, "WiFi connect failed: {}", connectResult->errorValue());
             if (wifiStatusLabel_) {
@@ -589,6 +612,24 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         }
         else {
             LOG_INFO(Controls, "WiFi connect requested for {}", connectResult->value().ssid);
+            refresh();
+        }
+    }
+
+    if (forgetResult.has_value()) {
+        endAsyncAction(AsyncActionKind::Forget);
+        if (forgetResult->isError()) {
+            LOG_WARN(Controls, "WiFi forget failed: {}", forgetResult->errorValue());
+            if (wifiStatusLabel_) {
+                lv_label_set_text(wifiStatusLabel_, "WiFi: forget failed");
+            }
+            if (!networks_.empty()) {
+                updateNetworkDisplay(
+                    Result<std::vector<Network::WifiNetworkInfo>, std::string>::okay(networks_));
+            }
+        }
+        else {
+            LOG_INFO(Controls, "WiFi forget completed for {}", forgetResult->value().ssid);
             refresh();
         }
     }
@@ -607,8 +648,7 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value();
     }
 
-    if (!refreshInProgress && !connectInProgress_ && !forgetInProgress_ && !hasPending
-        && refreshTimer_) {
+    if (!refreshInProgress && !isActionInProgress() && !hasPending && refreshTimer_) {
         lv_timer_pause(refreshTimer_);
         setRefreshButtonEnabled(true);
     }

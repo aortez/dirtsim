@@ -67,6 +67,13 @@ private:
         size_t index = 0;
     };
 
+    enum class AsyncActionKind { None, Connect, Forget };
+
+    struct AsyncActionState {
+        AsyncActionKind kind = AsyncActionKind::None;
+        std::string ssid;
+    };
+
     struct PendingRefreshData {
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
@@ -84,15 +91,16 @@ private:
     std::vector<std::unique_ptr<ConnectContext>> connectContexts_;
     std::vector<std::unique_ptr<ForgetContext>> forgetContexts_;
     std::shared_ptr<AsyncState> asyncState_;
-    bool connectInProgress_ = false;
-    std::string connectingSsid_;
-    bool forgetInProgress_ = false;
-    std::string forgettingSsid_;
+    AsyncActionState actionState_;
 
     void createUI();
     bool startAsyncRefresh();
     void startAsyncConnect(const Network::WifiNetworkInfo& network);
     void startAsyncForget(const Network::WifiNetworkInfo& network);
+    bool beginAsyncAction(
+        AsyncActionKind kind, const Network::WifiNetworkInfo& network, const std::string& verb);
+    void endAsyncAction(AsyncActionKind kind);
+    bool isActionInProgress() const;
     void applyPendingUpdates();
     void setLoadingState();
     void setRefreshButtonEnabled(bool enabled);
