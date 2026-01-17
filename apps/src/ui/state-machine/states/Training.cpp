@@ -36,7 +36,7 @@ void Training::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION });
+    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION, IconId::POPULATION });
     iconRail->deselectAll(); // Start fresh, no panel open.
 }
 
@@ -124,6 +124,10 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
         case IconId::EVOLUTION:
             view_->createEvolutionConfigPanel();
+            panel->show();
+            break;
+        case IconId::POPULATION:
+            view_->createTrainingPopulationPanel();
             panel->show();
             break;
 
