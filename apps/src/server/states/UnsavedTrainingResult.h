@@ -4,8 +4,8 @@
 #include "core/organisms/brains/Genome.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/Exit.h"
+#include "server/api/TrainingResultAvailable.h"
 #include "server/api/TrainingResultDiscard.h"
-#include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultSave.h"
 
 #include <optional>
@@ -27,13 +27,12 @@ struct UnsavedTrainingResult {
         int generation = 0;
     };
 
-    Api::TrainingResultGet::Summary summary;
+    Api::TrainingResultAvailable::Summary summary;
     std::vector<Candidate> candidates;
 
     void onEnter(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm);
-    Any onEvent(const Api::TrainingResultGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TrainingResultDiscard::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);

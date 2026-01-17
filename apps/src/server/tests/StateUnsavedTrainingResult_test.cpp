@@ -4,7 +4,6 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "server/StateMachine.h"
 #include "server/api/TrainingResultDiscard.h"
-#include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/states/Idle.h"
 #include "server/states/State.h"
@@ -56,38 +55,6 @@ protected:
     std::filesystem::path testDataDir_;
     std::unique_ptr<StateMachine> stateMachine;
 };
-
-TEST_F(StateUnsavedTrainingResultTest, TrainingResultGetReturnsSummaryAndCandidates)
-{
-    UnsavedTrainingResult state;
-    state.summary.scenarioId = Scenario::EnumType::TreeGermination;
-    state.summary.organismType = OrganismType::TREE;
-    state.summary.populationSize = 3;
-    state.summary.maxGenerations = 2;
-    state.summary.completedGenerations = 2;
-    state.summary.bestFitness = 3.0;
-    state.summary.averageFitness = 2.0;
-    state.summary.totalTrainingSeconds = 4.5;
-    state.summary.primaryBrainKind = TrainingBrainKind::NeuralNet;
-    state.summary.primaryPopulationCount = 3;
-    state.summary.trainingSessionId = UUID::generate();
-    state.candidates.push_back(makeCandidate(1.0, 0.1));
-    state.candidates.push_back(makeCandidate(2.0, 0.2));
-
-    Api::TrainingResultGet::Response capturedResponse;
-    Api::TrainingResultGet::Command cmd;
-    Api::TrainingResultGet::Cwc cwc(cmd, [&](Api::TrainingResultGet::Response&& response) {
-        capturedResponse = std::move(response);
-    });
-
-    State::Any newState = state.onEvent(cwc, *stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(newState.getVariant()));
-    ASSERT_TRUE(capturedResponse.isValue());
-    const auto& value = capturedResponse.value();
-    EXPECT_EQ(value.summary.populationSize, 3);
-    EXPECT_EQ(value.candidates.size(), 2u);
-}
 
 TEST_F(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
 {

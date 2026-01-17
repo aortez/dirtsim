@@ -44,7 +44,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::TimerStatsGet::Command, Api::TimerStatsGet::Okay>(serverHandlers_);
     registerCommand<Api::TrainingResultDiscard::Command, Api::TrainingResultDiscard::Okay>(
         serverHandlers_);
-    registerCommand<Api::TrainingResultGet::Command, Api::TrainingResultGet::Okay>(serverHandlers_);
     registerCommand<Api::TrainingResultSave::Command, Api::TrainingResultSave::Okay>(
         serverHandlers_);
     registerCommand<Api::WorldResize::Command, std::monostate>(serverHandlers_);

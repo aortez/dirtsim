@@ -31,6 +31,7 @@ struct Training {
     Any onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingResultAvailableReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
@@ -42,7 +43,6 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     bool evolutionStarted_ = false;
-    bool trainingResultRequested_ = false;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
 };

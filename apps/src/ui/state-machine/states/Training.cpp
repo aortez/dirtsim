@@ -9,8 +9,8 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/TrainingResultAvailableAck.h"
 #include "server/api/TrainingResultDiscard.h"
-#include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultSave.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
@@ -26,7 +26,6 @@ void Training::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training state (waiting for start command)");
     evolutionStarted_ = false;
-    trainingResultRequested_ = false;
 
     // Create training view.
     auto* uiManager = sm.getUiComponentManager();
@@ -58,7 +57,7 @@ void Training::onExit(StateMachine& sm)
     view_.reset();
 }
 
-State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm)
+State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
 {
     // Update progress from server broadcast.
     progress = evt.progress;
@@ -87,37 +86,40 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
         view_->updateProgress(progress);
     }
 
-    if (isComplete && !trainingResultRequested_) {
-        trainingResultRequested_ = true;
+    // Stay in Training state.
+    return std::move(*this);
+}
 
-        if (!sm.hasWebSocketService()) {
-            LOG_ERROR(State, "No WebSocketService available for TrainingResultGet");
-            return std::move(*this);
-        }
-        auto& wsService = sm.getWebSocketService();
-        if (!wsService.isConnected()) {
-            LOG_WARN(State, "Not connected to server, cannot fetch training result");
-            return std::move(*this);
-        }
+State::Any Training::onEvent(const TrainingResultAvailableReceivedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(State, "Training result available (candidates={})", evt.result.candidates.size());
 
-        Api::TrainingResultGet::Command cmd;
-        const auto result = wsService.sendCommand<Api::TrainingResultGet::OkayType>(cmd, 5000);
-        if (result.isError()) {
-            LOG_ERROR(State, "TrainingResultGet failed: {}", result.errorValue());
-            return std::move(*this);
-        }
-        if (result.value().isError()) {
-            LOG_ERROR(State, "TrainingResultGet error: {}", result.value().errorValue().message);
-            return std::move(*this);
-        }
-
-        if (view_) {
-            const auto& response = result.value().value();
-            view_->showTrainingResultModal(response.summary, response.candidates);
-        }
+    if (view_) {
+        view_->showTrainingResultModal(evt.result.summary, evt.result.candidates);
     }
 
-    // Stay in Training state.
+    if (!sm.hasWebSocketService()) {
+        LOG_ERROR(State, "No WebSocketService available for TrainingResultAvailableAck");
+        return std::move(*this);
+    }
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot acknowledge training result");
+        return std::move(*this);
+    }
+
+    Api::TrainingResultAvailableAck::Command cmd;
+    const auto result = wsService.sendCommand<Api::TrainingResultAvailableAck::OkayType>(cmd, 5000);
+    if (result.isError()) {
+        LOG_ERROR(State, "TrainingResultAvailableAck failed: {}", result.errorValue());
+        return std::move(*this);
+    }
+    if (result.value().isError()) {
+        LOG_ERROR(
+            State, "TrainingResultAvailableAck error: {}", result.value().errorValue().message);
+        return std::move(*this);
+    }
+
     return std::move(*this);
 }
 
@@ -243,7 +245,6 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(State, "Evolution started on server");
     evolutionStarted_ = true;
-    trainingResultRequested_ = false;
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
 
@@ -352,7 +353,6 @@ State::Any Training::onEvent(const TrainingResultSaveClickedEvent& evt, StateMac
         return std::move(*this);
     }
 
-    trainingResultRequested_ = false;
     if (view_) {
         view_->hideTrainingResultModal();
     }
@@ -385,7 +385,6 @@ State::Any Training::onEvent(const TrainingResultDiscardClickedEvent& /*evt*/, S
         return std::move(*this);
     }
 
-    trainingResultRequested_ = false;
     if (view_) {
         view_->hideTrainingResultModal();
     }

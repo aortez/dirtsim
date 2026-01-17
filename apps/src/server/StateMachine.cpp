@@ -394,10 +394,10 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultAvailableAck::Cwc>(
+        [this](Api::TrainingResultAvailableAck::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultDiscard::Cwc>(
         [this](Api::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
-    service.registerHandler<Api::TrainingResultGet::Cwc>(
-        [this](Api::TrainingResultGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultSave::Cwc>(
         [this](Api::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::WorldResize::Cwc>(

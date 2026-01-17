@@ -14,6 +14,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingResultAvailable.h"
 #include <algorithm>
 #include <ctime>
 #include <limits>
@@ -133,6 +134,8 @@ void Evolution::onEnter(StateMachine& dsm)
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
     trainingSessionId_ = UUID::generate();
+    trainingResultAvailableSent_ = false;
+    pendingTrainingResult_.reset();
 
     // Seed RNG.
     rng.seed(std::random_device{}());
@@ -158,14 +161,16 @@ void Evolution::onExit(StateMachine& dsm)
 std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
     if (trainingComplete_) {
-        return buildUnsavedTrainingResult();
+        broadcastTrainingResultAvailable(dsm);
+        return std::nullopt;
     }
 
     // Check if evolution complete.
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
         trainingComplete_ = true;
-        return buildUnsavedTrainingResult();
+        broadcastTrainingResultAvailable(dsm);
+        return std::nullopt;
     }
 
     DIRTSIM_ASSERT(!population.empty(), "Population must not be empty");
@@ -211,7 +216,8 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (organismDied || timeUp) {
         finishEvaluation(dsm);
         if (trainingComplete_) {
-            return buildUnsavedTrainingResult();
+            broadcastTrainingResultAvailable(dsm);
+            return std::nullopt;
         }
     }
 
@@ -224,6 +230,24 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
+}
+
+Any Evolution::onEvent(const Api::TrainingResultAvailableAck::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    if (!pendingTrainingResult_.has_value()) {
+        cwc.sendResponse(Api::TrainingResultAvailableAck::Response::error(
+            ApiError("TrainingResultAvailableAck received without pending result")));
+        return std::move(*this);
+    }
+
+    Api::TrainingResultAvailableAck::Okay response;
+    response.acknowledged = true;
+    cwc.sendResponse(Api::TrainingResultAvailableAck::Response::okay(std::move(response)));
+
+    trainingResultAvailableSent_ = false;
+    UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
+    pendingTrainingResult_.reset();
+    return result;
 }
 
 Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
@@ -578,6 +602,34 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
 }
 
+void Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
+{
+    if (trainingResultAvailableSent_) {
+        return;
+    }
+
+    if (!pendingTrainingResult_.has_value()) {
+        pendingTrainingResult_ = buildUnsavedTrainingResult();
+    }
+
+    Api::TrainingResultAvailable available;
+    available.summary = pendingTrainingResult_->summary;
+    available.candidates.reserve(pendingTrainingResult_->candidates.size());
+    for (const auto& candidate : pendingTrainingResult_->candidates) {
+        available.candidates.push_back(Api::TrainingResultAvailable::Candidate{
+            .id = candidate.id,
+            .fitness = candidate.fitness,
+            .brainKind = candidate.brainKind,
+            .brainVariant = candidate.brainVariant,
+            .generation = candidate.generation,
+        });
+    }
+
+    dsm.broadcastEventData(
+        Api::TrainingResultAvailable::name(), Network::serialize_payload(available));
+    trainingResultAvailableSent_ = true;
+}
+
 void Evolution::storeBestGenome(StateMachine& dsm)
 {
     if (population.empty() || fitnessScores.empty()) {
@@ -626,7 +678,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         State, "Evolution: Stored checkpoint genome (gen {}, fitness {:.4f})", generation, bestFit);
 }
 
-Any Evolution::buildUnsavedTrainingResult()
+UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
 {
     UnsavedTrainingResult result;
     result.summary.scenarioId = trainingSpec.scenarioId;

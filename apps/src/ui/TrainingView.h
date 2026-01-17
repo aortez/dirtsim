@@ -3,7 +3,7 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
-#include "server/api/TrainingResultGet.h"
+#include "server/api/TrainingResultAvailable.h"
 #include "ui/controls/IconRail.h"
 #include <memory>
 #include <vector>
@@ -50,8 +50,8 @@ public:
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
     void showTrainingResultModal(
-        const Api::TrainingResultGet::Summary& summary,
-        const std::vector<Api::TrainingResultGet::Candidate>& candidates);
+        const Api::TrainingResultAvailable::Summary& summary,
+        const std::vector<Api::TrainingResultAvailable::Candidate>& candidates);
     void hideTrainingResultModal();
 
     void clearPanelContent();
@@ -112,8 +112,8 @@ private:
     std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
     // Training result modal.
-    Api::TrainingResultGet::Summary trainingResultSummary_;
-    std::vector<Api::TrainingResultGet::Candidate> primaryCandidates_;
+    Api::TrainingResultAvailable::Summary trainingResultSummary_;
+    std::vector<Api::TrainingResultAvailable::Candidate> primaryCandidates_;
     lv_obj_t* trainingResultOverlay_ = nullptr;
     lv_obj_t* trainingResultCountLabel_ = nullptr;
     lv_obj_t* trainingResultSaveStepper_ = nullptr;

@@ -25,25 +25,6 @@ Any UnsavedTrainingResult::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMac
     return idle.onEvent(cwc, dsm);
 }
 
-Any UnsavedTrainingResult::onEvent(const Api::TrainingResultGet::Cwc& cwc, StateMachine& /*dsm*/)
-{
-    Api::TrainingResultGet::Okay response;
-    response.summary = summary;
-    response.candidates.reserve(candidates.size());
-    for (const auto& candidate : candidates) {
-        response.candidates.push_back(Api::TrainingResultGet::Candidate{
-            .id = candidate.id,
-            .fitness = candidate.fitness,
-            .brainKind = candidate.brainKind,
-            .brainVariant = candidate.brainVariant,
-            .generation = candidate.generation,
-        });
-    }
-
-    cwc.sendResponse(Api::TrainingResultGet::Response::okay(std::move(response)));
-    return std::move(*this);
-}
-
 Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm)
 {
     if (cwc.command.ids.empty()) {

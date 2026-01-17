@@ -594,8 +594,8 @@ void TrainingView::renderBestWorld()
 }
 
 void TrainingView::showTrainingResultModal(
-    const Api::TrainingResultGet::Summary& summary,
-    const std::vector<Api::TrainingResultGet::Candidate>& candidates)
+    const Api::TrainingResultAvailable::Summary& summary,
+    const std::vector<Api::TrainingResultAvailable::Candidate>& candidates)
 {
     hideTrainingResultModal();
 
@@ -757,7 +757,7 @@ void TrainingView::hideTrainingResultModal()
     trainingResultSaveStepper_ = nullptr;
     trainingResultSaveButton_ = nullptr;
     primaryCandidates_.clear();
-    trainingResultSummary_ = Api::TrainingResultGet::Summary{};
+    trainingResultSummary_ = Api::TrainingResultAvailable::Summary{};
 }
 
 void TrainingView::updateTrainingResultSaveButton()
