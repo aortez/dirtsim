@@ -1,4 +1,5 @@
 #include "WifiManager.h"
+#include "core/LoggingChannels.h"
 
 #include <NetworkManager.h>
 #include <algorithm>
@@ -6,12 +7,14 @@
 #include <chrono>
 #include <cstring>
 #include <ctime>
+#include <glib-object.h>
 #include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+namespace DirtSim {
 namespace {
 
 struct GErrorDeleter {
@@ -32,6 +35,9 @@ struct GObjectDeleter {
     }
 };
 
+bool deleteRemoteConnection(NMRemoteConnection* connection, std::string& errorMessage);
+bool connectionHasCredentials(NMConnection* connection);
+
 template <typename T>
 using GObjectPtr = std::unique_ptr<T, GObjectDeleter>;
 
@@ -39,6 +45,28 @@ struct AsyncLoop {
     GMainLoop* loop = nullptr;
     guint timeoutId = 0;
     bool timedOut = false;
+};
+
+struct SignalHandlerGuard {
+    gpointer instance = nullptr;
+    gulong handlerId = 0;
+
+    SignalHandlerGuard() = default;
+    SignalHandlerGuard(gpointer instanceIn, gulong handlerIdIn)
+        : instance(instanceIn), handlerId(handlerIdIn)
+    {}
+
+    SignalHandlerGuard(const SignalHandlerGuard&) = delete;
+    SignalHandlerGuard& operator=(const SignalHandlerGuard&) = delete;
+    SignalHandlerGuard(SignalHandlerGuard&&) = default;
+    SignalHandlerGuard& operator=(SignalHandlerGuard&&) = default;
+
+    ~SignalHandlerGuard()
+    {
+        if (instance && handlerId != 0) {
+            g_signal_handler_disconnect(instance, handlerId);
+        }
+    }
 };
 
 gboolean onLoopTimeout(gpointer data)
@@ -323,6 +351,228 @@ std::string formatRelative(int64_t timestamp)
     return std::to_string(seconds / 86400) + "d ago";
 }
 
+const char* deviceStateToString(NMDeviceState state)
+{
+    switch (state) {
+        case NM_DEVICE_STATE_UNKNOWN:
+            return "unknown";
+        case NM_DEVICE_STATE_UNMANAGED:
+            return "unmanaged";
+        case NM_DEVICE_STATE_UNAVAILABLE:
+            return "unavailable";
+        case NM_DEVICE_STATE_DISCONNECTED:
+            return "disconnected";
+        case NM_DEVICE_STATE_PREPARE:
+            return "prepare";
+        case NM_DEVICE_STATE_CONFIG:
+            return "config";
+        case NM_DEVICE_STATE_NEED_AUTH:
+            return "need-auth";
+        case NM_DEVICE_STATE_IP_CONFIG:
+            return "ip-config";
+        case NM_DEVICE_STATE_IP_CHECK:
+            return "ip-check";
+        case NM_DEVICE_STATE_SECONDARIES:
+            return "secondaries";
+        case NM_DEVICE_STATE_ACTIVATED:
+            return "activated";
+        case NM_DEVICE_STATE_DEACTIVATING:
+            return "deactivating";
+        case NM_DEVICE_STATE_FAILED:
+            return "failed";
+    }
+    return "unknown";
+}
+
+const char* deviceStateReasonToString(NMDeviceStateReason reason)
+{
+    GEnumClass* enumClass = static_cast<GEnumClass*>(g_type_class_ref(NM_TYPE_DEVICE_STATE_REASON));
+    const GEnumValue* value =
+        enumClass ? g_enum_get_value(enumClass, static_cast<int>(reason)) : nullptr;
+    const char* name = (value && value->value_nick) ? value->value_nick : "unknown";
+    if (enumClass) {
+        g_type_class_unref(enumClass);
+    }
+    return name;
+}
+
+bool waitForDeviceActivation(NMDevice* device, int timeoutSeconds, std::string& errorMessage)
+{
+    if (!device) {
+        errorMessage = "No WiFi device found";
+        return false;
+    }
+
+    const auto initialState = nm_device_get_state(device);
+    if (initialState == NM_DEVICE_STATE_ACTIVATED) {
+        return true;
+    }
+    if (initialState == NM_DEVICE_STATE_FAILED || initialState == NM_DEVICE_STATE_NEED_AUTH) {
+        errorMessage = std::string("WiFi activation failed (state=")
+            + deviceStateToString(initialState)
+            + ", reason=" + deviceStateReasonToString(nm_device_get_state_reason(device)) + ")";
+        return false;
+    }
+
+    struct ActivationContext {
+        AsyncLoop* loop = nullptr;
+        std::string* error = nullptr;
+        bool activated = false;
+        NMDeviceState lastState = NM_DEVICE_STATE_UNKNOWN;
+        NMDeviceStateReason lastReason = NM_DEVICE_STATE_REASON_NONE;
+    };
+
+    AsyncLoopGuard loop(timeoutSeconds);
+    ActivationContext context{
+        loop.get(), &errorMessage, false, initialState, nm_device_get_state_reason(device)
+    };
+
+    const gulong handlerId = g_signal_connect(
+        device,
+        "state-changed",
+        G_CALLBACK(
+            +[](NMDevice* device, guint newState, guint oldState, guint reason, gpointer userData) {
+                auto* ctx = static_cast<ActivationContext*>(userData);
+                const auto newStateValue = static_cast<NMDeviceState>(newState);
+                const auto oldStateValue = static_cast<NMDeviceState>(oldState);
+                const auto reasonValue = static_cast<NMDeviceStateReason>(reason);
+                const char* iface = device ? nm_device_get_iface(device) : nullptr;
+
+                LOG_INFO(
+                    Network,
+                    "WiFi device {} state change: {} -> {} (reason: {}).",
+                    iface && *iface ? iface : "unknown",
+                    deviceStateToString(oldStateValue),
+                    deviceStateToString(newStateValue),
+                    deviceStateReasonToString(reasonValue));
+
+                ctx->lastState = newStateValue;
+                ctx->lastReason = reasonValue;
+
+                if (newStateValue == NM_DEVICE_STATE_ACTIVATED) {
+                    ctx->activated = true;
+                    g_main_loop_quit(ctx->loop->loop);
+                    return;
+                }
+
+                if (newStateValue == NM_DEVICE_STATE_FAILED
+                    || newStateValue == NM_DEVICE_STATE_NEED_AUTH
+                    || newStateValue == NM_DEVICE_STATE_DISCONNECTED
+                    || newStateValue == NM_DEVICE_STATE_UNAVAILABLE
+                    || newStateValue == NM_DEVICE_STATE_UNMANAGED) {
+                    if (ctx->error && ctx->error->empty()) {
+                        *ctx->error = std::string("WiFi activation failed (state=")
+                            + deviceStateToString(newStateValue)
+                            + ", reason=" + deviceStateReasonToString(reasonValue) + ")";
+                    }
+                    g_main_loop_quit(ctx->loop->loop);
+                }
+            }),
+        &context);
+
+    SignalHandlerGuard signalGuard(device, handlerId);
+
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
+        errorMessage = "WiFi activation timed out";
+    }
+    if (!context.activated && errorMessage.empty()) {
+        errorMessage = std::string("WiFi activation failed (state=")
+            + deviceStateToString(context.lastState)
+            + ", reason=" + deviceStateReasonToString(context.lastReason) + ")";
+    }
+
+    return context.activated;
+}
+
+bool waitForDeviceDeactivation(NMDevice* device, int timeoutSeconds, std::string& errorMessage)
+{
+    if (!device) {
+        errorMessage = "No WiFi device found";
+        return false;
+    }
+
+    const auto initialState = nm_device_get_state(device);
+    if (initialState == NM_DEVICE_STATE_DISCONNECTED || initialState == NM_DEVICE_STATE_UNAVAILABLE
+        || initialState == NM_DEVICE_STATE_UNMANAGED) {
+        return true;
+    }
+    if (initialState == NM_DEVICE_STATE_FAILED) {
+        errorMessage = std::string("WiFi disconnect failed (state=")
+            + deviceStateToString(initialState)
+            + ", reason=" + deviceStateReasonToString(nm_device_get_state_reason(device)) + ")";
+        return false;
+    }
+
+    struct DeactivationContext {
+        AsyncLoop* loop = nullptr;
+        std::string* error = nullptr;
+        bool deactivated = false;
+        NMDeviceState lastState = NM_DEVICE_STATE_UNKNOWN;
+        NMDeviceStateReason lastReason = NM_DEVICE_STATE_REASON_NONE;
+    };
+
+    AsyncLoopGuard loop(timeoutSeconds);
+    DeactivationContext context{
+        loop.get(), &errorMessage, false, initialState, nm_device_get_state_reason(device)
+    };
+
+    const gulong handlerId = g_signal_connect(
+        device,
+        "state-changed",
+        G_CALLBACK(
+            +[](NMDevice* device, guint newState, guint oldState, guint reason, gpointer userData) {
+                auto* ctx = static_cast<DeactivationContext*>(userData);
+                const auto newStateValue = static_cast<NMDeviceState>(newState);
+                const auto oldStateValue = static_cast<NMDeviceState>(oldState);
+                const auto reasonValue = static_cast<NMDeviceStateReason>(reason);
+                const char* iface = device ? nm_device_get_iface(device) : nullptr;
+
+                LOG_INFO(
+                    Network,
+                    "WiFi device {} state change: {} -> {} (reason: {}).",
+                    iface && *iface ? iface : "unknown",
+                    deviceStateToString(oldStateValue),
+                    deviceStateToString(newStateValue),
+                    deviceStateReasonToString(reasonValue));
+
+                ctx->lastState = newStateValue;
+                ctx->lastReason = reasonValue;
+
+                if (newStateValue == NM_DEVICE_STATE_DISCONNECTED
+                    || newStateValue == NM_DEVICE_STATE_UNAVAILABLE
+                    || newStateValue == NM_DEVICE_STATE_UNMANAGED) {
+                    ctx->deactivated = true;
+                    g_main_loop_quit(ctx->loop->loop);
+                    return;
+                }
+
+                if (newStateValue == NM_DEVICE_STATE_FAILED) {
+                    if (ctx->error && ctx->error->empty()) {
+                        *ctx->error = std::string("WiFi disconnect failed (state=")
+                            + deviceStateToString(newStateValue)
+                            + ", reason=" + deviceStateReasonToString(reasonValue) + ")";
+                    }
+                    g_main_loop_quit(ctx->loop->loop);
+                }
+            }),
+        &context);
+
+    SignalHandlerGuard signalGuard(device, handlerId);
+
+    g_main_loop_run(loop.mainLoop());
+    if (loop.timedOut() && errorMessage.empty()) {
+        errorMessage = "WiFi disconnect timed out";
+    }
+    if (!context.deactivated && errorMessage.empty()) {
+        errorMessage = std::string("WiFi disconnect failed (state=")
+            + deviceStateToString(context.lastState)
+            + ", reason=" + deviceStateReasonToString(context.lastReason) + ")";
+    }
+
+    return context.deactivated;
+}
+
 bool requestWifiScan(NMDeviceWifi* device, std::string& errorMessage)
 {
     if (!device) {
@@ -431,15 +681,40 @@ std::vector<DirtSim::Network::WifiAccessPointInfo> collectAccessPoints(
     return results;
 }
 
-NMConnection* findWifiConnectionById(NMClient* client, const std::string& connectionId)
+struct WifiConnectionCandidate {
+    NMConnection* connection = nullptr;
+    std::string id;
+    std::string ssid;
+    std::string uuid;
+    int64_t timestamp = 0;
+    bool active = false;
+    bool autoConnect = false;
+    bool hasCredentials = false;
+};
+
+enum class WifiConnectionMatch { ById, BySsid };
+
+std::vector<WifiConnectionCandidate> collectWifiConnections(
+    NMClient* client, NMDeviceWifi* device, const std::string& value, WifiConnectionMatch match)
 {
-    if (!client || connectionId.empty()) {
-        return nullptr;
+    std::vector<WifiConnectionCandidate> candidates;
+    if (!client || value.empty()) {
+        return candidates;
+    }
+
+    std::string activeUuid;
+    if (device) {
+        NMActiveConnection* activeConnection = nm_device_get_active_connection(NM_DEVICE(device));
+        const char* uuid =
+            activeConnection ? nm_active_connection_get_uuid(activeConnection) : nullptr;
+        if (uuid) {
+            activeUuid = uuid;
+        }
     }
 
     const GPtrArray* connections = nm_client_get_connections(client);
     if (!connections) {
-        return nullptr;
+        return candidates;
     }
 
     for (guint i = 0; i < connections->len; ++i) {
@@ -455,25 +730,106 @@ NMConnection* findWifiConnectionById(NMClient* client, const std::string& connec
         }
 
         const char* id = nm_connection_get_id(connection);
-        if (id && connectionId == id) {
-            return connection;
+        std::string connectionId = id ? id : "";
+        std::string connectionSsid = ssidFromConnection(connection);
+        if (connectionSsid.empty()) {
+            connectionSsid = connectionId;
         }
+
+        const bool matches = (match == WifiConnectionMatch::ById)
+            ? (connectionId == value)
+            : (!connectionSsid.empty() && connectionSsid == value);
+        if (!matches) {
+            continue;
+        }
+
+        WifiConnectionCandidate candidate{
+            .connection = connection,
+            .id = connectionId,
+            .ssid = connectionSsid,
+            .uuid = nm_connection_get_uuid(connection) ? nm_connection_get_uuid(connection) : "",
+            .timestamp = connectionTimestamp(connection),
+            .active = false,
+            .autoConnect =
+                setting ? nm_setting_connection_get_autoconnect(setting) != FALSE : false,
+            .hasCredentials = connectionHasCredentials(connection),
+        };
+        candidate.active =
+            (!activeUuid.empty() && !candidate.uuid.empty() && candidate.uuid == activeUuid);
+
+        candidates.push_back(candidate);
     }
 
-    return nullptr;
+    return candidates;
 }
 
-NMConnection* findWifiConnectionBySsid(NMClient* client, const std::string& ssid)
+const WifiConnectionCandidate* selectBestWifiConnection(
+    const std::string& matchLabel,
+    const std::string& matchValue,
+    std::vector<WifiConnectionCandidate>& candidates)
 {
-    if (!client || ssid.empty()) {
+    if (candidates.empty()) {
         return nullptr;
+    }
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+        [](const WifiConnectionCandidate& a, const WifiConnectionCandidate& b) {
+            if (a.active != b.active) {
+                return a.active;
+            }
+            if (a.hasCredentials != b.hasCredentials) {
+                return a.hasCredentials;
+            }
+            if (a.timestamp != b.timestamp) {
+                return a.timestamp > b.timestamp;
+            }
+            if (a.autoConnect != b.autoConnect) {
+                return a.autoConnect;
+            }
+            return a.id < b.id;
+        });
+
+    if (candidates.size() > 1) {
+        const auto& chosen = candidates.front();
+        const std::string lastUsed = formatRelative(chosen.timestamp);
+        LOG_INFO(
+            Network,
+            "Multiple saved WiFi connections for {} '{}' (count={}, chosen_uuid={}, last_used={}, "
+            "has_credentials={}, auto_connect={}).",
+            matchLabel,
+            matchValue,
+            candidates.size(),
+            chosen.uuid.empty() ? "unknown" : chosen.uuid,
+            lastUsed,
+            chosen.hasCredentials,
+            chosen.autoConnect);
+    }
+
+    return &candidates.front();
+}
+
+bool deleteWifiConnectionsBySsid(
+    NMClient* client,
+    const std::string& ssid,
+    const std::string& keepUuid,
+    int& removed,
+    std::string& errorMessage)
+{
+    removed = 0;
+    if (!client) {
+        errorMessage = "No WiFi client available";
+        return false;
     }
 
     const GPtrArray* connections = nm_client_get_connections(client);
     if (!connections) {
-        return nullptr;
+        errorMessage = "No saved WiFi connections";
+        return false;
     }
 
+    std::vector<GObjectPtr<NMRemoteConnection>> toDelete;
     for (guint i = 0; i < connections->len; ++i) {
         auto* connection = static_cast<NMConnection*>(g_ptr_array_index(connections, i));
         if (!connection) {
@@ -486,13 +842,40 @@ NMConnection* findWifiConnectionBySsid(NMClient* client, const std::string& ssid
             continue;
         }
 
-        const std::string connectionSsid = ssidFromConnection(connection);
-        if (!connectionSsid.empty() && connectionSsid == ssid) {
-            return connection;
+        std::string connectionSsid = ssidFromConnection(connection);
+        const char* id = nm_connection_get_id(connection);
+        if (connectionSsid.empty()) {
+            connectionSsid = id ? id : "";
         }
+
+        if (connectionSsid != ssid && (!id || ssid != id)) {
+            continue;
+        }
+
+        const char* uuid = nm_connection_get_uuid(connection);
+        if (!keepUuid.empty() && uuid && keepUuid == uuid) {
+            continue;
+        }
+
+        if (!NM_IS_REMOTE_CONNECTION(connection)) {
+            errorMessage = "WiFi connection cannot be removed";
+            return false;
+        }
+
+        auto* remote = NM_REMOTE_CONNECTION(g_object_ref(connection));
+        toDelete.emplace_back(remote);
     }
 
-    return nullptr;
+    for (const auto& connection : toDelete) {
+        std::string deleteError;
+        if (!deleteRemoteConnection(connection.get(), deleteError)) {
+            errorMessage = deleteError;
+            return false;
+        }
+        ++removed;
+    }
+
+    return true;
 }
 
 NMAccessPoint* findBestAccessPoint(NMDeviceWifi* device, const std::string& ssid)
@@ -619,6 +1002,12 @@ bool activateConnection(
         return false;
     }
 
+    const char* connectionId = nm_connection_get_id(connection);
+    LOG_INFO(
+        Network,
+        "Activating WiFi connection {}.",
+        connectionId && *connectionId ? connectionId : "unknown");
+
     struct ActivateContext {
         AsyncLoop* loop = nullptr;
         NMActiveConnection* active = nullptr;
@@ -672,6 +1061,12 @@ bool addAndActivateConnection(
         errorMessage = "WiFi connection failed";
         return false;
     }
+
+    const char* connectionId = nm_connection_get_id(connection);
+    LOG_INFO(
+        Network,
+        "Adding WiFi connection {}.",
+        connectionId && *connectionId ? connectionId : "unknown");
 
     struct AddContext {
         AsyncLoop* loop = nullptr;
@@ -843,7 +1238,10 @@ bool connectionHasCredentials(NMConnection* connection)
     return hasCredentials;
 }
 
+constexpr int kActivationTimeoutSeconds = 20;
+
 } // namespace
+} // namespace DirtSim
 
 namespace DirtSim {
 namespace Network {
@@ -1094,6 +1492,8 @@ Result<WifiConnectResult, std::string> WifiManager::connect(const WifiNetworkInf
             WifiConnectResult{ .success = true, .ssid = network.ssid });
     }
 
+    LOG_INFO(Network, "Connecting to WiFi network '{}'.", network.ssid);
+
     std::string errorMessage;
     auto client = createClient(errorMessage);
     if (!client) {
@@ -1106,18 +1506,27 @@ Result<WifiConnectResult, std::string> WifiManager::connect(const WifiNetworkInf
     }
 
     if (!network.connectionId.empty()) {
-        NMConnection* connection = findWifiConnectionById(client.get(), network.connectionId);
-        if (connection) {
+        auto candidates = collectWifiConnections(
+            client.get(), device, network.connectionId, WifiConnectionMatch::ById);
+        const auto* chosen =
+            selectBestWifiConnection("connection id", network.connectionId, candidates);
+        if (chosen && chosen->connection) {
             std::string activationError;
             if (!activateConnection(
                     client.get(),
-                    connection,
+                    chosen->connection,
                     NM_DEVICE(device),
                     findBestAccessPoint(device, network.ssid),
                     activationError)) {
                 return Result<WifiConnectResult, std::string>::error(activationError);
             }
 
+            std::string waitError;
+            if (!waitForDeviceActivation(NM_DEVICE(device), kActivationTimeoutSeconds, waitError)) {
+                return Result<WifiConnectResult, std::string>::error(waitError);
+            }
+
+            LOG_INFO(Network, "WiFi connected to '{}'.", network.ssid);
             return Result<WifiConnectResult, std::string>::okay(
                 WifiConnectResult{ .success = true, .ssid = network.ssid });
         }
@@ -1132,6 +1541,8 @@ Result<WifiConnectResult, std::string> WifiManager::connectBySsid(
     if (ssid.empty()) {
         return Result<WifiConnectResult, std::string>::error("SSID is required");
     }
+
+    LOG_INFO(Network, "Connecting to WiFi SSID '{}'.", ssid);
 
     std::string errorMessage;
     auto client = createClient(errorMessage);
@@ -1150,25 +1561,47 @@ Result<WifiConnectResult, std::string> WifiManager::connectBySsid(
             WifiConnectResult{ .success = true, .ssid = ssid });
     }
 
+    auto candidates =
+        collectWifiConnections(client.get(), device, ssid, WifiConnectionMatch::BySsid);
+
+    if (password.has_value() && !candidates.empty()) {
+        LOG_INFO(
+            Network,
+            "Found {} existing WiFi profile(s) for '{}'; will replace after successful connect.",
+            candidates.size(),
+            ssid);
+    }
+
     if (!password.has_value()) {
-        NMConnection* existing = findWifiConnectionBySsid(client.get(), ssid);
-        if (existing) {
+        const auto* chosen = selectBestWifiConnection("SSID", ssid, candidates);
+        if (chosen && chosen->connection) {
             std::string activationError;
             if (!activateConnection(
                     client.get(),
-                    existing,
+                    chosen->connection,
                     NM_DEVICE(device),
                     findBestAccessPoint(device, ssid),
                     activationError)) {
                 return Result<WifiConnectResult, std::string>::error(activationError);
             }
 
+            std::string waitError;
+            if (!waitForDeviceActivation(NM_DEVICE(device), kActivationTimeoutSeconds, waitError)) {
+                return Result<WifiConnectResult, std::string>::error(waitError);
+            }
+
+            LOG_INFO(Network, "WiFi connected to '{}'.", ssid);
             return Result<WifiConnectResult, std::string>::okay(
                 WifiConnectResult{ .success = true, .ssid = ssid });
         }
     }
 
     NMAccessPoint* ap = findBestAccessPoint(device, ssid);
+    if (!password.has_value() && ap && securityFromAccessPoint(ap) != "open") {
+        return Result<WifiConnectResult, std::string>::error(
+            "Password required for secured network");
+    }
+
     auto connection = buildConnectionForSsid(ssid, password, ap);
     if (!connection) {
         return Result<WifiConnectResult, std::string>::error("Failed to build WiFi connection");
@@ -1180,6 +1613,30 @@ Result<WifiConnectResult, std::string> WifiManager::connectBySsid(
         return Result<WifiConnectResult, std::string>::error(activationError);
     }
 
+    std::string waitError;
+    if (!waitForDeviceActivation(NM_DEVICE(device), kActivationTimeoutSeconds, waitError)) {
+        return Result<WifiConnectResult, std::string>::error(waitError);
+    }
+
+    if (password.has_value()) {
+        const char* uuid = nm_connection_get_uuid(connection.get());
+        if (!uuid || !*uuid) {
+            LOG_WARN(Network, "New WiFi profile UUID unavailable; skipping cleanup.");
+        }
+        else {
+            const std::string keepUuid = uuid;
+            int removed = 0;
+            std::string deleteError;
+            if (!deleteWifiConnectionsBySsid(client.get(), ssid, keepUuid, removed, deleteError)) {
+                LOG_WARN(Network, "Failed to clean up old WiFi profiles: {}", deleteError);
+            }
+            else if (removed > 0) {
+                LOG_INFO(Network, "Removed {} stale WiFi profile(s) for '{}'.", removed, ssid);
+            }
+        }
+    }
+
+    LOG_INFO(Network, "WiFi connected to '{}'.", ssid);
     return Result<WifiConnectResult, std::string>::okay(
         WifiConnectResult{ .success = true, .ssid = ssid });
 }
@@ -1187,6 +1644,11 @@ Result<WifiConnectResult, std::string> WifiManager::connectBySsid(
 Result<WifiDisconnectResult, std::string> WifiManager::disconnect(
     const std::optional<std::string>& ssid) const
 {
+    LOG_INFO(
+        Network,
+        "Disconnecting WiFi {}.",
+        ssid.has_value() && !ssid->empty() ? *ssid : "active connection");
+
     std::string errorMessage;
     auto client = createClient(errorMessage);
     if (!client) {
@@ -1219,6 +1681,12 @@ Result<WifiDisconnectResult, std::string> WifiManager::disconnect(
         return Result<WifiDisconnectResult, std::string>::error(disconnectError);
     }
 
+    std::string waitError;
+    if (!waitForDeviceDeactivation(NM_DEVICE(device), kActivationTimeoutSeconds, waitError)) {
+        return Result<WifiDisconnectResult, std::string>::error(waitError);
+    }
+
+    LOG_INFO(Network, "WiFi disconnected from '{}'.", activeSsid);
     return Result<WifiDisconnectResult, std::string>::okay(
         WifiDisconnectResult{ .success = true, .ssid = activeSsid });
 }
@@ -1228,6 +1696,8 @@ Result<WifiForgetResult, std::string> WifiManager::forget(const std::string& ssi
     if (ssid.empty()) {
         return Result<WifiForgetResult, std::string>::error("SSID is required");
     }
+
+    LOG_INFO(Network, "Forgetting WiFi profiles for '{}'.", ssid);
 
     std::string errorMessage;
     auto client = createClient(errorMessage);
