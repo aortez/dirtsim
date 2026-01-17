@@ -48,6 +48,8 @@ private:
     TrainingSpec& trainingSpec_;
 
     // UI elements.
+    lv_obj_t* startButton_ = nullptr;
+    lv_obj_t* stopButton_ = nullptr;
     lv_obj_t* statusLabel_ = nullptr;
 
     // Config steppers.
@@ -58,6 +60,7 @@ private:
     lv_obj_t* maxSimTimeStepper_ = nullptr;
 
     void createMainView(lv_obj_t* view);
+    void updateButtonVisibility();
     void updateControlsEnabled();
 
     static void onPopulationChanged(lv_event_t* e);
@@ -65,6 +68,8 @@ private:
     static void onMutationRateChanged(lv_event_t* e);
     static void onTournamentSizeChanged(lv_event_t* e);
     static void onMaxSimTimeChanged(lv_event_t* e);
+    static void onStartClicked(lv_event_t* e);
+    static void onStopClicked(lv_event_t* e);
 };
 
 } // namespace Ui

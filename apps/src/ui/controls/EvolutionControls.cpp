@@ -1,5 +1,4 @@
 #include "EvolutionControls.h"
-#include "core/organisms/evolution/EvolutionConfig.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -9,17 +8,10 @@ namespace DirtSim {
 namespace Ui {
 
 EvolutionControls::EvolutionControls(
-    lv_obj_t* container,
-    EventSink& eventSink,
-    bool evolutionStarted,
-    EvolutionConfig& evolutionConfig,
-    MutationConfig& mutationConfig,
-    TrainingSpec& trainingSpec)
+    lv_obj_t* container, EventSink& eventSink, bool evolutionStarted, TrainingSpec& trainingSpec)
     : container_(container),
       eventSink_(eventSink),
       evolutionStarted_(evolutionStarted),
-      evolutionConfig_(evolutionConfig),
-      mutationConfig_(mutationConfig),
       trainingSpec_(trainingSpec)
 {
     viewController_ = std::make_unique<PanelViewController>(container_);
@@ -56,16 +48,6 @@ void EvolutionControls::createMainView(lv_obj_t* view)
                       .callback(onQuitClicked, this)
                       .buildOrLog();
 
-    // Stop button - only visible when evolution is running.
-    stopButton_ = LVGLBuilder::actionButton(view)
-                      .text("Stop")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onStopClicked, this)
-                      .buildOrLog();
-
     // View Best button - only visible when evolution is complete.
     viewBestButton_ = LVGLBuilder::actionButton(view)
                           .text("View Best")
@@ -76,41 +58,11 @@ void EvolutionControls::createMainView(lv_obj_t* view)
                           .callback(onViewBestClicked, this)
                           .buildOrLog();
 
-    // Start button - only visible when evolution is NOT running.
-    startButton_ = LVGLBuilder::actionButton(view)
-                       .text("Start Training")
-                       .icon(LV_SYMBOL_PLAY)
-                       .mode(LVGLBuilder::ActionMode::Push)
-                       .size(80)
-                       .backgroundColor(0x00AA66)
-                       .callback(onStartClicked, this)
-                       .buildOrLog();
-
     updateButtonVisibility();
 }
 
 void EvolutionControls::updateButtonVisibility()
 {
-    // Start button visible when NOT running and NOT completed.
-    if (startButton_) {
-        if (evolutionStarted_ || evolutionCompleted_) {
-            lv_obj_add_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-        else {
-            lv_obj_clear_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
-    // Stop button visible when running.
-    if (stopButton_) {
-        if (evolutionStarted_) {
-            lv_obj_clear_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-        else {
-            lv_obj_add_flag(stopButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
     // View Best button visible only when completed.
     if (viewBestButton_) {
         if (evolutionCompleted_) {
@@ -136,31 +88,6 @@ void EvolutionControls::setEvolutionCompleted(GenomeId bestGenomeId)
     updateButtonVisibility();
 }
 
-void EvolutionControls::onStartClicked(lv_event_t* e)
-{
-    EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
-    if (!self) return;
-
-    spdlog::info("EvolutionControls: Start button clicked");
-
-    // Fire event with current config.
-    StartEvolutionButtonClickedEvent evt;
-    evt.evolution = self->evolutionConfig_;
-    evt.mutation = self->mutationConfig_;
-    evt.training = self->trainingSpec_;
-    self->eventSink_.queueEvent(evt);
-}
-
-void EvolutionControls::onStopClicked(lv_event_t* e)
-{
-    EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
-    if (!self) return;
-
-    spdlog::info("EvolutionControls: Stop button clicked");
-
-    self->eventSink_.queueEvent(StopButtonClickedEvent{});
-}
-
 void EvolutionControls::onViewBestClicked(lv_event_t* e)
 {
     EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
@@ -178,8 +105,7 @@ void EvolutionControls::onQuitClicked(lv_event_t* e)
 
     spdlog::info("EvolutionControls: Quit button clicked");
 
-    // Quit also sends StopButtonClickedEvent to return to start menu.
-    self->eventSink_.queueEvent(StopButtonClickedEvent{});
+    self->eventSink_.queueEvent(QuitTrainingClickedEvent{});
 }
 
 } // namespace Ui

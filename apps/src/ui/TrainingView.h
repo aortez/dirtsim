@@ -3,8 +3,10 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "server/api/TrainingResultAvailable.h"
 #include "ui/controls/IconRail.h"
 #include <memory>
+#include <vector>
 
 typedef struct _lv_obj_t lv_obj_t;
 typedef struct _lv_event_t lv_event_t;
@@ -47,6 +49,10 @@ public:
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
+    void showTrainingResultModal(
+        const Api::TrainingResultAvailable::Summary& summary,
+        const std::vector<Api::TrainingResultAvailable::Candidate>& candidates);
+    void hideTrainingResultModal();
 
     void clearPanelContent();
     void createCorePanel();
@@ -105,9 +111,23 @@ private:
     std::unique_ptr<EvolutionControls> evolutionControls_;
     std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
+    // Training result modal.
+    Api::TrainingResultAvailable::Summary trainingResultSummary_;
+    std::vector<Api::TrainingResultAvailable::Candidate> primaryCandidates_;
+    lv_obj_t* trainingResultOverlay_ = nullptr;
+    lv_obj_t* trainingResultCountLabel_ = nullptr;
+    lv_obj_t* trainingResultSaveStepper_ = nullptr;
+    lv_obj_t* trainingResultSaveButton_ = nullptr;
+
     void createUI();
     void destroyUI();
     void renderBestWorld();
+    void updateTrainingResultSaveButton();
+    std::vector<GenomeId> getTrainingResultSaveIds() const;
+
+    static void onTrainingResultSaveClicked(lv_event_t* e);
+    static void onTrainingResultDiscardClicked(lv_event_t* e);
+    static void onTrainingResultCountChanged(lv_event_t* e);
 };
 
 } // namespace Ui

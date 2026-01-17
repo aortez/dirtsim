@@ -6,6 +6,7 @@ LOG_LEVEL=""
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="$REPO_ROOT/apps"
 BIN_DIR="$APPS_DIR/build-debug/bin"
+CONFIG_DIR="$APPS_DIR/config"
 SERVER_MATCH="build-debug/bin/dirtsim-server"
 UI_MATCH="build-debug/bin/dirtsim-ui"
 
@@ -89,9 +90,9 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Launch server in background.
-cd "$BIN_DIR"
+cd "$APPS_DIR"
 echo "Launching DSSM server on port 8080..."
-"$BIN_DIR/dirtsim-server" $LOG_ARGS -p 8080 &
+"$BIN_DIR/dirtsim-server" $LOG_ARGS -p 8080 --config-dir "$CONFIG_DIR" &
 SERVER_PID=$!
 
 # Wait a moment for server to start.

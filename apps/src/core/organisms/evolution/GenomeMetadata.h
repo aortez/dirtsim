@@ -2,10 +2,13 @@
 
 #include "core/ScenarioId.h"
 #include "core/UUID.h"
+#include "core/organisms/OrganismType.h"
 
 #include <cstdint>
 #include <nlohmann/json_fwd.hpp>
+#include <optional>
 #include <string>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 
@@ -24,6 +27,12 @@ struct GenomeMetadata {
     Scenario::EnumType scenarioId =
         Scenario::EnumType::TreeGermination; // Which scenario it was trained on.
     std::string notes;                       // Optional user notes.
+    std::optional<OrganismType> organismType;
+    std::optional<std::string> brainKind;
+    std::optional<std::string> brainVariant;
+    std::optional<UUID> trainingSessionId;
+
+    using serialize = zpp::bits::members<10>;
 };
 
 void to_json(nlohmann::json& j, const GenomeMetadata& meta);

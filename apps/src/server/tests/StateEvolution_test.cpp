@@ -5,6 +5,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingResultAvailableAck.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -237,9 +238,9 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 }
 
 /**
- * @brief Test that evolution completes and transitions to Idle.
+ * @brief Test that evolution completes and transitions after result acknowledgement.
  */
-TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsToIdle)
+TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResultAck)
 {
     // Setup: Create Evolution state with minimal run.
     Evolution evolutionState;
@@ -266,9 +267,21 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsToIdle)
 
     // Generation 2 == maxGenerations, should complete.
     result = evolutionState.tick(*stateMachine);
-    ASSERT_TRUE(result.has_value()) << "Should return state transition";
-    ASSERT_TRUE(std::holds_alternative<Idle>(result->getVariant()))
-        << "Should transition to Idle on completion";
+    EXPECT_FALSE(result.has_value()) << "Should wait for TrainingResultAvailableAck";
+
+    Api::TrainingResultAvailableAck::Response capturedResponse;
+    Api::TrainingResultAvailableAck::Command cmd;
+    Api::TrainingResultAvailableAck::Cwc cwc(
+        cmd, [&](Api::TrainingResultAvailableAck::Response&& response) {
+            capturedResponse = std::move(response);
+        });
+
+    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(newState.getVariant()))
+        << "Should transition to UnsavedTrainingResult after ack";
+    ASSERT_TRUE(capturedResponse.isValue());
+    EXPECT_TRUE(capturedResponse.value().acknowledged);
 }
 
 /**
@@ -431,23 +444,37 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     EXPECT_EQ(evolutionState.generation, 0);
 
     // Run until evolution completes.
-    std::optional<Any> result;
     int tickCount = 0;
     constexpr int MAX_TICKS = 10000; // Safety limit.
+    bool completed = false;
 
     while (tickCount < MAX_TICKS) {
-        result = evolutionState.tick(*stateMachine);
+        evolutionState.tick(*stateMachine);
         tickCount++;
 
-        if (result.has_value()) {
-            break; // Evolution complete.
+        if (evolutionState.generation >= evolutionState.evolutionConfig.maxGenerations
+            && evolutionState.currentEval >= evolutionState.evolutionConfig.populationSize) {
+            completed = true;
+            break;
         }
     }
 
-    // Verify: Evolution completed (transitioned to Idle).
-    ASSERT_TRUE(result.has_value()) << "Evolution should complete within tick limit";
-    ASSERT_TRUE(std::holds_alternative<Idle>(result->getVariant()))
-        << "Should transition to Idle on completion";
+    // Verify: Evolution completed.
+    ASSERT_TRUE(completed) << "Evolution should complete within tick limit";
+
+    Api::TrainingResultAvailableAck::Response capturedResponse;
+    Api::TrainingResultAvailableAck::Command cmd;
+    Api::TrainingResultAvailableAck::Cwc cwc(
+        cmd, [&](Api::TrainingResultAvailableAck::Response&& response) {
+            capturedResponse = std::move(response);
+        });
+
+    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(newState.getVariant()))
+        << "Should transition to UnsavedTrainingResult after ack";
+    ASSERT_TRUE(capturedResponse.isValue());
+    EXPECT_TRUE(capturedResponse.value().acknowledged);
 
     // Verify: Ran through all generations.
     EXPECT_EQ(evolutionState.generation, 3) << "Should have completed 3 generations";

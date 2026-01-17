@@ -19,6 +19,7 @@
 /*.json
 !yocto/package.json
 *.log
+screenshot.png
 
 # lvgl/ - removed to allow submodule
 test-lvgl/_deps

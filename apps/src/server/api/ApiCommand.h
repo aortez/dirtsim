@@ -32,6 +32,9 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "TimerStatsGet.h"
+#include "TrainingResultAvailableAck.h"
+#include "TrainingResultDiscard.h"
+#include "TrainingResultSave.h"
 #include "WorldResize.h"
 #include <concepts>
 #include <nlohmann/json.hpp>
@@ -91,6 +94,9 @@ using ApiCommand = std::variant<
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,
+    Api::TrainingResultAvailableAck::Command,
+    Api::TrainingResultDiscard::Command,
+    Api::TrainingResultSave::Command,
     Api::WorldResize::Command>;
 
 } // namespace DirtSim

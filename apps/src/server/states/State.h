@@ -12,6 +12,7 @@
 #include "SimRunning.h"
 #include "Startup.h"
 #include "StateForward.h"
+#include "UnsavedTrainingResult.h"
 #include "core/World.h" // Must be before SimRunning.h for complete type in unique_ptr.
 
 namespace DirtSim {
@@ -28,8 +29,16 @@ namespace State {
  */
 class Any {
 public:
-    using Variant =
-        std::variant<PreStartup, Error, Startup, Idle, SimRunning, SimPaused, Evolution, Shutdown>;
+    using Variant = std::variant<
+        PreStartup,
+        Error,
+        Startup,
+        Idle,
+        SimRunning,
+        SimPaused,
+        Evolution,
+        UnsavedTrainingResult,
+        Shutdown>;
 
     // Constructor from any state type.
     template <typename T>
