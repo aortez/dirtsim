@@ -493,7 +493,6 @@ void JuliaFractal::update()
     // Track calls vs actual swaps for debugging.
     static int totalCalls = 0;
     static int actualSwaps = 0;
-    static double lastDebugLog = 0.0;
     totalCalls++;
 
     // Check if background thread has a new frame ready.
@@ -506,17 +505,6 @@ void JuliaFractal::update()
     // Track display-side FPS (how often we actually display a new frame).
     double currentTime =
         std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
-
-    // Debug logging every 10 seconds.
-    if (currentTime - lastDebugLog >= 10.0) {
-        double swapRate = actualSwaps / (currentTime - lastDebugLog);
-        double callRate = totalCalls / (currentTime - lastDebugLog);
-        spdlog::info(
-            "JuliaFractal: update() called {:.1f}/sec, swapped {:.1f}/sec", callRate, swapRate);
-        totalCalls = 0;
-        actualSwaps = 0;
-        lastDebugLog = currentTime;
-    }
 
     double displayDeltaTime = currentTime - lastDisplayUpdateTime_;
     lastDisplayUpdateTime_ = currentTime;
