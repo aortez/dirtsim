@@ -164,7 +164,7 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Scenario panel");
 
     // Create display dimensions getter for auto-scaling scenarios.
-    // Always returns dimensions as if IconRail is minimized, so scenarios are
+    // Always returns dimensions as if overlays are minimized, so scenarios are
     // sized for the largest possible display area. This prevents gaps when
     // the rail auto-shrinks.
     DisplayDimensionsGetter dimensionsGetter = [this]() -> DisplayDimensions {
@@ -174,13 +174,16 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
             uint32_t width = static_cast<uint32_t>(lv_obj_get_width(worldArea));
             uint32_t height = static_cast<uint32_t>(lv_obj_get_height(worldArea));
 
-            // Adjust width to account for minimized rail state.
-            // When rail is expanded, add the difference to get minimized dimensions.
-            IconRail* iconRail = uiManager_->getIconRail();
-            if (iconRail && !iconRail->isMinimized()) {
-                // Rail is expanded - add width difference to simulate minimized state.
-                constexpr uint32_t RAIL_WIDTH_DIFF = 108 - 40; // RAIL_WIDTH - MINIMIZED_RAIL_WIDTH
-                width += RAIL_WIDTH_DIFF;
+            lv_obj_t* screen = lv_obj_get_screen(worldArea);
+            if (screen) {
+                uint32_t screenWidth = static_cast<uint32_t>(lv_obj_get_width(screen));
+                uint32_t screenHeight = static_cast<uint32_t>(lv_obj_get_height(screen));
+                if (screenWidth > width) {
+                    width = screenWidth;
+                }
+                if (screenHeight > height) {
+                    height = screenHeight;
+                }
             }
 
             return DisplayDimensions{ width, height };
@@ -365,15 +368,20 @@ void SimPlayground::sendDisplayResizeUpdate()
         lv_obj_update_layout(worldArea);
     }
 
-    // Get new display dimensions, adjusted for minimized rail state.
+    // Get new display dimensions, adjusted for minimized overlay state.
     uint32_t newWidth = static_cast<uint32_t>(lv_obj_get_width(worldArea));
     uint32_t newHeight = static_cast<uint32_t>(lv_obj_get_height(worldArea));
 
-    // Always compute for minimized rail to prevent gaps when rail shrinks.
-    IconRail* iconRail = uiManager_->getIconRail();
-    if (iconRail && !iconRail->isMinimized()) {
-        constexpr uint32_t RAIL_WIDTH_DIFF = 108 - 40; // RAIL_WIDTH - MINIMIZED_RAIL_WIDTH
-        newWidth += RAIL_WIDTH_DIFF;
+    lv_obj_t* screen = lv_obj_get_screen(worldArea);
+    if (screen) {
+        uint32_t screenWidth = static_cast<uint32_t>(lv_obj_get_width(screen));
+        uint32_t screenHeight = static_cast<uint32_t>(lv_obj_get_height(screen));
+        if (screenWidth > newWidth) {
+            newWidth = screenWidth;
+        }
+        if (screenHeight > newHeight) {
+            newHeight = screenHeight;
+        }
     }
 
     // Update the config with new dimensions.
