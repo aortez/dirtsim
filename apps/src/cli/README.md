@@ -134,6 +134,7 @@ Run a minimal UI/server workflow check against a running system:
 ```bash
 # Default local ports (UI: 7070, server: 8080).
 ./build-debug/bin/cli functional-test canExit
+./build-debug/bin/cli functional-test canTrain
 
 # Remote.
 ./build-debug/bin/cli functional-test canExit \
@@ -146,6 +147,7 @@ Run a minimal UI/server workflow check against a running system:
 - Queries server StatusGet and UI StateGet.
 - Drives UI back to StartMenu if needed (SimStop).
 - Sends UI Exit.
+- For canTrain: runs EvolutionStart with defaults, waits for TrainingResultList to grow, requests TrainingResultGet for the newest session, and restarts services.
 
 ### Network Mode
 

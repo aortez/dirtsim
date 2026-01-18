@@ -635,6 +635,8 @@ std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm
         });
     }
 
+    dsm.recordTrainingResult(available);
+
     auto* wsService = dsm.getWebSocketService();
     if (wsService) {
         const auto response =

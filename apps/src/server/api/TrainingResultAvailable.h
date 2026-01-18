@@ -7,6 +7,7 @@
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
 #include <variant>
@@ -57,6 +58,11 @@ struct TrainingResultAvailable {
     using Response = Result<OkayType, ApiError>;
     using Cwc = CommandWithCallback<TrainingResultAvailable, Response>;
 };
+
+void to_json(nlohmann::json& j, const TrainingResultAvailable::Summary& summary);
+void from_json(const nlohmann::json& j, TrainingResultAvailable::Summary& summary);
+void to_json(nlohmann::json& j, const TrainingResultAvailable::Candidate& candidate);
+void from_json(const nlohmann::json& j, TrainingResultAvailable::Candidate& candidate);
 
 } // namespace Api
 } // namespace DirtSim

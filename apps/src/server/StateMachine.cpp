@@ -3,6 +3,9 @@
 #include "EventProcessor.h"
 #include "ServerConfig.h"
 #include "api/PeersGet.h"
+#include "api/TrainingResultAvailable.h"
+#include "api/TrainingResultGet.h"
+#include "api/TrainingResultList.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -71,6 +74,8 @@ struct StateMachine::Impl {
     mutable std::mutex cachedWorldDataMutex_;
 
     std::vector<SubscribedClient> subscribedClients_;
+    std::vector<Api::TrainingResultAvailable> trainingResults_;
+    mutable std::mutex trainingResultsMutex_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
         : genomeRepository_(initGenomeRepository(dataDir)),
@@ -337,6 +342,50 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::RenderFormatGet::Response::okay(std::move(okay)));
     });
 
+    service.registerHandler<Api::TrainingResultList::Cwc>([this](Api::TrainingResultList::Cwc cwc) {
+        std::vector<Api::TrainingResultAvailable> snapshot;
+        {
+            std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+            snapshot = pImpl->trainingResults_;
+        }
+
+        Api::TrainingResultList::Okay response;
+        response.results.reserve(snapshot.size());
+        for (const auto& result : snapshot) {
+            Api::TrainingResultList::Entry entry;
+            entry.summary = result.summary;
+            entry.candidateCount = static_cast<int>(result.candidates.size());
+            response.results.push_back(std::move(entry));
+        }
+
+        cwc.sendResponse(Api::TrainingResultList::Response::okay(std::move(response)));
+    });
+
+    service.registerHandler<Api::TrainingResultGet::Cwc>([this](Api::TrainingResultGet::Cwc cwc) {
+        std::optional<Api::TrainingResultAvailable> found;
+        {
+            std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+            for (auto it = pImpl->trainingResults_.rbegin(); it != pImpl->trainingResults_.rend();
+                 ++it) {
+                if (it->summary.trainingSessionId == cwc.command.trainingSessionId) {
+                    found = *it;
+                    break;
+                }
+            }
+        }
+
+        if (!found.has_value()) {
+            cwc.sendResponse(Api::TrainingResultGet::Response::error(ApiError(
+                "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
+            return;
+        }
+
+        Api::TrainingResultGet::Okay response;
+        response.summary = found->summary;
+        response.candidates = found->candidates;
+        cwc.sendResponse(Api::TrainingResultGet::Response::okay(std::move(response)));
+    });
+
     service.registerHandler<Api::RenderFormatSet::Cwc>(
         [this](Api::RenderFormatSet::Cwc cwc) { queueEvent(cwc); });
 
@@ -472,6 +521,12 @@ GenomeRepository& StateMachine::getGenomeRepository()
 const GenomeRepository& StateMachine::getGenomeRepository() const
 {
     return pImpl->genomeRepository_;
+}
+
+void StateMachine::recordTrainingResult(const Api::TrainingResultAvailable& result)
+{
+    std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+    pImpl->trainingResults_.push_back(result);
 }
 
 void StateMachine::mainLoopRun()

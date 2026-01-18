@@ -323,8 +323,10 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/TrainingResultAvailable.cpp
     src/server/api/TrainingResultAvailableAck.cpp
     src/server/api/TrainingResultDiscard.cpp
+    src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
     src/server/api/WorldResize.cpp
 
