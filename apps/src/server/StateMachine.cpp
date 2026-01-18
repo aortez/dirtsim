@@ -761,6 +761,12 @@ void StateMachine::handleEvent(const Event& event)
         const std::string& connectionId = cwc.command.connectionId;
         assert(!connectionId.empty() && "RenderFormatSet: connectionId must be populated!");
 
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
+            cwc.sendResponse(Api::RenderFormatSet::Response::error(
+                ApiError{ "Client did not request render updates" }));
+            return;
+        }
+
         // Add or update client subscription.
         auto it = std::find_if(
             pImpl->subscribedClients_.begin(),
@@ -913,6 +919,10 @@ void StateMachine::broadcastRenderMessage(
         data.timestep);
 
     for (const auto& client : pImpl->subscribedClients_) {
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(client.connectionId)) {
+            continue;
+        }
+
         RenderMessage msg =
             RenderMessageUtils::packRenderMessage(data, client.renderFormat, organism_grid);
 
@@ -971,6 +981,10 @@ void StateMachine::broadcastEventData(
     std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
 
     for (const auto& client : pImpl->subscribedClients_) {
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsEvents(client.connectionId)) {
+            continue;
+        }
+
         auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
         if (result.isError()) {
             spdlog::error(

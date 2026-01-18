@@ -89,7 +89,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .trainingSessionId = std::nullopt,
         };
 
-        const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeSet failed: " + result.errorValue();
         }
@@ -106,7 +107,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         Api::GenomeGet::Command cmd;
         cmd.id = testId;
 
-        const auto result = client_.sendCommand<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeGet failed: " + result.errorValue();
         }
@@ -147,7 +149,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
             .trainingSessionId = std::nullopt,
         };
 
-        const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeSet (update) failed: " + result.errorValue();
         }
@@ -164,7 +167,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         Api::GenomeGet::Command cmd;
         cmd.id = testId;
 
-        const auto result = client_.sendCommand<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeGet (after update) failed: " + result.errorValue();
         }
@@ -186,7 +190,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         Api::GenomeDelete::Command cmd;
         cmd.id = testId;
 
-        const auto result = client_.sendCommand<Api::GenomeDelete::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeDelete::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeDelete failed: " + result.errorValue();
         }
@@ -203,7 +208,8 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         Api::GenomeGet::Command cmd;
         cmd.id = testId;
 
-        const auto result = client_.sendCommand<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeGet::Okay>(cmd, kTimeoutMs);
         if (result.isError()) {
             return "GenomeGet (after delete) failed: " + result.errorValue();
         }
@@ -250,7 +256,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .trainingSessionId = std::nullopt,
             };
 
-            const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
+            const auto result =
+                client_.sendCommandAndGetResponse<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
             if (result.isError() || result.value().isError()) {
                 spdlog::warn("Create {} failed", i);
             }
@@ -269,7 +276,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
         const auto start = std::chrono::steady_clock::now();
 
         Api::GenomeList::Command cmd;
-        const auto result = client_.sendCommand<Api::GenomeList::Okay>(cmd, kTimeoutMs);
+        const auto result =
+            client_.sendCommandAndGetResponse<Api::GenomeList::Okay>(cmd, kTimeoutMs);
 
         const auto end = std::chrono::steady_clock::now();
         results.listMs = std::chrono::duration<double, std::milli>(end - start).count();
@@ -303,7 +311,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
                 .trainingSessionId = std::nullopt,
             };
 
-            const auto result = client_.sendCommand<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
+            const auto result =
+                client_.sendCommandAndGetResponse<Api::GenomeSet::Okay>(cmd, kTimeoutMs);
             if (result.isError() || result.value().isError()) {
                 spdlog::warn("Update {} failed", i);
             }
@@ -325,7 +334,8 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
             Api::GenomeDelete::Command cmd;
             cmd.id = ids[i];
 
-            const auto result = client_.sendCommand<Api::GenomeDelete::Okay>(cmd, kTimeoutMs);
+            const auto result =
+                client_.sendCommandAndGetResponse<Api::GenomeDelete::Okay>(cmd, kTimeoutMs);
             if (result.isError() || result.value().isError()) {
                 spdlog::warn("Delete {} failed", i);
             }

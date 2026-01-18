@@ -11,6 +11,7 @@
 #include "SimPause.h"
 #include "SimRun.h"
 #include "SimStop.h"
+#include "StateGet.h"
 #include "StatusGet.h"
 #include "StreamStart.h"
 #include "WebRtcAnswer.h"
@@ -35,6 +36,7 @@ using UiApiCommand = std::variant<
     UiApi::SimPause::Command,
     UiApi::SimRun::Command,
     UiApi::SimStop::Command,
+    UiApi::StateGet::Command,
     UiApi::StatusGet::Command,
     UiApi::StreamStart::Command,
     UiApi::WebRtcAnswer::Command,
