@@ -9,6 +9,7 @@
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
@@ -25,7 +26,7 @@ namespace DirtSim {
 
 class TrainingRunnerTest : public ::testing::Test {
 protected:
-    void SetUp() override { rng_.seed(42); }
+    void SetUp() override { rng_.seed(std::random_device{}()); }
 
     std::mt19937 rng_;
     EvolutionConfig config_;
@@ -476,12 +477,12 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .distanceTraveled = status.distanceTraveled,
             .maxEnergy = status.maxEnergy,
         };
-        const double fitness = fitnessResult.computeFitness(
-            config_.maxSimulationTime,
+        const double fitness = computeFitnessForOrganism(
+            fitnessResult,
+            spec.organismType,
             world->getData().width,
             world->getData().height,
-            config_.energyReference,
-            true);
+            config_);
 
         std::cout << "\n=== Brain Harness: " << brainCase.brainKind << " ===\n";
         std::cout << "Fitness: " << fitness << "\n";
