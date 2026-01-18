@@ -243,7 +243,7 @@ public:
      * The dispatcher receives the deserialized ApiCommand variant and is responsible
      * for visiting it, creating appropriate CWCs, and calling handlers.
      */
-    void setJsonCommandDispatcher(JsonCommandDispatcher dispatcher)
+    void setJsonCommandDispatcher(JsonCommandDispatcher dispatcher) override
     {
         jsonDispatcher_ = dispatcher;
     }

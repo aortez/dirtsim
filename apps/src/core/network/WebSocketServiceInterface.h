@@ -78,7 +78,7 @@ public:
         uint64_t correlationId,
         HandlerInvoker invokeHandler)>;
 
-    void setJsonCommandDispatcher(JsonCommandDispatcher /*dispatcher*/)
+    virtual void setJsonCommandDispatcher(JsonCommandDispatcher /*dispatcher*/)
     {
         // No-op for mocks - real implementation in WebSocketService.
     }

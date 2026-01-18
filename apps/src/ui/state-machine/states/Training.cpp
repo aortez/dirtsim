@@ -12,6 +12,7 @@
 #include "server/api/TrainingResultAvailableAck.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultSave.h"
+#include "ui/RemoteInputDevice.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -424,6 +425,38 @@ State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 
     // Transition to Shutdown state.
     return Shutdown{};
+}
+
+State::Any Training::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(true);
+    }
+
+    cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
+
+    cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(false);
+    }
+
+    cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
