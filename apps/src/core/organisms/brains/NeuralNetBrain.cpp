@@ -17,10 +17,11 @@ namespace {
 
 // Input layout:
 //   - 15×15×10 = 2250 (material histograms)
+//   - 15×15 = 225 (light levels)
 //   - 6 (internal state: energy, water, age, stage, scale_factor, reserved)
 //   - 7 (current action one-hot, all zeros if idle)
 //   - 1 (action progress, 0.0 to 1.0)
-constexpr int INPUT_SIZE = 2264;
+constexpr int INPUT_SIZE = 2489;
 constexpr int HIDDEN_SIZE = 48;
 
 // Output layout:
@@ -129,6 +130,13 @@ struct NeuralNetBrain::Impl {
                 for (int m = 0; m < NUM_MATERIALS; m++) {
                     input.push_back(sensory.material_histograms[y][x][m]);
                 }
+            }
+        }
+
+        // Flatten light levels: [y][x].
+        for (int y = 0; y < GRID_SIZE; y++) {
+            for (int x = 0; x < GRID_SIZE; x++) {
+                input.push_back(sensory.light_levels[y][x]);
             }
         }
 

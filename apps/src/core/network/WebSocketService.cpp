@@ -1,4 +1,5 @@
 #include "WebSocketService.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessageUtils.h"
 #include "core/WorldData.h"
@@ -6,11 +7,30 @@
 #include <chrono>
 #include <cstring>
 #include <spdlog/spdlog.h>
+#include <string_view>
 #include <thread>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace Network {
+
+namespace {
+constexpr const char* kClientHelloMessageType = "ClientHello";
+
+bool isUiHello(const ClientHello& hello)
+{
+    return hello.wantsEvents || hello.wantsRender;
+}
+
+bool isResponseMessageType(const std::string& messageType)
+{
+    constexpr std::string_view suffix = "_response";
+    if (messageType.size() < suffix.size()) {
+        return false;
+    }
+    return messageType.compare(messageType.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+} // namespace
 
 WebSocketService::WebSocketService()
 {
@@ -56,8 +76,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                     }
                 }
                 catch (...) {
-                    LOG_INFO(Network, "I'm lost  !!!!!!!!!!!!!");
-                    // Not JSON or no ID - that's fine.
+                    DIRTSIM_ASSERT(false, "Failed to parse JSON message");
                 }
 
                 if (correlationId.has_value()) {
@@ -102,15 +121,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                             binaryCallback_(envelope.payload);
                         }
                     }
-                    else if (envelope.id == 0 && serverCommandCallback_) {
-                        // Server-pushed command (no correlation ID).
-                        LOG_DEBUG(
-                            Network,
-                            "WebSocketService CLIENT: Received server command '{}'",
-                            envelope.message_type);
-                        serverCommandCallback_(envelope.message_type, envelope.payload);
-                    }
-                    else if (envelope.id > 0) {
+                    else if (envelope.id > 0 && isResponseMessageType(envelope.message_type)) {
                         // Command response - route to pending request by correlation ID.
                         std::lock_guard<std::mutex> lock(pendingMutex_);
                         auto it = pendingRequests_.find(envelope.id);
@@ -128,6 +139,27 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
                                 "WebSocketService CLIENT: Response {} not found (already "
                                 "processed)",
                                 envelope.id);
+                        }
+                    }
+                    else if (envelope.id == 0 && serverCommandCallback_) {
+                        // Server-pushed command (no correlation ID).
+                        LOG_DEBUG(
+                            Network,
+                            "WebSocketService CLIENT: Received server command '{}'",
+                            envelope.message_type);
+                        serverCommandCallback_(envelope.message_type, envelope.payload);
+                    }
+                    else if (envelope.id > 0) {
+                        // Server-initiated command - route to registered handler.
+                        auto it = commandHandlers_.find(envelope.message_type);
+                        if (it != commandHandlers_.end()) {
+                            it->second(envelope.payload, ws_, envelope.id);
+                        }
+                        else {
+                            LOG_WARN(
+                                Network,
+                                "WebSocketService CLIENT: No handler for command '{}'",
+                                envelope.message_type);
                         }
                     }
                 }
@@ -184,6 +216,20 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
             return Result<std::monostate, std::string>::error("Connection failed");
         }
 
+        if (protocol_ == Protocol::BINARY) {
+            const auto payload = serialize_payload(clientHello_);
+            MessageEnvelope hello{
+                .id = 0,
+                .message_type = kClientHelloMessageType,
+                .payload = payload,
+            };
+            auto helloResult = sendBinary(serialize_envelope(hello));
+            if (helloResult.isError()) {
+                LOG_WARN(
+                    Network, "Failed to send binary hello message: {}", helloResult.errorValue());
+            }
+        }
+
         LOG_INFO(Network, "Connected to {}", url);
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
@@ -196,6 +242,9 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
 void WebSocketService::disconnect()
 {
     if (ws_) {
+        ws_->onClosed([]() {});
+        ws_->onError([](const std::string&) {});
+        ws_->onMessage([](std::variant<rtc::binary, rtc::string>) {});
         if (ws_->isOpen()) {
             ws_->close();
         }
@@ -239,13 +288,53 @@ Result<std::monostate, std::string> WebSocketService::sendBinary(const std::vect
     }
 }
 
+Result<std::monostate, std::string> WebSocketService::sendBinaryToDefaultPeer(
+    const std::vector<std::byte>& data)
+{
+    std::shared_ptr<rtc::WebSocket> target;
+    if (ws_ && ws_->isOpen()) {
+        if (protocol_ == Protocol::JSON) {
+            return Result<std::monostate, std::string>::error(
+                "Binary send not supported while JSON protocol is active");
+        }
+        target = ws_;
+    }
+    else {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        for (const auto& ws : connectedClients_) {
+            if (!ws || !ws->isOpen()) {
+                continue;
+            }
+            auto protocolIt = clientProtocols_.find(ws);
+            if (protocolIt == clientProtocols_.end() || protocolIt->second != Protocol::BINARY) {
+                continue;
+            }
+            auto helloIt = clientHellos_.find(ws);
+            if (helloIt == clientHellos_.end() || !isUiHello(helloIt->second)) {
+                continue;
+            }
+            target = ws;
+            break;
+        }
+    }
+
+    if (!target) {
+        return Result<std::monostate, std::string>::error("No UI peer available");
+    }
+
+    try {
+        rtc::binary binaryMsg(data.begin(), data.end());
+        target->send(binaryMsg);
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+    catch (const std::exception& e) {
+        return Result<std::monostate, std::string>::error(std::string("Send failed: ") + e.what());
+    }
+}
+
 Result<MessageEnvelope, std::string> WebSocketService::sendBinaryAndReceive(
     const MessageEnvelope& envelope, int timeoutMs)
 {
-    if (!isConnected()) {
-        return Result<MessageEnvelope, std::string>::error("Not connected");
-    }
-
     uint64_t id = envelope.id;
 
     // Create pending request.
@@ -256,23 +345,20 @@ Result<MessageEnvelope, std::string> WebSocketService::sendBinaryAndReceive(
     }
 
     // Serialize and send.
-    try {
-        auto bytes = serialize_envelope(envelope);
-        rtc::binary binaryMsg(bytes.begin(), bytes.end());
+    auto bytes = serialize_envelope(envelope);
 
-        LOG_INFO(
-            Network,
-            "Sending binary (id={}, type={}, {} bytes)",
-            id,
-            envelope.message_type,
-            bytes.size());
+    LOG_INFO(
+        Network,
+        "Sending binary (id={}, type={}, {} bytes)",
+        id,
+        envelope.message_type,
+        bytes.size());
 
-        ws_->send(binaryMsg);
-    }
-    catch (const std::exception& e) {
+    auto sendResult = sendBinaryToDefaultPeer(bytes);
+    if (sendResult.isError()) {
         std::lock_guard<std::mutex> lock(pendingMutex_);
         pendingRequests_.erase(id);
-        return Result<MessageEnvelope, std::string>::error(std::string("Send failed: ") + e.what());
+        return Result<MessageEnvelope, std::string>::error(sendResult.errorValue());
     }
 
     // Wait for response.
@@ -417,6 +503,30 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
 void WebSocketService::stopListening()
 {
     if (server_) {
+        std::vector<std::shared_ptr<rtc::WebSocket>> clients;
+        {
+            std::lock_guard<std::mutex> lock(clientsMutex_);
+            clients = connectedClients_;
+            connectedClients_.clear();
+            clientProtocols_.clear();
+            clientRenderFormats_.clear();
+            clientHellos_.clear();
+            connectionRegistry_.clear();
+            connectionIds_.clear();
+        }
+
+        for (auto& ws : clients) {
+            if (!ws) {
+                continue;
+            }
+            ws->onClosed([]() {});
+            ws->onError([](const std::string&) {});
+            ws->onMessage([](std::variant<rtc::binary, rtc::string>) {});
+            if (ws->isOpen()) {
+                ws->close();
+            }
+        }
+
         server_->stop();
         server_.reset();
         LOG_INFO(Network, "Server stopped");
@@ -430,21 +540,31 @@ bool WebSocketService::isListening() const
 
 void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
 {
-    if (connectedClients_.empty()) {
+    std::vector<std::shared_ptr<rtc::WebSocket>> clients;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        for (const auto& ws : connectedClients_) {
+            if (!ws || !ws->isOpen()) {
+                continue;
+            }
+            auto helloIt = clientHellos_.find(ws);
+            if (helloIt != clientHellos_.end() && helloIt->second.wantsEvents) {
+                clients.push_back(ws);
+            }
+        }
+    }
+
+    if (clients.empty()) {
         return;
     }
 
     // Convert to rtc::binary.
     rtc::binary binaryMsg(data.begin(), data.end());
 
-    LOG_INFO(
-        Network,
-        "Broadcasting binary ({} bytes) to {} clients",
-        data.size(),
-        connectedClients_.size());
+    LOG_INFO(Network, "Broadcasting binary ({} bytes) to {} clients", data.size(), clients.size());
 
     // Send to all connected clients.
-    for (auto& ws : connectedClients_) {
+    for (auto& ws : clients) {
         if (ws && ws->isOpen()) {
             try {
                 ws->send(binaryMsg);
@@ -459,18 +579,23 @@ void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
 void WebSocketService::broadcastRenderMessage(
     const WorldData& data, const std::vector<OrganismId>& organism_grid)
 {
-    if (clientRenderFormats_.empty()) {
-        LOG_INFO(Network, "broadcastRenderMessage called but clientRenderFormats_ is EMPTY");
-        return;
+    std::vector<std::pair<std::shared_ptr<rtc::WebSocket>, RenderFormat::EnumType>> renderFormats;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        if (clientRenderFormats_.empty()) {
+            LOG_INFO(Network, "broadcastRenderMessage called but clientRenderFormats_ is EMPTY");
+            return;
+        }
+        renderFormats.assign(clientRenderFormats_.begin(), clientRenderFormats_.end());
     }
 
     LOG_INFO(
         Network,
         "Broadcasting RenderMessage to {} subscribed clients (step {})",
-        clientRenderFormats_.size(),
+        renderFormats.size(),
         data.timestep);
 
-    for (const auto& [ws, format] : clientRenderFormats_) {
+    for (const auto& [ws, format] : renderFormats) {
         if (ws && ws->isOpen()) {
             try {
                 RenderMessage msg =
@@ -499,7 +624,10 @@ void WebSocketService::broadcastRenderMessage(
 void WebSocketService::setClientRenderFormat(
     std::shared_ptr<rtc::WebSocket> ws, RenderFormat::EnumType format)
 {
-    clientRenderFormats_[ws] = format;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        clientRenderFormats_[ws] = format;
+    }
     LOG_INFO(
         Network,
         "Client render format set to {}",
@@ -509,9 +637,12 @@ void WebSocketService::setClientRenderFormat(
 RenderFormat::EnumType WebSocketService::getClientRenderFormat(
     std::shared_ptr<rtc::WebSocket> ws) const
 {
-    auto it = clientRenderFormats_.find(ws);
-    if (it != clientRenderFormats_.end()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = clientRenderFormats_.find(ws);
+        if (it != clientRenderFormats_.end()) {
+            return it->second;
+        }
     }
     return RenderFormat::EnumType::Basic;
 }
@@ -519,6 +650,7 @@ RenderFormat::EnumType WebSocketService::getClientRenderFormat(
 std::shared_ptr<rtc::WebSocket> WebSocketService::getClientByConnectionId(
     const std::string& connectionId)
 {
+    std::lock_guard<std::mutex> lock(clientsMutex_);
     auto it = connectionRegistry_.find(connectionId);
     if (it != connectionRegistry_.end()) {
         return it->second.lock();
@@ -529,9 +661,12 @@ std::shared_ptr<rtc::WebSocket> WebSocketService::getClientByConnectionId(
 std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws)
 {
     // Check if we already have an ID for this connection.
-    auto it = connectionIds_.find(ws);
-    if (it != connectionIds_.end()) {
-        return it->second;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = connectionIds_.find(ws);
+        if (it != connectionIds_.end()) {
+            return it->second;
+        }
     }
 
     // Generate new ID.
@@ -539,27 +674,79 @@ std::string WebSocketService::getConnectionId(std::shared_ptr<rtc::WebSocket> ws
     std::string connectionId = "conn_" + std::to_string(id);
 
     // Register in both maps.
-    connectionIds_[ws] = connectionId;
-    connectionRegistry_[connectionId] = ws;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        connectionIds_[ws] = connectionId;
+        connectionRegistry_[connectionId] = ws;
+    }
 
     LOG_DEBUG(Network, "Assigned connection ID '{}' to client", connectionId);
     return connectionId;
+}
+
+bool WebSocketService::clientWantsEvents(const std::string& connectionId) const
+{
+    std::lock_guard<std::mutex> lock(clientsMutex_);
+    auto it = connectionRegistry_.find(connectionId);
+    if (it == connectionRegistry_.end()) {
+        return false;
+    }
+
+    auto ws = it->second.lock();
+    if (!ws) {
+        return false;
+    }
+
+    auto helloIt = clientHellos_.find(ws);
+    if (helloIt == clientHellos_.end()) {
+        return false;
+    }
+
+    return helloIt->second.wantsEvents;
+}
+
+bool WebSocketService::clientWantsRender(const std::string& connectionId) const
+{
+    std::lock_guard<std::mutex> lock(clientsMutex_);
+    auto it = connectionRegistry_.find(connectionId);
+    if (it == connectionRegistry_.end()) {
+        return false;
+    }
+
+    auto ws = it->second.lock();
+    if (!ws) {
+        return false;
+    }
+
+    auto helloIt = clientHellos_.find(ws);
+    if (helloIt == clientHellos_.end()) {
+        return false;
+    }
+
+    return helloIt->second.wantsRender;
 }
 
 Result<std::monostate, std::string> WebSocketService::sendToClient(
     const std::string& connectionId, const std::string& message)
 {
     // Look up the connection.
-    auto it = connectionRegistry_.find(connectionId);
-    if (it == connectionRegistry_.end()) {
-        return Result<std::monostate, std::string>::error("Unknown connection ID: " + connectionId);
+    std::shared_ptr<rtc::WebSocket> ws;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = connectionRegistry_.find(connectionId);
+        if (it == connectionRegistry_.end()) {
+            return Result<std::monostate, std::string>::error(
+                "Unknown connection ID: " + connectionId);
+        }
+        ws = it->second.lock();
     }
 
     // Check if connection is still alive.
-    auto ws = it->second.lock();
     if (!ws || !ws->isOpen()) {
-        // Clean up stale entry.
-        connectionRegistry_.erase(it);
+        {
+            std::lock_guard<std::mutex> lock(clientsMutex_);
+            connectionRegistry_.erase(connectionId);
+        }
         return Result<std::monostate, std::string>::error("Connection closed: " + connectionId);
     }
 
@@ -578,15 +765,23 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
     const std::string& connectionId, const std::vector<std::byte>& data)
 {
     // Look up the connection.
-    auto it = connectionRegistry_.find(connectionId);
-    if (it == connectionRegistry_.end()) {
-        return Result<std::monostate, std::string>::error("Unknown connection ID: " + connectionId);
+    std::shared_ptr<rtc::WebSocket> ws;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        auto it = connectionRegistry_.find(connectionId);
+        if (it == connectionRegistry_.end()) {
+            return Result<std::monostate, std::string>::error(
+                "Unknown connection ID: " + connectionId);
+        }
+        ws = it->second.lock();
     }
 
     // Check if connection is still alive.
-    auto ws = it->second.lock();
     if (!ws || !ws->isOpen()) {
-        connectionRegistry_.erase(it);
+        {
+            std::lock_guard<std::mutex> lock(clientsMutex_);
+            connectionRegistry_.erase(connectionId);
+        }
         return Result<std::monostate, std::string>::error("Connection closed: " + connectionId);
     }
 
@@ -605,7 +800,10 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
 void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
     LOG_INFO(Network, "Client connected");
-    connectedClients_.push_back(ws);
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        connectedClients_.push_back(ws);
+    }
 
     // Set up message handler for this client.
     ws->onMessage([this, ws](std::variant<rtc::binary, rtc::string> data) {
@@ -627,27 +825,26 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 
         // Get connection ID before cleanup (needed for callback).
         std::string connectionId;
-        auto idIt = connectionIds_.find(ws);
-        if (idIt != connectionIds_.end()) {
-            connectionId = idIt->second;
+        {
+            std::lock_guard<std::mutex> lock(clientsMutex_);
+            auto idIt = connectionIds_.find(ws);
+            if (idIt != connectionIds_.end()) {
+                connectionId = idIt->second;
+                connectionRegistry_.erase(connectionId);
+                connectionIds_.erase(idIt);
+            }
+
+            // Clean up internal state.
+            connectedClients_.erase(
+                std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
+                connectedClients_.end());
+            clientProtocols_.erase(ws);
+            clientRenderFormats_.erase(ws);
+            clientHellos_.erase(ws);
         }
 
-        // Clean up internal state.
-        connectedClients_.erase(
-            std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
-            connectedClients_.end());
-        clientProtocols_.erase(ws);
-        clientRenderFormats_.erase(ws);
-
-        // Clean up connection registry.
-        if (!connectionId.empty()) {
-            connectionRegistry_.erase(connectionId);
-            connectionIds_.erase(idIt);
-
-            // Notify external listeners (e.g., StateMachine) about the disconnect.
-            if (clientDisconnectCallback_) {
-                clientDisconnectCallback_(connectionId);
-            }
+        if (!connectionId.empty() && clientDisconnectCallback_) {
+            clientDisconnectCallback_(connectionId);
         }
     });
 
@@ -660,7 +857,10 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
     LOG_DEBUG(Network, "Received binary message ({} bytes)", data.size());
 
     // Track that this client uses binary protocol.
-    clientProtocols_[ws] = Protocol::BINARY;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        clientProtocols_[ws] = Protocol::BINARY;
+    }
 
     // Convert to std::vector<std::byte>.
     std::vector<std::byte> bytes(data.size());
@@ -683,6 +883,91 @@ void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const
         envelope.id,
         envelope.payload.size());
 
+    if (envelope.id > 0 && isResponseMessageType(envelope.message_type)) {
+        std::lock_guard<std::mutex> lock(pendingMutex_);
+        auto it = pendingRequests_.find(envelope.id);
+        if (it != pendingRequests_.end()) {
+            auto& pending = it->second;
+            std::lock_guard<std::mutex> reqLock(pending->mutex);
+            pending->response = bytes;
+            pending->isBinary = true;
+            pending->received = true;
+            pending->cv.notify_one();
+            return;
+        }
+
+        LOG_DEBUG(
+            Network,
+            "WebSocketService SERVER: Response {} not found (already processed)",
+            envelope.id);
+        return;
+    }
+
+    if (envelope.id == 0) {
+        if (envelope.message_type == kClientHelloMessageType) {
+            ClientHello hello{};
+            if (!envelope.payload.empty()) {
+                try {
+                    hello = deserialize_payload<ClientHello>(envelope.payload);
+                }
+                catch (const std::exception& e) {
+                    LOG_WARN(Network, "Failed to parse ClientHello: {}", e.what());
+                    return;
+                }
+            }
+            else {
+                hello.protocolVersion = 0;
+            }
+
+            if (hello.protocolVersion != kClientHelloProtocolVersion) {
+                LOG_WARN(
+                    Network,
+                    "ClientHello protocol mismatch (client={}, server={})",
+                    hello.protocolVersion,
+                    kClientHelloProtocolVersion);
+                ws->close();
+                return;
+            }
+
+            const bool isUiClient = isUiHello(hello);
+            bool reject = false;
+            {
+                std::lock_guard<std::mutex> lock(clientsMutex_);
+                if (isUiClient) {
+                    for (const auto& [client, existing] : clientHellos_) {
+                        if (client != ws && isUiHello(existing)) {
+                            reject = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!reject) {
+                    clientHellos_[ws] = hello;
+                }
+            }
+
+            if (reject) {
+                LOG_WARN(Network, "Rejecting second UI client connection");
+                ws->close();
+            }
+            else {
+                LOG_INFO(
+                    Network,
+                    "ClientHello accepted (mode={}, protocol_version={}, wants_render={}, "
+                    "wants_events={})",
+                    isUiClient ? "ui" : "control-only",
+                    hello.protocolVersion,
+                    hello.wantsRender,
+                    hello.wantsEvents);
+            }
+
+            return;
+        }
+        LOG_WARN(Network, "Ignoring client push '{}'", envelope.message_type);
+        return;
+    }
+
     // Look up handler.
     auto it = commandHandlers_.find(envelope.message_type);
     if (it == commandHandlers_.end()) {
@@ -701,7 +986,10 @@ void WebSocketService::onClientMessageJson(
     LOG_DEBUG(Network, "Received JSON message ({} bytes)", jsonText.size());
 
     // Track that this client uses JSON protocol.
-    clientProtocols_[ws] = Protocol::JSON;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        clientProtocols_[ws] = Protocol::JSON;
+    }
 
     // Parse JSON to extract command name and correlation ID.
     nlohmann::json jsonMsg;

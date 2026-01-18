@@ -76,7 +76,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     // Query server state to determine if we need to stop existing simulation.
     spdlog::info("BenchmarkRunner: Querying server state");
     Api::StatusGet::Command statusCmd;
-    auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 2000);
+    auto statusResult = client_.sendCommandAndGetResponse<Api::StatusGet::Okay>(statusCmd, 2000);
     if (statusResult.isError()) {
         spdlog::error("BenchmarkRunner: StatusGet failed: {}", statusResult.errorValue());
         return results;
@@ -94,7 +94,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     if (status.state == "SimRunning") {
         spdlog::info("BenchmarkRunner: Stopping existing simulation");
         Api::SimStop::Command stopCmd;
-        auto stopResult = client_.sendCommand<std::monostate>(stopCmd, 2000);
+        auto stopResult = client_.sendCommandAndGetResponse<std::monostate>(stopCmd, 2000);
         if (stopResult.isError()) {
             spdlog::error("BenchmarkRunner: SimStop failed: {}", stopResult.errorValue());
             return results;
@@ -121,7 +121,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     simRunCmd.max_steps = steps;
     simRunCmd.scenario_id = scenarioId;
 
-    auto simRunResult = client_.sendCommand<Api::SimRun::Okay>(simRunCmd, 5000);
+    auto simRunResult = client_.sendCommandAndGetResponse<Api::SimRun::Okay>(simRunCmd, 5000);
     if (simRunResult.isError()) {
         spdlog::error("BenchmarkRunner: SimRun failed: {}", simRunResult.errorValue());
         return results;
@@ -141,7 +141,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
         resizeCmd.width = static_cast<int16_t>(worldSize);
         resizeCmd.height = static_cast<int16_t>(worldSize);
 
-        auto resizeResult = client_.sendCommand<std::monostate>(resizeCmd, 5000);
+        auto resizeResult = client_.sendCommandAndGetResponse<std::monostate>(resizeCmd, 5000);
         if (resizeResult.isError()) {
             spdlog::error("BenchmarkRunner: World resize failed: {}", resizeResult.errorValue());
             return results;
@@ -174,7 +174,8 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 
         // Poll current step using lightweight StatusGet (not StateGet).
         Api::StatusGet::Command statusCmd;
-        auto statusResult = client_.sendCommand<Api::StatusGet::Okay>(statusCmd, 2000);
+        auto statusResult =
+            client_.sendCommandAndGetResponse<Api::StatusGet::Okay>(statusCmd, 2000);
         if (statusResult.isError()) {
             continue; // Retry on transport error.
         }
@@ -219,7 +220,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     // Query performance stats.
     spdlog::info("BenchmarkRunner: Requesting PerfStats from server");
     Api::PerfStatsGet::Command perfCmd;
-    auto perfResult = client_.sendCommand<Api::PerfStatsGet::Okay>(perfCmd, 2000);
+    auto perfResult = client_.sendCommandAndGetResponse<Api::PerfStatsGet::Okay>(perfCmd, 2000);
     if (perfResult.isError()) {
         spdlog::warn("Failed to get perf stats: {}", perfResult.errorValue());
     }
@@ -249,7 +250,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     // Query detailed timer statistics.
     spdlog::info("BenchmarkRunner: Requesting TimerStats from server");
     Api::TimerStatsGet::Command timerCmd;
-    auto timerResult = client_.sendCommand<Api::TimerStatsGet::Okay>(timerCmd, 2000);
+    auto timerResult = client_.sendCommandAndGetResponse<Api::TimerStatsGet::Okay>(timerCmd, 2000);
     if (timerResult.isError()) {
         spdlog::warn("Failed to get timer stats: {}", timerResult.errorValue());
     }
@@ -265,7 +266,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
     if (!isRemote) {
         spdlog::info("BenchmarkRunner: Sending Exit command to server");
         Api::Exit::Command exitCmd;
-        client_.sendCommand<std::monostate>(exitCmd, 1000);
+        client_.sendCommandAndGetResponse<std::monostate>(exitCmd, 1000);
         // Ignore result - server closes connection after receiving exit command.
     }
 
@@ -278,7 +279,7 @@ BenchmarkResults BenchmarkRunner::runWithServerArgs(
 nlohmann::json BenchmarkRunner::queryPerfStats()
 {
     Api::PerfStatsGet::Command cmd;
-    auto result = client_.sendCommand<Api::PerfStatsGet::Okay>(cmd);
+    auto result = client_.sendCommandAndGetResponse<Api::PerfStatsGet::Okay>(cmd);
     if (result.isError()) {
         spdlog::warn("Failed to query perf stats: {}", result.errorValue());
         return nlohmann::json::object();

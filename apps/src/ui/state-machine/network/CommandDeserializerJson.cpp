@@ -9,6 +9,7 @@
 #include "ui/state-machine/api/SimPause.h"
 #include "ui/state-machine/api/SimRun.h"
 #include "ui/state-machine/api/SimStop.h"
+#include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
 #include "ui/state-machine/api/StreamStart.h"
 #include "ui/state-machine/api/WebRtcAnswer.h"
@@ -77,6 +78,9 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::SimStop::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::SimStop::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::StateGet::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(UiApi::StateGet::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::StatusGet::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::StatusGet::Command::fromJson(cmd));
