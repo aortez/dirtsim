@@ -134,7 +134,7 @@ void Starfield::resize(int width, int height)
         return;
     }
 
-    const size_t bufferSize = LV_CANVAS_BUF_SIZE(width_, height_, 32, 64);
+    const size_t bufferSize = LV_CANVAS_BUF_SIZE(width, height, 32, 64);
     auto* newBuffer = static_cast<lv_color_t*>(lv_malloc(bufferSize));
     if (!newBuffer) {
         LOG_ERROR(Render, "Starfield failed to allocate resize buffer");

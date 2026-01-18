@@ -62,8 +62,17 @@ void TrainingView::createUI()
 
     lv_obj_clean(container_);
 
-    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
-    const int displayHeight = lv_disp_get_ver_res(lv_disp_get_default());
+    lv_obj_update_layout(container_);
+
+    int displayWidth = lv_obj_get_width(container_);
+    int displayHeight = lv_obj_get_height(container_);
+    if (displayWidth <= 0 || displayHeight <= 0) {
+        lv_disp_t* display = lv_disp_get_default();
+        if (display) {
+            displayWidth = lv_disp_get_hor_res(display);
+            displayHeight = lv_disp_get_ver_res(display);
+        }
+    }
     starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
 
     // Main layout: column with stats on top, world views on bottom.
