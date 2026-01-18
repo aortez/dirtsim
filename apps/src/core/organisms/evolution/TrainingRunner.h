@@ -53,11 +53,22 @@ public:
         std::optional<Genome> genome;
     };
 
+    struct Config {
+        TrainingBrainRegistry brainRegistry;
+    };
+
     TrainingRunner(
         const TrainingSpec& trainingSpec,
         const Individual& individual,
         const EvolutionConfig& config,
         GenomeRepository& genomeRepository);
+
+    TrainingRunner(
+        const TrainingSpec& trainingSpec,
+        const Individual& individual,
+        const EvolutionConfig& config,
+        GenomeRepository& genomeRepository,
+        const Config& runnerConfig);
     ~TrainingRunner();
 
     TrainingRunner(const TrainingRunner&) = delete;
@@ -83,6 +94,7 @@ public:
 
 private:
     void spawnEvaluationOrganism();
+    static Config makeDefaultConfig();
 
     TrainingSpec trainingSpec_;
     Individual individual_;

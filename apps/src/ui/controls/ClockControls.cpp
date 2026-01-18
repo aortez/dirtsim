@@ -1,6 +1,7 @@
 #include "ClockControls.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketServiceInterface.h"
 #include "core/reflect.h"
 #include "core/scenarios/ClockScenario.h"
 #include "server/api/ClockEventTrigger.h"

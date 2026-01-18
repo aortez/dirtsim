@@ -89,10 +89,19 @@ TrainingRunner::TrainingRunner(
     const Individual& individual,
     const EvolutionConfig& config,
     GenomeRepository& genomeRepository)
+    : TrainingRunner(trainingSpec, individual, config, genomeRepository, makeDefaultConfig())
+{}
+
+TrainingRunner::TrainingRunner(
+    const TrainingSpec& trainingSpec,
+    const Individual& individual,
+    const EvolutionConfig& config,
+    GenomeRepository& genomeRepository,
+    const Config& runnerConfig)
     : trainingSpec_(trainingSpec),
       individual_(individual),
       maxTime_(config.maxSimulationTime),
-      brainRegistry_(TrainingBrainRegistry::createDefault())
+      brainRegistry_(runnerConfig.brainRegistry)
 {
     // Create scenario from registry.
     auto registry = ScenarioRegistry::createDefault(genomeRepository);
@@ -114,6 +123,13 @@ TrainingRunner::~TrainingRunner() = default;
 
 TrainingRunner::TrainingRunner(TrainingRunner&&) noexcept = default;
 TrainingRunner& TrainingRunner::operator=(TrainingRunner&&) noexcept = default;
+
+TrainingRunner::Config TrainingRunner::makeDefaultConfig()
+{
+    Config config{};
+    config.brainRegistry = TrainingBrainRegistry::createDefault();
+    return config;
+}
 
 TrainingRunner::Status TrainingRunner::step(int frames)
 {
