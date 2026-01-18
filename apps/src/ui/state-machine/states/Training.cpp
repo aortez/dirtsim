@@ -9,7 +9,6 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
-#include "server/api/TrainingResultAvailableAck.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultSave.h"
 #include "ui/RemoteInputDevice.h"
@@ -100,40 +99,6 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
     }
 
     // Stay in Training state.
-    return std::move(*this);
-}
-
-State::Any Training::onEvent(const TrainingResultAvailableReceivedEvent& evt, StateMachine& sm)
-{
-    LOG_INFO(State, "Training result available (candidates={})", evt.result.candidates.size());
-
-    if (view_) {
-        view_->showTrainingResultModal(evt.result.summary, evt.result.candidates);
-    }
-
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available for TrainingResultAvailableAck");
-        return std::move(*this);
-    }
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "Not connected to server, cannot acknowledge training result");
-        return std::move(*this);
-    }
-
-    Api::TrainingResultAvailableAck::Command cmd;
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::TrainingResultAvailableAck::OkayType>(cmd, 5000);
-    if (result.isError()) {
-        LOG_ERROR(State, "TrainingResultAvailableAck failed: {}", result.errorValue());
-        return std::move(*this);
-    }
-    if (result.value().isError()) {
-        LOG_ERROR(
-            State, "TrainingResultAvailableAck error: {}", result.value().errorValue().message);
-        return std::move(*this);
-    }
-
     return std::move(*this);
 }
 

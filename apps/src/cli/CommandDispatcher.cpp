@@ -10,64 +10,61 @@ CommandDispatcher::CommandDispatcher()
         "CommandDispatcher: Registering server API commands with response deserializers...");
 
     // Register server API commands.
-    registerCommand<Api::CellGet::Command, Api::CellGet::Okay>(serverHandlers_);
-    registerCommand<Api::CellSet::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::ClockEventTrigger::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::DiagramGet::Command, Api::DiagramGet::Okay>(serverHandlers_);
-    registerCommand<Api::EvolutionStart::Command, Api::EvolutionStart::Okay>(serverHandlers_);
-    registerCommand<Api::EvolutionStop::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::Exit::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::FingerDown::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::FingerMove::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::FingerUp::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::GenomeDelete::Command, Api::GenomeDelete::Okay>(serverHandlers_);
-    registerCommand<Api::GenomeGet::Command, Api::GenomeGet::Okay>(serverHandlers_);
-    registerCommand<Api::GenomeGetBest::Command, Api::GenomeGetBest::Okay>(serverHandlers_);
-    registerCommand<Api::GenomeList::Command, Api::GenomeList::Okay>(serverHandlers_);
-    registerCommand<Api::GenomeSet::Command, Api::GenomeSet::Okay>(serverHandlers_);
-    registerCommand<Api::GravitySet::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::PeersGet::Command, Api::PeersGet::Okay>(serverHandlers_);
-    registerCommand<Api::PerfStatsGet::Command, Api::PerfStatsGet::Okay>(serverHandlers_);
-    registerCommand<Api::PhysicsSettingsGet::Command, Api::PhysicsSettingsGet::Okay>(
-        serverHandlers_);
-    registerCommand<Api::PhysicsSettingsSet::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::RenderFormatGet::Command, Api::RenderFormatGet::Okay>(serverHandlers_);
-    registerCommand<Api::RenderFormatSet::Command, Api::RenderFormatSet::Okay>(serverHandlers_);
-    registerCommand<Api::Reset::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::ScenarioConfigSet::Command, Api::ScenarioConfigSet::Okay>(serverHandlers_);
-    registerCommand<Api::ScenarioListGet::Command, Api::ScenarioListGet::Okay>(serverHandlers_);
-    registerCommand<Api::SeedAdd::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::SimRun::Command, Api::SimRun::Okay>(serverHandlers_);
-    registerCommand<Api::SimStop::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::SpawnDirtBall::Command, std::monostate>(serverHandlers_);
-    registerCommand<Api::StateGet::Command, Api::StateGet::Okay>(serverHandlers_);
-    registerCommand<Api::StatusGet::Command, Api::StatusGet::Okay>(serverHandlers_);
-    registerCommand<Api::TimerStatsGet::Command, Api::TimerStatsGet::Okay>(serverHandlers_);
-    registerCommand<Api::TrainingResultDiscard::Command, Api::TrainingResultDiscard::Okay>(
-        serverHandlers_);
-    registerCommand<Api::TrainingResultSave::Command, Api::TrainingResultSave::Okay>(
-        serverHandlers_);
-    registerCommand<Api::WorldResize::Command, std::monostate>(serverHandlers_);
+    registerCommand<Api::CellGet::Cwc>(serverHandlers_);
+    registerCommand<Api::CellSet::Cwc>(serverHandlers_);
+    registerCommand<Api::ClockEventTrigger::Cwc>(serverHandlers_);
+    registerCommand<Api::DiagramGet::Cwc>(serverHandlers_);
+    registerCommand<Api::EvolutionStart::Cwc>(serverHandlers_);
+    registerCommand<Api::EvolutionStop::Cwc>(serverHandlers_);
+    registerCommand<Api::Exit::Cwc>(serverHandlers_);
+    registerCommand<Api::FingerDown::Cwc>(serverHandlers_);
+    registerCommand<Api::FingerMove::Cwc>(serverHandlers_);
+    registerCommand<Api::FingerUp::Cwc>(serverHandlers_);
+    registerCommand<Api::GenomeDelete::Cwc>(serverHandlers_);
+    registerCommand<Api::GenomeGet::Cwc>(serverHandlers_);
+    registerCommand<Api::GenomeGetBest::Cwc>(serverHandlers_);
+    registerCommand<Api::GenomeList::Cwc>(serverHandlers_);
+    registerCommand<Api::GenomeSet::Cwc>(serverHandlers_);
+    registerCommand<Api::GravitySet::Cwc>(serverHandlers_);
+    registerCommand<Api::PeersGet::Cwc>(serverHandlers_);
+    registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_);
+    registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_);
+    registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_);
+    registerCommand<Api::RenderFormatGet::Cwc>(serverHandlers_);
+    registerCommand<Api::RenderFormatSet::Cwc>(serverHandlers_);
+    registerCommand<Api::Reset::Cwc>(serverHandlers_);
+    registerCommand<Api::ScenarioConfigSet::Cwc>(serverHandlers_);
+    registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_);
+    registerCommand<Api::SeedAdd::Cwc>(serverHandlers_);
+    registerCommand<Api::SimRun::Cwc>(serverHandlers_);
+    registerCommand<Api::SimStop::Cwc>(serverHandlers_);
+    registerCommand<Api::SpawnDirtBall::Cwc>(serverHandlers_);
+    registerCommand<Api::StateGet::Cwc>(serverHandlers_);
+    registerCommand<Api::StatusGet::Cwc>(serverHandlers_);
+    registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_);
+    registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_);
+    registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_);
+    registerCommand<Api::WorldResize::Cwc>(serverHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");
 
     // Register UI API commands.
-    registerCommand<UiApi::DrawDebugToggle::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::Exit::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::MouseDown::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::MouseMove::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::MouseUp::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::PixelRendererToggle::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::RenderModeSelect::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::ScreenGrab::Command, UiApi::ScreenGrab::Okay>(uiHandlers_);
-    registerCommand<UiApi::SimPause::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::SimRun::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::SimStop::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::StateGet::Command, UiApi::StateGet::Okay>(uiHandlers_);
-    registerCommand<UiApi::StatusGet::Command, UiApi::StatusGet::Okay>(uiHandlers_);
-    registerCommand<UiApi::StreamStart::Command, UiApi::StreamStart::Okay>(uiHandlers_);
-    registerCommand<UiApi::WebRtcAnswer::Command, std::monostate>(uiHandlers_);
-    registerCommand<UiApi::WebRtcCandidate::Command, std::monostate>(uiHandlers_);
+    registerCommand<UiApi::DrawDebugToggle::Cwc>(uiHandlers_);
+    registerCommand<UiApi::Exit::Cwc>(uiHandlers_);
+    registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_);
+    registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_);
+    registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_);
+    registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_);
+    registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_);
+    registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_);
+    registerCommand<UiApi::SimPause::Cwc>(uiHandlers_);
+    registerCommand<UiApi::SimRun::Cwc>(uiHandlers_);
+    registerCommand<UiApi::SimStop::Cwc>(uiHandlers_);
+    registerCommand<UiApi::StateGet::Cwc>(uiHandlers_);
+    registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_);
+    registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_);
+    registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_);
+    registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_);
 
     spdlog::info(
         "CommandDispatcher: Registered {} server commands, {} UI commands",

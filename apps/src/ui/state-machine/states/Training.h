@@ -33,7 +33,6 @@ struct Training {
     Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const Api::TrainingResultAvailable::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const TrainingResultAvailableReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);

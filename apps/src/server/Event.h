@@ -33,7 +33,6 @@
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
 #include "api/TimerStatsGet.h"
-#include "api/TrainingResultAvailableAck.h"
 #include "api/TrainingResultDiscard.h"
 #include "api/TrainingResultSave.h"
 #include "api/WorldResize.h"
@@ -448,7 +447,6 @@ public:
         DirtSim::Api::StateGet::Cwc,
         DirtSim::Api::StatusGet::Cwc,
         DirtSim::Api::TimerStatsGet::Cwc,
-        DirtSim::Api::TrainingResultAvailableAck::Cwc,
         DirtSim::Api::TrainingResultDiscard::Cwc,
         DirtSim::Api::TrainingResultSave::Cwc,
         DirtSim::Api::WorldResize::Cwc,

@@ -33,7 +33,6 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "TimerStatsGet.h"
-#include "TrainingResultAvailableAck.h"
 #include "TrainingResultDiscard.h"
 #include "TrainingResultGet.h"
 #include "TrainingResultList.h"
@@ -98,7 +97,6 @@ using ApiCommand = std::variant<
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,
-    Api::TrainingResultAvailableAck::Command,
     Api::TrainingResultDiscard::Command,
     Api::TrainingResultGet::Command,
     Api::TrainingResultList::Command,

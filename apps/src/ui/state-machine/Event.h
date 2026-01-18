@@ -174,14 +174,6 @@ struct EvolutionProgressReceivedEvent {
     static constexpr const char* name() { return "EvolutionProgressReceivedEvent"; }
 };
 
-/**
- * @brief Training results received from server after evolution completes.
- */
-struct TrainingResultAvailableReceivedEvent {
-    Api::TrainingResultAvailable result;
-    static constexpr const char* name() { return "TrainingResultAvailableReceivedEvent"; }
-};
-
 // =================================================================
 // UI CONTROL EVENTS
 // =================================================================
@@ -239,7 +231,6 @@ using Event = std::variant<
     // Server data updates
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
-    TrainingResultAvailableReceivedEvent,
     PhysicsSettingsReceivedEvent,
 
     // UI control events

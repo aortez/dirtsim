@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/ReflectSerializer.h"
+#include "core/Result.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/ApiCommand.h"
 #include "server/api/ApiError.h"
@@ -68,14 +69,29 @@ public:
 private:
     using HandlerMap = std::map<std::string, Handler>;
 
+    template <typename ResultT>
+    struct ResultTraits;
+
+    template <typename ValueT, typename ErrorT>
+    struct ResultTraits<Result<ValueT, ErrorT>> {
+        using ErrorType = ErrorT;
+        using ValueType = ValueT;
+    };
+
     /**
-     * @brief Register command with both Command and Okay types for full response deserialization.
+     * @brief Register command with CWC type for full response deserialization.
      *
      * @param handlers Handler map to register into (serverHandlers_ or uiHandlers_).
      */
-    template <typename CommandT, typename OkayT>
+    template <typename CwcT>
     void registerCommand(HandlerMap& handlers)
     {
+        using CommandT = typename CwcT::Command;
+        using ResponseT = typename CwcT::Response;
+        using Traits = ResultTraits<ResponseT>;
+        using OkayT = typename Traits::ValueType;
+        using ErrorT = typename Traits::ErrorType;
+
         std::string cmdName(CommandT::name());
         handlers[cmdName] =
             [cmdName](Network::WebSocketService& client, const nlohmann::json& body) {
@@ -106,7 +122,7 @@ private:
                 // Deserialize typed response from envelope.
                 const auto& responseEnvelope = envelopeResult.value();
                 try {
-                    auto result = Network::extract_result<OkayT, ApiError>(responseEnvelope);
+                    auto result = Network::extract_result<OkayT, ErrorT>(responseEnvelope);
 
                     if (result.isError()) {
                         nlohmann::json errorJson;
