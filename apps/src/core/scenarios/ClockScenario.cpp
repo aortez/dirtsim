@@ -64,6 +64,8 @@ uint32_t getMaterialColor(Material::EnumType mat)
 
 } // namespace
 
+static const char* eventTypeName(ClockEventType type);
+
 ClockScenario::ClockScenario(ClockEventConfigs event_configs)
     : event_configs_(std::move(event_configs))
 {
@@ -106,6 +108,18 @@ const EventTimingConfig& ClockScenario::getEventTiming(ClockEventType type) cons
     }
     // Unreachable, but satisfy compiler.
     return event_configs_.duck.timing;
+}
+
+bool ClockScenario::triggerEvent(World& world, ClockEventType type)
+{
+    if (event_manager_.isEventActive(type)) {
+        spdlog::info(
+            "ClockScenario: Ignoring manual {} trigger (already active)", eventTypeName(type));
+        return false;
+    }
+
+    startEvent(world, type);
+    return true;
 }
 
 int ClockScenario::getDigitWidth() const

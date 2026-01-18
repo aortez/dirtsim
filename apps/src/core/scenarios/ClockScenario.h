@@ -78,6 +78,7 @@ public:
     bool isEventActive(ClockEventType type) const;
     size_t getActiveEventCount() const;
     const EventTimingConfig& getEventTiming(ClockEventType type) const;
+    bool triggerEvent(World& world, ClockEventType type);
 
     // Time override for testing.
     void setTimeOverride(const std::string& time_str);

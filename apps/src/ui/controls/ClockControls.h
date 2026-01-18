@@ -10,6 +10,8 @@
 
 namespace DirtSim {
 
+enum class ClockEventType;
+
 namespace Network {
 class WebSocketServiceInterface;
 }
@@ -65,6 +67,13 @@ private:
     lv_obj_t* digitMaterialButton_ = nullptr;
     lv_obj_t* emissivenessStepper_ = nullptr;
     lv_obj_t* secondsSwitch_ = nullptr;
+    lv_obj_t* colorCycleTrigger_ = nullptr;
+    lv_obj_t* colorShowcaseTrigger_ = nullptr;
+    lv_obj_t* digitSlideTrigger_ = nullptr;
+    lv_obj_t* duckTrigger_ = nullptr;
+    lv_obj_t* marqueeTrigger_ = nullptr;
+    lv_obj_t* meltdownTrigger_ = nullptr;
+    lv_obj_t* rainTrigger_ = nullptr;
     lv_obj_t* meltdownSwitch_ = nullptr;
     lv_obj_t* colorCycleSwitch_ = nullptr;
     lv_obj_t* colorShowcaseSwitch_ = nullptr;
@@ -108,6 +117,13 @@ private:
     static void onDigitMaterialBackClicked(lv_event_t* e);
     static void onEmissivenessChanged(lv_event_t* e);
     static void onSecondsToggled(lv_event_t* e);
+    static void onColorCycleTriggered(lv_event_t* e);
+    static void onColorShowcaseTriggered(lv_event_t* e);
+    static void onDigitSlideTriggered(lv_event_t* e);
+    static void onDuckTriggered(lv_event_t* e);
+    static void onMarqueeTriggered(lv_event_t* e);
+    static void onMeltdownTriggered(lv_event_t* e);
+    static void onRainTriggered(lv_event_t* e);
     static void onMeltdownToggled(lv_event_t* e);
     static void onColorCycleToggled(lv_event_t* e);
     static void onColorShowcaseToggled(lv_event_t* e);
@@ -117,6 +133,7 @@ private:
     static void onDuckToggled(lv_event_t* e);
 
     Config::Clock getCurrentConfig() const;
+    void triggerEvent(ClockEventType type, const char* label);
 };
 
 } // namespace Ui
