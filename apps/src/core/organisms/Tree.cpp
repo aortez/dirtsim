@@ -294,8 +294,9 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
 {
     TreeSensoryData data;
     const WorldData& worldData = world.getData();
-    const bool use_light =
-        worldData.colors.width == worldData.width && worldData.colors.height == worldData.height;
+    const LightBuffer& light = world.getRawLightBuffer();
+    const bool use_light = worldData.timestep > 0 && light.width == worldData.width
+        && light.height == worldData.height;
 
     // Find actual current cell positions by scanning world for organism_id.
     // This handles cells that have moved due to physics (falling seeds).
@@ -415,7 +416,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                     }
 
                     if (use_light) {
-                        light_sum += ColorNames::brightness(worldData.colors.at(wx, wy));
+                        light_sum += ColorNames::brightness(light.at(wx, wy));
                         light_cells++;
                     }
                 }
@@ -430,7 +431,7 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
             }
 
             if (light_cells > 0) {
-                data.light_levels[ny][nx] = light_sum / light_cells;
+                data.light_levels[ny][nx] = std::clamp(light_sum / light_cells, 0.0, 1.0);
             }
         }
     }

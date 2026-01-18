@@ -19,31 +19,40 @@ TreeCommand RuleBased2Brain::decide(const TreeSensoryData& sensory)
     }
 
     if (sensory.stage == GrowthStage::SEED) {
-        if (!has_contacted_dirt_) {
-            Vector2i seed = sensory.seed_position;
-            Vector2i directions[] = { { 0, 1 },  { 0, -1 }, { -1, 0 },  { 1, 0 },
-                                      { -1, 1 }, { 1, 1 },  { -1, -1 }, { 1, -1 } };
+        const Vector2i seed = sensory.seed_position;
+        const Vector2i directions[] = { { 0, 1 },  { 0, -1 }, { -1, 0 },  { 1, 0 },
+                                        { -1, 1 }, { 1, 1 },  { -1, -1 }, { 1, -1 } };
+        const int dirt_idx = static_cast<int>(Material::EnumType::Dirt);
 
+        auto isDirtContact = [&](Vector2i world_pos) {
+            if (!isInSensoryGrid(sensory, world_pos)) {
+                return false;
+            }
+
+            const int grid_x = world_pos.x - sensory.world_offset.x;
+            const int grid_y = world_pos.y - sensory.world_offset.y;
+            return sensory.material_histograms[grid_y][grid_x][dirt_idx] > 0.5;
+        };
+
+        if (!has_contacted_dirt_ || !isDirtContact(root_target_pos_)) {
+            bool found_contact = false;
             for (const auto& dir : directions) {
                 Vector2i check_pos = seed + dir;
-
-                if (!isInSensoryGrid(sensory, check_pos)) {
+                if (!isDirtContact(check_pos)) {
                     continue;
                 }
 
-                const int grid_x = check_pos.x - sensory.world_offset.x;
-                const int grid_y = check_pos.y - sensory.world_offset.y;
-                const int dirt_idx = static_cast<int>(Material::EnumType::Dirt);
-
-                if (sensory.material_histograms[grid_y][grid_x][dirt_idx] > 0.5) {
-                    has_contacted_dirt_ = true;
-                    dirt_contact_age_seconds_ = sensory.age_seconds;
-                    root_target_pos_ = check_pos;
-                    break;
-                }
+                has_contacted_dirt_ = true;
+                dirt_contact_age_seconds_ = sensory.age_seconds;
+                root_target_pos_ = check_pos;
+                found_contact = true;
+                break;
             }
 
-            return WaitCommand{};
+            if (!found_contact) {
+                has_contacted_dirt_ = false;
+                return WaitCommand{};
+            }
         }
 
         double observation_time = sensory.age_seconds - dirt_contact_age_seconds_;
@@ -52,6 +61,7 @@ TreeCommand RuleBased2Brain::decide(const TreeSensoryData& sensory)
                 return GrowRootCommand{ .target_pos = root_target_pos_,
                                         .execution_time_seconds = 2.0 };
             }
+            has_contacted_dirt_ = false;
         }
 
         return WaitCommand{};
