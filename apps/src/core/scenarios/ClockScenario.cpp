@@ -553,9 +553,6 @@ void ClockScenario::tick(World& world, double deltaTime)
 
         GlowConfig glowConfig = config_.glowConfig;
         glowConfig.digitColor = getMaterialColor(config_.digitMaterial);
-        if (!isEventActive(ClockEventType::RAIN)) {
-            glowConfig.waterIntensity = 0.0f;
-        }
 
         GlowManager::apply(
             world, digitPositions, floorPositions, obstaclePositions, wallPositions, glowConfig);

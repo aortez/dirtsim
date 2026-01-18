@@ -25,7 +25,7 @@ ExpandablePanel::ExpandablePanel(lv_obj_t* parent)
     // Style the container.
     lv_obj_set_size(container_, width_, LV_PCT(100));
     lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
-    lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(container_, LV_OPA_90, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_set_style_pad_all(container_, 0, 0);
