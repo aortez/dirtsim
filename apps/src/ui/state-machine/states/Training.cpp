@@ -58,6 +58,13 @@ void Training::onExit(StateMachine& sm)
     view_.reset();
 }
 
+void Training::updateAnimations()
+{
+    if (view_) {
+        view_->updateAnimations();
+    }
+}
+
 bool Training::isTrainingResultModalVisible() const
 {
     return view_ && view_->isTrainingResultModalVisible();
@@ -288,6 +295,21 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
         view_->hideTrainingResultModal();
     }
 
+    if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+            panel->resetWidth();
+        }
+        if (auto* iconRail = uiManager->getIconRail()) {
+            iconRail->deselectAll();
+        }
+    }
+
+    if (view_) {
+        view_->clearPanelContent();
+    }
+
     return std::move(*this);
 }
 
@@ -462,7 +484,7 @@ State::Any Training::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
 {
     // Render live training world.
-    if (view_) {
+    if (view_ && evolutionStarted_) {
         view_->renderWorld(evt.worldData);
     }
 

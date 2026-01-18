@@ -472,6 +472,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
+    src/ui/rendering/Starfield.cpp
     src/ui/rendering/WebRtcStreamer.cpp
     src/ui/controls/ClockControls.cpp
     src/ui/controls/ControlPanel.cpp

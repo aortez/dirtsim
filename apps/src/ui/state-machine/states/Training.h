@@ -23,6 +23,7 @@ namespace State {
 struct Training {
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
+    void updateAnimations();
 
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);

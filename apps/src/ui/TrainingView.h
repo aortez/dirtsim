@@ -25,6 +25,7 @@ class CellRenderer;
 class EvolutionConfigPanel;
 class EvolutionControls;
 class EventSink;
+class Starfield;
 class TrainingPopulationPanel;
 class UiComponentManager;
 
@@ -44,6 +45,7 @@ public:
     ~TrainingView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
+    void updateAnimations();
 
     void renderWorld(const WorldData& worldData);
 
@@ -84,6 +86,8 @@ private:
     lv_obj_t* statusLabel_ = nullptr;
     lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
+    lv_obj_t* mainLayout_ = nullptr;
+    lv_obj_t* bottomRow_ = nullptr;
 
     // Best snapshot display.
     lv_obj_t* bestWorldContainer_ = nullptr;
@@ -94,6 +98,7 @@ private:
 
     // Renderer for best snapshot.
     std::unique_ptr<CellRenderer> bestRenderer_;
+    std::unique_ptr<Starfield> starfield_;
 
     // Tracking state for best snapshot capture.
     std::unique_ptr<WorldData> lastRenderedWorld_;
@@ -123,6 +128,7 @@ private:
     void createUI();
     void destroyUI();
     void renderBestWorld();
+    void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
     std::vector<GenomeId> getTrainingResultSaveIds() const;
 
