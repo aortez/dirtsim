@@ -22,6 +22,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             return {
                 { TrainingBrainKind::NeuralNet, true },
                 { TrainingBrainKind::RuleBased, false },
+                { TrainingBrainKind::RuleBased2, false },
             };
         case OrganismType::DUCK:
             return {

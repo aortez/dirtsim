@@ -11,6 +11,8 @@ class WorldDiagramGeneratorEmoji {
 public:
     static std::string generateEmojiDiagram(const World& world);
     static std::string generateMixedDiagram(const World& world);
+    static std::string generateAnsiDiagram(
+        const World& world, bool useLitColors, bool includeEmoji = false);
 };
 
 } // namespace DirtSim

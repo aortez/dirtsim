@@ -14,6 +14,7 @@ struct Genome;
 namespace TrainingBrainKind {
 inline constexpr const char* NeuralNet = "NeuralNet";
 inline constexpr const char* RuleBased = "RuleBased";
+inline constexpr const char* RuleBased2 = "RuleBased2";
 inline constexpr const char* Random = "Random";
 inline constexpr const char* WallBouncing = "WallBouncing";
 inline constexpr const char* DuckBrain2 = "DuckBrain2";

@@ -122,9 +122,9 @@ TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
     NeuralNetBrain brain(42);
     Genome g = brain.getGenome();
 
-    // New size with action feedback inputs and cancel output:
-    // (2264 * 48) + 48 + (48 * 232) + 232 = 108672 + 48 + 11136 + 232 = 120088.
-    EXPECT_EQ(g.weights.size(), 120088u);
+    // New size with light channel and action feedback inputs:
+    // (2489 * 48) + 48 + (48 * 232) + 232 = 119472 + 48 + 11136 + 232 = 130888.
+    EXPECT_EQ(g.weights.size(), 130888u);
 }
 
 TEST_F(NeuralNetBrainTest, ConstantGenomeProducesConsistentOutput)

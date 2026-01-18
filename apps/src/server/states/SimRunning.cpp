@@ -10,6 +10,7 @@
 #include "core/Timers.h"
 #include "core/World.h"
 #include "core/WorldData.h"
+#include "core/WorldDiagramGeneratorEmoji.h"
 #include "core/WorldFrictionCalculator.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/WebSocketService.h"
@@ -543,8 +544,22 @@ State::Any SimRunning::onEvent(const Api::DiagramGet::Cwc& cwc, StateMachine& /*
 
     assert(world && "World must exist in SimRunning state");
 
-    // Get ASCII diagram from world.
-    std::string diagram = world->toAsciiDiagram();
+    std::string diagram;
+    switch (cwc.command.style) {
+        case Api::DiagramGet::DiagramStyle::Emoji:
+            diagram = world->toAsciiDiagram();
+            break;
+        case Api::DiagramGet::DiagramStyle::Mixed:
+            diagram = WorldDiagramGeneratorEmoji::generateMixedDiagram(*world);
+            break;
+        case Api::DiagramGet::DiagramStyle::Ansi:
+            diagram =
+                WorldDiagramGeneratorEmoji::generateAnsiDiagram(*world, cwc.command.useLitColors);
+            break;
+        default:
+            diagram = world->toAsciiDiagram();
+            break;
+    }
 
     spdlog::info("DiagramGet: Generated diagram ({} bytes):\n{}", diagram.size(), diagram);
 

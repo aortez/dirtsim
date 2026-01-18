@@ -396,6 +396,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/Genome.cpp
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
+    src/core/organisms/brains/RuleBased2Brain.cpp
+    src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
@@ -623,6 +625,7 @@ add_executable(dirtsim-tests
     src/core/organisms/tests/TreeManager_test.cpp
     src/core/organisms/tests/TreeNeuralNetwork_test.cpp
     src/core/organisms/tests/TreeSensory_test.cpp
+    src/core/organisms/evolution/tests/FitnessCalculator_test.cpp
     src/core/organisms/evolution/tests/FitnessResult_test.cpp
     src/core/organisms/evolution/tests/GenomeRepository_test.cpp
     src/core/organisms/evolution/tests/Mutation_test.cpp

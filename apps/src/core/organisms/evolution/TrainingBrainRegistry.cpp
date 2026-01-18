@@ -5,6 +5,7 @@
 #include "core/organisms/GooseBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
+#include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
 
 namespace DirtSim {
@@ -65,6 +66,20 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
             .spawn =
                 [](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
                     auto brain = std::make_unique<RuleBasedBrain>();
+                    return world.getOrganismManager().createTree(world, x, y, std::move(brain));
+                },
+        });
+
+    registry.registerBrain(
+        OrganismType::TREE,
+        TrainingBrainKind::RuleBased2,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    auto brain = std::make_unique<RuleBased2Brain>();
                     return world.getOrganismManager().createTree(world, x, y, std::move(brain));
                 },
         });

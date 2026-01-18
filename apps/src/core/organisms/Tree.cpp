@@ -3,6 +3,8 @@
 #include "TreeCommandProcessor.h"
 #include "components/RigidBodyComponent.h"
 #include "core/Cell.h"
+#include "core/ColorNames.h"
+#include "core/LightBuffer.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
@@ -12,6 +14,58 @@
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
+
+namespace {
+constexpr double kEnergyCap = 250.0;
+constexpr double kMaintenanceCostPerCell = 0.1;
+constexpr double kPhotosynthesisRate = 0.6;
+constexpr double kWaterCapacity = 120.0;
+constexpr double kWaterDecayRate = 0.02;
+constexpr double kWaterFromAir = 0.02;
+constexpr double kWaterFromSoil = 0.3;
+constexpr double kWaterFromWater = 1.2;
+constexpr double kWaterUsePerLeaf = 0.12;
+
+const char* growthStageName(GrowthStage stage)
+{
+    switch (stage) {
+        case GrowthStage::SEED:
+            return "SEED";
+        case GrowthStage::GERMINATION:
+            return "GERMINATION";
+        case GrowthStage::SAPLING:
+            return "SAPLING";
+        case GrowthStage::MATURE:
+            return "MATURE";
+        case GrowthStage::DECLINE:
+            return "DECLINE";
+    }
+
+    return "UNKNOWN";
+}
+
+const char* treeCommandName(TreeCommandType type)
+{
+    switch (type) {
+        case TreeCommandType::WaitCommand:
+            return "WAIT";
+        case TreeCommandType::CancelCommand:
+            return "CANCEL";
+        case TreeCommandType::GrowWoodCommand:
+            return "GROW_WOOD";
+        case TreeCommandType::GrowLeafCommand:
+            return "GROW_LEAF";
+        case TreeCommandType::GrowRootCommand:
+            return "GROW_ROOT";
+        case TreeCommandType::ReinforceCellCommand:
+            return "REINFORCE";
+        case TreeCommandType::ProduceSeedCommand:
+            return "PRODUCE_SEED";
+    }
+
+    return "UNKNOWN";
+}
+} // namespace
 
 Tree::Tree(
     OrganismId id, std::unique_ptr<TreeBrain> brain, std::unique_ptr<ITreeCommandProcessor> proc)
@@ -58,11 +112,6 @@ void Tree::update(World& world, double deltaTime)
         }
     }
 
-    // Brain runs every tick - it can propose new commands or cancel current ones.
-    processBrainDecision(world);
-
-    updateResources(world);
-
     // Run rigid body physics (gravity, collision, ground support).
     // Trees don't have external forces (no walking), so just pass zero.
     auto result = rigidBody_->update(
@@ -73,6 +122,36 @@ void Tree::update(World& world, double deltaTime)
     cells_.clear();
     for (const auto& pos : occupied_cells) {
         cells_.insert(pos);
+    }
+
+    updateResources(world, deltaTime);
+
+    // Brain runs every tick - it can propose new commands or cancel current ones.
+    processBrainDecision(world);
+
+    const auto& worldData = world.getData();
+    const Vector2i anchor = getAnchorCell();
+    const char* command = "IDLE";
+    if (current_command_.has_value()) {
+        command = treeCommandName(getCommandType(*current_command_));
+    }
+    static int counter = 0;
+    counter++;
+    if (counter % 100 == 0) {
+        LOG_INFO(
+            Tree,
+            "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
+            "anchor=({}, {}) cmd={}",
+            id_,
+            worldData.timestep,
+            growthStageName(stage_),
+            age_seconds_,
+            total_energy_,
+            total_water_,
+            cells_.size(),
+            anchor.x,
+            anchor.y,
+            command);
     }
 }
 
@@ -122,22 +201,102 @@ void Tree::processBrainDecision(World& world)
         command);
 }
 
-void Tree::updateResources(const World& world)
+void Tree::updateResources(const World& world, double deltaTime)
 {
-    // TODO: Implement resource aggregation from cells.
-    // For now, just placeholder values.
-    (void)world;
+    if (deltaTime <= 0.0 || cells_.empty()) {
+        return;
+    }
 
-    // Phase 3 will implement:
-    // - Iterate over cells, sum energy and water from cell metadata.
-    // - Calculate photosynthesis from LEAF cells based on light exposure.
-    // - Extract nutrients from DIRT via ROOT cells.
-    // - Deduct maintenance costs.
+    const WorldData& data = world.getData();
+    const LightBuffer& light = world.getRawLightBuffer();
+    const bool use_light =
+        data.timestep > 0 && light.width == data.width && light.height == data.height;
+
+    int leaf_cells = 0;
+    int total_cells = 0;
+    double light_sum = 0.0;
+    double water_gain = 0.0;
+
+    for (const auto& pos : cells_) {
+        if (!data.inBounds(pos.x, pos.y)) {
+            continue;
+        }
+
+        const Cell& cell = data.at(pos.x, pos.y);
+        const bool is_seed = cell.material_type == Material::EnumType::Seed;
+        const bool is_root = cell.material_type == Material::EnumType::Root;
+        const bool is_leaf = cell.material_type == Material::EnumType::Leaf;
+        const bool is_wood = cell.material_type == Material::EnumType::Wood;
+
+        if (!(is_seed || is_root || is_leaf || is_wood)) {
+            continue;
+        }
+
+        ++total_cells;
+
+        if (is_leaf) {
+            ++leaf_cells;
+            if (use_light) {
+                light_sum += ColorNames::brightness(light.at(pos.x, pos.y));
+            }
+        }
+
+        if (is_seed || is_root) {
+            const Vector2i neighbors[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
+            for (const auto& dir : neighbors) {
+                const Vector2i neighbor = pos + dir;
+                if (!data.inBounds(neighbor.x, neighbor.y)) {
+                    continue;
+                }
+
+                const Cell& neighbor_cell = data.at(neighbor.x, neighbor.y);
+                const double fill = neighbor_cell.fill_ratio;
+
+                if (neighbor_cell.material_type == Material::EnumType::Water) {
+                    water_gain += kWaterFromWater * fill;
+                }
+                else if (
+                    neighbor_cell.material_type == Material::EnumType::Dirt
+                    || neighbor_cell.material_type == Material::EnumType::Sand) {
+                    water_gain += kWaterFromSoil * fill;
+                }
+                else if (neighbor_cell.material_type == Material::EnumType::Air) {
+                    water_gain += kWaterFromAir;
+                }
+            }
+        }
+    }
+
+    if (water_gain > 0.0) {
+        total_water_ = std::min(kWaterCapacity, total_water_ + water_gain * deltaTime);
+    }
+
+    if (total_water_ > 0.0) {
+        total_water_ = std::max(0.0, total_water_ - total_water_ * kWaterDecayRate * deltaTime);
+    }
+
+    const double avg_light = (leaf_cells > 0 && use_light) ? (light_sum / leaf_cells) : 0.0;
+    const double water_needed = leaf_cells * kWaterUsePerLeaf * deltaTime;
+    const double water_used = water_needed > 0.0 ? std::min(total_water_, water_needed) : 0.0;
+    const double water_factor = water_needed > 0.0 ? (water_used / water_needed) : 0.0;
+    total_water_ -= water_used;
+    total_water_ = std::clamp(total_water_, 0.0, kWaterCapacity);
+
+    const double energy_produced =
+        leaf_cells * avg_light * kPhotosynthesisRate * deltaTime * water_factor;
+    const double maintenance_cost = total_cells * kMaintenanceCostPerCell * deltaTime;
+
+    total_energy_ += energy_produced - maintenance_cost;
+    total_energy_ = std::clamp(total_energy_, 0.0, kEnergyCap);
 }
 
 TreeSensoryData Tree::gatherSensoryData(const World& world) const
 {
     TreeSensoryData data;
+    const WorldData& worldData = world.getData();
+    const LightBuffer& light = world.getRawLightBuffer();
+    const bool use_light = worldData.timestep > 0 && light.width == worldData.width
+        && light.height == worldData.height;
 
     // Find actual current cell positions by scanning world for organism_id.
     // This handles cells that have moved due to physics (falling seeds).
@@ -145,8 +304,8 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     int max_x = INT32_MIN, max_y = INT32_MIN;
     int cell_count = 0;
 
-    for (int16_t y = 0; y < world.getData().height; y++) {
-        for (int16_t x = 0; x < world.getData().width; x++) {
+    for (int16_t y = 0; y < worldData.height; y++) {
+        for (int16_t x = 0; x < worldData.width; x++) {
             Vector2i pos{ x, y };
             if (world.getOrganismManager().at(pos) == id_) {
                 min_x = std::min(min_x, static_cast<int>(x));
@@ -186,21 +345,18 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
         // Clamp to world bounds (allow negative offsets for small worlds).
         // For worlds >= 15x15: clamp to keep window inside world.
         // For worlds < 15x15: allow negative offset to center seed in neural grid.
-        if (static_cast<int>(world.getData().width) >= TreeSensoryData::GRID_SIZE) {
+        if (static_cast<int>(worldData.width) >= TreeSensoryData::GRID_SIZE) {
             offset_x = std::max(
                 0,
-                std::min(
-                    static_cast<int>(world.getData().width) - TreeSensoryData::GRID_SIZE,
-                    offset_x));
+                std::min(static_cast<int>(worldData.width) - TreeSensoryData::GRID_SIZE, offset_x));
         }
         // else: leave offset_x as calculated (may be negative).
 
-        if (static_cast<int>(world.getData().height) >= TreeSensoryData::GRID_SIZE) {
+        if (static_cast<int>(worldData.height) >= TreeSensoryData::GRID_SIZE) {
             offset_y = std::max(
                 0,
                 std::min(
-                    static_cast<int>(world.getData().height) - TreeSensoryData::GRID_SIZE,
-                    offset_y));
+                    static_cast<int>(worldData.height) - TreeSensoryData::GRID_SIZE, offset_y));
         }
         // else: leave offset_y as calculated (may be negative).
 
@@ -211,8 +367,8 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
         // Add 1-cell padding.
         min_x = std::max(0, min_x - 1);
         min_y = std::max(0, min_y - 1);
-        max_x = std::min(static_cast<int>(world.getData().width) - 1, max_x + 1);
-        max_y = std::min(static_cast<int>(world.getData().height) - 1, max_y + 1);
+        max_x = std::min(static_cast<int>(worldData.width) - 1, max_x + 1);
+        max_y = std::min(static_cast<int>(worldData.height) - 1, max_y + 1);
 
         data.actual_width = max_x - min_x + 1;
         data.actual_height = max_y - min_y + 1;
@@ -232,30 +388,36 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
             int wy_end = data.world_offset.y + static_cast<int>((ny + 1) * data.scale_factor);
 
             // Check if region is completely out of bounds (skip sampling to get empty histogram).
-            if (wx_end <= 0 || wx_start >= static_cast<int>(world.getData().width) || wy_end <= 0
-                || wy_start >= static_cast<int>(world.getData().height)) {
+            if (wx_end <= 0 || wx_start >= static_cast<int>(worldData.width) || wy_end <= 0
+                || wy_start >= static_cast<int>(worldData.height)) {
                 // Completely OOB - leave histogram as zeros (will render as AIR/black).
                 continue;
             }
 
             // Clamp to world bounds.
-            wx_start = std::max(0, std::min(static_cast<int>(world.getData().width) - 1, wx_start));
-            wy_start =
-                std::max(0, std::min(static_cast<int>(world.getData().height) - 1, wy_start));
-            wx_end = std::max(0, std::min(static_cast<int>(world.getData().width), wx_end));
-            wy_end = std::max(0, std::min(static_cast<int>(world.getData().height), wy_end));
+            wx_start = std::max(0, std::min(static_cast<int>(worldData.width) - 1, wx_start));
+            wy_start = std::max(0, std::min(static_cast<int>(worldData.height) - 1, wy_start));
+            wx_end = std::max(0, std::min(static_cast<int>(worldData.width), wx_end));
+            wy_end = std::max(0, std::min(static_cast<int>(worldData.height), wy_end));
 
             // Count materials in this region.
             std::array<int, TreeSensoryData::NUM_MATERIALS> counts = {};
             int total_cells = 0;
+            double light_sum = 0.0;
+            int light_cells = 0;
 
             for (int wy = wy_start; wy < wy_end; wy++) {
                 for (int wx = wx_start; wx < wx_end; wx++) {
-                    const auto& cell = world.getData().at(wx, wy);
+                    const auto& cell = worldData.at(wx, wy);
                     int mat_idx = static_cast<int>(cell.material_type);
                     if (mat_idx >= 0 && mat_idx < TreeSensoryData::NUM_MATERIALS) {
                         counts[mat_idx]++;
                         total_cells++;
+                    }
+
+                    if (use_light) {
+                        light_sum += ColorNames::brightness(light.at(wx, wy));
+                        light_cells++;
                     }
                 }
             }
@@ -266,6 +428,10 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                     data.material_histograms[ny][nx][i] =
                         static_cast<double>(counts[i]) / total_cells;
                 }
+            }
+
+            if (light_cells > 0) {
+                data.light_levels[ny][nx] = std::clamp(light_sum / light_cells, 0.0, 1.0);
             }
         }
     }

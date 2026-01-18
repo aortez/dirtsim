@@ -26,6 +26,9 @@ struct TreeSensoryData {
     std::array<std::array<std::array<double, NUM_MATERIALS>, GRID_SIZE>, GRID_SIZE>
         material_histograms = {};
 
+    // Light grid: [y][x] = average brightness (0.0-1.0).
+    std::array<std::array<double, GRID_SIZE>, GRID_SIZE> light_levels = {};
+
     // Mapping from neural grid to world coordinates.
     int actual_width = 0;
     int actual_height = 0;
@@ -44,7 +47,7 @@ struct TreeSensoryData {
     std::optional<TreeCommandType> current_action; // nullopt if idle.
     double action_progress = 0.0;                  // 0.0 to 1.0, how far along current action is.
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 void to_json(nlohmann::json& j, const GrowthStage& stage);

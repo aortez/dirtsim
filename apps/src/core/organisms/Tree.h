@@ -77,7 +77,7 @@ private:
 
     void executeCommand(World& world);
     void processBrainDecision(World& world);
-    void updateResources(const World& world);
+    void updateResources(const World& world, double deltaTime);
 };
 
 } // namespace DirtSim
