@@ -57,8 +57,11 @@ Send commands to the server or UI:
 ./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 10}'
 ./build-debug/bin/cli server CellSet '{"x": 50, "y": 50, "material": "WATER", "fill": 1.0}'
 
-# Get emoji visualization
+# Get ANSI color visualization (default; truecolor terminals)
 ./build-debug/bin/cli server DiagramGet
+
+# Get emoji visualization
+./build-debug/bin/cli server DiagramGet '{"style":"Emoji"}'
 
 # Control simulation
 ./build-debug/bin/cli server Reset
