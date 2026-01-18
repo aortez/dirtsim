@@ -94,7 +94,8 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
         if (connectResult.isValue()) {
             // Connected - now check if server is in a ready state (not Startup).
             Api::StatusGet::Command statusCmd;
-            auto statusResult = client.sendCommand<Api::StatusGet::Okay>(statusCmd, 1000);
+            auto statusResult =
+                client.sendCommandAndGetResponse<Api::StatusGet::Okay>(statusCmd, 1000);
             client.disconnect();
 
             if (statusResult.isValue() && statusResult.value().isValue()) {

@@ -104,7 +104,7 @@ private:
     void finishEvaluation(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
-    void broadcastTrainingResultAvailable(StateMachine& dsm);
+    std::optional<Any> broadcastTrainingResultAvailable(StateMachine& dsm);
     void storeBestGenome(StateMachine& dsm);
     UnsavedTrainingResult buildUnsavedTrainingResult();
 };

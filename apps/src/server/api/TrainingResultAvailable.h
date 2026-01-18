@@ -1,11 +1,16 @@
 #pragma once
 
+#include "ApiError.h"
+#include "core/CommandWithCallback.h"
+#include "core/Result.h"
 #include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 
+#include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 #include <zpp_bits.h>
 
@@ -13,8 +18,7 @@ namespace DirtSim {
 namespace Api {
 
 /**
- * Training result summary broadcast from server after evolution completes.
- * Not a request/response — pushed to subscribed clients.
+ * Training result summary sent from server after evolution completes.
  */
 struct TrainingResultAvailable {
     struct Summary {
@@ -49,7 +53,16 @@ struct TrainingResultAvailable {
 
     static constexpr const char* name() { return "TrainingResultAvailable"; }
     using serialize = zpp::bits::members<2>;
+
+    using OkayType = std::monostate;
+    using Response = Result<OkayType, ApiError>;
+    using Cwc = CommandWithCallback<TrainingResultAvailable, Response>;
 };
+
+void to_json(nlohmann::json& j, const TrainingResultAvailable::Summary& summary);
+void from_json(const nlohmann::json& j, TrainingResultAvailable::Summary& summary);
+void to_json(nlohmann::json& j, const TrainingResultAvailable::Candidate& candidate);
+void from_json(const nlohmann::json& j, TrainingResultAvailable::Candidate& candidate);
 
 } // namespace Api
 } // namespace DirtSim

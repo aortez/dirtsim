@@ -1,6 +1,7 @@
 #include "TrainRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h" // For deserialize_payload.
+#include "core/network/ClientHello.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/Exit.h"
@@ -65,6 +66,12 @@ TrainResults TrainRunner::run(
 
     // Connect with binary protocol for broadcasts.
     client_.setProtocol(Network::Protocol::BINARY);
+    Network::ClientHello hello{
+        .protocolVersion = Network::kClientHelloProtocolVersion,
+        .wantsRender = true,
+        .wantsEvents = true,
+    };
+    client_.setClientHello(hello);
 
     auto connectResult = client_.connect(connectAddress);
     if (connectResult.isError()) {
@@ -96,7 +103,7 @@ TrainResults TrainRunner::run(
         .format = RenderFormat::EnumType::Basic,
         .connectionId = "",
     };
-    auto subResult = client_.sendCommand<Api::RenderFormatSet::Okay>(subCmd, 5000);
+    auto subResult = client_.sendCommandAndGetResponse<Api::RenderFormatSet::Okay>(subCmd, 5000);
     if (subResult.isError()) {
         results.errorMessage = "Failed to subscribe to broadcasts: " + subResult.errorValue();
         SLOG_ERROR("{}", results.errorMessage);
@@ -112,7 +119,7 @@ TrainResults TrainRunner::run(
     SLOG_INFO("  Tournament size: {}", config.evolution.tournamentSize);
     SLOG_INFO("  Mutation rate: {}", config.mutation.rate);
 
-    auto startResult = client_.sendCommand<Api::EvolutionStart::Okay>(config, 10000);
+    auto startResult = client_.sendCommandAndGetResponse<Api::EvolutionStart::Okay>(config, 10000);
     if (startResult.isError()) {
         results.errorMessage = "Failed to start evolution: " + startResult.errorValue();
         SLOG_ERROR("{}", results.errorMessage);
@@ -175,7 +182,7 @@ TrainResults TrainRunner::run(
     if (stopRequested_ && !results.completed) {
         SLOG_INFO("\nStopping evolution...");
         Api::EvolutionStop::Command stopCmd;
-        client_.sendCommand<std::monostate>(stopCmd, 2000);
+        client_.sendCommandAndGetResponse<std::monostate>(stopCmd, 2000);
 
         // Capture final state.
         results.bestFitnessAllTime = latestProgress.bestFitnessAllTime;
@@ -189,7 +196,7 @@ TrainResults TrainRunner::run(
     if (!isRemote) {
         SLOG_INFO("Shutting down server...");
         Api::Exit::Command exitCmd;
-        client_.sendCommand<std::monostate>(exitCmd, 1000);
+        client_.sendCommandAndGetResponse<std::monostate>(exitCmd, 1000);
     }
 
     client_.disconnect();

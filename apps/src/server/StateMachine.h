@@ -25,6 +25,10 @@ class GenomeRepository;
 struct ServerConfig;
 struct WorldData;
 
+namespace Api {
+struct TrainingResultAvailable;
+}
+
 namespace Network {
 class WebSocketService;
 }
@@ -86,6 +90,8 @@ public:
 
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
+
+    void recordTrainingResult(const Api::TrainingResultAvailable& result);
 
     /**
      * @brief Start advertising this server via mDNS/Avahi.

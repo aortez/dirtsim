@@ -55,7 +55,7 @@ Implementation:
 
 ## WebSocket Commands
 
-Use `WebSocketService::sendCommand<Okay>(cmd, timeout)` instead of manual envelope creation:
+Use `WebSocketService::sendCommandAndGetResponse<Okay>(cmd, timeout)` instead of manual envelope creation:
 
 ```cpp
 // ❌ Manual envelope (verbose, error-prone).
@@ -63,8 +63,8 @@ auto envelope = Network::make_command_envelope(1, cmd);
 auto result = wsService.sendBinaryAndReceive(envelope, 2000);
 auto response = Network::extract_result<Okay, ApiError>(result.value());
 
-// ✅ Use sendCommand (clean, typed).
-const auto result = wsService.sendCommand<Api::SimRun::Okay>(cmd, 2000);
+// ✅ Use sendCommandAndGetResponse (clean, typed).
+const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
 const auto& response = result.value();
 ```
 

@@ -1,0 +1,48 @@
+#pragma once
+
+#include "core/Result.h"
+#include <nlohmann/json.hpp>
+#include <optional>
+#include <string>
+#include <variant>
+
+namespace DirtSim {
+namespace Client {
+
+struct FunctionalTrainingSummary {
+    std::string scenario_id;
+    int organism_type = 0;
+    int population_size = 0;
+    int max_generations = 0;
+    int completed_generations = 0;
+    double best_fitness = 0.0;
+    double average_fitness = 0.0;
+    double total_training_seconds = 0.0;
+    std::string primary_brain_kind;
+    std::optional<std::string> primary_brain_variant;
+    int primary_population_count = 0;
+    std::string training_session_id;
+    int candidate_count = 0;
+
+    nlohmann::json toJson() const;
+};
+
+struct FunctionalTestSummary {
+    std::string name;
+    int64_t duration_ms = 0;
+    Result<std::monostate, std::string> result;
+    std::optional<FunctionalTrainingSummary> training_summary;
+
+    nlohmann::json toJson() const;
+};
+
+class FunctionalTestRunner {
+public:
+    FunctionalTestSummary runCanExit(
+        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
+    FunctionalTestSummary runCanTrain(
+        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
+};
+
+} // namespace Client
+} // namespace DirtSim

@@ -6,6 +6,7 @@
 #include "core/RenderMessage.h"
 #include "core/Result.h"
 #include "core/Timers.h"
+#include "core/network/ClientHello.h"
 #include "server/api/ApiCommand.h"
 #include "server/api/ApiError.h"
 #include <atomic>
@@ -93,8 +94,13 @@ public:
 
     Protocol getProtocol() const { return protocol_; }
 
+    uint64_t allocateRequestId() override
+    {
+        return nextId_.fetch_add(1, std::memory_order_relaxed);
+    }
+
     template <ApiCommandType CommandT>
-    Result<typename CommandT::OkayType, std::string> sendCommand(
+    Result<typename CommandT::OkayType, std::string> sendCommandAndGetResponse(
         const CommandT& cmd, int timeoutMs = 5000)
     {
         if (protocol_ == Protocol::BINARY) {
@@ -103,6 +109,13 @@ public:
         else {
             return sendCommandJson<CommandT>(cmd, timeoutMs);
         }
+    }
+
+    template <typename CommandT>
+    Result<std::monostate, std::string> sendCommand(const CommandT& cmd)
+    {
+        auto envelope = make_command_envelope(0, cmd);
+        return sendBinaryToDefaultPeer(serialize_envelope(envelope));
     }
 
     // =========================================================================
@@ -131,12 +144,11 @@ public:
      * @return Result with Result<Okay, ApiError> on success, error string on failure.
      */
     template <typename Okay, typename Command>
-    Result<Result<Okay, ApiError>, std::string> sendCommand(
+    Result<Result<Okay, ApiError>, std::string> sendCommandAndGetResponse(
         const Command& cmd, int timeoutMs = 5000)
     {
         // Generate unique request ID.
-        static std::atomic<uint64_t> nextId{ 1 };
-        uint64_t requestId = nextId.fetch_add(1, std::memory_order_relaxed);
+        uint64_t requestId = allocateRequestId();
 
         // Create envelope.
         auto envelope = make_command_envelope(requestId, cmd);
@@ -163,7 +175,7 @@ public:
      * @brief Send JSON and receive response (for dynamic dispatch).
      *
      * Useful when command type isn't known at compile time (e.g., CLI parsing strings).
-     * For type-safe usage, prefer sendCommand<T>().
+     * For type-safe usage, prefer sendCommandAndGetResponse<T>().
      *
      * @param message JSON message to send.
      * @param timeoutMs Timeout in milliseconds.
@@ -194,6 +206,11 @@ public:
     {
         serverCommandCallback_ = callback;
     }
+
+    void setClientHello(const ClientHello& hello) override { clientHello_ = hello; }
+
+    bool clientWantsEvents(const std::string& connectionId) const;
+    bool clientWantsRender(const std::string& connectionId) const;
     void onConnected(ConnectionCallback callback) override { connectedCallback_ = callback; }
     void onDisconnected(ConnectionCallback callback) override { disconnectedCallback_ = callback; }
     void onError(ErrorCallback callback) override { errorCallback_ = callback; }
@@ -226,7 +243,7 @@ public:
      * The dispatcher receives the deserialized ApiCommand variant and is responsible
      * for visiting it, creating appropriate CWCs, and calling handlers.
      */
-    void setJsonCommandDispatcher(JsonCommandDispatcher dispatcher)
+    void setJsonCommandDispatcher(JsonCommandDispatcher dispatcher) override
     {
         jsonDispatcher_ = dispatcher;
     }
@@ -370,7 +387,20 @@ public:
                         "WebSocketService: Sending {} JSON response ({} bytes)",
                         cmdName,
                         jsonText.size());
-                    ws->send(jsonText);
+                    if (!ws || !ws->isOpen()) {
+                        spdlog::error(
+                            "WebSocketService: {} JSON response failed (socket closed)", cmdName);
+                        return;
+                    }
+                    try {
+                        ws->send(jsonText);
+                    }
+                    catch (const std::exception& e) {
+                        spdlog::error(
+                            "WebSocketService: {} JSON response send failed: {}",
+                            cmdName,
+                            e.what());
+                    }
                 }
                 else {
                     // Send binary response.
@@ -382,7 +412,20 @@ public:
                         "WebSocketService: Sending {} binary response ({} bytes)",
                         cmdName,
                         bytes.size());
-                    ws->send(binaryMsg);
+                    if (!ws || !ws->isOpen()) {
+                        spdlog::error(
+                            "WebSocketService: {} binary response failed (socket closed)", cmdName);
+                        return;
+                    }
+                    try {
+                        ws->send(binaryMsg);
+                    }
+                    catch (const std::exception& e) {
+                        spdlog::error(
+                            "WebSocketService: {} binary response send failed: {}",
+                            cmdName,
+                            e.what());
+                    }
                 }
             };
 
@@ -406,6 +449,8 @@ private:
     template <ApiCommandType CommandT>
     Result<typename CommandT::OkayType, std::string> sendCommandJson(
         const CommandT& cmd, int timeoutMs);
+
+    Result<std::monostate, std::string> sendBinaryToDefaultPeer(const std::vector<std::byte>& data);
 
     // WebSocket connection.
     std::shared_ptr<rtc::WebSocket> ws_;
@@ -450,11 +495,15 @@ private:
     std::vector<std::shared_ptr<rtc::WebSocket>> connectedClients_;
     std::map<std::shared_ptr<rtc::WebSocket>, Protocol> clientProtocols_;
     std::map<std::shared_ptr<rtc::WebSocket>, RenderFormat::EnumType> clientRenderFormats_;
+    std::map<std::shared_ptr<rtc::WebSocket>, ClientHello> clientHellos_;
+    mutable std::mutex clientsMutex_;
 
     // Connection ID registry for directed messaging.
     std::atomic<uint64_t> nextConnectionId_{ 1 };
     std::map<std::string, std::weak_ptr<rtc::WebSocket>> connectionRegistry_; // ID -> connection.
     std::map<std::shared_ptr<rtc::WebSocket>, std::string> connectionIds_;    // connection -> ID.
+
+    ClientHello clientHello_{};
 
     JsonDeserializer jsonDeserializer_;    // Injected JSON deserializer (server/UI provides).
     JsonCommandDispatcher jsonDispatcher_; // Injected JSON command dispatcher (server/UI provides).

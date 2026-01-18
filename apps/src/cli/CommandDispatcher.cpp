@@ -62,6 +62,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::SimPause::Command, std::monostate>(uiHandlers_);
     registerCommand<UiApi::SimRun::Command, std::monostate>(uiHandlers_);
     registerCommand<UiApi::SimStop::Command, std::monostate>(uiHandlers_);
+    registerCommand<UiApi::StateGet::Command, UiApi::StateGet::Okay>(uiHandlers_);
     registerCommand<UiApi::StatusGet::Command, UiApi::StatusGet::Okay>(uiHandlers_);
     registerCommand<UiApi::StreamStart::Command, UiApi::StreamStart::Okay>(uiHandlers_);
     registerCommand<UiApi::WebRtcAnswer::Command, std::monostate>(uiHandlers_);

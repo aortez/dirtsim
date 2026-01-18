@@ -1,4 +1,5 @@
 #include "DisplayCapture.h"
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <lvgl/lvgl.h>
@@ -13,6 +14,74 @@ const char* lodepng_error_text(unsigned code);
 
 namespace DirtSim {
 namespace Ui {
+
+namespace {
+
+void alphaBlendArgb8888(
+    std::vector<uint8_t>& base,
+    uint32_t baseWidth,
+    uint32_t baseHeight,
+    const uint8_t* overlay,
+    uint32_t overlayWidth,
+    uint32_t overlayHeight)
+{
+    const uint32_t width = std::min(baseWidth, overlayWidth);
+    const uint32_t height = std::min(baseHeight, overlayHeight);
+
+    for (uint32_t y = 0; y < height; y++) {
+        const size_t baseRow = static_cast<size_t>(y) * baseWidth * 4;
+        const size_t overlayRow = static_cast<size_t>(y) * overlayWidth * 4;
+        for (uint32_t x = 0; x < width; x++) {
+            const size_t baseIdx = baseRow + static_cast<size_t>(x) * 4;
+            const size_t overlayIdx = overlayRow + static_cast<size_t>(x) * 4;
+            const uint8_t alpha = overlay[overlayIdx + 3];
+            if (alpha == 0) {
+                continue;
+            }
+            if (alpha == 255) {
+                base[baseIdx + 0] = overlay[overlayIdx + 0];
+                base[baseIdx + 1] = overlay[overlayIdx + 1];
+                base[baseIdx + 2] = overlay[overlayIdx + 2];
+                base[baseIdx + 3] = 255;
+                continue;
+            }
+
+            const uint16_t inv = static_cast<uint16_t>(255 - alpha);
+            base[baseIdx + 0] = static_cast<uint8_t>(
+                (overlay[overlayIdx + 0] * alpha + base[baseIdx + 0] * inv + 127) / 255);
+            base[baseIdx + 1] = static_cast<uint8_t>(
+                (overlay[overlayIdx + 1] * alpha + base[baseIdx + 1] * inv + 127) / 255);
+            base[baseIdx + 2] = static_cast<uint8_t>(
+                (overlay[overlayIdx + 2] * alpha + base[baseIdx + 2] * inv + 127) / 255);
+            base[baseIdx + 3] = 255;
+        }
+    }
+}
+
+void blendLayer(
+    std::vector<uint8_t>& base, uint32_t baseWidth, uint32_t baseHeight, lv_obj_t* layer)
+{
+    if (!layer || lv_obj_get_child_cnt(layer) == 0) {
+        return;
+    }
+
+    lv_draw_buf_t* layerBuf = lv_snapshot_take(layer, LV_COLOR_FORMAT_ARGB8888);
+    if (!layerBuf) {
+        spdlog::debug("DisplayCapture: lv_snapshot_take failed for layer");
+        return;
+    }
+
+    alphaBlendArgb8888(
+        base,
+        baseWidth,
+        baseHeight,
+        static_cast<const uint8_t*>(layerBuf->data),
+        layerBuf->header.w,
+        layerBuf->header.h);
+    lv_draw_buf_destroy(layerBuf);
+}
+
+} // namespace
 
 std::optional<ScreenshotData> captureDisplayPixels(lv_display_t* display, double scale)
 {
@@ -41,49 +110,53 @@ std::optional<ScreenshotData> captureDisplayPixels(lv_display_t* display, double
     }
 
     // Take snapshot using LVGL's snapshot API.
-    lv_draw_buf_t* drawBuf = lv_snapshot_take(screen, LV_COLOR_FORMAT_ARGB8888);
-    if (!drawBuf) {
+    lv_draw_buf_t* screenBuf = lv_snapshot_take(screen, LV_COLOR_FORMAT_ARGB8888);
+    if (!screenBuf) {
         spdlog::error("DisplayCapture: lv_snapshot_take failed");
         return std::nullopt;
     }
 
     // Get buffer info.
-    uint32_t bufWidth = drawBuf->header.w;
-    uint32_t bufHeight = drawBuf->header.h;
-    const uint8_t* bufData = static_cast<const uint8_t*>(drawBuf->data);
+    uint32_t bufWidth = screenBuf->header.w;
+    uint32_t bufHeight = screenBuf->header.h;
+    const uint8_t* bufData = static_cast<const uint8_t*>(screenBuf->data);
+
+    std::vector<uint8_t> compositePixels(static_cast<size_t>(bufWidth) * bufHeight * 4);
+    std::memcpy(compositePixels.data(), bufData, compositePixels.size());
+    lv_draw_buf_destroy(screenBuf);
+
+    blendLayer(compositePixels, bufWidth, bufHeight, lv_display_get_layer_top(display));
+    blendLayer(compositePixels, bufWidth, bufHeight, lv_display_get_layer_sys(display));
 
     // Calculate scaled dimensions.
     uint32_t scaledWidth = static_cast<uint32_t>(bufWidth * scale);
     uint32_t scaledHeight = static_cast<uint32_t>(bufHeight * scale);
 
-    // Simple nearest-neighbor downsampling if scale < 1.0.
     ScreenshotData data;
-    data.width = scaledWidth;
-    data.height = scaledHeight;
-    data.pixels.resize(static_cast<size_t>(scaledWidth) * scaledHeight * 4);
-
     if (scale >= 0.99) {
-        // No scaling - direct copy.
-        std::memcpy(data.pixels.data(), bufData, data.pixels.size());
+        data.width = bufWidth;
+        data.height = bufHeight;
+        data.pixels = std::move(compositePixels);
     }
     else {
-        // Downsample with nearest-neighbor.
+        // Simple nearest-neighbor downsampling if scale < 1.0.
+        data.width = scaledWidth;
+        data.height = scaledHeight;
+        data.pixels.resize(static_cast<size_t>(scaledWidth) * scaledHeight * 4);
+
         for (uint32_t y = 0; y < scaledHeight; y++) {
             for (uint32_t x = 0; x < scaledWidth; x++) {
                 uint32_t srcX = static_cast<uint32_t>(x / scale);
                 uint32_t srcY = static_cast<uint32_t>(y / scale);
-                size_t srcIdx = (srcY * bufWidth + srcX) * 4;
-                size_t dstIdx = (y * scaledWidth + x) * 4;
-                data.pixels[dstIdx + 0] = bufData[srcIdx + 0];
-                data.pixels[dstIdx + 1] = bufData[srcIdx + 1];
-                data.pixels[dstIdx + 2] = bufData[srcIdx + 2];
-                data.pixels[dstIdx + 3] = bufData[srcIdx + 3];
+                size_t srcIdx = (static_cast<size_t>(srcY) * bufWidth + srcX) * 4;
+                size_t dstIdx = (static_cast<size_t>(y) * scaledWidth + x) * 4;
+                data.pixels[dstIdx + 0] = compositePixels[srcIdx + 0];
+                data.pixels[dstIdx + 1] = compositePixels[srcIdx + 1];
+                data.pixels[dstIdx + 2] = compositePixels[srcIdx + 2];
+                data.pixels[dstIdx + 3] = compositePixels[srcIdx + 3];
             }
         }
     }
-
-    // Free the draw buffer.
-    lv_draw_buf_destroy(drawBuf);
 
     spdlog::debug(
         "DisplayCapture: Captured {}x{} -> {}x{} (scale={:.2f}, {} bytes)",

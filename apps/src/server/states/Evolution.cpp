@@ -5,6 +5,7 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketService.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
@@ -162,7 +163,10 @@ void Evolution::onExit(StateMachine& dsm)
 std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
     if (trainingComplete_) {
-        broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResultAvailable(dsm);
+        if (nextState.has_value()) {
+            return nextState;
+        }
         return std::nullopt;
     }
 
@@ -170,7 +174,10 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
         trainingComplete_ = true;
-        broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResultAvailable(dsm);
+        if (nextState.has_value()) {
+            return nextState;
+        }
         return std::nullopt;
     }
 
@@ -217,7 +224,10 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (organismDied || timeUp) {
         finishEvaluation(dsm);
         if (trainingComplete_) {
-            broadcastTrainingResultAvailable(dsm);
+            auto nextState = broadcastTrainingResultAvailable(dsm);
+            if (nextState.has_value()) {
+                return nextState;
+            }
             return std::nullopt;
         }
     }
@@ -603,10 +613,10 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
 }
 
-void Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
+std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
 {
     if (trainingResultAvailableSent_) {
-        return;
+        return std::nullopt;
     }
 
     if (!pendingTrainingResult_.has_value()) {
@@ -626,9 +636,35 @@ void Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
         });
     }
 
+    dsm.recordTrainingResult(available);
+
+    auto* wsService = dsm.getWebSocketService();
+    if (wsService) {
+        const auto response =
+            wsService->sendCommandAndGetResponse<Api::TrainingResultAvailable::OkayType>(
+                available, 5000);
+        if (response.isError()) {
+            LOG_WARN(State, "TrainingResultAvailable send failed: {}", response.errorValue());
+        }
+        else if (response.value().isError()) {
+            LOG_WARN(
+                State,
+                "TrainingResultAvailable response error: {}",
+                response.value().errorValue().message);
+        }
+        else {
+            trainingResultAvailableSent_ = false;
+            UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
+            pendingTrainingResult_.reset();
+            return Any{ result };
+        }
+    }
+
     dsm.broadcastEventData(
         Api::TrainingResultAvailable::name(), Network::serialize_payload(available));
     trainingResultAvailableSent_ = true;
+
+    return std::nullopt;
 }
 
 void Evolution::storeBestGenome(StateMachine& dsm)

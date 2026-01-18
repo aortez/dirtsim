@@ -36,7 +36,8 @@ void StartMenu::onEnter(StateMachine& sm)
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
         const Api::ScenarioListGet::Command cmd{};
-        const auto result = wsService.sendCommand<Api::ScenarioListGet::Okay>(cmd, 2000);
+        const auto result =
+            wsService.sendCommandAndGetResponse<Api::ScenarioListGet::Okay>(cmd, 2000);
         if (result.isValue()) {
             const auto& response = result.value();
             if (response.isValue()) {
@@ -401,7 +402,7 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        const auto result = wsService.sendCommand<Api::SimRun::Okay>(cmd, 2000);
+        const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
         if (result.isError()) {
             LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
             continue; // Retry.
@@ -497,7 +498,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
                                              .start_paused = false,
                                              .container_size = containerSize };
 
-    const auto result = wsService.sendCommand<DirtSim::Api::SimRun::Okay>(cmd, 1000);
+    const auto result = wsService.sendCommandAndGetResponse<DirtSim::Api::SimRun::Okay>(cmd, 1000);
     if (result.isError()) {
         LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
         cwc.sendResponse(UiApi::SimRun::Response::error(ApiError(result.errorValue())));

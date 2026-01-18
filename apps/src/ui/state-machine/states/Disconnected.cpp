@@ -7,6 +7,7 @@
 #include "core/WorldData.h"
 #include "core/api/UiUpdateEvent.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/TrainingResultAvailable.h"
@@ -229,6 +230,13 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         LOG_ERROR(Network, "Connection error: {}", error);
         sm.queueEvent(ServerDisconnectedEvent{ error });
     });
+
+    Network::ClientHello hello{
+        .protocolVersion = Network::kClientHelloProtocolVersion,
+        .wantsRender = true,
+        .wantsEvents = true,
+    };
+    wsService.setClientHello(hello);
 
     // Setup callback for server-pushed commands (e.g., DrawDebugToggle from gamepad).
     wsService.onServerCommand([&sm](

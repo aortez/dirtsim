@@ -195,7 +195,7 @@ State::Any Paused::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm)
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
         Api::SimStop::Command cmd;
-        const auto result = wsService.sendCommand<Api::SimStop::OkayType>(cmd, 2000);
+        const auto result = wsService.sendCommandAndGetResponse<Api::SimStop::OkayType>(cmd, 2000);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send SimStop to server: {}", result.errorValue());
         }
