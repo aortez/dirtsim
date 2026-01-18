@@ -90,6 +90,8 @@ void StateMachine::setupWebSocketService()
     ws->registerHandler<UiApi::SimPause::Cwc>(
         [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::StateGet::Cwc>(
+        [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::ScreenGrab::Cwc>(
@@ -112,6 +114,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<Api::TrainingResultAvailable::Cwc>(
+        [this](Api::TrainingResultAvailable::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
     // Don't set it here or it will overwrite that handler!
@@ -194,6 +198,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_EMPTY(UiApi::SimPause);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SimRun);
             DISPATCH_UI_CMD_EMPTY(UiApi::SimStop);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::StateGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
@@ -338,6 +343,27 @@ void StateMachine::handleEvent(const Event& event)
         else {
             LOG_INFO(State, "{}", msg);
         }
+    }
+
+    if (std::holds_alternative<UiApi::StateGet::Cwc>(event)) {
+        LOG_DEBUG(State, "Processing StateGet command");
+        auto& cwc = std::get<UiApi::StateGet::Cwc>(event);
+
+        UiApi::StateGet::Okay state{
+            .state = getCurrentStateName(),
+        };
+
+        std::visit(
+            [&state](const auto& currentState) {
+                using T = std::decay_t<decltype(currentState)>;
+                if constexpr (std::is_same_v<T, State::SimRunning>) {
+                    state.scenario_id = currentState.scenarioId;
+                }
+            },
+            fsmState.getVariant());
+
+        cwc.sendResponse(UiApi::StateGet::Response::okay(std::move(state)));
+        return;
     }
 
     // Handle StatusGet universally (works in all states).

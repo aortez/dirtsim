@@ -15,6 +15,7 @@ void from_json(const nlohmann::json& j, GrowthStage& stage)
 void to_json(nlohmann::json& j, const TreeSensoryData& data)
 {
     j = nlohmann::json{ { "material_histograms", data.material_histograms },
+                        { "light_levels", data.light_levels },
                         { "actual_width", data.actual_width },
                         { "actual_height", data.actual_height },
                         { "scale_factor", data.scale_factor },
@@ -30,6 +31,9 @@ void to_json(nlohmann::json& j, const TreeSensoryData& data)
 void from_json(const nlohmann::json& j, TreeSensoryData& data)
 {
     j.at("material_histograms").get_to(data.material_histograms);
+    if (j.contains("light_levels")) {
+        j.at("light_levels").get_to(data.light_levels);
+    }
     j.at("actual_width").get_to(data.actual_width);
     j.at("actual_height").get_to(data.actual_height);
     j.at("scale_factor").get_to(data.scale_factor);

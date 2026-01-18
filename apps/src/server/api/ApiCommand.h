@@ -35,6 +35,8 @@
 #include "TimerStatsGet.h"
 #include "TrainingResultAvailableAck.h"
 #include "TrainingResultDiscard.h"
+#include "TrainingResultGet.h"
+#include "TrainingResultList.h"
 #include "TrainingResultSave.h"
 #include "WorldResize.h"
 #include <concepts>
@@ -98,6 +100,8 @@ using ApiCommand = std::variant<
     Api::TimerStatsGet::Command,
     Api::TrainingResultAvailableAck::Command,
     Api::TrainingResultDiscard::Command,
+    Api::TrainingResultGet::Command,
+    Api::TrainingResultList::Command,
     Api::TrainingResultSave::Command,
     Api::WorldResize::Command>;
 

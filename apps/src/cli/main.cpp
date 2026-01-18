@@ -2,6 +2,7 @@
 #include "CleanupRunner.h"
 #include "CommandDispatcher.h"
 #include "CommandRegistry.h"
+#include "FunctionalTestRunner.h"
 #include "GenomeDbBenchmark.h"
 #include "IntegrationTest.h"
 #include "RunAllRunner.h"
@@ -10,6 +11,7 @@
 #include "core/ReflectSerializer.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/network/WifiManager.h"
 #include "server/api/EvolutionProgress.h"
@@ -111,6 +113,7 @@ struct CliCommandInfo {
 static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "benchmark", "Run performance benchmark (launches server)" },
     { "cleanup", "Clean up rogue dirtsim processes" },
+    { "functional-test", "Run functional tests against a running UI/server" },
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "integration_test", "Run integration test (launches server + UI)" },
@@ -191,6 +194,13 @@ std::string getExamplesHelp()
     examples += "  cli screenshot output.png                              # Local UI\n";
     examples += "  cli screenshot --address ws://dirtsim.local:7070 out.png  # Remote UI\n";
 
+    // Functional test examples.
+    examples += "\nFunctional Tests:\n";
+    examples += "  cli functional-test canExit\n";
+    examples += "  cli functional-test canTrain\n";
+    examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
+                "--server-address ws://dirtsim.local:8080\n";
+
     return examples;
 }
 
@@ -217,6 +227,20 @@ std::string buildCommand(const std::string& commandName, const std::string& json
     return cmd.dump();
 }
 
+std::string deriveServerAddressFromUi(const std::string& uiAddress)
+{
+    const std::string uiPort = ":7070";
+    const std::string serverPort = ":8080";
+    const auto portPos = uiAddress.rfind(uiPort);
+    if (portPos == std::string::npos) {
+        return "";
+    }
+
+    std::string serverAddress = uiAddress;
+    serverAddress.replace(portPos, uiPort.size(), serverPort);
+    return serverAddress;
+}
+
 int main(int argc, char** argv)
 {
     // Initialize logging channels (creates default logger named "cli" to stderr).
@@ -233,6 +257,13 @@ int main(int argc, char** argv)
         parser, "timeout", "Response timeout in milliseconds (default: 5000)", { 't', "timeout" });
     args::ValueFlag<std::string> addressOverride(
         parser, "address", "Override default WebSocket URL", { "address" });
+    args::ValueFlag<std::string> uiAddressOverride(
+        parser, "ui-address", "Functional test: UI WebSocket URL override", { "ui-address" });
+    args::ValueFlag<std::string> serverAddressOverride(
+        parser,
+        "server-address",
+        "Functional test: server WebSocket URL override",
+        { "server-address" });
 
     // Benchmark-specific flags.
     args::ValueFlag<int> benchSteps(
@@ -490,6 +521,41 @@ int main(int argc, char** argv)
         return results.correctnessPassed ? 0 : 1;
     }
 
+    if (targetName == "functional-test") {
+        if (!command) {
+            std::cerr << "Error: functional-test requires a test name\n\n";
+            std::cerr << "Usage: cli functional-test canExit\n";
+            return 1;
+        }
+
+        const std::string testName = args::get(command);
+        if (testName != "canExit" && testName != "canTrain") {
+            std::cerr << "Error: unknown functional test '" << testName << "'\n";
+            std::cerr << "Valid tests: canExit, canTrain\n";
+            return 1;
+        }
+
+        int timeoutMs = timeout ? args::get(timeout) : 5000;
+        std::string uiAddress = uiAddressOverride
+            ? args::get(uiAddressOverride)
+            : (addressOverride ? args::get(addressOverride) : "ws://localhost:7070");
+        std::string serverAddress =
+            serverAddressOverride ? args::get(serverAddressOverride) : "ws://localhost:8080";
+        if (!serverAddressOverride && (uiAddressOverride || addressOverride)) {
+            const std::string derived = deriveServerAddressFromUi(uiAddress);
+            if (!derived.empty()) {
+                serverAddress = derived;
+            }
+        }
+
+        Client::FunctionalTestRunner runner;
+        Client::FunctionalTestSummary summary = (testName == "canExit")
+            ? runner.runCanExit(uiAddress, serverAddress, timeoutMs)
+            : runner.runCanTrain(uiAddress, serverAddress, timeoutMs);
+        std::cout << summary.toJson().dump() << std::endl;
+        return summary.result.isError() ? 1 : 0;
+    }
+
     if (targetName == "integration_test") {
         // Find server and UI binaries (assume they're in same directory as CLI).
         std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
@@ -583,7 +649,7 @@ int main(int argc, char** argv)
             .quality = 23,
         };
 
-        auto result = client.sendCommand(cmd, timeoutMs);
+        auto result = client.sendCommandAndGetResponse(cmd, timeoutMs);
         if (result.isError()) {
             std::cerr << "ScreenGrab command failed: " << result.errorValue() << std::endl;
             client.disconnect();
@@ -641,6 +707,12 @@ int main(int argc, char** argv)
 
         Network::WebSocketService client;
         client.setProtocol(Network::Protocol::BINARY);
+        Network::ClientHello hello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = true,
+            .wantsEvents = true,
+        };
+        client.setClientHello(hello);
 
         // Set up binary message handler.
         std::atomic<bool> connected{ false };
@@ -686,7 +758,7 @@ int main(int argc, char** argv)
             .format = RenderFormat::EnumType::Basic,
             .connectionId = "", // Server fills this in.
         };
-        auto subResult = client.sendCommand<Api::RenderFormatSet::Okay>(subCmd, 5000);
+        auto subResult = client.sendCommandAndGetResponse<Api::RenderFormatSet::Okay>(subCmd, 5000);
         if (subResult.isError()) {
             std::cerr << "Failed to subscribe: " << subResult.errorValue() << std::endl;
             client.disconnect();
@@ -990,9 +1062,9 @@ int main(int argc, char** argv)
     // Handle server/ui targets - normal command mode.
     if (targetName != "server" && targetName != "ui") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
-        std::cerr
-            << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-               "genome-db-benchmark, integration_test, network, run-all, test_binary, train\n\n";
+        std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
+                     "functional-test, genome-db-benchmark, integration_test, network, run-all, "
+                     "test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }

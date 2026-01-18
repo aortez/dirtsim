@@ -60,13 +60,13 @@ public:
     TrainingRunner(
         const TrainingSpec& trainingSpec,
         const Individual& individual,
-        const EvolutionConfig& config,
+        const EvolutionConfig& evolutionConfig,
         GenomeRepository& genomeRepository);
 
     TrainingRunner(
         const TrainingSpec& trainingSpec,
         const Individual& individual,
-        const EvolutionConfig& config,
+        const EvolutionConfig& evolutionConfig,
         GenomeRepository& genomeRepository,
         const Config& runnerConfig);
     ~TrainingRunner();

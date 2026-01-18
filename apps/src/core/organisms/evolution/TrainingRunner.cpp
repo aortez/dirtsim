@@ -87,20 +87,21 @@ Vector2i findSpawnCell(World& world)
 TrainingRunner::TrainingRunner(
     const TrainingSpec& trainingSpec,
     const Individual& individual,
-    const EvolutionConfig& config,
+    const EvolutionConfig& evolutionConfig,
     GenomeRepository& genomeRepository)
-    : TrainingRunner(trainingSpec, individual, config, genomeRepository, makeDefaultConfig())
+    : TrainingRunner(
+          trainingSpec, individual, evolutionConfig, genomeRepository, makeDefaultConfig())
 {}
 
 TrainingRunner::TrainingRunner(
     const TrainingSpec& trainingSpec,
     const Individual& individual,
-    const EvolutionConfig& config,
+    const EvolutionConfig& evolutionConfig,
     GenomeRepository& genomeRepository,
     const Config& runnerConfig)
     : trainingSpec_(trainingSpec),
       individual_(individual),
-      maxTime_(config.maxSimulationTime),
+      maxTime_(evolutionConfig.maxSimulationTime),
       brainRegistry_(runnerConfig.brainRegistry)
 {
     // Create scenario from registry.

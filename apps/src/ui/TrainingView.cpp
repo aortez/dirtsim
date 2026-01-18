@@ -10,6 +10,7 @@
 #include "core/WorldData.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
+#include "rendering/Starfield.h"
 #include "server/api/EvolutionProgress.h"
 #include "state-machine/Event.h"
 #include "state-machine/EventSink.h"
@@ -61,20 +62,33 @@ void TrainingView::createUI()
 
     lv_obj_clean(container_);
 
+    lv_obj_update_layout(container_);
+
+    int displayWidth = lv_obj_get_width(container_);
+    int displayHeight = lv_obj_get_height(container_);
+    if (displayWidth <= 0 || displayHeight <= 0) {
+        lv_disp_t* display = lv_disp_get_default();
+        if (display) {
+            displayWidth = lv_disp_get_hor_res(display);
+            displayHeight = lv_disp_get_ver_res(display);
+        }
+    }
+    starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
+
     // Main layout: column with stats on top, world views on bottom.
-    lv_obj_t* mainLayout = lv_obj_create(container_);
-    lv_obj_set_size(mainLayout, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_opa(mainLayout, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(mainLayout, 0, 0);
-    lv_obj_set_style_pad_all(mainLayout, 5, 0);
-    lv_obj_set_style_pad_gap(mainLayout, 5, 0);
-    lv_obj_set_flex_flow(mainLayout, LV_FLEX_FLOW_COLUMN);
+    mainLayout_ = lv_obj_create(container_);
+    lv_obj_set_size(mainLayout_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(mainLayout_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mainLayout_, 0, 0);
+    lv_obj_set_style_pad_all(mainLayout_, 5, 0);
+    lv_obj_set_style_pad_gap(mainLayout_, 5, 0);
+    lv_obj_set_flex_flow(mainLayout_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        mainLayout, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(mainLayout, LV_OBJ_FLAG_SCROLLABLE);
+        mainLayout_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_SCROLLABLE);
 
     // ========== TOP: Stats panel (condensed) ==========
-    lv_obj_t* statsPanel = lv_obj_create(mainLayout);
+    lv_obj_t* statsPanel = lv_obj_create(mainLayout_);
     lv_obj_set_size(statsPanel, 580, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_color(statsPanel, lv_color_hex(0x1A1A2E), 0);
     lv_obj_set_style_bg_opa(statsPanel, LV_OPA_90, 0);
@@ -212,19 +226,19 @@ void TrainingView::createUI()
     lv_obj_set_style_text_font(averageLabel_, &lv_font_montserrat_12, 0);
 
     // ========== BOTTOM: Two world views side by side ==========
-    lv_obj_t* bottomRow = lv_obj_create(mainLayout);
-    lv_obj_set_size(bottomRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(bottomRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(bottomRow, 0, 0);
-    lv_obj_set_style_pad_all(bottomRow, 0, 0);
-    lv_obj_set_style_pad_gap(bottomRow, 10, 0);
-    lv_obj_set_flex_flow(bottomRow, LV_FLEX_FLOW_ROW);
+    bottomRow_ = lv_obj_create(mainLayout_);
+    lv_obj_set_size(bottomRow_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(bottomRow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(bottomRow_, 0, 0);
+    lv_obj_set_style_pad_all(bottomRow_, 0, 0);
+    lv_obj_set_style_pad_gap(bottomRow_, 10, 0);
+    lv_obj_set_flex_flow(bottomRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        bottomRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(bottomRow, LV_OBJ_FLAG_SCROLLABLE);
+        bottomRow_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(bottomRow_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Left panel: Live feed.
-    lv_obj_t* leftPanel = lv_obj_create(bottomRow);
+    lv_obj_t* leftPanel = lv_obj_create(bottomRow_);
     lv_obj_set_size(leftPanel, 280, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(leftPanel, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(leftPanel, 0, 0);
@@ -253,7 +267,7 @@ void TrainingView::createUI()
     renderer_->initialize(worldContainer_, 9, 9);
 
     // Right panel: Best snapshot.
-    lv_obj_t* rightPanel = lv_obj_create(bottomRow);
+    lv_obj_t* rightPanel = lv_obj_create(bottomRow_);
     lv_obj_set_size(rightPanel, 280, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(rightPanel, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(rightPanel, 0, 0);
@@ -281,6 +295,8 @@ void TrainingView::createUI()
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
 
+    updateEvolutionVisibility();
+
     LOG_INFO(Controls, "Training UI created with live feed and best snapshot views");
 }
 
@@ -294,6 +310,8 @@ void TrainingView::destroyUI()
     if (bestRenderer_) {
         bestRenderer_->cleanup();
     }
+
+    starfield_.reset();
 
     if (container_) {
         lv_obj_clean(container_);
@@ -310,6 +328,8 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    bottomRow_ = nullptr;
+    mainLayout_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
@@ -527,6 +547,13 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
+void TrainingView::updateAnimations()
+{
+    if (starfield_ && starfield_->isVisible()) {
+        starfield_->update();
+    }
+}
+
 void TrainingView::setEvolutionStarted(bool started)
 {
     evolutionStarted_ = started;
@@ -552,6 +579,8 @@ void TrainingView::setEvolutionStarted(bool started)
     if (trainingPopulationPanel_) {
         trainingPopulationPanel_->setEvolutionStarted(started);
     }
+
+    updateEvolutionVisibility();
 }
 
 void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
@@ -573,6 +602,40 @@ void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
     }
     if (trainingPopulationPanel_) {
         trainingPopulationPanel_->setEvolutionCompleted();
+    }
+
+    updateEvolutionVisibility();
+}
+
+void TrainingView::updateEvolutionVisibility()
+{
+    const bool hasStarfield = starfield_ && starfield_->getCanvas();
+    const bool showEvolution = evolutionStarted_ || !hasStarfield;
+
+    if (mainLayout_) {
+        if (showEvolution) {
+            lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(mainLayout_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(mainLayout_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+
+    if (bottomRow_) {
+        if (showEvolution) {
+            lv_obj_clear_flag(bottomRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(bottomRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(bottomRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(bottomRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+
+    if (starfield_) {
+        starfield_->setVisible(!showEvolution);
     }
 }
 

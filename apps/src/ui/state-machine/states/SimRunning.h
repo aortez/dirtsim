@@ -21,6 +21,7 @@ namespace State {
 struct SimRunning {
     std::unique_ptr<WorldData> worldData;       // Local copy of world data for rendering.
     std::unique_ptr<SimPlayground> playground_; // Coordinates all UI components.
+    Scenario::EnumType scenarioId = Scenario::EnumType::Empty;
 
     bool debugDrawEnabled = false;
     std::optional<UiApi::MouseButton> activeMouseButton;
