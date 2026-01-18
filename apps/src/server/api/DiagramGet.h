@@ -4,6 +4,7 @@
 #include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <zpp_bits.h>
@@ -17,12 +18,21 @@ DEFINE_API_NAME(DiagramGet);
 
 struct Okay; // Forward declaration for API_COMMAND() macro.
 
+enum class DiagramStyle : uint8_t {
+    Emoji = 0,
+    Mixed,
+    Ansi,
+};
+
 struct Command {
+    DiagramStyle style = DiagramStyle::Ansi;
+    bool useLitColors = true;
+
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<0>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {
