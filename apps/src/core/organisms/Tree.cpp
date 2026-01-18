@@ -17,7 +17,7 @@ namespace DirtSim {
 
 namespace {
 constexpr double kEnergyCap = 250.0;
-constexpr double kMaintenanceCostPerCell = 0.04;
+constexpr double kMaintenanceCostPerCell = 0.1;
 constexpr double kPhotosynthesisRate = 0.6;
 constexpr double kWaterCapacity = 120.0;
 constexpr double kWaterDecayRate = 0.02;
@@ -25,6 +25,46 @@ constexpr double kWaterFromAir = 0.02;
 constexpr double kWaterFromSoil = 0.3;
 constexpr double kWaterFromWater = 1.2;
 constexpr double kWaterUsePerLeaf = 0.12;
+
+const char* growthStageName(GrowthStage stage)
+{
+    switch (stage) {
+        case GrowthStage::SEED:
+            return "SEED";
+        case GrowthStage::GERMINATION:
+            return "GERMINATION";
+        case GrowthStage::SAPLING:
+            return "SAPLING";
+        case GrowthStage::MATURE:
+            return "MATURE";
+        case GrowthStage::DECLINE:
+            return "DECLINE";
+    }
+
+    return "UNKNOWN";
+}
+
+const char* treeCommandName(TreeCommandType type)
+{
+    switch (type) {
+        case TreeCommandType::WaitCommand:
+            return "WAIT";
+        case TreeCommandType::CancelCommand:
+            return "CANCEL";
+        case TreeCommandType::GrowWoodCommand:
+            return "GROW_WOOD";
+        case TreeCommandType::GrowLeafCommand:
+            return "GROW_LEAF";
+        case TreeCommandType::GrowRootCommand:
+            return "GROW_ROOT";
+        case TreeCommandType::ReinforceCellCommand:
+            return "REINFORCE";
+        case TreeCommandType::ProduceSeedCommand:
+            return "PRODUCE_SEED";
+    }
+
+    return "UNKNOWN";
+}
 } // namespace
 
 Tree::Tree(
@@ -72,11 +112,6 @@ void Tree::update(World& world, double deltaTime)
         }
     }
 
-    updateResources(world, deltaTime);
-
-    // Brain runs every tick - it can propose new commands or cancel current ones.
-    processBrainDecision(world);
-
     // Run rigid body physics (gravity, collision, ground support).
     // Trees don't have external forces (no walking), so just pass zero.
     auto result = rigidBody_->update(
@@ -87,6 +122,36 @@ void Tree::update(World& world, double deltaTime)
     cells_.clear();
     for (const auto& pos : occupied_cells) {
         cells_.insert(pos);
+    }
+
+    updateResources(world, deltaTime);
+
+    // Brain runs every tick - it can propose new commands or cancel current ones.
+    processBrainDecision(world);
+
+    const auto& worldData = world.getData();
+    const Vector2i anchor = getAnchorCell();
+    const char* command = "IDLE";
+    if (current_command_.has_value()) {
+        command = treeCommandName(getCommandType(*current_command_));
+    }
+    static int counter = 0;
+    counter++;
+    if (counter % 100 == 0) {
+        LOG_INFO(
+            Tree,
+            "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
+            "anchor=({}, {}) cmd={}",
+            id_,
+            worldData.timestep,
+            growthStageName(stage_),
+            age_seconds_,
+            total_energy_,
+            total_water_,
+            cells_.size(),
+            anchor.x,
+            anchor.y,
+            command);
     }
 }
 

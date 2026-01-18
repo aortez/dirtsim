@@ -396,6 +396,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/Genome.cpp
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
+    src/core/organisms/brains/RuleBased2Brain.cpp
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp

@@ -7,6 +7,7 @@
 #include "core/organisms/TreeCommandProcessor.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
+#include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
@@ -377,6 +378,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
     std::vector<BrainCase> brains;
     brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
     brains.push_back({ TrainingBrainKind::RuleBased, std::nullopt });
+    brains.push_back({ TrainingBrainKind::RuleBased2, std::nullopt });
 
     for (const auto& brainCase : brains) {
         std::vector<TreeCommand> issued;
@@ -415,6 +417,24 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                     .spawn =
                         [&issued](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
                             auto baseBrain = std::make_unique<RuleBasedBrain>();
+                            auto brain =
+                                std::make_unique<RecordingTreeBrain>(std::move(baseBrain), &issued);
+                            return world.getOrganismManager().createTree(
+                                world, x, y, std::move(brain));
+                        },
+                });
+        }
+        else if (brainCase.brainKind == TrainingBrainKind::RuleBased2) {
+            registry.registerBrain(
+                OrganismType::TREE,
+                brainCase.brainKind,
+                "",
+                BrainRegistryEntry{
+                    .requiresGenome = false,
+                    .allowsMutation = false,
+                    .spawn =
+                        [&issued](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                            auto baseBrain = std::make_unique<RuleBased2Brain>();
                             auto brain =
                                 std::make_unique<RecordingTreeBrain>(std::move(baseBrain), &issued);
                             return world.getOrganismManager().createTree(
