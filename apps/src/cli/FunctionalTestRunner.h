@@ -42,10 +42,6 @@ public:
         const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
     FunctionalTestSummary runCanTrain(
         const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
-
-private:
-    Result<std::monostate, std::string> restartServicesAndVerify(
-        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
 };
 
 } // namespace Client

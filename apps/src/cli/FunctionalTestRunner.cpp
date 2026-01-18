@@ -12,12 +12,9 @@
 #include "ui/state-machine/api/StatusGet.h"
 #include <algorithm>
 #include <chrono>
-#include <cstdlib>
 #include <iostream>
 #include <string>
-#include <sys/wait.h>
 #include <thread>
-#include <unistd.h>
 #include <vector>
 
 namespace DirtSim {
@@ -69,89 +66,6 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
         if (elapsedMs >= timeoutMs) {
             return Result<UiApi::StateGet::Okay, std::string>::error(
                 "Timeout waiting for UI state '" + expectedState + "'");
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
-    }
-}
-
-Result<std::monostate, std::string> runCommand(const std::string& command)
-{
-    const int status = std::system(command.c_str());
-    if (status == -1) {
-        return Result<std::monostate, std::string>::error("Failed to execute command: " + command);
-    }
-
-    if (WIFEXITED(status)) {
-        const int exitCode = WEXITSTATUS(status);
-        if (exitCode == 0) {
-            return Result<std::monostate, std::string>::okay(std::monostate{});
-        }
-        return Result<std::monostate, std::string>::error(
-            "Command failed with exit code " + std::to_string(exitCode) + ": " + command);
-    }
-
-    return Result<std::monostate, std::string>::error("Command terminated abnormally: " + command);
-}
-
-Result<Api::StatusGet::Okay, std::string> waitForServerStatus(
-    const std::string& serverAddress, int timeoutMs)
-{
-    const auto start = std::chrono::steady_clock::now();
-    const int pollDelayMs = 250;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
-
-    while (true) {
-        Network::WebSocketService client;
-        auto connectResult = client.connect(serverAddress, requestTimeoutMs);
-        if (connectResult.isValue()) {
-            Api::StatusGet::Command cmd{};
-            auto response = unwrapResponse(
-                client.sendCommandAndGetResponse<Api::StatusGet::Okay>(cmd, requestTimeoutMs));
-            client.disconnect();
-            if (response.isValue()) {
-                return response;
-            }
-        }
-
-        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - start)
-                                   .count();
-        if (elapsedMs >= timeoutMs) {
-            return Result<Api::StatusGet::Okay, std::string>::error(
-                "Timeout waiting for server StatusGet");
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
-    }
-}
-
-Result<UiApi::StatusGet::Okay, std::string> waitForUiStatus(
-    const std::string& uiAddress, int timeoutMs)
-{
-    const auto start = std::chrono::steady_clock::now();
-    const int pollDelayMs = 250;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
-
-    while (true) {
-        Network::WebSocketService client;
-        auto connectResult = client.connect(uiAddress, requestTimeoutMs);
-        if (connectResult.isValue()) {
-            UiApi::StatusGet::Command cmd{};
-            auto response = unwrapResponse(
-                client.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(cmd, requestTimeoutMs));
-            client.disconnect();
-            if (response.isValue()) {
-                return response;
-            }
-        }
-
-        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - start)
-                                   .count();
-        if (elapsedMs >= timeoutMs) {
-            return Result<UiApi::StatusGet::Okay, std::string>::error(
-                "Timeout waiting for UI StatusGet");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -325,11 +239,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         uiClient.disconnect();
         serverClient.disconnect();
 
-        auto restartResult = restartServicesAndVerify(uiAddress, serverAddress, timeoutMs);
-        if (restartResult.isError()) {
-            return Result<std::monostate, std::string>::error(restartResult.errorValue());
-        }
-
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -341,6 +250,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         .name = "canExit",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .training_summary = std::nullopt,
     };
 }
 
@@ -471,11 +381,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
 
         serverClient.disconnect();
 
-        auto restartResult = restartServicesAndVerify(uiAddress, serverAddress, timeoutMs);
-        if (restartResult.isError()) {
-            return Result<std::monostate, std::string>::error(restartResult.errorValue());
-        }
-
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
@@ -489,43 +394,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         .result = std::move(testResult),
         .training_summary = std::move(trainingSummary),
     };
-}
-
-Result<std::monostate, std::string> FunctionalTestRunner::restartServicesAndVerify(
-    const std::string& uiAddress, const std::string& serverAddress, int timeoutMs)
-{
-    const int restartTimeoutMs = std::max(timeoutMs, 10000);
-
-    std::cerr << "Restarting services..." << std::endl;
-    const std::string restartCommand =
-        "systemctl restart dirtsim-server.service dirtsim-ui.service";
-    if (geteuid() == 0) {
-        auto restartResult = runCommand(restartCommand);
-        if (restartResult.isError()) {
-            return restartResult;
-        }
-    }
-    else {
-        auto restartResult = runCommand("sudo -n " + restartCommand);
-        if (restartResult.isError()) {
-            return Result<std::monostate, std::string>::error(
-                "Restart failed (need sudo?): " + restartResult.errorValue());
-        }
-    }
-
-    std::cerr << "Waiting for server StatusGet..." << std::endl;
-    auto serverStatusResult = waitForServerStatus(serverAddress, restartTimeoutMs);
-    if (serverStatusResult.isError()) {
-        return Result<std::monostate, std::string>::error(serverStatusResult.errorValue());
-    }
-
-    std::cerr << "Waiting for UI StatusGet..." << std::endl;
-    auto uiStatusResult = waitForUiStatus(uiAddress, restartTimeoutMs);
-    if (uiStatusResult.isError()) {
-        return Result<std::monostate, std::string>::error(uiStatusResult.errorValue());
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 } // namespace Client
