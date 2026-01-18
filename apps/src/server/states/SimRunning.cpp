@@ -21,6 +21,7 @@
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/components/LightHandHeld.h"
 #include "core/organisms/evolution/GenomeRepository.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
@@ -587,6 +588,30 @@ State::Any SimRunning::onEvent(const Api::CellSet::Cwc& cwc, StateMachine& /*dsm
     world->replaceMaterialAtCell(
         { static_cast<int16_t>(cwc.command.x), static_cast<int16_t>(cwc.command.y) },
         cwc.command.material);
+
+    cwc.sendResponse(Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const Api::ClockEventTrigger::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::ClockEventTrigger::Response;
+
+    if (!world || !scenario) {
+        cwc.sendResponse(Response::error(ApiError("ClockEventTrigger requires an active world")));
+        return std::move(*this);
+    }
+
+    auto* clockScenario = dynamic_cast<ClockScenario*>(scenario.get());
+    if (!clockScenario) {
+        cwc.sendResponse(Response::error(ApiError("ClockEventTrigger requires Clock scenario")));
+        return std::move(*this);
+    }
+
+    if (!clockScenario->triggerEvent(*world, cwc.command.event_type)) {
+        cwc.sendResponse(Response::error(ApiError("Clock event trigger rejected")));
+        return std::move(*this);
+    }
 
     cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);

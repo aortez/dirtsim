@@ -2,6 +2,7 @@
 
 #include "api/CellGet.h"
 #include "api/CellSet.h"
+#include "api/ClockEventTrigger.h"
 #include "api/DiagramGet.h"
 #include "api/EvolutionStart.h"
 #include "api/EvolutionStop.h"
@@ -416,6 +417,7 @@ public:
         // API commands (network/remote control).
         DirtSim::Api::CellGet::Cwc,
         DirtSim::Api::CellSet::Cwc,
+        DirtSim::Api::ClockEventTrigger::Cwc,
         DirtSim::Api::DiagramGet::Cwc,
         DirtSim::Api::EvolutionStart::Cwc,
         DirtSim::Api::EvolutionStop::Cwc,

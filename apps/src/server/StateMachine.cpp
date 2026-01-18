@@ -398,6 +398,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
 
     service.registerHandler<Api::CellGet::Cwc>([this](Api::CellGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::CellSet::Cwc>([this](Api::CellSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::ClockEventTrigger::Cwc>(
+        [this](Api::ClockEventTrigger::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::DiagramGet::Cwc>(
         [this](Api::DiagramGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::EvolutionStart::Cwc>(

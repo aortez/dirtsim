@@ -3,6 +3,7 @@
 #include "ApiMacros.h"
 #include "CellGet.h"
 #include "CellSet.h"
+#include "ClockEventTrigger.h"
 #include "DiagramGet.h"
 #include "EvolutionStart.h"
 #include "EvolutionStop.h"
@@ -67,6 +68,7 @@ concept ApiCommandType = requires(T cmd) {
 using ApiCommand = std::variant<
     Api::CellGet::Command,
     Api::CellSet::Command,
+    Api::ClockEventTrigger::Command,
     Api::DiagramGet::Command,
     Api::EvolutionStart::Command,
     Api::EvolutionStop::Command,

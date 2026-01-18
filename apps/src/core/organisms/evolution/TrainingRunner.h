@@ -94,6 +94,7 @@ public:
 
 private:
     void spawnEvaluationOrganism();
+    static Config makeDefaultConfig();
 
     TrainingSpec trainingSpec_;
     Individual individual_;

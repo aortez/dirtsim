@@ -6,6 +6,7 @@
 #include "core/organisms/OrganismType.h"
 #include "core/scenarios/Scenario.h"
 #include "server/Event.h"
+#include "server/api/ClockEventTrigger.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
@@ -73,6 +74,7 @@ struct SimRunning {
     Any onEvent(const ApplyScenarioCommand& cmd, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::CellGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::CellSet::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const DirtSim::Api::ClockEventTrigger::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::DiagramGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::Exit::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const DirtSim::Api::FingerDown::Cwc& cwc, StateMachine& dsm);
