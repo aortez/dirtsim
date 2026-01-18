@@ -1,6 +1,7 @@
 #include "CommandDeserializerJson.h"
 #include "server/api/CellGet.h"
 #include "server/api/CellSet.h"
+#include "server/api/ClockEventTrigger.h"
 #include "server/api/DiagramGet.h"
 #include "server/api/Exit.h"
 #include "server/api/FingerDown.h"
@@ -64,6 +65,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::CellSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::CellSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::ClockEventTrigger::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::ClockEventTrigger::Command::fromJson(cmd));
         }
         else if (commandName == Api::DiagramGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::DiagramGet::Command::fromJson(cmd));

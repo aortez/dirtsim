@@ -293,6 +293,7 @@ add_library(dirtsim-server-lib STATIC
     # Server API commands.
     src/server/api/CellGet.cpp
     src/server/api/CellSet.cpp
+    src/server/api/ClockEventTrigger.cpp
     src/server/api/DiagramGet.cpp
     src/server/api/EvolutionProgress.cpp
     src/server/api/EvolutionStart.cpp

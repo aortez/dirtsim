@@ -12,6 +12,7 @@ CommandDispatcher::CommandDispatcher()
     // Register server API commands.
     registerCommand<Api::CellGet::Command, Api::CellGet::Okay>(serverHandlers_);
     registerCommand<Api::CellSet::Command, std::monostate>(serverHandlers_);
+    registerCommand<Api::ClockEventTrigger::Command, std::monostate>(serverHandlers_);
     registerCommand<Api::DiagramGet::Command, Api::DiagramGet::Okay>(serverHandlers_);
     registerCommand<Api::EvolutionStart::Command, Api::EvolutionStart::Okay>(serverHandlers_);
     registerCommand<Api::EvolutionStop::Command, std::monostate>(serverHandlers_);

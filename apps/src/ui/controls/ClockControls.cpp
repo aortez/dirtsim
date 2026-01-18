@@ -1,12 +1,53 @@
 #include "ClockControls.h"
 #include "core/LoggingChannels.h"
+#include "core/network/BinaryProtocol.h"
+#include "core/network/WebSocketServiceInterface.h"
 #include "core/reflect.h"
 #include "core/scenarios/ClockScenario.h"
+#include "server/api/ClockEventTrigger.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <atomic>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace Ui {
+
+namespace {
+
+constexpr uint32_t kEventEnabledColor = 0x00CC00;
+constexpr uint32_t kEventDisabledColor = 0xCC0000;
+
+uint32_t pressedColor(uint32_t base)
+{
+    uint8_t red = static_cast<uint8_t>((base >> 16) & 0xFF);
+    uint8_t green = static_cast<uint8_t>((base >> 8) & 0xFF);
+    uint8_t blue = static_cast<uint8_t>(base & 0xFF);
+
+    constexpr uint8_t kDarkenStep = 0x20;
+    red = red > kDarkenStep ? static_cast<uint8_t>(red - kDarkenStep) : 0;
+    green = green > kDarkenStep ? static_cast<uint8_t>(green - kDarkenStep) : 0;
+    blue = blue > kDarkenStep ? static_cast<uint8_t>(blue - kDarkenStep) : 0;
+
+    return (static_cast<uint32_t>(red) << 16) | (static_cast<uint32_t>(green) << 8) | blue;
+}
+
+void updateEventToggleColor(lv_obj_t* toggle, bool enabled)
+{
+    if (!toggle) {
+        return;
+    }
+
+    lv_obj_t* button = lv_obj_get_child(toggle, 0);
+    if (!button) {
+        return;
+    }
+
+    uint32_t color = enabled ? kEventEnabledColor : kEventDisabledColor;
+    lv_obj_set_style_bg_color(button, lv_color_hex(color), 0);
+    lv_obj_set_style_bg_color(button, lv_color_hex(pressedColor(color)), LV_STATE_PRESSED);
+}
+
+} // namespace
 
 ClockControls::ClockControls(
     lv_obj_t* container,
@@ -111,7 +152,7 @@ void ClockControls::createMainView(lv_obj_t* view)
                                .callback(onEmissivenessChanged, this)
                                .buildOrLog();
 
-    // Row for Show Seconds and Meltdown buttons.
+    // Row for Show Seconds button.
     lv_obj_t* secondsRow = lv_obj_create(view);
     lv_obj_set_size(secondsRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(secondsRow, LV_FLEX_FLOW_ROW);
@@ -126,120 +167,106 @@ void ClockControls::createMainView(lv_obj_t* view)
     secondsSwitch_ = LVGLBuilder::actionButton(secondsRow)
                          .text("Seconds")
                          .mode(LVGLBuilder::ActionMode::Toggle)
-                         .size(80)
+                         .size(LVGLBuilder::Style::ACTION_SIZE)
                          .checked(true)
                          .glowColor(0x00CC00)
                          .callback(onSecondsToggled, this)
                          .buildOrLog();
 
-    // Meltdown toggle.
-    meltdownSwitch_ = LVGLBuilder::actionButton(secondsRow)
-                          .text(LV_SYMBOL_WARNING "\nMelt")
-                          .mode(LVGLBuilder::ActionMode::Toggle)
-                          .size(80)
-                          .checked(false)
-                          .textColor(0xFFA500) // Construction orange.
-                          .glowColor(0xFF4400) // Orange glow for meltdown.
-                          .callback(onMeltdownToggled, this)
+    auto createEventRow = [&](lv_obj_t* parent) {
+        lv_obj_t* row = lv_obj_create(parent);
+        lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(
+            row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_all(row, 4, 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        return row;
+    };
+
+    auto createEventToggle = [&](lv_obj_t* row, lv_event_cb_t callback) {
+        auto* toggle = LVGLBuilder::actionButton(row)
+                           .mode(LVGLBuilder::ActionMode::Toggle)
+                           .size(LVGLBuilder::Style::ACTION_SIZE)
+                           .checked(false)
+                           .backgroundColor(kEventDisabledColor)
+                           .glowColor(kEventEnabledColor)
+                           .callback(callback, this)
+                           .buildOrLog();
+        updateEventToggleColor(toggle, false);
+        return toggle;
+    };
+
+    // Rain event controls.
+    lv_obj_t* rainRow = createEventRow(view);
+    rainTrigger_ = LVGLBuilder::actionButton(rainRow)
+                       .text(LV_SYMBOL_TINT "\nRain")
+                       .size(LVGLBuilder::Style::ACTION_SIZE)
+                       .textColor(0x0088FF) // Blue text.
+                       .callback(onRainTriggered, this)
+                       .buildOrLog();
+    rainSwitch_ = createEventToggle(rainRow, onRainToggled);
+
+    // Duck event controls.
+    lv_obj_t* duckRow = createEventRow(view);
+    duckTrigger_ = LVGLBuilder::actionButton(duckRow)
+                       .text("Duck")
+                       .size(LVGLBuilder::Style::ACTION_SIZE)
+                       .callback(onDuckTriggered, this)
+                       .buildOrLog();
+    duckSwitch_ = createEventToggle(duckRow, onDuckToggled);
+
+    // Color cycle event controls.
+    lv_obj_t* cycleRow = createEventRow(view);
+    colorCycleTrigger_ = LVGLBuilder::actionButton(cycleRow)
+                             .text("Cycle")
+                             .size(LVGLBuilder::Style::ACTION_SIZE)
+                             .textColor(0xFF00FF) // Magenta text.
+                             .callback(onColorCycleTriggered, this)
+                             .buildOrLog();
+    colorCycleSwitch_ = createEventToggle(cycleRow, onColorCycleToggled);
+
+    // Color showcase event controls.
+    lv_obj_t* showcaseRow = createEventRow(view);
+    colorShowcaseTrigger_ = LVGLBuilder::actionButton(showcaseRow)
+                                .text("Showcase")
+                                .size(LVGLBuilder::Style::ACTION_SIZE)
+                                .textColor(0x00FFFF) // Cyan text.
+                                .callback(onColorShowcaseTriggered, this)
+                                .buildOrLog();
+    colorShowcaseSwitch_ = createEventToggle(showcaseRow, onColorShowcaseToggled);
+
+    // Digit slide event controls.
+    lv_obj_t* slideRow = createEventRow(view);
+    digitSlideTrigger_ = LVGLBuilder::actionButton(slideRow)
+                             .text("Slide")
+                             .size(LVGLBuilder::Style::ACTION_SIZE)
+                             .textColor(0xFFAA00) // Orange text.
+                             .callback(onDigitSlideTriggered, this)
+                             .buildOrLog();
+    digitSlideSwitch_ = createEventToggle(slideRow, onDigitSlideToggled);
+
+    // Marquee event controls.
+    lv_obj_t* marqueeRow = createEventRow(view);
+    marqueeTrigger_ = LVGLBuilder::actionButton(marqueeRow)
+                          .text("Marquee")
+                          .size(LVGLBuilder::Style::ACTION_SIZE)
+                          .textColor(0x44FF44) // Green text.
+                          .callback(onMarqueeTriggered, this)
                           .buildOrLog();
+    marqueeSwitch_ = createEventToggle(marqueeRow, onMarqueeToggled);
 
-    // Event toggle row.
-    lv_obj_t* eventRow = lv_obj_create(view);
-    lv_obj_set_size(eventRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(eventRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        eventRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(eventRow, 4, 0);
-    lv_obj_set_style_bg_opa(eventRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(eventRow, 0, 0);
-    lv_obj_clear_flag(eventRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Rain event toggle.
-    rainSwitch_ = LVGLBuilder::actionButton(eventRow)
-                      .text(LV_SYMBOL_TINT "\nRain")
-                      .mode(LVGLBuilder::ActionMode::Toggle)
-                      .size(80)
-                      .checked(false)
-                      .textColor(0x0088FF) // Blue text.
-                      .glowColor(0x0088FF) // Blue glow for water/rain.
-                      .callback(onRainToggled, this)
-                      .buildOrLog();
-
-    // Duck event toggle.
-    duckSwitch_ = LVGLBuilder::actionButton(eventRow)
-                      .text("Duck")
-                      .mode(LVGLBuilder::ActionMode::Toggle)
-                      .size(80)
-                      .checked(false)
-                      .glowColor(0xFFCC00) // Yellow glow for duck.
-                      .callback(onDuckToggled, this)
-                      .buildOrLog();
-
-    // Color cycle row.
-    lv_obj_t* cycleRow = lv_obj_create(view);
-    lv_obj_set_size(cycleRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(cycleRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        cycleRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(cycleRow, 4, 0);
-    lv_obj_set_style_bg_opa(cycleRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(cycleRow, 0, 0);
-    lv_obj_clear_flag(cycleRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Color cycle event toggle.
-    colorCycleSwitch_ = LVGLBuilder::actionButton(cycleRow)
-                            .text("Cycle")
-                            .mode(LVGLBuilder::ActionMode::Toggle)
-                            .size(80)
-                            .checked(false)
-                            .textColor(0xFF00FF) // Magenta text.
-                            .glowColor(0xFF00FF) // Magenta glow for color cycling.
-                            .callback(onColorCycleToggled, this)
-                            .buildOrLog();
-
-    // Color showcase event toggle.
-    colorShowcaseSwitch_ = LVGLBuilder::actionButton(cycleRow)
-                               .text("Showcase")
-                               .mode(LVGLBuilder::ActionMode::Toggle)
-                               .size(80)
-                               .checked(false)
-                               .textColor(0x00FFFF) // Cyan text.
-                               .glowColor(0x00FFFF) // Cyan glow for showcase.
-                               .callback(onColorShowcaseToggled, this)
-                               .buildOrLog();
-
-    // Marquee row.
-    lv_obj_t* marqueeRow = lv_obj_create(view);
-    lv_obj_set_size(marqueeRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_flex_flow(marqueeRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        marqueeRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(marqueeRow, 4, 0);
-    lv_obj_set_style_bg_opa(marqueeRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(marqueeRow, 0, 0);
-    lv_obj_clear_flag(marqueeRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Digit slide event toggle.
-    digitSlideSwitch_ = LVGLBuilder::actionButton(marqueeRow)
-                            .text("Slide")
-                            .mode(LVGLBuilder::ActionMode::Toggle)
-                            .size(80)
-                            .checked(false)
-                            .textColor(0xFFAA00) // Orange text.
-                            .glowColor(0xFFAA00) // Orange glow for slide effect.
-                            .callback(onDigitSlideToggled, this)
-                            .buildOrLog();
-
-    // Marquee event toggle.
-    marqueeSwitch_ = LVGLBuilder::actionButton(marqueeRow)
-                         .text("Marquee")
-                         .mode(LVGLBuilder::ActionMode::Toggle)
-                         .size(80)
-                         .checked(false)
-                         .textColor(0x44FF44) // Green text.
-                         .glowColor(0x44FF44) // Green glow for marquee scroll.
-                         .callback(onMarqueeToggled, this)
-                         .buildOrLog();
+    // Meltdown event controls.
+    lv_obj_t* meltdownRow = createEventRow(view);
+    meltdownTrigger_ = LVGLBuilder::actionButton(meltdownRow)
+                           .text(LV_SYMBOL_WARNING "\nMelt")
+                           .size(LVGLBuilder::Style::ACTION_SIZE)
+                           .textColor(0xFFA500) // Construction orange.
+                           .callback(onMeltdownTriggered, this)
+                           .buildOrLog();
+    meltdownSwitch_ = createEventToggle(meltdownRow, onMeltdownToggled);
 
     // Timezone selector button (at end).
     std::string timezoneText =
@@ -461,12 +488,14 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update meltdown button.
     if (meltdownSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(meltdownSwitch_, config.meltdownEnabled);
+        updateEventToggleColor(meltdownSwitch_, config.meltdownEnabled);
         LOG_DEBUG(Controls, "ClockControls: Updated meltdown button to {}", config.meltdownEnabled);
     }
 
     // Update color cycle button.
     if (colorCycleSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(colorCycleSwitch_, config.colorCycleEnabled);
+        updateEventToggleColor(colorCycleSwitch_, config.colorCycleEnabled);
         LOG_DEBUG(
             Controls, "ClockControls: Updated color cycle button to {}", config.colorCycleEnabled);
     }
@@ -475,6 +504,7 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     if (colorShowcaseSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(
             colorShowcaseSwitch_, config.colorShowcaseEnabled);
+        updateEventToggleColor(colorShowcaseSwitch_, config.colorShowcaseEnabled);
         LOG_DEBUG(
             Controls,
             "ClockControls: Updated color showcase button to {}",
@@ -484,18 +514,21 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update rain button.
     if (rainSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(rainSwitch_, config.rainEnabled);
+        updateEventToggleColor(rainSwitch_, config.rainEnabled);
         LOG_DEBUG(Controls, "ClockControls: Updated rain button to {}", config.rainEnabled);
     }
 
     // Update duck button.
     if (duckSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(duckSwitch_, config.duckEnabled);
+        updateEventToggleColor(duckSwitch_, config.duckEnabled);
         LOG_DEBUG(Controls, "ClockControls: Updated duck button to {}", config.duckEnabled);
     }
 
     // Update digit slide button.
     if (digitSlideSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(digitSlideSwitch_, config.digitSlideEnabled);
+        updateEventToggleColor(digitSlideSwitch_, config.digitSlideEnabled);
         LOG_DEBUG(
             Controls, "ClockControls: Updated digit slide button to {}", config.digitSlideEnabled);
     }
@@ -503,6 +536,7 @@ void ClockControls::updateFromConfig(const ScenarioConfig& configVariant)
     // Update marquee button.
     if (marqueeSwitch_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(marqueeSwitch_, config.marqueeEnabled);
+        updateEventToggleColor(marqueeSwitch_, config.marqueeEnabled);
         LOG_DEBUG(Controls, "ClockControls: Updated marquee button to {}", config.marqueeEnabled);
     }
 
@@ -861,6 +895,23 @@ void ClockControls::onEmissivenessChanged(lv_event_t* e)
     self->sendConfigUpdate(config);
 }
 
+void ClockControls::triggerEvent(ClockEventType type, const char* label)
+{
+    if (!wsService_ || !wsService_->isConnected()) {
+        return;
+    }
+
+    spdlog::info("ClockControls: Triggering {} event", label);
+
+    static std::atomic<uint64_t> nextId{ 1 };
+    const Api::ClockEventTrigger::Command cmd{ .event_type = type };
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+    auto result = wsService_->sendBinary(Network::serialize_envelope(envelope));
+    if (result.isError()) {
+        spdlog::error("ClockControls: Failed to trigger {} event: {}", label, result.errorValue());
+    }
+}
+
 void ClockControls::onSecondsToggled(lv_event_t* e)
 {
     ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
@@ -885,6 +936,83 @@ void ClockControls::onSecondsToggled(lv_event_t* e)
     self->sendConfigUpdate(config);
 }
 
+void ClockControls::onColorCycleTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onColorCycleTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::COLOR_CYCLE, "color cycle");
+}
+
+void ClockControls::onColorShowcaseTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onColorShowcaseTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::COLOR_SHOWCASE, "color showcase");
+}
+
+void ClockControls::onDigitSlideTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onDigitSlideTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::DIGIT_SLIDE, "digit slide");
+}
+
+void ClockControls::onDuckTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onDuckTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::DUCK, "duck");
+}
+
+void ClockControls::onMarqueeTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onMarqueeTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::MARQUEE, "marquee");
+}
+
+void ClockControls::onMeltdownTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onMeltdownTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::MELTDOWN, "meltdown");
+}
+
+void ClockControls::onRainTriggered(lv_event_t* e)
+{
+    ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        spdlog::error("ClockControls: onRainTriggered called with null self");
+        return;
+    }
+
+    self->triggerEvent(ClockEventType::RAIN, "rain");
+}
+
 void ClockControls::onMeltdownToggled(lv_event_t* e)
 {
     ClockControls* self = static_cast<ClockControls*>(lv_event_get_user_data(e));
@@ -901,6 +1029,7 @@ void ClockControls::onMeltdownToggled(lv_event_t* e)
 
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->meltdownSwitch_);
     spdlog::info("ClockControls: Meltdown toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->meltdownSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -925,6 +1054,7 @@ void ClockControls::onColorCycleToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorCycleSwitch_);
 
     spdlog::info("ClockControls: Color cycle toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->colorCycleSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -949,6 +1079,7 @@ void ClockControls::onColorShowcaseToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->colorShowcaseSwitch_);
 
     spdlog::info("ClockControls: Color showcase toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->colorShowcaseSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -973,6 +1104,7 @@ void ClockControls::onDigitSlideToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->digitSlideSwitch_);
 
     spdlog::info("ClockControls: Digit slide toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->digitSlideSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -997,6 +1129,7 @@ void ClockControls::onMarqueeToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->marqueeSwitch_);
 
     spdlog::info("ClockControls: Marquee toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->marqueeSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -1021,6 +1154,7 @@ void ClockControls::onRainToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->rainSwitch_);
 
     spdlog::info("ClockControls: Rain toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->rainSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();
@@ -1045,6 +1179,7 @@ void ClockControls::onDuckToggled(lv_event_t* e)
     bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->duckSwitch_);
 
     spdlog::info("ClockControls: Duck toggled to {}", enabled ? "ON" : "OFF");
+    updateEventToggleColor(self->duckSwitch_, enabled);
 
     // Get complete current config and send update.
     Config::Clock config = self->getCurrentConfig();

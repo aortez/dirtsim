@@ -90,11 +90,7 @@ TrainingRunner::TrainingRunner(
     const EvolutionConfig& evolutionConfig,
     GenomeRepository& genomeRepository)
     : TrainingRunner(
-          trainingSpec,
-          individual,
-          evolutionConfig,
-          genomeRepository,
-          Config{ .brainRegistry = TrainingBrainRegistry::createDefault() })
+          trainingSpec, individual, evolutionConfig, genomeRepository, makeDefaultConfig())
 {}
 
 TrainingRunner::TrainingRunner(
@@ -128,6 +124,13 @@ TrainingRunner::~TrainingRunner() = default;
 
 TrainingRunner::TrainingRunner(TrainingRunner&&) noexcept = default;
 TrainingRunner& TrainingRunner::operator=(TrainingRunner&&) noexcept = default;
+
+TrainingRunner::Config TrainingRunner::makeDefaultConfig()
+{
+    Config config{};
+    config.brainRegistry = TrainingBrainRegistry::createDefault();
+    return config;
+}
 
 TrainingRunner::Status TrainingRunner::step(int frames)
 {
