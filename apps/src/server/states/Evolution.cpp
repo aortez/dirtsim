@@ -8,6 +8,7 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
+#include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
@@ -404,12 +405,12 @@ void Evolution::finishEvaluation(StateMachine& dsm)
     const FitnessResult result{ .lifespan = lifespan,
                                 .distanceTraveled = distanceTraveled,
                                 .maxEnergy = evalMaxEnergy_ };
-    const double fitness = result.computeFitness(
-        evolutionConfig.maxSimulationTime,
+    const double fitness = computeFitnessForOrganism(
+        result,
+        trainingSpec.organismType,
         evalWorld_->getData().width,
         evalWorld_->getData().height,
-        evolutionConfig.energyReference,
-        trainingSpec.organismType == OrganismType::TREE);
+        evolutionConfig);
 
     fitnessScores[currentEval] = fitness;
 
