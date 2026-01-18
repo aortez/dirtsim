@@ -13,6 +13,7 @@
 #include "api/SimPause.h"
 #include "api/SimRun.h"
 #include "api/SimStop.h"
+#include "api/StateGet.h"
 #include "api/StatusGet.h"
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
@@ -247,6 +248,7 @@ using Event = std::variant<
     RailModeChangedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)
+    DirtSim::Api::TrainingResultAvailable::Cwc,
     DirtSim::UiApi::DrawDebugToggle::Cwc,
     DirtSim::UiApi::Exit::Cwc,
     DirtSim::UiApi::MouseDown::Cwc,
@@ -258,6 +260,7 @@ using Event = std::variant<
     DirtSim::UiApi::SimPause::Cwc,
     DirtSim::UiApi::SimRun::Cwc,
     DirtSim::UiApi::SimStop::Cwc,
+    DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
     DirtSim::UiApi::WebRtcAnswer::Cwc,

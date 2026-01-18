@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BinaryProtocol.h"
+#include "ClientHello.h"
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include <any>
@@ -52,7 +53,15 @@ public:
     virtual void onBinary(BinaryCallback callback) = 0;
     virtual void onServerCommand(ServerCommandCallback callback) = 0;
 
+    virtual void setClientHello(const ClientHello& /*hello*/) {}
+
     virtual void setJsonDeserializer(JsonDeserializer deserializer) = 0;
+
+    virtual uint64_t allocateRequestId()
+    {
+        static std::atomic<uint64_t> nextId{ 1 };
+        return nextId.fetch_add(1, std::memory_order_relaxed);
+    }
 
     // Template methods (non-virtual, no-ops in base for mocking).
     template <typename CwcType>
@@ -69,18 +78,24 @@ public:
         uint64_t correlationId,
         HandlerInvoker invokeHandler)>;
 
-    void setJsonCommandDispatcher(JsonCommandDispatcher /*dispatcher*/)
+    virtual void setJsonCommandDispatcher(JsonCommandDispatcher /*dispatcher*/)
     {
         // No-op for mocks - real implementation in WebSocketService.
     }
 
+    template <typename Command>
+    Result<std::monostate, std::string> sendCommand(const Command& cmd)
+    {
+        auto envelope = make_command_envelope(0, cmd);
+        return sendBinary(serialize_envelope(envelope));
+    }
+
     template <typename Okay, typename Command>
-    Result<Result<Okay, ApiError>, std::string> sendCommand(
+    Result<Result<Okay, ApiError>, std::string> sendCommandAndGetResponse(
         const Command& cmd, int timeoutMs = 5000)
     {
         // Generate unique request ID.
-        static std::atomic<uint64_t> nextId{ 1 };
-        uint64_t requestId = nextId.fetch_add(1, std::memory_order_relaxed);
+        uint64_t requestId = allocateRequestId();
 
         // Create envelope.
         auto envelope = make_command_envelope(requestId, cmd);

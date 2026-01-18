@@ -35,6 +35,7 @@ The CLI provides several operation modes:
 - **Benchmark Mode**: Automated performance testing with metrics collection
 - **Train Mode**: Run evolution training with JSON configuration
 - **Cleanup Mode**: Find and gracefully shutdown rogue dirtsim processes
+- **Functional Test Mode**: CLI-driven UI/server workflow checks
 - **Integration Test Mode**: Automated server + UI lifecycle testing
 - **Network Mode**: WiFi status, saved/open networks, connect, and forget (NetworkManager)
 
@@ -128,6 +129,28 @@ Capture PNG screenshots from the UI display:
 - Automated testing with visual verification
 - Recording evolution training progress
 - Remote monitoring of headless Pi deployments
+
+### Functional Test Mode
+
+Run a minimal UI/server workflow check against a running system:
+
+```bash
+# Default local ports (UI: 7070, server: 8080).
+./build-debug/bin/cli functional-test canExit
+./build-debug/bin/cli functional-test canTrain
+
+# Remote.
+./build-debug/bin/cli functional-test canExit \
+  --ui-address ws://dirtsim.local:7070 \
+  --server-address ws://dirtsim.local:8080
+```
+
+**What it does**:
+- Connects to the UI and server.
+- Queries server StatusGet and UI StateGet.
+- Drives UI back to StartMenu if needed (SimStop).
+- Sends UI Exit.
+- For canTrain: runs EvolutionStart with defaults, waits for TrainingResultList to grow, and requests TrainingResultGet for the newest session.
 
 ### Network Mode
 
