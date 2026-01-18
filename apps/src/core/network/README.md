@@ -32,7 +32,7 @@ wsService_->registerHandler<UiApi::StatusGet::Cwc>(handler);
 
 // Client role: connect to DSSM server for world data
 wsService_->connect("ws://localhost:8080");
-wsService_->sendCommand<Api::StateGet::Command>({});
+wsService_->sendCommandAndGetResponse<Api::StateGet::Command>({});
 ```
 
 ### 2. Protocol Flexibility
@@ -69,7 +69,7 @@ namespace Api::StateGet {
 }
 
 // Compiler enforces correct types
-auto result = wsService->sendCommand<Api::StateGet::Command>({});
+auto result = wsService->sendCommandAndGetResponse<Api::StateGet::Command>({});
 if (result.isOkay()) {
     auto state = result.value();  // Type: StateGet::Okay
     spdlog::info("Server state: {}", state.state);
@@ -121,6 +121,7 @@ wsService->sendToClient(connId, jsonMessage);
 │  Client Methods          Server Methods            │
 │  ───────────────         ────────────────          │
 │  • connect(url)          • listen(port)            │
+│  • sendCommandAndGetResponse<T>()                  │
 │  • sendCommand<T>()      • registerHandler<T>()    │
 │  • disconnect()          • sendToClient(id, msg)   │
 │  • onBinary(callback)    • broadcastBinary(data)   │
@@ -223,7 +224,7 @@ if (connectResult.isError()) {
 }
 
 // Send typed command (blocks until response)
-auto stateResult = wsService->sendCommand<Api::StateGet::Command>({});
+auto stateResult = wsService->sendCommandAndGetResponse<Api::StateGet::Command>({});
 if (stateResult.isOkay()) {
     auto state = stateResult.value();
     spdlog::info("World size: {}x{}", state.width, state.height);
@@ -443,7 +444,7 @@ struct MyCommand {
 
 ### Thread Safety
 
-- **Client-side:** Blocking `sendCommand` uses mutex + condition variable for response waiting
+- **Client-side:** Blocking `sendCommandAndGetResponse` uses mutex + condition variable for response waiting
 - **Server-side:** Handler callbacks may be invoked from WebSocket thread
 - **State machine queueing:** Use `queueEvent(cwc)` to move processing to main thread
 

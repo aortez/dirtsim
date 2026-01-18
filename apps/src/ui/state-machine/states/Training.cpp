@@ -114,7 +114,8 @@ State::Any Training::onEvent(const TrainingResultAvailableReceivedEvent& evt, St
     }
 
     Api::TrainingResultAvailableAck::Command cmd;
-    const auto result = wsService.sendCommand<Api::TrainingResultAvailableAck::OkayType>(cmd, 5000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingResultAvailableAck::OkayType>(cmd, 5000);
     if (result.isError()) {
         LOG_ERROR(State, "TrainingResultAvailableAck failed: {}", result.errorValue());
         return std::move(*this);
@@ -125,6 +126,18 @@ State::Any Training::onEvent(const TrainingResultAvailableReceivedEvent& evt, St
         return std::move(*this);
     }
 
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const Api::TrainingResultAvailable::Cwc& cwc, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());
+
+    if (view_) {
+        view_->showTrainingResultModal(cwc.command.summary, cwc.command.candidates);
+    }
+
+    cwc.sendResponse(Api::TrainingResultAvailable::Response::okay(std::monostate{}));
     return std::move(*this);
 }
 
@@ -238,7 +251,8 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
     cmd.organismType = evt.training.organismType;
     cmd.population = evt.training.population;
 
-    const auto result = wsService.sendCommand<Api::EvolutionStart::OkayType>(cmd, 5000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::EvolutionStart::OkayType>(cmd, 5000);
     if (result.isError()) {
         LOG_ERROR(State, "Failed to send EvolutionStart: {}", result.errorValue());
         return std::move(*this);
@@ -285,7 +299,8 @@ State::Any Training::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachi
     DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected to reach Training state");
 
     Api::EvolutionStop::Command cmd;
-    const auto result = wsService.sendCommand<Api::EvolutionStop::OkayType>(cmd, 2000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::EvolutionStop::OkayType>(cmd, 2000);
     if (result.isError()) {
         LOG_ERROR(State, "Failed to send EvolutionStop: {}", result.errorValue());
     }
@@ -313,7 +328,8 @@ State::Any Training::onEvent(const QuitTrainingClickedEvent& /*evt*/, StateMachi
     DIRTSIM_ASSERT(wsService.isConnected(), "Must be connected to reach Training state");
 
     Api::EvolutionStop::Command cmd;
-    const auto result = wsService.sendCommand<Api::EvolutionStop::OkayType>(cmd, 2000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::EvolutionStop::OkayType>(cmd, 2000);
     if (result.isError()) {
         LOG_ERROR(State, "Failed to send EvolutionStop: {}", result.errorValue());
     }
@@ -348,7 +364,8 @@ State::Any Training::onEvent(const TrainingResultSaveClickedEvent& evt, StateMac
 
     Api::TrainingResultSave::Command cmd;
     cmd.ids = evt.ids;
-    const auto result = wsService.sendCommand<Api::TrainingResultSave::OkayType>(cmd, 5000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingResultSave::OkayType>(cmd, 5000);
     if (result.isError()) {
         LOG_ERROR(State, "TrainingResultSave failed: {}", result.errorValue());
         return std::move(*this);
@@ -380,7 +397,8 @@ State::Any Training::onEvent(const TrainingResultDiscardClickedEvent& /*evt*/, S
     }
 
     Api::TrainingResultDiscard::Command cmd;
-    const auto result = wsService.sendCommand<Api::TrainingResultDiscard::OkayType>(cmd, 5000);
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingResultDiscard::OkayType>(cmd, 5000);
     if (result.isError()) {
         LOG_ERROR(State, "TrainingResultDiscard failed: {}", result.errorValue());
         return std::move(*this);
@@ -442,7 +460,8 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
     // Stop evolution if running.
     if (evolutionStarted_) {
         Api::EvolutionStop::Command stopCmd;
-        auto stopResult = wsService.sendCommand<Api::EvolutionStop::OkayType>(stopCmd, 2000);
+        auto stopResult =
+            wsService.sendCommandAndGetResponse<Api::EvolutionStop::OkayType>(stopCmd, 2000);
         DIRTSIM_ASSERT(
             stopResult.isValue() && stopResult.value().isValue(), "EvolutionStop failed");
         evolutionStarted_ = false;
@@ -461,7 +480,7 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
                                     .start_paused = false,
                                     .container_size = containerSize };
 
-    auto simResult = wsService.sendCommand<Api::SimRun::Okay>(simRunCmd, 2000);
+    auto simResult = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(simRunCmd, 2000);
     if (simResult.isError() || simResult.value().isError()) {
         LOG_ERROR(State, "SimRun failed");
         return std::move(*this);
@@ -478,7 +497,7 @@ State::Any Training::onEvent(const ViewBestButtonClickedEvent& evt, StateMachine
     seedCmd.y = centerY;
     seedCmd.genome_id = evt.genomeId.toString();
 
-    auto seedResult = wsService.sendCommand<Api::SeedAdd::OkayType>(seedCmd, 2000);
+    auto seedResult = wsService.sendCommandAndGetResponse<Api::SeedAdd::OkayType>(seedCmd, 2000);
     if (seedResult.isError() || seedResult.value().isError()) {
         LOG_ERROR(State, "SeedAdd failed");
     }

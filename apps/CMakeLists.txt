@@ -323,8 +323,10 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/TrainingResultAvailable.cpp
     src/server/api/TrainingResultAvailableAck.cpp
     src/server/api/TrainingResultDiscard.cpp
+    src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
     src/server/api/WorldResize.cpp
 
@@ -447,6 +449,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/SimPause.cpp
     src/ui/state-machine/api/SimRun.cpp
     src/ui/state-machine/api/SimStop.cpp
+    src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StreamStart.cpp
     src/ui/state-machine/api/WebRtcAnswer.cpp
@@ -549,6 +552,7 @@ add_executable(cli
     src/cli/BenchmarkRunner.cpp
     src/cli/CleanupRunner.cpp
     src/cli/CommandDispatcher.cpp
+    src/cli/FunctionalTestRunner.cpp
     src/cli/GenomeDbBenchmark.cpp
     src/cli/IntegrationTest.cpp
     src/cli/RunAllRunner.cpp
@@ -580,6 +584,7 @@ add_executable(dirtsim-tests
     src/tests/TimersTest.cpp
     src/tests/Vector2d_test.cpp
     src/tests/Vector2i_test.cpp
+    src/tests/WebSocketService_integration_test.cpp
     src/tests/HorizontalMomentum_test.cpp
     src/tests/WaterEqualization_test.cpp
     src/tests/WorldRigidBodyCalculator_test.cpp
