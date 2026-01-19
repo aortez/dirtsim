@@ -99,6 +99,10 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
 void SubprocessManager::killServer()
 {
     if (serverPid_ > 0) {
+        if (!isServerRunning()) {
+            return;
+        }
+
         SLOG_INFO("SubprocessManager: Killing server (PID: {})", serverPid_);
 
         // Send SIGTERM for graceful shutdown.
@@ -126,7 +130,7 @@ void SubprocessManager::killServer()
     }
 }
 
-bool SubprocessManager::isServerRunning() const
+bool SubprocessManager::isServerRunning()
 {
     if (serverPid_ <= 0) {
         return false;
@@ -140,16 +144,17 @@ bool SubprocessManager::isServerRunning() const
     if (result == serverPid_) {
         // Process has exited (reaps zombie).
         SLOG_INFO("SubprocessManager: Server process {} has exited", serverPid_);
+        serverPid_ = -1;
         return false;
     }
     else if (result == 0) {
         // Process still running.
         return true;
     }
-    else {
-        // Error or process doesn't exist.
-        return false;
-    }
+
+    SLOG_WARN("SubprocessManager: waitpid failed for server: {}", std::strerror(errno));
+    serverPid_ = -1;
+    return false;
 }
 
 bool SubprocessManager::tryConnect(const std::string& url)
@@ -214,6 +219,10 @@ bool SubprocessManager::waitForUIReady(const std::string& url, int timeoutSec)
 void SubprocessManager::killUI()
 {
     if (uiPid_ > 0) {
+        if (!isUIRunning()) {
+            return;
+        }
+
         SLOG_INFO("SubprocessManager: Killing UI (PID: {})", uiPid_);
 
         // Send SIGTERM for graceful shutdown.
@@ -241,7 +250,7 @@ void SubprocessManager::killUI()
     }
 }
 
-bool SubprocessManager::isUIRunning() const
+bool SubprocessManager::isUIRunning()
 {
     if (uiPid_ <= 0) {
         return false;
@@ -255,16 +264,17 @@ bool SubprocessManager::isUIRunning() const
     if (result == uiPid_) {
         // Process has exited (reaps zombie).
         SLOG_INFO("SubprocessManager: UI process {} has exited", uiPid_);
+        uiPid_ = -1;
         return false;
     }
     else if (result == 0) {
         // Process still running.
         return true;
     }
-    else {
-        // Error or process doesn't exist.
-        return false;
-    }
+
+    SLOG_WARN("SubprocessManager: waitpid failed for UI: {}", std::strerror(errno));
+    uiPid_ = -1;
+    return false;
 }
 
 bool SubprocessManager::launchProcess(

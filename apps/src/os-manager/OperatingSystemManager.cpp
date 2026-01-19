@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <sys/reboot.h>
 #include <sys/statvfs.h>
@@ -89,13 +90,64 @@ std::string resolveUiDisplay(const std::string& overrideDisplay)
     return ":99";
 }
 
-std::string resolveUiArgs(const std::string& overrideArgs, const std::string& backend)
+std::string resolveServerPort(const std::string& serverArgs)
+{
+    if (serverArgs.empty()) {
+        return "8080";
+    }
+
+    std::istringstream iss(serverArgs);
+    std::string token;
+    while (iss >> token) {
+        if (token == "-p" || token == "--port") {
+            std::string port;
+            if (iss >> port) {
+                return port;
+            }
+        }
+        if (token.rfind("-p", 0) == 0 && token.size() > 2) {
+            return token.substr(2);
+        }
+        if (token.rfind("--port=", 0) == 0 && token.size() > 7) {
+            return token.substr(7);
+        }
+    }
+
+    return "8080";
+}
+
+std::string resolveUiArgs(
+    const std::string& overrideArgs, const std::string& backend, const std::string& serverPort)
 {
     if (!overrideArgs.empty()) {
         return overrideArgs;
     }
 
-    return "-b " + backend + " --connect localhost:8080";
+    return "-b " + backend + " --connect localhost:" + serverPort;
+}
+
+std::string resolveWorkDir(const std::string& overrideDir)
+{
+    if (!overrideDir.empty()) {
+        return overrideDir;
+    }
+
+    std::error_code error;
+    const std::filesystem::path dataRoot("/data");
+    if (std::filesystem::exists(dataRoot, error) && !error) {
+        const auto dataDir = dataRoot / "dirtsim";
+        std::filesystem::create_directories(dataDir, error);
+        if (!error) {
+            return dataDir.string();
+        }
+    }
+
+    const auto homeDir = getEnvValue("HOME");
+    if (!homeDir.empty()) {
+        return (std::filesystem::path(homeDir) / ".dirtsim").string();
+    }
+
+    return "/tmp/dirtsim";
 }
 } // namespace
 
@@ -132,6 +184,12 @@ public:
         }
 
         return Result<std::monostate, ApiError>::error(ApiError("Unknown action: " + action));
+    }
+
+    void poll()
+    {
+        subprocessManager_.isServerRunning();
+        subprocessManager_.isUIRunning();
     }
 
 private:
@@ -352,6 +410,9 @@ void OperatingSystemManager::queueEvent(const Event& event)
 void OperatingSystemManager::processEvents()
 {
     eventProcessor_.processEventsFromQueue(*this);
+    if (localBackend_) {
+        localBackend_->poll();
+    }
 }
 
 std::string OperatingSystemManager::getCurrentStateName() const
@@ -671,9 +732,10 @@ static LocalProcessBackend::Config resolveLocalProcessConfig(
     config.serverArgs = backendConfig.serverArgs.empty() ? "-p 8080" : backendConfig.serverArgs;
 
     const std::string uiBackend = backendConfig.uiBackend.empty() ? "x11" : backendConfig.uiBackend;
-    config.uiArgs = resolveUiArgs(backendConfig.uiArgs, uiBackend);
+    const auto serverPort = resolveServerPort(config.serverArgs);
+    config.uiArgs = resolveUiArgs(backendConfig.uiArgs, uiBackend, serverPort);
     config.uiDisplay = resolveUiDisplay(backendConfig.uiDisplay);
-    config.workDir = backendConfig.workDir.empty() ? "/data/dirtsim" : backendConfig.workDir;
+    config.workDir = resolveWorkDir(backendConfig.workDir);
 
     return config;
 }

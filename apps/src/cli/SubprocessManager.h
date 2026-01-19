@@ -31,8 +31,8 @@ public:
     bool waitForUIReady(const std::string& url, int timeoutSec = 5);
     void killServer();
     void killUI();
-    bool isServerRunning() const;
-    bool isUIRunning() const;
+    bool isServerRunning();
+    bool isUIRunning();
 
 private:
     bool launchProcess(
