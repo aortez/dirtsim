@@ -1,6 +1,6 @@
 # DirtSim CLI Client
 
-Command-line client for interacting with DirtSim server and UI via WebSocket.
+Command-line client for interacting with DirtSim server, UI, and os-manager via WebSocket.
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ That's it! Now read below for details...
 
 The CLI provides several operation modes:
 
-- **Command Mode**: Send individual commands to server or UI
+- **Command Mode**: Send individual commands to server, UI, or os-manager
 - **Run-All Mode**: Launch both server and UI with one command
 - **Screenshot Mode**: Capture PNG screenshots from local or remote UI
 - **Benchmark Mode**: Automated performance testing with metrics collection
@@ -47,7 +47,7 @@ Send commands to the server or UI:
 
 ```bash
 # New fluent syntax: cli [target] [command] [params]
-# Targets: 'server' (port 8080) or 'ui' (port 7070)
+# Targets: 'server' (port 8080), 'ui' (port 7070), or 'os-manager' (port 9090)
 
 # Basic commands (no parameters)
 ./build-debug/bin/cli server StateGet
@@ -76,9 +76,20 @@ Send commands to the server or UI:
 ./build-debug/bin/cli ui SimPause
 ./build-debug/bin/cli ui SimStop
 
+# OS manager commands
+./build-debug/bin/cli os-manager SystemStatus
+./build-debug/bin/cli os-manager StartServer
+./build-debug/bin/cli os-manager StopServer
+./build-debug/bin/cli os-manager RestartServer
+./build-debug/bin/cli os-manager StartUi
+./build-debug/bin/cli os-manager StopUi
+./build-debug/bin/cli os-manager RestartUi
+./build-debug/bin/cli os-manager Reboot
+
 # Remote connections (override default addresses)
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080
 ./build-debug/bin/cli ui StatusGet --address ws://dirtsim.local:7070
+./build-debug/bin/cli os-manager SystemStatus --address ws://dirtsim.local:9090
 ```
 
 ### Run-All Mode
@@ -146,15 +157,18 @@ Run a minimal UI/server workflow check against a running system:
 # Remote.
 ./build-debug/bin/cli functional-test canExit \
   --ui-address ws://dirtsim.local:7070 \
-  --server-address ws://dirtsim.local:8080
+  --server-address ws://dirtsim.local:8080 \
+  --os-manager-address ws://dirtsim.local:9090
 ```
 
 **What it does**:
+- Restarts UI and server via os-manager before tests.
 - Connects to the UI and server.
 - Queries server StatusGet and UI StateGet.
 - Drives UI back to StartMenu if needed (SimStop).
 - Sends UI Exit.
-- For canTrain: runs EvolutionStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
+- Reboots the machine via os-manager after tests complete.
+- For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
 
 ### Network Mode
 
