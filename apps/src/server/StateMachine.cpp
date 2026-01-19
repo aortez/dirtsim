@@ -19,6 +19,7 @@
 #include "core/WorldData.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/JsonProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -214,16 +215,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = resp.value().toJson();                                                  \
-                j["id"] = correlationId;                                                    \
-                j["success"] = true;                                                        \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
@@ -235,14 +227,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = { { "id", correlationId }, { "success", true } };                       \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
@@ -577,12 +562,13 @@ void StateMachine::mainLoopRun()
 
             auto frameEnd = std::chrono::steady_clock::now();
 
-            // Log timing breakdown every 1000 frames.
+            // Log timing breakdown every 10 seconds.
             static int frameCount = 0;
             static double totalEventProcessMs = 0.0;
             static double totalTickMs = 0.0;
             static double totalSleepMs = 0.0;
             static double totalIterationMs = 0.0;
+            static auto lastTimingLog = std::chrono::steady_clock::now();
 
             double eventProcessMs =
                 std::chrono::duration<double, std::milli>(eventProcessEnd - eventProcessStart)
@@ -626,7 +612,8 @@ void StateMachine::mainLoopRun()
             totalIterationMs += iterationMs;
 
             frameCount++;
-            if (frameCount % 5000 == 0) {
+            if (loopIterationEnd - lastTimingLog >= std::chrono::seconds(10)) {
+                lastTimingLog = loopIterationEnd;
                 spdlog::info("Main loop timing (avg over {} frames):", frameCount);
                 spdlog::info("  Event processing: {:.2f}ms", totalEventProcessMs / frameCount);
                 spdlog::info("  Simulation tick: {:.2f}ms", totalTickMs / frameCount);

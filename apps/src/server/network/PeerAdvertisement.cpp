@@ -290,10 +290,6 @@ bool PeerAdvertisement::start()
 
 void PeerAdvertisement::stop()
 {
-    if (!pImpl_->running_) {
-        return;
-    }
-
     pImpl_->running_ = false;
     if (pImpl_->poll_) {
         avahi_simple_poll_quit(pImpl_->poll_);

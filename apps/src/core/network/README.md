@@ -385,9 +385,12 @@ WebSocket Binary Frame
 {
   "id": 12345,
   "success": true,
-  "state": "Idle",
-  "width": 100,
-  "height": 100
+  "response_type": "StatusGet",
+  "value": {
+    "state": "Idle",
+    "width": 100,
+    "height": 100
+  }
 }
 
 // Error Response

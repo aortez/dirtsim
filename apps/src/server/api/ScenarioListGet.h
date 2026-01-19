@@ -7,6 +7,7 @@
 #include "core/ScenarioId.h"
 
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 #include <zpp_bits.h>
@@ -45,6 +46,9 @@ struct ScenarioInfo {
     // zpp_bits serialization.
     using serialize = zpp::bits::members<4>;
 };
+
+void to_json(nlohmann::json& j, const ScenarioInfo& info);
+void from_json(const nlohmann::json& j, ScenarioInfo& info);
 
 /**
  * @brief Response containing list of available scenarios.
