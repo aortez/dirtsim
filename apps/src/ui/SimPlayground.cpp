@@ -104,26 +104,11 @@ void SimPlayground::showPanelContent(IconId panelId)
             createPhysicsPanel(container);
             break;
         case IconId::EVOLUTION:
-            // Evolution panel is only available in Training state.
-            LOG_WARN(Controls, "Evolution panel not available in SimRunning state");
-            return;
-        case IconId::POPULATION:
-            LOG_WARN(Controls, "Population panel not available in SimRunning state");
-            return;
         case IconId::NETWORK:
-            // Network panel is only available in StartMenu state.
-            LOG_DEBUG(Controls, "Network panel not available in SimRunning state");
-            return;
         case IconId::PLAY:
-            // Play is an action icon, not a panel.
-            LOG_DEBUG(Controls, "Play icon selected - no panel to show");
-            return;
         case IconId::TREE:
-            // Tree panel not yet implemented.
-            LOG_WARN(Controls, "Tree panel not yet implemented");
-            return;
         case IconId::COUNT:
-            DIRTSIM_ASSERT(false, "COUNT is not a valid panel id");
+            DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;
     }
 

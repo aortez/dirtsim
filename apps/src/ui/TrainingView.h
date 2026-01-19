@@ -4,7 +4,6 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/TrainingResult.h"
-#include "ui/controls/IconRail.h"
 #include <memory>
 #include <vector>
 
@@ -22,11 +21,10 @@ struct EvolutionProgress;
 namespace Ui {
 
 class CellRenderer;
-class EvolutionConfigPanel;
 class EvolutionControls;
 class EventSink;
 class Starfield;
-class TrainingPopulationPanel;
+class TrainingConfigPanel;
 class UiComponentManager;
 
 /**
@@ -56,11 +54,12 @@ public:
         const std::vector<Api::TrainingResult::Candidate>& candidates);
     void hideTrainingResultModal();
     bool isTrainingResultModalVisible() const;
+    std::vector<GenomeId> getTrainingResultSaveIds() const;
+    std::vector<GenomeId> getTrainingResultSaveIdsForCount(int count) const;
 
     void clearPanelContent();
     void createCorePanel();
-    void createEvolutionConfigPanel();
-    void createTrainingPopulationPanel();
+    void createTrainingConfigPanel();
 
 private:
     bool evolutionStarted_ = false;
@@ -113,9 +112,8 @@ private:
     int bestGeneration_ = 0;
 
     // Panel content (created lazily).
-    std::unique_ptr<EvolutionConfigPanel> evolutionConfigPanel_;
     std::unique_ptr<EvolutionControls> evolutionControls_;
-    std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
+    std::unique_ptr<TrainingConfigPanel> trainingConfigPanel_;
 
     // Training result modal.
     Api::TrainingResult::Summary trainingResultSummary_;
@@ -130,7 +128,6 @@ private:
     void renderBestWorld();
     void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
-    std::vector<GenomeId> getTrainingResultSaveIds() const;
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);
