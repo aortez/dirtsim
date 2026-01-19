@@ -1,4 +1,4 @@
-import { mkdirSync } from 'fs';
+import { mkdirSync, realpathSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -6,8 +6,8 @@ import { run, runCapture } from '../../pi-base/scripts/lib/index.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const YOCTO_DIR = dirname(dirname(__dirname));
-const PROJECT_ROOT = dirname(YOCTO_DIR);
+const YOCTO_DIR = realpathSync(dirname(dirname(__dirname)));
+const PROJECT_ROOT = realpathSync(dirname(YOCTO_DIR));
 const DOCKER_DIR = join(PROJECT_ROOT, 'docker');
 const DOCKER_HOME = join(YOCTO_DIR, '.docker-home');
 
