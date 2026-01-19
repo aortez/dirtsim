@@ -1,0 +1,551 @@
+#include "TrainingConfigPanel.h"
+#include "ExpandablePanel.h"
+#include "TrainingPopulationPanel.h"
+#include "core/LoggingChannels.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingSpec.h"
+#include "ui/controls/IconRail.h"
+#include "ui/state-machine/Event.h"
+#include "ui/state-machine/EventSink.h"
+#include "ui/ui_builders/LVGLBuilder.h"
+#include <algorithm>
+
+namespace DirtSim {
+namespace Ui {
+
+namespace {
+constexpr uint32_t kStatusReadyColor = 0x00CC66;
+constexpr uint32_t kStatusCompleteColor = 0xFFDD66;
+constexpr int kMinLeftColumnWidth = 140;
+constexpr int kMaxLeftColumnWidth = 170;
+constexpr int kMinRightColumnWidth = 120;
+} // namespace
+
+TrainingConfigPanel::TrainingConfigPanel(
+    lv_obj_t* container,
+    EventSink& eventSink,
+    ExpandablePanel* panel,
+    bool evolutionStarted,
+    EvolutionConfig& evolutionConfig,
+    MutationConfig& mutationConfig,
+    TrainingSpec& trainingSpec)
+    : container_(container),
+      eventSink_(eventSink),
+      panel_(panel),
+      evolutionStarted_(evolutionStarted),
+      evolutionConfig_(evolutionConfig),
+      mutationConfig_(mutationConfig),
+      trainingSpec_(trainingSpec)
+{
+    collapsedWidth_ = ExpandablePanel::DefaultWidth;
+    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
+    const int maxWidth = displayWidth > 0 ? displayWidth - IconRail::RAIL_WIDTH : 0;
+    int panelWidth = ExpandablePanel::DefaultWidth * 2;
+    if (panelWidth > maxWidth && maxWidth > 0) {
+        panelWidth = maxWidth;
+    }
+    if (panelWidth < ExpandablePanel::DefaultWidth) {
+        panelWidth = ExpandablePanel::DefaultWidth;
+    }
+    expandedWidth_ = panelWidth;
+    const int maxLeftWidth = std::max(0, expandedWidth_ - kMinRightColumnWidth);
+    leftColumnWidth_ = std::min(kMaxLeftColumnWidth, maxLeftWidth);
+    leftColumnWidth_ = std::max(kMinLeftColumnWidth, leftColumnWidth_);
+    if (maxLeftWidth < kMinLeftColumnWidth) {
+        leftColumnWidth_ = maxLeftWidth;
+    }
+
+    createLayout();
+    setRightColumnVisible(false);
+    updateControlsEnabled();
+
+    LOG_INFO(Controls, "TrainingConfigPanel: Initialized (started={})", evolutionStarted_);
+}
+
+TrainingConfigPanel::~TrainingConfigPanel()
+{
+    LOG_INFO(Controls, "TrainingConfigPanel: Destroyed");
+}
+
+void TrainingConfigPanel::setEvolutionStarted(bool started)
+{
+    evolutionStarted_ = started;
+    if (started) {
+        evolutionCompleted_ = false;
+    }
+    updateControlsEnabled();
+
+    if (trainingPopulationPanel_) {
+        trainingPopulationPanel_->setEvolutionStarted(started);
+    }
+}
+
+void TrainingConfigPanel::setEvolutionCompleted()
+{
+    evolutionStarted_ = false;
+    evolutionCompleted_ = true;
+    updateControlsEnabled();
+
+    if (trainingPopulationPanel_) {
+        trainingPopulationPanel_->setEvolutionCompleted();
+    }
+}
+
+void TrainingConfigPanel::showView(View view)
+{
+    currentView_ = view;
+    if (view == View::None) {
+        setRightColumnVisible(false);
+        return;
+    }
+
+    setRightColumnVisible(true);
+
+    if (evolutionView_) {
+        if (view == View::Evolution) {
+            lv_obj_clear_flag(evolutionView_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(evolutionView_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(evolutionView_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(evolutionView_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+
+    if (populationView_) {
+        if (view == View::Population) {
+            lv_obj_clear_flag(populationView_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(populationView_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(populationView_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(populationView_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+}
+
+void TrainingConfigPanel::createLayout()
+{
+    lv_obj_t* columns = lv_obj_create(container_);
+    lv_obj_set_size(columns, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(columns, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(columns, 0, 0);
+    lv_obj_set_style_pad_all(columns, 0, 0);
+    lv_obj_set_style_pad_column(columns, 12, 0);
+    lv_obj_set_style_pad_row(columns, 0, 0);
+    lv_obj_set_flex_flow(columns, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(columns, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(columns, LV_OBJ_FLAG_SCROLLABLE);
+
+    createLeftColumn(columns);
+    createRightColumn(columns);
+}
+
+void TrainingConfigPanel::createLeftColumn(lv_obj_t* parent)
+{
+    leftColumn_ = lv_obj_create(parent);
+    lv_obj_set_size(leftColumn_, leftColumnWidth_, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(leftColumn_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(leftColumn_, 0, 0);
+    lv_obj_set_style_pad_all(leftColumn_, 0, 0);
+    lv_obj_set_style_pad_row(leftColumn_, 10, 0);
+    lv_obj_set_flex_flow(leftColumn_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        leftColumn_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(leftColumn_, LV_OBJ_FLAG_SCROLLABLE);
+
+    startButton_ = LVGLBuilder::actionButton(leftColumn_)
+                       .text("Start")
+                       .icon(LV_SYMBOL_PLAY)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .width(140)
+                       .height(80)
+                       .backgroundColor(0x00AA66)
+                       .callback(onStartClicked, this)
+                       .buildOrLog();
+
+    lv_obj_t* configsLabel = lv_label_create(leftColumn_);
+    lv_label_set_text(configsLabel, "Configs");
+    lv_obj_set_style_text_color(configsLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_text_font(configsLabel, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_pad_top(configsLabel, 6, 0);
+    lv_obj_set_style_pad_bottom(configsLabel, 2, 0);
+
+    evolutionButton_ = LVGLBuilder::actionButton(leftColumn_)
+                           .text("Evolution")
+                           .icon(LV_SYMBOL_RIGHT)
+                           .width(140)
+                           .height(LVGLBuilder::Style::ACTION_SIZE)
+                           .layoutRow()
+                           .alignLeft()
+                           .callback(onEvolutionSelected, this)
+                           .buildOrLog();
+
+    populationButton_ = LVGLBuilder::actionButton(leftColumn_)
+                            .text("Population")
+                            .icon(LV_SYMBOL_RIGHT)
+                            .width(140)
+                            .height(LVGLBuilder::Style::ACTION_SIZE)
+                            .layoutRow()
+                            .alignLeft()
+                            .callback(onPopulationSelected, this)
+                            .buildOrLog();
+}
+
+void TrainingConfigPanel::createRightColumn(lv_obj_t* parent)
+{
+    rightColumn_ = lv_obj_create(parent);
+    lv_obj_set_size(rightColumn_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(rightColumn_, 1);
+    lv_obj_set_style_bg_opa(rightColumn_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(rightColumn_, 0, 0);
+    lv_obj_set_style_pad_all(rightColumn_, 0, 0);
+    lv_obj_set_style_pad_row(rightColumn_, 8, 0);
+    lv_obj_set_flex_flow(rightColumn_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        rightColumn_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(rightColumn_, LV_OBJ_FLAG_SCROLLABLE);
+
+    evolutionView_ = lv_obj_create(rightColumn_);
+    lv_obj_set_size(evolutionView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(evolutionView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(evolutionView_, 0, 0);
+    lv_obj_set_style_pad_all(evolutionView_, 0, 0);
+    lv_obj_set_style_pad_row(evolutionView_, 8, 0);
+    lv_obj_set_flex_flow(evolutionView_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        evolutionView_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(evolutionView_, LV_OBJ_FLAG_SCROLLABLE);
+
+    populationView_ = lv_obj_create(rightColumn_);
+    lv_obj_set_size(populationView_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(populationView_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(populationView_, 0, 0);
+    lv_obj_set_style_pad_all(populationView_, 0, 0);
+    lv_obj_set_style_pad_row(populationView_, 8, 0);
+    lv_obj_set_flex_flow(populationView_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        populationView_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(populationView_, LV_OBJ_FLAG_SCROLLABLE);
+
+    createEvolutionView(evolutionView_);
+    createPopulationView(populationView_);
+}
+
+void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
+{
+    lv_obj_t* titleLabel = lv_label_create(parent);
+    lv_label_set_text(titleLabel, "Evolution Config");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xDA70D6), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_pad_top(titleLabel, 8, 0);
+    lv_obj_set_style_pad_bottom(titleLabel, 8, 0);
+
+    populationStepper_ = LVGLBuilder::actionStepper(parent)
+                             .label("Population")
+                             .range(10, 200)
+                             .step(10)
+                             .value(evolutionConfig_.populationSize)
+                             .valueFormat("%.0f")
+                             .valueScale(1.0)
+                             .width(LV_PCT(95))
+                             .callback(onPopulationChanged, this)
+                             .buildOrLog();
+
+    const int32_t initialGenerations = evolutionConfig_.maxGenerations;
+    generationsStepper_ = LVGLBuilder::actionStepper(parent)
+                              .label("Generations")
+                              .range(1, 1000)
+                              .step(initialGenerations <= 10 ? 1 : 10)
+                              .value(initialGenerations)
+                              .valueFormat("%.0f")
+                              .valueScale(1.0)
+                              .width(LV_PCT(95))
+                              .callback(onGenerationsChanged, this)
+                              .buildOrLog();
+
+    mutationRateStepper_ = LVGLBuilder::actionStepper(parent)
+                               .label("Mutation Rate")
+                               .range(0, 200)
+                               .step(1)
+                               .value(static_cast<int32_t>(mutationConfig_.rate * 1000.0))
+                               .valueFormat("%.1f%%")
+                               .valueScale(0.1)
+                               .width(LV_PCT(95))
+                               .callback(onMutationRateChanged, this)
+                               .buildOrLog();
+
+    tournamentSizeStepper_ = LVGLBuilder::actionStepper(parent)
+                                 .label("Tournament Size")
+                                 .range(2, 10)
+                                 .step(1)
+                                 .value(evolutionConfig_.tournamentSize)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(95))
+                                 .callback(onTournamentSizeChanged, this)
+                                 .buildOrLog();
+
+    maxSimTimeStepper_ = LVGLBuilder::actionStepper(parent)
+                             .label("Max Sim Time (s)")
+                             .range(10, 1800)
+                             .step(30)
+                             .value(static_cast<int32_t>(evolutionConfig_.maxSimulationTime))
+                             .valueFormat("%.0f")
+                             .valueScale(1.0)
+                             .width(LV_PCT(95))
+                             .callback(onMaxSimTimeChanged, this)
+                             .buildOrLog();
+
+    statusLabel_ = lv_label_create(parent);
+    lv_label_set_text(statusLabel_, "");
+    lv_obj_set_style_text_color(statusLabel_, lv_color_hex(kStatusReadyColor), 0);
+    lv_obj_set_style_text_font(statusLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_pad_top(statusLabel_, 8, 0);
+}
+
+void TrainingConfigPanel::createPopulationView(lv_obj_t* parent)
+{
+    trainingPopulationPanel_ = std::make_unique<TrainingPopulationPanel>(
+        parent, eventSink_, evolutionStarted_, evolutionConfig_, trainingSpec_);
+}
+
+void TrainingConfigPanel::setRightColumnVisible(bool visible)
+{
+    if (!rightColumn_) {
+        return;
+    }
+
+    if (visible) {
+        lv_obj_clear_flag(rightColumn_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(rightColumn_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        if (panel_) {
+            panel_->setWidth(expandedWidth_);
+        }
+        if (leftColumn_) {
+            lv_obj_set_width(leftColumn_, leftColumnWidth_);
+        }
+    }
+    else {
+        lv_obj_add_flag(rightColumn_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(rightColumn_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        if (panel_) {
+            panel_->setWidth(collapsedWidth_);
+        }
+        if (leftColumn_) {
+            lv_obj_set_width(leftColumn_, LV_PCT(100));
+        }
+    }
+}
+
+void TrainingConfigPanel::updateControlsEnabled()
+{
+    auto setEnabled = [](lv_obj_t* control, bool enabled) {
+        if (!control) return;
+        if (enabled) {
+            lv_obj_clear_state(control, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(control, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_state(control, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(control, LV_OPA_50, 0);
+        }
+    };
+
+    const bool enabled = !evolutionStarted_;
+    setEnabled(evolutionButton_, enabled);
+    setEnabled(populationButton_, enabled);
+    setEnabled(populationStepper_, enabled);
+    setEnabled(generationsStepper_, enabled);
+    setEnabled(mutationRateStepper_, enabled);
+    setEnabled(tournamentSizeStepper_, enabled);
+    setEnabled(maxSimTimeStepper_, enabled);
+
+    if (startButton_) {
+        if (evolutionStarted_) {
+            lv_obj_add_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+        else {
+            lv_obj_clear_flag(startButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (evolutionStarted_) {
+        updateStatusLabel("Training in progress...", lv_color_hex(kStatusReadyColor));
+    }
+    else if (evolutionCompleted_) {
+        updateStatusLabel("Complete!", lv_color_hex(kStatusCompleteColor));
+    }
+    else {
+        updateStatusLabel("", lv_color_hex(kStatusReadyColor));
+    }
+}
+
+void TrainingConfigPanel::updateGenerationsStep(int32_t value)
+{
+    const int32_t step = value <= 10 ? 1 : 10;
+    LVGLBuilder::ActionStepperBuilder::setStep(generationsStepper_, step);
+}
+
+void TrainingConfigPanel::updateStatusLabel(const char* text, lv_color_t color)
+{
+    if (!statusLabel_) {
+        return;
+    }
+
+    lv_label_set_text(statusLabel_, text);
+    lv_obj_set_style_text_color(statusLabel_, color, 0);
+}
+
+void TrainingConfigPanel::onStartClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self) return;
+
+    StartEvolutionButtonClickedEvent evt;
+    evt.evolution = self->evolutionConfig_;
+    evt.mutation = self->mutationConfig_;
+    evt.training = self->trainingSpec_;
+    self->eventSink_.queueEvent(evt);
+}
+
+void TrainingConfigPanel::onEvolutionSelected(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self) return;
+    self->showView(View::Evolution);
+}
+
+void TrainingConfigPanel::onPopulationSelected(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self) return;
+    self->showView(View::Population);
+}
+
+void TrainingConfigPanel::onPopulationChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->populationStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->populationStepper_);
+    self->evolutionConfig_.populationSize = value;
+    if (self->trainingSpec_.population.size() > 2) {
+        self->trainingSpec_.population.resize(2);
+    }
+
+    auto totalPopulation = [](const TrainingSpec& spec) {
+        int total = 0;
+        for (const auto& entry : spec.population) {
+            total += entry.count;
+        }
+        return total;
+    };
+
+    auto normalizeEntry = [](PopulationSpec& spec) {
+        const bool requiresGenome = (spec.brainKind == TrainingBrainKind::NeuralNet);
+        if (!requiresGenome) {
+            spec.seedGenomes.clear();
+            spec.randomCount = 0;
+            return;
+        }
+        if (static_cast<int>(spec.seedGenomes.size()) > spec.count) {
+            spec.seedGenomes.resize(spec.count);
+        }
+        spec.randomCount = spec.count - static_cast<int>(spec.seedGenomes.size());
+    };
+
+    auto ensureDefaultPopulation = [&](TrainingSpec& spec, int desiredTotal) {
+        if (!spec.population.empty()) {
+            return;
+        }
+        PopulationSpec entry;
+        switch (spec.organismType) {
+            case OrganismType::TREE:
+                entry.brainKind = TrainingBrainKind::NeuralNet;
+                break;
+            case OrganismType::DUCK:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+            case OrganismType::GOOSE:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+            default:
+                entry.brainKind = TrainingBrainKind::Random;
+                break;
+        }
+        entry.count = desiredTotal;
+        normalizeEntry(entry);
+        spec.population.push_back(entry);
+    };
+
+    ensureDefaultPopulation(self->trainingSpec_, value);
+
+    const int currentTotal = totalPopulation(self->trainingSpec_);
+    const int delta = value - currentTotal;
+    if (delta != 0) {
+        PopulationSpec& primary = self->trainingSpec_.population[0];
+        if (delta > 0) {
+            primary.count += delta;
+        }
+        else {
+            int remaining = -delta;
+            const int minPrimary = 10;
+            const int reducible = std::max(0, primary.count - minPrimary);
+            const int reducePrimary = std::min(reducible, remaining);
+            primary.count -= reducePrimary;
+            remaining -= reducePrimary;
+            if (remaining > 0 && self->trainingSpec_.population.size() > 1) {
+                PopulationSpec& secondary = self->trainingSpec_.population[1];
+                secondary.count = std::max(0, secondary.count - remaining);
+                if (secondary.count == 0) {
+                    self->trainingSpec_.population.pop_back();
+                }
+            }
+        }
+    }
+
+    for (auto& entry : self->trainingSpec_.population) {
+        normalizeEntry(entry);
+    }
+}
+
+void TrainingConfigPanel::onGenerationsChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->generationsStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->generationsStepper_);
+    self->evolutionConfig_.maxGenerations = value;
+    self->updateGenerationsStep(value);
+}
+
+void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationRateStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRateStepper_);
+    self->mutationConfig_.rate = value / 1000.0;
+}
+
+void TrainingConfigPanel::onTournamentSizeChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->tournamentSizeStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->tournamentSizeStepper_);
+    self->evolutionConfig_.tournamentSize = value;
+}
+
+void TrainingConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->maxSimTimeStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->maxSimTimeStepper_);
+    self->evolutionConfig_.maxSimulationTime = static_cast<double>(value);
+}
+
+} // namespace Ui
+} // namespace DirtSim

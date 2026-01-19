@@ -2465,6 +2465,15 @@ void LVGLBuilder::ActionStepperBuilder::setValue(lv_obj_t* container, int32_t va
     lv_label_set_text(state->valueLabel, buf);
 }
 
+void LVGLBuilder::ActionStepperBuilder::setStep(lv_obj_t* container, int32_t stepSize)
+{
+    auto* state = getStepperStateFromContainer(container);
+    if (!state) return;
+    if (stepSize <= 0) return;
+
+    state->step = stepSize;
+}
+
 LVGLBuilder::ActionStepperBuilder LVGLBuilder::actionStepper(lv_obj_t* parent)
 {
     return ActionStepperBuilder(parent);

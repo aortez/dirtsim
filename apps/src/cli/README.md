@@ -142,6 +142,7 @@ Run a minimal UI/server workflow check against a running system:
 # Default local ports (UI: 7070, server: 8080).
 ./build-debug/bin/cli functional-test canExit
 ./build-debug/bin/cli functional-test canTrain
+./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 
 # Remote.
 ./build-debug/bin/cli functional-test canExit \
@@ -155,6 +156,7 @@ Run a minimal UI/server workflow check against a running system:
 - Drives UI back to StartMenu if needed (SimStop).
 - Sends UI Exit.
 - For canTrain: runs EvolutionStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
+- For canSetGenerationsAndTrain: runs EvolutionStart with max_generations=2, verifies the training result reports the expected completed/max generations.
 
 ### Network Mode
 

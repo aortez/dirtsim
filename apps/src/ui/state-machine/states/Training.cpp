@@ -38,7 +38,7 @@ void Training::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION, IconId::POPULATION });
+    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION });
     iconRail->deselectAll(); // Start fresh, no panel open.
 }
 
@@ -148,12 +148,11 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             break;
 
         case IconId::EVOLUTION:
-            view_->createEvolutionConfigPanel();
+            view_->createTrainingConfigPanel();
             panel->show();
             break;
         case IconId::POPULATION:
-            view_->createTrainingPopulationPanel();
-            panel->show();
+            LOG_INFO(State, "Population icon ignored in Training (merged into config panel)");
             break;
 
         case IconId::TREE:

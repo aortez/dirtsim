@@ -652,6 +652,7 @@ public:
         // Runtime helpers.
         static int32_t getValue(lv_obj_t* container);
         static void setValue(lv_obj_t* container, int32_t value);
+        static void setStep(lv_obj_t* container, int32_t stepSize);
 
     private:
         lv_obj_t* parent_;
