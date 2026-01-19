@@ -69,7 +69,6 @@ Result<std::vector<BrowserPanel::Item>, std::string> TrainingResultBrowserPanel:
     const auto& ok = response.value().value();
     items.reserve(ok.results.size());
     for (const auto& entry : ok.results) {
-        summaries_[entry.summary.trainingSessionId] = entry.summary;
         BrowserPanel::Item item;
         item.id = entry.summary.trainingSessionId;
         item.label = formatListLabel(entry);
