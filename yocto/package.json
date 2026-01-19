@@ -9,6 +9,7 @@
     "docker-build": "node scripts/docker-build.mjs",
     "deploy": "node scripts/deploy-apps.mjs",
     "flash": "node scripts/flash.mjs",
+    "runtime-image": "node scripts/runtime-image.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
     "update": "node scripts/update.mjs",
     "yolo": "node scripts/yolo-update.mjs"

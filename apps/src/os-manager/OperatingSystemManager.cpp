@@ -1,4 +1,5 @@
 #include "OperatingSystemManager.h"
+#include "cli/SubprocessManager.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
 #include "core/network/BinaryProtocol.h"
@@ -9,7 +10,10 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <nlohmann/json.hpp>
+#include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <sys/reboot.h>
 #include <sys/statvfs.h>
@@ -28,9 +32,288 @@ Result<std::monostate, ApiError> makeMissingDependencyError(const std::string& n
 {
     return Result<std::monostate, ApiError>::error(ApiError("Missing dependency for " + name));
 }
+
+std::string getEnvValue(const char* name)
+{
+    const char* value = std::getenv(name);
+    if (!value || value[0] == '\0') {
+        return "";
+    }
+    return value;
+}
+
+std::optional<OperatingSystemManager::BackendType> parseBackendType(const std::string& value)
+{
+    if (value == "systemd") {
+        return OperatingSystemManager::BackendType::Systemd;
+    }
+    if (value == "local") {
+        return OperatingSystemManager::BackendType::LocalProcess;
+    }
+    return std::nullopt;
+}
+
+std::string resolveBinaryPath(const std::string& overridePath, const std::string& binaryName)
+{
+    if (!overridePath.empty()) {
+        return overridePath;
+    }
+
+    std::error_code error;
+    const auto exePath = std::filesystem::read_symlink("/proc/self/exe", error);
+    if (!error) {
+        const auto sibling = exePath.parent_path() / binaryName;
+        if (std::filesystem::exists(sibling, error) && !error) {
+            return sibling.string();
+        }
+    }
+
+    const std::string usrPath = "/usr/bin/" + binaryName;
+    if (std::filesystem::exists(usrPath, error) && !error) {
+        return usrPath;
+    }
+
+    return "";
+}
+
+std::string resolveUiDisplay(const std::string& overrideDisplay)
+{
+    if (!overrideDisplay.empty()) {
+        return overrideDisplay;
+    }
+
+    const auto display = getEnvValue("DISPLAY");
+    if (!display.empty()) {
+        return display;
+    }
+
+    return ":99";
+}
+
+std::string resolveServerPort(const std::string& serverArgs)
+{
+    if (serverArgs.empty()) {
+        return "8080";
+    }
+
+    std::istringstream iss(serverArgs);
+    std::string token;
+    while (iss >> token) {
+        if (token == "-p" || token == "--port") {
+            std::string port;
+            if (iss >> port) {
+                return port;
+            }
+        }
+        if (token.rfind("-p", 0) == 0 && token.size() > 2) {
+            return token.substr(2);
+        }
+        if (token.rfind("--port=", 0) == 0 && token.size() > 7) {
+            return token.substr(7);
+        }
+    }
+
+    return "8080";
+}
+
+std::string resolveUiArgs(
+    const std::string& overrideArgs, const std::string& backend, const std::string& serverPort)
+{
+    if (!overrideArgs.empty()) {
+        return overrideArgs;
+    }
+
+    return "-b " + backend + " --connect localhost:" + serverPort;
+}
+
+std::string resolveWorkDir(const std::string& overrideDir)
+{
+    if (!overrideDir.empty()) {
+        return overrideDir;
+    }
+
+    std::error_code error;
+    const std::filesystem::path dataRoot("/data");
+    if (std::filesystem::exists(dataRoot, error) && !error) {
+        const auto dataDir = dataRoot / "dirtsim";
+        std::filesystem::create_directories(dataDir, error);
+        if (!error) {
+            return dataDir.string();
+        }
+    }
+
+    const auto homeDir = getEnvValue("HOME");
+    if (!homeDir.empty()) {
+        return (std::filesystem::path(homeDir) / ".dirtsim").string();
+    }
+
+    return "/tmp/dirtsim";
+}
 } // namespace
 
+class LocalProcessBackend {
+public:
+    struct Config {
+        std::string serverPath;
+        std::string serverArgs;
+        std::string uiPath;
+        std::string uiArgs;
+        std::string uiDisplay;
+        std::string workDir;
+    };
+
+    explicit LocalProcessBackend(const Config& config) : config_(config) {}
+
+    Result<std::monostate, ApiError> runCommand(
+        const std::string& action, const std::string& unitName)
+    {
+        const auto service = resolveService(unitName);
+        if (!service.has_value()) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Unknown service: " + unitName));
+        }
+
+        if (action == "start") {
+            return startService(service.value());
+        }
+        if (action == "stop") {
+            return stopService(service.value());
+        }
+        if (action == "restart") {
+            return restartService(service.value());
+        }
+
+        return Result<std::monostate, ApiError>::error(ApiError("Unknown action: " + action));
+    }
+
+    void poll()
+    {
+        subprocessManager_.isServerRunning();
+        subprocessManager_.isUIRunning();
+    }
+
+private:
+    enum class Service {
+        Server,
+        Ui,
+    };
+
+    std::optional<Service> resolveService(const std::string& unitName) const
+    {
+        if (unitName == "dirtsim-server.service" || unitName == "dirtsim-server") {
+            return Service::Server;
+        }
+        if (unitName == "dirtsim-ui.service" || unitName == "dirtsim-ui") {
+            return Service::Ui;
+        }
+        return std::nullopt;
+    }
+
+    bool ensureWorkDir(std::string& errorMessage)
+    {
+        if (config_.workDir.empty()) {
+            return true;
+        }
+
+        std::error_code error;
+        std::filesystem::create_directories(config_.workDir, error);
+        if (!error) {
+            return true;
+        }
+
+        errorMessage = "Failed to create work dir " + config_.workDir + ": " + error.message();
+        return false;
+    }
+
+    Result<std::monostate, ApiError> startService(Service service)
+    {
+        if (service == Service::Server && config_.serverPath.empty()) {
+            return Result<std::monostate, ApiError>::error(ApiError("Server binary not found"));
+        }
+        if (service == Service::Ui && config_.uiPath.empty()) {
+            return Result<std::monostate, ApiError>::error(ApiError("UI binary not found"));
+        }
+
+        std::string errorMessage;
+        if (!ensureWorkDir(errorMessage)) {
+            return Result<std::monostate, ApiError>::error(ApiError(errorMessage));
+        }
+
+        if (service == Service::Server) {
+            if (subprocessManager_.isServerRunning()) {
+                LOG_INFO(State, "Server already running");
+                return Result<std::monostate, ApiError>::okay(std::monostate{});
+            }
+
+            Client::SubprocessManager::ProcessOptions options;
+            options.workingDirectory = config_.workDir;
+
+            if (!subprocessManager_.launchServer(config_.serverPath, config_.serverArgs, options)) {
+                return Result<std::monostate, ApiError>::error(
+                    ApiError("Failed to launch server process"));
+            }
+
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+
+        if (subprocessManager_.isUIRunning()) {
+            LOG_INFO(State, "UI already running");
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+
+        Client::SubprocessManager::ProcessOptions options;
+        options.workingDirectory = config_.workDir;
+        if (!config_.uiDisplay.empty()) {
+            options.environmentOverrides.emplace_back("DISPLAY", config_.uiDisplay);
+        }
+
+        if (!subprocessManager_.launchUI(config_.uiPath, config_.uiArgs, options)) {
+            return Result<std::monostate, ApiError>::error(ApiError("Failed to launch UI process"));
+        }
+
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    }
+
+    Result<std::monostate, ApiError> stopService(Service service)
+    {
+        if (service == Service::Server) {
+            if (!subprocessManager_.isServerRunning()) {
+                LOG_INFO(State, "Server already stopped");
+                return Result<std::monostate, ApiError>::okay(std::monostate{});
+            }
+            subprocessManager_.killServer();
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+
+        if (!subprocessManager_.isUIRunning()) {
+            LOG_INFO(State, "UI already stopped");
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+        subprocessManager_.killUI();
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    }
+
+    Result<std::monostate, ApiError> restartService(Service service)
+    {
+        auto stopResult = stopService(service);
+        if (stopResult.isError()) {
+            return stopResult;
+        }
+        return startService(service);
+    }
+
+    Config config_;
+    Client::SubprocessManager subprocessManager_;
+};
+
 OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
+{
+    initializeDefaultDependencies();
+    setupWebSocketService();
+}
+
+OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfig& backendConfig)
+    : port_(port), backendConfig_(backendConfig)
 {
     initializeDefaultDependencies();
     setupWebSocketService();
@@ -52,6 +335,31 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
     if (!dependencies_.reboot) {
         dependencies_.reboot = [] {};
     }
+}
+
+OperatingSystemManager::~OperatingSystemManager() = default;
+
+OperatingSystemManager::BackendConfig OperatingSystemManager::BackendConfig::fromEnvironment()
+{
+    BackendConfig config;
+
+    const auto backendValue = getEnvValue("DIRTSIM_OS_BACKEND");
+    if (!backendValue.empty()) {
+        const auto backend = parseBackendType(backendValue);
+        if (backend.has_value()) {
+            config.type = backend.value();
+        }
+    }
+
+    config.serverPath = getEnvValue("DIRTSIM_SERVER_PATH");
+    config.serverArgs = getEnvValue("DIRTSIM_SERVER_ARGS");
+    config.uiPath = getEnvValue("DIRTSIM_UI_PATH");
+    config.uiArgs = getEnvValue("DIRTSIM_UI_ARGS");
+    config.uiBackend = getEnvValue("DIRTSIM_UI_BACKEND");
+    config.uiDisplay = getEnvValue("DIRTSIM_UI_DISPLAY");
+    config.workDir = getEnvValue("DIRTSIM_WORKDIR");
+
+    return config;
 }
 
 Result<std::monostate, std::string> OperatingSystemManager::start()
@@ -102,6 +410,9 @@ void OperatingSystemManager::queueEvent(const Event& event)
 void OperatingSystemManager::processEvents()
 {
     eventProcessor_.processEventsFromQueue(*this);
+    if (localBackend_) {
+        localBackend_->poll();
+    }
 }
 
 std::string OperatingSystemManager::getCurrentStateName() const
@@ -412,8 +723,39 @@ void OperatingSystemManager::transitionTo(State::Any newState)
     }
 }
 
+static LocalProcessBackend::Config resolveLocalProcessConfig(
+    const OperatingSystemManager::BackendConfig& backendConfig)
+{
+    LocalProcessBackend::Config config;
+    config.serverPath = resolveBinaryPath(backendConfig.serverPath, "dirtsim-server");
+    config.uiPath = resolveBinaryPath(backendConfig.uiPath, "dirtsim-ui");
+    config.serverArgs = backendConfig.serverArgs.empty() ? "-p 8080" : backendConfig.serverArgs;
+
+    const std::string uiBackend = backendConfig.uiBackend.empty() ? "x11" : backendConfig.uiBackend;
+    const auto serverPort = resolveServerPort(config.serverArgs);
+    config.uiArgs = resolveUiArgs(backendConfig.uiArgs, uiBackend, serverPort);
+    config.uiDisplay = resolveUiDisplay(backendConfig.uiDisplay);
+    config.workDir = resolveWorkDir(backendConfig.workDir);
+
+    return config;
+}
+
 void OperatingSystemManager::initializeDefaultDependencies()
 {
+    if (backendConfig_.type == BackendType::LocalProcess) {
+        auto config = resolveLocalProcessConfig(backendConfig_);
+        localBackend_ = std::make_unique<LocalProcessBackend>(config);
+
+        LOG_INFO(State, "Using local process backend");
+        dependencies_.serviceCommand =
+            [this](const std::string& action, const std::string& unitName) {
+                return localBackend_->runCommand(action, unitName);
+            };
+        dependencies_.systemStatus = [this]() { return buildSystemStatusInternal(); };
+        dependencies_.reboot = [] { LOG_WARN(State, "Reboot requested in local backend"); };
+        return;
+    }
+
     dependencies_.systemCommand = [](const std::string& command) {
         return std::system(command.c_str());
     };

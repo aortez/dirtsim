@@ -552,6 +552,7 @@ add_custom_target (run-server COMMAND ${EXECUTABLE_OUTPUT_PATH}/dirtsim-server D
 
 # OS manager executable (privileged system control).
 add_executable(dirtsim-os-manager
+    src/cli/SubprocessManager.cpp
     src/os-manager/main.cpp
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
@@ -627,6 +628,7 @@ add_executable(dirtsim-tests
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp
     src/os-manager/states/Startup.cpp
+    src/cli/SubprocessManager.cpp
     src/tests/BinaryProtocol_test.cpp
     src/tests/BresenhamLine_test.cpp
     src/tests/Buoyancy_test.cpp

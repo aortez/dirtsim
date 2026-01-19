@@ -121,6 +121,38 @@ cd yocto
 npm run docker-build
 ```
 
+### x86 Runtime Container (CI)
+
+Nightly CI builds an x86_64 Yocto rootfs and packages it as a Docker runtime image
+for fast PR integration checks. The KAS config is `kas-dirtsim-x86.yml`, and the
+runtime Dockerfile lives in `yocto/runtime/`.
+
+The runtime entrypoint starts Xvfb (X11) by default, ensures `/data/dirtsim`
+exists, and seeds fonts from `/usr/share/dirtsim/fonts` when needed. Useful
+environment overrides:
+
+- `DIRTSIM_OS_BACKEND=local` (os-manager local process backend)
+- `DIRTSIM_UI_ARGS` / `DIRTSIM_UI_BACKEND` (UI launch args / backend)
+- `DIRTSIM_UI_DISPLAY` (X11 display, default `:99`)
+- `DIRTSIM_WORKDIR` (default `/data/dirtsim`)
+- `DIRTSIM_XVFB_SCREEN` (default `1280x720x24`)
+
+Local build example:
+
+```bash
+cd yocto
+npm run runtime-image
+```
+
+Publish to a local registry (oldman-desktop.local):
+
+```bash
+cd yocto
+npm run runtime-image -- --build --publish --ensure-registry \
+  --registry oldman-desktop.local:5000 \
+  --registry-data-dir /data/dirtsim-registry
+```
+
 Useful options:
 - `npm run docker-build -- --clean` to force a rebuild of the image sstate.
 - `npm run docker-build -- --shell` to open an interactive shell in the container.

@@ -13,6 +13,7 @@ import { colors, error, info, log, success, warn } from '../pi-base/scripts/lib/
 import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
 
 const DEFAULT_CONFIG = 'kas-dirtsim.yml';
+const DEFAULT_IMAGE_TARGET = 'dirtsim-image';
 
 function showHelp() {
   log('Usage: npm run docker-build [options]');
@@ -22,6 +23,8 @@ function showHelp() {
   log('Options:');
   log('  --clean            Clean dirtsim-image sstate before build');
   log('  --clean-all        Clean dirtsim-server + dirtsim-image sstate');
+  log('  --config           KAS config file (default: kas-dirtsim.yml)');
+  log('  --image-target     Image target for cleansstate (default: dirtsim-image)');
   log('  --shell            Start an interactive shell in the container');
   log('  --rebuild-image    Force rebuild of the Docker image');
   log('  --skip-image-build Skip Docker image build if it already exists');
@@ -29,23 +32,29 @@ function showHelp() {
   log('  -h, --help         Show this help');
 }
 
-async function runKasBuild(cleanMode, imageRef, tty) {
+async function runKasBuild(cleanMode, imageRef, tty, kasConfig, imageTarget) {
   if (cleanMode === 'clean') {
-    info('Cleaning dirtsim-image sstate...');
+    info(`Cleaning ${imageTarget} sstate...`);
     await runInYoctoDocker(
-      ['kas', 'shell', DEFAULT_CONFIG, '-c', 'bitbake -c cleansstate dirtsim-image'],
+      ['kas', 'shell', kasConfig, '-c', `bitbake -c cleansstate ${imageTarget}`],
       { imageRef, tty }
     );
   } else if (cleanMode === 'clean-all') {
-    info('Cleaning dirtsim-server and dirtsim-image sstate...');
+    info(`Cleaning dirtsim-server and ${imageTarget} sstate...`);
     await runInYoctoDocker(
-      ['kas', 'shell', DEFAULT_CONFIG, '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image'],
+      [
+        'kas',
+        'shell',
+        kasConfig,
+        '-c',
+        `bitbake -c cleansstate dirtsim-server ${imageTarget}`,
+      ],
       { imageRef, tty }
     );
   }
 
-  info('Building dirtsim-image...');
-  await runInYoctoDocker(['kas', 'build', DEFAULT_CONFIG], { imageRef, tty });
+  info(`Building ${imageTarget}...`);
+  await runInYoctoDocker(['kas', 'build', kasConfig], { imageRef, tty });
 }
 
 async function main() {
@@ -56,6 +65,8 @@ async function main() {
   const rebuildImage = args.includes('--rebuild-image');
   const skipImageBuild = args.includes('--skip-image-build');
   const noTty = args.includes('--no-tty');
+  const configIndex = args.indexOf('--config');
+  const imageTargetIndex = args.indexOf('--image-target');
 
   if (args.includes('-h') || args.includes('--help')) {
     showHelp();
@@ -88,8 +99,26 @@ async function main() {
     return;
   }
 
+  let kasConfig = DEFAULT_CONFIG;
+  if (configIndex >= 0) {
+    if (configIndex === args.length - 1) {
+      error('Missing value for --config.');
+      process.exit(1);
+    }
+    kasConfig = args[configIndex + 1];
+  }
+
+  let imageTarget = DEFAULT_IMAGE_TARGET;
+  if (imageTargetIndex >= 0) {
+    if (imageTargetIndex === args.length - 1) {
+      error('Missing value for --image-target.');
+      process.exit(1);
+    }
+    imageTarget = args[imageTargetIndex + 1];
+  }
+
   const cleanMode = cleanAll ? 'clean-all' : clean ? 'clean' : null;
-  await runKasBuild(cleanMode, imageRef, !noTty);
+  await runKasBuild(cleanMode, imageRef, !noTty, kasConfig, imageTarget);
 
   success('Docker Yocto build complete.');
 }
