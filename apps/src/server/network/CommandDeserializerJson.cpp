@@ -22,6 +22,7 @@
 #include "server/api/SpawnDirtBall.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"
+#include "server/api/TrainingResultDelete.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
@@ -139,6 +140,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TrainingResultDiscard::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultDiscard::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::TrainingResultDelete::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::TrainingResultDelete::Command::fromJson(cmd));
         }
         else if (commandName == Api::TrainingResultGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(

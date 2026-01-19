@@ -2,8 +2,10 @@
 #include "Event.h"
 #include "EventProcessor.h"
 #include "ServerConfig.h"
+#include "TrainingResultRepository.h"
 #include "api/PeersGet.h"
 #include "api/TrainingResult.h"
+#include "api/TrainingResultDelete.h"
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
@@ -66,6 +68,7 @@ struct StateMachine::Impl {
     EventProcessor eventProcessor_;
     std::unique_ptr<GamepadManager> gamepadManager_;
     GenomeRepository genomeRepository_;
+    TrainingResultRepository trainingResultRepository_;
     ScenarioRegistry scenarioRegistry_;
     SystemMetrics systemMetrics_;
     Timers timers_;
@@ -77,11 +80,11 @@ struct StateMachine::Impl {
     mutable std::mutex cachedWorldDataMutex_;
 
     std::vector<SubscribedClient> subscribedClients_;
-    std::vector<Api::TrainingResult> trainingResults_;
     mutable std::mutex trainingResultsMutex_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
         : genomeRepository_(initGenomeRepository(dataDir)),
+          trainingResultRepository_(initTrainingResultRepository(dataDir)),
           scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_))
     {}
 
@@ -94,6 +97,16 @@ private:
         auto dbPath = dir / "genomes.db";
         spdlog::info("GenomeRepository: Using database at {}", dbPath.string());
         return GenomeRepository(dbPath);
+    }
+
+    static TrainingResultRepository initTrainingResultRepository(
+        const std::optional<std::filesystem::path>& dataDir)
+    {
+        auto dir = dataDir.value_or(getDefaultDataDir());
+        std::filesystem::create_directories(dir);
+        auto dbPath = dir / "training_results.db";
+        spdlog::info("TrainingResultRepository: Using database at {}", dbPath.string());
+        return TrainingResultRepository(dbPath);
     }
 };
 
@@ -330,19 +343,10 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     });
 
     service.registerHandler<Api::TrainingResultList::Cwc>([this](Api::TrainingResultList::Cwc cwc) {
-        std::vector<Api::TrainingResult> snapshot;
+        Api::TrainingResultList::Okay response;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            snapshot = pImpl->trainingResults_;
-        }
-
-        Api::TrainingResultList::Okay response;
-        response.results.reserve(snapshot.size());
-        for (const auto& result : snapshot) {
-            Api::TrainingResultList::Entry entry;
-            entry.summary = result.summary;
-            entry.candidateCount = static_cast<int>(result.candidates.size());
-            response.results.push_back(std::move(entry));
+            response.results = pImpl->trainingResultRepository_.list();
         }
 
         cwc.sendResponse(Api::TrainingResultList::Response::okay(std::move(response)));
@@ -352,13 +356,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         std::optional<Api::TrainingResult> found;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            for (auto it = pImpl->trainingResults_.rbegin(); it != pImpl->trainingResults_.rend();
-                 ++it) {
-                if (it->summary.trainingSessionId == cwc.command.trainingSessionId) {
-                    found = *it;
-                    break;
-                }
-            }
+            found = pImpl->trainingResultRepository_.get(cwc.command.trainingSessionId);
         }
 
         if (!found.has_value()) {
@@ -432,6 +430,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultDiscard::Cwc>(
         [this](Api::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultDelete::Cwc>(
+        [this](Api::TrainingResultDelete::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultSave::Cwc>(
         [this](Api::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultSet::Cwc>(
@@ -513,19 +513,7 @@ const GenomeRepository& StateMachine::getGenomeRepository() const
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
 {
     std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-    auto it = std::find_if(
-        pImpl->trainingResults_.begin(),
-        pImpl->trainingResults_.end(),
-        [&result](const Api::TrainingResult& existing) {
-            return existing.summary.trainingSessionId == result.summary.trainingSessionId;
-        });
-
-    if (it != pImpl->trainingResults_.end()) {
-        *it = result;
-        return;
-    }
-
-    pImpl->trainingResults_.push_back(result);
+    pImpl->trainingResultRepository_.store(result);
 }
 
 void StateMachine::mainLoopRun()
@@ -784,6 +772,21 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
+    // Handle TrainingResultDelete globally (works in any state).
+    if (std::holds_alternative<Api::TrainingResultDelete::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::TrainingResultDelete::Cwc>(event.getVariant());
+        bool existed = false;
+        {
+            std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+            existed = pImpl->trainingResultRepository_.remove(cwc.command.trainingSessionId);
+        }
+
+        Api::TrainingResultDelete::Okay response;
+        response.success = existed;
+        cwc.sendResponse(Api::TrainingResultDelete::Response::okay(std::move(response)));
+        return;
+    }
+
     // Handle TrainingResultSet globally (works in any state).
     if (std::holds_alternative<Api::TrainingResultSet::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::TrainingResultSet::Cwc>(event.getVariant());
@@ -799,24 +802,19 @@ void StateMachine::handleEvent(const Event& event)
         bool rejected = false;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            auto it = std::find_if(
-                pImpl->trainingResults_.begin(),
-                pImpl->trainingResults_.end(),
-                [&result](const Api::TrainingResult& existing) {
-                    return existing.summary.trainingSessionId == result.summary.trainingSessionId;
-                });
-
-            if (it != pImpl->trainingResults_.end()) {
+            const bool exists =
+                pImpl->trainingResultRepository_.exists(result.summary.trainingSessionId);
+            if (exists) {
                 if (!cwc.command.overwrite) {
                     rejected = true;
                 }
                 else {
-                    *it = result;
                     overwritten = true;
                 }
             }
-            else {
-                pImpl->trainingResults_.push_back(result);
+
+            if (!rejected) {
+                pImpl->trainingResultRepository_.store(result);
             }
         }
 

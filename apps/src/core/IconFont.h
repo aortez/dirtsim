@@ -113,6 +113,9 @@ public:
     static constexpr const char* DOWNLOAD = "\xEF\x80\x99"; // U+F019
     static constexpr const char* UPLOAD = "\xEF\x82\x93";   // U+F093
 
+    // Files & Storage.
+    static constexpr const char* FILE_CABINET = "\xEF\x86\x87"; // U+F187 (box-archive).
+
     // Media.
     static constexpr const char* FILM = "\xEF\x80\x88";   // U+F008 (video/scenario)
     static constexpr const char* CAMERA = "\xEF\x80\xB0"; // U+F030
