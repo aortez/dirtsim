@@ -109,6 +109,22 @@ cd ~/actions-runner
 sudo ./svc.sh status
 ```
 
+## Local Docker Registry
+
+CI pulls the x86 runtime image from a local registry on the runner
+(`oldman-desktop.local:5000`). The registry is managed by systemd on the
+runner host.
+
+- Service: `dirtsim-registry.service` (`/etc/systemd/system/dirtsim-registry.service`).
+- Data path: `/home/data/linux1/dirtsim-registry` (mounted data disk).
+- CI expectation: registry is up; PR runs should fail if it is down.
+
+Common commands:
+```bash
+sudo systemctl status dirtsim-registry
+sudo systemctl restart dirtsim-registry
+```
+
 ### Stop Runner
 
 ```bash
