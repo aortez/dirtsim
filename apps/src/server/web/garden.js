@@ -18,6 +18,44 @@ function formatElapsed(ms) {
     return Math.floor(ms / 60000) + 'm ' + Math.floor((ms % 60000) / 1000) + 's';
 }
 
+function getResponsePayload(response) {
+    if (response && response.value !== undefined) {
+        return response.value;
+    }
+    return response;
+}
+
+function peerRoleToString(role) {
+    if (typeof role === 'string') {
+        return role;
+    }
+    if (role === 0) return 'physics';
+    if (role === 1) return 'ui';
+    return 'unknown';
+}
+
+function scenarioIdToString(id) {
+    if (typeof id === 'string') {
+        return id;
+    }
+    var names = [
+        'Benchmark',
+        'Clock',
+        'DamBreak',
+        'Empty',
+        'GooseTest',
+        'Lights',
+        'Raining',
+        'Sandbox',
+        'TreeGermination',
+        'WaterEqualization'
+    ];
+    if (typeof id === 'number' && id >= 0 && id < names.length) {
+        return names[id];
+    }
+    return String(id);
+}
+
 //=============================================================================
 // Debug Log
 //=============================================================================
@@ -319,6 +357,7 @@ function displayPeers(peers) {
 
     for (var j = 0; j < allPeers.length; j++) {
         var peer = allPeers[j];
+        peer.role = peerRoleToString(peer.role);
 
         // Reuse existing div if it exists (preserves video element!).
         var divId = 'peer-' + peer.host + '-' + peer.port;
@@ -413,15 +452,16 @@ function displayPeers(peers) {
 function queryStatus(peer) {
     var conn = (peer.port === 8080) ? serverConn : uiConn;
     conn.send('StatusGet', null, function(response) {
+        var payload = getResponsePayload(response);
         var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
         if (stateSpan) {
             var state = 'Unknown';
-            if (response.state) {
-                state = response.state;
-            } else if (response.value) {
-                if (response.value.scenario_id) {
-                    state = 'Running (' + response.value.scenario_id + ')';
-                } else if (response.value.width !== undefined) {
+            if (payload && payload.state) {
+                state = payload.state;
+            } else if (payload) {
+                if (payload.scenario_id !== undefined && payload.scenario_id !== null) {
+                    state = 'Running (' + scenarioIdToString(payload.scenario_id) + ')';
+                } else if (payload.width !== undefined) {
                     state = 'Idle';
                 }
             }
@@ -429,8 +469,8 @@ function queryStatus(peer) {
         }
 
         // Update health metrics.
-        var cpuPercent = response.cpu_percent || 0;
-        var memPercent = response.memory_percent || 0;
+        var cpuPercent = (payload && payload.cpu_percent !== undefined) ? payload.cpu_percent : 0;
+        var memPercent = (payload && payload.memory_percent !== undefined) ? payload.memory_percent : 0;
 
         var cpuFill = document.getElementById('cpu-' + peer.host + '-' + peer.port);
         var cpuVal = document.getElementById('cpu-val-' + peer.host + '-' + peer.port);
@@ -612,7 +652,8 @@ function startWebRtcStream() {
     uiConn.send('StreamStart', {
         clientId: webrtcClientId
     }, function(response) {
-        if (!response || !response.sdpOffer) {
+        var payload = getResponsePayload(response);
+        if (!payload || !payload.sdpOffer) {
             logDebug('WebRTC: No SDP offer in StreamStart response');
             updateStreamButton('Start Stream', true);
             updateVideoState('error');
@@ -620,8 +661,8 @@ function startWebRtcStream() {
             return;
         }
 
-        logDebug('WebRTC: Received offer in response (' + response.sdpOffer.length + ' bytes)');
-        var desc = new RTCSessionDescription({ type: 'offer', sdp: response.sdpOffer });
+        logDebug('WebRTC: Received offer in response (' + payload.sdpOffer.length + ' bytes)');
+        var desc = new RTCSessionDescription({ type: 'offer', sdp: payload.sdpOffer });
         peerConnection.setRemoteDescription(desc).then(function() {
             logDebug('WebRTC: Remote description (offer) set, creating answer');
             return peerConnection.createAnswer();

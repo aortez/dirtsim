@@ -12,6 +12,8 @@ nlohmann::json Command::toJson() const
 
 Command Command::fromJson(const nlohmann::json& j)
 {
+    j.at("clientId");
+    j.at("sdp");
     return ReflectSerializer::from_json<Command>(j);
 }
 

@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 
 #include <avahi-client/client.h>
@@ -251,44 +252,30 @@ struct PeerDiscovery::Impl {
     }
 };
 
-namespace {
-std::string peerRoleToString(PeerRole role)
-{
-    switch (role) {
-        case PeerRole::Physics:
-            return "physics";
-        case PeerRole::Ui:
-            return "ui";
-        case PeerRole::Unknown:
-            return "unknown";
-    }
-    return "unknown";
-}
-
-PeerRole stringToPeerRole(const std::string& value)
-{
-    if (value == "physics") {
-        return PeerRole::Physics;
-    }
-    if (value == "ui") {
-        return PeerRole::Ui;
-    }
-    return PeerRole::Unknown;
-}
-} // namespace
-
 void to_json(nlohmann::json& j, const PeerRole& role)
 {
-    j = peerRoleToString(role);
+    j = static_cast<int>(role);
 }
 
 void from_json(const nlohmann::json& j, PeerRole& role)
 {
-    if (!j.is_string()) {
-        role = PeerRole::Unknown;
-        return;
+    if (!j.is_number_integer()) {
+        throw std::runtime_error("Peer role must be an integer.");
     }
-    role = stringToPeerRole(j.get<std::string>());
+
+    switch (j.get<int>()) {
+        case static_cast<int>(PeerRole::Physics):
+            role = PeerRole::Physics;
+            return;
+        case static_cast<int>(PeerRole::Ui):
+            role = PeerRole::Ui;
+            return;
+        case static_cast<int>(PeerRole::Unknown):
+            role = PeerRole::Unknown;
+            return;
+    }
+
+    throw std::runtime_error("Invalid peer role value.");
 }
 
 void to_json(nlohmann::json& j, const PeerInfo& info)

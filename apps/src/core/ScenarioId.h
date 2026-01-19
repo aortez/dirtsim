@@ -7,6 +7,7 @@
  */
 
 #include <cstdint>
+#include <nlohmann/json.hpp>
 #include <optional>
 #include <string>
 
@@ -28,5 +29,8 @@ enum class EnumType : uint8_t {
 std::string toString(EnumType id);
 
 std::optional<EnumType> fromString(const std::string& str);
+
+void to_json(nlohmann::json& j, const EnumType& id);
+void from_json(const nlohmann::json& j, EnumType& id);
 
 } // namespace DirtSim::Scenario
