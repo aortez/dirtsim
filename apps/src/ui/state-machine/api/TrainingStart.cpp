@@ -1,9 +1,9 @@
-#include "GenomeGetBest.h"
+#include "TrainingStart.h"
 #include "core/ReflectSerializer.h"
 
 namespace DirtSim {
-namespace Api {
-namespace GenomeGetBest {
+namespace UiApi {
+namespace TrainingStart {
 
 nlohmann::json Command::toJson() const
 {
@@ -20,6 +20,11 @@ nlohmann::json Okay::toJson() const
     return ReflectSerializer::to_json(*this);
 }
 
-} // namespace GenomeGetBest
-} // namespace Api
+Okay Okay::fromJson(const nlohmann::json& j)
+{
+    return ReflectSerializer::from_json<Okay>(j);
+}
+
+} // namespace TrainingStart
+} // namespace UiApi
 } // namespace DirtSim

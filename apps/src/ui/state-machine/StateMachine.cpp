@@ -90,6 +90,8 @@ void StateMachine::setupWebSocketService()
     ws->registerHandler<UiApi::SimPause::Cwc>(
         [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingStart::Cwc>(
+        [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StateGet::Cwc>(
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
@@ -114,8 +116,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<Api::TrainingResultAvailable::Cwc>(
-        [this](Api::TrainingResultAvailable::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<Api::TrainingResult::Cwc>(
+        [this](Api::TrainingResult::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
     // Don't set it here or it will overwrite that handler!

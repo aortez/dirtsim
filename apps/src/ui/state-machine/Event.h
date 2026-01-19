@@ -24,7 +24,8 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionProgress.h"
-#include "server/api/TrainingResultAvailable.h"
+#include "server/api/TrainingResult.h"
+#include "ui/state-machine/api/TrainingStart.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -174,14 +175,6 @@ struct EvolutionProgressReceivedEvent {
     static constexpr const char* name() { return "EvolutionProgressReceivedEvent"; }
 };
 
-/**
- * @brief Training results received from server after evolution completes.
- */
-struct TrainingResultAvailableReceivedEvent {
-    Api::TrainingResultAvailable result;
-    static constexpr const char* name() { return "TrainingResultAvailableReceivedEvent"; }
-};
-
 // =================================================================
 // UI CONTROL EVENTS
 // =================================================================
@@ -239,7 +232,6 @@ using Event = std::variant<
     // Server data updates
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
-    TrainingResultAvailableReceivedEvent,
     PhysicsSettingsReceivedEvent,
 
     // UI control events
@@ -248,7 +240,7 @@ using Event = std::variant<
     RailModeChangedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)
-    DirtSim::Api::TrainingResultAvailable::Cwc,
+    DirtSim::Api::TrainingResult::Cwc,
     DirtSim::UiApi::DrawDebugToggle::Cwc,
     DirtSim::UiApi::Exit::Cwc,
     DirtSim::UiApi::MouseDown::Cwc,
@@ -263,6 +255,7 @@ using Event = std::variant<
     DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
+    DirtSim::UiApi::TrainingStart::Cwc,
     DirtSim::UiApi::WebRtcAnswer::Cwc,
     DirtSim::UiApi::WebRtcCandidate::Cwc>;
 

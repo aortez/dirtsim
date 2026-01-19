@@ -22,11 +22,11 @@
 #include "server/api/SpawnDirtBall.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"
-#include "server/api/TrainingResultAvailableAck.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
 #include "server/api/TrainingResultSave.h"
+#include "server/api/TrainingResultSet.h"
 #include <cctype>
 #include <spdlog/spdlog.h>
 
@@ -136,10 +136,6 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TimerStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::TimerStatsGet::Command::fromJson(cmd));
         }
-        else if (commandName == Api::TrainingResultAvailableAck::Command::name()) {
-            return Result<ApiCommand, ApiError>::okay(
-                Api::TrainingResultAvailableAck::Command::fromJson(cmd));
-        }
         else if (commandName == Api::TrainingResultDiscard::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultDiscard::Command::fromJson(cmd));
@@ -155,6 +151,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TrainingResultSave::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultSave::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::TrainingResultSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::TrainingResultSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::WorldResize::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::WorldResize::Command::fromJson(cmd));

@@ -58,6 +58,10 @@ Send commands to the server or UI:
 ./build-debug/bin/cli server SimRun '{"timestep": 0.016, "max_steps": 10}'
 ./build-debug/bin/cli server CellSet '{"x": 50, "y": 50, "material": "WATER", "fill": 1.0}'
 
+# Get default JSON for a command
+./build-debug/bin/cli server SimRun --example
+./build-debug/bin/cli ui ScreenGrab --example
+
 # Get ANSI color visualization (default; truecolor terminals)
 ./build-debug/bin/cli server DiagramGet
 
@@ -164,7 +168,7 @@ Run a minimal UI/server workflow check against a running system:
 - Drives UI back to StartMenu if needed (SimStop).
 - Sends UI Exit.
 - Reboots the machine via os-manager after tests complete.
-- For canTrain: runs EvolutionStart with defaults, waits for TrainingResultList to grow, and requests TrainingResultGet for the newest session.
+- For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
 
 ### Network Mode
 

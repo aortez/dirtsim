@@ -7,30 +7,30 @@
 #include "core/Result.h"
 
 #include <nlohmann/json.hpp>
-#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace Api {
 
-namespace TrainingResultGet {
+namespace TrainingResultSet {
 
-DEFINE_API_NAME(TrainingResultGet);
+DEFINE_API_NAME(TrainingResultSet);
 
 struct Okay; // Forward declaration for API_COMMAND() macro.
 
 struct Command {
-    GenomeId trainingSessionId{};
+    TrainingResult result;
+    bool overwrite = true;
 
     API_COMMAND();
     API_JSON_SERIALIZABLE(Command);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {
-    TrainingResult::Summary summary;
-    std::vector<TrainingResult::Candidate> candidates;
+    bool stored = true;
+    bool overwritten = false;
 
     API_COMMAND_NAME();
     API_JSON_SERIALIZABLE(Okay);
@@ -40,6 +40,6 @@ struct Okay {
 
 API_STANDARD_TYPES();
 
-} // namespace TrainingResultGet
+} // namespace TrainingResultSet
 } // namespace Api
 } // namespace DirtSim
