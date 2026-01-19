@@ -1,4 +1,12 @@
 #include "CommandDispatcher.h"
+#include "os-manager/api/Reboot.h"
+#include "os-manager/api/RestartServer.h"
+#include "os-manager/api/RestartUi.h"
+#include "os-manager/api/StartServer.h"
+#include "os-manager/api/StartUi.h"
+#include "os-manager/api/StopServer.h"
+#include "os-manager/api/StopUi.h"
+#include "os-manager/api/SystemStatus.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -67,21 +75,45 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_, uiExampleHandlers_);
 
+    spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
+
+    registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StartServer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StartUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StopServer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StopUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::SystemStatus::Cwc>(osHandlers_, osExampleHandlers_);
+
     spdlog::info(
-        "CommandDispatcher: Registered {} server commands, {} UI commands",
+        "CommandDispatcher: Registered {} server commands, {} UI commands, {} OS commands",
         serverHandlers_.size(),
-        uiHandlers_.size());
+        uiHandlers_.size(),
+        osHandlers_.size());
 }
 
 const CommandDispatcher::HandlerMap& CommandDispatcher::getHandlers(Target target) const
 {
-    return (target == Target::Server) ? serverHandlers_ : uiHandlers_;
+    if (target == Target::Server) {
+        return serverHandlers_;
+    }
+    if (target == Target::Ui) {
+        return uiHandlers_;
+    }
+    return osHandlers_;
 }
 
 const CommandDispatcher::ExampleHandlerMap& CommandDispatcher::getExampleHandlers(
     Target target) const
 {
-    return (target == Target::Server) ? serverExampleHandlers_ : uiExampleHandlers_;
+    if (target == Target::Server) {
+        return serverExampleHandlers_;
+    }
+    if (target == Target::Ui) {
+        return uiExampleHandlers_;
+    }
+    return osExampleHandlers_;
 }
 
 Result<std::string, ApiError> CommandDispatcher::dispatch(
@@ -96,10 +128,15 @@ Result<std::string, ApiError> CommandDispatcher::dispatch(
         return Result<std::string, ApiError>::error(ApiError{ "Unknown command: " + commandName });
     }
 
-    spdlog::debug(
-        "CommandDispatcher: Dispatching {} command '{}'",
-        target == Target::Server ? "server" : "UI",
-        commandName);
+    const char* targetLabel = "os-manager";
+    if (target == Target::Server) {
+        targetLabel = "server";
+    }
+    else if (target == Target::Ui) {
+        targetLabel = "UI";
+    }
+
+    spdlog::debug("CommandDispatcher: Dispatching {} command '{}'", targetLabel, commandName);
     return it->second(client, body);
 }
 

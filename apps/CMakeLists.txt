@@ -547,6 +547,29 @@ target_compile_options(dirtsim-server PRIVATE ${DIRTSIM_WARNINGS})
 
 add_custom_target (run-server COMMAND ${EXECUTABLE_OUTPUT_PATH}/dirtsim-server DEPENDS dirtsim-server)
 
+# OS manager executable (privileged system control).
+add_executable(dirtsim-os-manager
+    src/os-manager/main.cpp
+    src/os-manager/OperatingSystemManager.cpp
+    src/os-manager/EventProcessor.cpp
+    src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartServer.cpp
+    src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartServer.cpp
+    src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopServer.cpp
+    src/os-manager/api/StopUi.cpp
+    src/os-manager/api/SystemStatus.cpp
+    src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/states/Error.cpp
+    src/os-manager/states/Idle.cpp
+    src/os-manager/states/Rebooting.cpp
+    src/os-manager/states/Startup.cpp
+)
+target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread)
+target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
+target_compile_options(dirtsim-os-manager PRIVATE ${DIRTSIM_WARNINGS})
+
 # CLI client executable.
 add_executable(cli
     src/cli/main.cpp
@@ -559,6 +582,14 @@ add_executable(cli
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp
     src/cli/TrainRunner.cpp
+    src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartServer.cpp
+    src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartServer.cpp
+    src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopServer.cpp
+    src/os-manager/api/StopUi.cpp
+    src/os-manager/api/SystemStatus.cpp
 )
 target_link_libraries(cli PRIVATE dirtsim-server-lib dirtsim-ui-lib datachannel-static pthread)
 target_include_directories(cli PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
@@ -572,6 +603,27 @@ add_executable(dirtsim-tests
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
+    src/os-manager/tests/OperatingSystemManager_test.cpp
+    src/os-manager/tests/StateError_test.cpp
+    src/os-manager/tests/StateIdle_test.cpp
+    src/os-manager/tests/StateRebooting_test.cpp
+
+    # Os manager sources.
+    src/os-manager/OperatingSystemManager.cpp
+    src/os-manager/EventProcessor.cpp
+    src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartServer.cpp
+    src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartServer.cpp
+    src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopServer.cpp
+    src/os-manager/api/StopUi.cpp
+    src/os-manager/api/SystemStatus.cpp
+    src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/states/Error.cpp
+    src/os-manager/states/Idle.cpp
+    src/os-manager/states/Rebooting.cpp
+    src/os-manager/states/Startup.cpp
     src/tests/BinaryProtocol_test.cpp
     src/tests/BresenhamLine_test.cpp
     src/tests/Buoyancy_test.cpp

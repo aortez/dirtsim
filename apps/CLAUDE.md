@@ -526,7 +526,7 @@ Can be found here:
 - design_docs/genetic-evolution.md        #<-- Genetic algorithm details (selection, mutation, fitness)
 - @design_docs/GridMechanics.md           #<-- Physics system foundations (pressure, friction, cohesion, etc.)
 - design_docs/plant.md                    #<-- Tree/organism feature (Phase 1 in progress)
-- design_docs/WebRTC-test-driver.md       #<-- Client/Server architecture (DSSM server + UI client)
+- design_docs/Architecture.md             #<-- System architecture (server, UI, os-manager)
 
 ## Project Directory Structure
 
@@ -578,7 +578,7 @@ Can be found here:
   │       └── TimersTest.cpp                 # Timer tests
   ├── design_docs/                           # Architecture documentation
   │   ├── GridMechanics.md                   # Physics system design
-  │   ├── WebRTC-test-driver.md              # Client/Server architecture
+  │   ├── Architecture.md                    # System architecture
   │   ├── coding_convention.md               # Code style guidelines
   │   └── plant.md                           # Tree/organism feature
   ├── lvgl/                                  # LVGL graphics library (submodule)

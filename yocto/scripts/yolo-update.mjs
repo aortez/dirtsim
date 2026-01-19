@@ -100,6 +100,16 @@ async function runKas(args) {
   await run('kas', args, { cwd: YOCTO_DIR });
 }
 
+function runCapture(command, options = {}) {
+  try {
+    return execSync(command, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
+      .toString()
+      .trim();
+  } catch {
+    return '';
+  }
+}
+
 /**
  * Clean the image sstate to force a rebuild.
  */
@@ -322,6 +332,52 @@ function findBinary(recipe, binaryName) {
   return existsSync(binaryPath) ? binaryPath : null;
 }
 
+function parseSystemStatus(output) {
+  try {
+    const parsed = JSON.parse(output);
+    const value = parsed.value || parsed;
+    if (!value) {
+      return null;
+    }
+    return {
+      uiStatus: value.ui_status || '',
+      serverStatus: value.server_status || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function waitForSystemStatusOk(remoteTarget, remoteHost, timeoutSec = 120) {
+  info('Checking SystemStatus via os-manager...');
+  const startTime = Date.now();
+  const timeoutMs = timeoutSec * 1000;
+  let lastStatus = null;
+
+  while (Date.now() - startTime < timeoutMs) {
+    const output = runCapture(`ssh -o BatchMode=yes ${remoteTarget} "dirtsim-cli os-manager SystemStatus"`);
+    if (output) {
+      const status = parseSystemStatus(output);
+      if (status) {
+        lastStatus = status;
+        if (status.uiStatus === 'OK' && status.serverStatus === 'OK') {
+          success(`${remoteHost} SystemStatus OK (UI+server)`);
+          return true;
+        }
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+
+  if (lastStatus) {
+    error(`SystemStatus not OK (ui_status=${lastStatus.uiStatus}, server_status=${lastStatus.serverStatus})`);
+  } else {
+    error('SystemStatus check failed (no response)');
+  }
+  return false;
+}
+
 /**
  * Fast deploy: ninja build + scp binaries + restart services.
  * Skips rootfs regeneration, image creation, and flash/reboot.
@@ -348,8 +404,9 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   // Find build directories.
   const uiBuildDir = findBuildDir('dirtsim-ui');
   const serverBuildDir = findBuildDir('dirtsim-server');
+  const osManagerBuildDir = findBuildDir('dirtsim-os-manager');
 
-  if (!uiBuildDir && !serverBuildDir) {
+  if (!uiBuildDir && !serverBuildDir && !osManagerBuildDir) {
     error('No build directories found.');
     error('Run a full build first: ./update.sh --target <host>');
     process.exit(1);
@@ -367,6 +424,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   if (serverBuildDir) {
     info(`Server build dir: ${serverBuildDir}`);
     targets.push({ name: 'dirtsim-server', buildDir: serverBuildDir, target: 'dirtsim-server' });
+  }
+  if (osManagerBuildDir) {
+    info(`OS manager build dir: ${osManagerBuildDir}`);
+    targets.push({ name: 'dirtsim-os-manager', buildDir: osManagerBuildDir, target: 'dirtsim-os-manager' });
   }
 
   for (const t of targets) {
@@ -388,6 +449,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const binaries = [];
   const uiBinary = findBinary('dirtsim-ui', 'dirtsim-ui');
   const serverBinary = findBinary('dirtsim-server', 'dirtsim-server');
+  const osManagerBinary = findBinary('dirtsim-os-manager', 'dirtsim-os-manager');
   const cliBinary = findBinary('dirtsim-ui', 'cli');  // CLI is built with UI.
 
   if (uiBinary) {
@@ -408,6 +470,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       size: stat.size,
       service: 'dirtsim-server',
       remotePath: '/usr/bin/dirtsim-server',
+    });
+  }
+  if (osManagerBinary) {
+    const stat = statSync(osManagerBinary);
+    binaries.push({
+      name: 'dirtsim-os-manager',
+      path: osManagerBinary,
+      size: stat.size,
+      service: 'dirtsim-os-manager',
+      remotePath: '/usr/bin/dirtsim-os-manager',
     });
   }
   if (cliBinary) {
@@ -543,6 +615,14 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     }
   } else {
     info(`Would run on Pi: ${deleteCommands} && ${remoteCmd}`);
+  }
+
+  if (!dryRun) {
+    const statusOk = await waitForSystemStatusOk(remoteTarget, remoteHost, 120);
+    if (!statusOk) {
+      error('SystemStatus check failed after fast deploy.');
+      process.exit(1);
+    }
   }
 
   // Done!
@@ -789,6 +869,11 @@ async function main() {
 
     log('');
     if (online) {
+      const statusOk = await waitForSystemStatusOk(remoteTarget, remoteHost, 180);
+      if (!statusOk) {
+        error('SystemStatus check failed after reboot.');
+        process.exit(1);
+      }
       log(`${colors.bold}${colors.green}════════════════════════════════════════════════════════════════${colors.reset}`);
       success('YOLO update complete!');
       if (specifiedProfile) {

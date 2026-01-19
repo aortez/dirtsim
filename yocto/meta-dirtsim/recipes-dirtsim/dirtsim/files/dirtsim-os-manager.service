@@ -1,0 +1,14 @@
+[Unit]
+Description=DirtSim OS Manager
+After=network.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/dirtsim
+ExecStart=/usr/bin/dirtsim-os-manager -p 9090
+Restart=no
+
+[Install]
+WantedBy=multi-user.target

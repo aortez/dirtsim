@@ -1,5 +1,6 @@
 #pragma once
 
+#include "os-manager/api/OsApiCommand.h"
 #include "server/api/ApiCommand.h"
 #include "ui/state-machine/api/UiApiCommand.h"
 #include <array>
@@ -39,6 +40,12 @@ inline constexpr auto UI_COMMAND_NAMES =
     extractCommandNames(static_cast<Ui::UiApiCommand*>(nullptr));
 
 /**
+ * @brief Compile-time array of all OS manager API command names.
+ */
+inline constexpr auto OS_COMMAND_NAMES =
+    extractCommandNames(static_cast<OsApi::OsApiCommand*>(nullptr));
+
+/**
  * @brief Check if a command name is a valid server command.
  */
 inline bool isServerCommand(std::string_view name)
@@ -55,6 +62,17 @@ inline bool isServerCommand(std::string_view name)
 inline bool isUiCommand(std::string_view name)
 {
     for (const auto& cmd : UI_COMMAND_NAMES) {
+        if (cmd == name) return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Check if a command name is a valid OS manager command.
+ */
+inline bool isOsCommand(std::string_view name)
+{
+    for (const auto& cmd : OS_COMMAND_NAMES) {
         if (cmd == name) return true;
     }
     return false;

@@ -147,6 +147,12 @@ std::string getCommandListHelp()
         help += "  " + std::string(cmdName) + "\n";
     }
 
+    // Auto-generated OS manager API commands.
+    help += "\nOS Manager API Commands (ws://localhost:9090):\n";
+    for (const auto& cmdName : Client::OS_COMMAND_NAMES) {
+        help += "  " + std::string(cmdName) + "\n";
+    }
+
     return help;
 }
 
@@ -191,6 +197,14 @@ std::string getExamplesHelp()
     examples += "  cli ui ScreenGrab --example\n";
     examples += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
 
+    // OS manager API examples.
+    examples += "\nOS Manager API Examples:\n";
+    examples += "  cli os-manager SystemStatus\n";
+    examples += "  cli os-manager StartServer\n";
+    examples += "  cli os-manager StopUi\n";
+    examples += "  cli os-manager RestartServer\n";
+    examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
+
     // Screenshot examples.
     examples += "\nScreenshot:\n";
     examples += "  cli screenshot output.png                              # Local UI\n";
@@ -202,6 +216,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canTrain\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
+    examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
 
     return examples;
 }
@@ -243,10 +258,24 @@ std::string deriveServerAddressFromUi(const std::string& uiAddress)
     return serverAddress;
 }
 
+std::string deriveOsManagerAddressFromUi(const std::string& uiAddress)
+{
+    const std::string uiPort = ":7070";
+    const std::string osPort = ":9090";
+    const auto portPos = uiAddress.rfind(uiPort);
+    if (portPos == std::string::npos) {
+        return "";
+    }
+
+    std::string osAddress = uiAddress;
+    osAddress.replace(portPos, uiPort.size(), osPort);
+    return osAddress;
+}
+
 int main(int argc, char** argv)
 {
     // Initialize logging channels (creates default logger named "cli" to stderr).
-    LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "cli");
+    LoggingChannels::initialize(spdlog::level::info, spdlog::level::debug, "cli", true);
 
     // Parse command line arguments.
     args::ArgumentParser parser(
@@ -268,6 +297,11 @@ int main(int argc, char** argv)
         "server-address",
         "Functional test: server WebSocket URL override",
         { "server-address" });
+    args::ValueFlag<std::string> osManagerAddressOverride(
+        parser,
+        "os-manager-address",
+        "Functional test: os-manager WebSocket URL override",
+        { "os-manager-address" });
 
     // Benchmark-specific flags.
     args::ValueFlag<int> benchSteps(
@@ -299,7 +333,7 @@ int main(int argc, char** argv)
         parser, "password", "Network: WiFi password for connect", { 'p', "password" });
 
     args::Positional<std::string> target(
-        parser, "target", "Target: 'server', 'ui', or a CLI command like 'network'");
+        parser, "target", "Target: 'server', 'ui', 'os-manager', or a CLI command like 'network'");
     args::Positional<std::string> command(parser, "command", getCommandListHelp());
     args::Positional<std::string> params(
         parser, "params", "Optional JSON object with command parameters");
@@ -545,17 +579,25 @@ int main(int argc, char** argv)
             : (addressOverride ? args::get(addressOverride) : "ws://localhost:7070");
         std::string serverAddress =
             serverAddressOverride ? args::get(serverAddressOverride) : "ws://localhost:8080";
+        std::string osManagerAddress =
+            osManagerAddressOverride ? args::get(osManagerAddressOverride) : "ws://localhost:9090";
         if (!serverAddressOverride && (uiAddressOverride || addressOverride)) {
             const std::string derived = deriveServerAddressFromUi(uiAddress);
             if (!derived.empty()) {
                 serverAddress = derived;
             }
         }
+        if (!osManagerAddressOverride && (uiAddressOverride || addressOverride)) {
+            const std::string derived = deriveOsManagerAddressFromUi(uiAddress);
+            if (!derived.empty()) {
+                osManagerAddress = derived;
+            }
+        }
 
         Client::FunctionalTestRunner runner;
         Client::FunctionalTestSummary summary = (testName == "canExit")
-            ? runner.runCanExit(uiAddress, serverAddress, timeoutMs)
-            : runner.runCanTrain(uiAddress, serverAddress, timeoutMs);
+            ? runner.runCanExit(uiAddress, serverAddress, osManagerAddress, timeoutMs)
+            : runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         std::cout << summary.toJson().dump() << std::endl;
         return summary.result.isError() ? 1 : 0;
     }
@@ -1064,11 +1106,11 @@ int main(int argc, char** argv)
     }
 
     // Handle server/ui targets - normal command mode.
-    if (targetName != "server" && targetName != "ui") {
+    if (targetName != "server" && targetName != "ui" && targetName != "os-manager") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "functional-test, genome-db-benchmark, integration_test, network, run-all, "
-                     "test_binary, train\n\n";
+                     "functional-test, genome-db-benchmark, integration_test, network, "
+                     "os-manager, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
@@ -1109,6 +1151,9 @@ int main(int argc, char** argv)
         else if (targetName == "ui") {
             address = "ws://localhost:7070";
         }
+        else if (targetName == "os-manager") {
+            address = "ws://localhost:9090";
+        }
     }
 
     int timeoutMs = timeout ? args::get(timeout) : 5000;
@@ -1137,11 +1182,27 @@ int main(int argc, char** argv)
 
     // Dispatch command using type-safe dispatcher.
     Client::CommandDispatcher dispatcher;
-    auto dispatchTarget = (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
+    Client::Target dispatchTarget = Client::Target::OsManager;
+    if (targetName == "server") {
+        dispatchTarget = Client::Target::Server;
+    }
+    else if (targetName == "ui") {
+        dispatchTarget = Client::Target::Ui;
+    }
     auto responseResult = dispatcher.dispatch(dispatchTarget, client, commandName, bodyJson);
     if (responseResult.isError()) {
-        std::cerr << "Failed to execute command: " << responseResult.errorValue().message
-                  << std::endl;
+        const auto& errorMessage = responseResult.errorValue().message;
+        bool printedStructured = false;
+        try {
+            nlohmann::json errorJson = nlohmann::json::parse(errorMessage);
+            std::cerr << errorJson.dump() << std::endl;
+            printedStructured = true;
+        }
+        catch (const nlohmann::json::parse_error&) {
+        }
+        if (!printedStructured) {
+            std::cerr << "Failed to execute command: " << errorMessage << std::endl;
+        }
         return 1;
     }
 

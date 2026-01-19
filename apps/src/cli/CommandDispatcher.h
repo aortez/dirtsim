@@ -19,7 +19,7 @@ namespace Client {
 /**
  * @brief Target type for command dispatch.
  */
-enum class Target { Server, Ui };
+enum class Target { OsManager, Server, Ui };
 
 /**
  * @brief Generic command dispatcher for type-safe WebSocket command execution.
@@ -155,7 +155,7 @@ private:
                         nlohmann::json errorJson;
                         errorJson["error"] = result.errorValue().message;
                         errorJson["id"] = responseEnvelope.id;
-                        return Result<std::string, ApiError>::okay(errorJson.dump());
+                        return Result<std::string, ApiError>::error(ApiError{ errorJson.dump() });
                     }
 
                     // Success - convert typed response to JSON for display.
@@ -186,8 +186,10 @@ private:
 
     HandlerMap serverHandlers_;
     HandlerMap uiHandlers_;
+    HandlerMap osHandlers_;
     ExampleHandlerMap serverExampleHandlers_;
     ExampleHandlerMap uiExampleHandlers_;
+    ExampleHandlerMap osExampleHandlers_;
 };
 
 } // namespace Client

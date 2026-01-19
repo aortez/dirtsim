@@ -147,6 +147,7 @@ IMAGE_INSTALL:append = " \
 # ============================================================================
 # Headless physics simulation with WebSocket API and LVGL display client.
 IMAGE_INSTALL:append = " \
+    dirtsim-os-manager \
     dirtsim-server \
     dirtsim-ui \
 "
