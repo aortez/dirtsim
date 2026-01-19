@@ -29,11 +29,6 @@ struct GrowRootCommand {
     double execution_time_seconds = 2.0;
 };
 
-struct ReinforceCellCommand {
-    Vector2i position;
-    double execution_time_seconds = 0.5;
-};
-
 struct ProduceSeedCommand {
     Vector2i position;
     double execution_time_seconds = 2.0;
@@ -42,13 +37,12 @@ struct ProduceSeedCommand {
 // TreeCommand variant - the canonical definition of all tree commands.
 // The order of alternatives defines the command indices used by neural networks.
 using TreeCommand = std::variant<
-    WaitCommand,          // index 0 - do nothing this tick
-    CancelCommand,        // index 1 - cancel in-progress action
-    GrowWoodCommand,      // index 2
-    GrowLeafCommand,      // index 3
-    GrowRootCommand,      // index 4
-    ReinforceCellCommand, // index 5
-    ProduceSeedCommand    // index 6
+    WaitCommand,       // index 0 - do nothing this tick
+    CancelCommand,     // index 1 - cancel in-progress action
+    GrowWoodCommand,   // index 2
+    GrowLeafCommand,   // index 3
+    GrowRootCommand,   // index 4
+    ProduceSeedCommand // index 5
     >;
 
 // TreeCommandType enum - named indices into the TreeCommand variant.
@@ -59,8 +53,7 @@ enum class TreeCommandType : uint8_t {
     GrowWoodCommand = 2,
     GrowLeafCommand = 3,
     GrowRootCommand = 4,
-    ReinforceCellCommand = 5,
-    ProduceSeedCommand = 6
+    ProduceSeedCommand = 5
 };
 
 constexpr size_t NUM_TREE_COMMAND_TYPES = std::variant_size_v<TreeCommand>;
@@ -90,11 +83,6 @@ static_assert(std::is_same_v<
                   static_cast<size_t>(TreeCommandType::GrowRootCommand),
                   TreeCommand>,
               GrowRootCommand>);
-static_assert(std::is_same_v<
-              std::variant_alternative_t<
-                  static_cast<size_t>(TreeCommandType::ReinforceCellCommand),
-                  TreeCommand>,
-              ReinforceCellCommand>);
 static_assert(std::is_same_v<
               std::variant_alternative_t<
                   static_cast<size_t>(TreeCommandType::ProduceSeedCommand),

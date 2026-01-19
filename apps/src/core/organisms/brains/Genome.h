@@ -18,7 +18,7 @@ struct Genome {
     static Genome random(std::mt19937& rng);
     static Genome constant(WeightType value);
 
-    static constexpr size_t EXPECTED_WEIGHT_COUNT = 130888;
+    static constexpr size_t EXPECTED_WEIGHT_COUNT = 130791;
     static constexpr size_t EXPECTED_SIZE_BYTES = EXPECTED_WEIGHT_COUNT * sizeof(WeightType);
 
     size_t getSizeBytes() const { return weights.size() * sizeof(WeightType); }

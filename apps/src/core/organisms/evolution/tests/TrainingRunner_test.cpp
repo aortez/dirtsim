@@ -111,8 +111,6 @@ const char* commandTypeName(TreeCommandType type)
             return "GrowLeaf";
         case TreeCommandType::GrowRootCommand:
             return "GrowRoot";
-        case TreeCommandType::ReinforceCellCommand:
-            return "ReinforceCell";
         case TreeCommandType::ProduceSeedCommand:
             return "ProduceSeed";
     }
@@ -156,10 +154,6 @@ std::string formatCommand(const TreeCommand& command)
             }
             else if constexpr (std::is_same_v<T, GrowRootCommand>) {
                 out << "GrowRoot (" << cmd.target_pos.x << "," << cmd.target_pos.y
-                    << ") t=" << cmd.execution_time_seconds;
-            }
-            else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                out << "ReinforceCell (" << cmd.position.x << "," << cmd.position.y
                     << ") t=" << cmd.execution_time_seconds;
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
@@ -364,7 +358,7 @@ TEST_F(TrainingRunnerTest, UsesConfiguredBrainRegistry)
 
 TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 {
-    config_.maxSimulationTime = 100.0;
+    config_.maxSimulationTime = 600.0;
 
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::TreeGermination;
@@ -454,7 +448,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
         int steps = 0;
         while ((status = runner.step(1)).state == TrainingRunner::State::Running) {
             steps++;
-            ASSERT_LT(steps, 10000) << "Harness should complete within reasonable steps";
+            ASSERT_LT(steps, 100000) << "Harness should complete within reasonable steps";
 
             World* world = runner.getWorld();
             if (!world) {

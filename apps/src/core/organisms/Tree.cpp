@@ -57,8 +57,6 @@ const char* treeCommandName(TreeCommandType type)
             return "GROW_LEAF";
         case TreeCommandType::GrowRootCommand:
             return "GROW_ROOT";
-        case TreeCommandType::ReinforceCellCommand:
-            return "REINFORCE";
         case TreeCommandType::ProduceSeedCommand:
             return "PRODUCE_SEED";
     }
@@ -137,7 +135,7 @@ void Tree::update(World& world, double deltaTime)
     }
     static int counter = 0;
     counter++;
-    if (counter % 100 == 0) {
+    if (counter % 1000 == 0) {
         LOG_INFO(
             Tree,
             "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
@@ -472,10 +470,6 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                 else if constexpr (std::is_same_v<T, GrowRootCommand>) {
                     data.current_thought = "Growing ROOT at (" + std::to_string(cmd.target_pos.x)
                         + ", " + std::to_string(cmd.target_pos.y) + ")";
-                }
-                else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                    data.current_thought = "Reinforcing cell at (" + std::to_string(cmd.position.x)
-                        + ", " + std::to_string(cmd.position.y) + ")";
                 }
                 else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
                     data.current_thought = "Producing SEED at (" + std::to_string(cmd.position.x)
