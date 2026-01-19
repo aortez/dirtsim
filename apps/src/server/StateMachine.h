@@ -26,7 +26,7 @@ struct ServerConfig;
 struct WorldData;
 
 namespace Api {
-struct TrainingResultAvailable;
+struct TrainingResult;
 }
 
 namespace Network {
@@ -91,7 +91,7 @@ public:
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
 
-    void recordTrainingResult(const Api::TrainingResultAvailable& result);
+    void storeTrainingResult(const Api::TrainingResult& result);
 
     /**
      * @brief Start advertising this server via mDNS/Avahi.

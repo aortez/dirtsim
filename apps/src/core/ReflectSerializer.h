@@ -65,6 +65,43 @@ nlohmann::json to_json(const T& obj)
 }
 
 /**
+ * Serialize any aggregate type to nlohmann::json, including empty optionals as null.
+ */
+template <typename T>
+nlohmann::json to_json_with_null_optionals(const T& obj)
+{
+    nlohmann::json j;
+
+    // Use qlibs/reflect to iterate over all members.
+    reflect::for_each(
+        [&](auto I) {
+            auto name = std::string(reflect::member_name<I>(obj));
+            const auto& value = reflect::get<I>(obj);
+
+            using MemberType = std::remove_cvref_t<decltype(value)>;
+
+            if constexpr (is_optional_v<MemberType>) {
+                if (value.has_value()) {
+                    j[name] = *value;
+                }
+                else {
+                    j[name] = nullptr;
+                }
+            }
+            else if constexpr (std::is_enum_v<MemberType>) {
+                // Handle enums directly using reflect.
+                j[name] = std::string(reflect::enum_name(value));
+            }
+            else {
+                j[name] = value;
+            }
+        },
+        obj);
+
+    return j;
+}
+
+/**
  * Deserialize nlohmann::json to any aggregate type.
  */
 template <typename T>

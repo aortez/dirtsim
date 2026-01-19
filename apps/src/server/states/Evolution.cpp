@@ -16,7 +16,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
-#include "server/api/TrainingResultAvailable.h"
+#include "server/api/TrainingResult.h"
 #include <algorithm>
 #include <ctime>
 #include <limits>
@@ -136,7 +136,6 @@ void Evolution::onEnter(StateMachine& dsm)
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
     trainingSessionId_ = UUID::generate();
-    trainingResultAvailableSent_ = false;
     pendingTrainingResult_.reset();
 
     // Seed RNG.
@@ -163,7 +162,7 @@ void Evolution::onExit(StateMachine& dsm)
 std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
     if (trainingComplete_) {
-        auto nextState = broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResult(dsm);
         if (nextState.has_value()) {
             return nextState;
         }
@@ -174,7 +173,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
         trainingComplete_ = true;
-        auto nextState = broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResult(dsm);
         if (nextState.has_value()) {
             return nextState;
         }
@@ -224,7 +223,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (organismDied || timeUp) {
         finishEvaluation(dsm);
         if (trainingComplete_) {
-            auto nextState = broadcastTrainingResultAvailable(dsm);
+            auto nextState = broadcastTrainingResult(dsm);
             if (nextState.has_value()) {
                 return nextState;
             }
@@ -241,24 +240,6 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
-}
-
-Any Evolution::onEvent(const Api::TrainingResultAvailableAck::Cwc& cwc, StateMachine& /*dsm*/)
-{
-    if (!pendingTrainingResult_.has_value()) {
-        cwc.sendResponse(Api::TrainingResultAvailableAck::Response::error(
-            ApiError("TrainingResultAvailableAck received without pending result")));
-        return std::move(*this);
-    }
-
-    Api::TrainingResultAvailableAck::Okay response;
-    response.acknowledged = true;
-    cwc.sendResponse(Api::TrainingResultAvailableAck::Response::okay(std::move(response)));
-
-    trainingResultAvailableSent_ = false;
-    UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
-    pendingTrainingResult_.reset();
-    return result;
 }
 
 Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
@@ -613,21 +594,17 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
 }
 
-std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
+std::optional<Any> Evolution::broadcastTrainingResult(StateMachine& dsm)
 {
-    if (trainingResultAvailableSent_) {
-        return std::nullopt;
-    }
-
     if (!pendingTrainingResult_.has_value()) {
         pendingTrainingResult_ = buildUnsavedTrainingResult();
     }
 
-    Api::TrainingResultAvailable available;
-    available.summary = pendingTrainingResult_->summary;
-    available.candidates.reserve(pendingTrainingResult_->candidates.size());
+    Api::TrainingResult trainingResult;
+    trainingResult.summary = pendingTrainingResult_->summary;
+    trainingResult.candidates.reserve(pendingTrainingResult_->candidates.size());
     for (const auto& candidate : pendingTrainingResult_->candidates) {
-        available.candidates.push_back(Api::TrainingResultAvailable::Candidate{
+        trainingResult.candidates.push_back(Api::TrainingResult::Candidate{
             .id = candidate.id,
             .fitness = candidate.fitness,
             .brainKind = candidate.brainKind,
@@ -636,35 +613,25 @@ std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm
         });
     }
 
-    dsm.recordTrainingResult(available);
-
     auto* wsService = dsm.getWebSocketService();
-    if (wsService) {
-        const auto response =
-            wsService->sendCommandAndGetResponse<Api::TrainingResultAvailable::OkayType>(
-                available, 5000);
+    if (!wsService) {
+        LOG_WARN(State, "No WebSocketService available for TrainingResult");
+    }
+    else {
+        const auto response = wsService->sendCommandAndGetResponse<Api::TrainingResult::OkayType>(
+            trainingResult, 5000);
         if (response.isError()) {
-            LOG_WARN(State, "TrainingResultAvailable send failed: {}", response.errorValue());
+            LOG_WARN(State, "TrainingResult send failed: {}", response.errorValue());
         }
         else if (response.value().isError()) {
             LOG_WARN(
-                State,
-                "TrainingResultAvailable response error: {}",
-                response.value().errorValue().message);
-        }
-        else {
-            trainingResultAvailableSent_ = false;
-            UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
-            pendingTrainingResult_.reset();
-            return Any{ result };
+                State, "TrainingResult response error: {}", response.value().errorValue().message);
         }
     }
 
-    dsm.broadcastEventData(
-        Api::TrainingResultAvailable::name(), Network::serialize_payload(available));
-    trainingResultAvailableSent_ = true;
-
-    return std::nullopt;
+    UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
+    pendingTrainingResult_.reset();
+    return Any{ result };
 }
 
 void Evolution::storeBestGenome(StateMachine& dsm)

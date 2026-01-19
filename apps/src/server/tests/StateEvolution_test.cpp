@@ -5,13 +5,13 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
-#include "server/api/TrainingResultAvailableAck.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/State.h"
 #include <filesystem>
 #include <gtest/gtest.h>
+#include <optional>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
@@ -238,9 +238,9 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 }
 
 /**
- * @brief Test that evolution completes and transitions after result acknowledgement.
+ * @brief Test that evolution completes and transitions after training result delivery.
  */
-TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResultAck)
+TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResult)
 {
     // Setup: Create Evolution state with minimal run.
     Evolution evolutionState;
@@ -252,36 +252,17 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingRes
     // Initialize the state.
     evolutionState.onEnter(*stateMachine);
 
-    // Execute: Tick through all evaluations.
+    // Execute: Tick until transition occurs.
     std::optional<Any> result;
+    constexpr int maxTicks = 10;
+    for (int i = 0; i < maxTicks && !result.has_value(); ++i) {
+        result = evolutionState.tick(*stateMachine);
+    }
 
-    // Generation 0, eval 0.
-    result = evolutionState.tick(*stateMachine);
-    EXPECT_FALSE(result.has_value());
-    EXPECT_EQ(evolutionState.generation, 1);
-
-    // Generation 1, eval 0.
-    result = evolutionState.tick(*stateMachine);
-    EXPECT_FALSE(result.has_value());
+    ASSERT_TRUE(result.has_value()) << "Should transition after training result delivery";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(result->getVariant()))
+        << "Should transition to UnsavedTrainingResult";
     EXPECT_EQ(evolutionState.generation, 2);
-
-    // Generation 2 == maxGenerations, should complete.
-    result = evolutionState.tick(*stateMachine);
-    EXPECT_FALSE(result.has_value()) << "Should wait for TrainingResultAvailableAck";
-
-    Api::TrainingResultAvailableAck::Response capturedResponse;
-    Api::TrainingResultAvailableAck::Command cmd;
-    Api::TrainingResultAvailableAck::Cwc cwc(
-        cmd, [&](Api::TrainingResultAvailableAck::Response&& response) {
-            capturedResponse = std::move(response);
-        });
-
-    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(newState.getVariant()))
-        << "Should transition to UnsavedTrainingResult after ack";
-    ASSERT_TRUE(capturedResponse.isValue());
-    EXPECT_TRUE(capturedResponse.value().acknowledged);
 }
 
 /**
@@ -446,35 +427,21 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     // Run until evolution completes.
     int tickCount = 0;
     constexpr int MAX_TICKS = 10000; // Safety limit.
-    bool completed = false;
+    std::optional<Any> finalState;
 
-    while (tickCount < MAX_TICKS) {
-        evolutionState.tick(*stateMachine);
+    while (tickCount < MAX_TICKS && !finalState.has_value()) {
+        finalState = evolutionState.tick(*stateMachine);
         tickCount++;
-
-        if (evolutionState.generation >= evolutionState.evolutionConfig.maxGenerations
-            && evolutionState.currentEval >= evolutionState.evolutionConfig.populationSize) {
-            completed = true;
-            break;
-        }
     }
 
     // Verify: Evolution completed.
+    const bool completed =
+        evolutionState.generation >= evolutionState.evolutionConfig.maxGenerations
+        && evolutionState.currentEval >= evolutionState.evolutionConfig.populationSize;
     ASSERT_TRUE(completed) << "Evolution should complete within tick limit";
-
-    Api::TrainingResultAvailableAck::Response capturedResponse;
-    Api::TrainingResultAvailableAck::Command cmd;
-    Api::TrainingResultAvailableAck::Cwc cwc(
-        cmd, [&](Api::TrainingResultAvailableAck::Response&& response) {
-            capturedResponse = std::move(response);
-        });
-
-    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(newState.getVariant()))
-        << "Should transition to UnsavedTrainingResult after ack";
-    ASSERT_TRUE(capturedResponse.isValue());
-    EXPECT_TRUE(capturedResponse.value().acknowledged);
+    ASSERT_TRUE(finalState.has_value()) << "Should transition after training result delivery";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()))
+        << "Should transition to UnsavedTrainingResult";
 
     // Verify: Ran through all generations.
     EXPECT_EQ(evolutionState.generation, 3) << "Should have completed 3 generations";

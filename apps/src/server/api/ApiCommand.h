@@ -13,7 +13,6 @@
 #include "FingerUp.h"
 #include "GenomeDelete.h"
 #include "GenomeGet.h"
-#include "GenomeGetBest.h"
 #include "GenomeList.h"
 #include "GenomeSet.h"
 #include "GravitySet.h"
@@ -33,11 +32,11 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "TimerStatsGet.h"
-#include "TrainingResultAvailableAck.h"
 #include "TrainingResultDiscard.h"
 #include "TrainingResultGet.h"
 #include "TrainingResultList.h"
 #include "TrainingResultSave.h"
+#include "TrainingResultSet.h"
 #include "WorldResize.h"
 #include <concepts>
 #include <nlohmann/json.hpp>
@@ -78,7 +77,6 @@ using ApiCommand = std::variant<
     Api::FingerUp::Command,
     Api::GenomeDelete::Command,
     Api::GenomeGet::Command,
-    Api::GenomeGetBest::Command,
     Api::GenomeList::Command,
     Api::GenomeSet::Command,
     Api::GravitySet::Command,
@@ -98,11 +96,11 @@ using ApiCommand = std::variant<
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,
-    Api::TrainingResultAvailableAck::Command,
     Api::TrainingResultDiscard::Command,
     Api::TrainingResultGet::Command,
     Api::TrainingResultList::Command,
     Api::TrainingResultSave::Command,
+    Api::TrainingResultSet::Command,
     Api::WorldResize::Command>;
 
 } // namespace DirtSim

@@ -19,6 +19,7 @@ DEFINE_API_NAME(TrainingResultSave);
 
 struct Okay;
 
+// Empty ids saves all candidates from the pending training result.
 struct Command {
     std::vector<GenomeId> ids;
 

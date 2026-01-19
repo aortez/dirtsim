@@ -27,21 +27,23 @@ Any UnsavedTrainingResult::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMac
 
 Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm)
 {
-    if (cwc.command.ids.empty()) {
-        cwc.sendResponse(Api::TrainingResultSave::Response::error(
-            ApiError("TrainingResultSave requires at least one id")));
-        return std::move(*this);
-    }
-
     std::unordered_map<GenomeId, const Candidate*> candidateLookup;
     candidateLookup.reserve(candidates.size());
     for (const auto& candidate : candidates) {
         candidateLookup.emplace(candidate.id, &candidate);
     }
 
+    std::vector<GenomeId> requestedIds = cwc.command.ids;
+    if (requestedIds.empty()) {
+        requestedIds.reserve(candidates.size());
+        for (const auto& candidate : candidates) {
+            requestedIds.push_back(candidate.id);
+        }
+    }
+
     std::unordered_set<GenomeId> uniqueIds;
-    uniqueIds.reserve(cwc.command.ids.size());
-    for (const auto& id : cwc.command.ids) {
+    uniqueIds.reserve(requestedIds.size());
+    for (const auto& id : requestedIds) {
         if (uniqueIds.insert(id).second && candidateLookup.find(id) == candidateLookup.end()) {
             cwc.sendResponse(Api::TrainingResultSave::Response::error(
                 ApiError("TrainingResultSave id not found: " + id.toShortString())));
@@ -69,6 +71,20 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
 
     response.savedCount = static_cast<int>(response.savedIds.size());
     response.discardedCount = static_cast<int>(candidates.size()) - response.savedCount;
+
+    Api::TrainingResult trainingResult;
+    trainingResult.summary = summary;
+    trainingResult.candidates.reserve(candidates.size());
+    for (const auto& candidate : candidates) {
+        trainingResult.candidates.push_back(Api::TrainingResult::Candidate{
+            .id = candidate.id,
+            .fitness = candidate.fitness,
+            .brainKind = candidate.brainKind,
+            .brainVariant = candidate.brainVariant,
+            .generation = candidate.generation,
+        });
+    }
+    dsm.storeTrainingResult(trainingResult);
 
     cwc.sendResponse(Api::TrainingResultSave::Response::okay(std::move(response)));
     return Idle{};

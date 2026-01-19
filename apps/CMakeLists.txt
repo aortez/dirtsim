@@ -304,7 +304,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/FingerUp.cpp
     src/server/api/GenomeDelete.cpp
     src/server/api/GenomeGet.cpp
-    src/server/api/GenomeGetBest.cpp
     src/server/api/GenomeList.cpp
     src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
@@ -324,8 +323,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
-    src/server/api/TrainingResultAvailable.cpp
-    src/server/api/TrainingResultAvailableAck.cpp
+    src/server/api/TrainingResult.cpp
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp

@@ -20,7 +20,7 @@ namespace Api {
 /**
  * Training result summary sent from server after evolution completes.
  */
-struct TrainingResultAvailable {
+struct TrainingResult {
     struct Summary {
         Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         OrganismType organismType = OrganismType::TREE;
@@ -51,18 +51,20 @@ struct TrainingResultAvailable {
     Summary summary;
     std::vector<Candidate> candidates;
 
-    static constexpr const char* name() { return "TrainingResultAvailable"; }
+    static constexpr const char* name() { return "TrainingResult"; }
     using serialize = zpp::bits::members<2>;
 
     using OkayType = std::monostate;
     using Response = Result<OkayType, ApiError>;
-    using Cwc = CommandWithCallback<TrainingResultAvailable, Response>;
+    using Cwc = CommandWithCallback<TrainingResult, Response>;
 };
 
-void to_json(nlohmann::json& j, const TrainingResultAvailable::Summary& summary);
-void from_json(const nlohmann::json& j, TrainingResultAvailable::Summary& summary);
-void to_json(nlohmann::json& j, const TrainingResultAvailable::Candidate& candidate);
-void from_json(const nlohmann::json& j, TrainingResultAvailable::Candidate& candidate);
+void to_json(nlohmann::json& j, const TrainingResult& result);
+void from_json(const nlohmann::json& j, TrainingResult& result);
+void to_json(nlohmann::json& j, const TrainingResult::Summary& summary);
+void from_json(const nlohmann::json& j, TrainingResult::Summary& summary);
+void to_json(nlohmann::json& j, const TrainingResult::Candidate& candidate);
+void from_json(const nlohmann::json& j, TrainingResult::Candidate& candidate);
 
 } // namespace Api
 } // namespace DirtSim

@@ -114,8 +114,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::PixelRendererToggle::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::RenderModeSelect::Cwc>(
         [this](UiApi::RenderModeSelect::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<Api::TrainingResultAvailable::Cwc>(
-        [this](Api::TrainingResultAvailable::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<Api::TrainingResult::Cwc>(
+        [this](Api::TrainingResult::Cwc cwc) { queueEvent(cwc); });
 
     // NOTE: Binary callback for RenderMessages is set up in Disconnected state when connecting.
     // Don't set it here or it will overwrite that handler!

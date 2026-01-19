@@ -2,7 +2,7 @@
 
 #include "ApiError.h"
 #include "ApiMacros.h"
-#include "TrainingResultAvailable.h"
+#include "TrainingResult.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 
@@ -27,7 +27,7 @@ struct Command {
 };
 
 struct Entry {
-    TrainingResultAvailable::Summary summary;
+    TrainingResult::Summary summary;
     int candidateCount = 0;
 
     using serialize = zpp::bits::members<2>;
