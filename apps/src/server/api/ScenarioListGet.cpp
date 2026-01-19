@@ -1,32 +1,33 @@
 #include "ScenarioListGet.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace Api {
 namespace ScenarioListGet {
 
-nlohmann::json Command::toJson() const
+void to_json(nlohmann::json& j, const ScenarioInfo& info)
 {
-    return nlohmann::json{ { "command", "scenario_list_get" } };
+    j = ReflectSerializer::to_json(info);
 }
 
-Command Command::fromJson(const nlohmann::json&)
+void from_json(const nlohmann::json& j, ScenarioInfo& info)
 {
-    return Command{};
+    info = ReflectSerializer::from_json<ScenarioInfo>(j);
+}
+
+nlohmann::json Command::toJson() const
+{
+    return ReflectSerializer::to_json(*this);
+}
+
+Command Command::fromJson(const nlohmann::json& j)
+{
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
 {
-    nlohmann::json result;
-    result["scenarios"] = nlohmann::json::array();
-
-    for (const auto& scenario : scenarios) {
-        result["scenarios"].push_back({ { "id", scenario.id },
-                                        { "name", scenario.name },
-                                        { "description", scenario.description },
-                                        { "category", scenario.category } });
-    }
-
-    return result;
+    return ReflectSerializer::to_json(*this);
 }
 
 } // namespace ScenarioListGet

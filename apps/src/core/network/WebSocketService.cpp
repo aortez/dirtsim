@@ -3,6 +3,7 @@
 #include "core/LoggingChannels.h"
 #include "core/RenderMessageUtils.h"
 #include "core/WorldData.h"
+#include "core/network/JsonProtocol.h"
 #include "server/api/ApiCommand.h"
 #include <chrono>
 #include <cstring>
@@ -1022,10 +1023,9 @@ void WebSocketService::onClientMessageJson(
     // Check if JSON deserializer is configured.
     if (!jsonDeserializer_) {
         LOG_ERROR(Network, "No JSON deserializer configured - ignoring JSON message");
-        nlohmann::json errorResponse = {
-            { "id", correlationId }, { "error", "JSON protocol not configured on this service" }
-        };
-        ws->send(errorResponse.dump());
+        ws->send(
+            makeJsonErrorResponse(correlationId, "JSON protocol not configured on this service")
+                .dump());
         return;
     }
 
@@ -1036,18 +1036,16 @@ void WebSocketService::onClientMessageJson(
     }
     catch (const std::exception& e) {
         LOG_ERROR(Network, "JSON deserialization failed: {}", e.what());
-        nlohmann::json errorResponse = { { "id", correlationId }, { "error", e.what() } };
-        ws->send(errorResponse.dump());
+        ws->send(makeJsonErrorResponse(correlationId, e.what()).dump());
         return;
     }
 
     // Check if JSON dispatcher is configured.
     if (!jsonDispatcher_) {
         LOG_ERROR(Network, "No JSON dispatcher configured - ignoring JSON command");
-        nlohmann::json errorResponse = {
-            { "id", correlationId }, { "error", "JSON dispatcher not configured on this service" }
-        };
-        ws->send(errorResponse.dump());
+        ws->send(
+            makeJsonErrorResponse(correlationId, "JSON dispatcher not configured on this service")
+                .dump());
         return;
     }
 

@@ -1,7 +1,9 @@
 #include "PeerDiscovery.h"
+#include "core/ReflectSerializer.h"
 
 #include <atomic>
 #include <mutex>
+#include <stdexcept>
 #include <thread>
 
 #include <avahi-client/client.h>
@@ -249,6 +251,42 @@ struct PeerDiscovery::Impl {
         spdlog::info("PeerDiscovery: Stopped.");
     }
 };
+
+void to_json(nlohmann::json& j, const PeerRole& role)
+{
+    j = static_cast<int>(role);
+}
+
+void from_json(const nlohmann::json& j, PeerRole& role)
+{
+    if (!j.is_number_integer()) {
+        throw std::runtime_error("Peer role must be an integer.");
+    }
+
+    switch (j.get<int>()) {
+        case static_cast<int>(PeerRole::Physics):
+            role = PeerRole::Physics;
+            return;
+        case static_cast<int>(PeerRole::Ui):
+            role = PeerRole::Ui;
+            return;
+        case static_cast<int>(PeerRole::Unknown):
+            role = PeerRole::Unknown;
+            return;
+    }
+
+    throw std::runtime_error("Invalid peer role value.");
+}
+
+void to_json(nlohmann::json& j, const PeerInfo& info)
+{
+    j = ReflectSerializer::to_json(info);
+}
+
+void from_json(const nlohmann::json& j, PeerInfo& info)
+{
+    info = ReflectSerializer::from_json<PeerInfo>(j);
+}
 
 PeerDiscovery::PeerDiscovery() : pImpl_()
 {}

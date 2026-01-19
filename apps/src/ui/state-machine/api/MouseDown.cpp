@@ -12,6 +12,8 @@ nlohmann::json Command::toJson() const
 
 Command Command::fromJson(const nlohmann::json& j)
 {
+    j.at("pixelX");
+    j.at("pixelY");
     return ReflectSerializer::from_json<Command>(j);
 }
 

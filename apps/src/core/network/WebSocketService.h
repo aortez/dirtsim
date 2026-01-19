@@ -7,6 +7,7 @@
 #include "core/Result.h"
 #include "core/Timers.h"
 #include "core/network/ClientHello.h"
+#include "core/network/JsonProtocol.h"
 #include "server/api/ApiCommand.h"
 #include "server/api/ApiError.h"
 #include <atomic>
@@ -365,23 +366,7 @@ public:
                     (protocolIt != clientProtocols_.end()) ? protocolIt->second : Protocol::BINARY;
 
                 if (clientProtocol == Protocol::JSON) {
-                    // Send JSON response.
-                    nlohmann::json jsonResponse;
-                    if (response.isError()) {
-                        jsonResponse = { { "id", correlationId },
-                                         { "error", response.errorValue().message } };
-                    }
-                    else {
-                        // Handle commands that return std::monostate (no response data).
-                        if constexpr (std::is_same_v<decltype(response.value()), std::monostate>) {
-                            jsonResponse = { { "id", correlationId }, { "success", true } };
-                        }
-                        else {
-                            jsonResponse = response.value().toJson();
-                            jsonResponse["id"] = correlationId;
-                            jsonResponse["success"] = true;
-                        }
-                    }
+                    nlohmann::json jsonResponse = makeJsonResponse(correlationId, response);
                     std::string jsonText = jsonResponse.dump();
                     spdlog::debug(
                         "WebSocketService: Sending {} JSON response ({} bytes)",

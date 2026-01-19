@@ -7,12 +7,12 @@ namespace SystemStatus {
 
 nlohmann::json Command::toJson() const
 {
-    return nlohmann::json::object();
+    return ReflectSerializer::to_json(*this);
 }
 
-Command Command::fromJson(const nlohmann::json& /*j*/)
+Command Command::fromJson(const nlohmann::json& j)
 {
-    return Command{};
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
