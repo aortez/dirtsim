@@ -17,7 +17,6 @@ namespace {
 constexpr uint32_t kStatusReadyColor = 0x00CC66;
 constexpr uint32_t kStatusCompleteColor = 0xFFDD66;
 constexpr int kMinLeftColumnWidth = 140;
-constexpr int kMaxLeftColumnWidth = 170;
 constexpr int kMinRightColumnWidth = 120;
 } // namespace
 
@@ -49,7 +48,7 @@ TrainingConfigPanel::TrainingConfigPanel(
     }
     expandedWidth_ = panelWidth;
     const int maxLeftWidth = std::max(0, expandedWidth_ - kMinRightColumnWidth);
-    leftColumnWidth_ = std::min(kMaxLeftColumnWidth, maxLeftWidth);
+    leftColumnWidth_ = std::min(ExpandablePanel::DefaultWidth, maxLeftWidth);
     leftColumnWidth_ = std::max(kMinLeftColumnWidth, leftColumnWidth_);
     if (maxLeftWidth < kMinLeftColumnWidth) {
         leftColumnWidth_ = maxLeftWidth;
@@ -93,12 +92,22 @@ void TrainingConfigPanel::setEvolutionCompleted()
 
 void TrainingConfigPanel::showView(View view)
 {
-    currentView_ = view;
     if (view == View::None) {
+        currentView_ = View::None;
         setRightColumnVisible(false);
+        updateToggleLabels();
         return;
     }
 
+    const bool rightVisible = rightColumn_ && !lv_obj_has_flag(rightColumn_, LV_OBJ_FLAG_HIDDEN);
+    if (view == currentView_ && rightVisible) {
+        currentView_ = View::None;
+        setRightColumnVisible(false);
+        updateToggleLabels();
+        return;
+    }
+
+    currentView_ = view;
     setRightColumnVisible(true);
 
     if (evolutionView_) {
@@ -122,6 +131,8 @@ void TrainingConfigPanel::showView(View view)
             lv_obj_add_flag(populationView_, LV_OBJ_FLAG_IGNORE_LAYOUT);
         }
     }
+
+    updateToggleLabels();
 }
 
 void TrainingConfigPanel::createLayout()
@@ -151,14 +162,14 @@ void TrainingConfigPanel::createLeftColumn(lv_obj_t* parent)
     lv_obj_set_style_pad_row(leftColumn_, 10, 0);
     lv_obj_set_flex_flow(leftColumn_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        leftColumn_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        leftColumn_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(leftColumn_, LV_OBJ_FLAG_SCROLLABLE);
 
     startButton_ = LVGLBuilder::actionButton(leftColumn_)
                        .text("Start")
                        .icon(LV_SYMBOL_PLAY)
                        .mode(LVGLBuilder::ActionMode::Push)
-                       .width(140)
+                       .width(LV_PCT(95))
                        .height(80)
                        .backgroundColor(0x00AA66)
                        .callback(onStartClicked, this)
@@ -174,7 +185,8 @@ void TrainingConfigPanel::createLeftColumn(lv_obj_t* parent)
     evolutionButton_ = LVGLBuilder::actionButton(leftColumn_)
                            .text("Evolution")
                            .icon(LV_SYMBOL_RIGHT)
-                           .width(140)
+                           .iconPositionRight()
+                           .width(LV_PCT(95))
                            .height(LVGLBuilder::Style::ACTION_SIZE)
                            .layoutRow()
                            .alignLeft()
@@ -184,12 +196,15 @@ void TrainingConfigPanel::createLeftColumn(lv_obj_t* parent)
     populationButton_ = LVGLBuilder::actionButton(leftColumn_)
                             .text("Population")
                             .icon(LV_SYMBOL_RIGHT)
-                            .width(140)
+                            .iconPositionRight()
+                            .width(LV_PCT(95))
                             .height(LVGLBuilder::Style::ACTION_SIZE)
                             .layoutRow()
                             .alignLeft()
                             .callback(onPopulationSelected, this)
                             .buildOrLog();
+
+    updateToggleLabels();
 }
 
 void TrainingConfigPanel::createRightColumn(lv_obj_t* parent)
@@ -333,7 +348,7 @@ void TrainingConfigPanel::setRightColumnVisible(bool visible)
             panel_->setWidth(collapsedWidth_);
         }
         if (leftColumn_) {
-            lv_obj_set_width(leftColumn_, LV_PCT(100));
+            lv_obj_set_width(leftColumn_, leftColumnWidth_);
         }
     }
 }
@@ -378,6 +393,22 @@ void TrainingConfigPanel::updateControlsEnabled()
     }
     else {
         updateStatusLabel("", lv_color_hex(kStatusReadyColor));
+    }
+}
+
+void TrainingConfigPanel::updateToggleLabels()
+{
+    const bool rightVisible = rightColumn_ && !lv_obj_has_flag(rightColumn_, LV_OBJ_FLAG_HIDDEN);
+    const View activeView = rightVisible ? currentView_ : View::None;
+
+    if (evolutionButton_) {
+        const char* symbol = activeView == View::Evolution ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT;
+        LVGLBuilder::ActionButtonBuilder::setIcon(evolutionButton_, symbol);
+    }
+
+    if (populationButton_) {
+        const char* symbol = activeView == View::Population ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT;
+        LVGLBuilder::ActionButtonBuilder::setIcon(populationButton_, symbol);
     }
 }
 

@@ -81,6 +81,7 @@ private:
     void updateControlsEnabled();
     void updateGenerationsStep(int32_t value);
     void updateStatusLabel(const char* text, lv_color_t color);
+    void updateToggleLabels();
 
     static void onStartClicked(lv_event_t* e);
     static void onEvolutionSelected(lv_event_t* e);
