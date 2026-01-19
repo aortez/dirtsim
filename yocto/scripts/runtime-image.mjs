@@ -36,6 +36,7 @@ function showHelp() {
   log('Options:');
   log('  --build              Force Yocto rebuild for the x86 image');
   log('  --ensure             Ensure local image exists (pull from registry if missing)');
+  log('  --build-if-missing   Build locally if --ensure pull fails');
   log('  --publish            Push image to registry after building');
   log('  --ensure-registry    Start registry container if needed');
   log('  --config             KAS config file (default: kas-dirtsim-x86.yml)');
@@ -128,16 +129,48 @@ async function buildRuntimeImage(rootfsPath, localImage) {
   await run('docker', ['build', '-t', localImage, RUNTIME_DIR]);
 }
 
-async function ensureLocalImage(localImage, registryImage) {
+async function ensureLocalImage(options) {
+  const {
+    localImage,
+    registryImage,
+    buildIfMissing,
+    publishIfMissing,
+    kasConfig,
+    imageTarget,
+    rootfsPath,
+  } = options;
   if (dockerImageExists(localImage)) {
     return;
   }
   if (!registryImage) {
-    throw new Error(`Local image missing: ${localImage}`);
+    if (!buildIfMissing) {
+      throw new Error(`Local image missing: ${localImage}`);
+    }
+    warn(`Registry not configured, building locally: ${localImage}`);
+    await ensureRootfs(false, kasConfig, imageTarget, rootfsPath);
+    await buildRuntimeImage(rootfsPath, localImage);
+    if (publishIfMissing) {
+      warn('Skipping publish: registry host not configured.');
+    }
+    return;
   }
+
   info(`Pulling runtime image from ${registryImage}...`);
-  await run('docker', ['pull', registryImage]);
-  await run('docker', ['tag', registryImage, localImage]);
+  try {
+    await run('docker', ['pull', registryImage]);
+    await run('docker', ['tag', registryImage, localImage]);
+  } catch (err) {
+    if (!buildIfMissing) {
+      throw err;
+    }
+    warn(`Runtime image missing in registry, building locally: ${localImage}`);
+    await ensureRootfs(false, kasConfig, imageTarget, rootfsPath);
+    await buildRuntimeImage(rootfsPath, localImage);
+    if (publishIfMissing) {
+      info(`Publishing runtime image to ${registryImage}...`);
+      await publishRuntimeImage(localImage, registryImage);
+    }
+  }
 }
 
 async function publishRuntimeImage(localImage, registryImage) {
@@ -157,6 +190,10 @@ async function main() {
 
   const forceBuild = args.includes('--build');
   const ensureOnly = args.includes('--ensure');
+  const buildIfMissing =
+    args.includes('--build-if-missing')
+    || process.env.DIRTSIM_RUNTIME_BUILD_IF_MISSING === '1'
+    || process.env.DIRTSIM_RUNTIME_BUILD_IF_MISSING === 'true';
   const publish =
     args.includes('--publish') || process.env.DIRTSIM_RUNTIME_PUBLISH === '1';
   const ensureRegistry = args.includes('--ensure-registry');
@@ -186,7 +223,15 @@ async function main() {
   log(`${colors.bold}${colors.cyan}DirtSim x86 Runtime Image${colors.reset}`);
 
   if (ensureOnly) {
-    await ensureLocalImage(localImage, registryImage);
+    await ensureLocalImage({
+      localImage,
+      registryImage,
+      buildIfMissing,
+      publishIfMissing: publish,
+      kasConfig,
+      imageTarget,
+      rootfsPath,
+    });
     success(`Runtime image available: ${localImage}`);
     return;
   }

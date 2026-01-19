@@ -44,5 +44,4 @@ jobs:
       working-directory: yocto
       env:
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
-        DIRTSIM_RUNTIME_REGISTRY_DATA_DIR: /data/dirtsim-registry
-      run: npm run runtime-image -- --build --publish --ensure-registry
+      run: npm run runtime-image -- --build --publish

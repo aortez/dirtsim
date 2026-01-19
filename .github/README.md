@@ -131,6 +131,12 @@ sudo systemctl status dirtsim-registry
 sudo systemctl restart dirtsim-registry
 ```
 
+On-demand runtime image rebuild (publishes to the local registry):
+```bash
+cd yocto
+npm run runtime-image -- --build --publish --registry oldman-desktop.local:5000
+```
+
 ### Stop Runner
 
 ```bash
