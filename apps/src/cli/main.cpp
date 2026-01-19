@@ -219,6 +219,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canExit --restart\n";
     examples += "  cli functional-test canTrain\n";
     examples += "  cli functional-test canSetGenerationsAndTrain\n";
+    examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
     examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
@@ -727,9 +728,10 @@ int main(int argc, char** argv)
 
         const std::string testName = args::get(command);
         if (testName != "canExit" && testName != "canTrain"
-            && testName != "canSetGenerationsAndTrain") {
+            && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
-            std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain\n";
+            std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
+                         "canPlantTreeSeed\n";
             return 1;
         }
 
@@ -762,9 +764,13 @@ int main(int argc, char** argv)
         else if (testName == "canTrain") {
             summary = runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
-        else {
+        else if (testName == "canSetGenerationsAndTrain") {
             summary = runner.runCanSetGenerationsAndTrain(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else {
+            summary =
+                runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         std::cout << summary.toJson().dump() << std::endl;
         int exitCode = summary.result.isError() ? 1 : 0;
