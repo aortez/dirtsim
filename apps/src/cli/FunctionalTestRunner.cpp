@@ -3,6 +3,7 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
+#include "server/api/SimStop.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
@@ -322,6 +323,23 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error("UI not connected to server");
         }
+        if (uiStatus.state == "SimRunning" || uiStatus.state == "Paused") {
+            std::cerr << "Sending UI SimStop to return to StartMenu..." << std::endl;
+            UiApi::SimStop::Command simStopCmd{};
+            auto simStopResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+            if (startMenuResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+            }
+        }
         uiClient.disconnect();
 
         Network::WebSocketService serverClient;
@@ -352,6 +370,24 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         const auto& status = statusResult.value();
         std::cerr << "Server state: " << status.state << " (timestep=" << status.timestep << ")"
                   << std::endl;
+        if (status.state == "SimRunning" || status.state == "SimPaused") {
+            std::cerr << "Sending SimStop to return to Idle..." << std::endl;
+            Api::SimStop::Command simStopCmd{};
+            auto simStopResult =
+                unwrapResponse(serverClient.sendCommandAndGetResponse<Api::SimStop::OkayType>(
+                    simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Server SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto idleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+            if (idleResult.isError()) {
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(idleResult.errorValue());
+            }
+        }
 
         size_t initialResultCount = 0;
         {

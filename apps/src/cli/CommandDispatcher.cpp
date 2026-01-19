@@ -10,61 +10,61 @@ CommandDispatcher::CommandDispatcher()
         "CommandDispatcher: Registering server API commands with response deserializers...");
 
     // Register server API commands.
-    registerCommand<Api::CellGet::Cwc>(serverHandlers_);
-    registerCommand<Api::CellSet::Cwc>(serverHandlers_);
-    registerCommand<Api::ClockEventTrigger::Cwc>(serverHandlers_);
-    registerCommand<Api::DiagramGet::Cwc>(serverHandlers_);
-    registerCommand<Api::EvolutionStart::Cwc>(serverHandlers_);
-    registerCommand<Api::EvolutionStop::Cwc>(serverHandlers_);
-    registerCommand<Api::Exit::Cwc>(serverHandlers_);
-    registerCommand<Api::FingerDown::Cwc>(serverHandlers_);
-    registerCommand<Api::FingerMove::Cwc>(serverHandlers_);
-    registerCommand<Api::FingerUp::Cwc>(serverHandlers_);
-    registerCommand<Api::GenomeDelete::Cwc>(serverHandlers_);
-    registerCommand<Api::GenomeGet::Cwc>(serverHandlers_);
-    registerCommand<Api::GenomeList::Cwc>(serverHandlers_);
-    registerCommand<Api::GenomeSet::Cwc>(serverHandlers_);
-    registerCommand<Api::GravitySet::Cwc>(serverHandlers_);
-    registerCommand<Api::PeersGet::Cwc>(serverHandlers_);
-    registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_);
-    registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_);
-    registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_);
-    registerCommand<Api::RenderFormatGet::Cwc>(serverHandlers_);
-    registerCommand<Api::RenderFormatSet::Cwc>(serverHandlers_);
-    registerCommand<Api::Reset::Cwc>(serverHandlers_);
-    registerCommand<Api::ScenarioConfigSet::Cwc>(serverHandlers_);
-    registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_);
-    registerCommand<Api::SeedAdd::Cwc>(serverHandlers_);
-    registerCommand<Api::SimRun::Cwc>(serverHandlers_);
-    registerCommand<Api::SimStop::Cwc>(serverHandlers_);
-    registerCommand<Api::SpawnDirtBall::Cwc>(serverHandlers_);
-    registerCommand<Api::StateGet::Cwc>(serverHandlers_);
-    registerCommand<Api::StatusGet::Cwc>(serverHandlers_);
-    registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_);
-    registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_);
-    registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_);
-    registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_);
-    registerCommand<Api::WorldResize::Cwc>(serverHandlers_);
+    registerCommand<Api::CellGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::CellSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::ClockEventTrigger::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::DiagramGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::EvolutionStart::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::EvolutionStop::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::Exit::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::FingerDown::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::FingerMove::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::FingerUp::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::GenomeDelete::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::GenomeGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::GenomeList::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::GenomeSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::GravitySet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::PeersGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::RenderFormatGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::RenderFormatSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::Reset::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::ScenarioConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::SeedAdd::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::SimRun::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::SimStop::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::SpawnDirtBall::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::StateGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::StatusGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::WorldResize::Cwc>(serverHandlers_, serverExampleHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");
 
     // Register UI API commands.
-    registerCommand<UiApi::DrawDebugToggle::Cwc>(uiHandlers_);
-    registerCommand<UiApi::Exit::Cwc>(uiHandlers_);
-    registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_);
-    registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_);
-    registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_);
-    registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_);
-    registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_);
-    registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_);
-    registerCommand<UiApi::SimPause::Cwc>(uiHandlers_);
-    registerCommand<UiApi::SimRun::Cwc>(uiHandlers_);
-    registerCommand<UiApi::SimStop::Cwc>(uiHandlers_);
-    registerCommand<UiApi::StateGet::Cwc>(uiHandlers_);
-    registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_);
-    registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_);
-    registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_);
-    registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_);
+    registerCommand<UiApi::DrawDebugToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::Exit::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::PixelRendererToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::RenderModeSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::ScreenGrab::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::SimPause::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::SimRun::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::SimStop::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::StateGet::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_, uiExampleHandlers_);
 
     spdlog::info(
         "CommandDispatcher: Registered {} server commands, {} UI commands",
@@ -75,6 +75,12 @@ CommandDispatcher::CommandDispatcher()
 const CommandDispatcher::HandlerMap& CommandDispatcher::getHandlers(Target target) const
 {
     return (target == Target::Server) ? serverHandlers_ : uiHandlers_;
+}
+
+const CommandDispatcher::ExampleHandlerMap& CommandDispatcher::getExampleHandlers(
+    Target target) const
+{
+    return (target == Target::Server) ? serverExampleHandlers_ : uiExampleHandlers_;
 }
 
 Result<std::string, ApiError> CommandDispatcher::dispatch(
@@ -100,6 +106,19 @@ bool CommandDispatcher::hasCommand(Target target, const std::string& commandName
 {
     const auto& handlers = getHandlers(target);
     return handlers.find(commandName) != handlers.end();
+}
+
+Result<nlohmann::json, ApiError> CommandDispatcher::getExample(
+    Target target, const std::string& commandName) const
+{
+    const auto& handlers = getExampleHandlers(target);
+    auto it = handlers.find(commandName);
+    if (it == handlers.end()) {
+        return Result<nlohmann::json, ApiError>::error(
+            ApiError{ "Unknown command: " + commandName });
+    }
+
+    return Result<nlohmann::json, ApiError>::okay(it->second());
 }
 
 std::vector<std::string> CommandDispatcher::getCommandNames(Target target) const

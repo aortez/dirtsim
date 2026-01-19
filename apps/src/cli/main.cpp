@@ -173,6 +173,7 @@ std::string getExamplesHelp()
     examples += "\nServer API Examples:\n";
     examples += "  cli server StatusGet\n";
     examples += "  cli server SimRun '{\"scenario\": \"sandbox\"}'\n";
+    examples += "  cli server SimRun --example\n";
     examples += "  cli server DiagramGet\n";
     examples += "  cli server CellSet '{\"x\": 50, \"y\": 50, \"material\": \"WATER\", \"fill\": "
                 "1.0}'\n";
@@ -187,6 +188,7 @@ std::string getExamplesHelp()
     examples += "\nUI API Examples:\n";
     examples += "  cli ui StatusGet\n";
     examples += "  cli ui ScreenGrab\n";
+    examples += "  cli ui ScreenGrab --example\n";
     examples += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
 
     // Screenshot examples.
@@ -257,6 +259,8 @@ int main(int argc, char** argv)
         parser, "timeout", "Response timeout in milliseconds (default: 5000)", { 't', "timeout" });
     args::ValueFlag<std::string> addressOverride(
         parser, "address", "Override default WebSocket URL", { "address" });
+    args::Flag example(
+        parser, "example", "Print default JSON for command without sending it", { "example" });
     args::ValueFlag<std::string> uiAddressOverride(
         parser, "ui-address", "Functional test: UI WebSocket URL override", { "ui-address" });
     args::ValueFlag<std::string> serverAddressOverride(
@@ -1077,6 +1081,20 @@ int main(int argc, char** argv)
     }
 
     std::string commandName = args::get(command);
+    if (example) {
+        Client::CommandDispatcher dispatcher;
+        auto dispatchTarget =
+            (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
+        auto exampleResult = dispatcher.getExample(dispatchTarget, commandName);
+        if (exampleResult.isError()) {
+            std::cerr << "Failed to build example: " << exampleResult.errorValue().message
+                      << std::endl;
+            return 1;
+        }
+
+        std::cout << exampleResult.value().dump(2) << std::endl;
+        return 0;
+    }
 
     // Determine address (override or default).
     std::string address;
