@@ -96,7 +96,8 @@ public:
     static void initialize(
         spdlog::level::level_enum consoleLevel = spdlog::level::info,
         spdlog::level::level_enum fileLevel = spdlog::level::debug,
-        const std::string& componentName = "default");
+        const std::string& componentName = "default",
+        bool consoleToStderr = false);
 
     /**
      * @brief Initialize the logging system from a JSON config file.

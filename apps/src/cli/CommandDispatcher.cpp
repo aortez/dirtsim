@@ -1,4 +1,12 @@
 #include "CommandDispatcher.h"
+#include "os-manager/api/Reboot.h"
+#include "os-manager/api/RestartServer.h"
+#include "os-manager/api/RestartUi.h"
+#include "os-manager/api/StartServer.h"
+#include "os-manager/api/StartUi.h"
+#include "os-manager/api/StopServer.h"
+#include "os-manager/api/StopUi.h"
+#include "os-manager/api/SystemStatus.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -69,15 +77,33 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::WebRtcAnswer::Command, std::monostate>(uiHandlers_);
     registerCommand<UiApi::WebRtcCandidate::Command, std::monostate>(uiHandlers_);
 
+    spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
+
+    registerCommand<OsApi::Reboot::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::RestartServer::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::RestartUi::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::StartServer::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::StartUi::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::StopServer::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::StopUi::Command, std::monostate>(osHandlers_);
+    registerCommand<OsApi::SystemStatus::Command, OsApi::SystemStatus::Okay>(osHandlers_);
+
     spdlog::info(
-        "CommandDispatcher: Registered {} server commands, {} UI commands",
+        "CommandDispatcher: Registered {} server commands, {} UI commands, {} OS commands",
         serverHandlers_.size(),
-        uiHandlers_.size());
+        uiHandlers_.size(),
+        osHandlers_.size());
 }
 
 const CommandDispatcher::HandlerMap& CommandDispatcher::getHandlers(Target target) const
 {
-    return (target == Target::Server) ? serverHandlers_ : uiHandlers_;
+    if (target == Target::Server) {
+        return serverHandlers_;
+    }
+    if (target == Target::Ui) {
+        return uiHandlers_;
+    }
+    return osHandlers_;
 }
 
 Result<std::string, ApiError> CommandDispatcher::dispatch(
@@ -92,10 +118,15 @@ Result<std::string, ApiError> CommandDispatcher::dispatch(
         return Result<std::string, ApiError>::error(ApiError{ "Unknown command: " + commandName });
     }
 
-    spdlog::debug(
-        "CommandDispatcher: Dispatching {} command '{}'",
-        target == Target::Server ? "server" : "UI",
-        commandName);
+    const char* targetLabel = "os-manager";
+    if (target == Target::Server) {
+        targetLabel = "server";
+    }
+    else if (target == Target::Ui) {
+        targetLabel = "UI";
+    }
+
+    spdlog::debug("CommandDispatcher: Dispatching {} command '{}'", targetLabel, commandName);
     return it->second(client, body);
 }
 

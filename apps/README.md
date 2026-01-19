@@ -6,6 +6,7 @@ A cell-based multi-material physics simulation with interactive UI, demonstratin
 
 - **Pure-material physics system** with fill ratios and 9 material types (AIR, DIRT, LEAF, METAL, SAND, SEED, WALL, WATER, WOOD)
 - **Client/Server Architecture** - Headless physics server + UI client
+- **OS Manager** - Privileged service control and system status
 - **Multiple Display Backends** - X11, Wayland, FBDEV support
 - **Tree Organisms** - Germination, growth, and perception systems
 - **WebSocket API** - Remote control and integration testing
@@ -151,7 +152,8 @@ make help
 
 ### Architecture Overview
 
-See [CLAUDE.md](CLAUDE.md) for detailed project documentation, including:
+See [design_docs/Architecture.md](design_docs/Architecture.md) for the system overview and
+[CLAUDE.md](CLAUDE.md) for detailed project documentation, including:
 - Component libraries (core, server, UI)
 - Physics system (World, Cell, Materials)
 - State machines (Server DSSM, UI client)

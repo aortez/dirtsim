@@ -16,7 +16,7 @@ namespace Client {
 /**
  * @brief Target type for command dispatch.
  */
-enum class Target { Server, Ui };
+enum class Target { OsManager, Server, Ui };
 
 /**
  * @brief Generic command dispatcher for type-safe WebSocket command execution.
@@ -142,6 +142,7 @@ private:
 
     HandlerMap serverHandlers_;
     HandlerMap uiHandlers_;
+    HandlerMap osHandlers_;
 };
 
 } // namespace Client
