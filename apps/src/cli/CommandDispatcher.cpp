@@ -71,6 +71,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::StateGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::TrainingResultDiscard::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::TrainingResultSave::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingStart::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_, uiExampleHandlers_);
