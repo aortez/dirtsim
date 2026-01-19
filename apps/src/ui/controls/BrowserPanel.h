@@ -16,13 +16,17 @@ namespace Ui {
 
 class BrowserPanel {
 public:
+    struct DetailText {
+        std::string text;
+    };
+
     struct Item {
         GenomeId id{};
         std::string label;
     };
 
     using ListFetcher = std::function<Result<std::vector<Item>, std::string>()>;
-    using DetailFetcher = std::function<Result<std::string, std::string>(const Item& item)>;
+    using DetailFetcher = std::function<Result<DetailText, std::string>(const Item& item)>;
     using DeleteHandler = std::function<Result<bool, std::string>(const Item& item)>;
 
     BrowserPanel(

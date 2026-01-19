@@ -79,14 +79,16 @@ Result<std::vector<BrowserPanel::Item>, std::string> GenomeBrowserPanel::fetchLi
     return Result<std::vector<BrowserPanel::Item>, std::string>::okay(std::move(items));
 }
 
-Result<std::string, std::string> GenomeBrowserPanel::fetchDetail(const BrowserPanel::Item& item)
+Result<BrowserPanel::DetailText, std::string> GenomeBrowserPanel::fetchDetail(
+    const BrowserPanel::Item& item)
 {
     auto it = metadataById_.find(item.id);
     if (it == metadataById_.end()) {
-        return Result<std::string, std::string>::error("Genome metadata not found");
+        return Result<BrowserPanel::DetailText, std::string>::error("Genome metadata not found");
     }
 
-    return Result<std::string, std::string>::okay(formatDetailText(item.id, it->second));
+    return Result<BrowserPanel::DetailText, std::string>::okay(
+        BrowserPanel::DetailText{ .text = formatDetailText(item.id, it->second) });
 }
 
 Result<bool, std::string> GenomeBrowserPanel::deleteItem(const BrowserPanel::Item& item)

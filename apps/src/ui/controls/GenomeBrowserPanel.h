@@ -23,7 +23,7 @@ private:
     std::unordered_map<GenomeId, GenomeMetadata> metadataById_;
 
     Result<std::vector<BrowserPanel::Item>, std::string> fetchList();
-    Result<std::string, std::string> fetchDetail(const BrowserPanel::Item& item);
+    Result<BrowserPanel::DetailText, std::string> fetchDetail(const BrowserPanel::Item& item);
     Result<bool, std::string> deleteItem(const BrowserPanel::Item& item);
 
     std::string formatListLabel(const GenomeId& id, const GenomeMetadata& meta) const;

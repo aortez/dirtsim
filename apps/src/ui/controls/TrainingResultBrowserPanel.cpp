@@ -79,27 +79,30 @@ Result<std::vector<BrowserPanel::Item>, std::string> TrainingResultBrowserPanel:
     return Result<std::vector<BrowserPanel::Item>, std::string>::okay(std::move(items));
 }
 
-Result<std::string, std::string> TrainingResultBrowserPanel::fetchDetail(
+Result<BrowserPanel::DetailText, std::string> TrainingResultBrowserPanel::fetchDetail(
     const BrowserPanel::Item& item)
 {
     if (!wsService_) {
-        return Result<std::string, std::string>::error("No WebSocketService available");
+        return Result<BrowserPanel::DetailText, std::string>::error(
+            "No WebSocketService available");
     }
     if (!wsService_->isConnected()) {
-        return Result<std::string, std::string>::error("Server not connected");
+        return Result<BrowserPanel::DetailText, std::string>::error("Server not connected");
     }
 
     Api::TrainingResultGet::Command cmd{ .trainingSessionId = item.id };
     auto response = wsService_->sendCommandAndGetResponse<Api::TrainingResultGet::Okay>(cmd, 5000);
     if (response.isError()) {
-        return Result<std::string, std::string>::error(response.errorValue());
+        return Result<BrowserPanel::DetailText, std::string>::error(response.errorValue());
     }
     if (response.value().isError()) {
-        return Result<std::string, std::string>::error(response.value().errorValue().message);
+        return Result<BrowserPanel::DetailText, std::string>::error(
+            response.value().errorValue().message);
     }
 
     const auto& ok = response.value().value();
-    return Result<std::string, std::string>::okay(formatDetailText(ok.summary, ok.candidates));
+    return Result<BrowserPanel::DetailText, std::string>::okay(
+        BrowserPanel::DetailText{ .text = formatDetailText(ok.summary, ok.candidates) });
 }
 
 Result<bool, std::string> TrainingResultBrowserPanel::deleteItem(const BrowserPanel::Item& item)

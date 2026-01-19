@@ -139,7 +139,7 @@ void BrowserPanel::createLayout()
 
     deleteConfirmCheckbox_ = lv_checkbox_create(deleteRow);
     lv_checkbox_set_text(deleteConfirmCheckbox_, "Confirm");
-    lv_obj_set_style_text_font(deleteConfirmCheckbox_, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_font(deleteConfirmCheckbox_, &lv_font_montserrat_12, 0);
     lv_obj_add_event_cb(
         deleteConfirmCheckbox_, onDeleteConfirmToggled, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_clear_flag(deleteConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
@@ -306,7 +306,7 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_set_scrollbar_mode(detailContainer, LV_SCROLLBAR_MODE_AUTO);
 
     lv_obj_t* detailLabel = lv_label_create(detailContainer);
-    lv_label_set_text(detailLabel, detailResult.value().c_str());
+    lv_label_set_text(detailLabel, detailResult.value().text.c_str());
     lv_label_set_long_mode(detailLabel, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(detailLabel, LV_PCT(100));
     lv_obj_set_style_text_color(detailLabel, lv_color_hex(0xCCCCCC), 0);
@@ -351,7 +351,7 @@ void BrowserPanel::openDetailModal(size_t index)
 
     modalConfirmCheckbox_ = lv_checkbox_create(deleteRow);
     lv_checkbox_set_text(modalConfirmCheckbox_, "Confirm");
-    lv_obj_set_style_text_font(modalConfirmCheckbox_, &lv_font_montserrat_10, 0);
+    lv_obj_set_style_text_font(modalConfirmCheckbox_, &lv_font_montserrat_12, 0);
     lv_obj_add_event_cb(
         modalConfirmCheckbox_, onModalDeleteConfirmToggled, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_clear_flag(modalConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
@@ -427,7 +427,7 @@ void BrowserPanel::onItemCheckboxToggled(lv_event_t* e)
         return;
     }
 
-    lv_obj_t* checkbox = lv_event_get_target(e);
+    auto* checkbox = static_cast<lv_obj_t*>(lv_event_get_target(e));
     const bool checked = lv_obj_has_state(checkbox, LV_STATE_CHECKED);
     const auto& item = panel->items_[context->index];
     if (checked) {

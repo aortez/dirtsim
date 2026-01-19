@@ -22,7 +22,7 @@ private:
     BrowserPanel browser_;
 
     Result<std::vector<BrowserPanel::Item>, std::string> fetchList();
-    Result<std::string, std::string> fetchDetail(const BrowserPanel::Item& item);
+    Result<BrowserPanel::DetailText, std::string> fetchDetail(const BrowserPanel::Item& item);
     Result<bool, std::string> deleteItem(const BrowserPanel::Item& item);
 
     std::string formatListLabel(const Api::TrainingResultList::Entry& entry) const;
