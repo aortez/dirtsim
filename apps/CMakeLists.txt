@@ -451,6 +451,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/TrainingStart.cpp
     src/ui/state-machine/api/WebRtcAnswer.cpp
     src/ui/state-machine/api/WebRtcCandidate.cpp
 
