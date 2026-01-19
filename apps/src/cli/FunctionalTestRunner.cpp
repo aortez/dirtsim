@@ -11,15 +11,16 @@
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
-#include "server/api/TrainingResultSave.h"
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/TrainingResultSave.h"
 #include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -139,6 +140,44 @@ Result<Api::TrainingResultList::Okay, std::string> waitForTrainingResultList(
         if (elapsedMs >= timeoutMs) {
             return Result<Api::TrainingResultList::Okay, std::string>::error(
                 "Timeout waiting for TrainingResultList");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<std::monostate, std::string> waitForUiTrainingResultSave(
+    Network::WebSocketService& client, int timeoutMs, std::optional<int> count)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    std::string lastError;
+
+    while (true) {
+        UiApi::TrainingResultSave::Command cmd{};
+        if (count.has_value()) {
+            cmd.count = count;
+        }
+
+        auto response =
+            unwrapResponse(client.sendCommandAndGetResponse<UiApi::TrainingResultSave::Okay>(
+                cmd, requestTimeoutMs));
+        if (response.isValue()) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+
+        lastError = response.errorValue();
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            if (!lastError.empty()) {
+                return Result<std::monostate, std::string>::error(lastError);
+            }
+            return Result<std::monostate, std::string>::error(
+                "Timeout waiting for TrainingResultSave");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -297,14 +336,13 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
         return Result<FunctionalTrainingSummary, std::string>::error(waitResult.errorValue());
     }
 
-    Api::TrainingResultSave::Command saveCmd{};
-    auto saveResult = unwrapResponse(
-        serverClient.sendCommandAndGetResponse<Api::TrainingResultSave::Okay>(saveCmd, timeoutMs));
+    const int saveTimeoutMs = std::max(timeoutMs, 10000);
+    auto saveResult = waitForUiTrainingResultSave(uiClient, saveTimeoutMs, std::nullopt);
     if (saveResult.isError()) {
         uiClient.disconnect();
         serverClient.disconnect();
         return Result<FunctionalTrainingSummary, std::string>::error(
-            "TrainingResultSave failed: " + saveResult.errorValue());
+            "UI TrainingResultSave failed: " + saveResult.errorValue());
     }
 
     auto listResult =

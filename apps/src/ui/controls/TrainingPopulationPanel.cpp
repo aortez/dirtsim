@@ -461,6 +461,49 @@ void TrainingPopulationPanel::setEvolutionCompleted()
     updateControlsEnabled();
 }
 
+void TrainingPopulationPanel::setPopulationTotal(int total)
+{
+    if (total <= 0) {
+        return;
+    }
+
+    const int desired = std::clamp(total, kPopulationMin, kPopulationMax);
+    const int currentTotal = countA_ + countB_;
+    if (currentTotal == 0) {
+        countA_ = desired;
+        countB_ = 0;
+        applySpec();
+        return;
+    }
+
+    const int delta = desired - currentTotal;
+    if (delta > 0) {
+        countA_ += delta;
+    }
+    else if (delta < 0) {
+        int remaining = -delta;
+        const int minPrimary = kPopulationStep;
+        const int reducible = std::max(0, countA_ - minPrimary);
+        const int reducePrimary = std::min(reducible, remaining);
+        countA_ -= reducePrimary;
+        remaining -= reducePrimary;
+        if (remaining > 0) {
+            countB_ = std::max(0, countB_ - remaining);
+        }
+    }
+
+    applySpec();
+}
+
+void TrainingPopulationPanel::setPopulationTotalChangedCallback(
+    const PopulationTotalChangedCallback& callback)
+{
+    populationTotalChangedCallback_ = callback;
+    if (populationTotalChangedCallback_) {
+        populationTotalChangedCallback_(countA_ + countB_);
+    }
+}
+
 void TrainingPopulationPanel::refreshFromSpec()
 {
     if (trainingSpec_.population.size() > 2) {
@@ -609,7 +652,11 @@ void TrainingPopulationPanel::updatePopulationSpec()
         trainingSpec_.population.push_back(secondary);
     }
 
-    evolutionConfig_.populationSize = countA_ + countB_;
+    const int total = countA_ + countB_;
+    evolutionConfig_.populationSize = total;
+    if (populationTotalChangedCallback_) {
+        populationTotalChangedCallback_(total);
+    }
 }
 
 void TrainingPopulationPanel::onScenarioButtonClicked(lv_event_t* e)

@@ -4,6 +4,7 @@
 #include "core/organisms/OrganismType.h"
 #include "lvgl/lvgl.h"
 #include "ui/PanelViewController.h"
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -24,6 +25,7 @@ public:
         std::string kind;
         bool requiresGenome = false;
     };
+    using PopulationTotalChangedCallback = std::function<void(int)>;
 
     TrainingPopulationPanel(
         lv_obj_t* container,
@@ -35,6 +37,8 @@ public:
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted();
+    void setPopulationTotal(int total);
+    void setPopulationTotalChangedCallback(const PopulationTotalChangedCallback& callback);
 
 private:
     lv_obj_t* container_ = nullptr;
@@ -75,6 +79,8 @@ private:
     std::string brainB_;
     int countA_ = 0;
     int countB_ = 0;
+
+    PopulationTotalChangedCallback populationTotalChangedCallback_;
 
     void createMainView(lv_obj_t* view);
     void createScenarioSelectView(lv_obj_t* view);

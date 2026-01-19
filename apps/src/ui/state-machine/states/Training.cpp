@@ -151,9 +151,6 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             view_->createTrainingConfigPanel();
             panel->show();
             break;
-        case IconId::POPULATION:
-            LOG_INFO(State, "Population icon ignored in Training (merged into config panel)");
-            break;
 
         case IconId::TREE:
         case IconId::NETWORK:
@@ -161,7 +158,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::PLAY:
         case IconId::SCENARIO:
         case IconId::COUNT:
-            LOG_WARN(State, "Unhandled icon selection: {}", static_cast<int>(evt.selectedId));
+            DIRTSIM_ASSERT(false, "Unexpected icon selection in Training state");
             break;
     }
 
@@ -286,6 +283,46 @@ State::Any Training::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine&
     };
     auto nextState = onEvent(evt, sm);
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
+    return nextState;
+}
+
+State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm)
+{
+    if (!view_ || !view_->isTrainingResultModalVisible()) {
+        cwc.sendResponse(UiApi::TrainingResultSave::Response::error(
+            ApiError("Training result modal not visible")));
+        return std::move(*this);
+    }
+
+    std::vector<GenomeId> ids;
+    if (cwc.command.count.has_value()) {
+        ids = view_->getTrainingResultSaveIdsForCount(cwc.command.count.value());
+    }
+    else {
+        ids = view_->getTrainingResultSaveIds();
+    }
+    if (ids.empty()) {
+        cwc.sendResponse(
+            UiApi::TrainingResultSave::Response::error(ApiError("No candidates selected")));
+        return std::move(*this);
+    }
+
+    TrainingResultSaveClickedEvent evt{ .ids = std::move(ids) };
+    auto nextState = onEvent(evt, sm);
+    cwc.sendResponse(UiApi::TrainingResultSave::Response::okay({ .queued = true }));
+    return nextState;
+}
+
+State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
+{
+    if (!view_ || !view_->isTrainingResultModalVisible()) {
+        cwc.sendResponse(UiApi::TrainingResultDiscard::Response::error(
+            ApiError("Training result modal not visible")));
+        return std::move(*this);
+    }
+
+    auto nextState = onEvent(TrainingResultDiscardClickedEvent{}, sm);
+    cwc.sendResponse(UiApi::TrainingResultDiscard::Response::okay({ .queued = true }));
     return nextState;
 }
 

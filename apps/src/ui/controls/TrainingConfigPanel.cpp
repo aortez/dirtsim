@@ -2,7 +2,6 @@
 #include "ExpandablePanel.h"
 #include "TrainingPopulationPanel.h"
 #include "core/LoggingChannels.h"
-#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "ui/controls/IconRail.h"
 #include "ui/state-machine/Event.h"
@@ -323,6 +322,11 @@ void TrainingConfigPanel::createPopulationView(lv_obj_t* parent)
 {
     trainingPopulationPanel_ = std::make_unique<TrainingPopulationPanel>(
         parent, eventSink_, evolutionStarted_, evolutionConfig_, trainingSpec_);
+    trainingPopulationPanel_->setPopulationTotalChangedCallback([this](int total) {
+        if (populationStepper_) {
+            LVGLBuilder::ActionStepperBuilder::setValue(populationStepper_, total);
+        }
+    });
 }
 
 void TrainingConfigPanel::setRightColumnVisible(bool visible)
@@ -460,84 +464,11 @@ void TrainingConfigPanel::onPopulationChanged(lv_event_t* e)
     if (!self || !self->populationStepper_) return;
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->populationStepper_);
-    self->evolutionConfig_.populationSize = value;
-    if (self->trainingSpec_.population.size() > 2) {
-        self->trainingSpec_.population.resize(2);
+    if (self->trainingPopulationPanel_) {
+        self->trainingPopulationPanel_->setPopulationTotal(value);
     }
-
-    auto totalPopulation = [](const TrainingSpec& spec) {
-        int total = 0;
-        for (const auto& entry : spec.population) {
-            total += entry.count;
-        }
-        return total;
-    };
-
-    auto normalizeEntry = [](PopulationSpec& spec) {
-        const bool requiresGenome = (spec.brainKind == TrainingBrainKind::NeuralNet);
-        if (!requiresGenome) {
-            spec.seedGenomes.clear();
-            spec.randomCount = 0;
-            return;
-        }
-        if (static_cast<int>(spec.seedGenomes.size()) > spec.count) {
-            spec.seedGenomes.resize(spec.count);
-        }
-        spec.randomCount = spec.count - static_cast<int>(spec.seedGenomes.size());
-    };
-
-    auto ensureDefaultPopulation = [&](TrainingSpec& spec, int desiredTotal) {
-        if (!spec.population.empty()) {
-            return;
-        }
-        PopulationSpec entry;
-        switch (spec.organismType) {
-            case OrganismType::TREE:
-                entry.brainKind = TrainingBrainKind::NeuralNet;
-                break;
-            case OrganismType::DUCK:
-                entry.brainKind = TrainingBrainKind::Random;
-                break;
-            case OrganismType::GOOSE:
-                entry.brainKind = TrainingBrainKind::Random;
-                break;
-            default:
-                entry.brainKind = TrainingBrainKind::Random;
-                break;
-        }
-        entry.count = desiredTotal;
-        normalizeEntry(entry);
-        spec.population.push_back(entry);
-    };
-
-    ensureDefaultPopulation(self->trainingSpec_, value);
-
-    const int currentTotal = totalPopulation(self->trainingSpec_);
-    const int delta = value - currentTotal;
-    if (delta != 0) {
-        PopulationSpec& primary = self->trainingSpec_.population[0];
-        if (delta > 0) {
-            primary.count += delta;
-        }
-        else {
-            int remaining = -delta;
-            const int minPrimary = 10;
-            const int reducible = std::max(0, primary.count - minPrimary);
-            const int reducePrimary = std::min(reducible, remaining);
-            primary.count -= reducePrimary;
-            remaining -= reducePrimary;
-            if (remaining > 0 && self->trainingSpec_.population.size() > 1) {
-                PopulationSpec& secondary = self->trainingSpec_.population[1];
-                secondary.count = std::max(0, secondary.count - remaining);
-                if (secondary.count == 0) {
-                    self->trainingSpec_.population.pop_back();
-                }
-            }
-        }
-    }
-
-    for (auto& entry : self->trainingSpec_.population) {
-        normalizeEntry(entry);
+    else {
+        self->evolutionConfig_.populationSize = value;
     }
 }
 

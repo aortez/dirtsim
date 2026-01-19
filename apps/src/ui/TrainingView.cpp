@@ -810,14 +810,19 @@ void TrainingView::updateTrainingResultSaveButton()
 
 std::vector<GenomeId> TrainingView::getTrainingResultSaveIds() const
 {
-    std::vector<GenomeId> ids;
     if (!trainingResultSaveStepper_) {
-        return ids;
+        return {};
     }
 
     int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(trainingResultSaveStepper_);
-    const int count = std::max<int32_t>(0, value);
-    const int limit = std::min<int>(count, static_cast<int>(primaryCandidates_.size()));
+    return getTrainingResultSaveIdsForCount(value);
+}
+
+std::vector<GenomeId> TrainingView::getTrainingResultSaveIdsForCount(int count) const
+{
+    std::vector<GenomeId> ids;
+    const int clamped = std::max(0, count);
+    const int limit = std::min(clamped, static_cast<int>(primaryCandidates_.size()));
     ids.reserve(limit);
     for (int i = 0; i < limit; ++i) {
         ids.push_back(primaryCandidates_[i].id);

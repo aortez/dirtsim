@@ -54,6 +54,8 @@ public:
         const std::vector<Api::TrainingResult::Candidate>& candidates);
     void hideTrainingResultModal();
     bool isTrainingResultModalVisible() const;
+    std::vector<GenomeId> getTrainingResultSaveIds() const;
+    std::vector<GenomeId> getTrainingResultSaveIdsForCount(int count) const;
 
     void clearPanelContent();
     void createCorePanel();
@@ -126,7 +128,6 @@ private:
     void renderBestWorld();
     void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
-    std::vector<GenomeId> getTrainingResultSaveIds() const;
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);
