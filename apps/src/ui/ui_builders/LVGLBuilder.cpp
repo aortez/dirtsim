@@ -1495,6 +1495,12 @@ LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::font(const l
     return *this;
 }
 
+LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::iconPositionRight()
+{
+    icon_trailing_ = true;
+    return *this;
+}
+
 LVGLBuilder::ActionButtonBuilder& LVGLBuilder::ActionButtonBuilder::mode(ActionMode m)
 {
     mode_ = m;
@@ -1681,25 +1687,27 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
         lv_obj_set_style_pad_row(button_, 2, 0);
     }
 
-    // Create icon label if provided.
-    if (!icon_.empty()) {
+    auto createIconLabel = [&]() {
+        if (icon_.empty()) {
+            return;
+        }
         icon_label_ = lv_label_create(button_);
         if (icon_label_) {
             lv_label_set_text(icon_label_, icon_.c_str());
             lv_obj_set_style_text_color(icon_label_, lv_color_hex(text_color_), 0);
-            // Use custom font if set, otherwise default to Montserrat 40.
             const lv_font_t* icon_font = font_ ? font_ : &lv_font_montserrat_40;
             lv_obj_set_style_text_font(icon_label_, icon_font, 0);
         }
-    }
+    };
 
-    // Create text label.
-    if (!text_.empty()) {
+    auto createTextLabel = [&]() {
+        if (text_.empty()) {
+            return;
+        }
         label_ = lv_label_create(button_);
         if (label_) {
             lv_label_set_text(label_, text_.c_str());
             lv_obj_set_style_text_color(label_, lv_color_hex(text_color_), 0);
-            // Use smaller font if we also have an icon, or if text is long.
             bool use_small_font = !icon_.empty() || text_.length() > 8;
             lv_obj_set_style_text_font(
                 label_, use_small_font ? &lv_font_montserrat_12 : &lv_font_montserrat_14, 0);
@@ -1707,6 +1715,15 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
             lv_label_set_long_mode(label_, LV_LABEL_LONG_WRAP);
             lv_obj_set_width(label_, width_ - trough_padding_ * 2 - 12);
         }
+    };
+
+    if (layout_flow_ == LV_FLEX_FLOW_ROW && icon_trailing_) {
+        createTextLabel();
+        createIconLabel();
+    }
+    else {
+        createIconLabel();
+        createTextLabel();
     }
 
     // Allocate and store state for toggle behavior.
@@ -1715,6 +1732,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
                                .is_checked = initial_checked_,
                                .glow_color = glow_color_,
                                .button = button_,
+                               .icon_label = icon_label_,
                                .user_callback =
                                    nullptr, // Not used - we register user callback separately.
                                .user_data = nullptr };
@@ -1826,6 +1844,16 @@ bool LVGLBuilder::ActionButtonBuilder::isChecked(lv_obj_t* container)
     if (!state) return false;
 
     return state->is_checked;
+}
+
+void LVGLBuilder::ActionButtonBuilder::setIcon(lv_obj_t* container, const char* symbol)
+{
+    if (!container || !symbol) return;
+
+    ActionButtonState* state = static_cast<ActionButtonState*>(lv_obj_get_user_data(container));
+    if (!state || !state->icon_label) return;
+
+    lv_label_set_text(state->icon_label, symbol);
 }
 
 // ============================================================================
@@ -2463,6 +2491,15 @@ void LVGLBuilder::ActionStepperBuilder::setValue(lv_obj_t* container, int32_t va
     char buf[32];
     snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
     lv_label_set_text(state->valueLabel, buf);
+}
+
+void LVGLBuilder::ActionStepperBuilder::setStep(lv_obj_t* container, int32_t stepSize)
+{
+    auto* state = getStepperStateFromContainer(container);
+    if (!state) return;
+    if (stepSize <= 0) return;
+
+    state->step = stepSize;
 }
 
 LVGLBuilder::ActionStepperBuilder LVGLBuilder::actionStepper(lv_obj_t* parent)

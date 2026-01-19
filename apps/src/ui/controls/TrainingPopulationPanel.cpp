@@ -196,101 +196,83 @@ void TrainingPopulationPanel::createMainView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 8, 0);
 
-    auto createColumn = [&](lv_obj_t* parent) {
-        lv_obj_t* column = lv_obj_create(parent);
-        lv_obj_set_size(column, LV_PCT(48), LV_SIZE_CONTENT);
-        lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
-        lv_obj_set_style_border_width(column, 0, 0);
-        lv_obj_set_style_pad_all(column, 0, 0);
-        lv_obj_set_style_pad_row(column, 6, 0);
-        lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_flex_align(
-            column, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-        lv_obj_clear_flag(column, LV_OBJ_FLAG_SCROLLABLE);
-        return column;
-    };
+    lv_obj_t* column = lv_obj_create(view);
+    lv_obj_set_size(column, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(column, 0, 0);
+    lv_obj_set_style_pad_all(column, 0, 0);
+    lv_obj_set_style_pad_row(column, 6, 0);
+    lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(column, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(column, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* columns = lv_obj_create(view);
-    lv_obj_set_size(columns, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(columns, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(columns, 0, 0);
-    lv_obj_set_style_pad_all(columns, 0, 0);
-    lv_obj_set_style_pad_gap(columns, 8, 0);
-    lv_obj_set_flex_flow(columns, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        columns, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(columns, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* leftColumn = createColumn(columns);
-    lv_obj_t* rightColumn = createColumn(columns);
-
-    scenarioButton_ = LVGLBuilder::actionButton(leftColumn)
+    scenarioButton_ = LVGLBuilder::actionButton(column)
                           .text("Scenario: --")
                           .icon(LV_SYMBOL_RIGHT)
-                          .width(LV_PCT(100))
+                          .width(LV_PCT(95))
                           .height(LVGLBuilder::Style::ACTION_SIZE)
                           .layoutRow()
                           .alignLeft()
                           .callback(onScenarioButtonClicked, this)
                           .buildOrLog();
 
-    organismButton_ = LVGLBuilder::actionButton(leftColumn)
+    organismButton_ = LVGLBuilder::actionButton(column)
                           .text("Organism Type: --")
                           .icon(LV_SYMBOL_RIGHT)
-                          .width(LV_PCT(100))
+                          .width(LV_PCT(95))
                           .height(LVGLBuilder::Style::ACTION_SIZE)
                           .layoutRow()
                           .alignLeft()
                           .callback(onOrganismButtonClicked, this)
                           .buildOrLog();
 
-    brainAButton_ = LVGLBuilder::actionButton(leftColumn)
+    brainAButton_ = LVGLBuilder::actionButton(column)
                         .text("Brain Type A: --")
                         .icon(LV_SYMBOL_RIGHT)
-                        .width(LV_PCT(100))
+                        .width(LV_PCT(95))
                         .height(LVGLBuilder::Style::ACTION_SIZE)
                         .layoutRow()
                         .alignLeft()
                         .callback(onBrainAButtonClicked, this)
                         .buildOrLog();
 
-    brainBButton_ = LVGLBuilder::actionButton(leftColumn)
+    brainBButton_ = LVGLBuilder::actionButton(column)
                         .text("Brain Type B: None")
                         .icon(LV_SYMBOL_RIGHT)
-                        .width(LV_PCT(100))
+                        .width(LV_PCT(95))
                         .height(LVGLBuilder::Style::ACTION_SIZE)
                         .layoutRow()
                         .alignLeft()
                         .callback(onBrainBButtonClicked, this)
                         .buildOrLog();
 
-    totalCountLabel_ = lv_label_create(rightColumn);
+    totalCountLabel_ = lv_label_create(column);
     lv_label_set_text(totalCountLabel_, "Total: --");
-    lv_obj_set_width(totalCountLabel_, LV_PCT(100));
+    lv_obj_set_width(totalCountLabel_, LV_PCT(95));
     lv_obj_set_style_text_align(totalCountLabel_, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_set_style_text_color(totalCountLabel_, lv_color_white(), 0);
     lv_obj_set_style_text_font(totalCountLabel_, &lv_font_montserrat_12, 0);
     lv_obj_set_style_pad_top(totalCountLabel_, 2, 0);
     lv_obj_set_style_pad_bottom(totalCountLabel_, 4, 0);
 
-    countAStepper_ = LVGLBuilder::actionStepper(rightColumn)
+    countAStepper_ = LVGLBuilder::actionStepper(column)
                          .label("Count A")
                          .range(kPopulationMin, kPopulationMax)
                          .step(kPopulationStep)
                          .value(evolutionConfig_.populationSize)
                          .valueFormat("%.0f")
                          .valueScale(1.0)
-                         .width(LV_PCT(100))
+                         .width(LV_PCT(95))
                          .callback(onCountAChanged, this)
                          .buildOrLog();
-    countBStepper_ = LVGLBuilder::actionStepper(rightColumn)
+    countBStepper_ = LVGLBuilder::actionStepper(column)
                          .label("Count B")
                          .range(0, kPopulationMax)
                          .step(kPopulationStep)
                          .value(0)
                          .valueFormat("%.0f")
                          .valueScale(1.0)
-                         .width(LV_PCT(100))
+                         .width(LV_PCT(95))
                          .callback(onCountBChanged, this)
                          .buildOrLog();
 
@@ -479,6 +461,49 @@ void TrainingPopulationPanel::setEvolutionCompleted()
     updateControlsEnabled();
 }
 
+void TrainingPopulationPanel::setPopulationTotal(int total)
+{
+    if (total <= 0) {
+        return;
+    }
+
+    const int desired = std::clamp(total, kPopulationMin, kPopulationMax);
+    const int currentTotal = countA_ + countB_;
+    if (currentTotal == 0) {
+        countA_ = desired;
+        countB_ = 0;
+        applySpec();
+        return;
+    }
+
+    const int delta = desired - currentTotal;
+    if (delta > 0) {
+        countA_ += delta;
+    }
+    else if (delta < 0) {
+        int remaining = -delta;
+        const int minPrimary = kPopulationStep;
+        const int reducible = std::max(0, countA_ - minPrimary);
+        const int reducePrimary = std::min(reducible, remaining);
+        countA_ -= reducePrimary;
+        remaining -= reducePrimary;
+        if (remaining > 0) {
+            countB_ = std::max(0, countB_ - remaining);
+        }
+    }
+
+    applySpec();
+}
+
+void TrainingPopulationPanel::setPopulationTotalChangedCallback(
+    const PopulationTotalChangedCallback& callback)
+{
+    populationTotalChangedCallback_ = callback;
+    if (populationTotalChangedCallback_) {
+        populationTotalChangedCallback_(countA_ + countB_);
+    }
+}
+
 void TrainingPopulationPanel::refreshFromSpec()
 {
     if (trainingSpec_.population.size() > 2) {
@@ -627,7 +652,11 @@ void TrainingPopulationPanel::updatePopulationSpec()
         trainingSpec_.population.push_back(secondary);
     }
 
-    evolutionConfig_.populationSize = countA_ + countB_;
+    const int total = countA_ + countB_;
+    evolutionConfig_.populationSize = total;
+    if (populationTotalChangedCallback_) {
+        populationTotalChangedCallback_(total);
+    }
 }
 
 void TrainingPopulationPanel::onScenarioButtonClicked(lv_event_t* e)

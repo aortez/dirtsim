@@ -23,6 +23,7 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -32,7 +33,9 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <string>
+#include <sys/types.h>
 #include <thread>
+#include <unistd.h>
 
 using namespace DirtSim;
 
@@ -213,7 +216,9 @@ std::string getExamplesHelp()
     // Functional test examples.
     examples += "\nFunctional Tests:\n";
     examples += "  cli functional-test canExit\n";
+    examples += "  cli functional-test canExit --restart\n";
     examples += "  cli functional-test canTrain\n";
+    examples += "  cli functional-test canSetGenerationsAndTrain\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
     examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
@@ -272,6 +277,158 @@ std::string deriveOsManagerAddressFromUi(const std::string& uiAddress)
     return osAddress;
 }
 
+std::string extractHost(const std::string& address)
+{
+    const auto schemePos = address.find("://");
+    const size_t hostStart = schemePos == std::string::npos ? 0 : schemePos + 3;
+    const size_t hostEnd = address.find_first_of(":/", hostStart);
+    if (hostEnd == std::string::npos) {
+        return address.substr(hostStart);
+    }
+    return address.substr(hostStart, hostEnd - hostStart);
+}
+
+std::string extractPort(const std::string& address, const std::string& defaultPort)
+{
+    const auto schemePos = address.find("://");
+    const size_t hostStart = schemePos == std::string::npos ? 0 : schemePos + 3;
+    const size_t portPos = address.find(':', hostStart);
+    if (portPos == std::string::npos) {
+        return defaultPort;
+    }
+    const size_t portEnd = address.find('/', portPos + 1);
+    if (portEnd == std::string::npos) {
+        return address.substr(portPos + 1);
+    }
+    return address.substr(portPos + 1, portEnd - portPos - 1);
+}
+
+bool isLocalHost(const std::string& host)
+{
+    return host == "localhost" || host == "127.0.0.1" || host == "::1";
+}
+
+bool isLocalAddress(const std::string& address)
+{
+    return isLocalHost(extractHost(address));
+}
+
+bool canConnect(const std::string& address, int timeoutMs)
+{
+    Network::WebSocketService client;
+    auto connectResult = client.connect(address, timeoutMs);
+    if (connectResult.isError()) {
+        return false;
+    }
+    client.disconnect();
+    return true;
+}
+
+bool waitForWebSocketReady(const std::string& address, int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    while (true) {
+        if (canConnect(address, 1000)) {
+            return true;
+        }
+        const auto elapsed = std::chrono::steady_clock::now() - startTime;
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count() >= timeoutMs) {
+            return false;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
+std::string detectUiBackend()
+{
+    const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
+    const char* x11Display = std::getenv("DISPLAY");
+
+    if (waylandDisplay && waylandDisplay[0] != '\0') {
+        return "wayland";
+    }
+    if (x11Display && x11Display[0] != '\0') {
+        return "x11";
+    }
+    return "x11";
+}
+
+bool spawnProcess(const std::string& path, const std::vector<std::string>& args)
+{
+    const pid_t pid = fork();
+    if (pid < 0) {
+        std::cerr << "Error: Failed to fork process for " << path << std::endl;
+        return false;
+    }
+
+    if (pid == 0) {
+        std::vector<char*> execArgs;
+        execArgs.reserve(args.size() + 2);
+        execArgs.push_back(const_cast<char*>(path.c_str()));
+        for (const auto& arg : args) {
+            execArgs.push_back(const_cast<char*>(arg.c_str()));
+        }
+        execArgs.push_back(nullptr);
+        execv(path.c_str(), execArgs.data());
+        std::cerr << "Error: exec failed for " << path << std::endl;
+        _exit(1);
+    }
+
+    return true;
+}
+
+bool restartLocalServices(
+    const std::string& uiAddress, const std::string& serverAddress, int timeoutMs)
+{
+    std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
+    std::filesystem::path binDir = exePath.parent_path();
+    std::filesystem::path serverPath = binDir / "dirtsim-server";
+    std::filesystem::path uiPath = binDir / "dirtsim-ui";
+
+    if (!std::filesystem::exists(serverPath)) {
+        std::cerr << "Error: Cannot find server binary at " << serverPath << std::endl;
+        return false;
+    }
+
+    if (!std::filesystem::exists(uiPath)) {
+        std::cerr << "Error: Cannot find UI binary at " << uiPath << std::endl;
+        return false;
+    }
+
+    const bool serverRunning = canConnect(serverAddress, timeoutMs);
+    if (!serverRunning) {
+        const std::string serverPort = extractPort(serverAddress, "8080");
+        std::cerr << "Launching server on port " << serverPort << "..." << std::endl;
+        if (!spawnProcess(serverPath.string(), { "-p", serverPort })) {
+            return false;
+        }
+        const int readyTimeoutMs = timeoutMs < 10000 ? 10000 : timeoutMs;
+        if (!waitForWebSocketReady(serverAddress, readyTimeoutMs)) {
+            std::cerr << "Error: Server did not become ready at " << serverAddress << std::endl;
+            return false;
+        }
+    }
+    else {
+        std::cerr << "Server already running; skipping launch." << std::endl;
+    }
+
+    if (canConnect(uiAddress, timeoutMs)) {
+        std::cerr << "UI already running; skipping launch." << std::endl;
+        return true;
+    }
+
+    const std::string backend = detectUiBackend();
+    const std::string serverHost = extractHost(serverAddress);
+    if (serverHost.empty()) {
+        std::cerr << "Error: Could not parse server host from " << serverAddress << std::endl;
+        return false;
+    }
+    const std::string serverPort = extractPort(serverAddress, "8080");
+    std::cerr << "Launching UI (" << backend << " backend)..." << std::endl;
+    return spawnProcess(
+        uiPath.string(), { "-b", backend, "--connect", serverHost + ":" + serverPort });
+}
+
 int main(int argc, char** argv)
 {
     // Initialize logging channels (creates default logger named "cli" to stderr).
@@ -302,6 +459,8 @@ int main(int argc, char** argv)
         "os-manager-address",
         "Functional test: os-manager WebSocket URL override",
         { "os-manager-address" });
+    args::Flag restartFunctionalTest(
+        parser, "restart", "Functional test: restart local UI/server after canExit", { "restart" });
 
     // Benchmark-specific flags.
     args::ValueFlag<int> benchSteps(
@@ -567,9 +726,10 @@ int main(int argc, char** argv)
         }
 
         const std::string testName = args::get(command);
-        if (testName != "canExit" && testName != "canTrain") {
+        if (testName != "canExit" && testName != "canTrain"
+            && testName != "canSetGenerationsAndTrain") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
-            std::cerr << "Valid tests: canExit, canTrain\n";
+            std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain\n";
             return 1;
         }
 
@@ -595,11 +755,39 @@ int main(int argc, char** argv)
         }
 
         Client::FunctionalTestRunner runner;
-        Client::FunctionalTestSummary summary = (testName == "canExit")
-            ? runner.runCanExit(uiAddress, serverAddress, osManagerAddress, timeoutMs)
-            : runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        Client::FunctionalTestSummary summary{};
+        if (testName == "canExit") {
+            summary = runner.runCanExit(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canTrain") {
+            summary = runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else {
+            summary = runner.runCanSetGenerationsAndTrain(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
         std::cout << summary.toJson().dump() << std::endl;
-        return summary.result.isError() ? 1 : 0;
+        int exitCode = summary.result.isError() ? 1 : 0;
+        if (restartFunctionalTest) {
+            if (testName != "canExit") {
+                std::cerr << "Warning: --restart is only supported for canExit; skipping."
+                          << std::endl;
+            }
+            else if (summary.result.isError()) {
+                std::cerr << "Warning: --restart skipped due to test failure." << std::endl;
+            }
+            else if (!isLocalAddress(uiAddress) || !isLocalAddress(serverAddress)) {
+                std::cerr << "Warning: --restart requires local UI/server addresses; skipping."
+                          << std::endl;
+            }
+            else {
+                std::cerr << "Restarting local server/UI..." << std::endl;
+                if (!restartLocalServices(uiAddress, serverAddress, timeoutMs)) {
+                    exitCode = 1;
+                }
+            }
+        }
+        return exitCode;
     }
 
     if (targetName == "integration_test") {

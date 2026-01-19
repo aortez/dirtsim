@@ -438,6 +438,7 @@ public:
         ActionButtonBuilder& text(const char* text);
         ActionButtonBuilder& icon(const char* symbol); // LV_SYMBOL_* or emoji.
         ActionButtonBuilder& font(const lv_font_t* f); // Custom font for icon/text.
+        ActionButtonBuilder& iconPositionRight();
 
         // Mode and state.
         ActionButtonBuilder& mode(ActionMode m);
@@ -450,7 +451,7 @@ public:
         ActionButtonBuilder& troughPadding(int px);
 
         // Layout.
-        ActionButtonBuilder& layoutRow();    // Horizontal: icon on left, text on right (default for
+        ActionButtonBuilder& layoutRow();    // Horizontal: icon and text in a row (default for
                                              // rectangular).
         ActionButtonBuilder& layoutColumn(); // Vertical: icon above text (default for square).
         ActionButtonBuilder& alignLeft();    // Left-align content (useful for row layout).
@@ -480,6 +481,7 @@ public:
         // Runtime state control (for Toggle mode).
         static void setChecked(lv_obj_t* container, bool checked);
         static bool isChecked(lv_obj_t* container);
+        static void setIcon(lv_obj_t* container, const char* symbol);
 
     private:
         lv_obj_t* parent_;
@@ -491,6 +493,7 @@ public:
         std::string text_;
         std::string icon_;
         const lv_font_t* font_ = nullptr; // Custom font (nullptr = use default).
+        bool icon_trailing_ = false;
         ActionMode mode_ = ActionMode::Push;
         bool initial_checked_ = false;
         int width_ = Style::ACTION_SIZE;
@@ -518,6 +521,7 @@ public:
             bool is_checked;
             uint32_t glow_color;
             lv_obj_t* button; // Inner button for styling.
+            lv_obj_t* icon_label;
             lv_event_cb_t user_callback;
             void* user_data;
         };
@@ -652,6 +656,7 @@ public:
         // Runtime helpers.
         static int32_t getValue(lv_obj_t* container);
         static void setValue(lv_obj_t* container, int32_t value);
+        static void setStep(lv_obj_t* container, int32_t stepSize);
 
     private:
         lv_obj_t* parent_;

@@ -451,6 +451,8 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/TrainingResultDiscard.cpp
+    src/ui/state-machine/api/TrainingResultSave.cpp
     src/ui/state-machine/api/TrainingStart.cpp
     src/ui/state-machine/api/WebRtcAnswer.cpp
     src/ui/state-machine/api/WebRtcCandidate.cpp
@@ -493,6 +495,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/StartMenuCorePanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
+    src/ui/controls/TrainingConfigPanel.cpp
     src/ui/controls/TrainingPopulationPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
     src/ui/ScenarioMetadataCache.cpp

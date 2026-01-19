@@ -1,10 +1,8 @@
 #include "TrainingView.h"
 #include "UiComponentManager.h"
-#include "controls/EvolutionConfigPanel.h"
 #include "controls/EvolutionControls.h"
 #include "controls/ExpandablePanel.h"
-#include "controls/IconRail.h"
-#include "controls/TrainingPopulationPanel.h"
+#include "controls/TrainingConfigPanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
@@ -352,9 +350,8 @@ void TrainingView::renderWorld(const WorldData& worldData)
 
 void TrainingView::clearPanelContent()
 {
-    evolutionConfigPanel_.reset();
     evolutionControls_.reset();
-    trainingPopulationPanel_.reset();
+    trainingConfigPanel_.reset();
 }
 
 void TrainingView::createCorePanel()
@@ -377,23 +374,14 @@ void TrainingView::createCorePanel()
     LOG_INFO(Controls, "TrainingView: Created Training Home panel");
 }
 
-void TrainingView::createEvolutionConfigPanel()
+void TrainingView::createTrainingConfigPanel()
 {
     ExpandablePanel* panel = uiManager_->getExpandablePanel();
     if (!panel) {
         LOG_ERROR(Controls, "TrainingView: No expandable panel available");
         return;
     }
-    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
-    const int maxWidth = displayWidth - IconRail::RAIL_WIDTH;
-    int panelWidth = ExpandablePanel::DefaultWidth * 2;
-    if (panelWidth > maxWidth && maxWidth > 0) {
-        panelWidth = maxWidth;
-    }
-    if (panelWidth < ExpandablePanel::DefaultWidth) {
-        panelWidth = ExpandablePanel::DefaultWidth;
-    }
-    panel->setWidth(panelWidth);
+    panel->setWidth(ExpandablePanel::DefaultWidth);
 
     lv_obj_t* container = panel->getContentArea();
     if (!container) {
@@ -401,38 +389,15 @@ void TrainingView::createEvolutionConfigPanel()
         return;
     }
 
-    evolutionConfigPanel_ = std::make_unique<EvolutionConfigPanel>(
-        container, eventSink_, evolutionStarted_, evolutionConfig_, mutationConfig_, trainingSpec_);
-    LOG_INFO(Controls, "TrainingView: Created Evolution config panel");
-}
-
-void TrainingView::createTrainingPopulationPanel()
-{
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
-        return;
-    }
-    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
-    const int maxWidth = displayWidth - IconRail::RAIL_WIDTH;
-    int panelWidth = ExpandablePanel::DefaultWidth * 2;
-    if (panelWidth > maxWidth && maxWidth > 0) {
-        panelWidth = maxWidth;
-    }
-    if (panelWidth < ExpandablePanel::DefaultWidth) {
-        panelWidth = ExpandablePanel::DefaultWidth;
-    }
-    panel->setWidth(panelWidth);
-
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
-        return;
-    }
-
-    trainingPopulationPanel_ = std::make_unique<TrainingPopulationPanel>(
-        container, eventSink_, evolutionStarted_, evolutionConfig_, trainingSpec_);
-    LOG_INFO(Controls, "TrainingView: Created Training population panel");
+    trainingConfigPanel_ = std::make_unique<TrainingConfigPanel>(
+        container,
+        eventSink_,
+        panel,
+        evolutionStarted_,
+        evolutionConfig_,
+        mutationConfig_,
+        trainingSpec_);
+    LOG_INFO(Controls, "TrainingView: Created Training config panel");
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
@@ -573,11 +538,8 @@ void TrainingView::setEvolutionStarted(bool started)
     if (evolutionControls_) {
         evolutionControls_->setEvolutionStarted(started);
     }
-    if (evolutionConfigPanel_) {
-        evolutionConfigPanel_->setEvolutionStarted(started);
-    }
-    if (trainingPopulationPanel_) {
-        trainingPopulationPanel_->setEvolutionStarted(started);
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setEvolutionStarted(started);
     }
 
     updateEvolutionVisibility();
@@ -597,11 +559,8 @@ void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
     if (evolutionControls_) {
         evolutionControls_->setEvolutionCompleted(bestGenomeId);
     }
-    if (evolutionConfigPanel_) {
-        evolutionConfigPanel_->setEvolutionCompleted();
-    }
-    if (trainingPopulationPanel_) {
-        trainingPopulationPanel_->setEvolutionCompleted();
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setEvolutionCompleted();
     }
 
     updateEvolutionVisibility();
@@ -851,14 +810,19 @@ void TrainingView::updateTrainingResultSaveButton()
 
 std::vector<GenomeId> TrainingView::getTrainingResultSaveIds() const
 {
-    std::vector<GenomeId> ids;
     if (!trainingResultSaveStepper_) {
-        return ids;
+        return {};
     }
 
     int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(trainingResultSaveStepper_);
-    const int count = std::max<int32_t>(0, value);
-    const int limit = std::min<int>(count, static_cast<int>(primaryCandidates_.size()));
+    return getTrainingResultSaveIdsForCount(value);
+}
+
+std::vector<GenomeId> TrainingView::getTrainingResultSaveIdsForCount(int count) const
+{
+    std::vector<GenomeId> ids;
+    const int clamped = std::max(0, count);
+    const int limit = std::min(clamped, static_cast<int>(primaryCandidates_.size()));
     ids.reserve(limit);
     for (int i = 0; i < limit; ++i) {
         ids.push_back(primaryCandidates_[i].id);
