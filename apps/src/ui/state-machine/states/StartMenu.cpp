@@ -521,6 +521,21 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     return SimRunning{};
 }
 
+State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)
+{
+    LOG_INFO(State, "TrainingStart command received, transitioning to Training");
+
+    StartEvolutionButtonClickedEvent evt{
+        .evolution = cwc.command.evolution,
+        .mutation = cwc.command.mutation,
+        .training = cwc.command.training,
+    };
+    sm.queueEvent(evt);
+
+    cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
+    return Training{};
+}
+
 State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
     // Update remote input device state (enables LVGL widget interaction in StartMenu).

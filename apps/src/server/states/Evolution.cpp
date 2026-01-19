@@ -620,13 +620,12 @@ std::optional<Any> Evolution::broadcastTrainingResult(StateMachine& dsm)
     else {
         const auto response = wsService->sendCommandAndGetResponse<Api::TrainingResult::OkayType>(
             trainingResult, 5000);
-        if (response.isError()) {
-            LOG_WARN(State, "TrainingResult send failed: {}", response.errorValue());
-        }
-        else if (response.value().isError()) {
-            LOG_WARN(
-                State, "TrainingResult response error: {}", response.value().errorValue().message);
-        }
+        DIRTSIM_ASSERT(
+            !response.isError(),
+            std::string("TrainingResult send failed: ") + response.errorValue());
+        DIRTSIM_ASSERT(
+            !response.value().isError(),
+            std::string("TrainingResult response error: ") + response.value().errorValue().message);
     }
 
     UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());

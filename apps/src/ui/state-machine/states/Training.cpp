@@ -278,6 +278,18 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
     return std::move(*this);
 }
 
+State::Any Training::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)
+{
+    StartEvolutionButtonClickedEvent evt{
+        .evolution = cwc.command.evolution,
+        .mutation = cwc.command.mutation,
+        .training = cwc.command.training,
+    };
+    auto nextState = onEvent(evt, sm);
+    cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
+    return nextState;
+}
+
 State::Any Training::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Stop button clicked, stopping evolution");

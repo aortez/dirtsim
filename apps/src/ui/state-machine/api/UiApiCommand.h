@@ -14,6 +14,7 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "StreamStart.h"
+#include "TrainingStart.h"
 #include "WebRtcAnswer.h"
 #include "WebRtcCandidate.h"
 #include <variant>
@@ -39,6 +40,7 @@ using UiApiCommand = std::variant<
     UiApi::StateGet::Command,
     UiApi::StatusGet::Command,
     UiApi::StreamStart::Command,
+    UiApi::TrainingStart::Command,
     UiApi::WebRtcAnswer::Command,
     UiApi::WebRtcCandidate::Command>;
 

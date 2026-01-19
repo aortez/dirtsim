@@ -25,6 +25,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/TrainingResult.h"
+#include "ui/state-machine/api/TrainingStart.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -254,6 +255,7 @@ using Event = std::variant<
     DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
+    DirtSim::UiApi::TrainingStart::Cwc,
     DirtSim::UiApi::WebRtcAnswer::Cwc,
     DirtSim::UiApi::WebRtcCandidate::Cwc>;
 

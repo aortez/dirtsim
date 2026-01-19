@@ -25,6 +25,30 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 YOCTO_DIR="$SCRIPT_DIR/yocto"
+TARGET_HOST="dirtsim.local"
+DRY_RUN=false
+
+# Parse CLI args for target host and dry-run flag.
+args=("$@")
+for ((i=0; i<${#args[@]}; i++)); do
+    arg="${args[$i]}"
+    case "$arg" in
+        --target)
+            if (( i + 1 < ${#args[@]} )); then
+                TARGET_HOST="${args[$((i + 1))]}"
+            fi
+            ;;
+        --target=*)
+            TARGET_HOST="${arg#--target=}"
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            ;;
+    esac
+done
+if [ -z "$TARGET_HOST" ]; then
+    TARGET_HOST="dirtsim.local"
+fi
 
 # Verify yocto directory exists.
 if [ ! -d "$YOCTO_DIR" ]; then
@@ -41,3 +65,25 @@ fi
 # Run yolo update with --hold-my-mead by default (skip "type yolo" prompt).
 cd "$YOCTO_DIR"
 npm run yolo -- --hold-my-mead "$@"
+
+if [ "$DRY_RUN" = true ]; then
+    exit 0
+fi
+
+REMOTE_TARGET="dirtsim@${TARGET_HOST}"
+echo "Waiting for SSH on ${REMOTE_TARGET} (up to 20s)..."
+
+timeout_sec=20
+sleep_sec=2
+start_time=$SECONDS
+while (( SECONDS - start_time < timeout_sec )); do
+    if ssh -o BatchMode=yes -o ConnectTimeout=2 -o ConnectionAttempts=1 -o LogLevel=ERROR \
+        "${REMOTE_TARGET}" "echo ok" >/dev/null 2>&1; then
+        echo "SSH connected to ${REMOTE_TARGET}"
+        exit 0
+    fi
+    sleep "${sleep_sec}"
+done
+
+echo "Error: unable to reach ${REMOTE_TARGET} via SSH after ${timeout_sec}s"
+exit 1

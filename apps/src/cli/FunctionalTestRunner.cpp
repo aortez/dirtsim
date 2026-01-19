@@ -2,7 +2,7 @@
 #include "core/ScenarioId.h"
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/EvolutionStart.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "server/api/SimStop.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
@@ -12,6 +12,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
 #include <chrono>
 #include <iostream>
@@ -340,8 +341,6 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
                 return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
             }
         }
-        uiClient.disconnect();
-
         Network::WebSocketService serverClient;
         serverClient.setProtocol(Network::Protocol::BINARY);
         Network::ClientHello hello{
@@ -403,19 +402,39 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             initialResultCount = listResult.value().results.size();
         }
 
-        Api::EvolutionStart::Command startCmd{};
-        auto startResult = unwrapResponse(
-            serverClient.sendCommandAndGetResponse<Api::EvolutionStart::Okay>(startCmd, 10000));
-        if (startResult.isError()) {
+        UiApi::TrainingStart::Command trainCmd;
+        trainCmd.evolution.populationSize = 2;
+        trainCmd.evolution.maxGenerations = 1;
+        trainCmd.evolution.maxSimulationTime = 0.1;
+        trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
+        trainCmd.training.organismType = OrganismType::TREE;
+        PopulationSpec population;
+        population.brainKind = TrainingBrainKind::NeuralNet;
+        population.count = trainCmd.evolution.populationSize;
+        population.randomCount = trainCmd.evolution.populationSize;
+        trainCmd.training.population = { population };
+
+        auto trainResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::TrainingStart::Okay>(trainCmd, timeoutMs));
+        if (trainResult.isError()) {
+            uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
-                "EvolutionStart failed: " + startResult.errorValue());
+                "UI TrainingStart failed: " + trainResult.errorValue());
+        }
+
+        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        if (trainingStateResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
         }
 
         const int trainingTimeoutMs = std::max(timeoutMs, 120000);
         auto waitResult =
             waitForServerState(serverClient, "UnsavedTrainingResult", trainingTimeoutMs);
         if (waitResult.isError()) {
+            uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(waitResult.errorValue());
         }
@@ -425,6 +444,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             unwrapResponse(serverClient.sendCommandAndGetResponse<Api::TrainingResultSave::Okay>(
                 saveCmd, timeoutMs));
         if (saveResult.isError()) {
+            uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
                 "TrainingResultSave failed: " + saveResult.errorValue());
@@ -433,6 +453,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         auto listResult =
             waitForTrainingResultList(serverClient, trainingTimeoutMs, initialResultCount);
         if (listResult.isError()) {
+            uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(listResult.errorValue());
         }
@@ -446,6 +467,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             unwrapResponse(serverClient.sendCommandAndGetResponse<Api::TrainingResultGet::Okay>(
                 getCmd, timeoutMs));
         if (getResult.isError()) {
+            uiClient.disconnect();
             serverClient.disconnect();
             return Result<std::monostate, std::string>::error(
                 "TrainingResultGet failed: " + getResult.errorValue());
@@ -468,6 +490,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             .candidate_count = static_cast<int>(getResult.value().candidates.size()),
         };
 
+        uiClient.disconnect();
         serverClient.disconnect();
 
         return Result<std::monostate, std::string>::okay(std::monostate{});

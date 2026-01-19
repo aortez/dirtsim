@@ -6,6 +6,7 @@
 #include "server/api/EvolutionStop.h"
 #include "server/api/Exit.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/TrainingResult.h"
 
 #include <chrono>
 #include <iomanip>
@@ -72,6 +73,10 @@ TrainResults TrainRunner::run(
         .wantsEvents = true,
     };
     client_.setClientHello(hello);
+    client_.registerHandler<Api::TrainingResult::Cwc>([](Api::TrainingResult::Cwc cwc) {
+        SLOG_INFO("TrainingResult received (candidates={})", cwc.command.candidates.size());
+        cwc.sendResponse(Api::TrainingResult::Response::okay(std::monostate{}));
+    });
 
     auto connectResult = client_.connect(connectAddress);
     if (connectResult.isError()) {

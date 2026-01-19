@@ -90,6 +90,8 @@ void StateMachine::setupWebSocketService()
     ws->registerHandler<UiApi::SimPause::Cwc>(
         [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingStart::Cwc>(
+        [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StateGet::Cwc>(
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
