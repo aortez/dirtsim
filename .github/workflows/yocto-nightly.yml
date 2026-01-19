@@ -4,6 +4,7 @@ on:
   schedule:
     - cron: "0 11 * * *"
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -38,3 +39,10 @@ jobs:
     - name: Yocto build (docker)
       working-directory: yocto
       run: npm run docker-build
+
+    - name: Build + publish x86 runtime container image
+      working-directory: yocto
+      env:
+        DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
+        DIRTSIM_RUNTIME_REGISTRY_DATA_DIR: /data/dirtsim-registry
+      run: npm run runtime-image -- --build --publish --ensure-registry

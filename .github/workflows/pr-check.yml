@@ -57,3 +57,22 @@ jobs:
     - name: Run unit tests
       working-directory: docker
       run: make test
+
+    - name: Ensure Yocto runtime image
+      working-directory: yocto
+      env:
+        DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
+      run: npm run runtime-image -- --ensure
+
+    - name: Run integration test in Yocto runtime
+      run: |
+        DATA_DIR="${RUNNER_TEMP}/dirtsim-data"
+        mkdir -p "${DATA_DIR}"
+        docker run --rm \
+          -v "${GITHUB_WORKSPACE}:/workspace" \
+          -v "${DATA_DIR}:/data" \
+          -w /workspace \
+          -e DIRTSIM_OS_MANAGER_BIN=/usr/bin/dirtsim-os-manager \
+          -e DIRTSIM_CLI_BIN=/usr/bin/dirtsim-cli \
+          "dirtsim-runtime:x86-nightly" \
+          /bin/sh /workspace/apps/scripts/os-manager-integration-test.sh

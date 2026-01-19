@@ -2,7 +2,10 @@
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/StatusGet.h"
+#include <cerrno>
 #include <chrono>
+#include <cstdlib>
+#include <cstring>
 #include <fcntl.h>
 #include <signal.h>
 #include <spdlog/spdlog.h>
@@ -26,51 +29,13 @@ SubprocessManager::~SubprocessManager()
 
 bool SubprocessManager::launchServer(const std::string& serverPath, const std::string& args)
 {
-    // Fork process.
-    serverPid_ = fork();
+    return launchServer(serverPath, args, ProcessOptions{});
+}
 
-    if (serverPid_ < 0) {
-        SLOG_ERROR("SubprocessManager: Failed to fork process");
-        return false;
-    }
-
-    if (serverPid_ == 0) {
-        // Child process - exec server.
-        SLOG_DEBUG("SubprocessManager: Launching server: {} {}", serverPath, args);
-
-        // No need to redirect stdout - benchmark logging config disables console output.
-        // Stderr is kept for crash reporting (terminate/abort messages).
-
-        // Parse arguments into vector.
-        std::vector<std::string> argVec;
-        argVec.push_back(serverPath); // argv[0] is the program name.
-
-        if (!args.empty()) {
-            std::istringstream iss(args);
-            std::string arg;
-            while (iss >> arg) {
-                argVec.push_back(arg);
-            }
-        }
-
-        // Convert to char* array for execv.
-        std::vector<char*> execArgs;
-        for (auto& arg : argVec) {
-            execArgs.push_back(const_cast<char*>(arg.c_str()));
-        }
-        execArgs.push_back(nullptr);
-
-        // Execute server.
-        execv(serverPath.c_str(), execArgs.data());
-
-        // If exec fails, exit child process.
-        SLOG_ERROR("SubprocessManager: exec failed");
-        exit(1);
-    }
-
-    // Parent process.
-    SLOG_INFO("SubprocessManager: Launched server (PID: {})", serverPid_);
-    return true;
+bool SubprocessManager::launchServer(
+    const std::string& serverPath, const std::string& args, const ProcessOptions& options)
+{
+    return launchProcess(serverPath, args, options, serverPid_, "server");
 }
 
 bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSec)
@@ -206,48 +171,13 @@ bool SubprocessManager::tryConnect(const std::string& url)
 
 bool SubprocessManager::launchUI(const std::string& uiPath, const std::string& args)
 {
-    // Fork process.
-    uiPid_ = fork();
+    return launchUI(uiPath, args, ProcessOptions{});
+}
 
-    if (uiPid_ < 0) {
-        SLOG_ERROR("SubprocessManager: Failed to fork UI process");
-        return false;
-    }
-
-    if (uiPid_ == 0) {
-        // Child process - exec UI.
-        SLOG_DEBUG("SubprocessManager: Launching UI: {} {}", uiPath, args);
-
-        // Parse arguments into vector.
-        std::vector<std::string> argVec;
-        argVec.push_back(uiPath);
-
-        if (!args.empty()) {
-            std::istringstream iss(args);
-            std::string arg;
-            while (iss >> arg) {
-                argVec.push_back(arg);
-            }
-        }
-
-        // Convert to char* array for execv.
-        std::vector<char*> execArgs;
-        for (auto& arg : argVec) {
-            execArgs.push_back(const_cast<char*>(arg.c_str()));
-        }
-        execArgs.push_back(nullptr);
-
-        // Execute UI.
-        execv(uiPath.c_str(), execArgs.data());
-
-        // If exec fails, exit child process.
-        SLOG_ERROR("SubprocessManager: execv failed for UI");
-        exit(1);
-    }
-
-    // Parent process.
-    SLOG_INFO("SubprocessManager: Launched UI (PID: {})", uiPid_);
-    return true;
+bool SubprocessManager::launchUI(
+    const std::string& uiPath, const std::string& args, const ProcessOptions& options)
+{
+    return launchProcess(uiPath, args, options, uiPid_, "UI");
 }
 
 bool SubprocessManager::waitForUIReady(const std::string& url, int timeoutSec)
@@ -335,6 +265,67 @@ bool SubprocessManager::isUIRunning() const
         // Error or process doesn't exist.
         return false;
     }
+}
+
+bool SubprocessManager::launchProcess(
+    const std::string& path,
+    const std::string& args,
+    const ProcessOptions& options,
+    pid_t& pidOut,
+    const char* processLabel)
+{
+    pidOut = fork();
+
+    if (pidOut < 0) {
+        SLOG_ERROR("SubprocessManager: Failed to fork {} process", processLabel);
+        return false;
+    }
+
+    if (pidOut == 0) {
+        SLOG_DEBUG("SubprocessManager: Launching {}: {} {}", processLabel, path, args);
+
+        if (!options.workingDirectory.empty()) {
+            if (chdir(options.workingDirectory.c_str()) != 0) {
+                SLOG_ERROR(
+                    "SubprocessManager: chdir({}) failed: {}",
+                    options.workingDirectory,
+                    std::strerror(errno));
+                exit(1);
+            }
+        }
+
+        for (const auto& [key, value] : options.environmentOverrides) {
+            if (setenv(key.c_str(), value.c_str(), 1) != 0) {
+                SLOG_ERROR("SubprocessManager: setenv({}) failed: {}", key, std::strerror(errno));
+                exit(1);
+            }
+        }
+
+        std::vector<std::string> argVec;
+        argVec.push_back(path);
+
+        if (!args.empty()) {
+            std::istringstream iss(args);
+            std::string arg;
+            while (iss >> arg) {
+                argVec.push_back(arg);
+            }
+        }
+
+        std::vector<char*> execArgs;
+        for (auto& arg : argVec) {
+            execArgs.push_back(const_cast<char*>(arg.c_str()));
+        }
+        execArgs.push_back(nullptr);
+
+        execv(path.c_str(), execArgs.data());
+
+        SLOG_ERROR("SubprocessManager: exec failed for {}", processLabel);
+        exit(1);
+    }
+
+    SLOG_INFO("SubprocessManager: Launched {} (PID: {})", processLabel, pidOut);
+    return true;
 }
 
 } // namespace Client
