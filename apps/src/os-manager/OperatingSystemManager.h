@@ -23,6 +23,7 @@ public:
     struct Dependencies {
         std::function<Result<std::monostate, ApiError>(const std::string&, const std::string&)>
             serviceCommand;
+        std::function<int(const std::string&)> systemCommand;
         std::function<OsApi::SystemStatus::Okay()> systemStatus;
         std::function<void()> reboot;
     };
@@ -54,6 +55,8 @@ public:
     void scheduleReboot();
 
 private:
+    friend struct OperatingSystemManagerTestAccessor;
+
     struct DiskStats {
         uint64_t free_bytes = 0;
         uint64_t total_bytes = 0;

@@ -127,25 +127,34 @@ Result<std::monostate, std::string> waitForSystemStatusOk(
     const int pollDelayMs = 500;
     const int requestTimeoutMs = std::min(timeoutMs, 1000);
     const int waitTimeoutMs = std::max(timeoutMs, 15000);
+    std::optional<OsApi::SystemStatus::Okay> lastStatus;
+    std::string lastError;
 
     while (true) {
         auto statusResult = requestSystemStatus(client, requestTimeoutMs);
         if (statusResult.isError()) {
-            return Result<std::monostate, std::string>::error(statusResult.errorValue());
+            lastError = statusResult.errorValue();
         }
-
-        const auto& status = statusResult.value();
-        if (isStatusOk(status.ui_status) && isStatusOk(status.server_status)) {
-            return Result<std::monostate, std::string>::okay(std::monostate{});
+        else {
+            lastStatus = statusResult.value();
+        }
+        if (lastStatus.has_value()) {
+            const auto& status = lastStatus.value();
+            if (isStatusOk(status.ui_status) && isStatusOk(status.server_status)) {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+            lastError = "SystemStatus not OK (ui_status=" + status.ui_status
+                + ", server_status=" + status.server_status + ")";
         }
 
         const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         if (elapsedMs >= waitTimeoutMs) {
-            return Result<std::monostate, std::string>::error(
-                "SystemStatus not OK (ui_status=" + status.ui_status
-                + ", server_status=" + status.server_status + ")");
+            if (!lastError.empty()) {
+                return Result<std::monostate, std::string>::error(lastError);
+            }
+            return Result<std::monostate, std::string>::error("SystemStatus check failed");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));

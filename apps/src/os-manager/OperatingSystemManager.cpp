@@ -299,8 +299,11 @@ std::string OperatingSystemManager::getServerHealth(int timeoutMs)
     }
 
     const auto& okay = response.value();
-    if (okay.state == "Error" && !okay.error_message.empty()) {
-        return "Error: " + okay.error_message;
+    if (okay.state == "Error") {
+        if (!okay.error_message.empty()) {
+            return "Error: " + okay.error_message;
+        }
+        return "Error: server in Error state";
     }
 
     return "OK";
@@ -355,8 +358,12 @@ Result<std::monostate, ApiError> OperatingSystemManager::restartService(const st
 Result<std::monostate, ApiError> OperatingSystemManager::runServiceCommand(
     const std::string& action, const std::string& unitName)
 {
+    if (!dependencies_.systemCommand) {
+        return makeMissingDependencyError("systemCommand");
+    }
+
     const std::string command = "systemctl " + action + " " + unitName;
-    const int result = std::system(command.c_str());
+    const int result = dependencies_.systemCommand(command);
     if (result == -1) {
         return Result<std::monostate, ApiError>::error(ApiError("systemctl failed to start"));
     }
@@ -378,14 +385,12 @@ void OperatingSystemManager::scheduleReboot()
 
 void OperatingSystemManager::scheduleRebootInternal()
 {
-    std::thread([]() {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        sync();
-        const int result = ::reboot(RB_AUTOBOOT);
-        if (result != 0) {
-            SLOG_ERROR("Reboot failed: {}", std::strerror(errno));
-        }
-    }).detach();
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+    sync();
+    const int result = ::reboot(RB_AUTOBOOT);
+    if (result != 0) {
+        SLOG_ERROR("Reboot failed: {}", std::strerror(errno));
+    }
 }
 
 void OperatingSystemManager::transitionTo(State::Any newState)
@@ -409,6 +414,9 @@ void OperatingSystemManager::transitionTo(State::Any newState)
 
 void OperatingSystemManager::initializeDefaultDependencies()
 {
+    dependencies_.systemCommand = [](const std::string& command) {
+        return std::system(command.c_str());
+    };
     dependencies_.serviceCommand = [this](const std::string& action, const std::string& unitName) {
         return runServiceCommand(action, unitName);
     };

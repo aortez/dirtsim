@@ -1173,8 +1173,18 @@ int main(int argc, char** argv)
     }
     auto responseResult = dispatcher.dispatch(dispatchTarget, client, commandName, bodyJson);
     if (responseResult.isError()) {
-        std::cerr << "Failed to execute command: " << responseResult.errorValue().message
-                  << std::endl;
+        const auto& errorMessage = responseResult.errorValue().message;
+        bool printedStructured = false;
+        try {
+            nlohmann::json errorJson = nlohmann::json::parse(errorMessage);
+            std::cerr << errorJson.dump() << std::endl;
+            printedStructured = true;
+        }
+        catch (const nlohmann::json::parse_error&) {
+        }
+        if (!printedStructured) {
+            std::cerr << "Failed to execute command: " << errorMessage << std::endl;
+        }
         return 1;
     }
 

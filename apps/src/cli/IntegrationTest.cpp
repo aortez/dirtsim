@@ -1,13 +1,10 @@
 #include "IntegrationTest.h"
 #include "SubprocessManager.h"
-#include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/Exit.h"
 #include "server/api/SimRun.h"
 #include <chrono>
 #include <iostream>
-#include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 #include <thread>
 
 namespace DirtSim {
@@ -68,10 +65,14 @@ int IntegrationTest::run(const std::string& serverPath, const std::string& uiPat
                                                 .scenario_id = std::nullopt,
                                                 .start_paused = false,
                                                 .container_size = {} };
-    auto simEnvelope = DirtSim::Network::make_command_envelope(1, simCmd);
-    auto simResult = client.sendBinaryAndReceive(simEnvelope, 5000);
+    auto simResult = client.sendCommandAndGetResponse<Api::SimRun::Okay>(simCmd, 5000);
     if (simResult.isError()) {
         std::cerr << "Error: Failed to start simulation: " << simResult.errorValue() << std::endl;
+        return 1;
+    }
+    if (simResult.value().isError()) {
+        std::cerr << "Error: Failed to start simulation: " << simResult.value().errorValue().message
+                  << std::endl;
         return 1;
     }
     std::cout << "Simulation started" << std::endl;
@@ -83,11 +84,19 @@ int IntegrationTest::run(const std::string& serverPath, const std::string& uiPat
     // Send exit to server and wait for acknowledgment.
     std::cout << "Shutting down server..." << std::endl;
     const DirtSim::Api::Exit::Command exitCmd{};
-    auto exitEnvelope = DirtSim::Network::make_command_envelope(2, exitCmd);
-    auto exitResult = client.sendBinaryAndReceive(exitEnvelope, 2000);
-    if (exitResult.isValue()) {
-        std::cout << "Server acknowledged shutdown" << std::endl;
+    auto exitResult = client.sendCommandAndGetResponse<std::monostate>(exitCmd, 2000);
+    if (exitResult.isError()) {
+        std::cerr << "Error: Failed to shut down server: " << exitResult.errorValue() << std::endl;
+        client.disconnect();
+        return 1;
     }
+    if (exitResult.value().isError()) {
+        std::cerr << "Error: Failed to shut down server: "
+                  << exitResult.value().errorValue().message << std::endl;
+        client.disconnect();
+        return 1;
+    }
+    std::cout << "Server acknowledged shutdown" << std::endl;
     client.disconnect();
 
     // Wait for server to exit gracefully.
