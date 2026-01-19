@@ -34,6 +34,9 @@ node_modules/
 # Docker Yocto home directory for container builds.
 .docker-home/
 
+# Runtime container rootfs tarball (CI/local build artifact).
+runtime/rootfs.tar.gz
+
 # Yocto ccache (container-safe path).
 .ccache/
 

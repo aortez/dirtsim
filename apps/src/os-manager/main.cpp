@@ -3,10 +3,23 @@
 #include <args.hxx>
 #include <csignal>
 #include <iostream>
+#include <optional>
 
 using namespace DirtSim;
 
 static OsManager::OperatingSystemManager* g_manager = nullptr;
+
+std::optional<OsManager::OperatingSystemManager::BackendType> parseBackendType(
+    const std::string& value)
+{
+    if (value == "systemd") {
+        return OsManager::OperatingSystemManager::BackendType::Systemd;
+    }
+    if (value == "local") {
+        return OsManager::OperatingSystemManager::BackendType::LocalProcess;
+    }
+    return std::nullopt;
+}
 
 void signalHandler(int signum)
 {
@@ -35,6 +48,8 @@ int main(int argc, char** argv)
         "channels",
         "Override log channels (e.g., network:debug,*:off)",
         { 'C', "channels" });
+    args::ValueFlag<std::string> backend(
+        parser, "backend", "Backend: systemd or local (default: systemd)", { "backend" });
 
     try {
         parser.ParseCLI(argc, argv);
@@ -57,7 +72,18 @@ int main(int argc, char** argv)
         SLOG_INFO("Applied channel overrides: {}", args::get(logChannels));
     }
 
-    OsManager::OperatingSystemManager manager(port);
+    auto backendConfig = OsManager::OperatingSystemManager::BackendConfig::fromEnvironment();
+    if (backend) {
+        const auto parsed = parseBackendType(args::get(backend));
+        if (!parsed.has_value()) {
+            std::cerr << "Error: invalid backend '" << args::get(backend)
+                      << "'. Use 'systemd' or 'local'." << std::endl;
+            return 1;
+        }
+        backendConfig.type = parsed.value();
+    }
+
+    OsManager::OperatingSystemManager manager(port, backendConfig);
     g_manager = &manager;
 
     std::signal(SIGINT, signalHandler);

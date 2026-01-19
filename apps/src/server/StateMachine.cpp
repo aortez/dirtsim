@@ -577,12 +577,13 @@ void StateMachine::mainLoopRun()
 
             auto frameEnd = std::chrono::steady_clock::now();
 
-            // Log timing breakdown every 1000 frames.
+            // Log timing breakdown every 10 seconds.
             static int frameCount = 0;
             static double totalEventProcessMs = 0.0;
             static double totalTickMs = 0.0;
             static double totalSleepMs = 0.0;
             static double totalIterationMs = 0.0;
+            static auto lastTimingLog = std::chrono::steady_clock::now();
 
             double eventProcessMs =
                 std::chrono::duration<double, std::milli>(eventProcessEnd - eventProcessStart)
@@ -626,7 +627,8 @@ void StateMachine::mainLoopRun()
             totalIterationMs += iterationMs;
 
             frameCount++;
-            if (frameCount % 5000 == 0) {
+            if (loopIterationEnd - lastTimingLog >= std::chrono::seconds(10)) {
+                lastTimingLog = loopIterationEnd;
                 spdlog::info("Main loop timing (avg over {} frames):", frameCount);
                 spdlog::info("  Event processing: {:.2f}ms", totalEventProcessMs / frameCount);
                 spdlog::info("  Simulation tick: {:.2f}ms", totalTickMs / frameCount);
