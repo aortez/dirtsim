@@ -39,11 +39,20 @@ struct FunctionalTestSummary {
 class FunctionalTestRunner {
 public:
     FunctionalTestSummary runCanExit(
-        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanTrain(
-        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanSetGenerationsAndTrain(
-        const std::string& uiAddress, const std::string& serverAddress, int timeoutMs);
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
 };
 
 } // namespace Client

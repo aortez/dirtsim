@@ -50,6 +50,7 @@ make debug                           # Build
 | Document | Location | Description |
 |----------|----------|-------------|
 | Application docs | `apps/CLAUDE.md` | Build, run, test, architecture |
+| Architecture | `apps/design_docs/Architecture.md` | System overview and components |
 | Physics system | `apps/design_docs/GridMechanics.md` | Pressure, friction, cohesion, etc. |
 | Coding conventions | `apps/design_docs/coding_convention.md` | Style guidelines |
 | Tree organisms | `apps/design_docs/plant.md` | A-life tree feature |

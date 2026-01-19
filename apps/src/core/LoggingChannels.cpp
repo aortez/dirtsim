@@ -13,7 +13,8 @@ std::vector<spdlog::sink_ptr> LoggingChannels::sharedSinks_;
 void LoggingChannels::initialize(
     spdlog::level::level_enum consoleLevel,
     spdlog::level::level_enum fileLevel,
-    const std::string& componentName)
+    const std::string& componentName,
+    bool consoleToStderr)
 {
     if (initialized_) {
         spdlog::warn("LoggingChannels already initialized, skipping re-initialization");
@@ -21,7 +22,13 @@ void LoggingChannels::initialize(
     }
 
     // Create shared sinks.
-    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    spdlog::sink_ptr console_sink;
+    if (consoleToStderr) {
+        console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    }
+    else {
+        console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    }
     console_sink->set_level(consoleLevel);
 
     // All components log to the same file (component prefix distinguishes them).
@@ -64,7 +71,13 @@ void LoggingChannels::initialize(
     createLogger("ui", sharedSinks_, spdlog::level::info);
 
     // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
-    auto default_console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    spdlog::sink_ptr default_console_sink;
+    if (consoleToStderr) {
+        default_console_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    }
+    else {
+        default_console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    }
     default_console_sink->set_level(consoleLevel);
     auto default_file_sink =
         std::make_shared<spdlog::sinks::basic_file_sink_mt>("dirtsim.log", false);

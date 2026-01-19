@@ -3,6 +3,10 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "os-manager/api/Reboot.h"
+#include "os-manager/api/RestartServer.h"
+#include "os-manager/api/RestartUi.h"
+#include "os-manager/api/SystemStatus.h"
 #include "server/api/SimStop.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
@@ -347,6 +351,125 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
 
     return Result<FunctionalTrainingSummary, std::string>::okay(trainingSummary);
 }
+
+Result<OsApi::SystemStatus::Okay, std::string> requestSystemStatus(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    OsApi::SystemStatus::Command cmd{};
+    return unwrapResponse(
+        client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(cmd, timeoutMs));
+}
+
+bool isStatusOk(const std::string& status)
+{
+    return status == "OK";
+}
+
+Result<std::monostate, std::string> waitForSystemStatusOk(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 500;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    const int waitTimeoutMs = std::max(timeoutMs, 15000);
+    std::optional<OsApi::SystemStatus::Okay> lastStatus;
+    std::string lastError;
+
+    while (true) {
+        auto statusResult = requestSystemStatus(client, requestTimeoutMs);
+        if (statusResult.isError()) {
+            lastError = statusResult.errorValue();
+        }
+        else {
+            lastStatus = statusResult.value();
+        }
+        if (lastStatus.has_value()) {
+            const auto& status = lastStatus.value();
+            if (isStatusOk(status.ui_status) && isStatusOk(status.server_status)) {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+            lastError = "SystemStatus not OK (ui_status=" + status.ui_status
+                + ", server_status=" + status.server_status + ")";
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= waitTimeoutMs) {
+            if (!lastError.empty()) {
+                return Result<std::monostate, std::string>::error(lastError);
+            }
+            return Result<std::monostate, std::string>::error("SystemStatus check failed");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<std::monostate, std::string> restartServices(
+    const std::string& osManagerAddress, int timeoutMs)
+{
+    Network::WebSocketService client;
+    std::cerr << "Connecting to os-manager at " << osManagerAddress << "..." << std::endl;
+    auto connectResult = client.connect(osManagerAddress, timeoutMs);
+    if (connectResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Failed to connect to os-manager: " + connectResult.errorValue());
+    }
+
+    std::cerr << "Restarting server..." << std::endl;
+    OsApi::RestartServer::Command restartServerCmd{};
+    auto restartServerResult = unwrapResponse(
+        client.sendCommandAndGetResponse<std::monostate>(restartServerCmd, timeoutMs));
+    if (restartServerResult.isError()) {
+        client.disconnect();
+        return Result<std::monostate, std::string>::error(
+            "RestartServer failed: " + restartServerResult.errorValue());
+    }
+
+    std::cerr << "Restarting UI..." << std::endl;
+    OsApi::RestartUi::Command restartUiCmd{};
+    auto restartUiResult =
+        unwrapResponse(client.sendCommandAndGetResponse<std::monostate>(restartUiCmd, timeoutMs));
+    if (restartUiResult.isError()) {
+        client.disconnect();
+        return Result<std::monostate, std::string>::error(
+            "RestartUi failed: " + restartUiResult.errorValue());
+    }
+
+    auto statusResult = waitForSystemStatusOk(client, timeoutMs);
+    client.disconnect();
+    if (statusResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "SystemStatus check failed: " + statusResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> requestReboot(
+    const std::string& osManagerAddress, int timeoutMs)
+{
+    Network::WebSocketService client;
+    std::cerr << "Connecting to os-manager at " << osManagerAddress << "..." << std::endl;
+    auto connectResult = client.connect(osManagerAddress, timeoutMs);
+    if (connectResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Failed to connect to os-manager: " + connectResult.errorValue());
+    }
+
+    std::cerr << "Requesting reboot..." << std::endl;
+    OsApi::Reboot::Command rebootCmd{};
+    auto rebootResult =
+        unwrapResponse(client.sendCommandAndGetResponse<std::monostate>(rebootCmd, timeoutMs));
+    client.disconnect();
+    if (rebootResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Reboot failed: " + rebootResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
 } // namespace
 
 nlohmann::json FunctionalTrainingSummary::toJson() const
@@ -392,13 +515,21 @@ nlohmann::json FunctionalTestSummary::toJson() const
 }
 
 FunctionalTestSummary FunctionalTestRunner::runCanExit(
-    const std::string& uiAddress, const std::string& serverAddress, int timeoutMs)
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
 {
     const auto startTime = std::chrono::steady_clock::now();
     Network::WebSocketService uiClient;
     Network::WebSocketService serverClient;
 
     auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
         std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
         auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
         if (uiConnect.isError()) {
@@ -487,6 +618,16 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
+    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
+    if (rebootResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+        }
+    }
+
     const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - startTime)
                                 .count();
@@ -500,12 +641,20 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
 }
 
 FunctionalTestSummary FunctionalTestRunner::runCanTrain(
-    const std::string& uiAddress, const std::string& serverAddress, int timeoutMs)
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
 {
     const auto startTime = std::chrono::steady_clock::now();
     std::optional<FunctionalTrainingSummary> trainingSummary;
 
     auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
         const auto trainingResult = runTrainingSession(uiAddress, serverAddress, timeoutMs, 1);
         if (trainingResult.isError()) {
             return Result<std::monostate, std::string>::error(trainingResult.errorValue());
@@ -513,6 +662,16 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         trainingSummary = trainingResult.value();
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
+
+    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
+    if (rebootResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+        }
+    }
 
     const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - startTime)
@@ -527,13 +686,21 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
 }
 
 FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
-    const std::string& uiAddress, const std::string& serverAddress, int timeoutMs)
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
 {
     const auto startTime = std::chrono::steady_clock::now();
     std::optional<FunctionalTrainingSummary> trainingSummary;
     const int requestedGenerations = 2;
 
     auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
         const auto trainingResult =
             runTrainingSession(uiAddress, serverAddress, timeoutMs, requestedGenerations);
         if (trainingResult.isError()) {
@@ -555,6 +722,16 @@ FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
         trainingSummary = summary;
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
+
+    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
+    if (rebootResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+        }
+    }
 
     const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                                 std::chrono::steady_clock::now() - startTime)
