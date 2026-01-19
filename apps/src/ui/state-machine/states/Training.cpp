@@ -102,7 +102,7 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
     return std::move(*this);
 }
 
-State::Any Training::onEvent(const Api::TrainingResultAvailable::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Training::onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());
 
@@ -110,7 +110,7 @@ State::Any Training::onEvent(const Api::TrainingResultAvailable::Cwc& cwc, State
         view_->showTrainingResultModal(cwc.command.summary, cwc.command.candidates);
     }
 
-    cwc.sendResponse(Api::TrainingResultAvailable::Response::okay(std::monostate{}));
+    cwc.sendResponse(Api::TrainingResult::Response::okay(std::monostate{}));
     return std::move(*this);
 }
 

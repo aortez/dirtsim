@@ -150,7 +150,7 @@ Run a minimal UI/server workflow check against a running system:
 - Queries server StatusGet and UI StateGet.
 - Drives UI back to StartMenu if needed (SimStop).
 - Sends UI Exit.
-- For canTrain: runs EvolutionStart with defaults, waits for TrainingResultList to grow, and requests TrainingResultGet for the newest session.
+- For canTrain: runs EvolutionStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
 
 ### Network Mode
 

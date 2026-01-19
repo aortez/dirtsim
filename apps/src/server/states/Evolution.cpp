@@ -16,7 +16,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
-#include "server/api/TrainingResultAvailable.h"
+#include "server/api/TrainingResult.h"
 #include <algorithm>
 #include <ctime>
 #include <limits>
@@ -162,7 +162,7 @@ void Evolution::onExit(StateMachine& dsm)
 std::optional<Any> Evolution::tick(StateMachine& dsm)
 {
     if (trainingComplete_) {
-        auto nextState = broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResult(dsm);
         if (nextState.has_value()) {
             return nextState;
         }
@@ -173,7 +173,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (generation >= evolutionConfig.maxGenerations) {
         LOG_INFO(State, "Evolution complete: {} generations", generation);
         trainingComplete_ = true;
-        auto nextState = broadcastTrainingResultAvailable(dsm);
+        auto nextState = broadcastTrainingResult(dsm);
         if (nextState.has_value()) {
             return nextState;
         }
@@ -223,7 +223,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     if (organismDied || timeUp) {
         finishEvaluation(dsm);
         if (trainingComplete_) {
-            auto nextState = broadcastTrainingResultAvailable(dsm);
+            auto nextState = broadcastTrainingResult(dsm);
             if (nextState.has_value()) {
                 return nextState;
             }
@@ -594,17 +594,17 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
 }
 
-std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm)
+std::optional<Any> Evolution::broadcastTrainingResult(StateMachine& dsm)
 {
     if (!pendingTrainingResult_.has_value()) {
         pendingTrainingResult_ = buildUnsavedTrainingResult();
     }
 
-    Api::TrainingResultAvailable available;
-    available.summary = pendingTrainingResult_->summary;
-    available.candidates.reserve(pendingTrainingResult_->candidates.size());
+    Api::TrainingResult trainingResult;
+    trainingResult.summary = pendingTrainingResult_->summary;
+    trainingResult.candidates.reserve(pendingTrainingResult_->candidates.size());
     for (const auto& candidate : pendingTrainingResult_->candidates) {
-        available.candidates.push_back(Api::TrainingResultAvailable::Candidate{
+        trainingResult.candidates.push_back(Api::TrainingResult::Candidate{
             .id = candidate.id,
             .fitness = candidate.fitness,
             .brainKind = candidate.brainKind,
@@ -613,29 +613,20 @@ std::optional<Any> Evolution::broadcastTrainingResultAvailable(StateMachine& dsm
         });
     }
 
-    dsm.recordTrainingResult(available);
-
     auto* wsService = dsm.getWebSocketService();
     if (!wsService) {
-        LOG_WARN(State, "No WebSocketService available for TrainingResultAvailable");
-        UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
-        pendingTrainingResult_.reset();
-        return Any{ result };
+        LOG_WARN(State, "No WebSocketService available for TrainingResult");
     }
-
-    const auto response =
-        wsService->sendCommandAndGetResponse<Api::TrainingResultAvailable::OkayType>(
-            available, 5000);
-    if (response.isError()) {
-        LOG_WARN(State, "TrainingResultAvailable send failed: {}", response.errorValue());
-        return std::nullopt;
-    }
-    if (response.value().isError()) {
-        LOG_WARN(
-            State,
-            "TrainingResultAvailable response error: {}",
-            response.value().errorValue().message);
-        return std::nullopt;
+    else {
+        const auto response = wsService->sendCommandAndGetResponse<Api::TrainingResult::OkayType>(
+            trainingResult, 5000);
+        if (response.isError()) {
+            LOG_WARN(State, "TrainingResult send failed: {}", response.errorValue());
+        }
+        else if (response.value().isError()) {
+            LOG_WARN(
+                State, "TrainingResult response error: {}", response.value().errorValue().message);
+        }
     }
 
     UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());

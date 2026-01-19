@@ -22,7 +22,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::FingerUp::Cwc>(serverHandlers_);
     registerCommand<Api::GenomeDelete::Cwc>(serverHandlers_);
     registerCommand<Api::GenomeGet::Cwc>(serverHandlers_);
-    registerCommand<Api::GenomeGetBest::Cwc>(serverHandlers_);
     registerCommand<Api::GenomeList::Cwc>(serverHandlers_);
     registerCommand<Api::GenomeSet::Cwc>(serverHandlers_);
     registerCommand<Api::GravitySet::Cwc>(serverHandlers_);
@@ -44,6 +43,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_);
     registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_);
+    registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_);
     registerCommand<Api::WorldResize::Cwc>(serverHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");

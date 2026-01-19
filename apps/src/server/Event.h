@@ -12,7 +12,6 @@
 #include "api/FingerUp.h"
 #include "api/GenomeDelete.h"
 #include "api/GenomeGet.h"
-#include "api/GenomeGetBest.h"
 #include "api/GenomeList.h"
 #include "api/GenomeSet.h"
 #include "api/GravitySet.h"
@@ -35,6 +34,7 @@
 #include "api/TimerStatsGet.h"
 #include "api/TrainingResultDiscard.h"
 #include "api/TrainingResultSave.h"
+#include "api/TrainingResultSet.h"
 #include "api/WorldResize.h"
 #include "core/MaterialType.h"
 #include "core/SimulationStats.h"
@@ -426,7 +426,6 @@ public:
         DirtSim::Api::FingerUp::Cwc,
         DirtSim::Api::GenomeDelete::Cwc,
         DirtSim::Api::GenomeGet::Cwc,
-        DirtSim::Api::GenomeGetBest::Cwc,
         DirtSim::Api::GenomeList::Cwc,
         DirtSim::Api::GenomeSet::Cwc,
         DirtSim::Api::GravitySet::Cwc,
@@ -449,6 +448,7 @@ public:
         DirtSim::Api::TimerStatsGet::Cwc,
         DirtSim::Api::TrainingResultDiscard::Cwc,
         DirtSim::Api::TrainingResultSave::Cwc,
+        DirtSim::Api::TrainingResultSet::Cwc,
         DirtSim::Api::WorldResize::Cwc,
 
         // State transitions.
