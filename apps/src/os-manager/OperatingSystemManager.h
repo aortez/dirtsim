@@ -12,14 +12,35 @@
 #include "server/api/ApiError.h"
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <variant>
 
 namespace DirtSim {
 namespace OsManager {
 
+class LocalProcessBackend;
+
 class OperatingSystemManager : public StateMachineBase, public StateMachineInterface<Event> {
 public:
+    enum class BackendType {
+        Systemd,
+        LocalProcess,
+    };
+
+    struct BackendConfig {
+        BackendType type = BackendType::Systemd;
+        std::string serverPath;
+        std::string serverArgs;
+        std::string uiPath;
+        std::string uiArgs;
+        std::string uiBackend;
+        std::string uiDisplay;
+        std::string workDir;
+
+        static BackendConfig fromEnvironment();
+    };
+
     struct Dependencies {
         std::function<Result<std::monostate, ApiError>(const std::string&, const std::string&)>
             serviceCommand;
@@ -33,7 +54,9 @@ public:
     };
 
     explicit OperatingSystemManager(uint16_t port);
+    explicit OperatingSystemManager(uint16_t port, const BackendConfig& backendConfig);
     explicit OperatingSystemManager(TestMode mode);
+    ~OperatingSystemManager();
 
     Result<std::monostate, std::string> start();
     void stop();
@@ -80,6 +103,8 @@ private:
     SystemMetrics systemMetrics_;
     Network::WebSocketService wsService_;
     Dependencies dependencies_;
+    BackendConfig backendConfig_;
+    std::unique_ptr<LocalProcessBackend> localBackend_;
 };
 
 } // namespace OsManager

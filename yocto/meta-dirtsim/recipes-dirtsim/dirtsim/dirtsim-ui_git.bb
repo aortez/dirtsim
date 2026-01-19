@@ -84,6 +84,8 @@ do_install() {
     # Install fonts (for color emoji clock display).
     install -d ${D}/data/dirtsim/fonts
     install -m 0644 ${EXTERNALSRC}/fonts/NotoColorEmoji.ttf ${D}/data/dirtsim/fonts/
+    install -d ${D}/usr/share/dirtsim/fonts
+    install -m 0644 ${EXTERNALSRC}/fonts/NotoColorEmoji.ttf ${D}/usr/share/dirtsim/fonts/
 
     # Install FontAwesome for icon rendering.
     install -d ${D}/usr/share/fonts/fontawesome
@@ -102,6 +104,7 @@ FILES:${PN} = " \
     ${bindir}/dirtsim-set-hostname.sh \
     ${bindir}/dirtsim-config-setup.sh \
     /data/dirtsim/fonts/NotoColorEmoji.ttf \
+    /usr/share/dirtsim/fonts/NotoColorEmoji.ttf \
     /usr/share/fonts/fontawesome/fa-solid-900.ttf \
     ${sysconfdir}/dirtsim/ui.json \
     ${systemd_system_unitdir}/dirtsim-ui.service \
