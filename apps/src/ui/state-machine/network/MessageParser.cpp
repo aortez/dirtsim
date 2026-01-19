@@ -45,7 +45,7 @@ std::optional<Event> MessageParser::parseWorldDataResponse(const nlohmann::json&
     const auto& value = json["value"];
 
     // Route by explicit response_type.
-    if (responseType == "state_get") {
+    if (responseType == "StateGet" || responseType == "state_get") {
         // WorldData response (wrapped in Okay struct).
         WorldData worldData = value["worldData"].get<WorldData>();
 

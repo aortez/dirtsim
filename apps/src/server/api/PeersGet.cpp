@@ -1,6 +1,5 @@
 #include "PeersGet.h"
-
-#include "core/Assert.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace Api {
@@ -8,44 +7,17 @@ namespace PeersGet {
 
 nlohmann::json Command::toJson() const
 {
-    return nlohmann::json{ { "command", "peers_get" } };
+    return ReflectSerializer::to_json(*this);
 }
 
-Command Command::fromJson(const nlohmann::json&)
+Command Command::fromJson(const nlohmann::json& j)
 {
-    return Command{};
+    return ReflectSerializer::from_json<Command>(j);
 }
-
-namespace {
-std::string roleToString(Server::PeerRole role)
-{
-    switch (role) {
-        case Server::PeerRole::Physics:
-            return "physics";
-        case Server::PeerRole::Ui:
-            return "ui";
-        case Server::PeerRole::Unknown:
-            return "unknown";
-    }
-    DIRTSIM_ASSERT(false, "Unhandled PeerRole");
-    return "unknown";
-}
-} // namespace
 
 nlohmann::json Okay::toJson() const
 {
-    nlohmann::json result;
-    result["peers"] = nlohmann::json::array();
-
-    for (const auto& peer : peers) {
-        result["peers"].push_back({ { "name", peer.name },
-                                    { "host", peer.host },
-                                    { "address", peer.address },
-                                    { "port", peer.port },
-                                    { "role", roleToString(peer.role) } });
-    }
-
-    return result;
+    return ReflectSerializer::to_json(*this);
 }
 
 } // namespace PeersGet

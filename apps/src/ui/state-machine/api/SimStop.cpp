@@ -1,4 +1,5 @@
 #include "SimStop.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace UiApi {
@@ -6,18 +7,17 @@ namespace SimStop {
 
 nlohmann::json Command::toJson() const
 {
-    return nlohmann::json{ { "command", "sim_stop" } };
+    return ReflectSerializer::to_json(*this);
 }
 
-Command Command::fromJson(const nlohmann::json& /*j*/)
+Command Command::fromJson(const nlohmann::json& j)
 {
-    // SimStop command has no parameters.
-    return Command{};
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
 {
-    return nlohmann::json{ { "stopped", stopped } };
+    return ReflectSerializer::to_json(*this);
 }
 
 } // namespace SimStop

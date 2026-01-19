@@ -19,6 +19,7 @@
 #include "core/WorldData.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/JsonProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
@@ -214,16 +215,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = resp.value().toJson();                                                  \
-                j["id"] = correlationId;                                                    \
-                j["success"] = true;                                                        \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
@@ -235,14 +227,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = { { "id", correlationId }, { "success", true } };                       \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \

@@ -1,4 +1,5 @@
 #include "PeerDiscovery.h"
+#include "core/ReflectSerializer.h"
 
 #include <atomic>
 #include <mutex>
@@ -249,6 +250,56 @@ struct PeerDiscovery::Impl {
         spdlog::info("PeerDiscovery: Stopped.");
     }
 };
+
+namespace {
+std::string peerRoleToString(PeerRole role)
+{
+    switch (role) {
+        case PeerRole::Physics:
+            return "physics";
+        case PeerRole::Ui:
+            return "ui";
+        case PeerRole::Unknown:
+            return "unknown";
+    }
+    return "unknown";
+}
+
+PeerRole stringToPeerRole(const std::string& value)
+{
+    if (value == "physics") {
+        return PeerRole::Physics;
+    }
+    if (value == "ui") {
+        return PeerRole::Ui;
+    }
+    return PeerRole::Unknown;
+}
+} // namespace
+
+void to_json(nlohmann::json& j, const PeerRole& role)
+{
+    j = peerRoleToString(role);
+}
+
+void from_json(const nlohmann::json& j, PeerRole& role)
+{
+    if (!j.is_string()) {
+        role = PeerRole::Unknown;
+        return;
+    }
+    role = stringToPeerRole(j.get<std::string>());
+}
+
+void to_json(nlohmann::json& j, const PeerInfo& info)
+{
+    j = ReflectSerializer::to_json(info);
+}
+
+void from_json(const nlohmann::json& j, PeerInfo& info)
+{
+    info = ReflectSerializer::from_json<PeerInfo>(j);
+}
 
 PeerDiscovery::PeerDiscovery() : pImpl_()
 {}

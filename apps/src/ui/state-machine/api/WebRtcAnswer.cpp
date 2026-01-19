@@ -1,4 +1,5 @@
 #include "WebRtcAnswer.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace UiApi {
@@ -6,35 +7,22 @@ namespace WebRtcAnswer {
 
 nlohmann::json Command::toJson() const
 {
-    return nlohmann::json{ { "command", "WebRtcAnswer" },
-                           { "clientId", clientId },
-                           { "sdp", sdp } };
+    return ReflectSerializer::to_json(*this);
 }
 
 Command Command::fromJson(const nlohmann::json& j)
 {
-    Command cmd;
-    if (j.contains("clientId")) {
-        cmd.clientId = j["clientId"].get<std::string>();
-    }
-    if (j.contains("sdp")) {
-        cmd.sdp = j["sdp"].get<std::string>();
-    }
-    return cmd;
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
 {
-    return nlohmann::json{ { "accepted", accepted } };
+    return ReflectSerializer::to_json(*this);
 }
 
 Okay Okay::fromJson(const nlohmann::json& j)
 {
-    Okay ok;
-    if (j.contains("accepted")) {
-        ok.accepted = j["accepted"].get<bool>();
-    }
-    return ok;
+    return ReflectSerializer::from_json<Okay>(j);
 }
 
 } // namespace WebRtcAnswer
