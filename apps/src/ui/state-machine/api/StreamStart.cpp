@@ -1,4 +1,5 @@
 #include "StreamStart.h"
+#include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace UiApi {
@@ -6,33 +7,23 @@ namespace StreamStart {
 
 nlohmann::json Command::toJson() const
 {
-    return nlohmann::json{ { "command", "StreamStart" }, { "clientId", clientId } };
+    return ReflectSerializer::to_json(*this);
 }
 
 Command Command::fromJson(const nlohmann::json& j)
 {
-    Command cmd;
-    if (j.contains("clientId")) {
-        cmd.clientId = j["clientId"].get<std::string>();
-    }
-    return cmd;
+    j.at("clientId");
+    return ReflectSerializer::from_json<Command>(j);
 }
 
 nlohmann::json Okay::toJson() const
 {
-    return nlohmann::json{ { "initiated", initiated }, { "sdpOffer", sdpOffer } };
+    return ReflectSerializer::to_json(*this);
 }
 
 Okay Okay::fromJson(const nlohmann::json& j)
 {
-    Okay ok;
-    if (j.contains("initiated")) {
-        ok.initiated = j["initiated"].get<bool>();
-    }
-    if (j.contains("sdpOffer")) {
-        ok.sdpOffer = j["sdpOffer"].get<std::string>();
-    }
-    return ok;
+    return ReflectSerializer::from_json<Okay>(j);
 }
 
 } // namespace StreamStart

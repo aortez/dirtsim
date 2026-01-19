@@ -3,6 +3,7 @@
 #include "core/Pimpl.h"
 
 #include <functional>
+#include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
@@ -23,6 +24,11 @@ struct PeerInfo {
         return name == other.name && host == other.host && port == other.port;
     }
 };
+
+void to_json(nlohmann::json& j, const PeerRole& role);
+void from_json(const nlohmann::json& j, PeerRole& role);
+void to_json(nlohmann::json& j, const PeerInfo& info);
+void from_json(const nlohmann::json& j, PeerInfo& info);
 
 class PeerDiscovery {
 public:

@@ -3,6 +3,7 @@
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
 #include "core/network/BinaryProtocol.h"
+#include "core/network/JsonProtocol.h"
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "server/api/StatusGet.h"
 #include "ui/state-machine/api/StatusGet.h"
@@ -508,16 +509,7 @@ void OperatingSystemManager::setupWebSocketService()
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = resp.value().toJson();                                                  \
-                j["id"] = correlationId;                                                    \
-                j["success"] = true;                                                        \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
@@ -529,14 +521,7 @@ void OperatingSystemManager::setupWebSocketService()
         NamespaceType::Cwc cwc;                                                             \
         cwc.command = *cmd;                                                                 \
         cwc.callback = [ws, correlationId](NamespaceType::Response&& resp) {                \
-            nlohmann::json j;                                                               \
-            if (resp.isError()) {                                                           \
-                j = { { "id", correlationId }, { "error", resp.errorValue().message } };    \
-            }                                                                               \
-            else {                                                                          \
-                j = { { "id", correlationId }, { "success", true } };                       \
-            }                                                                               \
-            ws->send(j.dump());                                                             \
+            ws->send(Network::makeJsonResponse(correlationId, resp).dump());                \
         };                                                                                  \
         auto payload = Network::serialize_payload(cwc.command);                             \
         invokeHandler(std::string(NamespaceType::Command::name()), payload, correlationId); \
