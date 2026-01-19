@@ -3,9 +3,10 @@
 #include "EventProcessor.h"
 #include "ServerConfig.h"
 #include "api/PeersGet.h"
-#include "api/TrainingResultAvailable.h"
+#include "api/TrainingResult.h"
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
+#include "api/TrainingResultSet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -27,6 +28,7 @@
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
 #include "states/State.h"
+#include <algorithm>
 #include <cassert>
 #include <chrono>
 #include <ctime>
@@ -74,7 +76,7 @@ struct StateMachine::Impl {
     mutable std::mutex cachedWorldDataMutex_;
 
     std::vector<SubscribedClient> subscribedClients_;
-    std::vector<Api::TrainingResultAvailable> trainingResults_;
+    std::vector<Api::TrainingResult> trainingResults_;
     mutable std::mutex trainingResultsMutex_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
@@ -343,7 +345,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     });
 
     service.registerHandler<Api::TrainingResultList::Cwc>([this](Api::TrainingResultList::Cwc cwc) {
-        std::vector<Api::TrainingResultAvailable> snapshot;
+        std::vector<Api::TrainingResult> snapshot;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
             snapshot = pImpl->trainingResults_;
@@ -362,7 +364,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     });
 
     service.registerHandler<Api::TrainingResultGet::Cwc>([this](Api::TrainingResultGet::Cwc cwc) {
-        std::optional<Api::TrainingResultAvailable> found;
+        std::optional<Api::TrainingResult> found;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
             for (auto it = pImpl->trainingResults_.rbegin(); it != pImpl->trainingResults_.rend();
@@ -417,8 +419,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::GenomeDelete::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeGet::Cwc>(
         [this](Api::GenomeGet::Cwc cwc) { queueEvent(cwc); });
-    service.registerHandler<Api::GenomeGetBest::Cwc>(
-        [this](Api::GenomeGetBest::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeList::Cwc>(
         [this](Api::GenomeList::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::GenomeSet::Cwc>(
@@ -445,12 +445,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
-    service.registerHandler<Api::TrainingResultAvailableAck::Cwc>(
-        [this](Api::TrainingResultAvailableAck::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultDiscard::Cwc>(
         [this](Api::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultSave::Cwc>(
         [this](Api::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingResultSet::Cwc>(
+        [this](Api::TrainingResultSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::WorldResize::Cwc>(
         [this](Api::WorldResize::Cwc cwc) { queueEvent(cwc); });
 
@@ -525,9 +525,21 @@ const GenomeRepository& StateMachine::getGenomeRepository() const
     return pImpl->genomeRepository_;
 }
 
-void StateMachine::recordTrainingResult(const Api::TrainingResultAvailable& result)
+void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
 {
     std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+    auto it = std::find_if(
+        pImpl->trainingResults_.begin(),
+        pImpl->trainingResults_.end(),
+        [&result](const Api::TrainingResult& existing) {
+            return existing.summary.trainingSessionId == result.summary.trainingSessionId;
+        });
+
+    if (it != pImpl->trainingResults_.end()) {
+        *it = result;
+        return;
+    }
+
     pImpl->trainingResults_.push_back(result);
 }
 
@@ -685,33 +697,6 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
-    // Handle GenomeGetBest globally (read-only, works in any state).
-    if (std::holds_alternative<Api::GenomeGetBest::Cwc>(event.getVariant())) {
-        const auto& cwc = std::get<Api::GenomeGetBest::Cwc>(event.getVariant());
-        auto& repo = getGenomeRepository();
-
-        Api::GenomeGetBest::Okay response;
-
-        if (auto bestId = repo.getBestId()) {
-            response.found = true;
-            response.id = *bestId;
-
-            if (auto genome = repo.get(*bestId)) {
-                response.weights = genome->weights;
-            }
-
-            if (auto meta = repo.getMetadata(*bestId)) {
-                response.metadata = *meta;
-            }
-        }
-        else {
-            response.found = false;
-        }
-
-        cwc.sendResponse(Api::GenomeGetBest::Response::okay(std::move(response)));
-        return;
-    }
-
     // Handle GenomeGet globally (read-only, works in any state).
     if (std::holds_alternative<Api::GenomeGet::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::GenomeGet::Cwc>(event.getVariant());
@@ -809,6 +794,55 @@ void StateMachine::handleEvent(const Event& event)
         Api::GenomeDelete::Okay response;
         response.success = existed;
         cwc.sendResponse(Api::GenomeDelete::Response::okay(std::move(response)));
+        return;
+    }
+
+    // Handle TrainingResultSet globally (works in any state).
+    if (std::holds_alternative<Api::TrainingResultSet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::TrainingResultSet::Cwc>(event.getVariant());
+        const auto& result = cwc.command.result;
+
+        if (result.summary.trainingSessionId.isNil()) {
+            cwc.sendResponse(Api::TrainingResultSet::Response::error(
+                ApiError("TrainingResultSet requires trainingSessionId")));
+            return;
+        }
+
+        bool overwritten = false;
+        bool rejected = false;
+        {
+            std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
+            auto it = std::find_if(
+                pImpl->trainingResults_.begin(),
+                pImpl->trainingResults_.end(),
+                [&result](const Api::TrainingResult& existing) {
+                    return existing.summary.trainingSessionId == result.summary.trainingSessionId;
+                });
+
+            if (it != pImpl->trainingResults_.end()) {
+                if (!cwc.command.overwrite) {
+                    rejected = true;
+                }
+                else {
+                    *it = result;
+                    overwritten = true;
+                }
+            }
+            else {
+                pImpl->trainingResults_.push_back(result);
+            }
+        }
+
+        if (rejected) {
+            cwc.sendResponse(Api::TrainingResultSet::Response::error(
+                ApiError("TrainingResultSet already exists")));
+            return;
+        }
+
+        Api::TrainingResultSet::Okay response;
+        response.stored = true;
+        response.overwritten = overwritten;
+        cwc.sendResponse(Api::TrainingResultSet::Response::okay(std::move(response)));
         return;
     }
 

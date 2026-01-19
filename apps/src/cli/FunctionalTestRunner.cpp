@@ -3,9 +3,11 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
+#include "server/api/SimStop.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
+#include "server/api/TrainingResultSave.h"
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
@@ -66,6 +68,41 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
         if (elapsedMs >= timeoutMs) {
             return Result<UiApi::StateGet::Okay, std::string>::error(
                 "Timeout waiting for UI state '" + expectedState + "'");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<Api::StatusGet::Okay, std::string> requestServerStatus(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    Api::StatusGet::Command cmd{};
+    return unwrapResponse(client.sendCommandAndGetResponse<Api::StatusGet::Okay>(cmd, timeoutMs));
+}
+
+Result<Api::StatusGet::Okay, std::string> waitForServerState(
+    Network::WebSocketService& client, const std::string& expectedState, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+    while (true) {
+        auto result = requestServerStatus(client, requestTimeoutMs);
+        if (result.isError()) {
+            return Result<Api::StatusGet::Okay, std::string>::error(result.errorValue());
+        }
+        if (result.value().state == expectedState) {
+            return result;
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            return Result<Api::StatusGet::Okay, std::string>::error(
+                "Timeout waiting for server state '" + expectedState + "'");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -286,6 +323,23 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error("UI not connected to server");
         }
+        if (uiStatus.state == "SimRunning" || uiStatus.state == "Paused") {
+            std::cerr << "Sending UI SimStop to return to StartMenu..." << std::endl;
+            UiApi::SimStop::Command simStopCmd{};
+            auto simStopResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+            if (startMenuResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+            }
+        }
         uiClient.disconnect();
 
         Network::WebSocketService serverClient;
@@ -316,6 +370,24 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         const auto& status = statusResult.value();
         std::cerr << "Server state: " << status.state << " (timestep=" << status.timestep << ")"
                   << std::endl;
+        if (status.state == "SimRunning" || status.state == "SimPaused") {
+            std::cerr << "Sending SimStop to return to Idle..." << std::endl;
+            Api::SimStop::Command simStopCmd{};
+            auto simStopResult =
+                unwrapResponse(serverClient.sendCommandAndGetResponse<Api::SimStop::OkayType>(
+                    simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Server SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto idleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+            if (idleResult.isError()) {
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(idleResult.errorValue());
+            }
+        }
 
         size_t initialResultCount = 0;
         {
@@ -341,6 +413,23 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         }
 
         const int trainingTimeoutMs = std::max(timeoutMs, 120000);
+        auto waitResult =
+            waitForServerState(serverClient, "UnsavedTrainingResult", trainingTimeoutMs);
+        if (waitResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(waitResult.errorValue());
+        }
+
+        Api::TrainingResultSave::Command saveCmd{};
+        auto saveResult =
+            unwrapResponse(serverClient.sendCommandAndGetResponse<Api::TrainingResultSave::Okay>(
+                saveCmd, timeoutMs));
+        if (saveResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "TrainingResultSave failed: " + saveResult.errorValue());
+        }
+
         auto listResult =
             waitForTrainingResultList(serverClient, trainingTimeoutMs, initialResultCount);
         if (listResult.isError()) {

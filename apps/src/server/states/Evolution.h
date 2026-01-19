@@ -80,7 +80,6 @@ struct Evolution {
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
     UUID trainingSessionId_{};
-    bool trainingResultAvailableSent_ = false;
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
 
     TrainingBrainRegistry brainRegistry_;
@@ -93,7 +92,6 @@ struct Evolution {
     std::optional<Any> tick(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
-    Any onEvent(const Api::TrainingResultAvailableAck::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
 
     static constexpr const char* name() { return "Evolution"; }
@@ -104,7 +102,7 @@ private:
     void finishEvaluation(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
-    std::optional<Any> broadcastTrainingResultAvailable(StateMachine& dsm);
+    std::optional<Any> broadcastTrainingResult(StateMachine& dsm);
     void storeBestGenome(StateMachine& dsm);
     UnsavedTrainingResult buildUnsavedTrainingResult();
 };

@@ -269,7 +269,6 @@ See `src/server/api/Genome*.h` for full definitions.
 |---------|-------------|--------|
 | `GenomeSet` | Store genome with caller-provided UUID | ✅ Implemented |
 | `GenomeGet` | Retrieve genome by ID | ✅ Implemented |
-| `GenomeGetBest` | Get current best genome | ✅ Implemented |
 | `GenomeList` | List all stored genomes | ✅ Implemented |
 | `GenomeDelete` | Remove genome by ID | ❌ Not yet |
 | `GenomeSave` | Save repository to disk | ❌ Not yet |
@@ -457,7 +456,6 @@ src/server/api/
 ├── EvolutionStop.h           # Stop command
 ├── GenomeList.h              # List genomes command
 ├── GenomeGet.h               # Get specific genome
-├── GenomeGetBest.h           # Get best genome
 └── (existing commands...)
 
 src/ui/state-machine/states/
@@ -604,7 +602,6 @@ class TrainingRunner {
 - `src/server/api/EvolutionStop.h` ✅
 - `src/server/api/GenomeList.h` ✅
 - `src/server/api/GenomeGet.h` ✅
-- `src/server/api/GenomeGetBest.h` ✅
 
 **Work:**
 - Define command/response structs following existing API pattern. ✅
