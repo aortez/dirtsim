@@ -18,12 +18,18 @@ The `.github/workflows/pr-check.yml` workflow runs on:
 
 ### Build Steps
 
+The PR workflow triggers a separate `docker-build.yml` job to build the
+`dirtsim-builder` image, then runs the following steps:
+
 1. **Checkout** - Clones repository with submodules.
-2. **Install dependencies** - Installs build tools (cmake, boost, etc.).
-3. **Build debug** - Compiles debug build with symbols.
-4. **Run tests** - Executes non-visual unit tests.
-5. **Check formatting** - Verifies code follows clang-format style.
-6. **Build release** - Compiles optimized release build.
+2. **Merge target branch** - PRs only; merges the base branch to test the merge result.
+3. **Check formatting** - Runs `make format-check` inside the builder image.
+4. **Build debug** - Compiles debug build with symbols inside the builder image.
+5. **Build stats** - Emits build time and ccache stats to the job summary.
+6. **Run unit tests** - Executes unit tests inside the builder image.
+7. **Ensure runtime image** - Pulls `dirtsim-runtime:x86-nightly` from the local registry.
+8. **Integration test** - Runs `apps/scripts/os-manager-integration-test.sh` inside the
+   Yocto runtime container with `/data` mounted.
 
 ## Self-Hosted Runner Setup
 
