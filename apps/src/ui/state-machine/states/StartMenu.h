@@ -33,6 +33,7 @@ struct StartMenu {
     Any onEvent(const NextFractalClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm);

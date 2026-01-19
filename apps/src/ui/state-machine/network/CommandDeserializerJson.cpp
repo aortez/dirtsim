@@ -12,6 +12,7 @@
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
 #include "ui/state-machine/api/StreamStart.h"
+#include "ui/state-machine/api/TrainingStart.h"
 #include "ui/state-machine/api/WebRtcAnswer.h"
 #include "ui/state-machine/api/WebRtcCandidate.h"
 #include <cctype>
@@ -87,6 +88,10 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::StreamStart::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::StreamStart::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::TrainingStart::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::TrainingStart::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::WebRtcAnswer::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
