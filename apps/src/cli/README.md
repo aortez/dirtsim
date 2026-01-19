@@ -141,8 +141,12 @@ Run a minimal UI/server workflow check against a running system:
 ```bash
 # Default local ports (UI: 7070, server: 8080).
 ./build-debug/bin/cli functional-test canExit
+./build-debug/bin/cli functional-test canExit --restart
 ./build-debug/bin/cli functional-test canTrain
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
+
+# Note: canExit shuts down the UI, so run it last or restart the UI before other tests.
+# Use --restart with canExit to relaunch local server/UI (skips remote addresses).
 
 # Remote.
 ./build-debug/bin/cli functional-test canExit \
