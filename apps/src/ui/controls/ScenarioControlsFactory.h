@@ -14,6 +14,7 @@ class WebSocketServiceInterface;
 
 namespace Ui {
 
+class EventSink;
 /**
  * @brief Factory for creating scenario-specific controls.
  *
@@ -34,6 +35,7 @@ public:
     static std::unique_ptr<ScenarioControlsBase> create(
         lv_obj_t* parent,
         Network::WebSocketServiceInterface* wsService,
+        EventSink* eventSink,
         Scenario::EnumType scenarioId,
         const ScenarioConfig& config,
         DisplayDimensionsGetter dimensionsGetter = nullptr);

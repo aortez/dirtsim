@@ -15,6 +15,7 @@ class WebSocketServiceInterface;
 
 namespace Ui {
 
+class EventSink;
 class PanelViewController;
 
 /**
@@ -25,6 +26,7 @@ public:
     TreeGerminationControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        EventSink* eventSink,
         const Config::TreeGermination& config);
     ~TreeGerminationControls() override;
 
@@ -36,6 +38,7 @@ protected:
 private:
     std::unique_ptr<PanelViewController> viewController_;
     std::unique_ptr<IconFont> iconFont_;
+    EventSink* eventSink_ = nullptr;
 
     lv_obj_t* brainTypeButton_ = nullptr;
     lv_obj_t* plantSeedButton_ = nullptr;

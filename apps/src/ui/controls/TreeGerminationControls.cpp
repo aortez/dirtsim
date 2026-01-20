@@ -2,8 +2,9 @@
 #include "core/IconFont.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketServiceInterface.h"
-#include "server/api/SeedAdd.h"
 #include "ui/PanelViewController.h"
+#include "ui/state-machine/EventSink.h"
+#include "ui/state-machine/api/PlantSeed.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 
@@ -13,8 +14,9 @@ namespace Ui {
 TreeGerminationControls::TreeGerminationControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    EventSink* eventSink,
     const Config::TreeGermination& config)
-    : ScenarioControlsBase(container, wsService, "tree_germination")
+    : ScenarioControlsBase(container, wsService, "tree_germination"), eventSink_(eventSink)
 {
     createWidgets();
     updateFromConfig(config);
@@ -240,25 +242,15 @@ void TreeGerminationControls::onPlantSeedClicked(lv_event_t* e)
         return;
     }
 
-    if (!self->wsService_ || !self->wsService_->isConnected()) {
-        LOG_WARN(Controls, "TreeGerminationControls: WebSocket not connected");
+    if (!self->eventSink_) {
+        LOG_WARN(Controls, "TreeGerminationControls: Plant Seed clicked without EventSink");
         return;
     }
 
-    std::optional<std::string> genomeId = std::nullopt;
-    if (self->currentConfig_.brain_type == Config::TreeBrainType::NEURAL_NET
-        && !self->currentConfig_.genome_id.isNil()) {
-        genomeId = self->currentConfig_.genome_id.toString();
-    }
-
-    const Api::SeedAdd::Command cmd{ .x = 4, .y = 1, .genome_id = genomeId };
-    auto result = self->wsService_->sendCommand(cmd);
-    if (result.isError()) {
-        LOG_ERROR(Controls, "TreeGerminationControls: SeedAdd failed: {}", result.errorValue());
-        return;
-    }
-
-    LOG_INFO(Controls, "TreeGerminationControls: Sent SeedAdd at ({}, {})", cmd.x, cmd.y);
+    UiApi::PlantSeed::Cwc cwc;
+    cwc.callback = [](auto&&) {};
+    self->eventSink_->queueEvent(cwc);
+    LOG_INFO(Controls, "TreeGerminationControls: Queued PlantSeed");
 }
 
 const char* TreeGerminationControls::getBrainTypeName(Config::TreeBrainType type)
