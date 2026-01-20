@@ -25,6 +25,7 @@
 #include <optional>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 namespace DirtSim {
@@ -368,6 +369,7 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     }
 
     size_t initialResultCount = 0;
+    std::unordered_set<std::string> initialResultIds;
     {
         Api::TrainingResultList::Command listCmd{};
         auto listResult =
@@ -379,7 +381,12 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
             return Result<FunctionalTrainingSummary, std::string>::error(
                 "TrainingResultList failed: " + listResult.errorValue());
         }
-        initialResultCount = listResult.value().results.size();
+        const auto& results = listResult.value().results;
+        initialResultCount = results.size();
+        initialResultIds.reserve(results.size());
+        for (const auto& entry : results) {
+            initialResultIds.insert(entry.summary.trainingSessionId.toString());
+        }
     }
 
     UiApi::TrainingStart::Command trainCmd;
@@ -437,9 +444,22 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     }
 
     const auto& results = listResult.value().results;
-    const auto& latest = results.back();
+    const Api::TrainingResultList::Entry* latest = nullptr;
+    for (const auto& entry : results) {
+        if (initialResultIds.find(entry.summary.trainingSessionId.toString())
+            == initialResultIds.end()) {
+            latest = &entry;
+            break;
+        }
+    }
+    if (!latest) {
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<FunctionalTrainingSummary, std::string>::error(
+            "TrainingResultList did not include a new training result");
+    }
     Api::TrainingResultGet::Command getCmd{
-        .trainingSessionId = latest.summary.trainingSessionId,
+        .trainingSessionId = latest->summary.trainingSessionId,
     };
     auto getResult = unwrapResponse(
         serverClient.sendCommandAndGetResponse<Api::TrainingResultGet::Okay>(getCmd, timeoutMs));

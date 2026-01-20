@@ -50,6 +50,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::StatusGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultDelete::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::WorldResize::Cwc>(serverHandlers_, serverExampleHandlers_);

@@ -18,13 +18,19 @@ namespace Api {
 struct EvolutionProgress;
 }
 
+namespace Network {
+class WebSocketServiceInterface;
+}
+
 namespace Ui {
 
 class CellRenderer;
 class EvolutionControls;
 class EventSink;
+class GenomeBrowserPanel;
 class Starfield;
 class TrainingConfigPanel;
+class TrainingResultBrowserPanel;
 class UiComponentManager;
 
 /**
@@ -39,7 +45,10 @@ class UiComponentManager;
  */
 class TrainingView {
 public:
-    explicit TrainingView(UiComponentManager* uiManager, EventSink& eventSink);
+    explicit TrainingView(
+        UiComponentManager* uiManager,
+        EventSink& eventSink,
+        Network::WebSocketServiceInterface* wsService);
     ~TrainingView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
@@ -59,12 +68,15 @@ public:
 
     void clearPanelContent();
     void createCorePanel();
+    void createGenomeBrowserPanel();
     void createTrainingConfigPanel();
+    void createTrainingResultBrowserPanel();
 
 private:
     bool evolutionStarted_ = false;
     UiComponentManager* uiManager_;
     EventSink& eventSink_;
+    Network::WebSocketServiceInterface* wsService_ = nullptr;
 
     // Shared evolution configuration (owned here, referenced by panels).
     EvolutionConfig evolutionConfig_;
@@ -113,7 +125,9 @@ private:
 
     // Panel content (created lazily).
     std::unique_ptr<EvolutionControls> evolutionControls_;
+    std::unique_ptr<GenomeBrowserPanel> genomeBrowserPanel_;
     std::unique_ptr<TrainingConfigPanel> trainingConfigPanel_;
+    std::unique_ptr<TrainingResultBrowserPanel> trainingResultBrowserPanel_;
 
     // Training result modal.
     Api::TrainingResult::Summary trainingResultSummary_;

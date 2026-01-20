@@ -39,45 +39,7 @@ enum class LogChannel {
     Viscosity
 };
 
-inline const char* toString(LogChannel channel)
-{
-    switch (channel) {
-        case LogChannel::Brain:
-            return "brain";
-        case LogChannel::Collision:
-            return "collision";
-        case LogChannel::Cohesion:
-            return "cohesion";
-        case LogChannel::Controls:
-            return "controls";
-        case LogChannel::Friction:
-            return "friction";
-        case LogChannel::Network:
-            return "network";
-        case LogChannel::Physics:
-            return "physics";
-        case LogChannel::Pressure:
-            return "pressure";
-        case LogChannel::Render:
-            return "render";
-        case LogChannel::Scenario:
-            return "scenario";
-        case LogChannel::State:
-            return "state";
-        case LogChannel::Support:
-            return "support";
-        case LogChannel::Swap:
-            return "swap";
-        case LogChannel::Tree:
-            return "tree";
-        case LogChannel::Ui:
-            return "ui";
-        case LogChannel::Viscosity:
-            return "viscosity";
-    }
-    assert(false && "Unhandled LogChannel in switch");
-    return "";
-}
+std::string toString(LogChannel channel);
 
 /**
  * @brief Centralized logging channel management for fine-grained log filtering.

@@ -15,7 +15,18 @@ class EventSink;
 /**
  * @brief Identifiers for icons in an IconRail.
  */
-enum class IconId { CORE = 0, EVOLUTION, NETWORK, PHYSICS, PLAY, SCENARIO, TREE, COUNT };
+enum class IconId {
+    CORE = 0,
+    EVOLUTION,
+    NETWORK,
+    PHYSICS,
+    PLAY,
+    SCENARIO,
+    TREE,
+    GENOME_BROWSER,
+    TRAINING_RESULTS,
+    COUNT
+};
 
 enum class RailMode {
     Normal,   // Full width with all icon buttons.

@@ -107,6 +107,8 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::NETWORK:
         case IconId::PLAY:
         case IconId::TREE:
+        case IconId::GENOME_BROWSER:
+        case IconId::TRAINING_RESULTS:
         case IconId::COUNT:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;

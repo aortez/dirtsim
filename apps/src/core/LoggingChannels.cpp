@@ -1,10 +1,24 @@
 #include "LoggingChannels.h"
+#include "reflect.h"
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
 namespace DirtSim {
+
+std::string toString(LogChannel channel)
+{
+    auto name = std::string(reflect::enum_name(channel));
+    if (name.empty()) {
+        return "unknown";
+    }
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return name;
+}
 
 // Static member initialization.
 bool LoggingChannels::initialized_ = false;
@@ -49,26 +63,26 @@ void LoggingChannels::initialize(
 
     // Create channel-specific loggers with TRACE level (can be filtered later).
     // Organism channels.
-    createLogger("brain", sharedSinks_, spdlog::level::info);
-    createLogger("tree", sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Brain), sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Tree), sharedSinks_, spdlog::level::info);
 
     // Physics channels.
-    createLogger("physics", sharedSinks_, spdlog::level::trace);
-    createLogger("swap", sharedSinks_, spdlog::level::warn);
-    createLogger("cohesion", sharedSinks_, spdlog::level::trace);
-    createLogger("pressure", sharedSinks_, spdlog::level::trace);
-    createLogger("collision", sharedSinks_, spdlog::level::trace);
-    createLogger("friction", sharedSinks_, spdlog::level::trace);
-    createLogger("support", sharedSinks_, spdlog::level::trace);
-    createLogger("viscosity", sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Physics), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Swap), sharedSinks_, spdlog::level::warn);
+    createLogger(toString(LogChannel::Cohesion), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Pressure), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Collision), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Friction), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Support), sharedSinks_, spdlog::level::trace);
+    createLogger(toString(LogChannel::Viscosity), sharedSinks_, spdlog::level::trace);
 
     // System channels.
-    createLogger("controls", sharedSinks_, spdlog::level::info);
-    createLogger("network", sharedSinks_, spdlog::level::info);
-    createLogger("render", sharedSinks_, spdlog::level::info);
-    createLogger("scenario", sharedSinks_, spdlog::level::info);
-    createLogger("state", sharedSinks_, spdlog::level::debug);
-    createLogger("ui", sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Controls), sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Network), sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Render), sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::Scenario), sharedSinks_, spdlog::level::info);
+    createLogger(toString(LogChannel::State), sharedSinks_, spdlog::level::debug);
+    createLogger(toString(LogChannel::Ui), sharedSinks_, spdlog::level::info);
 
     // Create separate sinks for default logger (so its pattern doesn't affect channel loggers).
     spdlog::sink_ptr default_console_sink;
@@ -114,7 +128,8 @@ std::shared_ptr<spdlog::logger> LoggingChannels::get(LogChannel channel)
         initialize();
     }
 
-    auto logger = spdlog::get(toString(channel));
+    const auto channelName = toString(channel);
+    auto logger = spdlog::get(channelName);
     assert(logger && "LogChannel not found after initialization");
     return logger;
 }
@@ -167,11 +182,12 @@ void LoggingChannels::configureFromString(const std::string& spec)
 
 void LoggingChannels::setChannelLevel(LogChannel channel, spdlog::level::level_enum level)
 {
-    auto logger = spdlog::get(toString(channel));
+    const auto channelName = toString(channel);
+    auto logger = spdlog::get(channelName);
     assert(logger && "LogChannel not found");
     logger->set_level(level);
     spdlog::info(
-        "Set channel '{}' to level: {}", toString(channel), spdlog::level::to_string_view(level));
+        "Set channel '{}' to level: {}", channelName, spdlog::level::to_string_view(level));
 }
 
 void LoggingChannels::setChannelLevel(const std::string& channel, spdlog::level::level_enum level)

@@ -34,11 +34,16 @@ void Training::onEnter(StateMachine& sm)
         return;
     }
 
-    view_ = std::make_unique<TrainingView>(uiManager, sm);
+    Network::WebSocketServiceInterface* wsService = nullptr;
+    if (sm.hasWebSocketService()) {
+        wsService = &sm.getWebSocketService();
+    }
+    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService);
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    iconRail->setVisibleIcons({ IconId::CORE, IconId::EVOLUTION });
+    iconRail->setVisibleIcons(
+        { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll(); // Start fresh, no panel open.
 }
 
@@ -149,6 +154,16 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
         case IconId::EVOLUTION:
             view_->createTrainingConfigPanel();
+            panel->show();
+            break;
+
+        case IconId::GENOME_BROWSER:
+            view_->createGenomeBrowserPanel();
+            panel->show();
+            break;
+
+        case IconId::TRAINING_RESULTS:
+            view_->createTrainingResultBrowserPanel();
             panel->show();
             break;
 
