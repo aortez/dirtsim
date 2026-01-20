@@ -1,16 +1,22 @@
 #!/bin/bash
 # Takes a screenshot from a remote dirtsim device, writes it to screenshot.png, and copies it to your clipboard.
+# Also copies the systemd logs from the dirtsim services to a local file.
 set -xeuo pipefail
 
 HOST="${1:-dirtsim2.local}"
 REMOTE_FILE="/tmp/screenshot.png"
 LOCAL_FILE="screenshot.png"
+LOG_FILE="${HOST}.log"
 
 # Take screenshot on remote device using the CLI.
 ssh "$HOST" "dirtsim-cli screenshot $REMOTE_FILE"
 
 # Copy the screenshot back.
 scp "$HOST:$REMOTE_FILE" "$LOCAL_FILE"
+
+# Copy the dirtsim service logs.
+ssh "$HOST" "journalctl -u 'dirtsim-*' --no-pager" > "$LOG_FILE"
+echo "Logs saved to $LOG_FILE"
 
 # Copy to clipboard.
 copy_to_clipboard() {
@@ -33,4 +39,4 @@ copy_to_clipboard() {
 
 copy_to_clipboard
 
-echo "Screenshot saved to $LOCAL_FILE and copied to clipboard."
+echo "Screenshot saved to $LOCAL_FILE and copied to clipboard. Logs saved to $LOG_FILE."
