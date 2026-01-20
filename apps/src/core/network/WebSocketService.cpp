@@ -31,6 +31,62 @@ bool isResponseMessageType(const std::string& messageType)
     }
     return messageType.compare(messageType.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
+
+std::string extractHostFromRemoteAddress(const std::string& remoteAddress)
+{
+    const auto pos = remoteAddress.rfind(':');
+    if (pos == std::string::npos) {
+        return remoteAddress;
+    }
+    return remoteAddress.substr(0, pos);
+}
+
+bool isLoopbackHost(const std::string& host)
+{
+    if (host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0:0:0:0:0:0:0:1") {
+        return true;
+    }
+    if (host.rfind("127.", 0) == 0) {
+        return true;
+    }
+    if (host.rfind("::ffff:127.", 0) == 0) {
+        return true;
+    }
+    return false;
+}
+
+std::string extractTokenFromPath(const std::optional<std::string>& path)
+{
+    if (!path.has_value()) {
+        return "";
+    }
+
+    const auto queryPos = path->find('?');
+    if (queryPos == std::string::npos) {
+        return "";
+    }
+
+    const std::string query = path->substr(queryPos + 1);
+    size_t pos = 0;
+    while (pos < query.size()) {
+        const auto ampPos = query.find('&', pos);
+        const auto partLen = ampPos == std::string::npos ? std::string::npos : ampPos - pos;
+        const std::string part = query.substr(pos, partLen);
+        const auto eqPos = part.find('=');
+        if (eqPos != std::string::npos) {
+            const std::string key = part.substr(0, eqPos);
+            if (key == "token") {
+                return part.substr(eqPos + 1);
+            }
+        }
+        if (ampPos == std::string::npos) {
+            break;
+        }
+        pos = ampPos + 1;
+    }
+
+    return "";
+}
 } // namespace
 
 WebSocketService::WebSocketService()
@@ -472,7 +528,8 @@ Result<std::string, ApiError> WebSocketService::sendJsonAndReceive(
     return Result<std::string, ApiError>::okay(std::get<std::string>(pending->response));
 }
 
-Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
+Result<std::monostate, std::string> WebSocketService::listen(
+    uint16_t port, const std::string& bindAddress)
 {
     try {
         LOG_INFO(Network, "Starting server on port {}", port);
@@ -482,7 +539,7 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
         // 200x200 world with DebugCell (~23 bytes/cell) = ~920 KB.
         rtc::WebSocketServerConfiguration config;
         config.port = port;
-        config.bindAddress = "0.0.0.0";           // Listen on all interfaces.
+        config.bindAddress = bindAddress;
         config.enableTls = false;                 // No TLS for now.
         config.maxMessageSize = 16 * 1024 * 1024; // 16 MB.
 
@@ -800,6 +857,26 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
 
 void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
+    const auto remoteAddress = ws->remoteAddress();
+    const bool isLocal = remoteAddress.has_value()
+        && isLoopbackHost(extractHostFromRemoteAddress(remoteAddress.value()));
+    if (!isLocal) {
+        const std::string token = extractTokenFromPath(ws->path());
+        std::string accessToken;
+        {
+            std::lock_guard<std::mutex> lock(accessTokenMutex_);
+            accessToken = accessToken_;
+        }
+        if (accessToken.empty() || token != accessToken) {
+            LOG_WARN(
+                Network,
+                "Rejecting non-local client connection from {} (token required)",
+                remoteAddress.value_or("unknown"));
+            ws->close();
+            return;
+        }
+    }
+
     LOG_INFO(Network, "Client connected");
     {
         std::lock_guard<std::mutex> lock(clientsMutex_);

@@ -7,6 +7,7 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
+#include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -26,6 +27,7 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
+#include "network/HttpServer.h"
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
 #include "states/State.h"
@@ -36,6 +38,7 @@
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <thread>
+#include <unistd.h>
 
 namespace DirtSim {
 namespace Server {
@@ -69,10 +72,14 @@ struct StateMachine::Impl {
     ScenarioRegistry scenarioRegistry_;
     SystemMetrics systemMetrics_;
     Timers timers_;
+    std::unique_ptr<HttpServer> httpServer_;
     PeerAdvertisement peerAdvertisement_;
     PeerDiscovery peerDiscovery_;
     State::Any fsmState_{ State::PreStartup{} };
     Network::WebSocketService* wsService_ = nullptr;
+    std::string peerServiceName_ = "dirtsim";
+    uint16_t webSocketPort_ = 8080;
+    uint16_t httpPort_ = 8081;
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
 
@@ -102,6 +109,11 @@ StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) 
     serverConfig = std::make_unique<ServerConfig>();
     serverConfig->dataDir = dataDir;
 
+    char hostname[256] = "dirtsim";
+    gethostname(hostname, sizeof(hostname));
+    pImpl->peerServiceName_ = hostname;
+    pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
+
     LOG_INFO(
         State,
         "Server::StateMachine initialized in headless mode in state: {}",
@@ -117,6 +129,9 @@ StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) 
 
 StateMachine::~StateMachine()
 {
+    if (pImpl->httpServer_) {
+        pImpl->httpServer_->stop();
+    }
     pImpl->peerAdvertisement_.stop();
     pImpl->peerDiscovery_.stop();
     LOG_INFO(State, "Server::StateMachine shutting down from state: {}", getCurrentStateName());
@@ -124,6 +139,13 @@ StateMachine::~StateMachine()
 
 void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
 {
+    pImpl->peerServiceName_ = serviceName;
+    pImpl->webSocketPort_ = port;
+
+    if (pImpl->peerAdvertisement_.isRunning()) {
+        pImpl->peerAdvertisement_.stop();
+    }
+
     pImpl->peerAdvertisement_.setServiceName(serviceName);
     pImpl->peerAdvertisement_.setPort(port);
     pImpl->peerAdvertisement_.setRole(PeerRole::Physics);
@@ -163,6 +185,11 @@ Network::WebSocketService* StateMachine::getWebSocketService()
 void StateMachine::setWebSocketService(Network::WebSocketService* service)
 {
     pImpl->wsService_ = service;
+}
+
+void StateMachine::setWebSocketPort(uint16_t port)
+{
+    pImpl->webSocketPort_ = port;
 }
 
 void StateMachine::setupWebSocketService(Network::WebSocketService& service)
@@ -253,6 +280,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::WebUiAccessSet);
         DISPATCH_JSON_CMD_EMPTY(Api::WorldResize);
 
 #undef DISPATCH_JSON_CMD_WITH_RESP
@@ -312,6 +340,60 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         status.memory_percent = metrics.memory_percent;
 
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
+    });
+
+    service.registerHandler<Api::WebUiAccessSet::Cwc>([this](Api::WebUiAccessSet::Cwc cwc) {
+        using Response = Api::WebUiAccessSet::Response;
+
+        if (!pImpl->wsService_) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket service not available")));
+            return;
+        }
+
+        if (pImpl->webSocketPort_ == 0) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket port not set")));
+            return;
+        }
+
+        Api::WebUiAccessSet::Okay okay;
+        okay.enabled = cwc.command.enabled;
+        cwc.sendResponse(Response::okay(std::move(okay)));
+
+        const std::string bindAddress = cwc.command.enabled ? "0.0.0.0" : "127.0.0.1";
+        if (cwc.command.enabled) {
+            pImpl->wsService_->setAccessToken(cwc.command.token);
+        }
+        else {
+            pImpl->wsService_->clearAccessToken();
+        }
+
+        pImpl->wsService_->stopListening();
+        auto listenResult = pImpl->wsService_->listen(pImpl->webSocketPort_, bindAddress);
+        if (listenResult.isError()) {
+            LOG_ERROR(
+                Network,
+                "WebUiAccessSet failed to bind {}:{}: {}",
+                bindAddress,
+                pImpl->webSocketPort_,
+                listenResult.errorValue());
+            return;
+        }
+
+        if (cwc.command.enabled) {
+            if (pImpl->httpServer_) {
+                const bool started = pImpl->httpServer_->start("0.0.0.0");
+                if (!started) {
+                    LOG_ERROR(Network, "Failed to start HTTP server for /garden");
+                }
+            }
+            startPeerAdvertisement(pImpl->webSocketPort_, pImpl->peerServiceName_);
+        }
+        else {
+            if (pImpl->httpServer_) {
+                pImpl->httpServer_->stop();
+            }
+            pImpl->peerAdvertisement_.stop();
+        }
     });
 
     // PeersGet - return discovered mDNS peers.

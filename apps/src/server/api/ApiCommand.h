@@ -37,6 +37,7 @@
 #include "TrainingResultList.h"
 #include "TrainingResultSave.h"
 #include "TrainingResultSet.h"
+#include "WebUiAccessSet.h"
 #include "WorldResize.h"
 #include <concepts>
 #include <nlohmann/json.hpp>
@@ -101,6 +102,7 @@ using ApiCommand = std::variant<
     Api::TrainingResultList::Command,
     Api::TrainingResultSave::Command,
     Api::TrainingResultSet::Command,
+    Api::WebUiAccessSet::Command,
     Api::WorldResize::Command>;
 
 } // namespace DirtSim

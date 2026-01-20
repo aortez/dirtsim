@@ -79,6 +79,13 @@ Any Idle::onEvent(const OsApi::SystemStatus::Cwc& cwc, OperatingSystemManager& o
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WebUiAccessSet command received");
+    cwc.sendResponse(osm.setWebUiAccess(cwc.command.enabled));
+    return Idle{};
+}
+
 } // namespace State
 } // namespace OsManager
 } // namespace DirtSim

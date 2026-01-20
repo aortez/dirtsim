@@ -104,6 +104,8 @@ private:
     State::Any fsmState{ State::Startup{} };
     std::unique_ptr<H264Encoder> h264Encoder_;
     std::unique_ptr<Server::PeerAdvertisement> peerAd_;
+    std::string peerServiceName_;
+    uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
 
     bool isAutoShrinkBlocked() const;

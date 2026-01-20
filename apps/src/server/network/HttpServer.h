@@ -14,7 +14,7 @@ public:
     HttpServer(const HttpServer&) = delete;
     HttpServer& operator=(const HttpServer&) = delete;
 
-    bool start();
+    bool start(const std::string& bindAddress = "0.0.0.0");
     void stop();
     bool isRunning() const;
 

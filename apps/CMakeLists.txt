@@ -456,6 +456,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/TrainingStart.cpp
     src/ui/state-machine/api/WebRtcAnswer.cpp
     src/ui/state-machine/api/WebRtcCandidate.cpp
+    src/ui/state-machine/api/WebUiAccessSet.cpp
 
     # UI network.
     src/ui/state-machine/network/CommandDeserializerJson.cpp
@@ -564,6 +565,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
@@ -594,6 +596,7 @@ add_executable(cli
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebUiAccessSet.cpp
 )
 target_link_libraries(cli PRIVATE dirtsim-server-lib dirtsim-ui-lib datachannel-static pthread)
 target_include_directories(cli PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
@@ -623,6 +626,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
