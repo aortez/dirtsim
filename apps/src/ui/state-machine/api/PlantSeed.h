@@ -2,43 +2,35 @@
 
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include "core/ScenarioId.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
 #include <nlohmann/json.hpp>
 #include <optional>
+#include <variant>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace SimRun {
+namespace PlantSeed {
 
-DEFINE_API_NAME(SimRun);
+DEFINE_API_NAME(PlantSeed);
 
 struct Command {
-    std::optional<Scenario::EnumType> scenario_id;
+    std::optional<int> x;
+    std::optional<int> y;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
-struct Okay {
-    bool running;
-
-    API_COMMAND_NAME();
-    nlohmann::json toJson() const;
-
-    using serialize = zpp::bits::members<1>;
-};
-
-using OkayType = Okay;
+using OkayType = std::monostate;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace SimRun
+} // namespace PlantSeed
 } // namespace UiApi
 } // namespace DirtSim

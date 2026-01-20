@@ -2,6 +2,7 @@
 
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -84,6 +85,10 @@ public:
     World* getWorld() { return world_.get(); }
 
     const Organism::Body* getOrganism() const;
+    const std::optional<TreeResourceTotals>& getTreeResourceTotals() const
+    {
+        return treeResourceTotals_;
+    }
 
     double getSimTime() const { return simTime_; }
     double getMaxTime() const { return maxTime_; }
@@ -105,6 +110,7 @@ private:
     double simTime_ = 0.0;
     double maxTime_ = 600.0;
     double maxEnergy_ = 0.0;
+    std::optional<TreeResourceTotals> treeResourceTotals_;
     Vector2d spawnPosition_{ 0.0, 0.0 };
     Vector2d lastPosition_{ 0.0, 0.0 };
 
