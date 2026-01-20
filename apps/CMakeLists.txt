@@ -280,6 +280,7 @@ add_library(dirtsim-server-lib STATIC
     # Server state machine.
     src/server/ServerConfig.cpp
     src/server/StateMachine.cpp
+    src/server/TrainingResultRepository.cpp
     src/server/EventProcessor.cpp
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
@@ -478,11 +479,13 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/Starfield.cpp
     src/ui/rendering/WebRtcStreamer.cpp
     src/ui/controls/ClockControls.cpp
+    src/ui/controls/BrowserPanel.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
     src/ui/controls/EvolutionConfigPanel.cpp
     src/ui/controls/EvolutionControls.cpp
     src/ui/controls/ExpandablePanel.cpp
+    src/ui/controls/GenomeBrowserPanel.cpp
     src/ui/controls/IconRail.cpp
     src/ui/controls/LogPanel.cpp
     src/ui/controls/NetworkDiagnosticsPanel.cpp
@@ -498,6 +501,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ToggleSlider.cpp
     src/ui/controls/TrainingConfigPanel.cpp
     src/ui/controls/TrainingPopulationPanel.cpp
+    src/ui/controls/TrainingResultBrowserPanel.cpp
     src/ui/controls/TreeGerminationControls.cpp
     src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
@@ -607,6 +611,7 @@ add_executable(dirtsim-tests
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
+    src/server/tests/TrainingResultRepository_test.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
     src/os-manager/tests/StateError_test.cpp

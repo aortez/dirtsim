@@ -12,6 +12,12 @@ SERVER_ADDRESS="${DIRTSIM_SERVER_ADDRESS:-ws://localhost:8080}"
 UI_ADDRESS="${DIRTSIM_UI_ADDRESS:-ws://localhost:7070}"
 TIMEOUT_SEC="${DIRTSIM_INTEGRATION_TIMEOUT_SEC:-30}"
 TEST_TIMEOUT_MS="${DIRTSIM_FUNCTIONAL_TIMEOUT_MS:-15000}"
+DEFAULT_CONFIG_DIR="${REPO_ROOT}/apps/config"
+
+if [ -z "${DIRTSIM_SERVER_ARGS:-}" ]; then
+  DIRTSIM_SERVER_ARGS="-p 8080 --config-dir ${DEFAULT_CONFIG_DIR}"
+  export DIRTSIM_SERVER_ARGS
+fi
 
 if [ ! -e /lib64/ld-linux-x86-64.so.2 ] && [ -e /lib/ld-linux-x86-64.so.2 ]; then
   mkdir -p /lib64
@@ -69,15 +75,20 @@ run_test() {
   test_name="$1"
   echo "Running functional test: $test_name"
 
+  set +e
   result=$("$CLI_BIN" functional-test "$test_name" \
     --timeout "$TEST_TIMEOUT_MS" \
     --ui-address "$UI_ADDRESS" \
     --server-address "$SERVER_ADDRESS" \
     --os-manager-address "$OS_MANAGER_ADDRESS" 2>&1)
   exit_code=$?
+  set -e
 
   # Parse JSON output for duration and success.
-  duration_ms=$(echo "$result" | grep -o '"duration_ms":[0-9]*' | cut -d: -f2 || echo "0")
+  duration_ms=$(echo "$result" | grep -o '"duration_ms":[0-9]*' | cut -d: -f2 || true)
+  if [ -z "$duration_ms" ]; then
+    duration_ms=0
+  fi
   duration_s=$(awk "BEGIN {printf \"%.1f\", $duration_ms/1000}")
 
   if [ $exit_code -eq 0 ]; then
@@ -87,6 +98,7 @@ run_test() {
     status="❌ Fail"
     TEST_FAILED=1
     echo "  $test_name: FAILED (${duration_s}s)"
+    printf "%s\n" "$result"
     # Print error details.
     error_msg=$(echo "$result" | grep -o '"error":"[^"]*"' | cut -d: -f2- | tr -d '"' || echo "")
     if [ -n "$error_msg" ]; then
