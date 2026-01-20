@@ -491,12 +491,19 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .distanceTraveled = status.distanceTraveled,
             .maxEnergy = status.maxEnergy,
         };
-        const double fitness = computeFitnessForOrganism(
-            fitnessResult,
-            spec.organismType,
-            world->getData().width,
-            world->getData().height,
-            config_);
+        const auto& treeResources = runner.getTreeResourceTotals();
+        const TreeResourceTotals* treeResourcesPtr =
+            treeResources.has_value() ? &treeResources.value() : nullptr;
+        const FitnessContext context{
+            .result = fitnessResult,
+            .organismType = spec.organismType,
+            .worldWidth = world->getData().width,
+            .worldHeight = world->getData().height,
+            .evolutionConfig = config_,
+            .finalOrganism = runner.getOrganism(),
+            .treeResources = treeResourcesPtr,
+        };
+        const double fitness = computeFitnessForOrganism(context);
 
         std::cout << "\n=== Brain Harness: " << brainCase.brainKind << " ===\n";
         std::cout << "Fitness: " << fitness << "\n";

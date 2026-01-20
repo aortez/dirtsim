@@ -266,7 +266,12 @@ void Tree::updateResources(const World& world, double deltaTime)
     }
 
     if (water_gain > 0.0) {
-        total_water_ = std::min(kWaterCapacity, total_water_ + water_gain * deltaTime);
+        const double water_headroom = std::max(0.0, kWaterCapacity - total_water_);
+        const double water_added = std::min(water_headroom, water_gain * deltaTime);
+        if (water_added > 0.0) {
+            total_water_ += water_added;
+            resourceTotals_.waterAbsorbed += water_added;
+        }
     }
 
     if (total_water_ > 0.0) {
@@ -284,6 +289,7 @@ void Tree::updateResources(const World& world, double deltaTime)
         leaf_cells * avg_light * kPhotosynthesisRate * deltaTime * water_factor;
     const double maintenance_cost = total_cells * kMaintenanceCostPerCell * deltaTime;
 
+    resourceTotals_.energyProduced += energy_produced;
     total_energy_ += energy_produced - maintenance_cost;
     total_energy_ = std::clamp(total_energy_, 0.0, kEnergyCap);
 }
