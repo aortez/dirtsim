@@ -1,4 +1,5 @@
 #include "BrowserPanel.h"
+#include "ExpandablePanel.h"
 #include "core/LoggingChannels.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <algorithm>
@@ -7,10 +8,59 @@ namespace DirtSim {
 namespace Ui {
 
 namespace {
-constexpr int kActionColumnWidth = 190;
-constexpr int kCheckboxSize = 24;
-constexpr int kDeleteButtonWidth = 140;
-constexpr int kRowHeight = 44;
+constexpr int kColumnGap = 12;
+constexpr int kMinLeftColumnWidth = 140;
+constexpr int kMinRightColumnWidth = 120;
+constexpr int kRowHeight = LVGLBuilder::Style::ACTION_SIZE;
+
+struct ColumnWidths {
+    int left = ExpandablePanel::DefaultWidth;
+    int right = ExpandablePanel::DefaultWidth;
+};
+
+ColumnWidths computeColumnWidths(lv_obj_t* parent)
+{
+    lv_obj_update_layout(parent);
+    int panelWidth = lv_obj_get_width(parent);
+    if (panelWidth <= 0) {
+        panelWidth = ExpandablePanel::DefaultWidth * 2;
+    }
+
+    const int maxLeftWidth = std::max(0, panelWidth - kMinRightColumnWidth);
+    int leftWidth = std::min(ExpandablePanel::DefaultWidth, maxLeftWidth);
+    leftWidth = std::max(kMinLeftColumnWidth, leftWidth);
+    if (maxLeftWidth < kMinLeftColumnWidth) {
+        leftWidth = maxLeftWidth;
+    }
+
+    const int rightWidth = std::max(0, panelWidth - leftWidth - kColumnGap);
+    return ColumnWidths{ leftWidth, rightWidth };
+}
+
+void styleCheckbox(lv_obj_t* checkbox, int size, bool hasText)
+{
+    if (!checkbox) {
+        return;
+    }
+
+    if (hasText) {
+        lv_obj_set_height(checkbox, size);
+        lv_obj_set_width(checkbox, LV_SIZE_CONTENT);
+        lv_obj_set_style_pad_column(checkbox, 8, 0);
+    }
+    else {
+        lv_obj_set_size(checkbox, size, size);
+    }
+    lv_obj_set_style_bg_opa(checkbox, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(checkbox, 0, 0);
+    lv_obj_set_style_pad_all(checkbox, 0, 0);
+    lv_obj_set_style_pad_column(checkbox, 0, 0);
+    lv_obj_set_style_pad_row(checkbox, 0, 0);
+
+    lv_obj_set_style_width(checkbox, size, LV_PART_INDICATOR);
+    lv_obj_set_style_height(checkbox, size, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(checkbox, LVGLBuilder::Style::RADIUS, LV_PART_INDICATOR);
+}
 } // namespace
 
 BrowserPanel::BrowserPanel(
@@ -55,6 +105,8 @@ void BrowserPanel::refreshList()
 
 void BrowserPanel::createLayout()
 {
+    const ColumnWidths widths = computeColumnWidths(parent_);
+
     container_ = lv_obj_create(parent_);
     lv_obj_set_size(container_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(container_, LV_OPA_TRANSP, 0);
@@ -77,24 +129,28 @@ void BrowserPanel::createLayout()
     lv_obj_set_style_bg_opa(columns, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(columns, 0, 0);
     lv_obj_set_style_pad_all(columns, 0, 0);
-    lv_obj_set_style_pad_column(columns, 8, 0);
+    lv_obj_set_style_pad_column(columns, kColumnGap, 0);
+    lv_obj_set_style_pad_row(columns, 0, 0);
     lv_obj_clear_flag(columns, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_flex_align(columns, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
     listColumn_ = lv_obj_create(columns);
-    lv_obj_set_flex_grow(listColumn_, 1);
-    lv_obj_set_height(listColumn_, LV_PCT(100));
+    lv_obj_set_size(listColumn_, widths.left, LV_PCT(100));
     lv_obj_set_flex_flow(listColumn_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        listColumn_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(listColumn_, 0, 0);
-    lv_obj_set_style_pad_row(listColumn_, 6, 0);
+    lv_obj_set_style_pad_row(listColumn_, 10, 0);
     lv_obj_set_style_bg_opa(listColumn_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(listColumn_, 0, 0);
     lv_obj_set_scroll_dir(listColumn_, LV_DIR_VER);
     lv_obj_set_scrollbar_mode(listColumn_, LV_SCROLLBAR_MODE_AUTO);
 
     lv_obj_t* actionColumn = lv_obj_create(columns);
-    lv_obj_set_width(actionColumn, kActionColumnWidth);
-    lv_obj_set_height(actionColumn, LV_PCT(100));
+    lv_obj_set_size(actionColumn, widths.right, LV_PCT(100));
     lv_obj_set_flex_flow(actionColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        actionColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(actionColumn, 0, 0);
     lv_obj_set_style_pad_row(actionColumn, 8, 0);
     lv_obj_set_style_bg_opa(actionColumn, LV_OPA_TRANSP, 0);
@@ -104,38 +160,35 @@ void BrowserPanel::createLayout()
     selectAllButton_ = LVGLBuilder::actionButton(actionColumn)
                            .text("Select All")
                            .mode(LVGLBuilder::ActionMode::Push)
-                           .height(kRowHeight)
+                           .height(LVGLBuilder::Style::ACTION_SIZE)
+                           .width(LV_PCT(100))
                            .layoutRow()
                            .alignLeft()
                            .callback(onSelectAllClicked, this)
                            .buildOrLog();
-    if (selectAllButton_) {
-        lv_obj_set_width(selectAllButton_, LV_PCT(100));
-    }
 
     lv_obj_t* deleteRow = lv_obj_create(actionColumn);
-    lv_obj_set_size(deleteRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_size(deleteRow, LV_PCT(100), LVGLBuilder::Style::ACTION_SIZE);
     lv_obj_set_style_bg_opa(deleteRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(deleteRow, 0, 0);
     lv_obj_set_style_pad_all(deleteRow, 0, 0);
-    lv_obj_set_style_pad_column(deleteRow, 6, 0);
+    lv_obj_set_style_pad_column(deleteRow, 8, 0);
     lv_obj_set_flex_flow(deleteRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         deleteRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_clear_flag(deleteRow, LV_OBJ_FLAG_SCROLLABLE);
 
+    const int deleteButtonWidth = std::max(0, widths.right - kRowHeight - 8);
     deleteSelectedButton_ = LVGLBuilder::actionButton(deleteRow)
                                 .text("Delete Selected")
                                 .mode(LVGLBuilder::ActionMode::Push)
-                                .height(kRowHeight)
+                                .height(LVGLBuilder::Style::ACTION_SIZE)
+                                .width(deleteButtonWidth)
                                 .backgroundColor(0xCC0000)
                                 .layoutRow()
                                 .alignLeft()
                                 .callback(onDeleteSelectedClicked, this)
                                 .buildOrLog();
-    if (deleteSelectedButton_) {
-        lv_obj_set_width(deleteSelectedButton_, kDeleteButtonWidth);
-    }
 
     deleteConfirmCheckbox_ = lv_checkbox_create(deleteRow);
     lv_checkbox_set_text(deleteConfirmCheckbox_, "Confirm");
@@ -143,6 +196,7 @@ void BrowserPanel::createLayout()
     lv_obj_add_event_cb(
         deleteConfirmCheckbox_, onDeleteConfirmToggled, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_clear_flag(deleteConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
+    styleCheckbox(deleteConfirmCheckbox_, kRowHeight, true);
 
     setButtonEnabled(deleteSelectedButton_, false);
 }
@@ -179,11 +233,11 @@ void BrowserPanel::rebuildList()
     for (size_t i = 0; i < items_.size(); ++i) {
         RowWidgets row{};
         row.row = lv_obj_create(listColumn_);
-        lv_obj_set_width(row.row, LV_PCT(100));
+        lv_obj_set_size(row.row, LV_PCT(100), kRowHeight);
         lv_obj_set_style_bg_opa(row.row, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(row.row, 0, 0);
         lv_obj_set_style_pad_all(row.row, 0, 0);
-        lv_obj_set_style_pad_column(row.row, 6, 0);
+        lv_obj_set_style_pad_column(row.row, 10, 0);
         lv_obj_set_flex_flow(row.row, LV_FLEX_FLOW_ROW);
         lv_obj_set_flex_align(
             row.row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -191,7 +245,7 @@ void BrowserPanel::rebuildList()
 
         row.checkbox = lv_checkbox_create(row.row);
         lv_checkbox_set_text(row.checkbox, "");
-        lv_obj_set_size(row.checkbox, kCheckboxSize, kCheckboxSize);
+        styleCheckbox(row.checkbox, kRowHeight, false);
 
         auto context = std::make_unique<CallbackContext>();
         context->panel = this;
@@ -202,14 +256,13 @@ void BrowserPanel::rebuildList()
         row.buttonContainer = LVGLBuilder::actionButton(row.row)
                                   .text(items_[i].label.c_str())
                                   .mode(LVGLBuilder::ActionMode::Push)
-                                  .height(kRowHeight)
+                                  .height(LVGLBuilder::Style::ACTION_SIZE)
                                   .layoutRow()
                                   .alignLeft()
                                   .callback(onItemButtonClicked, context.get())
                                   .buildOrLog();
         if (row.buttonContainer) {
             lv_obj_set_flex_grow(row.buttonContainer, 1);
-            lv_obj_set_width(row.buttonContainer, LV_PCT(100));
         }
 
         if (selectedIds_.count(items_[i].id) > 0) {
@@ -344,7 +397,7 @@ void BrowserPanel::openDetailModal(size_t index)
     modalDeleteButton_ = LVGLBuilder::actionButton(deleteRow)
                              .text("Delete")
                              .mode(LVGLBuilder::ActionMode::Push)
-                             .size(80)
+                             .size(LVGLBuilder::Style::ACTION_SIZE)
                              .backgroundColor(0xCC0000)
                              .callback(onModalDeleteClicked, this)
                              .buildOrLog();
@@ -355,6 +408,7 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_add_event_cb(
         modalConfirmCheckbox_, onModalDeleteConfirmToggled, LV_EVENT_VALUE_CHANGED, this);
     lv_obj_clear_flag(modalConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
+    styleCheckbox(modalConfirmCheckbox_, LVGLBuilder::Style::ACTION_SIZE, true);
 
     updateModalDeleteState();
 }
