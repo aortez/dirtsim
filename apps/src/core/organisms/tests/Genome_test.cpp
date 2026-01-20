@@ -9,5 +9,5 @@ TEST(GenomeTest, SizeMatchesExpected)
     Genome g;
     EXPECT_EQ(g.weights.size(), Genome::EXPECTED_WEIGHT_COUNT);
     EXPECT_EQ(g.getSizeBytes(), Genome::EXPECTED_SIZE_BYTES);
-    EXPECT_EQ(g.getSizeBytes(), 523552u);
+    EXPECT_EQ(g.getSizeBytes(), 523164u);
 }
