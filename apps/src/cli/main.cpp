@@ -1404,22 +1404,43 @@ int main(int argc, char** argv)
 
     // Special handling for DiagramGet - extract and display just the diagram.
     if (commandName == "DiagramGet") {
-        try {
-            nlohmann::json responseJson = nlohmann::json::parse(response);
-            spdlog::debug("Parsed response JSON: {}", responseJson.dump(2));
+        auto printDiagram = [](const std::string& responseText) {
+            try {
+                nlohmann::json responseJson = nlohmann::json::parse(responseText);
+                spdlog::debug("Parsed response JSON: {}", responseJson.dump(2));
 
-            if (responseJson.contains("value") && responseJson["value"].contains("diagram")) {
-                std::cout << responseJson["value"]["diagram"].get<std::string>() << std::endl;
+                if (responseJson.contains("value") && responseJson["value"].contains("diagram")) {
+                    std::cout << responseJson["value"]["diagram"].get<std::string>() << std::endl;
+                }
+                else {
+                    spdlog::warn("Response doesn't contain expected diagram structure");
+                    std::cout << responseText << std::endl;
+                }
+            }
+            catch (const nlohmann::json::parse_error& e) {
+                spdlog::error("JSON parse error: {}", e.what());
+                std::cout << responseText << std::endl;
+            }
+        };
+
+        printDiagram(response);
+
+        bool wantEmoji = true;
+        if (bodyJson.is_object() && bodyJson.contains("style") && bodyJson["style"].is_string()) {
+            wantEmoji = bodyJson["style"].get<std::string>() != "Emoji";
+        }
+
+        if (wantEmoji) {
+            nlohmann::json emojiBody = bodyJson.is_object() ? bodyJson : nlohmann::json::object();
+            emojiBody["style"] = "Emoji";
+            auto emojiResult = dispatcher.dispatch(dispatchTarget, client, commandName, emojiBody);
+            if (emojiResult.isError()) {
+                spdlog::warn("Emoji DiagramGet failed: {}", emojiResult.errorValue().message);
             }
             else {
-                // Fallback: display raw response.
-                spdlog::warn("Response doesn't contain expected diagram structure");
-                std::cout << response << std::endl;
+                std::cout << std::endl;
+                printDiagram(emojiResult.value());
             }
-        }
-        catch (const nlohmann::json::parse_error& e) {
-            spdlog::error("JSON parse error: {}", e.what());
-            std::cout << response << std::endl;
         }
     }
     else {
