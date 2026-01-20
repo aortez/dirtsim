@@ -159,30 +159,12 @@ Result<SeedTarget, std::string> resolveSeedTarget(const WorldData& data)
     }
 
     const int centerX = data.width / 2;
-    if (!data.inBounds(centerX, 0)) {
-        return Result<SeedTarget, std::string>::error("Center column is out of bounds");
+    const int centerY = data.height / 2;
+    if (!data.inBounds(centerX, centerY)) {
+        return Result<SeedTarget, std::string>::error("Center position is out of bounds");
     }
 
-    int groundY = -1;
-    for (int y = data.height - 1; y >= 0; --y) {
-        if (data.at(centerX, y).isAir()) {
-            if (y + 1 < data.height) {
-                groundY = y + 1;
-            }
-            break;
-        }
-    }
-
-    if (groundY < 0) {
-        return Result<SeedTarget, std::string>::error("No ground surface found in center column");
-    }
-
-    const int seedY = groundY - 1;
-    if (!data.inBounds(centerX, seedY)) {
-        return Result<SeedTarget, std::string>::error("Seed target out of bounds");
-    }
-
-    return Result<SeedTarget, std::string>::okay(SeedTarget{ centerX, seedY });
+    return Result<SeedTarget, std::string>::okay(SeedTarget{ centerX, centerY });
 }
 
 Result<std::monostate, std::string> waitForTreeVision(

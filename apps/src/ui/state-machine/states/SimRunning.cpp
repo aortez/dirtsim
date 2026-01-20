@@ -23,24 +23,6 @@ namespace Ui {
 namespace State {
 
 namespace {
-std::optional<Vector2i> findGroundAtX(const WorldData& data, int x)
-{
-    if (!data.inBounds(x, 0)) {
-        return std::nullopt;
-    }
-
-    for (int y = data.height - 1; y >= 0; --y) {
-        if (data.at(x, y).isAir()) {
-            if (y + 1 < data.height) {
-                return Vector2i{ x, y + 1 };
-            }
-            return std::nullopt;
-        }
-    }
-
-    return std::nullopt;
-}
-
 std::optional<Vector2i> resolveSeedTarget(
     const WorldData& data, const UiApi::PlantSeed::Command& cmd, std::string& error)
 {
@@ -60,19 +42,13 @@ std::optional<Vector2i> resolveSeedTarget(
     }
 
     const int centerX = data.width / 2;
-    const auto ground = findGroundAtX(data, centerX);
-    if (!ground.has_value()) {
-        error = "PlantSeed could not find ground at center column";
-        return std::nullopt;
-    }
-
-    const int seedY = ground->y - 1;
-    if (!data.inBounds(centerX, seedY)) {
+    const int centerY = data.height / 2;
+    if (!data.inBounds(centerX, centerY)) {
         error = "PlantSeed resolved position out of bounds";
         return std::nullopt;
     }
 
-    return Vector2i{ centerX, seedY };
+    return Vector2i{ centerX, centerY };
 }
 } // namespace
 
