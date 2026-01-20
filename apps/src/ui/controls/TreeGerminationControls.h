@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ScenarioControlsBase.h"
+#include "core/IconFont.h"
 #include "core/scenarios/TreeGerminationConfig.h"
 #include "lvgl/lvgl.h"
 #include <memory>
@@ -14,6 +15,7 @@ class WebSocketServiceInterface;
 
 namespace Ui {
 
+class EventSink;
 class PanelViewController;
 
 /**
@@ -24,6 +26,7 @@ public:
     TreeGerminationControls(
         lv_obj_t* container,
         Network::WebSocketServiceInterface* wsService,
+        EventSink* eventSink,
         const Config::TreeGermination& config);
     ~TreeGerminationControls() override;
 
@@ -34,8 +37,11 @@ protected:
 
 private:
     std::unique_ptr<PanelViewController> viewController_;
+    std::unique_ptr<IconFont> iconFont_;
+    EventSink* eventSink_ = nullptr;
 
     lv_obj_t* brainTypeButton_ = nullptr;
+    lv_obj_t* plantSeedButton_ = nullptr;
     std::unordered_map<lv_obj_t*, int> buttonToBrainTypeIndex_;
     int currentBrainTypeIndex_ = 0;
     Config::TreeGermination currentConfig_;
@@ -46,6 +52,7 @@ private:
     static void onBrainTypeButtonClicked(lv_event_t* e);
     static void onBrainTypeSelected(lv_event_t* e);
     static void onBrainTypeBackClicked(lv_event_t* e);
+    static void onPlantSeedClicked(lv_event_t* e);
 
     Config::TreeGermination getCurrentConfig() const;
     static const char* getBrainTypeName(Config::TreeBrainType type);

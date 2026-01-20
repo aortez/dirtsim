@@ -115,6 +115,8 @@ void StateMachine::setupWebSocketService()
     ws->registerHandler<UiApi::MouseMove::Cwc>(
         [this](UiApi::MouseMove::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::MouseUp::Cwc>([this](UiApi::MouseUp::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::PlantSeed::Cwc>(
+        [this](UiApi::PlantSeed::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::DrawDebugToggle::Cwc>(
         [this](UiApi::DrawDebugToggle::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::PixelRendererToggle::Cwc>(

@@ -15,11 +15,13 @@ namespace Ui {
 ScenarioPanel::ScenarioPanel(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    EventSink& eventSink,
     Scenario::EnumType initialScenarioId,
     const ScenarioConfig& initialConfig,
     DisplayDimensionsGetter dimensionsGetter)
     : container_(container),
       wsService_(wsService),
+      eventSink_(eventSink),
       dimensionsGetter_(dimensionsGetter),
       currentScenarioId_(initialScenarioId),
       currentScenarioConfig_(initialConfig)
@@ -63,7 +65,12 @@ void ScenarioPanel::createMainView(lv_obj_t* view)
 
     // Create scenario-specific controls.
     scenarioControls_ = ScenarioControlsFactory::create(
-        view, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter_);
+        view,
+        wsService_,
+        &eventSink_,
+        currentScenarioId_,
+        currentScenarioConfig_,
+        dimensionsGetter_);
 }
 
 void ScenarioPanel::createScenarioSelectionView(lv_obj_t* view)
@@ -145,6 +152,7 @@ void ScenarioPanel::updateFromConfig(Scenario::EnumType scenarioId, const Scenar
             scenarioControls_ = ScenarioControlsFactory::create(
                 mainView,
                 wsService_,
+                &eventSink_,
                 currentScenarioId_,
                 currentScenarioConfig_,
                 dimensionsGetter_);

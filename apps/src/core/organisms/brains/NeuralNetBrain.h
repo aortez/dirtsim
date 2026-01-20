@@ -13,7 +13,7 @@ struct Genome;
  * Neural network brain for tree organisms.
  *
  * Uses a simple feedforward network with factorized outputs:
- * command selection (7 types) and position selection (15x15 grid).
+ * command selection (6 types) and position selection (15x15 grid).
  */
 class NeuralNetBrain : public TreeBrain {
 public:
