@@ -12,17 +12,30 @@ namespace {
 constexpr int kSchemaVersion = 1;
 
 template <typename Func>
-void execDb(sqlite::database& db, const char* operation, Func&& func)
+Result<std::monostate, std::string> execDb(sqlite::database& db, const char* operation, Func&& func)
 {
     try {
         func(db);
+        return Result<std::monostate, std::string>::okay(std::monostate{});
     }
     catch (const sqlite::sqlite_exception& e) {
-        spdlog::error(
-            "TrainingResultRepository: {} failed: {} (code {})", operation, e.what(), e.get_code());
+        std::string message = "TrainingResultRepository: ";
+        message += operation;
+        message += " failed: ";
+        message += e.what();
+        message += " (code ";
+        message += std::to_string(e.get_code());
+        message += ")";
+        spdlog::error("{}", message);
+        return Result<std::monostate, std::string>::error(std::move(message));
     }
     catch (const std::exception& e) {
-        spdlog::error("TrainingResultRepository: {} failed: {}", operation, e.what());
+        std::string message = "TrainingResultRepository: ";
+        message += operation;
+        message += " failed: ";
+        message += e.what();
+        spdlog::error("{}", message);
+        return Result<std::monostate, std::string>::error(std::move(message));
     }
 }
 
@@ -86,34 +99,39 @@ void TrainingResultRepository::initSchema()
     }
 }
 
-bool TrainingResultRepository::exists(GenomeId trainingSessionId) const
+Result<bool, std::string> TrainingResultRepository::exists(GenomeId trainingSessionId) const
 {
     if (!db_) {
-        return std::any_of(
+        const bool exists = std::any_of(
             inMemoryResults_.begin(),
             inMemoryResults_.end(),
             [&](const Api::TrainingResult& result) {
                 return result.summary.trainingSessionId == trainingSessionId;
             });
+        return Result<bool, std::string>::okay(exists);
     }
 
     return existsInDb(trainingSessionId);
 }
 
-bool TrainingResultRepository::existsInDb(GenomeId trainingSessionId) const
+Result<bool, std::string> TrainingResultRepository::existsInDb(GenomeId trainingSessionId) const
 {
     bool exists = false;
-    execDb(*db_, "exists", [&](sqlite::database& db) {
+    auto result = execDb(*db_, "exists", [&](sqlite::database& db) {
         int count = 0;
         db << "SELECT COUNT(1) FROM training_results WHERE training_session_id = ?"
            << trainingSessionId.toString()
             >> count;
         exists = count > 0;
     });
-    return exists;
+    if (result.isError()) {
+        return Result<bool, std::string>::error(result.errorValue());
+    }
+    return Result<bool, std::string>::okay(exists);
 }
 
-void TrainingResultRepository::store(const Api::TrainingResult& result)
+Result<std::monostate, std::string> TrainingResultRepository::store(
+    const Api::TrainingResult& result)
 {
     if (!db_) {
         auto it = std::find_if(
@@ -128,15 +146,25 @@ void TrainingResultRepository::store(const Api::TrainingResult& result)
         else {
             inMemoryResults_.push_back(result);
         }
-        return;
+        return Result<std::monostate, std::string>::okay(std::monostate{});
     }
 
-    nlohmann::json summaryJson = result.summary;
-    nlohmann::json candidatesJson = result.candidates;
+    nlohmann::json summaryJson;
+    nlohmann::json candidatesJson;
+    try {
+        summaryJson = result.summary;
+        candidatesJson = result.candidates;
+    }
+    catch (const std::exception& e) {
+        std::string message = "TrainingResultRepository: serialize failed: ";
+        message += e.what();
+        spdlog::error("{}", message);
+        return Result<std::monostate, std::string>::error(std::move(message));
+    }
     const int candidateCount = static_cast<int>(result.candidates.size());
     const int64_t createdAt = currentEpochSeconds();
 
-    execDb(*db_, "store", [&](sqlite::database& db) {
+    return execDb(*db_, "store", [&](sqlite::database& db) {
         db << R"(
             INSERT OR REPLACE INTO training_results
                 (training_session_id, summary_json, candidates_json, candidate_count, created_at)
@@ -146,7 +174,8 @@ void TrainingResultRepository::store(const Api::TrainingResult& result)
     });
 }
 
-std::optional<Api::TrainingResult> TrainingResultRepository::get(GenomeId trainingSessionId) const
+Result<std::optional<Api::TrainingResult>, std::string> TrainingResultRepository::get(
+    GenomeId trainingSessionId) const
 {
     if (!db_) {
         auto it = std::find_if(
@@ -156,19 +185,20 @@ std::optional<Api::TrainingResult> TrainingResultRepository::get(GenomeId traini
                 return existing.summary.trainingSessionId == trainingSessionId;
             });
         if (it == inMemoryResults_.end()) {
-            return std::nullopt;
+            return Result<std::optional<Api::TrainingResult>, std::string>::okay(std::nullopt);
         }
-        return *it;
+        return Result<std::optional<Api::TrainingResult>, std::string>::okay(*it);
     }
 
     return getFromDb(trainingSessionId);
 }
 
-std::optional<Api::TrainingResult> TrainingResultRepository::getFromDb(
+Result<std::optional<Api::TrainingResult>, std::string> TrainingResultRepository::getFromDb(
     GenomeId trainingSessionId) const
 {
     std::optional<Api::TrainingResult> result;
-    execDb(*db_, "get", [&](sqlite::database& db) {
+    std::string parseError;
+    auto dbResult = execDb(*db_, "get", [&](sqlite::database& db) {
         db << "SELECT summary_json, candidates_json FROM training_results WHERE "
               "training_session_id = ?"
            << trainingSessionId.toString()
@@ -183,17 +213,27 @@ std::optional<Api::TrainingResult> TrainingResultRepository::getFromDb(
                       result = std::move(parsed);
                   }
                   catch (const std::exception& e) {
-                      spdlog::error(
-                          "TrainingResultRepository: Failed to parse training result {}: {}",
-                          trainingSessionId.toShortString(),
-                          e.what());
+                      parseError = "TrainingResultRepository: Failed to parse training result ";
+                      parseError += trainingSessionId.toShortString();
+                      parseError += ": ";
+                      parseError += e.what();
                   }
               };
     });
-    return result;
+    if (dbResult.isError()) {
+        return Result<std::optional<Api::TrainingResult>, std::string>::error(
+            dbResult.errorValue());
+    }
+    if (!parseError.empty()) {
+        spdlog::error("{}", parseError);
+        return Result<std::optional<Api::TrainingResult>, std::string>::error(
+            std::move(parseError));
+    }
+    return Result<std::optional<Api::TrainingResult>, std::string>::okay(result);
 }
 
-std::vector<Api::TrainingResultList::Entry> TrainingResultRepository::list() const
+Result<std::vector<Api::TrainingResultList::Entry>, std::string> TrainingResultRepository::list()
+    const
 {
     if (!db_) {
         std::vector<Api::TrainingResultList::Entry> entries;
@@ -204,16 +244,19 @@ std::vector<Api::TrainingResultList::Entry> TrainingResultRepository::list() con
             entry.candidateCount = static_cast<int>(result.candidates.size());
             entries.push_back(std::move(entry));
         }
-        return entries;
+        return Result<std::vector<Api::TrainingResultList::Entry>, std::string>::okay(
+            std::move(entries));
     }
 
     return listFromDb();
 }
 
-std::vector<Api::TrainingResultList::Entry> TrainingResultRepository::listFromDb() const
+Result<std::vector<Api::TrainingResultList::Entry>, std::string> TrainingResultRepository::
+    listFromDb() const
 {
     std::vector<Api::TrainingResultList::Entry> entries;
-    execDb(*db_, "list", [&](sqlite::database& db) {
+    std::string parseError;
+    auto dbResult = execDb(*db_, "list", [&](sqlite::database& db) {
         db << "SELECT summary_json, candidate_count FROM training_results ORDER BY created_at DESC"
             >> [&](std::string summaryJson, int candidateCount) {
                   try {
@@ -224,15 +267,25 @@ std::vector<Api::TrainingResultList::Entry> TrainingResultRepository::listFromDb
                       entries.push_back(std::move(entry));
                   }
                   catch (const std::exception& e) {
-                      spdlog::error(
-                          "TrainingResultRepository: Failed to parse list entry: {}", e.what());
+                      parseError = "TrainingResultRepository: Failed to parse list entry: ";
+                      parseError += e.what();
                   }
               };
     });
-    return entries;
+    if (dbResult.isError()) {
+        return Result<std::vector<Api::TrainingResultList::Entry>, std::string>::error(
+            dbResult.errorValue());
+    }
+    if (!parseError.empty()) {
+        spdlog::error("{}", parseError);
+        return Result<std::vector<Api::TrainingResultList::Entry>, std::string>::error(
+            std::move(parseError));
+    }
+    return Result<std::vector<Api::TrainingResultList::Entry>, std::string>::okay(
+        std::move(entries));
 }
 
-bool TrainingResultRepository::remove(GenomeId trainingSessionId)
+Result<bool, std::string> TrainingResultRepository::remove(GenomeId trainingSessionId)
 {
     if (!db_) {
         auto it = std::find_if(
@@ -242,27 +295,27 @@ bool TrainingResultRepository::remove(GenomeId trainingSessionId)
                 return existing.summary.trainingSessionId == trainingSessionId;
             });
         if (it == inMemoryResults_.end()) {
-            return false;
+            return Result<bool, std::string>::okay(false);
         }
         inMemoryResults_.erase(it);
-        return true;
+        return Result<bool, std::string>::okay(true);
     }
 
     return removeFromDb(trainingSessionId);
 }
 
-bool TrainingResultRepository::removeFromDb(GenomeId trainingSessionId) const
+Result<bool, std::string> TrainingResultRepository::removeFromDb(GenomeId trainingSessionId) const
 {
-    const bool existed = existsInDb(trainingSessionId);
-    if (!existed) {
-        return false;
-    }
-
-    execDb(*db_, "remove", [&](sqlite::database& db) {
+    int changes = 0;
+    auto dbResult = execDb(*db_, "remove", [&](sqlite::database& db) {
         db << "DELETE FROM training_results WHERE training_session_id = ?"
            << trainingSessionId.toString();
+        db << "SELECT changes()" >> changes;
     });
-    return true;
+    if (dbResult.isError()) {
+        return Result<bool, std::string>::error(dbResult.errorValue());
+    }
+    return Result<bool, std::string>::okay(changes > 0);
 }
 
 bool TrainingResultRepository::isPersistent() const

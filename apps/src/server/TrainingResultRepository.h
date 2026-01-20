@@ -1,10 +1,12 @@
 #pragma once
 
+#include "core/Result.h"
 #include "server/api/TrainingResult.h"
 #include "server/api/TrainingResultList.h"
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <variant>
 #include <vector>
 
 namespace sqlite {
@@ -25,11 +27,11 @@ public:
     TrainingResultRepository(const TrainingResultRepository&) = delete;
     TrainingResultRepository& operator=(const TrainingResultRepository&) = delete;
 
-    void store(const Api::TrainingResult& result);
-    bool exists(GenomeId trainingSessionId) const;
-    std::optional<Api::TrainingResult> get(GenomeId trainingSessionId) const;
-    std::vector<Api::TrainingResultList::Entry> list() const;
-    bool remove(GenomeId trainingSessionId);
+    Result<std::monostate, std::string> store(const Api::TrainingResult& result);
+    Result<bool, std::string> exists(GenomeId trainingSessionId) const;
+    Result<std::optional<Api::TrainingResult>, std::string> get(GenomeId trainingSessionId) const;
+    Result<std::vector<Api::TrainingResultList::Entry>, std::string> list() const;
+    Result<bool, std::string> remove(GenomeId trainingSessionId);
     bool isPersistent() const;
 
 private:
@@ -37,10 +39,11 @@ private:
     std::vector<Api::TrainingResult> inMemoryResults_;
 
     void initSchema();
-    bool existsInDb(GenomeId trainingSessionId) const;
-    std::optional<Api::TrainingResult> getFromDb(GenomeId trainingSessionId) const;
-    std::vector<Api::TrainingResultList::Entry> listFromDb() const;
-    bool removeFromDb(GenomeId trainingSessionId) const;
+    Result<bool, std::string> existsInDb(GenomeId trainingSessionId) const;
+    Result<std::optional<Api::TrainingResult>, std::string> getFromDb(
+        GenomeId trainingSessionId) const;
+    Result<std::vector<Api::TrainingResultList::Entry>, std::string> listFromDb() const;
+    Result<bool, std::string> removeFromDb(GenomeId trainingSessionId) const;
 };
 
 } // namespace Server

@@ -343,22 +343,35 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
     });
 
     service.registerHandler<Api::TrainingResultList::Cwc>([this](Api::TrainingResultList::Cwc cwc) {
-        Api::TrainingResultList::Okay response;
+        Result<std::vector<Api::TrainingResultList::Entry>, std::string> listResult;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            response.results = pImpl->trainingResultRepository_.list();
+            listResult = pImpl->trainingResultRepository_.list();
+        }
+        if (listResult.isError()) {
+            cwc.sendResponse(
+                Api::TrainingResultList::Response::error(ApiError(listResult.errorValue())));
+            return;
         }
 
+        Api::TrainingResultList::Okay response;
+        response.results = std::move(listResult).value();
         cwc.sendResponse(Api::TrainingResultList::Response::okay(std::move(response)));
     });
 
     service.registerHandler<Api::TrainingResultGet::Cwc>([this](Api::TrainingResultGet::Cwc cwc) {
-        std::optional<Api::TrainingResult> found;
+        Result<std::optional<Api::TrainingResult>, std::string> getResult;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            found = pImpl->trainingResultRepository_.get(cwc.command.trainingSessionId);
+            getResult = pImpl->trainingResultRepository_.get(cwc.command.trainingSessionId);
         }
 
+        if (getResult.isError()) {
+            cwc.sendResponse(
+                Api::TrainingResultGet::Response::error(ApiError(getResult.errorValue())));
+            return;
+        }
+        auto found = std::move(getResult).value();
         if (!found.has_value()) {
             cwc.sendResponse(Api::TrainingResultGet::Response::error(ApiError(
                 "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
@@ -513,7 +526,10 @@ const GenomeRepository& StateMachine::getGenomeRepository() const
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
 {
     std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-    pImpl->trainingResultRepository_.store(result);
+    auto storeResult = pImpl->trainingResultRepository_.store(result);
+    if (storeResult.isError()) {
+        LOG_ERROR(State, "TrainingResultRepository store failed: {}", storeResult.errorValue());
+    }
 }
 
 void StateMachine::mainLoopRun()
@@ -775,14 +791,19 @@ void StateMachine::handleEvent(const Event& event)
     // Handle TrainingResultDelete globally (works in any state).
     if (std::holds_alternative<Api::TrainingResultDelete::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::TrainingResultDelete::Cwc>(event.getVariant());
-        bool existed = false;
+        Result<bool, std::string> deleteResult;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            existed = pImpl->trainingResultRepository_.remove(cwc.command.trainingSessionId);
+            deleteResult = pImpl->trainingResultRepository_.remove(cwc.command.trainingSessionId);
+        }
+        if (deleteResult.isError()) {
+            cwc.sendResponse(
+                Api::TrainingResultDelete::Response::error(ApiError(deleteResult.errorValue())));
+            return;
         }
 
         Api::TrainingResultDelete::Okay response;
-        response.success = existed;
+        response.success = deleteResult.value();
         cwc.sendResponse(Api::TrainingResultDelete::Response::okay(std::move(response)));
         return;
     }
@@ -800,11 +821,15 @@ void StateMachine::handleEvent(const Event& event)
 
         bool overwritten = false;
         bool rejected = false;
+        std::string failure;
         {
             std::lock_guard<std::mutex> lock(pImpl->trainingResultsMutex_);
-            const bool exists =
+            auto existsResult =
                 pImpl->trainingResultRepository_.exists(result.summary.trainingSessionId);
-            if (exists) {
+            if (existsResult.isError()) {
+                failure = existsResult.errorValue();
+            }
+            else if (existsResult.value()) {
                 if (!cwc.command.overwrite) {
                     rejected = true;
                 }
@@ -813,11 +838,18 @@ void StateMachine::handleEvent(const Event& event)
                 }
             }
 
-            if (!rejected) {
-                pImpl->trainingResultRepository_.store(result);
+            if (!rejected && failure.empty()) {
+                auto storeResult = pImpl->trainingResultRepository_.store(result);
+                if (storeResult.isError()) {
+                    failure = storeResult.errorValue();
+                }
             }
         }
 
+        if (!failure.empty()) {
+            cwc.sendResponse(Api::TrainingResultSet::Response::error(ApiError(failure)));
+            return;
+        }
         if (rejected) {
             cwc.sendResponse(Api::TrainingResultSet::Response::error(
                 ApiError("TrainingResultSet already exists")));
