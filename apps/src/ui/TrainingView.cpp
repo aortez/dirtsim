@@ -9,6 +9,7 @@
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
+#include "core/reflect.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
@@ -26,20 +27,6 @@ namespace Ui {
 namespace {
 constexpr double FITNESS_IMPROVEMENT_EPSILON = 0.001;
 constexpr int kBrowserRightGap = 60;
-
-const char* organismTypeLabel(OrganismType organismType)
-{
-    switch (organismType) {
-        case OrganismType::TREE:
-            return "Tree";
-        case OrganismType::DUCK:
-            return "Duck";
-        case OrganismType::GOOSE:
-            return "Goose";
-        default:
-            return "Unknown";
-    }
-}
 
 int computeBrowserPanelWidth()
 {
@@ -735,7 +722,13 @@ void TrainingView::showTrainingResultModal(
     lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(scenarioLabel, &lv_font_montserrat_12, 0);
 
-    snprintf(buf, sizeof(buf), "Organism: %s", organismTypeLabel(summary.organismType));
+    const auto organismName = reflect::enum_name(summary.organismType);
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Organism: %.*s",
+        static_cast<int>(organismName.size()),
+        organismName.data());
     lv_obj_t* organismLabel = lv_label_create(modal);
     lv_label_set_text(organismLabel, buf);
     lv_obj_set_style_text_color(organismLabel, lv_color_hex(0xCCCCCC), 0);

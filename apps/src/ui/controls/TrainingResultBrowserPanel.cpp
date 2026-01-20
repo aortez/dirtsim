@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "core/ScenarioId.h"
 #include "core/network/WebSocketServiceInterface.h"
+#include "core/reflect.h"
 #include "server/api/TrainingResultDelete.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
@@ -10,22 +11,6 @@
 
 namespace DirtSim {
 namespace Ui {
-
-namespace {
-const char* organismTypeLabel(OrganismType organismType)
-{
-    switch (organismType) {
-        case OrganismType::TREE:
-            return "Tree";
-        case OrganismType::DUCK:
-            return "Duck";
-        case OrganismType::GOOSE:
-            return "Goose";
-        default:
-            return "Unknown";
-    }
-}
-} // namespace
 
 TrainingResultBrowserPanel::TrainingResultBrowserPanel(
     lv_obj_t* parent, Network::WebSocketServiceInterface* wsService)
@@ -151,7 +136,7 @@ std::string TrainingResultBrowserPanel::formatDetailText(
     std::ostringstream oss;
     oss << "Session: " << summary.trainingSessionId.toString() << "\n";
     oss << "Scenario: " << Scenario::toString(summary.scenarioId) << "\n";
-    oss << "Organism: " << organismTypeLabel(summary.organismType) << "\n";
+    oss << "Organism: " << reflect::enum_name(summary.organismType) << "\n";
     oss << "Generations: " << summary.completedGenerations << "/" << summary.maxGenerations << "\n";
     oss << "Population: " << summary.populationSize << "\n";
     oss << "Best Fitness: " << std::fixed << std::setprecision(3) << summary.bestFitness << "\n";

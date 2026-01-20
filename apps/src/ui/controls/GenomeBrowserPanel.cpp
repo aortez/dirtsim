@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "core/ScenarioId.h"
 #include "core/network/WebSocketServiceInterface.h"
+#include "core/reflect.h"
 #include "server/api/GenomeDelete.h"
 #include "server/api/GenomeList.h"
 #include <iomanip>
@@ -9,22 +10,6 @@
 
 namespace DirtSim {
 namespace Ui {
-
-namespace {
-const char* organismTypeLabel(OrganismType organismType)
-{
-    switch (organismType) {
-        case OrganismType::TREE:
-            return "Tree";
-        case OrganismType::DUCK:
-            return "Duck";
-        case OrganismType::GOOSE:
-            return "Goose";
-        default:
-            return "Unknown";
-    }
-}
-} // namespace
 
 GenomeBrowserPanel::GenomeBrowserPanel(
     lv_obj_t* parent, Network::WebSocketServiceInterface* wsService)
@@ -144,7 +129,7 @@ std::string GenomeBrowserPanel::formatDetailText(
         oss << "Notes: " << meta.notes << "\n";
     }
     if (meta.organismType.has_value()) {
-        oss << "Organism Type: " << organismTypeLabel(meta.organismType.value()) << "\n";
+        oss << "Organism Type: " << reflect::enum_name(meta.organismType.value()) << "\n";
     }
     if (meta.brainKind.has_value()) {
         oss << "Brain Kind: " << meta.brainKind.value() << "\n";
