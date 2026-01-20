@@ -57,8 +57,6 @@ const char* treeCommandName(TreeCommandType type)
             return "GROW_LEAF";
         case TreeCommandType::GrowRootCommand:
             return "GROW_ROOT";
-        case TreeCommandType::ReinforceCellCommand:
-            return "REINFORCE";
         case TreeCommandType::ProduceSeedCommand:
             return "PRODUCE_SEED";
     }
@@ -137,7 +135,7 @@ void Tree::update(World& world, double deltaTime)
     }
     static int counter = 0;
     counter++;
-    if (counter % 100 == 0) {
+    if (counter % 1000 == 0) {
         LOG_INFO(
             Tree,
             "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
@@ -268,7 +266,12 @@ void Tree::updateResources(const World& world, double deltaTime)
     }
 
     if (water_gain > 0.0) {
-        total_water_ = std::min(kWaterCapacity, total_water_ + water_gain * deltaTime);
+        const double water_headroom = std::max(0.0, kWaterCapacity - total_water_);
+        const double water_added = std::min(water_headroom, water_gain * deltaTime);
+        if (water_added > 0.0) {
+            total_water_ += water_added;
+            resourceTotals_.waterAbsorbed += water_added;
+        }
     }
 
     if (total_water_ > 0.0) {
@@ -286,6 +289,7 @@ void Tree::updateResources(const World& world, double deltaTime)
         leaf_cells * avg_light * kPhotosynthesisRate * deltaTime * water_factor;
     const double maintenance_cost = total_cells * kMaintenanceCostPerCell * deltaTime;
 
+    resourceTotals_.energyProduced += energy_produced;
     total_energy_ += energy_produced - maintenance_cost;
     total_energy_ = std::clamp(total_energy_, 0.0, kEnergyCap);
 }
@@ -472,10 +476,6 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
                 else if constexpr (std::is_same_v<T, GrowRootCommand>) {
                     data.current_thought = "Growing ROOT at (" + std::to_string(cmd.target_pos.x)
                         + ", " + std::to_string(cmd.target_pos.y) + ")";
-                }
-                else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                    data.current_thought = "Reinforcing cell at (" + std::to_string(cmd.position.x)
-                        + ", " + std::to_string(cmd.position.y) + ")";
                 }
                 else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
                     data.current_thought = "Producing SEED at (" + std::to_string(cmd.position.x)

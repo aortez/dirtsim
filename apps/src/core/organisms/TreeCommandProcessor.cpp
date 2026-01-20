@@ -14,12 +14,15 @@ namespace DirtSim {
 constexpr double ENERGY_COST_WOOD = 10.0;
 constexpr double ENERGY_COST_LEAF = 8.0;
 constexpr double ENERGY_COST_ROOT = 12.0;
-constexpr double ENERGY_COST_REINFORCE = 5.0;
 constexpr double ENERGY_COST_PRODUCE_SEED = 50.0;
 
 CommandExecutionResult TreeCommandProcessor::execute(
     Tree& tree, World& world, const TreeCommand& cmd)
 {
+    const auto isTargetOwnedByTree = [&world, &tree](const Vector2i& pos) {
+        return world.getOrganismManager().at(pos) == tree.getId();
+    };
+
     return std::visit(
         [&](auto&& command) -> CommandExecutionResult {
             using T = std::decay_t<decltype(command)>;
@@ -32,6 +35,10 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 if (!world.getData().inBounds(command.target_pos.x, command.target_pos.y)) {
                     return { CommandResult::INVALID_TARGET, "WOOD target out of bounds" };
+                }
+
+                if (isTargetOwnedByTree(command.target_pos)) {
+                    return { CommandResult::INVALID_TARGET, "WOOD target already owned by tree" };
                 }
 
                 // Check cardinal adjacency to WOOD or SEED (structural elements only).
@@ -88,6 +95,10 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     return { CommandResult::INVALID_TARGET, "LEAF target out of bounds" };
                 }
 
+                if (isTargetOwnedByTree(command.target_pos)) {
+                    return { CommandResult::INVALID_TARGET, "LEAF target already owned by tree" };
+                }
+
                 // Check cardinal adjacency to WOOD (leaves grow from branches).
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
                 bool has_wood_neighbor = false;
@@ -136,6 +147,10 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     return { CommandResult::INVALID_TARGET, "ROOT target out of bounds" };
                 }
 
+                if (isTargetOwnedByTree(command.target_pos)) {
+                    return { CommandResult::INVALID_TARGET, "ROOT target already owned by tree" };
+                }
+
                 // Check cardinal adjacency to SEED or ROOT (root network).
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
                 bool has_root_neighbor = false;
@@ -179,22 +194,6 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 }
 
                 return { CommandResult::SUCCESS, "ROOT growth successful" };
-            }
-            else if constexpr (std::is_same_v<T, ReinforceCellCommand>) {
-                if (tree.getEnergy() < ENERGY_COST_REINFORCE) {
-                    return { CommandResult::INSUFFICIENT_ENERGY,
-                             "Not enough energy for cell reinforcement" };
-                }
-
-                tree.setEnergy(tree.getEnergy() - ENERGY_COST_REINFORCE);
-
-                spdlog::info(
-                    "Tree {}: Reinforced cell at ({}, {}) [not yet implemented]",
-                    tree.getId(),
-                    command.position.x,
-                    command.position.y);
-
-                return { CommandResult::SUCCESS, "Cell reinforcement successful" };
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
                 if (tree.getEnergy() < ENERGY_COST_PRODUCE_SEED) {

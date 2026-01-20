@@ -8,6 +8,7 @@
 #include "api/MouseMove.h"
 #include "api/MouseUp.h"
 #include "api/PixelRendererToggle.h"
+#include "api/PlantSeed.h"
 #include "api/RenderModeSelect.h"
 #include "api/ScreenGrab.h"
 #include "api/SimPause.h"
@@ -248,6 +249,7 @@ using Event = std::variant<
     DirtSim::UiApi::MouseDown::Cwc,
     DirtSim::UiApi::MouseMove::Cwc,
     DirtSim::UiApi::MouseUp::Cwc,
+    DirtSim::UiApi::PlantSeed::Cwc,
     DirtSim::UiApi::PixelRendererToggle::Cwc,
     DirtSim::UiApi::RenderModeSelect::Cwc,
     DirtSim::UiApi::ScreenGrab::Cwc,

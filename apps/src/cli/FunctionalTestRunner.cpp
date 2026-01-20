@@ -3,15 +3,17 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "os-manager/api/Reboot.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
 #include "os-manager/api/SystemStatus.h"
 #include "server/api/SimStop.h"
+#include "server/api/StateGet.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
 #include "ui/state-machine/api/Exit.h"
+#include "ui/state-machine/api/PlantSeed.h"
+#include "ui/state-machine/api/SimRun.h"
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
@@ -109,6 +111,87 @@ Result<Api::StatusGet::Okay, std::string> waitForServerState(
         if (elapsedMs >= timeoutMs) {
             return Result<Api::StatusGet::Okay, std::string>::error(
                 "Timeout waiting for server state '" + expectedState + "'");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<std::monostate, std::string> waitForServerScenario(
+    Network::WebSocketService& client, Scenario::EnumType expectedScenario, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+    while (true) {
+        auto statusResult = requestServerStatus(client, requestTimeoutMs);
+        if (statusResult.isError()) {
+            return Result<std::monostate, std::string>::error(statusResult.errorValue());
+        }
+
+        const auto& status = statusResult.value();
+        if (status.scenario_id.has_value() && status.scenario_id.value() == expectedScenario) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            return Result<std::monostate, std::string>::error(
+                "Timeout waiting for server scenario");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+struct SeedTarget {
+    int x = 0;
+    int y = 0;
+};
+
+Result<SeedTarget, std::string> resolveSeedTarget(const WorldData& data)
+{
+    if (data.width <= 0 || data.height <= 0) {
+        return Result<SeedTarget, std::string>::error("WorldData has invalid dimensions");
+    }
+
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
+    if (!data.inBounds(centerX, centerY)) {
+        return Result<SeedTarget, std::string>::error("Center position is out of bounds");
+    }
+
+    return Result<SeedTarget, std::string>::okay(SeedTarget{ centerX, centerY });
+}
+
+Result<std::monostate, std::string> waitForTreeVision(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+    while (true) {
+        Api::StateGet::Command cmd{};
+        auto response = unwrapResponse(
+            client.sendCommandAndGetResponse<Api::StateGet::Okay>(cmd, requestTimeoutMs));
+        if (response.isError()) {
+            return Result<std::monostate, std::string>::error(response.errorValue());
+        }
+
+        if (response.value().worldData.tree_vision.has_value()) {
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            return Result<std::monostate, std::string>::error(
+                "Timeout waiting for tree_vision in WorldData");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -485,29 +568,6 @@ Result<std::monostate, std::string> restartServices(
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
-Result<std::monostate, std::string> requestReboot(
-    const std::string& osManagerAddress, int timeoutMs)
-{
-    Network::WebSocketService client;
-    std::cerr << "Connecting to os-manager at " << osManagerAddress << "..." << std::endl;
-    auto connectResult = client.connect(osManagerAddress, timeoutMs);
-    if (connectResult.isError()) {
-        return Result<std::monostate, std::string>::error(
-            "Failed to connect to os-manager: " + connectResult.errorValue());
-    }
-
-    std::cerr << "Requesting reboot..." << std::endl;
-    OsApi::Reboot::Command rebootCmd{};
-    auto rebootResult =
-        unwrapResponse(client.sendCommandAndGetResponse<std::monostate>(rebootCmd, timeoutMs));
-    client.disconnect();
-    if (rebootResult.isError()) {
-        return Result<std::monostate, std::string>::error(
-            "Reboot failed: " + rebootResult.errorValue());
-    }
-
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
 } // namespace
 
 nlohmann::json FunctionalTrainingSummary::toJson() const
@@ -656,13 +716,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
-    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
-    if (rebootResult.isError()) {
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
         if (testResult.isError()) {
-            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
         }
         else {
-            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
         }
     }
 
@@ -701,13 +761,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
-    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
-    if (rebootResult.isError()) {
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
         if (testResult.isError()) {
-            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
         }
         else {
-            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
         }
     }
 
@@ -761,13 +821,13 @@ FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }();
 
-    auto rebootResult = requestReboot(osManagerAddress, timeoutMs);
-    if (rebootResult.isError()) {
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
         if (testResult.isError()) {
-            std::cerr << "Reboot failed: " << rebootResult.errorValue() << std::endl;
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
         }
         else {
-            testResult = Result<std::monostate, std::string>::error(rebootResult.errorValue());
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
         }
     }
 
@@ -780,6 +840,197 @@ FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .training_summary = std::move(trainingSummary),
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanPlantTreeSeed(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        UiApi::StatusGet::Command uiStatusCmd{};
+        auto uiStatusResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(uiStatusCmd, timeoutMs));
+        if (uiStatusResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StatusGet failed: " + uiStatusResult.errorValue());
+        }
+
+        const auto& uiStatus = uiStatusResult.value();
+        if (!uiStatus.connected_to_server) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error("UI not connected to server");
+        }
+
+        auto uiStateResult = requestUiState(uiClient, timeoutMs);
+        if (uiStateResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StateGet failed: " + uiStateResult.errorValue());
+        }
+
+        const std::string& uiState = uiStateResult.value().state;
+        if (uiState != "StartMenu") {
+            if (uiState == "SimRunning" || uiState == "Paused") {
+                UiApi::SimStop::Command simStopCmd{};
+                auto simStopResult =
+                    unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(
+                        simStopCmd, timeoutMs));
+                if (simStopResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(
+                        "UI SimStop failed: " + simStopResult.errorValue());
+                }
+
+                auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+                if (startMenuResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+                }
+            }
+            else {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Unsupported UI state for canPlantTreeSeed: " + uiState);
+            }
+        }
+
+        serverClient.setProtocol(Network::Protocol::BINARY);
+        Network::ClientHello hello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = false,
+            .wantsEvents = false,
+        };
+        serverClient.setClientHello(hello);
+
+        std::cerr << "Connecting to server at " << serverAddress << "..." << std::endl;
+        auto serverConnect = serverClient.connect(serverAddress, timeoutMs);
+        if (serverConnect.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to server: " + serverConnect.errorValue());
+        }
+
+        UiApi::SimRun::Command simRunCmd{
+            .scenario_id = Scenario::EnumType::TreeGermination,
+        };
+        auto simRunResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimRun::Okay>(simRunCmd, timeoutMs));
+        if (simRunResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SimRun failed: " + simRunResult.errorValue());
+        }
+
+        auto uiRunningResult = waitForUiState(uiClient, "SimRunning", timeoutMs);
+        if (uiRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiRunningResult.errorValue());
+        }
+
+        auto serverRunningResult = waitForServerState(serverClient, "SimRunning", timeoutMs);
+        if (serverRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverRunningResult.errorValue());
+        }
+
+        auto scenarioResult =
+            waitForServerScenario(serverClient, Scenario::EnumType::TreeGermination, timeoutMs);
+        if (scenarioResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(scenarioResult.errorValue());
+        }
+
+        Api::StateGet::Command stateCmd{};
+        auto serverStateResult = unwrapResponse(
+            serverClient.sendCommandAndGetResponse<Api::StateGet::Okay>(stateCmd, timeoutMs));
+        if (serverStateResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server StateGet failed: " + serverStateResult.errorValue());
+        }
+
+        const auto& worldData = serverStateResult.value().worldData;
+        if (worldData.tree_vision.has_value()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Expected no tree_vision before planting seed");
+        }
+
+        auto targetResult = resolveSeedTarget(worldData);
+        if (targetResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(targetResult.errorValue());
+        }
+
+        UiApi::PlantSeed::Command plantCmd{
+            .x = targetResult.value().x,
+            .y = targetResult.value().y,
+        };
+        auto plantResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::PlantSeed::OkayType>(plantCmd, timeoutMs));
+        if (plantResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI PlantSeed failed: " + plantResult.errorValue());
+        }
+
+        auto treeVisionResult = waitForTreeVision(serverClient, timeoutMs);
+        uiClient.disconnect();
+        serverClient.disconnect();
+        if (treeVisionResult.isError()) {
+            return Result<std::monostate, std::string>::error(treeVisionResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canPlantTreeSeed",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .training_summary = std::nullopt,
     };
 }
 

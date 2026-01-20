@@ -16,6 +16,7 @@ struct EvolutionConfig {
     // Evaluation settings.
     double maxSimulationTime = 10.0; // Seconds of sim time per organism.
     double energyReference = 100.0;  // Reference energy for fitness scaling.
+    double waterReference = 100.0;   // Reference water for resource scaling.
 };
 
 /**

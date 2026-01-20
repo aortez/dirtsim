@@ -19,21 +19,21 @@ namespace {
 //   - 15×15×10 = 2250 (material histograms)
 //   - 15×15 = 225 (light levels)
 //   - 6 (internal state: energy, water, age, stage, scale_factor, reserved)
-//   - 7 (current action one-hot, all zeros if idle)
+//   - 6 (current action one-hot, all zeros if idle)
 //   - 1 (action progress, 0.0 to 1.0)
-constexpr int INPUT_SIZE = 2489;
+constexpr int INPUT_SIZE = 2488;
 constexpr int HIDDEN_SIZE = 48;
 
 // Output layout:
-//   - 7 (command logits: Wait, Cancel, GrowWood, GrowLeaf, GrowRoot, Reinforce, ProduceSeed)
+//   - 6 (command logits: Wait, Cancel, GrowWood, GrowLeaf, GrowRoot, ProduceSeed)
 //   - 225 (position logits)
-constexpr int OUTPUT_SIZE = 232;
+constexpr int OUTPUT_SIZE = 231;
 
 constexpr int W_IH_SIZE = INPUT_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;
 constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
 
-constexpr int NUM_COMMANDS = 7;
+constexpr int NUM_COMMANDS = 6;
 constexpr int NUM_POSITIONS = 225;
 constexpr int GRID_SIZE = 15;
 constexpr int NUM_MATERIALS = 10;
@@ -148,7 +148,7 @@ struct NeuralNetBrain::Impl {
         input.push_back(sensory.scale_factor / 10.0);
         input.push_back(0.0); // Reserved for future use.
 
-        // Current action one-hot encoding (7 values).
+        // Current action one-hot encoding (6 values).
         // Note: Wait and Cancel are never "in progress", so these will be 0.
         for (int i = 0; i < NUM_COMMANDS; i++) {
             if (sensory.current_action.has_value()
@@ -168,7 +168,7 @@ struct NeuralNetBrain::Impl {
 
     TreeCommand interpretOutput(const std::vector<double>& output, const TreeSensoryData& sensory)
     {
-        // First 7 outputs are command logits - use argmax.
+        // First 6 outputs are command logits - use argmax.
         int command_idx = 0;
         double max_command = output[0];
         for (int i = 1; i < NUM_COMMANDS; i++) {
@@ -217,8 +217,6 @@ struct NeuralNetBrain::Impl {
                 return GrowLeafCommand{ .target_pos = world_pos };
             case TreeCommandType::GrowRootCommand:
                 return GrowRootCommand{ .target_pos = world_pos };
-            case TreeCommandType::ReinforceCellCommand:
-                return ReinforceCellCommand{ .position = world_pos };
             case TreeCommandType::ProduceSeedCommand:
                 return ProduceSeedCommand{ .position = world_pos };
         }

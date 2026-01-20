@@ -6,11 +6,22 @@
 
 namespace DirtSim {
 
-double computeFitnessForOrganism(
-    const FitnessResult& result,
-    OrganismType organismType,
-    int worldWidth,
-    int worldHeight,
-    const EvolutionConfig& evolutionConfig);
+namespace Organism {
+class Body;
+}
+
+struct TreeResourceTotals;
+
+struct FitnessContext {
+    const FitnessResult& result;
+    OrganismType organismType;
+    int worldWidth;
+    int worldHeight;
+    const EvolutionConfig& evolutionConfig;
+    const Organism::Body* finalOrganism = nullptr;
+    const TreeResourceTotals* treeResources = nullptr;
+};
+
+double computeFitnessForOrganism(const FitnessContext& context);
 
 } // namespace DirtSim

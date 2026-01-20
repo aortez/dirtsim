@@ -3,6 +3,7 @@
 #include "Body.h"
 #include "TreeBrain.h"
 #include "TreeCommands.h"
+#include "TreeResourceTotals.h"
 #include "TreeSensoryData.h"
 #include <memory>
 #include <optional>
@@ -44,6 +45,7 @@ public:
     void setEnergy(double energy) { total_energy_ = energy; }
     double getWater() const { return total_water_; }
     void setWater(double water) { total_water_ = water; }
+    const TreeResourceTotals& getResourceTotals() const { return resourceTotals_; }
 
     // Command state.
     const std::optional<TreeCommand>& getCurrentCommand() const { return current_command_; }
@@ -74,6 +76,7 @@ private:
     double total_command_time_seconds_ = 0.0; // Original duration for progress calculation.
     std::unique_ptr<TreeBrain> brain_;
     std::unique_ptr<RigidBodyComponent> rigidBody_;
+    TreeResourceTotals resourceTotals_;
 
     void executeCommand(World& world);
     void processBrainDecision(World& world);

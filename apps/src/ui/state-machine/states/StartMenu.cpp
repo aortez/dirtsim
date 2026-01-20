@@ -494,7 +494,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
     const DirtSim::Api::SimRun::Command cmd{ .timestep = 0.016,
                                              .max_steps = -1,
                                              .max_frame_ms = 16,
-                                             .scenario_id = std::nullopt,
+                                             .scenario_id = cwc.command.scenario_id,
                                              .start_paused = false,
                                              .container_size = containerSize };
 

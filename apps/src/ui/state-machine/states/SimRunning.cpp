@@ -6,6 +6,7 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/CellSet.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/SeedAdd.h"
 #include "server/api/SimStop.h"
 #include "ui/InteractionMode.h"
 #include "ui/RemoteInputDevice.h"
@@ -15,10 +16,41 @@
 #include <atomic>
 #include <cassert>
 #include <nlohmann/json.hpp>
+#include <optional>
 
 namespace DirtSim {
 namespace Ui {
 namespace State {
+
+namespace {
+std::optional<Vector2i> resolveSeedTarget(
+    const WorldData& data, const UiApi::PlantSeed::Command& cmd, std::string& error)
+{
+    if (cmd.x.has_value() != cmd.y.has_value()) {
+        error = "PlantSeed requires both x and y when specifying a position";
+        return std::nullopt;
+    }
+
+    if (cmd.x.has_value()) {
+        const int x = cmd.x.value();
+        const int y = cmd.y.value();
+        if (!data.inBounds(x, y)) {
+            error = "PlantSeed position out of bounds";
+            return std::nullopt;
+        }
+        return Vector2i{ x, y };
+    }
+
+    const int centerX = data.width / 2;
+    const int centerY = data.height / 2;
+    if (!data.inBounds(centerX, centerY)) {
+        error = "PlantSeed resolved position out of bounds";
+        return std::nullopt;
+    }
+
+    return Vector2i{ centerX, centerY };
+}
+} // namespace
 
 void SimRunning::onEnter(StateMachine& sm)
 {
@@ -313,6 +345,57 @@ State::Any SimRunning::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
     }
 
     cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
+    return std::move(*this);
+}
+
+State::Any SimRunning::onEvent(const UiApi::PlantSeed::Cwc& cwc, StateMachine& sm)
+{
+    using Response = UiApi::PlantSeed::Response;
+
+    std::string error;
+    std::optional<Vector2i> target;
+    if (!worldData) {
+        if (cwc.command.x.has_value() != cwc.command.y.has_value()) {
+            error = "PlantSeed requires both x and y when specifying a position";
+            cwc.sendResponse(Response::error(ApiError(error)));
+            return std::move(*this);
+        }
+        if (!cwc.command.x.has_value()) {
+            cwc.sendResponse(Response::error(ApiError("PlantSeed requires world data")));
+            return std::move(*this);
+        }
+        target = Vector2i{ cwc.command.x.value(), cwc.command.y.value() };
+    }
+    else {
+        target = resolveSeedTarget(*worldData, cwc.command, error);
+        if (!target.has_value()) {
+            cwc.sendResponse(Response::error(ApiError(error)));
+            return std::move(*this);
+        }
+    }
+
+    Api::SeedAdd::Command cmd{
+        .x = target.value().x,
+        .y = target.value().y,
+        .genome_id = std::nullopt,
+    };
+
+    const auto result =
+        sm.getWebSocketService().sendCommandAndGetResponse<Api::SeedAdd::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "PlantSeed failed: {}", result.errorValue());
+        cwc.sendResponse(Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    if (result.value().isError()) {
+        LOG_ERROR(State, "PlantSeed error: {}", result.value().errorValue().message);
+        cwc.sendResponse(Response::error(result.value().errorValue()));
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "PlantSeed sent to server at ({}, {})", cmd.x, cmd.y);
+    cwc.sendResponse(Response::okay(std::monostate{}));
     return std::move(*this);
 }
 

@@ -658,6 +658,17 @@ Result<std::monostate, ApiError> OperatingSystemManager::runServiceCommand(
         return makeMissingDependencyError("systemCommand");
     }
 
+    if (action == "restart") {
+        const std::string resetCommand = "systemctl reset-failed " + unitName;
+        const int resetResult = dependencies_.systemCommand(resetCommand);
+        if (resetResult == -1) {
+            SLOG_WARN("systemctl reset-failed failed to start for {}", unitName);
+        }
+        else if (!WIFEXITED(resetResult) || WEXITSTATUS(resetResult) != 0) {
+            SLOG_WARN("systemctl reset-failed failed for {}", unitName);
+        }
+    }
+
     const std::string command = "systemctl " + action + " " + unitName;
     const int result = dependencies_.systemCommand(command);
     if (result == -1) {

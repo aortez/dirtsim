@@ -76,3 +76,21 @@ jobs:
           -e DIRTSIM_CLI_BIN=/usr/bin/dirtsim-cli \
           "dirtsim-runtime:x86-nightly" \
           /bin/sh /workspace/apps/scripts/os-manager-integration-test.sh
+
+    - name: Run functional tests in Yocto runtime
+      run: |
+        DATA_DIR="${RUNNER_TEMP}/dirtsim-data-functional"
+        mkdir -p "${DATA_DIR}"
+        docker run --rm \
+          -v "${GITHUB_WORKSPACE}:/workspace" \
+          -v "${DATA_DIR}:/data" \
+          -w /workspace \
+          -e DIRTSIM_OS_MANAGER_BIN=/workspace/apps/build-debug/bin/dirtsim-os-manager \
+          -e DIRTSIM_CLI_BIN=/workspace/apps/build-debug/bin/cli \
+          -e DIRTSIM_FUNCTIONAL_TIMEOUT_MS=15000 \
+          "dirtsim-runtime:x86-nightly" \
+          /bin/sh /workspace/apps/scripts/os-manager-functional-tests.sh 2>&1 | tee functional-tests.log
+        TEST_EXIT=${PIPESTATUS[0]}
+        # Extract markdown table from output and add to step summary.
+        sed -n '/^### Functional Tests/,/^os-manager functional tests/p' functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
+        exit $TEST_EXIT

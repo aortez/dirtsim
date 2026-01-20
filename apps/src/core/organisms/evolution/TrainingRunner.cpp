@@ -157,6 +157,7 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
                 maxEnergy_ = std::max(maxEnergy_, tree->getEnergy());
+                treeResourceTotals_ = tree->getResourceTotals();
             }
         }
 
@@ -229,6 +230,9 @@ void TrainingRunner::spawnEvaluationOrganism()
     DIRTSIM_ASSERT(organism != nullptr, "TrainingRunner: Spawned organism not found");
     spawnPosition_ = organism->position;
     lastPosition_ = spawnPosition_;
+    if (trainingSpec_.organismType == OrganismType::TREE) {
+        treeResourceTotals_ = TreeResourceTotals{};
+    }
 }
 
 } // namespace DirtSim

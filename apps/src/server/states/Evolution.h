@@ -5,6 +5,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
@@ -71,6 +72,7 @@ struct Evolution {
     Vector2d evalLastPosition_{ 0.0, 0.0 };
     double evalSimTime_ = 0.0;
     double evalMaxEnergy_ = 0.0;
+    std::optional<TreeResourceTotals> evalTreeResourceTotals_;
     ScenarioConfig evalScenarioConfig_ = Config::Empty{};
 
     // Training timing.
