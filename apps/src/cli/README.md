@@ -88,6 +88,8 @@ Send commands to the server or UI:
 ./build-debug/bin/cli os-manager Reboot
 
 # Remote connections (override default addresses)
+# Remote WebSockets require ?token=... when LAN Web UI is enabled.
+# When LAN Web UI is disabled, use SSH and run dirtsim-cli locally on the device.
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080?token=TOKEN
 ./build-debug/bin/cli ui StatusGet --address ws://dirtsim.local:7070
