@@ -2,35 +2,6 @@
 
 This document describes how to set up continuous integration for the dirtsim project using GitHub Actions with a self-hosted runner.
 
-## Overview
-
-The project uses a self-hosted runner for CI builds because:
-- Build dependencies (LVGL, libdatachannel, etc.) are large and cached locally.
-- Physics simulations may require specific hardware or longer timeouts.
-- Self-hosted runners are free and run on your own hardware.
-
-## Workflow
-
-The `.github/workflows/pr-check.yml` workflow runs on:
-- Pull requests to `main`.
-- Pushes to `main`.
-- Manual dispatch (via GitHub UI).
-
-### Build Steps
-
-The PR workflow triggers a separate `docker-build.yml` job to build the
-`dirtsim-builder` image, then runs the following steps:
-
-1. **Checkout** - Clones repository with submodules.
-2. **Merge target branch** - PRs only; merges the base branch to test the merge result.
-3. **Check formatting** - Runs `make format-check` inside the builder image.
-4. **Build debug** - Compiles debug build with symbols inside the builder image.
-5. **Build stats** - Emits build time and ccache stats to the job summary.
-6. **Run unit tests** - Executes unit tests inside the builder image.
-7. **Ensure runtime image** - Pulls `dirtsim-runtime:x86-nightly` from the local registry.
-8. **Integration test** - Runs `apps/scripts/os-manager-integration-test.sh` inside the
-   Yocto runtime container with `/data` mounted.
-
 ## Self-Hosted Runner Setup
 
 ### Prerequisites
