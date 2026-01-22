@@ -278,11 +278,14 @@ public:
      * @brief Stop listening for connections.
      */
     void stopListening() override;
+    void stopListening(bool disconnectClients);
 
     /**
      * @brief Check if server is currently listening.
      */
     bool isListening() const override;
+
+    void closeNonLocalClients();
 
     void broadcastBinary(const std::vector<std::byte>& data);
 

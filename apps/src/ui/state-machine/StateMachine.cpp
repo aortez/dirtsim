@@ -121,9 +121,13 @@ void StateMachine::setupWebSocketService()
         }
         else {
             wsService->clearAccessToken();
+            wsService->closeNonLocalClients();
+            if (webRtcStreamer_) {
+                webRtcStreamer_->closeAllClients();
+            }
         }
 
-        wsService->stopListening();
+        wsService->stopListening(false);
         auto listenResult = wsService->listen(wsPort_, bindAddress);
         if (listenResult.isError()) {
             LOG_ERROR(
@@ -476,8 +480,9 @@ void StateMachine::handleEvent(const Event& event)
                 h264Encoder_ = std::make_unique<H264Encoder>();
                 if (!h264Encoder_->initialize(screenshotData->width, screenshotData->height)) {
                     LOG_ERROR(State, "Failed to initialize H.264 encoder");
-                    cwc.sendResponse(UiApi::ScreenGrab::Response::error(
-                        ApiError("Failed to initialize H.264 encoder")));
+                    cwc.sendResponse(
+                        UiApi::ScreenGrab::Response::error(
+                            ApiError("Failed to initialize H.264 encoder")));
                     return;
                 }
             }
@@ -689,8 +694,9 @@ void StateMachine::handleEvent(const Event& event)
 
                             // If this is an API command with sendResponse, send error.
                             if constexpr (requires {
-                                              evt.sendResponse(std::declval<typename std::decay_t<
-                                                                   decltype(evt)>::Response>());
+                                              evt.sendResponse(
+                                                  std::declval<typename std::decay_t<
+                                                      decltype(evt)>::Response>());
                                           }) {
                                 auto errorMsg = std::string("Command not supported in state: ")
                                     + State::getCurrentStateName(fsmState);
@@ -733,6 +739,23 @@ Network::WebSocketServiceInterface& StateMachine::getWebSocketService()
 Network::WebSocketService* StateMachine::getConcreteWebSocketService()
 {
     return dynamic_cast<Network::WebSocketService*>(wsService_.get());
+}
+
+void StateMachine::setLastServerAddress(const std::string& host, uint16_t port)
+{
+    lastServerHost_ = host;
+    lastServerPort_ = port;
+    hasLastServerAddress_ = !lastServerHost_.empty() && lastServerPort_ != 0;
+}
+
+bool StateMachine::queueReconnectToLastServer()
+{
+    if (!hasLastServerAddress_) {
+        return false;
+    }
+
+    queueEvent(ConnectToServerCommand{ lastServerHost_, lastServerPort_ });
+    return true;
 }
 
 void StateMachine::transitionTo(State::Any newState)
