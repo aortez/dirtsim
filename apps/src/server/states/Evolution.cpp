@@ -213,6 +213,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         Tree* tree = evalWorld_->getOrganismManager().getTree(evalOrganismId_);
         if (tree) {
             evalMaxEnergy_ = std::max(evalMaxEnergy_, tree->getEnergy());
+            evalTreeResourceTotals_ = tree->getResourceTotals();
         }
     }
 
@@ -370,6 +371,10 @@ void Evolution::startEvaluation(StateMachine& dsm)
     // Reset evaluation tracking.
     evalSimTime_ = 0.0;
     evalMaxEnergy_ = 0.0;
+    evalTreeResourceTotals_.reset();
+    if (trainingSpec.organismType == OrganismType::TREE) {
+        evalTreeResourceTotals_ = TreeResourceTotals{};
+    }
 }
 
 void Evolution::finishEvaluation(StateMachine& dsm)
@@ -389,12 +394,18 @@ void Evolution::finishEvaluation(StateMachine& dsm)
     const FitnessResult result{ .lifespan = lifespan,
                                 .distanceTraveled = distanceTraveled,
                                 .maxEnergy = evalMaxEnergy_ };
-    const double fitness = computeFitnessForOrganism(
-        result,
-        trainingSpec.organismType,
-        evalWorld_->getData().width,
-        evalWorld_->getData().height,
-        evolutionConfig);
+    const TreeResourceTotals* treeResources =
+        evalTreeResourceTotals_.has_value() ? &evalTreeResourceTotals_.value() : nullptr;
+    const FitnessContext context{
+        .result = result,
+        .organismType = trainingSpec.organismType,
+        .worldWidth = evalWorld_->getData().width,
+        .worldHeight = evalWorld_->getData().height,
+        .evolutionConfig = evolutionConfig,
+        .finalOrganism = organism,
+        .treeResources = treeResources,
+    };
+    const double fitness = computeFitnessForOrganism(context);
 
     fitnessScores[currentEval] = fitness;
 

@@ -56,7 +56,6 @@ TEST_F(NeuralNetBrainTest, DecideReturnsValidCommand)
         || std::holds_alternative<GrowWoodCommand>(cmd)
         || std::holds_alternative<GrowLeafCommand>(cmd)
         || std::holds_alternative<GrowRootCommand>(cmd)
-        || std::holds_alternative<ReinforceCellCommand>(cmd)
         || std::holds_alternative<ProduceSeedCommand>(cmd);
 
     EXPECT_TRUE(is_valid);
@@ -112,9 +111,9 @@ TEST_F(NeuralNetBrainTest, SetGenomeChangesOutput)
 
     TreeCommand cmd2 = brain.decide(sensory);
 
-    // Both should be valid commands (any of 7 types).
-    EXPECT_LT(cmd1.index(), 7u);
-    EXPECT_LT(cmd2.index(), 7u);
+    // Both should be valid commands (any of 6 types).
+    EXPECT_LT(cmd1.index(), 6u);
+    EXPECT_LT(cmd2.index(), 6u);
 }
 
 TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
@@ -123,8 +122,8 @@ TEST_F(NeuralNetBrainTest, GenomeHasCorrectSize)
     Genome g = brain.getGenome();
 
     // New size with light channel and action feedback inputs:
-    // (2489 * 48) + 48 + (48 * 232) + 232 = 119472 + 48 + 11136 + 232 = 130888.
-    EXPECT_EQ(g.weights.size(), 130888u);
+    // (2488 * 48) + 48 + (48 * 231) + 231 = 119424 + 48 + 11088 + 231 = 130791.
+    EXPECT_EQ(g.weights.size(), 130791u);
 }
 
 TEST_F(NeuralNetBrainTest, ConstantGenomeProducesConsistentOutput)

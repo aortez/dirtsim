@@ -14,6 +14,7 @@ namespace Ui {
 std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
     lv_obj_t* parent,
     Network::WebSocketServiceInterface* wsService,
+    EventSink* eventSink,
     Scenario::EnumType scenarioId,
     const ScenarioConfig& config,
     DisplayDimensionsGetter dimensionsGetter)
@@ -36,7 +37,7 @@ std::unique_ptr<ScenarioControlsBase> ScenarioControlsFactory::create(
             }
             else if constexpr (std::is_same_v<T, Config::TreeGermination>) {
                 spdlog::debug("ScenarioControlsFactory: Creating TreeGerminationControls");
-                return std::make_unique<TreeGerminationControls>(parent, wsService, cfg);
+                return std::make_unique<TreeGerminationControls>(parent, wsService, eventSink, cfg);
             }
             else {
                 // Config::Empty, Config::Benchmark, Config::DamBreak, Config::FallingDirt,

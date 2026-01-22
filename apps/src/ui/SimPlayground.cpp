@@ -107,6 +107,8 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::NETWORK:
         case IconId::PLAY:
         case IconId::TREE:
+        case IconId::GENOME_BROWSER:
+        case IconId::TRAINING_RESULTS:
         case IconId::COUNT:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;
@@ -178,7 +180,12 @@ void SimPlayground::createScenarioPanel(lv_obj_t* container)
 
     // Create scenario panel with modal navigation.
     scenarioPanel_ = std::make_unique<ScenarioPanel>(
-        container, wsService_, currentScenarioId_, currentScenarioConfig_, dimensionsGetter);
+        container,
+        wsService_,
+        eventSink_,
+        currentScenarioId_,
+        currentScenarioConfig_,
+        dimensionsGetter);
 }
 
 void SimPlayground::createPhysicsPanel(lv_obj_t* container)

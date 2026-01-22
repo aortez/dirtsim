@@ -1,6 +1,10 @@
 #include "TreeGerminationControls.h"
+#include "core/IconFont.h"
 #include "core/LoggingChannels.h"
+#include "core/network/WebSocketServiceInterface.h"
 #include "ui/PanelViewController.h"
+#include "ui/state-machine/EventSink.h"
+#include "ui/state-machine/api/PlantSeed.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <spdlog/spdlog.h>
 
@@ -10,8 +14,9 @@ namespace Ui {
 TreeGerminationControls::TreeGerminationControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
+    EventSink* eventSink,
     const Config::TreeGermination& config)
-    : ScenarioControlsBase(container, wsService, "tree_germination")
+    : ScenarioControlsBase(container, wsService, "tree_germination"), eventSink_(eventSink)
 {
     createWidgets();
     updateFromConfig(config);
@@ -27,6 +32,7 @@ TreeGerminationControls::~TreeGerminationControls()
 void TreeGerminationControls::createWidgets()
 {
     viewController_ = std::make_unique<PanelViewController>(controlsContainer_);
+    iconFont_ = std::make_unique<IconFont>(32);
 
     lv_obj_t* mainView = viewController_->createView("main");
     createMainView(mainView);
@@ -39,6 +45,26 @@ void TreeGerminationControls::createWidgets()
 
 void TreeGerminationControls::createMainView(lv_obj_t* view)
 {
+    lv_obj_t* row = lv_obj_create(view);
+    lv_obj_set_size(row, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        row, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(row, 4, 0);
+    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(row, 0, 0);
+    lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+    plantSeedButton_ = LVGLBuilder::actionButton(row)
+                           .text("Plant Seed")
+                           .icon(IconFont::SEEDLING)
+                           .font(iconFont_->font())
+                           .mode(LVGLBuilder::ActionMode::Push)
+                           .size(80)
+                           .backgroundColor(0x228B22)
+                           .callback(onPlantSeedClicked, this)
+                           .buildOrLog();
+
     std::string brainText = std::string("Brain: ")
         + getBrainTypeName(static_cast<Config::TreeBrainType>(currentBrainTypeIndex_));
 
@@ -205,6 +231,26 @@ void TreeGerminationControls::onBrainTypeBackClicked(lv_event_t* e)
 
     LOG_DEBUG(Controls, "TreeGerminationControls: Brain type back button clicked");
     self->viewController_->showView("main");
+}
+
+void TreeGerminationControls::onPlantSeedClicked(lv_event_t* e)
+{
+    TreeGerminationControls* self =
+        static_cast<TreeGerminationControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        LOG_ERROR(Controls, "TreeGerminationControls: Plant Seed clicked with null self");
+        return;
+    }
+
+    if (!self->eventSink_) {
+        LOG_WARN(Controls, "TreeGerminationControls: Plant Seed clicked without EventSink");
+        return;
+    }
+
+    UiApi::PlantSeed::Cwc cwc;
+    cwc.callback = [](auto&&) {};
+    self->eventSink_->queueEvent(cwc);
+    LOG_INFO(Controls, "TreeGerminationControls: Queued PlantSeed");
 }
 
 const char* TreeGerminationControls::getBrainTypeName(Config::TreeBrainType type)

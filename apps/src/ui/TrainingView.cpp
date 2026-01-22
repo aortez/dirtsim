@@ -2,10 +2,14 @@
 #include "UiComponentManager.h"
 #include "controls/EvolutionControls.h"
 #include "controls/ExpandablePanel.h"
+#include "controls/GenomeBrowserPanel.h"
+#include "controls/IconRail.h"
 #include "controls/TrainingConfigPanel.h"
+#include "controls/TrainingResultBrowserPanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
+#include "core/reflect.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
@@ -22,24 +26,29 @@ namespace Ui {
 
 namespace {
 constexpr double FITNESS_IMPROVEMENT_EPSILON = 0.001;
+constexpr int kBrowserRightGap = 60;
 
-const char* organismTypeLabel(OrganismType organismType)
+int computeBrowserPanelWidth()
 {
-    switch (organismType) {
-        case OrganismType::TREE:
-            return "Tree";
-        case OrganismType::DUCK:
-            return "Duck";
-        case OrganismType::GOOSE:
-            return "Goose";
-        default:
-            return "Unknown";
+    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
+    const int maxWidth =
+        displayWidth > 0 ? displayWidth - IconRail::RAIL_WIDTH - kBrowserRightGap : 0;
+    int panelWidth = ExpandablePanel::DefaultWidth * 2;
+    if (maxWidth > 0) {
+        panelWidth = std::min(panelWidth, maxWidth);
     }
+    if (panelWidth < ExpandablePanel::DefaultWidth) {
+        panelWidth = ExpandablePanel::DefaultWidth;
+    }
+    return panelWidth;
 }
 } // namespace
 
-TrainingView::TrainingView(UiComponentManager* uiManager, EventSink& eventSink)
-    : uiManager_(uiManager), eventSink_(eventSink)
+TrainingView::TrainingView(
+    UiComponentManager* uiManager,
+    EventSink& eventSink,
+    Network::WebSocketServiceInterface* wsService)
+    : uiManager_(uiManager), eventSink_(eventSink), wsService_(wsService)
 {
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
@@ -351,7 +360,9 @@ void TrainingView::renderWorld(const WorldData& worldData)
 void TrainingView::clearPanelContent()
 {
     evolutionControls_.reset();
+    genomeBrowserPanel_.reset();
     trainingConfigPanel_.reset();
+    trainingResultBrowserPanel_.reset();
 }
 
 void TrainingView::createCorePanel()
@@ -372,6 +383,25 @@ void TrainingView::createCorePanel()
     evolutionControls_ = std::make_unique<EvolutionControls>(
         container, eventSink_, evolutionStarted_, trainingSpec_);
     LOG_INFO(Controls, "TrainingView: Created Training Home panel");
+}
+
+void TrainingView::createGenomeBrowserPanel()
+{
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+        return;
+    }
+    panel->setWidth(computeBrowserPanelWidth());
+
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        return;
+    }
+
+    genomeBrowserPanel_ = std::make_unique<GenomeBrowserPanel>(container, wsService_);
+    LOG_INFO(Controls, "TrainingView: Created Genome browser panel");
 }
 
 void TrainingView::createTrainingConfigPanel()
@@ -398,6 +428,26 @@ void TrainingView::createTrainingConfigPanel()
         mutationConfig_,
         trainingSpec_);
     LOG_INFO(Controls, "TrainingView: Created Training config panel");
+}
+
+void TrainingView::createTrainingResultBrowserPanel()
+{
+    ExpandablePanel* panel = uiManager_->getExpandablePanel();
+    if (!panel) {
+        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+        return;
+    }
+    panel->setWidth(computeBrowserPanelWidth());
+
+    lv_obj_t* container = panel->getContentArea();
+    if (!container) {
+        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        return;
+    }
+
+    trainingResultBrowserPanel_ =
+        std::make_unique<TrainingResultBrowserPanel>(container, wsService_);
+    LOG_INFO(Controls, "TrainingView: Created Training result browser panel");
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
@@ -672,7 +722,13 @@ void TrainingView::showTrainingResultModal(
     lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(scenarioLabel, &lv_font_montserrat_12, 0);
 
-    snprintf(buf, sizeof(buf), "Organism: %s", organismTypeLabel(summary.organismType));
+    const auto organismName = reflect::enum_name(summary.organismType);
+    snprintf(
+        buf,
+        sizeof(buf),
+        "Organism: %.*s",
+        static_cast<int>(organismName.size()),
+        organismName.data());
     lv_obj_t* organismLabel = lv_label_create(modal);
     lv_label_set_text(organismLabel, buf);
     lv_obj_set_style_text_color(organismLabel, lv_color_hex(0xCCCCCC), 0);
