@@ -56,6 +56,7 @@ private:
     lv_obj_t* wifiStatusLabel_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
     lv_obj_t* webUiToggle_ = nullptr;
+    lv_obj_t* webUiTokenTitleLabel_ = nullptr;
     lv_obj_t* webUiTokenLabel_ = nullptr;
     lv_timer_t* refreshTimer_ = nullptr;
 

@@ -45,8 +45,9 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     uniqueIds.reserve(requestedIds.size());
     for (const auto& id : requestedIds) {
         if (uniqueIds.insert(id).second && candidateLookup.find(id) == candidateLookup.end()) {
-            cwc.sendResponse(Api::TrainingResultSave::Response::error(
-                ApiError("TrainingResultSave id not found: " + id.toShortString())));
+            cwc.sendResponse(
+                Api::TrainingResultSave::Response::error(
+                    ApiError("TrainingResultSave id not found: " + id.toShortString())));
             return std::move(*this);
         }
     }
@@ -54,8 +55,9 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     auto& repo = dsm.getGenomeRepository();
     for (const auto& id : uniqueIds) {
         if (repo.exists(id)) {
-            cwc.sendResponse(Api::TrainingResultSave::Response::error(
-                ApiError("TrainingResultSave id already exists: " + id.toShortString())));
+            cwc.sendResponse(
+                Api::TrainingResultSave::Response::error(
+                    ApiError("TrainingResultSave id already exists: " + id.toShortString())));
             return std::move(*this);
         }
     }
@@ -76,13 +78,14 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     trainingResult.summary = summary;
     trainingResult.candidates.reserve(candidates.size());
     for (const auto& candidate : candidates) {
-        trainingResult.candidates.push_back(Api::TrainingResult::Candidate{
-            .id = candidate.id,
-            .fitness = candidate.fitness,
-            .brainKind = candidate.brainKind,
-            .brainVariant = candidate.brainVariant,
-            .generation = candidate.generation,
-        });
+        trainingResult.candidates.push_back(
+            Api::TrainingResult::Candidate{
+                .id = candidate.id,
+                .fitness = candidate.fitness,
+                .brainKind = candidate.brainKind,
+                .brainVariant = candidate.brainVariant,
+                .generation = candidate.generation,
+            });
     }
     dsm.storeTrainingResult(trainingResult);
 

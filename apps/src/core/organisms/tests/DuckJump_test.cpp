@@ -425,12 +425,12 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
 INSTANTIATE_TEST_SUITE_P(
     ObstacleLocations,
     DuckObstacleJumpTest,
-    ::testing::Values(ObstacleTestCase{ 10, 1, "middle_1h" }
-                      // Future test cases:
-                      // ObstacleTestCase{5, 1, "near_spawn_1h"},
-                      // ObstacleTestCase{15, 1, "far_1h"},
-                      // ObstacleTestCase{10, 2, "middle_2h"}
-                      ),
+    ::testing::Values(
+        ObstacleTestCase{ 10, 1, "middle_1h" } // Future test cases:
+                                               // ObstacleTestCase{5, 1, "near_spawn_1h"},
+                                               // ObstacleTestCase{15, 1, "far_1h"},
+                                               // ObstacleTestCase{10, 2, "middle_2h"}
+        ),
     [](const ::testing::TestParamInfo<ObstacleTestCase>& info) { return info.param.name; });
 
 // ============================================================================

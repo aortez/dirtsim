@@ -583,13 +583,14 @@ void WorldCollisionCalculator::handleInelasticCollision(
             fromCell.velocity.magnitude(),
             energy);
 
-        world.getPressureCalculator().queueBlockedTransfer({ move.from.x,
-                                                             move.from.y,
-                                                             move.to.x,
-                                                             move.to.y,
-                                                             static_cast<float>(transfer_deficit),
-                                                             fromCell.velocity,
-                                                             static_cast<float>(energy) });
+        world.getPressureCalculator().queueBlockedTransfer(
+            { move.from.x,
+              move.from.y,
+              move.to.x,
+              move.to.y,
+              static_cast<float>(transfer_deficit),
+              fromCell.velocity,
+              static_cast<float>(energy) });
     }
 }
 

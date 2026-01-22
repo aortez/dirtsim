@@ -1,6 +1,9 @@
 #include "LVGLBuilder.h"
+#include "core/LoggingChannels.h"
 #include "spdlog/spdlog.h"
 #include <cstdio>
+
+using DirtSim::LoggingChannels;
 
 // Result utilities.
 template <typename T>
@@ -18,6 +21,56 @@ auto Error(const E& error)
 // ============================================================================
 // SliderBuilder Implementation.
 // ============================================================================
+
+struct SliderLogData {
+    std::string label;
+    std::string format;
+    std::function<double(int32_t)> transform;
+    bool has_transform = false;
+    bool active = false;
+};
+
+static void sliderLogCallback(lv_event_t* e)
+{
+    auto* data = static_cast<SliderLogData*>(lv_event_get_user_data(e));
+    if (!data) {
+        return;
+    }
+
+    const auto code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        data->active = true;
+        return;
+    }
+    if (code != LV_EVENT_RELEASED && code != LV_EVENT_PRESS_LOST) {
+        return;
+    }
+    if (!data->active) {
+        return;
+    }
+    data->active = false;
+
+    auto* slider = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    const int32_t raw_value = lv_slider_get_value(slider);
+    if (data->has_transform) {
+        const double display_value = data->transform(raw_value);
+        char buf[32];
+        snprintf(buf, sizeof(buf), data->format.c_str(), display_value);
+        LOG_INFO(Controls, "Slider '{}' set to {}", data->label, buf);
+        return;
+    }
+
+    LOG_INFO(Controls, "Slider '{}' set to {}", data->label, raw_value);
+}
+
+static void sliderLogDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) {
+        return;
+    }
+    auto* data = static_cast<SliderLogData*>(lv_event_get_user_data(e));
+    delete data;
+}
 
 LVGLBuilder::SliderBuilder::SliderBuilder(lv_obj_t* parent)
     : parent_(parent),
@@ -169,9 +222,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::SliderBuilder::build()
     }
 
     // Setup events.
-    if (callback_) {
-        setupEvents();
-    }
+    setupEvents();
 
     spdlog::debug(
         "SliderBuilder: Successfully created slider at ({}, {}) with range [{}, {}]",
@@ -286,6 +337,16 @@ void LVGLBuilder::SliderBuilder::setupEvents()
         lv_obj_add_event_cb(slider_, callback_, event_code_, user_data);
     }
 
+    const std::string label = label_text_.empty() ? "Slider" : label_text_;
+    const std::string format = value_format_.empty() ? "%.1f" : value_format_;
+    auto* logData = new SliderLogData{
+        label, format, value_transform_, static_cast<bool>(value_transform_), false
+    };
+    lv_obj_add_event_cb(slider_, sliderLogCallback, LV_EVENT_PRESSED, logData);
+    lv_obj_add_event_cb(slider_, sliderLogCallback, LV_EVENT_RELEASED, logData);
+    lv_obj_add_event_cb(slider_, sliderLogCallback, LV_EVENT_PRESS_LOST, logData);
+    lv_obj_add_event_cb(slider_, sliderLogDeleteCallback, LV_EVENT_DELETE, logData);
+
     // Add auto-update callback for value label if we have one.
     if (value_label_ && has_value_label_) {
         // Create persistent data for the value label callback.
@@ -329,6 +390,41 @@ void LVGLBuilder::SliderBuilder::sliderDeleteCallback(lv_event_t* e)
         ValueLabelData* data = static_cast<ValueLabelData*>(lv_event_get_user_data(e));
         delete data;
     }
+}
+
+struct ButtonLogData {
+    std::string label;
+    bool checkable = false;
+};
+
+static void buttonLogCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* data = static_cast<ButtonLogData*>(lv_event_get_user_data(e));
+    if (!data) {
+        return;
+    }
+
+    auto* button = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (data->checkable) {
+        const bool is_checked = lv_obj_has_state(button, LV_STATE_CHECKED);
+        LOG_INFO(Controls, "Button '{}' {}", data->label, is_checked ? "on" : "off");
+        return;
+    }
+
+    LOG_INFO(Controls, "Button '{}' clicked", data->label);
+}
+
+static void buttonLogDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) {
+        return;
+    }
+    auto* data = static_cast<ButtonLogData*>(lv_event_get_user_data(e));
+    delete data;
 }
 
 // ============================================================================
@@ -479,9 +575,7 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ButtonBuilder::build()
     setupBehavior();
 
     // Setup events.
-    if (callback_) {
-        setupEvents();
-    }
+    setupEvents();
 
     spdlog::debug(
         "ButtonBuilder: Successfully created button '{}' at ({}, {})",
@@ -587,7 +681,14 @@ void LVGLBuilder::ButtonBuilder::setupEvents()
     if (user_data_) {
         lv_obj_set_user_data(button_, user_data_);
     }
-    lv_obj_add_event_cb(button_, callback_, event_code_, user_data_);
+    if (callback_) {
+        lv_obj_add_event_cb(button_, callback_, event_code_, user_data_);
+    }
+
+    const std::string label = text_.empty() ? "Button" : text_;
+    auto* logData = new ButtonLogData{ label, is_toggle_ || is_checkable_ };
+    lv_obj_add_event_cb(button_, buttonLogCallback, LV_EVENT_CLICKED, logData);
+    lv_obj_add_event_cb(button_, buttonLogDeleteCallback, LV_EVENT_DELETE, logData);
 }
 
 // ============================================================================
@@ -736,6 +837,35 @@ lv_obj_t* LVGLBuilder::DropdownBuilder::buildOrLog()
 // LabeledSwitchBuilder Implementation.
 // ============================================================================
 
+struct LabeledSwitchLogData {
+    std::string label;
+};
+
+static void labeledSwitchLogCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    auto* data = static_cast<LabeledSwitchLogData*>(lv_event_get_user_data(e));
+    if (!data) {
+        return;
+    }
+
+    auto* toggle = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    const bool is_checked = lv_obj_has_state(toggle, LV_STATE_CHECKED);
+    LOG_INFO(Controls, "Toggle '{}' {}", data->label, is_checked ? "on" : "off");
+}
+
+static void labeledSwitchLogDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) {
+        return;
+    }
+    auto* data = static_cast<LabeledSwitchLogData*>(lv_event_get_user_data(e));
+    delete data;
+}
+
 LVGLBuilder::LabeledSwitchBuilder::LabeledSwitchBuilder(lv_obj_t* parent)
     : parent_(parent), container_(nullptr), switch_(nullptr), label_(nullptr)
 {}
@@ -859,6 +989,11 @@ Result<lv_obj_t*, std::string> LVGLBuilder::LabeledSwitchBuilder::createLabeledS
         lv_obj_add_event_cb(switch_, callback_, LV_EVENT_VALUE_CHANGED, user_data_);
     }
 
+    const std::string label = label_text_.empty() ? "Toggle" : label_text_;
+    auto* logData = new LabeledSwitchLogData{ label };
+    lv_obj_add_event_cb(switch_, labeledSwitchLogCallback, LV_EVENT_VALUE_CHANGED, logData);
+    lv_obj_add_event_cb(switch_, labeledSwitchLogDeleteCallback, LV_EVENT_DELETE, logData);
+
     // Create label.
     if (!label_text_.empty()) {
         label_ = lv_label_create(container_);
@@ -898,6 +1033,8 @@ struct ToggleSliderState {
     void* sliderUserData;
     lv_event_cb_t toggleCallback;
     void* toggleUserData;
+    std::string label;
+    bool sliderInteractionActive;
 };
 
 static void toggleSliderSwitchCallback(lv_event_t* e)
@@ -945,6 +1082,9 @@ static void toggleSliderSwitchCallback(lv_event_t* e)
         lv_label_set_text(state->valueLabel, buf);
     }
 
+    const std::string label = state->label.empty() ? "Toggle" : state->label;
+    LOG_INFO(Controls, "Toggle '{}' {}", label, isEnabled ? "on" : "off");
+
     // Call user callback if provided.
     if (state->toggleCallback) {
         state->toggleCallback(e);
@@ -971,6 +1111,34 @@ static void toggleSliderValueCallback(lv_event_t* e)
     if (state->sliderCallback) {
         state->sliderCallback(e);
     }
+}
+
+static void toggleSliderInteractionCallback(lv_event_t* e)
+{
+    ToggleSliderState* state = static_cast<ToggleSliderState*>(lv_event_get_user_data(e));
+    if (!state) {
+        return;
+    }
+
+    const auto code = lv_event_get_code(e);
+    if (code == LV_EVENT_PRESSED) {
+        state->sliderInteractionActive = true;
+        return;
+    }
+    if (code != LV_EVENT_RELEASED && code != LV_EVENT_PRESS_LOST) {
+        return;
+    }
+    if (!state->sliderInteractionActive) {
+        return;
+    }
+    state->sliderInteractionActive = false;
+
+    const int value = lv_slider_get_value(state->slider);
+    const double scaledValue = value * state->valueScale;
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->valueFormat.c_str(), scaledValue);
+    const std::string label = state->label.empty() ? "Slider" : state->label;
+    LOG_INFO(Controls, "Slider '{}' set to {}", label, buf);
 }
 
 static void toggleSliderAutoEnableCallback(lv_event_t* e)
@@ -1140,11 +1308,19 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_set_style_text_color(valueLabel_, lv_color_hex(0xFFFFFF), 0);
 
     // Create persistent state for callbacks.
-    ToggleSliderState* state =
-        new ToggleSliderState{ slider_,          valueLabel_,      switch_,
-                               value_scale_,     value_format_,    initial_value_,
-                               default_value_,   slider_callback_, slider_user_data_,
-                               toggle_callback_, toggle_user_data_ };
+    ToggleSliderState* state = new ToggleSliderState{ slider_,
+                                                      valueLabel_,
+                                                      switch_,
+                                                      value_scale_,
+                                                      value_format_,
+                                                      initial_value_,
+                                                      default_value_,
+                                                      slider_callback_,
+                                                      slider_user_data_,
+                                                      toggle_callback_,
+                                                      toggle_user_data_,
+                                                      label_text_,
+                                                      false };
 
     // Set user_data on widgets so user callbacks can access it.
     if (toggle_user_data_) {
@@ -1158,6 +1334,9 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ToggleSliderBuilder::createToggleSli
     lv_obj_add_event_cb(switch_, toggleSliderSwitchCallback, LV_EVENT_VALUE_CHANGED, state);
     lv_obj_add_event_cb(slider_, toggleSliderValueCallback, LV_EVENT_VALUE_CHANGED, state);
     lv_obj_add_event_cb(slider_, toggleSliderAutoEnableCallback, LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(slider_, toggleSliderInteractionCallback, LV_EVENT_PRESSED, state);
+    lv_obj_add_event_cb(slider_, toggleSliderInteractionCallback, LV_EVENT_RELEASED, state);
+    lv_obj_add_event_cb(slider_, toggleSliderInteractionCallback, LV_EVENT_PRESS_LOST, state);
 
     // Cleanup callback to free state.
     lv_obj_add_event_cb(container_, toggleSliderDeleteCallback, LV_EVENT_DELETE, state);
@@ -1727,15 +1906,16 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionButtonBuilder::createActionBut
     }
 
     // Allocate and store state for toggle behavior.
-    ActionButtonState* state =
-        new ActionButtonState{ .is_toggle = (mode_ == ActionMode::Toggle),
-                               .is_checked = initial_checked_,
-                               .glow_color = glow_color_,
-                               .button = button_,
-                               .icon_label = icon_label_,
-                               .user_callback =
-                                   nullptr, // Not used - we register user callback separately.
-                               .user_data = nullptr };
+    ActionButtonState* state = new ActionButtonState{
+        .is_toggle = (mode_ == ActionMode::Toggle),
+        .is_checked = initial_checked_,
+        .glow_color = glow_color_,
+        .button = button_,
+        .icon_label = icon_label_,
+        .label = text_.empty() ? (icon_.empty() ? "ActionButton" : icon_) : text_,
+        .user_callback = nullptr, // Not used - we register user callback separately.
+        .user_data = nullptr
+    };
     lv_obj_set_user_data(container_, state);
 
     // Add our internal click handler for toggle behavior.
@@ -1793,6 +1973,13 @@ void LVGLBuilder::ActionButtonBuilder::onButtonClicked(lv_event_t* e)
             lv_obj_set_style_shadow_width(state->button, 0, 0);
             lv_obj_set_style_shadow_spread(state->button, 0, 0);
         }
+    }
+
+    if (state->is_toggle) {
+        LOG_INFO(Controls, "Action button '{}' {}", state->label, state->is_checked ? "on" : "off");
+    }
+    else {
+        LOG_INFO(Controls, "Action button '{}' clicked", state->label);
     }
     // User callback is registered separately and will be called by LVGL after this handler.
 }
@@ -1859,6 +2046,37 @@ void LVGLBuilder::ActionButtonBuilder::setIcon(lv_obj_t* container, const char* 
 // ============================================================================
 // ActionDropdownBuilder Implementation
 // ============================================================================
+
+struct ActionDropdownLogData {
+    std::string label;
+};
+
+static void actionDropdownLogCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    auto* data = static_cast<ActionDropdownLogData*>(lv_event_get_user_data(e));
+    if (!data) {
+        return;
+    }
+
+    auto* dropdown = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    char buf[64];
+    lv_dropdown_get_selected_str(dropdown, buf, sizeof(buf));
+    const uint16_t index = lv_dropdown_get_selected(dropdown);
+    LOG_INFO(Controls, "Dropdown '{}' set to '{}' ({})", data->label, buf, index);
+}
+
+static void actionDropdownLogDeleteCallback(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) {
+        return;
+    }
+    auto* data = static_cast<ActionDropdownLogData*>(lv_event_get_user_data(e));
+    delete data;
+}
 
 LVGLBuilder::ActionDropdownBuilder::ActionDropdownBuilder(lv_obj_t* parent)
     : parent_(parent), container_(nullptr), dropdown_(nullptr), label_(nullptr)
@@ -2058,6 +2276,11 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionDropdownBuilder::createActionD
         lv_obj_add_event_cb(dropdown_, callback_, LV_EVENT_VALUE_CHANGED, user_data_);
     }
 
+    const std::string label = label_text_.empty() ? "Dropdown" : label_text_;
+    auto* logData = new ActionDropdownLogData{ label };
+    lv_obj_add_event_cb(dropdown_, actionDropdownLogCallback, LV_EVENT_VALUE_CHANGED, logData);
+    lv_obj_add_event_cb(dropdown_, actionDropdownLogDeleteCallback, LV_EVENT_DELETE, logData);
+
     return Result<lv_obj_t*, std::string>::okay(container_);
 }
 
@@ -2099,10 +2322,12 @@ struct ActionStepperState {
     int32_t step;
     double scale;
     std::string format;
+    std::string label;
 
     lv_timer_t* repeatTimer;
     bool isIncrementing;
     bool initialDelayPassed;
+    bool loggedThisPress;
 
     static constexpr uint32_t INITIAL_DELAY_MS = 400;
     static constexpr uint32_t REPEAT_INTERVAL_MS = 80;
@@ -2178,6 +2403,7 @@ static void onStepperPressed(lv_event_t* e, bool increment)
     stepperStopRepeat(state);
     state->isIncrementing = increment;
     state->initialDelayPassed = false;
+    state->loggedThisPress = false;
     state->repeatTimer =
         lv_timer_create(stepperRepeatTimerCallback, ActionStepperState::INITIAL_DELAY_MS, state);
 }
@@ -2187,6 +2413,20 @@ static void onStepperReleased(lv_event_t* e)
     auto* state = static_cast<ActionStepperState*>(lv_event_get_user_data(e));
     if (!state) return;
     stepperStopRepeat(state);
+    if (state->loggedThisPress) {
+        return;
+    }
+    state->loggedThisPress = true;
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), state->format.c_str(), state->value * state->scale);
+    const std::string label = state->label.empty() ? "Stepper" : state->label;
+    if (state->isIncrementing) {
+        LOG_INFO(Controls, "Stepper '{}' incremented to {}", label, buf);
+    }
+    else {
+        LOG_INFO(Controls, "Stepper '{}' decremented to {}", label, buf);
+    }
 }
 
 LVGLBuilder::ActionStepperBuilder::ActionStepperBuilder(lv_obj_t* parent)
@@ -2344,8 +2584,10 @@ Result<lv_obj_t*, std::string> LVGLBuilder::ActionStepperBuilder::createActionSt
     int btnSize = height_ - (Style::TROUGH_PADDING * 2);
 
     // Create state structure.
-    auto* state = new ActionStepperState{ nullptr,      container_,    value_,  min_,  max_, step_,
-                                          value_scale_, value_format_, nullptr, false, false };
+    const std::string label = label_text_.empty() ? "Stepper" : label_text_;
+    auto* state = new ActionStepperState{ nullptr, container_,   value_,        min_,  max_,
+                                          step_,   value_scale_, value_format_, label, nullptr,
+                                          false,   false,        false };
 
     // --- Minus button ---
     minusBtn_ = lv_btn_create(container_);

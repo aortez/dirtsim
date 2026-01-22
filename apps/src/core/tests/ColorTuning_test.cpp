@@ -207,9 +207,10 @@ TEST_F(ColorTuningTest, MaterialColorsUnderSunlight)
     EXPECT_GT(leaf_color.g, leaf_color.b) << "Leaf should be greenish";
 
     // Metal should be relatively gray (all channels similar).
-    float metal_diff = std::max({ std::abs(metal_color.r - metal_color.g),
-                                  std::abs(metal_color.g - metal_color.b),
-                                  std::abs(metal_color.r - metal_color.b) });
+    float metal_diff = std::max(
+        { std::abs(metal_color.r - metal_color.g),
+          std::abs(metal_color.g - metal_color.b),
+          std::abs(metal_color.r - metal_color.b) });
     EXPECT_LT(metal_diff, 0.15f) << "Metal should be grayish";
 }
 

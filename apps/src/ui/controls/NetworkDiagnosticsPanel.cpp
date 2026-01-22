@@ -15,6 +15,29 @@
 namespace DirtSim {
 namespace Ui {
 
+namespace {
+struct WebUiCache {
+    bool enabled = false;
+    std::string token;
+};
+
+std::mutex webUiCacheMutex;
+WebUiCache webUiCache;
+
+WebUiCache getWebUiCache()
+{
+    std::lock_guard<std::mutex> lock(webUiCacheMutex);
+    return webUiCache;
+}
+
+void updateWebUiCache(bool enabled, const std::string& token)
+{
+    std::lock_guard<std::mutex> lock(webUiCacheMutex);
+    webUiCache.enabled = enabled;
+    webUiCache.token = enabled ? token : "";
+}
+} // namespace
+
 NetworkDiagnosticsPanel::NetworkDiagnosticsPanel(lv_obj_t* container)
     : container_(container), asyncState_(std::make_shared<AsyncState>())
 {
@@ -91,14 +114,21 @@ void NetworkDiagnosticsPanel::createUI()
         lv_obj_set_style_pad_top(webUiToggle_, 16, 0);
     }
 
+    webUiTokenTitleLabel_ = lv_label_create(container_);
+    lv_obj_set_style_text_font(webUiTokenTitleLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(webUiTokenTitleLabel_, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_width(webUiTokenTitleLabel_, LV_PCT(100));
+    lv_label_set_long_mode(webUiTokenTitleLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_pad_top(webUiTokenTitleLabel_, 8, 0);
+    lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
+
     webUiTokenLabel_ = lv_label_create(container_);
-    lv_obj_set_style_text_font(webUiTokenLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_font(webUiTokenLabel_, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(webUiTokenLabel_, lv_color_hex(0x00CED1), 0);
     lv_obj_set_width(webUiTokenLabel_, LV_PCT(100));
     lv_label_set_long_mode(webUiTokenLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(webUiTokenLabel_, 8, 0);
-    lv_label_set_text(webUiTokenLabel_, "");
-    lv_obj_add_flag(webUiTokenLabel_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_style_pad_top(webUiTokenLabel_, 4, 0);
+    lv_label_set_text(webUiTokenLabel_, "--");
 
     // Refresh button.
     refreshButton_ = LVGLBuilder::actionButton(container_)
@@ -116,6 +146,14 @@ void NetworkDiagnosticsPanel::createUI()
     refreshTimer_ = lv_timer_create(onRefreshTimer, 100, this);
     if (refreshTimer_) {
         lv_timer_pause(refreshTimer_);
+    }
+
+    const auto cachedWebUi = getWebUiCache();
+    if (cachedWebUi.enabled) {
+        WebUiStatus cachedStatus;
+        cachedStatus.enabled = cachedWebUi.enabled;
+        cachedStatus.token = cachedWebUi.token;
+        updateWebUiStatus(Result<WebUiStatus, std::string>::okay(std::move(cachedStatus)));
     }
 
     // Initial display update.
@@ -259,6 +297,10 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
             };
 
             data.webUiStatusResult = fetchWebUiStatus();
+            if (!data.webUiStatusResult.isError()) {
+                updateWebUiCache(
+                    data.webUiStatusResult.value().enabled, data.webUiStatusResult.value().token);
+            }
         }
         catch (const std::exception& e) {
             LOG_WARN(Controls, "WiFi refresh exception: {}", e.what());
@@ -393,6 +435,7 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
                         WebUiAccessUpdate update;
                         update.enabled = inner.value().enabled;
                         update.token = inner.value().token;
+                        updateWebUiCache(update.enabled, update.token);
                         result = Result<WebUiAccessUpdate, std::string>::okay(std::move(update));
                     }
                 }
@@ -487,9 +530,11 @@ void NetworkDiagnosticsPanel::updateWebUiStatus(
 {
     if (statusResult.isError()) {
         LOG_WARN(Controls, "LAN Web UI status failed: {}", statusResult.errorValue());
+        if (webUiTokenTitleLabel_) {
+            lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
+        }
         if (webUiTokenLabel_) {
-            lv_label_set_text(webUiTokenLabel_, "LAN Web UI: unavailable");
-            lv_obj_clear_flag(webUiTokenLabel_, LV_OBJ_FLAG_HIDDEN);
+            lv_label_set_text(webUiTokenLabel_, "unavailable");
         }
         return;
     }
@@ -514,24 +559,19 @@ void NetworkDiagnosticsPanel::updateWebUiStatus(
 
 void NetworkDiagnosticsPanel::updateWebUiTokenLabel()
 {
-    if (!webUiTokenLabel_) {
+    if (!webUiTokenTitleLabel_ || !webUiTokenLabel_) {
         return;
     }
 
     if (!webUiEnabled_) {
-        lv_obj_add_flag(webUiTokenLabel_, LV_OBJ_FLAG_HIDDEN);
+        lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
+        lv_label_set_text(webUiTokenLabel_, "--");
         return;
     }
 
-    std::string labelText = "Token: ";
-    if (webUiToken_.empty()) {
-        labelText += "--";
-    }
-    else {
-        labelText += webUiToken_;
-    }
+    lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
+    const std::string labelText = webUiToken_.empty() ? "--" : webUiToken_;
     lv_label_set_text(webUiTokenLabel_, labelText.c_str());
-    lv_obj_clear_flag(webUiTokenLabel_, LV_OBJ_FLAG_HIDDEN);
 }
 
 std::string NetworkDiagnosticsPanel::statusText(const Network::WifiNetworkInfo& info) const

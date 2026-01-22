@@ -54,11 +54,12 @@ bool ObstacleManager::spawnObstacle(
         }
     }
 
-    obstacles_.push_back({
-        .start_x = start_x,
-        .width = obstacle_width,
-        .type = type,
-    });
+    obstacles_.push_back(
+        {
+            .start_x = start_x,
+            .width = obstacle_width,
+            .type = type,
+        });
 
     spdlog::info(
         "ObstacleManager: Spawned {} at x={}, width={}",

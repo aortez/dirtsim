@@ -164,8 +164,9 @@ FontSampler::FontSampler(
         ownsFont_ = false;
     }
 #else
-    spdlog::error("FontSampler: Cannot load font from file - FreeType support not enabled "
-                  "(LV_USE_FREETYPE=0)");
+    spdlog::error(
+        "FontSampler: Cannot load font from file - FreeType support not enabled "
+        "(LV_USE_FREETYPE=0)");
     (void)fontPath;
     (void)fontSize;
 #endif
