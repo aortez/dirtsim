@@ -53,7 +53,7 @@ public:
     // Get door position (computed from current world dimensions).
     Vector2i getDoorPosition(DoorId id, const WorldData& world_data) const;
     Vector2i getRoofPosition(DoorId id, const WorldData& world_data) const;
-    Vector2i getLightPosition(DoorId id, const WorldData& world_data) const;
+    Vector2f getLightPosition(DoorId id, const WorldData& world_data) const;
 
     // Check if a position is an open door or roof cell.
     bool isOpenDoorAt(Vector2i pos, const WorldData& world_data) const;
@@ -88,7 +88,7 @@ private:
     // Compute positions from door definition and world dimensions.
     Vector2i computeDoorPosition(const Door& door, const WorldData& world_data) const;
     Vector2i computeRoofPosition(const Door& door, const WorldData& world_data) const;
-    Vector2i computeLightPosition(const Door& door, const WorldData& world_data) const;
+    Vector2f computeLightPosition(const Door& door, const WorldData& world_data) const;
 };
 
 } // namespace DirtSim

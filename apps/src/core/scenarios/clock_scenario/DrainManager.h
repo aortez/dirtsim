@@ -48,7 +48,7 @@ private:
     void applyGravity(World& world);
     void sprayCell(World& world, Cell& cell, int16_t x, int16_t y);
 
-    static constexpr double kCloseThreshold = 1.0;
+    static constexpr double kCloseThreshold = 0.2;
     static constexpr double kFullOpenThreshold = 100.0;
     static constexpr int16_t kMaxSize = 7;
     static constexpr int kSizeChangeIntervalMs = 1000;

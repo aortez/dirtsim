@@ -449,12 +449,13 @@ void ClockScenario::setup(World& world)
     const WorldData& data = world.getData();
 
     // Static corner torches (fire-and-forget, LightManager owns them).
-    world.getLightManager().addLight(PointLight{
-        .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
-        .color = ColorNames::torchOrange(),
-        .intensity = 0.1f,
-        .radius = 15.0f,
-        .attenuation = 0.05f });
+    world.getLightManager().addLight(
+        PointLight{ .position =
+                        Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
+                    .color = ColorNames::torchOrange(),
+                    .intensity = 0.1f,
+                    .radius = 15.0f,
+                    .attenuation = 0.05f });
 
     world.getLightManager().addLight(
         PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
@@ -1129,21 +1130,19 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         LightManager& lights = world.getLightManager();
 
         // Entrance door light (will be bright since door opens immediately).
-        Vector2i entrance_light_pos =
+        Vector2f entrance_light_pos =
             door_manager_.getLightPosition(duck_state.entrance_door_id, data);
         duck_state.entrance_light = lights.createLight(
-            PointLight{ .position = Vector2d{ static_cast<double>(entrance_light_pos.x),
-                                              static_cast<double>(entrance_light_pos.y) },
+            PointLight{ .position = entrance_light_pos,
                         .color = ColorNames::torchOrange(),
                         .intensity = kDoorLightOpenIntensity,
                         .radius = kDoorLightRadius,
                         .attenuation = kDoorLightAttenuation });
 
         // Exit door light (starts dim since door is closed).
-        Vector2i exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
+        Vector2f exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
         duck_state.exit_light = lights.createLight(
-            PointLight{ .position = Vector2d{ static_cast<double>(exit_light_pos.x),
-                                              static_cast<double>(exit_light_pos.y) },
+            PointLight{ .position = exit_light_pos,
                         .color = ColorNames::torchOrange(),
                         .intensity = kDoorLightClosedIntensity,
                         .radius = kDoorLightRadius,
@@ -1756,16 +1755,18 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 
     // Door roof cells (structural, render as wall/gray).
     for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
-        walls.push_back({ static_cast<int16_t>(roof_pos.x),
-                          static_cast<int16_t>(roof_pos.y),
-                          Material::EnumType::Wall });
+        walls.push_back(
+            { static_cast<int16_t>(roof_pos.x),
+              static_cast<int16_t>(roof_pos.y),
+              Material::EnumType::Wall });
     }
 
     // Door frame cells (wall above door, floor at door - render as wall/gray).
     for (const auto& frame_pos : door_manager_.getFramePositions(data)) {
-        walls.push_back({ static_cast<int16_t>(frame_pos.x),
-                          static_cast<int16_t>(frame_pos.y),
-                          Material::EnumType::Wall });
+        walls.push_back(
+            { static_cast<int16_t>(frame_pos.x),
+              static_cast<int16_t>(frame_pos.y),
+              Material::EnumType::Wall });
     }
 
     return walls;

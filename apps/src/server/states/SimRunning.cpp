@@ -786,17 +786,17 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     if (!newScenario) {
         LOG_ERROR(State, "Scenario '{}' not found in registry", toString(newScenarioId));
-        cwc.sendResponse(Response::error(
-            ApiError(std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
+        cwc.sendResponse(
+            Response::error(ApiError(
+                std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
         return std::move(*this);
     }
 
     // Create fresh world for new scenario.
     const auto& metadata = newScenario->getMetadata();
-    uint32_t newWidth =
-        (metadata.requiredWidth > 0) ? metadata.requiredWidth : world->getData().width;
+    uint32_t newWidth = (metadata.requiredWidth > 0) ? metadata.requiredWidth : dsm.defaultWidth;
     uint32_t newHeight =
-        (metadata.requiredHeight > 0) ? metadata.requiredHeight : world->getData().height;
+        (metadata.requiredHeight > 0) ? metadata.requiredHeight : dsm.defaultHeight;
     world = std::make_unique<World>(newWidth, newHeight);
 
     // Clear gamepad-controlled duck mappings (ducks are gone with the old world).
@@ -1031,8 +1031,9 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& /*dsm*
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
         spdlog::error("SimRunning: Invalid max_frame_ms value: {}", cwc.command.max_frame_ms);
-        cwc.sendResponse(Response::error(
-            ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
+        cwc.sendResponse(
+            Response::error(
+                ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
         return std::move(*this);
     }
 
