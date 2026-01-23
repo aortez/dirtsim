@@ -56,6 +56,44 @@ function scenarioIdToString(id) {
     return String(id);
 }
 
+function isLocalHostname(hostname) {
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
+function getWebUiToken() {
+    if (isLocalHostname(window.location.hostname)) {
+        return '';
+    }
+
+    var token = sessionStorage.getItem('dirtsim_web_ui_token');
+    if (!token) {
+        token = prompt('Enter LAN Web UI token');
+        if (token) {
+            token = token.trim();
+            if (token.length > 0) {
+                sessionStorage.setItem('dirtsim_web_ui_token', token);
+            }
+        }
+    }
+    return token || '';
+}
+
+function sanitizeWebSocketUrl(url) {
+    var queryPos = url.indexOf('?');
+    if (queryPos === -1) {
+        return url;
+    }
+    return url.substring(0, queryPos) + '?token=...';
+}
+
+function buildWebSocketUrl(port, token) {
+    var url = 'ws://' + window.location.hostname + ':' + port;
+    if (token) {
+        return url + '?token=' + encodeURIComponent(token);
+    }
+    return url;
+}
+
 //=============================================================================
 // Debug Log
 //=============================================================================
@@ -171,6 +209,7 @@ function createPersistentConnection(name, url, onStatusChange) {
     var conn = {
         name: name,
         url: url,
+        logUrl: sanitizeWebSocketUrl(url),
         socket: null,
         pendingRequests: {},
         connected: false,
@@ -185,7 +224,7 @@ function createPersistentConnection(name, url, onStatusChange) {
             return;
         }
 
-        logDebug(name + ': Connecting to ' + url);
+        logDebug(name + ': Connecting to ' + conn.logUrl);
         conn.socket = new WebSocket(url);
 
         conn.socket.onopen = function() {
@@ -315,9 +354,11 @@ function createPersistentConnection(name, url, onStatusChange) {
 // Connection Instances
 //=============================================================================
 
+var webUiToken = getWebUiToken();
+
 var serverConn = createPersistentConnection(
     'Server',
-    'ws://' + window.location.hostname + ':8080',
+    buildWebSocketUrl(8080, webUiToken),
     function(connected) {
         updateStatusDisplay();
         if (connected) {
@@ -329,7 +370,7 @@ var serverConn = createPersistentConnection(
 
 var uiConn = createPersistentConnection(
     'UI',
-    'ws://' + window.location.hostname + ':7070',
+    buildWebSocketUrl(7070, webUiToken),
     function(connected) { updateStatusDisplay(); }
 );
 

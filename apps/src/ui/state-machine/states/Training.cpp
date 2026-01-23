@@ -192,10 +192,14 @@ State::Any Training::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMac
     return std::move(*this);
 }
 
-State::Any Training::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
+State::Any Training::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
 {
     LOG_WARN(State, "Server disconnected during training (reason: {})", evt.reason);
     LOG_INFO(State, "Transitioning to Disconnected");
+
+    if (!sm.queueReconnectToLastServer()) {
+        LOG_WARN(State, "No previous server address available for reconnect");
+    }
 
     // Lost connection - go back to Disconnected state.
     return Disconnected{};
@@ -304,8 +308,9 @@ State::Any Training::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine&
 State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {
-        cwc.sendResponse(UiApi::TrainingResultSave::Response::error(
-            ApiError("Training result modal not visible")));
+        cwc.sendResponse(
+            UiApi::TrainingResultSave::Response::error(
+                ApiError("Training result modal not visible")));
         return std::move(*this);
     }
 
@@ -331,8 +336,9 @@ State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMac
 State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {
-        cwc.sendResponse(UiApi::TrainingResultDiscard::Response::error(
-            ApiError("Training result modal not visible")));
+        cwc.sendResponse(
+            UiApi::TrainingResultDiscard::Response::error(
+                ApiError("Training result modal not visible")));
         return std::move(*this);
     }
 

@@ -134,8 +134,9 @@ void ControlPanel::createScenarioControls(
     scenarioContainer_ =
         LVGLBuilder::actionDropdown(scenarioPanel_)
             .label("Scenario:")
-            .options("Benchmark\nDam Break\nEmpty\nFalling Dirt\nRaining\nSandbox\nTree "
-                     "Germination\nWater Equalization")
+            .options(
+                "Benchmark\nDam Break\nEmpty\nFalling Dirt\nRaining\nSandbox\nTree "
+                "Germination\nWater Equalization")
             .selected(0) // "Benchmark" selected by default.
             .width(LV_PCT(95))
             .callback(onScenarioChanged, this)

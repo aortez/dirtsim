@@ -8,6 +8,7 @@
 #include "StopServer.h"
 #include "StopUi.h"
 #include "SystemStatus.h"
+#include "WebUiAccessSet.h"
 #include <variant>
 
 namespace DirtSim {
@@ -21,7 +22,8 @@ using OsApiCommand = std::variant<
     StartUi::Command,
     StopServer::Command,
     StopUi::Command,
-    SystemStatus::Command>;
+    SystemStatus::Command,
+    WebUiAccessSet::Command>;
 
 } // namespace OsApi
 } // namespace DirtSim

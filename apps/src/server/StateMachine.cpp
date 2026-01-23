@@ -9,6 +9,7 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
+#include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -28,6 +29,7 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
+#include "network/HttpServer.h"
 #include "network/PeerAdvertisement.h"
 #include "network/PeerDiscovery.h"
 #include "states/State.h"
@@ -38,6 +40,7 @@
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <thread>
+#include <unistd.h>
 
 namespace DirtSim {
 namespace Server {
@@ -72,10 +75,14 @@ struct StateMachine::Impl {
     ScenarioRegistry scenarioRegistry_;
     SystemMetrics systemMetrics_;
     Timers timers_;
+    std::unique_ptr<HttpServer> httpServer_;
     PeerAdvertisement peerAdvertisement_;
     PeerDiscovery peerDiscovery_;
     State::Any fsmState_{ State::PreStartup{} };
     Network::WebSocketService* wsService_ = nullptr;
+    std::string peerServiceName_ = "dirtsim";
+    uint16_t webSocketPort_ = 8080;
+    uint16_t httpPort_ = 8081;
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
 
@@ -115,6 +122,11 @@ StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) 
     serverConfig = std::make_unique<ServerConfig>();
     serverConfig->dataDir = dataDir;
 
+    char hostname[256] = "dirtsim";
+    gethostname(hostname, sizeof(hostname));
+    pImpl->peerServiceName_ = hostname;
+    pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
+
     LOG_INFO(
         State,
         "Server::StateMachine initialized in headless mode in state: {}",
@@ -130,6 +142,9 @@ StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) 
 
 StateMachine::~StateMachine()
 {
+    if (pImpl->httpServer_) {
+        pImpl->httpServer_->stop();
+    }
     pImpl->peerAdvertisement_.stop();
     pImpl->peerDiscovery_.stop();
     LOG_INFO(State, "Server::StateMachine shutting down from state: {}", getCurrentStateName());
@@ -137,6 +152,13 @@ StateMachine::~StateMachine()
 
 void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
 {
+    pImpl->peerServiceName_ = serviceName;
+    pImpl->webSocketPort_ = port;
+
+    if (pImpl->peerAdvertisement_.isRunning()) {
+        pImpl->peerAdvertisement_.stop();
+    }
+
     pImpl->peerAdvertisement_.setServiceName(serviceName);
     pImpl->peerAdvertisement_.setPort(port);
     pImpl->peerAdvertisement_.setRole(PeerRole::Physics);
@@ -176,6 +198,11 @@ Network::WebSocketService* StateMachine::getWebSocketService()
 void StateMachine::setWebSocketService(Network::WebSocketService* service)
 {
     pImpl->wsService_ = service;
+}
+
+void StateMachine::setWebSocketPort(uint16_t port)
+{
+    pImpl->webSocketPort_ = port;
 }
 
 void StateMachine::setupWebSocketService(Network::WebSocketService& service)
@@ -266,6 +293,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::WebUiAccessSet);
         DISPATCH_JSON_CMD_EMPTY(Api::WorldResize);
 
 #undef DISPATCH_JSON_CMD_WITH_RESP
@@ -327,6 +355,61 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
     });
 
+    service.registerHandler<Api::WebUiAccessSet::Cwc>([this](Api::WebUiAccessSet::Cwc cwc) {
+        using Response = Api::WebUiAccessSet::Response;
+
+        if (!pImpl->wsService_) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket service not available")));
+            return;
+        }
+
+        if (pImpl->webSocketPort_ == 0) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket port not set")));
+            return;
+        }
+
+        Api::WebUiAccessSet::Okay okay;
+        okay.enabled = cwc.command.enabled;
+        cwc.sendResponse(Response::okay(std::move(okay)));
+
+        const std::string bindAddress = cwc.command.enabled ? "0.0.0.0" : "127.0.0.1";
+        if (cwc.command.enabled) {
+            pImpl->wsService_->setAccessToken(cwc.command.token);
+        }
+        else {
+            pImpl->wsService_->clearAccessToken();
+            pImpl->wsService_->closeNonLocalClients();
+        }
+
+        pImpl->wsService_->stopListening(false);
+        auto listenResult = pImpl->wsService_->listen(pImpl->webSocketPort_, bindAddress);
+        if (listenResult.isError()) {
+            LOG_ERROR(
+                Network,
+                "WebUiAccessSet failed to bind {}:{}: {}",
+                bindAddress,
+                pImpl->webSocketPort_,
+                listenResult.errorValue());
+            return;
+        }
+
+        if (cwc.command.enabled) {
+            if (pImpl->httpServer_) {
+                const bool started = pImpl->httpServer_->start("0.0.0.0");
+                if (!started) {
+                    LOG_ERROR(Network, "Failed to start HTTP server for /garden");
+                }
+            }
+            startPeerAdvertisement(pImpl->webSocketPort_, pImpl->peerServiceName_);
+        }
+        else {
+            if (pImpl->httpServer_) {
+                pImpl->httpServer_->stop();
+            }
+            pImpl->peerAdvertisement_.stop();
+        }
+    });
+
     // PeersGet - return discovered mDNS peers.
     service.registerHandler<Api::PeersGet::Cwc>([this](Api::PeersGet::Cwc cwc) {
         auto peers = pImpl->peerDiscovery_.getPeers();
@@ -373,8 +456,9 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         }
         auto found = std::move(getResult).value();
         if (!found.has_value()) {
-            cwc.sendResponse(Api::TrainingResultGet::Response::error(ApiError(
-                "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
+            cwc.sendResponse(
+                Api::TrainingResultGet::Response::error(ApiError(
+                    "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
             return;
         }
 
@@ -739,18 +823,19 @@ void StateMachine::handleEvent(const Event& event)
         genome.weights = cwc.command.weights;
 
         // Use provided metadata or create default.
-        GenomeMetadata meta = cwc.command.metadata.value_or(GenomeMetadata{
-            .name = "imported_" + cwc.command.id.toShortString(),
-            .fitness = 0.0,
-            .generation = 0,
-            .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-            .scenarioId = Scenario::EnumType::TreeGermination,
-            .notes = "",
-            .organismType = std::nullopt,
-            .brainKind = std::nullopt,
-            .brainVariant = std::nullopt,
-            .trainingSessionId = std::nullopt,
-        });
+        GenomeMetadata meta = cwc.command.metadata.value_or(
+            GenomeMetadata{
+                .name = "imported_" + cwc.command.id.toShortString(),
+                .fitness = 0.0,
+                .generation = 0,
+                .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+                .scenarioId = Scenario::EnumType::TreeGermination,
+                .notes = "",
+                .organismType = std::nullopt,
+                .brainKind = std::nullopt,
+                .brainVariant = std::nullopt,
+                .trainingSessionId = std::nullopt,
+            });
 
         repo.store(cwc.command.id, genome, meta);
 
@@ -814,8 +899,9 @@ void StateMachine::handleEvent(const Event& event)
         const auto& result = cwc.command.result;
 
         if (result.summary.trainingSessionId.isNil()) {
-            cwc.sendResponse(Api::TrainingResultSet::Response::error(
-                ApiError("TrainingResultSet requires trainingSessionId")));
+            cwc.sendResponse(
+                Api::TrainingResultSet::Response::error(
+                    ApiError("TrainingResultSet requires trainingSessionId")));
             return;
         }
 
@@ -851,8 +937,9 @@ void StateMachine::handleEvent(const Event& event)
             return;
         }
         if (rejected) {
-            cwc.sendResponse(Api::TrainingResultSet::Response::error(
-                ApiError("TrainingResultSet already exists")));
+            cwc.sendResponse(
+                Api::TrainingResultSet::Response::error(
+                    ApiError("TrainingResultSet already exists")));
             return;
         }
 
@@ -870,8 +957,9 @@ void StateMachine::handleEvent(const Event& event)
         assert(!connectionId.empty() && "RenderFormatSet: connectionId must be populated!");
 
         if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
-            cwc.sendResponse(Api::RenderFormatSet::Response::error(
-                ApiError{ "Client did not request render updates" }));
+            cwc.sendResponse(
+                Api::RenderFormatSet::Response::error(
+                    ApiError{ "Client did not request render updates" }));
             return;
         }
 
@@ -938,8 +1026,9 @@ void StateMachine::handleEvent(const Event& event)
 
                             // If this is an API command with sendResponse, send error.
                             if constexpr (requires {
-                                              evt.sendResponse(std::declval<typename std::decay_t<
-                                                                   decltype(evt)>::Response>());
+                                              evt.sendResponse(
+                                                  std::declval<typename std::decay_t<
+                                                      decltype(evt)>::Response>());
                                           }) {
                                 auto errorMsg = std::string("Command not supported in state: ")
                                     + State::getCurrentStateName(pImpl->fsmState_);

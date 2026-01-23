@@ -48,11 +48,12 @@ protected:
         org->position = pos;
         org->velocity = { 0.0, 0.0 };
 
-        org->local_shape.push_back({
-            .localPos = { 0, 0 },
-            .material = material,
-            .fillRatio = 1.0,
-        });
+        org->local_shape.push_back(
+            {
+                .localPos = { 0, 0 },
+                .material = material,
+                .fillRatio = 1.0,
+            });
 
         org->recomputeMass();
         org->recomputeCenterOfMass();
@@ -179,11 +180,12 @@ TEST_F(OrganismPhysicsTest, MassAccountsForFillRatio)
     org->velocity = { 0.0, 0.0 };
 
     // One cell at 50% fill.
-    org->local_shape.push_back({
-        .localPos = { 0, 0 },
-        .material = Material::EnumType::Wood,
-        .fillRatio = 0.5,
-    });
+    org->local_shape.push_back(
+        {
+            .localPos = { 0, 0 },
+            .material = Material::EnumType::Wood,
+            .fillRatio = 0.5,
+        });
 
     org->recomputeMass();
 

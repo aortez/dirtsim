@@ -8,6 +8,7 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebUiAccessSet.h"
 #include <concepts>
 #include <string>
 #include <variant>
@@ -30,7 +31,8 @@ public:
         OsApi::StartUi::Cwc,
         OsApi::StopServer::Cwc,
         OsApi::StopUi::Cwc,
-        OsApi::SystemStatus::Cwc>;
+        OsApi::SystemStatus::Cwc,
+        OsApi::WebUiAccessSet::Cwc>;
 
     template <typename T>
     Event(T&& event) : variant_(std::forward<T>(event))

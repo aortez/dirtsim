@@ -66,6 +66,7 @@ public:
 
     Network::WebSocketService* getWebSocketService();
     void setWebSocketService(Network::WebSocketService* service);
+    void setWebSocketPort(uint16_t port);
 
     /**
      * @brief Setup WebSocketService with command handlers.

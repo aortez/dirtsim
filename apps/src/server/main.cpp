@@ -4,13 +4,11 @@
 #include "core/LoggingChannels.h"
 #include "core/Timers.h"
 #include "core/network/WebSocketService.h"
-#include "network/HttpServer.h"
 #include <args.hxx>
 #include <csignal>
 #include <memory>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
-#include <unistd.h>
 
 using namespace DirtSim;
 
@@ -125,12 +123,6 @@ int main(int argc, char** argv)
     auto stateMachine = std::make_unique<Server::StateMachine>();
     g_stateMachine = stateMachine.get();
 
-    // Start mDNS/Avahi advertisement so other nodes can discover us.
-    // Use hostname as service name for identification on the network.
-    char hostname[256] = "dirtsim";
-    gethostname(hostname, sizeof(hostname));
-    stateMachine->startPeerAdvertisement(port, hostname);
-
     // Set up signal handler for graceful shutdown.
     std::signal(SIGINT, signalHandler);
     std::signal(SIGTERM, signalHandler);
@@ -140,9 +132,10 @@ int main(int argc, char** argv)
 
     // Setup command handlers via state machine (also stores pointer).
     stateMachine->setupWebSocketService(service);
+    stateMachine->setWebSocketPort(port);
 
     // Start listening for connections.
-    auto listenResult = service.listen(port);
+    auto listenResult = service.listen(port, "127.0.0.1");
     if (listenResult.isError()) {
         spdlog::error("Failed to start WebSocket service: {}", listenResult.errorValue());
         return 1;
@@ -151,16 +144,11 @@ int main(int argc, char** argv)
     spdlog::info("WebSocket service listening on port {}", port);
     spdlog::info("Send commands to ws://localhost:{}", port);
 
-    // Create HTTP server for web dashboard.
-    Server::HttpServer httpServer(8081);
-    httpServer.start();
-
     // Run main event loop.
     // Note: mainLoopRun() will process events until shouldExit is set.
     stateMachine->mainLoopRun();
 
     // Cleanup.
-    httpServer.stop();
     service.stopListening();
     spdlog::info("Server shut down cleanly");
 

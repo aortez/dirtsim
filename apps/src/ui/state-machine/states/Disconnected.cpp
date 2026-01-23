@@ -211,6 +211,7 @@ void Disconnected::updateAnimations()
 State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine& sm)
 {
     LOG_INFO(State, "Connect command received (host={}, port={})", cmd.host, cmd.port);
+    sm.setLastServerAddress(cmd.host, cmd.port);
 
     auto& wsService = sm.getWebSocketService();
 
