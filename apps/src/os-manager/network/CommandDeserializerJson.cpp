@@ -7,6 +7,7 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebUiAccessSet.h"
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 
@@ -71,6 +72,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::SystemStatus::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::SystemStatus::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::WebUiAccessSet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::WebUiAccessSet::Command::fromJson(cmd));
         }
         else {
             return Result<OsApi::OsApiCommand, ApiError>::error(

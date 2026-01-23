@@ -177,10 +177,14 @@ State::Any SimRunning::onEvent(const RailModeChangedEvent& evt, StateMachine& /*
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
+State::Any SimRunning::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
 {
     LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
     LOG_INFO(State, "Transitioning to Disconnected");
+
+    if (!sm.queueReconnectToLastServer()) {
+        LOG_WARN(State, "No previous server address available for reconnect");
+    }
 
     // Lost connection - go back to Disconnected state (world is lost).
     return Disconnected{};

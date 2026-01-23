@@ -25,10 +25,12 @@ void MultiCellTestOrganism::initializeShape()
             // Two horizontal cells: XX (anchor at left cell).
             rigidBody_->addCell({ 0, 0 }, Material::EnumType::Wood, 1.0);
             rigidBody_->addCell({ 1, 0 }, Material::EnumType::Wood, 1.0);
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
-            local_shape.push_back(LocalCell{
-                .localPos = { 1, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{
+                    .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{
+                    .localPos = { 1, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
             break;
 
         case MultiCellShape::LSHAPE:
@@ -37,12 +39,16 @@ void MultiCellTestOrganism::initializeShape()
             rigidBody_->addCell({ 0, -1 }, Material::EnumType::Wood, 1.0);
             rigidBody_->addCell({ 0, 0 }, Material::EnumType::Wood, 1.0);
             rigidBody_->addCell({ 1, 0 }, Material::EnumType::Wood, 1.0);
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, -1 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
-            local_shape.push_back(LocalCell{
-                .localPos = { 1, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{ .localPos = { 0, -1 },
+                           .material = Material::EnumType::Wood,
+                           .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{
+                    .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{
+                    .localPos = { 1, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
             break;
 
         case MultiCellShape::COLUMN:
@@ -50,12 +56,17 @@ void MultiCellTestOrganism::initializeShape()
             rigidBody_->addCell({ 0, -2 }, Material::EnumType::Wood, 1.0);
             rigidBody_->addCell({ 0, -1 }, Material::EnumType::Wood, 1.0);
             rigidBody_->addCell({ 0, 0 }, Material::EnumType::Wood, 1.0);
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, -2 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, -1 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
-            local_shape.push_back(LocalCell{
-                .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{ .localPos = { 0, -2 },
+                           .material = Material::EnumType::Wood,
+                           .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{ .localPos = { 0, -1 },
+                           .material = Material::EnumType::Wood,
+                           .fillRatio = 1.0 });
+            local_shape.push_back(
+                LocalCell{
+                    .localPos = { 0, 0 }, .material = Material::EnumType::Wood, .fillRatio = 1.0 });
             break;
     }
 }
@@ -78,8 +89,9 @@ std::vector<Vector2i> MultiCellTestOrganism::getGridPositions() const
     for (const auto& local : local_shape) {
         Vector2d worldPos{ position.x + static_cast<double>(local.localPos.x),
                            position.y + static_cast<double>(local.localPos.y) };
-        result.push_back(Vector2i{ static_cast<int>(std::floor(worldPos.x)),
-                                   static_cast<int>(std::floor(worldPos.y)) });
+        result.push_back(
+            Vector2i{ static_cast<int>(std::floor(worldPos.x)),
+                      static_cast<int>(std::floor(worldPos.y)) });
     }
     return result;
 }

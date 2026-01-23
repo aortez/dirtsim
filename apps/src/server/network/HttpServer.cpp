@@ -16,7 +16,7 @@ struct HttpServer::Impl {
     std::thread thread_;
     std::unique_ptr<httplib::Server> server_;
 
-    void runServer(int port)
+    void runServer(int port, const std::string& bindAddress)
     {
         server_ = std::make_unique<httplib::Server>();
 
@@ -33,7 +33,7 @@ struct HttpServer::Impl {
         spdlog::info("HttpServer: Dashboard available at http://localhost:{}/garden", port);
 
         running_ = true;
-        if (!server_->listen("0.0.0.0", port)) {
+        if (!server_->listen(bindAddress, port)) {
             spdlog::error("HttpServer: Failed to start on port {}", port);
             running_ = false;
         }
@@ -48,13 +48,13 @@ HttpServer::~HttpServer()
     stop();
 }
 
-bool HttpServer::start()
+bool HttpServer::start(const std::string& bindAddress)
 {
     if (pImpl_->running_) {
         return true;
     }
 
-    pImpl_->thread_ = std::thread([this]() { pImpl_->runServer(port_); });
+    pImpl_->thread_ = std::thread([this, bindAddress]() { pImpl_->runServer(port_, bindAddress); });
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     return pImpl_->running_;

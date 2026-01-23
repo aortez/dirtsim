@@ -786,8 +786,9 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     if (!newScenario) {
         LOG_ERROR(State, "Scenario '{}' not found in registry", toString(newScenarioId));
-        cwc.sendResponse(Response::error(
-            ApiError(std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
+        cwc.sendResponse(
+            Response::error(ApiError(
+                std::string("Scenario not found: ") + std::string(toString(newScenarioId)))));
         return std::move(*this);
     }
 
@@ -1031,8 +1032,9 @@ State::Any SimRunning::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& /*dsm*
     // Validate max_frame_ms parameter.
     if (cwc.command.max_frame_ms < 0) {
         spdlog::error("SimRunning: Invalid max_frame_ms value: {}", cwc.command.max_frame_ms);
-        cwc.sendResponse(Response::error(
-            ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
+        cwc.sendResponse(
+            Response::error(
+                ApiError("max_frame_ms must be >= 0 (0 = unlimited, >0 = frame rate cap)")));
         return std::move(*this);
     }
 

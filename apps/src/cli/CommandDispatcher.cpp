@@ -7,6 +7,7 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebUiAccessSet.h"
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -88,6 +89,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::StopServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StopUi::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::SystemStatus::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 
     spdlog::info(
         "CommandDispatcher: Registered {} server commands, {} UI commands, {} OS commands",

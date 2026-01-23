@@ -89,7 +89,8 @@ public:
     bool isConnected() const override { return connected_; }
     std::string getUrl() const override { return "ws://mock:8080"; }
 
-    Result<std::monostate, std::string> listen(uint16_t /*port*/) override
+    Result<std::monostate, std::string> listen(
+        uint16_t /*port*/, const std::string& /*bindAddress*/ = "0.0.0.0") override
     {
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }

@@ -41,8 +41,9 @@ RigidBodyUpdateResult RigidBodyComponent::update(
     for (const auto& local : localShape) {
         Vector2d worldPos{ position.x + static_cast<double>(local.localPos.x),
                            position.y + static_cast<double>(local.localPos.y) };
-        currentCells.push_back(Vector2i{ static_cast<int>(std::floor(worldPos.x)),
-                                         static_cast<int>(std::floor(worldPos.y)) });
+        currentCells.push_back(
+            Vector2i{ static_cast<int>(std::floor(worldPos.x)),
+                      static_cast<int>(std::floor(worldPos.y)) });
     }
 
     // Compute support and friction.
@@ -82,8 +83,9 @@ RigidBodyUpdateResult RigidBodyComponent::update(
     for (const auto& local : localShape) {
         Vector2d worldPos{ desiredPosition.x + static_cast<double>(local.localPos.x),
                            desiredPosition.y + static_cast<double>(local.localPos.y) };
-        predictedCells.push_back(Vector2i{ static_cast<int>(std::floor(worldPos.x)),
-                                           static_cast<int>(std::floor(worldPos.y)) });
+        predictedCells.push_back(
+            Vector2i{ static_cast<int>(std::floor(worldPos.x)),
+                      static_cast<int>(std::floor(worldPos.y)) });
     }
 
     CollisionResult collisionResult = collision_->detect(world, id, currentCells, predictedCells);

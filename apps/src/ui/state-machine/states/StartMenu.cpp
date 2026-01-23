@@ -453,10 +453,14 @@ State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachi
     return std::move(*this);
 }
 
-State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
+State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
 {
     LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
     LOG_INFO(State, "Transitioning back to Disconnected");
+
+    if (!sm.queueReconnectToLastServer()) {
+        LOG_WARN(State, "No previous server address available for reconnect");
+    }
 
     // Lost connection - go back to Disconnected state.
     return Disconnected{};

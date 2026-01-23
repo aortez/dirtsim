@@ -9,6 +9,12 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PIPX_HOME=/opt/pipx
 ENV PIPX_BIN_DIR=/usr/local/bin
 
+# Install LLVM 20 repository for clang-format-20.
+RUN apt-get update && apt-get install -y wget gnupg && \
+    wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc && \
+    echo "deb http://apt.llvm.org/noble/ llvm-toolchain-noble-20 main" > /etc/apt/sources.list.d/llvm-20.list && \
+    rm -rf /var/lib/apt/lists/*
+
 # Install build dependencies.
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -22,7 +28,7 @@ RUN apt-get update && apt-get install -y \
     libwayland-cursor0 \
     libxkbcommon-dev \
     wayland-protocols \
-    clang-format \
+    clang-format-20 \
     git \
     openssh-client \
     libavahi-client-dev \
@@ -58,7 +64,8 @@ RUN apt-get update && apt-get install -y \
     zstd \
     sudo \
     ccache \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /usr/bin/clang-format-20 /usr/local/bin/clang-format
 
 RUN pipx install kas
 

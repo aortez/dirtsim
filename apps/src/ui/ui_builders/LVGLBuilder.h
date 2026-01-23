@@ -522,6 +522,7 @@ public:
             uint32_t glow_color;
             lv_obj_t* button; // Inner button for styling.
             lv_obj_t* icon_label;
+            std::string label;
             lv_event_cb_t user_callback;
             void* user_data;
         };

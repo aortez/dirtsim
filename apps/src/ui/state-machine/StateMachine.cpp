@@ -2,6 +2,7 @@
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
+#include "api/WebUiAccessSet.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -33,13 +34,14 @@ StateMachine::StateMachine(TestMode) : display(nullptr)
 StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
+    wsPort_ = wsPort;
 
     // Create unified WebSocketService for both client (to server) and server (for CLI) roles.
     wsService_ = std::make_unique<Network::WebSocketService>();
     setupWebSocketService();
 
     // Start listening for CLI/browser commands on the specified port.
-    auto listenResult = wsService_->listen(wsPort);
+    auto listenResult = wsService_->listen(wsPort, "127.0.0.1");
     if (listenResult.isError()) {
         LOG_ERROR(Network, "Failed to listen on port {}: {}", wsPort, listenResult.errorValue());
     }
@@ -62,19 +64,13 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     webRtcStreamer_->setDisplay(disp);
     LOG_INFO(State, "WebRtcStreamer created");
 
-    // Start mDNS/Avahi advertisement so other nodes can discover us.
     char hostname[256] = "dirtsim-ui";
     gethostname(hostname, sizeof(hostname));
+    peerServiceName_ = std::string(hostname) + "-ui";
     peerAd_ = std::make_unique<Server::PeerAdvertisement>();
-    peerAd_->setServiceName(std::string(hostname) + "-ui");
-    peerAd_->setPort(wsPort);
+    peerAd_->setServiceName(peerServiceName_);
+    peerAd_->setPort(wsPort_);
     peerAd_->setRole(Server::PeerRole::Ui);
-    if (peerAd_->start()) {
-        LOG_INFO(Network, "PeerAdvertisement started on port {}", wsPort);
-    }
-    else {
-        LOG_WARN(Network, "PeerAdvertisement failed to start");
-    }
 }
 
 void StateMachine::setupWebSocketService()
@@ -101,6 +97,65 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::WebUiAccessSet::Cwc>([this](UiApi::WebUiAccessSet::Cwc cwc) {
+        using Response = UiApi::WebUiAccessSet::Response;
+
+        auto* wsService = getConcreteWebSocketService();
+        if (!wsService) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket service unavailable")));
+            return;
+        }
+
+        if (wsPort_ == 0) {
+            cwc.sendResponse(Response::error(ApiError("WebSocket port not set")));
+            return;
+        }
+
+        UiApi::WebUiAccessSet::Okay okay;
+        okay.enabled = cwc.command.enabled;
+        cwc.sendResponse(Response::okay(std::move(okay)));
+
+        const std::string bindAddress = cwc.command.enabled ? "0.0.0.0" : "127.0.0.1";
+        if (cwc.command.enabled) {
+            wsService->setAccessToken(cwc.command.token);
+        }
+        else {
+            wsService->clearAccessToken();
+            wsService->closeNonLocalClients();
+            if (webRtcStreamer_) {
+                webRtcStreamer_->closeAllClients();
+            }
+        }
+
+        wsService->stopListening(false);
+        auto listenResult = wsService->listen(wsPort_, bindAddress);
+        if (listenResult.isError()) {
+            LOG_ERROR(
+                Network,
+                "WebUiAccessSet failed to bind {}:{}: {}",
+                bindAddress,
+                wsPort_,
+                listenResult.errorValue());
+            return;
+        }
+
+        if (peerAd_) {
+            if (cwc.command.enabled) {
+                peerAd_->setServiceName(peerServiceName_);
+                peerAd_->setPort(wsPort_);
+                peerAd_->setRole(Server::PeerRole::Ui);
+                if (peerAd_->start()) {
+                    LOG_INFO(Network, "PeerAdvertisement started on port {}", wsPort_);
+                }
+                else {
+                    LOG_WARN(Network, "PeerAdvertisement failed to start");
+                }
+            }
+            else {
+                peerAd_->stop();
+            }
+        }
+    });
     ws->registerHandler<UiApi::ScreenGrab::Cwc>(
         [this](UiApi::ScreenGrab::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StreamStart::Cwc>(
@@ -196,6 +251,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::WebUiAccessSet);
 
             // If we get here, command wasn't recognized.
             LOG_WARN(Network, "Unknown JSON command in dispatcher");
@@ -210,6 +266,10 @@ void StateMachine::setupWebSocketService()
 StateMachine::~StateMachine()
 {
     LOG_INFO(State, "Shutting down from state: {}", getCurrentStateName());
+
+    if (peerAd_) {
+        peerAd_->stop();
+    }
 
     // WebSocketService cleanup handled by unique_ptr.
 }
@@ -422,8 +482,9 @@ void StateMachine::handleEvent(const Event& event)
                 h264Encoder_ = std::make_unique<H264Encoder>();
                 if (!h264Encoder_->initialize(screenshotData->width, screenshotData->height)) {
                     LOG_ERROR(State, "Failed to initialize H.264 encoder");
-                    cwc.sendResponse(UiApi::ScreenGrab::Response::error(
-                        ApiError("Failed to initialize H.264 encoder")));
+                    cwc.sendResponse(
+                        UiApi::ScreenGrab::Response::error(
+                            ApiError("Failed to initialize H.264 encoder")));
                     return;
                 }
             }
@@ -635,8 +696,9 @@ void StateMachine::handleEvent(const Event& event)
 
                             // If this is an API command with sendResponse, send error.
                             if constexpr (requires {
-                                              evt.sendResponse(std::declval<typename std::decay_t<
-                                                                   decltype(evt)>::Response>());
+                                              evt.sendResponse(
+                                                  std::declval<typename std::decay_t<
+                                                      decltype(evt)>::Response>());
                                           }) {
                                 auto errorMsg = std::string("Command not supported in state: ")
                                     + State::getCurrentStateName(fsmState);
@@ -679,6 +741,23 @@ Network::WebSocketServiceInterface& StateMachine::getWebSocketService()
 Network::WebSocketService* StateMachine::getConcreteWebSocketService()
 {
     return dynamic_cast<Network::WebSocketService*>(wsService_.get());
+}
+
+void StateMachine::setLastServerAddress(const std::string& host, uint16_t port)
+{
+    lastServerHost_ = host;
+    lastServerPort_ = port;
+    hasLastServerAddress_ = !lastServerHost_.empty() && lastServerPort_ != 0;
+}
+
+bool StateMachine::queueReconnectToLastServer()
+{
+    if (!hasLastServerAddress_) {
+        return false;
+    }
+
+    queueEvent(ConnectToServerCommand{ lastServerHost_, lastServerPort_ });
+    return true;
 }
 
 void StateMachine::transitionTo(State::Any newState)

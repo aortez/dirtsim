@@ -203,6 +203,7 @@ std::string getExamplesHelp()
     // OS manager API examples.
     examples += "\nOS Manager API Examples:\n";
     examples += "  cli os-manager SystemStatus\n";
+    examples += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
     examples += "  cli os-manager StartServer\n";
     examples += "  cli os-manager StopUi\n";
     examples += "  cli os-manager RestartServer\n";
@@ -282,7 +283,7 @@ std::string extractHost(const std::string& address)
 {
     const auto schemePos = address.find("://");
     const size_t hostStart = schemePos == std::string::npos ? 0 : schemePos + 3;
-    const size_t hostEnd = address.find_first_of(":/", hostStart);
+    const size_t hostEnd = address.find_first_of(":/?", hostStart);
     if (hostEnd == std::string::npos) {
         return address.substr(hostStart);
     }
@@ -297,7 +298,7 @@ std::string extractPort(const std::string& address, const std::string& defaultPo
     if (portPos == std::string::npos) {
         return defaultPort;
     }
-    const size_t portEnd = address.find('/', portPos + 1);
+    const size_t portEnd = address.find_first_of("/?", portPos + 1);
     if (portEnd == std::string::npos) {
         return address.substr(portPos + 1);
     }

@@ -31,6 +31,62 @@ bool isResponseMessageType(const std::string& messageType)
     }
     return messageType.compare(messageType.size() - suffix.size(), suffix.size(), suffix) == 0;
 }
+
+std::string extractHostFromRemoteAddress(const std::string& remoteAddress)
+{
+    const auto pos = remoteAddress.rfind(':');
+    if (pos == std::string::npos) {
+        return remoteAddress;
+    }
+    return remoteAddress.substr(0, pos);
+}
+
+bool isLoopbackHost(const std::string& host)
+{
+    if (host == "localhost" || host == "127.0.0.1" || host == "::1" || host == "0:0:0:0:0:0:0:1") {
+        return true;
+    }
+    if (host.rfind("127.", 0) == 0) {
+        return true;
+    }
+    if (host.rfind("::ffff:127.", 0) == 0) {
+        return true;
+    }
+    return false;
+}
+
+std::string extractTokenFromPath(const std::optional<std::string>& path)
+{
+    if (!path.has_value()) {
+        return "";
+    }
+
+    const auto queryPos = path->find('?');
+    if (queryPos == std::string::npos) {
+        return "";
+    }
+
+    const std::string query = path->substr(queryPos + 1);
+    size_t pos = 0;
+    while (pos < query.size()) {
+        const auto ampPos = query.find('&', pos);
+        const auto partLen = ampPos == std::string::npos ? std::string::npos : ampPos - pos;
+        const std::string part = query.substr(pos, partLen);
+        const auto eqPos = part.find('=');
+        if (eqPos != std::string::npos) {
+            const std::string key = part.substr(0, eqPos);
+            if (key == "token") {
+                return part.substr(eqPos + 1);
+            }
+        }
+        if (ampPos == std::string::npos) {
+            break;
+        }
+        pos = ampPos + 1;
+    }
+
+    return "";
+}
 } // namespace
 
 WebSocketService::WebSocketService()
@@ -472,7 +528,8 @@ Result<std::string, ApiError> WebSocketService::sendJsonAndReceive(
     return Result<std::string, ApiError>::okay(std::get<std::string>(pending->response));
 }
 
-Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
+Result<std::monostate, std::string> WebSocketService::listen(
+    uint16_t port, const std::string& bindAddress)
 {
     try {
         LOG_INFO(Network, "Starting server on port {}", port);
@@ -482,7 +539,7 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
         // 200x200 world with DebugCell (~23 bytes/cell) = ~920 KB.
         rtc::WebSocketServerConfiguration config;
         config.port = port;
-        config.bindAddress = "0.0.0.0";           // Listen on all interfaces.
+        config.bindAddress = bindAddress;
         config.enableTls = false;                 // No TLS for now.
         config.maxMessageSize = 16 * 1024 * 1024; // 16 MB.
 
@@ -503,7 +560,16 @@ Result<std::monostate, std::string> WebSocketService::listen(uint16_t port)
 
 void WebSocketService::stopListening()
 {
-    if (server_) {
+    stopListening(true);
+}
+
+void WebSocketService::stopListening(bool disconnectClients)
+{
+    if (!server_) {
+        return;
+    }
+
+    if (disconnectClients) {
         std::vector<std::shared_ptr<rtc::WebSocket>> clients;
         {
             std::lock_guard<std::mutex> lock(clientsMutex_);
@@ -527,16 +593,39 @@ void WebSocketService::stopListening()
                 ws->close();
             }
         }
-
-        server_->stop();
-        server_.reset();
-        LOG_INFO(Network, "Server stopped");
     }
+
+    server_->stop();
+    server_.reset();
+    LOG_INFO(Network, "Server stopped");
 }
 
 bool WebSocketService::isListening() const
 {
     return server_ != nullptr;
+}
+
+void WebSocketService::closeNonLocalClients()
+{
+    std::vector<std::shared_ptr<rtc::WebSocket>> toClose;
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex_);
+        for (const auto& ws : connectedClients_) {
+            if (!ws || !ws->isOpen()) {
+                continue;
+            }
+            const auto remoteAddress = ws->remoteAddress();
+            const bool isLocal = remoteAddress.has_value()
+                && isLoopbackHost(extractHostFromRemoteAddress(remoteAddress.value()));
+            if (!isLocal) {
+                toClose.push_back(ws);
+            }
+        }
+    }
+
+    for (const auto& ws : toClose) {
+        ws->close();
+    }
 }
 
 void WebSocketService::broadcastBinary(const std::vector<std::byte>& data)
@@ -800,57 +889,96 @@ Result<std::monostate, std::string> WebSocketService::sendToClient(
 
 void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
 {
-    LOG_INFO(Network, "Client connected");
-    {
-        std::lock_guard<std::mutex> lock(clientsMutex_);
-        connectedClients_.push_back(ws);
-    }
-
-    // Set up message handler for this client.
-    ws->onMessage([this, ws](std::variant<rtc::binary, rtc::string> data) {
-        if (std::holds_alternative<rtc::binary>(data)) {
-            // Binary message - route to command handlers.
-            const rtc::binary& binaryData = std::get<rtc::binary>(data);
-            onClientMessage(ws, binaryData);
+    ws->onOpen([this, ws]() {
+        const auto remoteAddress = ws->remoteAddress();
+        const bool isLocal = remoteAddress.has_value()
+            && isLoopbackHost(extractHostFromRemoteAddress(remoteAddress.value()));
+        if (!isLocal) {
+            const std::string token = extractTokenFromPath(ws->path());
+            std::string accessToken;
+            {
+                std::lock_guard<std::mutex> lock(accessTokenMutex_);
+                accessToken = accessToken_;
+            }
+            const std::string remoteLabel = remoteAddress.value_or("unknown");
+            if (accessToken.empty()) {
+                LOG_WARN(
+                    Network,
+                    "Rejecting non-local client connection from {} (token not configured)",
+                    remoteLabel);
+                ws->close();
+                return;
+            }
+            if (token.empty()) {
+                LOG_WARN(
+                    Network,
+                    "Rejecting non-local client connection from {} (token missing)",
+                    remoteLabel);
+                ws->close();
+                return;
+            }
+            if (token != accessToken) {
+                LOG_WARN(
+                    Network,
+                    "Rejecting non-local client connection from {} (token mismatch)",
+                    remoteLabel);
+                ws->close();
+                return;
+            }
         }
-        else {
-            // Text/JSON message - route to JSON command handlers.
-            const rtc::string& textData = std::get<rtc::string>(data);
-            onClientMessageJson(ws, textData);
-        }
-    });
 
-    // Set up close handler.
-    ws->onClosed([this, ws]() {
-        LOG_INFO(Network, "Client disconnected");
-
-        // Get connection ID before cleanup (needed for callback).
-        std::string connectionId;
+        LOG_INFO(Network, "Client connected");
         {
             std::lock_guard<std::mutex> lock(clientsMutex_);
-            auto idIt = connectionIds_.find(ws);
-            if (idIt != connectionIds_.end()) {
-                connectionId = idIt->second;
-                connectionRegistry_.erase(connectionId);
-                connectionIds_.erase(idIt);
+            connectedClients_.push_back(ws);
+        }
+
+        // Set up message handler for this client.
+        ws->onMessage([this, ws](std::variant<rtc::binary, rtc::string> data) {
+            if (std::holds_alternative<rtc::binary>(data)) {
+                // Binary message - route to command handlers.
+                const rtc::binary& binaryData = std::get<rtc::binary>(data);
+                onClientMessage(ws, binaryData);
+            }
+            else {
+                // Text/JSON message - route to JSON command handlers.
+                const rtc::string& textData = std::get<rtc::string>(data);
+                onClientMessageJson(ws, textData);
+            }
+        });
+
+        // Set up close handler.
+        ws->onClosed([this, ws]() {
+            LOG_INFO(Network, "Client disconnected");
+
+            // Get connection ID before cleanup (needed for callback).
+            std::string connectionId;
+            {
+                std::lock_guard<std::mutex> lock(clientsMutex_);
+                auto idIt = connectionIds_.find(ws);
+                if (idIt != connectionIds_.end()) {
+                    connectionId = idIt->second;
+                    connectionRegistry_.erase(connectionId);
+                    connectionIds_.erase(idIt);
+                }
+
+                // Clean up internal state.
+                connectedClients_.erase(
+                    std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
+                    connectedClients_.end());
+                clientProtocols_.erase(ws);
+                clientRenderFormats_.erase(ws);
+                clientHellos_.erase(ws);
             }
 
-            // Clean up internal state.
-            connectedClients_.erase(
-                std::remove(connectedClients_.begin(), connectedClients_.end(), ws),
-                connectedClients_.end());
-            clientProtocols_.erase(ws);
-            clientRenderFormats_.erase(ws);
-            clientHellos_.erase(ws);
-        }
+            if (!connectionId.empty() && clientDisconnectCallback_) {
+                clientDisconnectCallback_(connectionId);
+            }
+        });
 
-        if (!connectionId.empty() && clientDisconnectCallback_) {
-            clientDisconnectCallback_(connectionId);
-        }
+        // Set up error handler.
+        ws->onError([](std::string error) { LOG_ERROR(Network, "Client error: {}", error); });
     });
-
-    // Set up error handler.
-    ws->onError([](std::string error) { LOG_ERROR(Network, "Client error: {}", error); });
 }
 
 void WebSocketService::onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const rtc::binary& data)

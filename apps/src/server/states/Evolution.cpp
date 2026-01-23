@@ -273,17 +273,19 @@ void Evolution::initializePopulation(StateMachine& dsm)
             for (const auto& id : spec.seedGenomes) {
                 auto genome = repo.get(id);
                 DIRTSIM_ASSERT(genome.has_value(), "Training population seed genome missing");
-                population.push_back(Individual{ .brainKind = spec.brainKind,
-                                                 .brainVariant = spec.brainVariant,
-                                                 .genome = genome.value(),
-                                                 .allowsMutation = entry->allowsMutation });
+                population.push_back(
+                    Individual{ .brainKind = spec.brainKind,
+                                .brainVariant = spec.brainVariant,
+                                .genome = genome.value(),
+                                .allowsMutation = entry->allowsMutation });
             }
 
             for (int i = 0; i < spec.randomCount; ++i) {
-                population.push_back(Individual{ .brainKind = spec.brainKind,
-                                                 .brainVariant = spec.brainVariant,
-                                                 .genome = Genome::random(rng),
-                                                 .allowsMutation = entry->allowsMutation });
+                population.push_back(
+                    Individual{ .brainKind = spec.brainKind,
+                                .brainVariant = spec.brainVariant,
+                                .genome = Genome::random(rng),
+                                .allowsMutation = entry->allowsMutation });
             }
         }
         else {
@@ -295,10 +297,11 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 "Training population randomCount must be 0 for non-genome brains");
 
             for (int i = 0; i < spec.count; ++i) {
-                population.push_back(Individual{ .brainKind = spec.brainKind,
-                                                 .brainVariant = spec.brainVariant,
-                                                 .genome = std::nullopt,
-                                                 .allowsMutation = entry->allowsMutation });
+                population.push_back(
+                    Individual{ .brainKind = spec.brainKind,
+                                .brainVariant = spec.brainVariant,
+                                .genome = std::nullopt,
+                                .allowsMutation = entry->allowsMutation });
             }
         }
     }
@@ -615,13 +618,14 @@ std::optional<Any> Evolution::broadcastTrainingResult(StateMachine& dsm)
     trainingResult.summary = pendingTrainingResult_->summary;
     trainingResult.candidates.reserve(pendingTrainingResult_->candidates.size());
     for (const auto& candidate : pendingTrainingResult_->candidates) {
-        trainingResult.candidates.push_back(Api::TrainingResult::Candidate{
-            .id = candidate.id,
-            .fitness = candidate.fitness,
-            .brainKind = candidate.brainKind,
-            .brainVariant = candidate.brainVariant,
-            .generation = candidate.generation,
-        });
+        trainingResult.candidates.push_back(
+            Api::TrainingResult::Candidate{
+                .id = candidate.id,
+                .fitness = candidate.fitness,
+                .brainKind = candidate.brainKind,
+                .brainVariant = candidate.brainVariant,
+                .generation = candidate.generation,
+            });
     }
 
     auto* wsService = dsm.getWebSocketService();

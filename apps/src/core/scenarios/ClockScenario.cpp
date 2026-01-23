@@ -449,12 +449,13 @@ void ClockScenario::setup(World& world)
     const WorldData& data = world.getData();
 
     // Static corner torches (fire-and-forget, LightManager owns them).
-    world.getLightManager().addLight(PointLight{
-        .position = Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
-        .color = ColorNames::torchOrange(),
-        .intensity = 0.1f,
-        .radius = 15.0f,
-        .attenuation = 0.05f });
+    world.getLightManager().addLight(
+        PointLight{ .position =
+                        Vector2d{ static_cast<double>(data.width - 2), static_cast<double>(2) },
+                    .color = ColorNames::torchOrange(),
+                    .intensity = 0.1f,
+                    .radius = 15.0f,
+                    .attenuation = 0.05f });
 
     world.getLightManager().addLight(
         PointLight{ .position = Vector2d{ static_cast<double>(2), static_cast<double>(2) },
@@ -1756,16 +1757,18 @@ std::vector<ClockScenario::WallSpec> ClockScenario::generateWallSpecs(const Worl
 
     // Door roof cells (structural, render as wall/gray).
     for (const auto& roof_pos : door_manager_.getRoofPositions(data)) {
-        walls.push_back({ static_cast<int16_t>(roof_pos.x),
-                          static_cast<int16_t>(roof_pos.y),
-                          Material::EnumType::Wall });
+        walls.push_back(
+            { static_cast<int16_t>(roof_pos.x),
+              static_cast<int16_t>(roof_pos.y),
+              Material::EnumType::Wall });
     }
 
     // Door frame cells (wall above door, floor at door - render as wall/gray).
     for (const auto& frame_pos : door_manager_.getFramePositions(data)) {
-        walls.push_back({ static_cast<int16_t>(frame_pos.x),
-                          static_cast<int16_t>(frame_pos.y),
-                          Material::EnumType::Wall });
+        walls.push_back(
+            { static_cast<int16_t>(frame_pos.x),
+              static_cast<int16_t>(frame_pos.y),
+              Material::EnumType::Wall });
     }
 
     return walls;

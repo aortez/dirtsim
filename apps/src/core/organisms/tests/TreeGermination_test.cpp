@@ -544,8 +544,9 @@ TEST_F(TreeGerminationTest, VerticalBoneForceBehavior)
     Vector2i seed_pos{ 1, 2 };
     Vector2i wood1_target{ 1, 1 };
     Vector2i wood2_target{ 1, 0 };
-    tree->setBrain(std::make_unique<ScriptedGrowWoodBrain>(
-        std::vector<Vector2i>{ wood1_target, wood2_target }));
+    tree->setBrain(
+        std::make_unique<ScriptedGrowWoodBrain>(
+            std::vector<Vector2i>{ wood1_target, wood2_target }));
 
     // Give tree enough energy to grow two WOOD cells.
     tree->setEnergy(100.0);

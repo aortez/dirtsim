@@ -76,6 +76,8 @@ public:
     Network::WebSocketServiceInterface& getWebSocketService();
     Network::WebSocketService* getConcreteWebSocketService();
     bool hasWebSocketService() const { return wsService_ != nullptr; }
+    void setLastServerAddress(const std::string& host, uint16_t port);
+    bool queueReconnectToLastServer();
 
     UiComponentManager* getUiComponentManager() { return uiManager_.get(); }
 
@@ -104,6 +106,11 @@ private:
     State::Any fsmState{ State::Startup{} };
     std::unique_ptr<H264Encoder> h264Encoder_;
     std::unique_ptr<Server::PeerAdvertisement> peerAd_;
+    std::string peerServiceName_;
+    std::string lastServerHost_;
+    uint16_t lastServerPort_ = 0;
+    bool hasLastServerAddress_ = false;
+    uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
 
     bool isAutoShrinkBlocked() const;

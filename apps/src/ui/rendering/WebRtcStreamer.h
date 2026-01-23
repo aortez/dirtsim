@@ -89,6 +89,11 @@ public:
     void removeClient(const std::string& clientId);
 
     /**
+     * @brief Close and remove all client connections.
+     */
+    void closeAllClients();
+
+    /**
      * @brief Capture and send a frame to all connected clients.
      *
      * Should be called regularly (e.g., 30fps) from the main loop.

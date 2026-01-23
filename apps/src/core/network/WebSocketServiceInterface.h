@@ -39,7 +39,8 @@ public:
     virtual bool isConnected() const = 0;
     virtual std::string getUrl() const = 0;
 
-    virtual Result<std::monostate, std::string> listen(uint16_t port) = 0;
+    virtual Result<std::monostate, std::string> listen(
+        uint16_t port, const std::string& bindAddress = "0.0.0.0") = 0;
     virtual bool isListening() const = 0;
     virtual void stopListening() = 0;
 

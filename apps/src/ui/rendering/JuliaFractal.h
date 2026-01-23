@@ -178,7 +178,7 @@ private:
     int displayFpsSampleCount_ = 0;      // Number of display samples.
     double lastDisplayUpdateTime_ = 0.0; // Time of last update() call.
     constexpr static double FPS_CHECK_INTERVAL = 2.0;
-    constexpr static double FPS_LOG_INTERVAL = 10.0;
+    constexpr static double FPS_LOG_INTERVAL = 60.0;
     constexpr static int FPS_SAMPLE_COUNT = 60; // Average over 60 frames.
     constexpr static double TARGET_FPS = 60.0;
 

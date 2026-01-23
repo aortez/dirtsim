@@ -92,11 +92,12 @@ TEST_F(BuoyancyTest, PureFluidPressureField)
     spdlog::info("Starting BuoyancyTest::PureFluidPressureField");
 
     // Setup: Vertical column of 5 water cells.
-    setupColumn({ Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water });
+    setupColumn(
+        { Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -150,11 +151,12 @@ TEST_F(BuoyancyTest, SolidInFluidColumn)
     spdlog::info("Starting BuoyancyTest::SolidInFluidColumn");
 
     // Setup: Water column with metal cell in the middle.
-    setupColumn({ Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Metal,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water });
+    setupColumn(
+        { Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Metal,
+          Material::EnumType::Water,
+          Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -215,11 +217,12 @@ TEST_F(BuoyancyTest, PressureForceDirection)
     spdlog::info("Starting BuoyancyTest::PressureForceDirection");
 
     // Setup: Water column with metal cell in the middle.
-    setupColumn({ Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Metal,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water });
+    setupColumn(
+        { Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Metal,
+          Material::EnumType::Water,
+          Material::EnumType::Water });
 
     // Execute: Calculate hydrostatic pressure.
     calculatePressure();
@@ -271,11 +274,12 @@ TEST_F(BuoyancyTest, NetForceCalculation)
         spdlog::info("  Test Case A: Metal in water");
 
         // Setup.
-        setupColumn({ Material::EnumType::Water,
-                      Material::EnumType::Water,
-                      Material::EnumType::Metal,
-                      Material::EnumType::Water,
-                      Material::EnumType::Water });
+        setupColumn(
+            { Material::EnumType::Water,
+              Material::EnumType::Water,
+              Material::EnumType::Metal,
+              Material::EnumType::Water,
+              Material::EnumType::Water });
         calculatePressure();
 
         WorldPressureCalculator calculator;
@@ -316,11 +320,12 @@ TEST_F(BuoyancyTest, NetForceCalculation)
         world->getPhysicsSettings().gravity = 1.0;
 
         // Setup.
-        setupColumn({ Material::EnumType::Water,
-                      Material::EnumType::Water,
-                      Material::EnumType::Wood,
-                      Material::EnumType::Water,
-                      Material::EnumType::Water });
+        setupColumn(
+            { Material::EnumType::Water,
+              Material::EnumType::Water,
+              Material::EnumType::Wood,
+              Material::EnumType::Water,
+              Material::EnumType::Water });
         calculatePressure();
 
         WorldPressureCalculator calculator;
@@ -364,11 +369,12 @@ TEST_F(BuoyancyTest, WoodDevelopsUpwardVelocity)
     spdlog::info("Starting BuoyancyTest::WoodDevelopsUpwardVelocity");
 
     // Setup: Wood cell submerged in water column.
-    setupColumn({ Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Wood,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water });
+    setupColumn(
+        { Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Wood,
+          Material::EnumType::Water,
+          Material::EnumType::Water });
 
     // Get wood cell reference.
     Cell& wood = world->getData().at(0, 2);
@@ -738,11 +744,12 @@ TEST_F(BuoyancyTest, MetalDevelopsDownwardVelocity)
     spdlog::info("Starting BuoyancyTest::MetalDevelopsDownwardVelocity");
 
     // Setup: Metal cell submerged in water column.
-    setupColumn({ Material::EnumType::Water,
-                  Material::EnumType::Water,
-                  Material::EnumType::Metal,
-                  Material::EnumType::Water,
-                  Material::EnumType::Water });
+    setupColumn(
+        { Material::EnumType::Water,
+          Material::EnumType::Water,
+          Material::EnumType::Metal,
+          Material::EnumType::Water,
+          Material::EnumType::Water });
 
     // Verify initial state: metal at rest.
     const Cell& initial_metal = world->getData().at(0, 2);
