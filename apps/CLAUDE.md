@@ -507,7 +507,7 @@ http://dirtsim.local:8081/garden
 ./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
 ```
 
-The token is shown on the device UI Network panel and in `SystemStatus` as `lan_web_ui_token`. Remote WebSocket connections must include `?token=...` (localhost is exempt).
+The token is shown on the device UI Network panel and in `SystemStatus` as `lan_websocket_token`. Remote WebSocket connections must include `?token=...` (localhost is exempt). LAN Web UI enables incoming WebSocket access automatically.
 
 **Implementation:**
 - **Server**: `src/ui/rendering/WebRtcStreamer.{h,cpp}` - Manages peer connections and H.264 RTP streaming

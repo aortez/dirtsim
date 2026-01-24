@@ -17,6 +17,8 @@ namespace Network {
 
 namespace {
 constexpr const char* kClientHelloMessageType = "ClientHello";
+constexpr auto kAuthAcceptDelay = std::chrono::milliseconds(100);
+constexpr auto kAuthRejectDelay = std::chrono::milliseconds(500);
 
 bool isUiHello(const ClientHello& hello)
 {
@@ -906,6 +908,7 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
                     Network,
                     "Rejecting non-local client connection from {} (token not configured)",
                     remoteLabel);
+                std::this_thread::sleep_for(kAuthRejectDelay);
                 ws->close();
                 return;
             }
@@ -914,6 +917,7 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
                     Network,
                     "Rejecting non-local client connection from {} (token missing)",
                     remoteLabel);
+                std::this_thread::sleep_for(kAuthRejectDelay);
                 ws->close();
                 return;
             }
@@ -922,9 +926,11 @@ void WebSocketService::onClientConnected(std::shared_ptr<rtc::WebSocket> ws)
                     Network,
                     "Rejecting non-local client connection from {} (token mismatch)",
                     remoteLabel);
+                std::this_thread::sleep_for(kAuthRejectDelay);
                 ws->close();
                 return;
             }
+            std::this_thread::sleep_for(kAuthAcceptDelay);
         }
 
         LOG_INFO(Network, "Client connected");

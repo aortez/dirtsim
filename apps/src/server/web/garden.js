@@ -60,22 +60,16 @@ function isLocalHostname(hostname) {
     return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 }
 
-function getWebUiToken() {
-    if (isLocalHostname(window.location.hostname)) {
-        return '';
-    }
+function getCachedWebUiToken() {
+    return sessionStorage.getItem('dirtsim_web_ui_token') || '';
+}
 
-    var token = sessionStorage.getItem('dirtsim_web_ui_token');
-    if (!token) {
-        token = prompt('Enter LAN Web UI token');
-        if (token) {
-            token = token.trim();
-            if (token.length > 0) {
-                sessionStorage.setItem('dirtsim_web_ui_token', token);
-            }
-        }
-    }
-    return token || '';
+function storeWebUiToken(token) {
+    sessionStorage.setItem('dirtsim_web_ui_token', token);
+}
+
+function clearWebUiToken() {
+    sessionStorage.removeItem('dirtsim_web_ui_token');
 }
 
 function sanitizeWebSocketUrl(url) {
@@ -205,7 +199,7 @@ setInterval(updateStatusDisplay, 1000);
 // Persistent WebSocket Connection Manager
 //=============================================================================
 
-function createPersistentConnection(name, url, onStatusChange) {
+function createPersistentConnection(name, url, onStatusChange, onSocketReady) {
     var conn = {
         name: name,
         url: url,
@@ -231,6 +225,7 @@ function createPersistentConnection(name, url, onStatusChange) {
             logDebug(name + ': Connected (persistent)');
             conn.connected = true;
             conn.reconnectDelay = 1000;
+            if (onSocketReady) onSocketReady(conn);
             if (onStatusChange) onStatusChange(true);
             updateStatusDisplay();
         };
@@ -351,28 +346,269 @@ function createPersistentConnection(name, url, onStatusChange) {
 }
 
 //=============================================================================
-// Connection Instances
+// Connection Manager
 //=============================================================================
 
-var webUiToken = getWebUiToken();
+function createWebUiConnectionManager() {
+    var webUiToken = '';
+    var serverConn = null;
+    var uiConn = null;
+    var connectionsInitialized = false;
+    var tokenGate = null;
+    var readyCallbacks = [];
 
-var serverConn = createPersistentConnection(
-    'Server',
-    buildWebSocketUrl(8080, webUiToken),
-    function(connected) {
-        updateStatusDisplay();
-        if (connected) {
-            // Discover peers immediately when server connects.
-            discoverPeers();
+    function notifyReady() {
+        while (readyCallbacks.length > 0) {
+            var cb = readyCallbacks.shift();
+            cb();
         }
     }
-);
 
-var uiConn = createPersistentConnection(
-    'UI',
-    buildWebSocketUrl(7070, webUiToken),
-    function(connected) { updateStatusDisplay(); }
-);
+    function createTokenGate() {
+        var gate = document.createElement('div');
+        gate.className = 'token-gate hidden';
+        gate.innerHTML =
+            '<div class="token-gate-card">' +
+            '<h2>WebSocket Token Required</h2>' +
+            '<p>Enter the token shown on the device\'s Network panel.</p>' +
+        '<div class="token-gate-row">' +
+        '<input id="token-input" type="password" autocomplete="off" />' +
+        '<button id="token-toggle" class="toggle-visibility">Show</button>' +
+        '<button id="token-submit">Connect</button>' +
+        '</div>' +
+        '<div id="token-message" class="token-gate-message"></div>' +
+        '</div>';
+    document.body.appendChild(gate);
+
+    var input = gate.querySelector('#token-input');
+    var toggle = gate.querySelector('#token-toggle');
+    var button = gate.querySelector('#token-submit');
+    var message = gate.querySelector('#token-message');
+
+        function setMessage(text, isError) {
+            message.textContent = text || '';
+            if (isError) {
+                message.classList.add('error');
+            } else {
+                message.classList.remove('error');
+            }
+        }
+
+        function setBusy(isBusy, text) {
+            if (text !== undefined) {
+                setMessage(text, false);
+            }
+            input.disabled = isBusy;
+            button.disabled = isBusy;
+        }
+
+        function show() {
+            gate.classList.remove('hidden');
+        }
+
+        function hide() {
+            gate.classList.add('hidden');
+        }
+
+    return {
+        show: show,
+        hide: hide,
+        setBusy: setBusy,
+        setMessage: setMessage,
+        setError: function(text) { setMessage(text, true); },
+        input: input,
+        toggle: toggle,
+        button: button
+    };
+}
+
+    function testWebSocketToken(token, onResult) {
+        var url = buildWebSocketUrl(8080, token);
+        var ws = null;
+        var settled = false;
+        var stableTimer = null;
+        var timeoutTimer = null;
+
+        function cleanup() {
+            if (stableTimer) clearTimeout(stableTimer);
+            if (timeoutTimer) clearTimeout(timeoutTimer);
+            if (ws) {
+                ws.onopen = null;
+                ws.onerror = null;
+                ws.onclose = null;
+            }
+        }
+
+        function finish(ok, reason) {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            onResult(ok, reason || '');
+        }
+
+        try {
+            ws = new WebSocket(url);
+        } catch (e) {
+            finish(false, e.message || 'invalid url');
+            return;
+        }
+
+        timeoutTimer = setTimeout(function() {
+            try {
+                if (ws) ws.close();
+            } catch (_unused) {}
+            finish(false, 'timeout');
+        }, 2500);
+
+        ws.onopen = function() {
+            stableTimer = setTimeout(function() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    try {
+                        ws.close();
+                    } catch (_unused) {}
+                    finish(true);
+                }
+            }, 700);
+        };
+
+        ws.onerror = function() {
+            finish(false, 'error');
+        };
+
+        ws.onclose = function() {
+            if (!settled) {
+                finish(false, 'rejected');
+            }
+        };
+    }
+
+    function initializeConnections(token) {
+        if (connectionsInitialized) return;
+        connectionsInitialized = true;
+        webUiToken = token;
+
+        serverConn = createPersistentConnection(
+            'Server',
+            buildWebSocketUrl(8080, webUiToken),
+            function(connected) {
+                updateStatusDisplay();
+                if (connected) {
+                    // Discover peers immediately when server connects.
+                    discoverPeers();
+                }
+            }
+        );
+
+        uiConn = createPersistentConnection(
+            'UI',
+            buildWebSocketUrl(7070, webUiToken),
+            function(connected) { updateStatusDisplay(); },
+            function(conn) { setupSignalingHook(conn); }
+        );
+
+        notifyReady();
+    }
+
+    function beginTokenFlow() {
+        if (isLocalHostname(window.location.hostname)) {
+            initializeConnections('');
+            return;
+        }
+
+        if (!tokenGate) {
+        tokenGate = createTokenGate();
+        tokenGate.button.addEventListener('click', function() {
+            validateToken(tokenGate.input.value, false);
+        });
+        tokenGate.toggle.addEventListener('click', function() {
+            var isMasked = tokenGate.input.type === 'password';
+            tokenGate.input.type = isMasked ? 'text' : 'password';
+            tokenGate.toggle.textContent = isMasked ? 'Hide' : 'Show';
+            tokenGate.input.focus();
+        });
+        tokenGate.input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                validateToken(tokenGate.input.value, false);
+            }
+        });
+        }
+
+        tokenGate.show();
+        var cached = getCachedWebUiToken();
+        if (cached) {
+            tokenGate.input.value = cached;
+            tokenGate.setBusy(true, 'Validating saved token...');
+            validateToken(cached, true);
+        } else {
+            tokenGate.setBusy(false, '');
+            tokenGate.setMessage('Enter the WebSocket token to connect.', false);
+            tokenGate.input.focus();
+        }
+    }
+
+    function validateToken(token, isAuto) {
+        var trimmed = (token || '').trim();
+        if (!trimmed) {
+            tokenGate.setError('Token required.');
+            tokenGate.setBusy(false);
+            return;
+        }
+
+        tokenGate.setBusy(true, 'Validating token...');
+        testWebSocketToken(trimmed, function(ok, reason) {
+            if (!ok) {
+                clearWebUiToken();
+                tokenGate.setBusy(false);
+                if (isAuto) {
+                    tokenGate.setError('Saved token rejected. Enter the current token.');
+                } else if (reason === 'timeout') {
+                    tokenGate.setError('Validation timed out. Check connectivity and try again.');
+                } else {
+                    tokenGate.setError('Token rejected. Please re-check the device.');
+                }
+                tokenGate.input.focus();
+                return;
+            }
+
+            storeWebUiToken(trimmed);
+            tokenGate.hide();
+            initializeConnections(trimmed);
+        });
+    }
+
+    function sendServer(cmdName, params, onSuccess, timeoutMs) {
+        if (!serverConn) return false;
+        return serverConn.send(cmdName, params, onSuccess, timeoutMs);
+    }
+
+    function sendUi(cmdName, params, onSuccess, timeoutMs) {
+        if (!uiConn) return false;
+        return uiConn.send(cmdName, params, onSuccess, timeoutMs);
+    }
+
+    function onReady(callback) {
+        if (connectionsInitialized) {
+            callback();
+            return;
+        }
+        readyCallbacks.push(callback);
+    }
+
+    return {
+        init: beginTokenFlow,
+        isReady: function() { return connectionsInitialized; },
+        getServerConn: function() { return serverConn; },
+        getUiConn: function() { return uiConn; },
+        isServerConnected: function() { return serverConn ? serverConn.isConnected() : false; },
+        isUiConnected: function() { return uiConn ? uiConn.isConnected() : false; },
+        sendServer: sendServer,
+        sendUi: sendUi,
+        onReady: onReady
+    };
+}
+
+var wsManager = createWebUiConnectionManager();
+wsManager.init();
 
 //=============================================================================
 // Peer Display
@@ -419,8 +655,8 @@ function displayPeers(peers) {
             })(peer);
         }
 
-        var conn = (peer.port === 8080) ? serverConn : uiConn;
-        var isConnected = conn.isConnected();
+        var conn = (peer.port === 8080) ? wsManager.getServerConn() : wsManager.getUiConn();
+        var isConnected = conn && conn.isConnected();
         var connStatus = isConnected ? 'connected' : 'disconnected';
 
         // Apply disconnected styling if not connected.
@@ -491,7 +727,10 @@ function displayPeers(peers) {
 }
 
 function queryStatus(peer) {
-    var conn = (peer.port === 8080) ? serverConn : uiConn;
+    var conn = (peer.port === 8080) ? wsManager.getServerConn() : wsManager.getUiConn();
+    if (!conn) {
+        return;
+    }
     conn.send('StatusGet', null, function(response) {
         var payload = getResponsePayload(response);
         var stateSpan = document.getElementById('state-' + peer.host + '-' + peer.port);
@@ -542,7 +781,10 @@ function getHealthClass(percent) {
 }
 
 function discoverPeers() {
-    var sent = serverConn.send('PeersGet', null, function(response) {
+    if (!wsManager.isReady()) {
+        return;
+    }
+    var sent = wsManager.sendServer('PeersGet', null, function(response) {
         if (response.value && response.value.peers) {
             displayPeers(response.value.peers);
         } else {
@@ -612,7 +854,7 @@ function startWebRtcStream() {
     var statusSpan = document.getElementById('stream-status-localhost-7070');
     var video = document.getElementById('video-localhost-7070');
 
-    if (!uiConn.isConnected()) {
+    if (!wsManager.isUiConnected()) {
         if (statusSpan) statusSpan.textContent = 'UI not connected';
         updateStreamButton('Start Stream', false);
         return;
@@ -660,7 +902,7 @@ function startWebRtcStream() {
     peerConnection.onicecandidate = function(event) {
         if (event.candidate) {
             logDebug('WebRTC: Sending ICE candidate');
-            uiConn.send('WebRtcCandidate', {
+            wsManager.sendUi('WebRtcCandidate', {
                 clientId: webrtcClientId,
                 candidate: event.candidate.candidate,
                 mid: event.candidate.sdpMid
@@ -690,7 +932,7 @@ function startWebRtcStream() {
     };
 
     // Request stream and process offer synchronously.
-    uiConn.send('StreamStart', {
+    wsManager.sendUi('StreamStart', {
         clientId: webrtcClientId
     }, function(response) {
         var payload = getResponsePayload(response);
@@ -712,7 +954,7 @@ function startWebRtcStream() {
             return peerConnection.setLocalDescription(answer);
         }).then(function() {
             logDebug('WebRTC: Sending answer to server');
-            uiConn.send('WebRtcAnswer', {
+            wsManager.sendUi('WebRtcAnswer', {
                 clientId: webrtcClientId,
                 sdp: peerConnection.localDescription.sdp
             });
@@ -743,7 +985,7 @@ function handleWebRtcSignaling(message) {
                 return peerConnection.setLocalDescription(answer);
             }).then(function() {
                 logDebug('WebRTC: Sending answer to server');
-                uiConn.send('WebRtcAnswer', {
+                wsManager.sendUi('WebRtcAnswer', {
                     clientId: webrtcClientId,
                     sdp: peerConnection.localDescription.sdp
                 });
@@ -758,29 +1000,28 @@ function handleWebRtcSignaling(message) {
 }
 
 // Hook into WebSocket message handler for signaling.
-function setupSignalingHook() {
-    if (uiConn.socket) {
-        var oldHandler = uiConn.socket.onmessage;
-        uiConn.socket.onmessage = function(event) {
+function setupSignalingHook(conn) {
+    if (conn && conn.socket) {
+        var oldHandler = conn.socket.onmessage;
+        conn.socket.onmessage = function(event) {
             if (typeof event.data === 'string') {
                 handleWebRtcSignaling(event.data);
             }
-            if (oldHandler) oldHandler.call(uiConn.socket, event);
+            if (oldHandler) oldHandler.call(conn.socket, event);
         };
     }
 }
-setTimeout(setupSignalingHook, 2000);
 
 //=============================================================================
 // UI Commands
 //=============================================================================
 
 function sendExitCommand() {
-    if (!uiConn.isConnected()) {
+    if (!wsManager.isUiConnected()) {
         logDebug('Cannot send Exit - UI not connected');
         return;
     }
-    uiConn.send('Exit', {}, function(response) {
+    wsManager.sendUi('Exit', {}, function(response) {
         logDebug('Exit command sent');
     });
 }
@@ -839,7 +1080,7 @@ function setupMouseForwarding(videoElement) {
     var lastSentPixel = { x: -1, y: -1 };
 
     function sendMouseEvent(eventType, elementX, elementY, button) {
-        if (!uiConn.isConnected()) return;
+        if (!wsManager.isUiConnected()) return;
 
         var renderRect = getVideoRenderRect(videoElement);
 
@@ -883,7 +1124,10 @@ function setupMouseForwarding(videoElement) {
         if (button !== undefined && button !== null) {
             payload.button = buttonNames[button] || 'LEFT';
         }
-        uiConn.send(eventType, payload);
+        if (!wsManager.isUiConnected()) {
+            return;
+        }
+        wsManager.sendUi(eventType, payload);
     }
 
     var mousedownHandler = function(e) {

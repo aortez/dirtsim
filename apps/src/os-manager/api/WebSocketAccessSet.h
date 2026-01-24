@@ -4,53 +4,43 @@
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
-#include <cstdint>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace OsApi {
-namespace SystemStatus {
+namespace WebSocketAccessSet {
 
-DEFINE_API_NAME(SystemStatus);
+DEFINE_API_NAME(WebSocketAccessSet);
 
-struct Okay;
+struct Okay; // Forward declaration for API_COMMAND() macro.
 
 struct Command {
+    bool enabled = false;
+
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<0>;
+    using serialize = zpp::bits::members<1>;
 };
 
 struct Okay {
-    uint64_t uptime_seconds = 0;
-    double cpu_percent = 0.0;
-    uint64_t memory_free_kb = 0;
-    uint64_t memory_total_kb = 0;
-    uint64_t disk_free_bytes_root = 0;
-    uint64_t disk_total_bytes_root = 0;
-    uint64_t disk_free_bytes_data = 0;
-    uint64_t disk_total_bytes_data = 0;
-    std::string ui_status;
-    std::string server_status;
-    bool lan_web_ui_enabled = false;
-    bool lan_websocket_enabled = false;
-    std::string lan_websocket_token;
+    bool enabled = false;
+    std::string token;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<2>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace SystemStatus
+} // namespace WebSocketAccessSet
 } // namespace OsApi
 } // namespace DirtSim

@@ -24,7 +24,7 @@ namespace Ui {
 namespace State {
 
 namespace {
-constexpr int kNetworkPanelWidth = 320;
+constexpr int kNetworkPanelWidth = 640;
 }
 
 void StartMenu::onEnter(StateMachine& sm)

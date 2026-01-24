@@ -7,6 +7,7 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include <spdlog/spdlog.h>
 
@@ -79,6 +80,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::TrainingResultDiscard::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingResultSave::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingStart::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::WebSocketAccessSet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::WebRtcAnswer::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::WebRtcCandidate::Cwc>(uiHandlers_, uiExampleHandlers_);
 
@@ -92,6 +94,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::StopServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StopUi::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::SystemStatus::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::WebSocketAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 
     spdlog::info(

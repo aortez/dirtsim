@@ -8,6 +8,7 @@
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/states/State.h"
 #include "server/api/ApiError.h"
@@ -73,6 +74,7 @@ public:
     void processEvents() override;
 
     OsApi::SystemStatus::Okay buildSystemStatus();
+    Result<OsApi::WebSocketAccessSet::Okay, ApiError> setWebSocketAccess(bool enabled);
     Result<OsApi::WebUiAccessSet::Okay, ApiError> setWebUiAccess(bool enabled);
     Result<std::monostate, ApiError> startService(const std::string& unitName);
     Result<std::monostate, ApiError> stopService(const std::string& unitName);
@@ -108,7 +110,8 @@ private:
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
     bool webUiEnabled_ = false;
-    std::string webUiToken_;
+    bool webSocketEnabled_ = false;
+    std::string webSocketToken_;
 };
 
 } // namespace OsManager

@@ -21,7 +21,7 @@
 #include "ui/state-machine/api/TrainingStart.h"
 #include "ui/state-machine/api/WebRtcAnswer.h"
 #include "ui/state-machine/api/WebRtcCandidate.h"
-#include "ui/state-machine/api/WebUiAccessSet.h"
+#include "ui/state-machine/api/WebSocketAccessSet.h"
 #include <cctype>
 #include <spdlog/spdlog.h>
 
@@ -131,9 +131,9 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::WebRtcCandidate::Command::fromJson(cmd));
         }
-        else if (commandName == UiApi::WebUiAccessSet::Command::name()) {
+        else if (commandName == UiApi::WebSocketAccessSet::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
-                UiApi::WebUiAccessSet::Command::fromJson(cmd));
+                UiApi::WebSocketAccessSet::Command::fromJson(cmd));
         }
         else {
             return Result<UiApiCommand, ApiError>::error(

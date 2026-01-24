@@ -6,9 +6,10 @@
 #include "core/network/JsonProtocol.h"
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "server/api/StatusGet.h"
+#include "server/api/WebSocketAccessSet.h"
 #include "server/api/WebUiAccessSet.h"
 #include "ui/state-machine/api/StatusGet.h"
-#include "ui/state-machine/api/WebUiAccessSet.h"
+#include "ui/state-machine/api/WebSocketAccessSet.h"
 #include <cerrno>
 #include <chrono>
 #include <cstdlib>
@@ -154,7 +155,7 @@ std::string resolveWorkDir(const std::string& overrideDir)
     return "/tmp/dirtsim";
 }
 
-std::string generateWebUiToken()
+std::string generateWebSocketToken()
 {
     static constexpr char kHexDigits[] = "0123456789abcdef";
     std::random_device rd;
@@ -327,7 +328,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
 {
     initializeDefaultDependencies();
     setupWebSocketService();
-    webUiToken_ = generateWebUiToken();
+    webSocketToken_ = generateWebSocketToken();
 }
 
 OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfig& backendConfig)
@@ -335,7 +336,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
 {
     initializeDefaultDependencies();
     setupWebSocketService();
-    webUiToken_ = generateWebUiToken();
+    webSocketToken_ = generateWebSocketToken();
 }
 
 OperatingSystemManager::OperatingSystemManager(TestMode mode)
@@ -355,7 +356,7 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
         dependencies_.reboot = [] {};
     }
 
-    webUiToken_ = generateWebUiToken();
+    webSocketToken_ = generateWebSocketToken();
 }
 
 OperatingSystemManager::~OperatingSystemManager() = default;
@@ -508,6 +509,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::RestartUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::Reboot::Cwc>(
         [this](OsApi::Reboot::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::WebSocketAccessSet::Cwc>(
+        [this](OsApi::WebSocketAccessSet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::WebUiAccessSet::Cwc>(
         [this](OsApi::WebUiAccessSet::Cwc cwc) { queueEvent(cwc); });
 
@@ -560,6 +563,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::StopServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopUi);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::SystemStatus);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::WebSocketAccessSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WebUiAccessSet);
 
 #undef DISPATCH_OS_CMD_WITH_RESP
@@ -579,14 +583,16 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatus()
 
     OsApi::SystemStatus::Okay status;
     status.lan_web_ui_enabled = webUiEnabled_;
-    status.lan_web_ui_token = webUiEnabled_ ? webUiToken_ : "";
+    status.lan_websocket_enabled = webSocketEnabled_;
+    status.lan_websocket_token = webSocketEnabled_ ? webSocketToken_ : "";
     return status;
 }
 
-Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAccess(bool enabled)
+Result<OsApi::WebSocketAccessSet::Okay, ApiError> OperatingSystemManager::setWebSocketAccess(
+    bool enabled)
 {
     constexpr int kTimeoutMs = 2000;
-    const std::string token = enabled ? webUiToken_ : "";
+    const std::string token = enabled ? webSocketToken_ : "";
 
     auto setServerAccess = [](bool accessEnabled,
                               const std::string& accessToken,
@@ -599,18 +605,19 @@ Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAc
                 ApiError("Failed to connect to server: " + connectResult.errorValue()));
         }
 
-        Api::WebUiAccessSet::Command cmd{ .enabled = accessEnabled, .token = accessToken };
-        auto response = client.sendCommandAndGetResponse<Api::WebUiAccessSet::Okay>(cmd, timeoutMs);
+        Api::WebSocketAccessSet::Command cmd{ .enabled = accessEnabled, .token = accessToken };
+        auto response =
+            client.sendCommandAndGetResponse<Api::WebSocketAccessSet::Okay>(cmd, timeoutMs);
         client.disconnect();
 
         if (response.isError()) {
             return Result<std::monostate, ApiError>::error(
-                ApiError("Server WebUiAccessSet failed: " + response.errorValue()));
+                ApiError("Server WebSocketAccessSet failed: " + response.errorValue()));
         }
         const auto inner = response.value();
         if (inner.isError()) {
             return Result<std::monostate, ApiError>::error(
-                ApiError("Server WebUiAccessSet failed: " + inner.errorValue().message));
+                ApiError("Server WebSocketAccessSet failed: " + inner.errorValue().message));
         }
 
         return Result<std::monostate, ApiError>::okay(std::monostate{});
@@ -627,27 +634,35 @@ Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAc
                 ApiError("Failed to connect to UI: " + connectResult.errorValue()));
         }
 
-        UiApi::WebUiAccessSet::Command cmd{ .enabled = accessEnabled, .token = accessToken };
+        UiApi::WebSocketAccessSet::Command cmd{ .enabled = accessEnabled, .token = accessToken };
         auto response =
-            client.sendCommandAndGetResponse<UiApi::WebUiAccessSet::Okay>(cmd, timeoutMs);
+            client.sendCommandAndGetResponse<UiApi::WebSocketAccessSet::Okay>(cmd, timeoutMs);
         client.disconnect();
 
         if (response.isError()) {
             return Result<std::monostate, ApiError>::error(
-                ApiError("UI WebUiAccessSet failed: " + response.errorValue()));
+                ApiError("UI WebSocketAccessSet failed: " + response.errorValue()));
         }
         const auto inner = response.value();
         if (inner.isError()) {
             return Result<std::monostate, ApiError>::error(
-                ApiError("UI WebUiAccessSet failed: " + inner.errorValue().message));
+                ApiError("UI WebSocketAccessSet failed: " + inner.errorValue().message));
         }
 
         return Result<std::monostate, ApiError>::okay(std::monostate{});
     };
 
+    if (!enabled && webUiEnabled_) {
+        const auto webUiResult = setWebUiAccess(false);
+        if (webUiResult.isError()) {
+            return Result<OsApi::WebSocketAccessSet::Okay, ApiError>::error(
+                webUiResult.errorValue());
+        }
+    }
+
     const auto serverResult = setServerAccess(enabled, token, kTimeoutMs);
     if (serverResult.isError()) {
-        return Result<OsApi::WebUiAccessSet::Okay, ApiError>::error(serverResult.errorValue());
+        return Result<OsApi::WebSocketAccessSet::Okay, ApiError>::error(serverResult.errorValue());
     }
 
     const auto uiResult = setUiAccess(enabled, token, kTimeoutMs);
@@ -655,14 +670,66 @@ Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAc
         if (enabled) {
             setServerAccess(false, "", kTimeoutMs);
         }
-        return Result<OsApi::WebUiAccessSet::Okay, ApiError>::error(uiResult.errorValue());
+        return Result<OsApi::WebSocketAccessSet::Okay, ApiError>::error(uiResult.errorValue());
+    }
+
+    webSocketEnabled_ = enabled;
+
+    OsApi::WebSocketAccessSet::Okay okay;
+    okay.enabled = enabled;
+    okay.token = enabled ? webSocketToken_ : "";
+    return Result<OsApi::WebSocketAccessSet::Okay, ApiError>::okay(std::move(okay));
+}
+
+Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAccess(bool enabled)
+{
+    constexpr int kTimeoutMs = 2000;
+
+    if (enabled && !webSocketEnabled_) {
+        const auto webSocketResult = setWebSocketAccess(true);
+        if (webSocketResult.isError()) {
+            return Result<OsApi::WebUiAccessSet::Okay, ApiError>::error(
+                webSocketResult.errorValue());
+        }
+    }
+
+    auto setServerAccess = [](bool accessEnabled,
+                              int timeoutMs) -> Result<std::monostate, ApiError> {
+        Network::WebSocketService client;
+        const std::string address = "ws://localhost:8080";
+        auto connectResult = client.connect(address, timeoutMs);
+        if (connectResult.isError()) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Failed to connect to server: " + connectResult.errorValue()));
+        }
+
+        Api::WebUiAccessSet::Command cmd{ .enabled = accessEnabled, .token = "" };
+        auto response = client.sendCommandAndGetResponse<Api::WebUiAccessSet::Okay>(cmd, timeoutMs);
+        client.disconnect();
+
+        if (response.isError()) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Server WebUiAccessSet failed: " + response.errorValue()));
+        }
+        const auto inner = response.value();
+        if (inner.isError()) {
+            return Result<std::monostate, ApiError>::error(
+                ApiError("Server WebUiAccessSet failed: " + inner.errorValue().message));
+        }
+
+        return Result<std::monostate, ApiError>::okay(std::monostate{});
+    };
+
+    const auto serverResult = setServerAccess(enabled, kTimeoutMs);
+    if (serverResult.isError()) {
+        return Result<OsApi::WebUiAccessSet::Okay, ApiError>::error(serverResult.errorValue());
     }
 
     webUiEnabled_ = enabled;
 
     OsApi::WebUiAccessSet::Okay okay;
     okay.enabled = enabled;
-    okay.token = enabled ? webUiToken_ : "";
+    okay.token = webSocketEnabled_ ? webSocketToken_ : "";
     return Result<OsApi::WebUiAccessSet::Okay, ApiError>::okay(std::move(okay));
 }
 
@@ -899,7 +966,8 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()
     status.server_status = getServerHealth(1500);
     status.ui_status = getUiHealth(1500);
     status.lan_web_ui_enabled = webUiEnabled_;
-    status.lan_web_ui_token = webUiEnabled_ ? webUiToken_ : "";
+    status.lan_websocket_enabled = webSocketEnabled_;
+    status.lan_websocket_token = webSocketEnabled_ ? webSocketToken_ : "";
 
     return status;
 }

@@ -2,6 +2,7 @@
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <arpa/inet.h>
@@ -16,25 +17,25 @@ namespace DirtSim {
 namespace Ui {
 
 namespace {
-struct WebUiCache {
-    bool enabled = false;
-    std::string token;
+struct NetworkAccessCache {
+    bool webUiEnabled = false;
+    bool webSocketEnabled = false;
+    std::string webSocketToken;
 };
 
-std::mutex webUiCacheMutex;
-WebUiCache webUiCache;
+std::mutex accessCacheMutex;
+NetworkAccessCache accessCache;
 
-WebUiCache getWebUiCache()
+NetworkAccessCache getAccessCache()
 {
-    std::lock_guard<std::mutex> lock(webUiCacheMutex);
-    return webUiCache;
+    std::lock_guard<std::mutex> lock(accessCacheMutex);
+    return accessCache;
 }
 
-void updateWebUiCache(bool enabled, const std::string& token)
+void updateAccessCache(const NetworkAccessCache& status)
 {
-    std::lock_guard<std::mutex> lock(webUiCacheMutex);
-    webUiCache.enabled = enabled;
-    webUiCache.token = enabled ? token : "";
+    std::lock_guard<std::mutex> lock(accessCacheMutex);
+    accessCache = status;
 }
 } // namespace
 
@@ -63,8 +64,43 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_text_color(title, lv_color_hex(0xFFFFFF), 0);
     lv_obj_set_width(title, LV_PCT(100));
 
+    lv_obj_t* contentRow = lv_obj_create(container_);
+    lv_obj_set_size(contentRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(contentRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        contentRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(contentRow, 0, 0);
+    lv_obj_set_style_pad_column(contentRow, 16, 0);
+    lv_obj_set_style_bg_opa(contentRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(contentRow, 0, 0);
+    lv_obj_clear_flag(contentRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* leftColumn = lv_obj_create(contentRow);
+    lv_obj_set_size(leftColumn, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(leftColumn, 3);
+    lv_obj_set_flex_flow(leftColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        leftColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(leftColumn, 0, 0);
+    lv_obj_set_style_pad_row(leftColumn, 6, 0);
+    lv_obj_set_style_bg_opa(leftColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(leftColumn, 0, 0);
+    lv_obj_clear_flag(leftColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* rightColumn = lv_obj_create(contentRow);
+    lv_obj_set_size(rightColumn, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(rightColumn, 2);
+    lv_obj_set_flex_flow(rightColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        rightColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_style_pad_all(rightColumn, 0, 0);
+    lv_obj_set_style_pad_row(rightColumn, 8, 0);
+    lv_obj_set_style_bg_opa(rightColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(rightColumn, 0, 0);
+    lv_obj_clear_flag(rightColumn, LV_OBJ_FLAG_SCROLLABLE);
+
     // WiFi status label.
-    wifiStatusLabel_ = lv_label_create(container_);
+    wifiStatusLabel_ = lv_label_create(leftColumn);
     lv_obj_set_style_text_font(wifiStatusLabel_, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(wifiStatusLabel_, lv_color_hex(0x00CED1), 0);
     lv_obj_set_width(wifiStatusLabel_, LV_PCT(100));
@@ -72,14 +108,14 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_pad_top(wifiStatusLabel_, 8, 0);
 
     // Networks section header.
-    lv_obj_t* networksHeader = lv_label_create(container_);
+    lv_obj_t* networksHeader = lv_label_create(leftColumn);
     lv_label_set_text(networksHeader, "Networks");
     lv_obj_set_style_text_font(networksHeader, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(networksHeader, lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_pad_top(networksHeader, 16, 0);
 
     // Networks list container.
-    networksContainer_ = lv_obj_create(container_);
+    networksContainer_ = lv_obj_create(leftColumn);
     lv_obj_set_size(networksContainer_, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(networksContainer_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
@@ -90,48 +126,58 @@ void NetworkDiagnosticsPanel::createUI()
     lv_obj_set_style_border_width(networksContainer_, 0, 0);
 
     // IP Address section header.
-    lv_obj_t* ipHeader = lv_label_create(container_);
+    lv_obj_t* ipHeader = lv_label_create(leftColumn);
     lv_label_set_text(ipHeader, "IP Address:");
     lv_obj_set_style_text_font(ipHeader, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(ipHeader, lv_color_hex(0xAAAAAA), 0);
     lv_obj_set_style_pad_top(ipHeader, 16, 0);
 
     // Address display label (will be updated with actual addresses).
-    addressLabel_ = lv_label_create(container_);
+    addressLabel_ = lv_label_create(leftColumn);
     lv_obj_set_style_text_font(addressLabel_, &lv_font_montserrat_18, 0);
     lv_obj_set_style_text_color(addressLabel_, lv_color_hex(0x00CED1), 0);
     lv_obj_set_width(addressLabel_, LV_PCT(100));
     lv_label_set_long_mode(addressLabel_, LV_LABEL_LONG_WRAP);
     lv_obj_set_style_pad_top(addressLabel_, 8, 0);
 
-    webUiToggle_ = LVGLBuilder::labeledSwitch(container_)
+    webUiToggle_ = LVGLBuilder::labeledSwitch(rightColumn)
                        .label("LAN Web UI")
                        .initialState(false)
                        .callback(onWebUiToggleChanged, this)
                        .buildOrLog();
 
     if (webUiToggle_) {
-        lv_obj_set_style_pad_top(webUiToggle_, 16, 0);
+        lv_obj_set_style_pad_top(webUiToggle_, 8, 0);
     }
 
-    webUiTokenTitleLabel_ = lv_label_create(container_);
-    lv_obj_set_style_text_font(webUiTokenTitleLabel_, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(webUiTokenTitleLabel_, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_set_width(webUiTokenTitleLabel_, LV_PCT(100));
-    lv_label_set_long_mode(webUiTokenTitleLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(webUiTokenTitleLabel_, 8, 0);
-    lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
+    webSocketToggle_ = LVGLBuilder::labeledSwitch(rightColumn)
+                           .label("Incoming WebSocket Traffic")
+                           .initialState(false)
+                           .callback(onWebSocketToggleChanged, this)
+                           .buildOrLog();
 
-    webUiTokenLabel_ = lv_label_create(container_);
-    lv_obj_set_style_text_font(webUiTokenLabel_, &lv_font_montserrat_18, 0);
-    lv_obj_set_style_text_color(webUiTokenLabel_, lv_color_hex(0x00CED1), 0);
-    lv_obj_set_width(webUiTokenLabel_, LV_PCT(100));
-    lv_label_set_long_mode(webUiTokenLabel_, LV_LABEL_LONG_WRAP);
-    lv_obj_set_style_pad_top(webUiTokenLabel_, 4, 0);
-    lv_label_set_text(webUiTokenLabel_, "--");
+    if (webSocketToggle_) {
+        lv_obj_set_style_pad_top(webSocketToggle_, 12, 0);
+    }
+
+    webSocketTokenTitleLabel_ = lv_label_create(rightColumn);
+    lv_obj_set_style_text_font(webSocketTokenTitleLabel_, &lv_font_montserrat_16, 0);
+    lv_obj_set_style_text_color(webSocketTokenTitleLabel_, lv_color_hex(0xAAAAAA), 0);
+    lv_obj_set_width(webSocketTokenTitleLabel_, LV_PCT(100));
+    lv_label_set_long_mode(webSocketTokenTitleLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_pad_top(webSocketTokenTitleLabel_, 12, 0);
+    lv_label_set_text(webSocketTokenTitleLabel_, "WebSocket token");
+
+    webSocketTokenLabel_ = lv_label_create(rightColumn);
+    lv_obj_set_style_text_font(webSocketTokenLabel_, &lv_font_montserrat_18, 0);
+    lv_obj_set_style_text_color(webSocketTokenLabel_, lv_color_hex(0x00CED1), 0);
+    lv_obj_set_width(webSocketTokenLabel_, LV_PCT(100));
+    lv_label_set_long_mode(webSocketTokenLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_pad_top(webSocketTokenLabel_, 4, 0);
+    lv_label_set_text(webSocketTokenLabel_, "--");
 
     // Refresh button.
-    refreshButton_ = LVGLBuilder::actionButton(container_)
+    refreshButton_ = LVGLBuilder::actionButton(leftColumn)
                          .text("Refresh")
                          .icon(LV_SYMBOL_REFRESH)
                          .mode(LVGLBuilder::ActionMode::Push)
@@ -148,12 +194,16 @@ void NetworkDiagnosticsPanel::createUI()
         lv_timer_pause(refreshTimer_);
     }
 
-    const auto cachedWebUi = getWebUiCache();
-    if (cachedWebUi.enabled) {
-        WebUiStatus cachedStatus;
-        cachedStatus.enabled = cachedWebUi.enabled;
-        cachedStatus.token = cachedWebUi.token;
-        updateWebUiStatus(Result<WebUiStatus, std::string>::okay(std::move(cachedStatus)));
+    const auto cachedAccess = getAccessCache();
+    if (cachedAccess.webUiEnabled || cachedAccess.webSocketEnabled) {
+        NetworkAccessStatus cachedStatus;
+        cachedStatus.webUiEnabled = cachedAccess.webUiEnabled;
+        cachedStatus.webSocketEnabled = cachedAccess.webSocketEnabled;
+        cachedStatus.webSocketToken = cachedAccess.webSocketToken;
+        const auto statusResult =
+            Result<NetworkAccessStatus, std::string>::okay(std::move(cachedStatus));
+        updateWebUiStatus(statusResult);
+        updateWebSocketStatus(statusResult);
     }
 
     // Initial display update.
@@ -239,6 +289,20 @@ void NetworkDiagnosticsPanel::setWebUiToggleEnabled(bool enabled)
     }
 }
 
+void NetworkDiagnosticsPanel::setWebSocketToggleEnabled(bool enabled)
+{
+    if (!webSocketToggle_) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_state(webSocketToggle_, LV_STATE_DISABLED);
+    }
+    else {
+        lv_obj_add_state(webSocketToggle_, LV_STATE_DISABLED);
+    }
+}
+
 bool NetworkDiagnosticsPanel::startAsyncRefresh()
 {
     if (!asyncState_) {
@@ -265,12 +329,12 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
             data.statusResult = wifiManager.getStatus();
             data.listResult = wifiManager.listNetworks();
 
-            auto fetchWebUiStatus = []() -> Result<WebUiStatus, std::string> {
+            auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
                 Network::WebSocketService client;
                 const std::string address = "ws://localhost:9090";
                 auto connectResult = client.connect(address, 2000);
                 if (connectResult.isError()) {
-                    return Result<WebUiStatus, std::string>::error(
+                    return Result<NetworkAccessStatus, std::string>::error(
                         "Failed to connect to os-manager: " + connectResult.errorValue());
                 }
 
@@ -280,26 +344,30 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
                 client.disconnect();
 
                 if (response.isError()) {
-                    return Result<WebUiStatus, std::string>::error(
+                    return Result<NetworkAccessStatus, std::string>::error(
                         "SystemStatus failed: " + response.errorValue());
                 }
 
                 const auto inner = response.value();
                 if (inner.isError()) {
-                    return Result<WebUiStatus, std::string>::error(
+                    return Result<NetworkAccessStatus, std::string>::error(
                         "SystemStatus failed: " + inner.errorValue().message);
                 }
 
-                WebUiStatus status;
-                status.enabled = inner.value().lan_web_ui_enabled;
-                status.token = inner.value().lan_web_ui_token;
-                return Result<WebUiStatus, std::string>::okay(std::move(status));
+                NetworkAccessStatus status;
+                status.webUiEnabled = inner.value().lan_web_ui_enabled;
+                status.webSocketEnabled = inner.value().lan_websocket_enabled;
+                status.webSocketToken = inner.value().lan_websocket_token;
+                return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
             };
 
-            data.webUiStatusResult = fetchWebUiStatus();
-            if (!data.webUiStatusResult.isError()) {
-                updateWebUiCache(
-                    data.webUiStatusResult.value().enabled, data.webUiStatusResult.value().token);
+            data.accessStatusResult = fetchAccessStatus();
+            if (!data.accessStatusResult.isError()) {
+                NetworkAccessCache cache;
+                cache.webUiEnabled = data.accessStatusResult.value().webUiEnabled;
+                cache.webSocketEnabled = data.accessStatusResult.value().webSocketEnabled;
+                cache.webSocketToken = data.accessStatusResult.value().webSocketToken;
+                updateAccessCache(cache);
             }
         }
         catch (const std::exception& e) {
@@ -307,7 +375,7 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
             data.statusResult = Result<Network::WifiStatus, std::string>::error(e.what());
             data.listResult =
                 Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(e.what());
-            data.webUiStatusResult = Result<WebUiStatus, std::string>::error(e.what());
+            data.accessStatusResult = Result<NetworkAccessStatus, std::string>::error(e.what());
         }
         catch (...) {
             LOG_WARN(Controls, "WiFi refresh exception: unknown");
@@ -315,7 +383,8 @@ bool NetworkDiagnosticsPanel::startAsyncRefresh()
                 Result<Network::WifiStatus, std::string>::error("WiFi refresh failed");
             data.listResult = Result<std::vector<Network::WifiNetworkInfo>, std::string>::error(
                 "WiFi refresh failed");
-            data.webUiStatusResult = Result<WebUiStatus, std::string>::error("WiFi refresh failed");
+            data.accessStatusResult =
+                Result<NetworkAccessStatus, std::string>::error("WiFi refresh failed");
         }
 
         std::lock_guard<std::mutex> lock(state->mutex);
@@ -404,15 +473,47 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
 
     auto state = asyncState_;
     std::thread([state, enabled]() {
-        Result<WebUiAccessUpdate, std::string> result =
-            Result<WebUiAccessUpdate, std::string>::error("Unknown error");
+        auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+
+            OsApi::SystemStatus::Command statusCmd{};
+            auto statusResponse =
+                client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(statusCmd, 2000);
+            client.disconnect();
+
+            if (statusResponse.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "SystemStatus failed: " + statusResponse.errorValue());
+            }
+
+            const auto inner = statusResponse.value();
+            if (inner.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "SystemStatus failed: " + inner.errorValue().message);
+            }
+
+            NetworkAccessStatus status;
+            status.webUiEnabled = inner.value().lan_web_ui_enabled;
+            status.webSocketEnabled = inner.value().lan_websocket_enabled;
+            status.webSocketToken = inner.value().lan_websocket_token;
+            return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+        };
+
+        Result<NetworkAccessStatus, std::string> result =
+            Result<NetworkAccessStatus, std::string>::error("Unknown error");
 
         try {
             Network::WebSocketService client;
             const std::string address = "ws://localhost:9090";
             auto connectResult = client.connect(address, 2000);
             if (connectResult.isError()) {
-                result = Result<WebUiAccessUpdate, std::string>::error(
+                result = Result<NetworkAccessStatus, std::string>::error(
                     "Failed to connect to os-manager: " + connectResult.errorValue());
             }
             else {
@@ -422,35 +523,147 @@ bool NetworkDiagnosticsPanel::startAsyncWebUiAccessSet(bool enabled)
                 client.disconnect();
 
                 if (response.isError()) {
-                    result = Result<WebUiAccessUpdate, std::string>::error(
+                    result = Result<NetworkAccessStatus, std::string>::error(
                         "WebUiAccessSet failed: " + response.errorValue());
                 }
                 else {
                     const auto inner = response.value();
                     if (inner.isError()) {
-                        result = Result<WebUiAccessUpdate, std::string>::error(
+                        result = Result<NetworkAccessStatus, std::string>::error(
                             "WebUiAccessSet failed: " + inner.errorValue().message);
                     }
                     else {
-                        WebUiAccessUpdate update;
-                        update.enabled = inner.value().enabled;
-                        update.token = inner.value().token;
-                        updateWebUiCache(update.enabled, update.token);
-                        result = Result<WebUiAccessUpdate, std::string>::okay(std::move(update));
+                        result = fetchAccessStatus();
                     }
                 }
             }
         }
         catch (const std::exception& e) {
-            result = Result<WebUiAccessUpdate, std::string>::error(e.what());
+            result = Result<NetworkAccessStatus, std::string>::error(e.what());
         }
         catch (...) {
-            result = Result<WebUiAccessUpdate, std::string>::error("Web UI update failed");
+            result = Result<NetworkAccessStatus, std::string>::error("Web UI update failed");
+        }
+
+        if (!result.isError()) {
+            NetworkAccessCache cache;
+            cache.webUiEnabled = result.value().webUiEnabled;
+            cache.webSocketEnabled = result.value().webSocketEnabled;
+            cache.webSocketToken = result.value().webSocketToken;
+            updateAccessCache(cache);
         }
 
         std::lock_guard<std::mutex> lock(state->mutex);
         state->pendingWebUiUpdate = result;
         state->webUiUpdateInProgress = false;
+    }).detach();
+
+    return true;
+}
+
+bool NetworkDiagnosticsPanel::startAsyncWebSocketAccessSet(bool enabled)
+{
+    if (!asyncState_) {
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(asyncState_->mutex);
+        if (asyncState_->webSocketUpdateInProgress) {
+            return false;
+        }
+        asyncState_->webSocketUpdateInProgress = true;
+    }
+
+    if (refreshTimer_) {
+        lv_timer_resume(refreshTimer_);
+    }
+
+    auto state = asyncState_;
+    std::thread([state, enabled]() {
+        auto fetchAccessStatus = []() -> Result<NetworkAccessStatus, std::string> {
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+
+            OsApi::SystemStatus::Command statusCmd{};
+            auto statusResponse =
+                client.sendCommandAndGetResponse<OsApi::SystemStatus::Okay>(statusCmd, 2000);
+            client.disconnect();
+
+            if (statusResponse.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "SystemStatus failed: " + statusResponse.errorValue());
+            }
+
+            const auto inner = statusResponse.value();
+            if (inner.isError()) {
+                return Result<NetworkAccessStatus, std::string>::error(
+                    "SystemStatus failed: " + inner.errorValue().message);
+            }
+
+            NetworkAccessStatus status;
+            status.webUiEnabled = inner.value().lan_web_ui_enabled;
+            status.webSocketEnabled = inner.value().lan_websocket_enabled;
+            status.webSocketToken = inner.value().lan_websocket_token;
+            return Result<NetworkAccessStatus, std::string>::okay(std::move(status));
+        };
+
+        Result<NetworkAccessStatus, std::string> result =
+            Result<NetworkAccessStatus, std::string>::error("Unknown error");
+
+        try {
+            Network::WebSocketService client;
+            const std::string address = "ws://localhost:9090";
+            auto connectResult = client.connect(address, 2000);
+            if (connectResult.isError()) {
+                result = Result<NetworkAccessStatus, std::string>::error(
+                    "Failed to connect to os-manager: " + connectResult.errorValue());
+            }
+            else {
+                OsApi::WebSocketAccessSet::Command cmd{ .enabled = enabled };
+                auto response =
+                    client.sendCommandAndGetResponse<OsApi::WebSocketAccessSet::Okay>(cmd, 2000);
+                client.disconnect();
+
+                if (response.isError()) {
+                    result = Result<NetworkAccessStatus, std::string>::error(
+                        "WebSocketAccessSet failed: " + response.errorValue());
+                }
+                else {
+                    const auto inner = response.value();
+                    if (inner.isError()) {
+                        result = Result<NetworkAccessStatus, std::string>::error(
+                            "WebSocketAccessSet failed: " + inner.errorValue().message);
+                    }
+                    else {
+                        result = fetchAccessStatus();
+                    }
+                }
+            }
+        }
+        catch (const std::exception& e) {
+            result = Result<NetworkAccessStatus, std::string>::error(e.what());
+        }
+        catch (...) {
+            result = Result<NetworkAccessStatus, std::string>::error("WebSocket update failed");
+        }
+
+        if (!result.isError()) {
+            NetworkAccessCache cache;
+            cache.webUiEnabled = result.value().webUiEnabled;
+            cache.webSocketEnabled = result.value().webSocketEnabled;
+            cache.webSocketToken = result.value().webSocketToken;
+            updateAccessCache(cache);
+        }
+
+        std::lock_guard<std::mutex> lock(state->mutex);
+        state->pendingWebSocketUpdate = result;
+        state->webSocketUpdateInProgress = false;
     }).detach();
 
     return true;
@@ -526,26 +739,19 @@ void NetworkDiagnosticsPanel::updateWifiStatus(
 }
 
 void NetworkDiagnosticsPanel::updateWebUiStatus(
-    const Result<WebUiStatus, std::string>& statusResult)
+    const Result<NetworkAccessStatus, std::string>& statusResult)
 {
     if (statusResult.isError()) {
         LOG_WARN(Controls, "LAN Web UI status failed: {}", statusResult.errorValue());
-        if (webUiTokenTitleLabel_) {
-            lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
-        }
-        if (webUiTokenLabel_) {
-            lv_label_set_text(webUiTokenLabel_, "unavailable");
-        }
         return;
     }
 
     const auto& status = statusResult.value();
-    webUiEnabled_ = status.enabled;
-    webUiToken_ = status.token;
+    webUiEnabled_ = status.webUiEnabled;
 
     if (webUiToggle_) {
         webUiToggleLocked_ = true;
-        if (status.enabled) {
+        if (status.webUiEnabled) {
             lv_obj_add_state(webUiToggle_, LV_STATE_CHECKED);
         }
         else {
@@ -553,25 +759,54 @@ void NetworkDiagnosticsPanel::updateWebUiStatus(
         }
         webUiToggleLocked_ = false;
     }
-
-    updateWebUiTokenLabel();
 }
 
-void NetworkDiagnosticsPanel::updateWebUiTokenLabel()
+void NetworkDiagnosticsPanel::updateWebSocketStatus(
+    const Result<NetworkAccessStatus, std::string>& statusResult)
 {
-    if (!webUiTokenTitleLabel_ || !webUiTokenLabel_) {
+    if (statusResult.isError()) {
+        LOG_WARN(Controls, "WebSocket status failed: {}", statusResult.errorValue());
+        if (webSocketTokenTitleLabel_) {
+            lv_label_set_text(webSocketTokenTitleLabel_, "WebSocket token");
+        }
+        if (webSocketTokenLabel_) {
+            lv_label_set_text(webSocketTokenLabel_, "unavailable");
+        }
         return;
     }
 
-    if (!webUiEnabled_) {
-        lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
-        lv_label_set_text(webUiTokenLabel_, "--");
+    const auto& status = statusResult.value();
+    webSocketEnabled_ = status.webSocketEnabled;
+    webSocketToken_ = status.webSocketToken;
+
+    if (webSocketToggle_) {
+        webSocketToggleLocked_ = true;
+        if (status.webSocketEnabled) {
+            lv_obj_add_state(webSocketToggle_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(webSocketToggle_, LV_STATE_CHECKED);
+        }
+        webSocketToggleLocked_ = false;
+    }
+
+    updateWebSocketTokenLabel();
+}
+
+void NetworkDiagnosticsPanel::updateWebSocketTokenLabel()
+{
+    if (!webSocketTokenTitleLabel_ || !webSocketTokenLabel_) {
         return;
     }
 
-    lv_label_set_text(webUiTokenTitleLabel_, "LAN Web UI token");
-    const std::string labelText = webUiToken_.empty() ? "--" : webUiToken_;
-    lv_label_set_text(webUiTokenLabel_, labelText.c_str());
+    lv_label_set_text(webSocketTokenTitleLabel_, "WebSocket token");
+    if (!webSocketEnabled_) {
+        lv_label_set_text(webSocketTokenLabel_, "--");
+        return;
+    }
+
+    const std::string labelText = webSocketToken_.empty() ? "--" : webSocketToken_;
+    lv_label_set_text(webSocketTokenLabel_, labelText.c_str());
 }
 
 std::string NetworkDiagnosticsPanel::statusText(const Network::WifiNetworkInfo& info) const
@@ -819,7 +1054,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     std::optional<Result<Network::WifiConnectResult, std::string>> connectResult;
     std::optional<Result<Network::WifiForgetResult, std::string>> forgetResult;
     std::optional<PendingRefreshData> refreshData;
-    std::optional<Result<WebUiAccessUpdate, std::string>> webUiUpdateResult;
+    std::optional<Result<NetworkAccessStatus, std::string>> webSocketUpdateResult;
+    std::optional<Result<NetworkAccessStatus, std::string>> webUiUpdateResult;
 
     {
         std::lock_guard<std::mutex> lock(asyncState_->mutex);
@@ -831,6 +1067,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
 
         refreshData = asyncState_->pendingRefresh;
         asyncState_->pendingRefresh.reset();
+
+        webSocketUpdateResult = asyncState_->pendingWebSocketUpdate;
+        asyncState_->pendingWebSocketUpdate.reset();
 
         webUiUpdateResult = asyncState_->pendingWebUiUpdate;
         asyncState_->pendingWebUiUpdate.reset();
@@ -875,7 +1114,8 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
     if (refreshData.has_value()) {
         updateWifiStatus(refreshData->statusResult);
         updateNetworkDisplay(refreshData->listResult);
-        updateWebUiStatus(refreshData->webUiStatusResult);
+        updateWebUiStatus(refreshData->accessStatusResult);
+        updateWebSocketStatus(refreshData->accessStatusResult);
     }
 
     if (webUiUpdateResult.has_value()) {
@@ -892,15 +1132,32 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
                 }
                 webUiToggleLocked_ = false;
             }
-            updateWebUiTokenLabel();
         }
         else {
-            webUiEnabled_ = webUiUpdateResult->value().enabled;
-            webUiToken_ = webUiUpdateResult->value().token;
-            WebUiStatus status;
-            status.enabled = webUiEnabled_;
-            status.token = webUiToken_;
-            updateWebUiStatus(Result<WebUiStatus, std::string>::okay(std::move(status)));
+            updateWebUiStatus(*webUiUpdateResult);
+            updateWebSocketStatus(*webUiUpdateResult);
+        }
+    }
+
+    if (webSocketUpdateResult.has_value()) {
+        setWebSocketToggleEnabled(true);
+        if (webSocketUpdateResult->isError()) {
+            LOG_WARN(Controls, "WebSocket update failed: {}", webSocketUpdateResult->errorValue());
+            if (webSocketToggle_) {
+                webSocketToggleLocked_ = true;
+                if (webSocketEnabled_) {
+                    lv_obj_add_state(webSocketToggle_, LV_STATE_CHECKED);
+                }
+                else {
+                    lv_obj_clear_state(webSocketToggle_, LV_STATE_CHECKED);
+                }
+                webSocketToggleLocked_ = false;
+            }
+            updateWebSocketTokenLabel();
+        }
+        else {
+            updateWebUiStatus(*webSocketUpdateResult);
+            updateWebSocketStatus(*webSocketUpdateResult);
         }
     }
 
@@ -911,7 +1168,9 @@ void NetworkDiagnosticsPanel::applyPendingUpdates()
         refreshInProgress = asyncState_->refreshInProgress;
         hasPending = asyncState_->pendingRefresh.has_value()
             || asyncState_->pendingConnect.has_value() || asyncState_->pendingForget.has_value()
-            || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->webUiUpdateInProgress;
+            || asyncState_->pendingWebSocketUpdate.has_value()
+            || asyncState_->pendingWebUiUpdate.has_value() || asyncState_->webSocketUpdateInProgress
+            || asyncState_->webUiUpdateInProgress;
     }
 
     if (!refreshInProgress && !isActionInProgress() && !hasPending && refreshTimer_) {
@@ -964,6 +1223,37 @@ void NetworkDiagnosticsPanel::onForgetClicked(lv_event_t* e)
     }
 
     ctx->panel->startAsyncForget(ctx->panel->networks_[ctx->index]);
+}
+
+void NetworkDiagnosticsPanel::onWebSocketToggleChanged(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_VALUE_CHANGED) {
+        return;
+    }
+
+    NetworkDiagnosticsPanel* self =
+        static_cast<NetworkDiagnosticsPanel*>(lv_event_get_user_data(e));
+    if (!self || self->webSocketToggleLocked_) {
+        return;
+    }
+
+    if (!self->webSocketToggle_) {
+        return;
+    }
+
+    const bool enabled = lv_obj_has_state(self->webSocketToggle_, LV_STATE_CHECKED);
+    self->setWebSocketToggleEnabled(false);
+    if (!self->startAsyncWebSocketAccessSet(enabled)) {
+        self->setWebSocketToggleEnabled(true);
+        self->webSocketToggleLocked_ = true;
+        if (self->webSocketEnabled_) {
+            lv_obj_add_state(self->webSocketToggle_, LV_STATE_CHECKED);
+        }
+        else {
+            lv_obj_clear_state(self->webSocketToggle_, LV_STATE_CHECKED);
+        }
+        self->webSocketToggleLocked_ = false;
+    }
 }
 
 void NetworkDiagnosticsPanel::onWebUiToggleChanged(lv_event_t* e)

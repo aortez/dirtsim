@@ -162,6 +162,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultSet::Command::fromJson(cmd));
         }
+        else if (commandName == Api::WebSocketAccessSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::WebSocketAccessSet::Command::fromJson(cmd));
+        }
         else if (commandName == Api::WebUiAccessSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::WebUiAccessSet::Command::fromJson(cmd));
         }

@@ -204,6 +204,7 @@ std::string getExamplesHelp()
     examples += "\nOS Manager API Examples:\n";
     examples += "  cli os-manager SystemStatus\n";
     examples += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
+    examples += "  cli os-manager WebSocketAccessSet '{\"enabled\": true}'\n";
     examples += "  cli os-manager StartServer\n";
     examples += "  cli os-manager StopUi\n";
     examples += "  cli os-manager RestartServer\n";
