@@ -4,6 +4,9 @@
 
 #include "api/DrawDebugToggle.h"
 #include "api/Exit.h"
+#include "api/GenomeBrowserOpen.h"
+#include "api/GenomeDetailLoad.h"
+#include "api/GenomeDetailOpen.h"
 #include "api/MouseDown.h"
 #include "api/MouseMove.h"
 #include "api/MouseUp.h"
@@ -161,6 +164,11 @@ struct TrainingResultSaveClickedEvent {
 struct TrainingResultDiscardClickedEvent {
     static constexpr const char* name() { return "TrainingResultDiscardClickedEvent"; }
 };
+struct GenomeLoadClickedEvent {
+    GenomeId genomeId;
+    Scenario::EnumType scenarioId = Scenario::EnumType::Sandbox;
+    static constexpr const char* name() { return "GenomeLoadClickedEvent"; }
+};
 
 /**
  * @brief Physics settings received from server.
@@ -230,6 +238,7 @@ using Event = std::variant<
     ViewBestButtonClickedEvent,
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
+    GenomeLoadClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates
@@ -246,6 +255,9 @@ using Event = std::variant<
     DirtSim::Api::TrainingResult::Cwc,
     DirtSim::UiApi::DrawDebugToggle::Cwc,
     DirtSim::UiApi::Exit::Cwc,
+    DirtSim::UiApi::GenomeBrowserOpen::Cwc,
+    DirtSim::UiApi::GenomeDetailLoad::Cwc,
+    DirtSim::UiApi::GenomeDetailOpen::Cwc,
     DirtSim::UiApi::MouseDown::Cwc,
     DirtSim::UiApi::MouseMove::Cwc,
     DirtSim::UiApi::MouseUp::Cwc,

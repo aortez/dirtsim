@@ -1,4 +1,7 @@
 #include "StateMachine.h"
+#include "api/GenomeBrowserOpen.h"
+#include "api/GenomeDetailLoad.h"
+#include "api/GenomeDetailOpen.h"
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
@@ -93,6 +96,12 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingStart::Cwc>(
         [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
+        [this](UiApi::GenomeBrowserOpen::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::GenomeDetailLoad::Cwc>(
+        [this](UiApi::GenomeDetailLoad::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::GenomeDetailOpen::Cwc>(
+        [this](UiApi::GenomeDetailOpen::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StateGet::Cwc>(
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
@@ -237,6 +246,9 @@ void StateMachine::setupWebSocketService()
             // Dispatch all UI commands.
             DISPATCH_UI_CMD_WITH_RESP(UiApi::DrawDebugToggle);
             DISPATCH_UI_CMD_EMPTY(UiApi::Exit);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeBrowserOpen);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeDetailLoad);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeDetailOpen);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseDown);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseMove);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseUp);

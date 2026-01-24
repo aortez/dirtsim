@@ -2,6 +2,9 @@
 
 #include "DrawDebugToggle.h"
 #include "Exit.h"
+#include "GenomeBrowserOpen.h"
+#include "GenomeDetailLoad.h"
+#include "GenomeDetailOpen.h"
 #include "MouseDown.h"
 #include "MouseMove.h"
 #include "MouseUp.h"
@@ -32,6 +35,9 @@ namespace Ui {
 using UiApiCommand = std::variant<
     UiApi::DrawDebugToggle::Command,
     UiApi::Exit::Command,
+    UiApi::GenomeBrowserOpen::Command,
+    UiApi::GenomeDetailLoad::Command,
+    UiApi::GenomeDetailOpen::Command,
     UiApi::MouseDown::Command,
     UiApi::MouseMove::Command,
     UiApi::MouseUp::Command,
