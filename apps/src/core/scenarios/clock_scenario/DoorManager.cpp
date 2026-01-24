@@ -32,7 +32,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
 
     // Validate positions are within bounds.
     if (!data.inBounds(door_pos.x, door_pos.y)) {
-        spdlog::warn(
+        spdlog::error(
             "DoorManager: Door {} position ({}, {}) is outside world bounds {}x{}",
             id,
             door_pos.x,
@@ -43,7 +43,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
     }
 
     if (!data.inBounds(roof_pos.x, roof_pos.y)) {
-        spdlog::warn(
+        spdlog::error(
             "DoorManager: Door {} roof position ({}, {}) is outside world bounds {}x{}",
             id,
             roof_pos.x,
@@ -164,11 +164,11 @@ Vector2i DoorManager::getRoofPosition(DoorId id, const WorldData& world_data) co
     return computeRoofPosition(it->second, world_data);
 }
 
-Vector2i DoorManager::getLightPosition(DoorId id, const WorldData& world_data) const
+Vector2f DoorManager::getLightPosition(DoorId id, const WorldData& world_data) const
 {
     auto it = doors_.find(id);
     if (it == doors_.end()) {
-        return Vector2i{ -1, -1 };
+        return Vector2f{ -1.0f, -1.0f };
     }
     return computeLightPosition(it->second, world_data);
 }
@@ -278,15 +278,14 @@ Vector2i DoorManager::computeRoofPosition(const Door& def, const WorldData& worl
     return Vector2i{ x, y };
 }
 
-Vector2i DoorManager::computeLightPosition(const Door& def, const WorldData& world_data) const
+Vector2f DoorManager::computeLightPosition(const Door& def, const WorldData& world_data) const
 {
     // Light is one cell inward from the door, at the same Y as the door.
     // This places it just inside the door opening.
-    int door_x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
-    int dx = (def.side == DoorSide::LEFT) ? 1 : -1;
-    int x = door_x + dx;
-    int door_y = static_cast<int>(world_data.height - 1 - def.cells_above_floor);
-    return Vector2i{ x, door_y };
+    const int door_x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
+    const float x_offset = (def.side == DoorSide::LEFT) ? 1.0f : -1.0f;
+    const float door_y = static_cast<float>(world_data.height - def.cells_above_floor);
+    return Vector2f{ static_cast<float>(door_x) + x_offset, door_y - 1.0f };
 }
 
 } // namespace DirtSim
