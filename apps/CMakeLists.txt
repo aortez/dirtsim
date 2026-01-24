@@ -456,6 +456,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/TrainingResultDiscard.cpp
     src/ui/state-machine/api/TrainingResultSave.cpp
     src/ui/state-machine/api/TrainingStart.cpp
+    src/ui/state-machine/api/WebSocketAccessSet.cpp
     src/ui/state-machine/api/WebRtcAnswer.cpp
     src/ui/state-machine/api/WebRtcCandidate.cpp
     src/ui/state-machine/api/WebUiAccessSet.cpp
@@ -570,6 +571,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/states/Error.cpp
@@ -601,6 +603,7 @@ add_executable(cli
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
 )
 target_link_libraries(cli PRIVATE dirtsim-server-lib dirtsim-ui-lib datachannel-static pthread)
@@ -632,6 +635,7 @@ add_executable(dirtsim-tests
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/states/Error.cpp

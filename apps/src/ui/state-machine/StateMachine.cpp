@@ -2,7 +2,7 @@
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
-#include "api/WebUiAccessSet.h"
+#include "api/WebSocketAccessSet.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -97,8 +97,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
-    ws->registerHandler<UiApi::WebUiAccessSet::Cwc>([this](UiApi::WebUiAccessSet::Cwc cwc) {
-        using Response = UiApi::WebUiAccessSet::Response;
+    ws->registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
+        using Response = UiApi::WebSocketAccessSet::Response;
 
         auto* wsService = getConcreteWebSocketService();
         if (!wsService) {
@@ -111,7 +111,7 @@ void StateMachine::setupWebSocketService()
             return;
         }
 
-        UiApi::WebUiAccessSet::Okay okay;
+        UiApi::WebSocketAccessSet::Okay okay;
         okay.enabled = cwc.command.enabled;
         cwc.sendResponse(Response::okay(std::move(okay)));
 
@@ -132,7 +132,7 @@ void StateMachine::setupWebSocketService()
         if (listenResult.isError()) {
             LOG_ERROR(
                 Network,
-                "WebUiAccessSet failed to bind {}:{}: {}",
+                "WebSocketAccessSet failed to bind {}:{}: {}",
                 bindAddress,
                 wsPort_,
                 listenResult.errorValue());
@@ -251,7 +251,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);
-            DISPATCH_UI_CMD_WITH_RESP(UiApi::WebUiAccessSet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::WebSocketAccessSet);
 
             // If we get here, command wasn't recognized.
             LOG_WARN(Network, "Unknown JSON command in dispatcher");
