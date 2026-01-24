@@ -38,6 +38,7 @@
 #include "TrainingResultList.h"
 #include "TrainingResultSave.h"
 #include "TrainingResultSet.h"
+#include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
 #include "WorldResize.h"
 #include <concepts>
@@ -104,6 +105,7 @@ using ApiCommand = std::variant<
     Api::TrainingResultList::Command,
     Api::TrainingResultSave::Command,
     Api::TrainingResultSet::Command,
+    Api::WebSocketAccessSet::Command,
     Api::WebUiAccessSet::Command,
     Api::WorldResize::Command>;
 
