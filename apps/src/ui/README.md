@@ -16,6 +16,30 @@ These are the common states you will see from `ui StateGet`:
 - `Training`: evolution/training workflow view.
 - `Shutdown`: exiting UI.
 
+```mermaid
+stateDiagram-v2
+    [*] --> Startup
+    Startup --> Disconnected: boot
+    Disconnected --> StartMenu: connect
+
+    StartMenu --> SimRunning: ui SimRun
+    SimRunning --> Paused: ui SimPause
+    Paused --> SimRunning: ui SimRun
+    SimRunning --> StartMenu: ui SimStop
+    Paused --> StartMenu: ui SimStop
+
+    StartMenu --> Training: ui TrainingStart
+    Training --> SimRunning: ui GenomeDetailLoad
+
+    Startup --> Shutdown: ui Exit
+    Disconnected --> Shutdown: ui Exit
+    StartMenu --> Shutdown: ui Exit
+    SimRunning --> Shutdown: ui Exit
+    Paused --> Shutdown: ui Exit
+    Training --> Shutdown: ui Exit
+    Shutdown --> [*]
+```
+
 ## CLI-Driven Navigation
 
 Use the CLI to move between UI states and open training views:
