@@ -10,6 +10,7 @@
 #include "Vector2.h"
 #include "organisms/OrganismType.h"
 #include "organisms/TreeSensoryData.h"
+#include "organisms/evolution/GenomeMetadata.h"
 
 #include <cstdint>
 #include <nlohmann/json.hpp>
@@ -21,7 +22,7 @@
 namespace DirtSim {
 
 struct WorldData {
-    // ===== Fields 1-9: Binary serialized (zpp_bits) =====
+    // ===== Fields 1-10: Binary serialized (zpp_bits) =====
     // Grid dimensions and cells (1D storage for performance).
     int16_t width = 0;
     int16_t height = 0;
@@ -52,6 +53,8 @@ struct WorldData {
         Vector2i anchor_cell;
         std::string material_at_anchor;   // Material type at anchor position.
         OrganismId organism_id_at_anchor; // Cell's organism_id.
+        std::optional<GenomeId> genome_id;
+        using serialize = zpp::bits::members<6>;
     };
     std::vector<OrganismDebugInfo> organism_debug;
 
@@ -93,7 +96,8 @@ struct WorldData {
             self.add_particles_enabled,
             self.tree_vision,
             self.entities,
-            self.colors);
+            self.colors,
+            self.organism_debug);
         // debug_info and bones intentionally excluded from binary serialization.
     }
 };
@@ -108,6 +112,12 @@ inline void to_json(nlohmann::json& j, const WorldData::OrganismDebugInfo& info)
                         { "anchor_cell", info.anchor_cell },
                         { "material_at_anchor", info.material_at_anchor },
                         { "organism_id_at_anchor", info.organism_id_at_anchor } };
+    if (info.genome_id.has_value()) {
+        j["genome_id"] = info.genome_id.value();
+    }
+    else {
+        j["genome_id"] = nullptr;
+    }
 }
 
 inline void from_json(const nlohmann::json& j, WorldData::OrganismDebugInfo& info)
@@ -117,6 +127,12 @@ inline void from_json(const nlohmann::json& j, WorldData::OrganismDebugInfo& inf
     j.at("anchor_cell").get_to(info.anchor_cell);
     j.at("material_at_anchor").get_to(info.material_at_anchor);
     j.at("organism_id_at_anchor").get_to(info.organism_id_at_anchor);
+    if (j.contains("genome_id") && !j.at("genome_id").is_null()) {
+        info.genome_id = j.at("genome_id").get<GenomeId>();
+    }
+    else {
+        info.genome_id = std::nullopt;
+    }
 }
 
 /**

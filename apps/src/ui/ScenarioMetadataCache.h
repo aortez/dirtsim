@@ -2,6 +2,7 @@
 
 #include "server/api/ScenarioListGet.h"
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,11 @@ public:
      * @brief Load scenario list from server response.
      */
     static void load(const std::vector<Api::ScenarioListGet::ScenarioInfo>& scenarios);
+
+    /**
+     * @brief Check if scenario metadata has been loaded.
+     */
+    static bool hasScenarios();
 
     /**
      * @brief Build dropdown options string ("Name1\nName2\n...").
@@ -38,6 +44,11 @@ public:
      * @brief Map scenario ID to dropdown index.
      */
     static uint16_t indexFromScenarioId(Scenario::EnumType id);
+
+    /**
+     * @brief Lookup scenario info by ID.
+     */
+    static std::optional<Api::ScenarioListGet::ScenarioInfo> getScenarioInfo(Scenario::EnumType id);
 
 private:
     static std::vector<Api::ScenarioListGet::ScenarioInfo> scenarios_;

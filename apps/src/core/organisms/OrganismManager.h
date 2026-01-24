@@ -6,6 +6,7 @@
 #include "OrganismType.h"
 #include "TreeBrain.h"
 #include "TreeCommandProcessor.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include <memory>
 #include <unordered_map>
 #include <vector>
@@ -68,6 +69,8 @@ public:
     // Generic organism access.
     Organism::Body* getOrganism(OrganismId id);
     const Organism::Body* getOrganism(OrganismId id) const;
+    void setGenomeId(OrganismId id, const GenomeId& genomeId);
+    std::optional<GenomeId> getGenomeId(OrganismId id) const;
 
     // Type-specific access (returns nullptr if wrong type).
     Tree* getTree(OrganismId id);
@@ -121,6 +124,7 @@ private:
     void clearOrganismAt(Vector2i pos);
 
     std::unordered_map<OrganismId, std::unique_ptr<Organism::Body>> organisms_;
+    std::unordered_map<OrganismId, GenomeId> organismGenomeIds_;
     OrganismId next_id_{ 1 };
 
     std::vector<OrganismId> grid_;

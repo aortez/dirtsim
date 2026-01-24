@@ -2,48 +2,40 @@
 
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
 #include <nlohmann/json.hpp>
-#include <optional>
-#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace TrainingResultSave {
+namespace GenomeBrowserOpen {
 
-DEFINE_API_NAME(TrainingResultSave);
+DEFINE_API_NAME(GenomeBrowserOpen);
 
 struct Command {
-    std::optional<int> count;
-
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<0>;
 };
 
 struct Okay {
-    bool queued = false;
-    int savedCount = 0;
-    int discardedCount = 0;
-    std::vector<GenomeId> savedIds;
+    bool opened = true;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<1>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace TrainingResultSave
+} // namespace GenomeBrowserOpen
 } // namespace UiApi
 } // namespace DirtSim

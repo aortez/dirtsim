@@ -76,12 +76,18 @@ BrowserPanel::BrowserPanel(
     std::string title,
     ListFetcher listFetcher,
     DetailFetcher detailFetcher,
-    DeleteHandler deleteHandler)
+    DeleteHandler deleteHandler,
+    std::optional<DetailAction> detailAction,
+    std::optional<DetailSidePanel> detailSidePanel,
+    ModalStyle modalStyle)
     : parent_(parent),
       title_(std::move(title)),
       listFetcher_(std::move(listFetcher)),
       detailFetcher_(std::move(detailFetcher)),
-      deleteHandler_(std::move(deleteHandler))
+      deleteHandler_(std::move(deleteHandler)),
+      detailAction_(std::move(detailAction)),
+      detailSidePanel_(std::move(detailSidePanel)),
+      modalStyle_(std::move(modalStyle))
 {
     createLayout();
 }
@@ -109,6 +115,59 @@ void BrowserPanel::refreshList()
 
     rebuildList();
     updateDeleteSelectedState();
+}
+
+Result<GenomeId, std::string> BrowserPanel::openDetailByIndex(size_t index)
+{
+    if (index >= items_.size()) {
+        return Result<GenomeId, std::string>::error("Detail index out of range");
+    }
+
+    openDetailModal(index);
+    if (!modalItemId_.has_value()) {
+        return Result<GenomeId, std::string>::error("Detail modal failed to open");
+    }
+
+    return Result<GenomeId, std::string>::okay(modalItemId_.value());
+}
+
+Result<GenomeId, std::string> BrowserPanel::openDetailById(const GenomeId& id)
+{
+    auto it =
+        std::find_if(items_.begin(), items_.end(), [&](const Item& item) { return item.id == id; });
+    if (it == items_.end()) {
+        return Result<GenomeId, std::string>::error("Detail item not found");
+    }
+
+    const size_t index = static_cast<size_t>(std::distance(items_.begin(), it));
+    return openDetailByIndex(index);
+}
+
+Result<std::monostate, std::string> BrowserPanel::triggerDetailActionForModalId(const GenomeId& id)
+{
+    if (!detailAction_.has_value()) {
+        return Result<std::monostate, std::string>::error("Detail action not available");
+    }
+    if (!modalItemId_.has_value()) {
+        return Result<std::monostate, std::string>::error("Detail modal not open");
+    }
+    if (modalItemId_.value() != id) {
+        return Result<std::monostate, std::string>::error("Detail modal mismatch");
+    }
+
+    auto it =
+        std::find_if(items_.begin(), items_.end(), [&](const Item& item) { return item.id == id; });
+    if (it == items_.end()) {
+        return Result<std::monostate, std::string>::error("Detail item not found");
+    }
+
+    auto result = detailAction_->handler(*it);
+    if (result.isError()) {
+        return Result<std::monostate, std::string>::error(result.errorValue());
+    }
+
+    closeModal();
+    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 void BrowserPanel::createLayout()
@@ -333,36 +392,69 @@ void BrowserPanel::openDetailModal(size_t index)
     modalOverlay_ = lv_obj_create(lv_layer_top());
     lv_obj_set_size(modalOverlay_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_color(modalOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(modalOverlay_, LV_OPA_60, 0);
+    lv_obj_set_style_bg_opa(modalOverlay_, modalStyle_.overlayOpacity, 0);
     lv_obj_clear_flag(modalOverlay_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_move_foreground(modalOverlay_);
 
+    lv_obj_update_layout(modalOverlay_);
+    int modalWidth = modalStyle_.width;
+    int modalHeight = modalStyle_.height;
+    const int overlayWidth = lv_obj_get_width(modalOverlay_);
+    const int overlayHeight = lv_obj_get_height(modalOverlay_);
+    if (modalStyle_.widthPercent > 0 && overlayWidth > 0) {
+        modalWidth = overlayWidth * modalStyle_.widthPercent / 100;
+    }
+    if (modalStyle_.heightPercent > 0 && overlayHeight > 0) {
+        modalHeight = overlayHeight * modalStyle_.heightPercent / 100;
+    }
+    if (modalWidth <= 0) {
+        modalWidth = 420;
+    }
+    if (modalHeight <= 0) {
+        modalHeight = 440;
+    }
+
     lv_obj_t* modal = lv_obj_create(modalOverlay_);
-    lv_obj_set_size(modal, 420, 440);
+    lv_obj_set_size(modal, modalWidth, modalHeight);
     lv_obj_center(modal);
     lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
-    lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
+    lv_obj_set_style_bg_opa(modal, modalStyle_.modalOpacity, 0);
     lv_obj_set_style_radius(modal, 12, 0);
     lv_obj_set_style_pad_all(modal, 12, 0);
     lv_obj_set_style_pad_row(modal, 8, 0);
-    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(modal, 12, 0);
+    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t* titleLabel = lv_label_create(modal);
+    lv_obj_t* mainColumn = lv_obj_create(modal);
+    lv_obj_set_width(mainColumn, 0);
+    lv_obj_set_height(mainColumn, LV_PCT(100));
+    lv_obj_set_flex_grow(mainColumn, 1);
+    lv_obj_set_style_bg_opa(mainColumn, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(mainColumn, 0, 0);
+    lv_obj_set_style_pad_all(mainColumn, 0, 0);
+    lv_obj_set_style_pad_row(mainColumn, 8, 0);
+    lv_obj_set_flex_flow(mainColumn, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        mainColumn, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(mainColumn, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(mainColumn);
     lv_label_set_text(titleLabel, title_.c_str());
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_18, 0);
 
-    lv_obj_t* itemLabel = lv_label_create(modal);
+    lv_obj_t* itemLabel = lv_label_create(mainColumn);
     lv_label_set_text(itemLabel, item.label.c_str());
     lv_label_set_long_mode(itemLabel, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(itemLabel, LV_PCT(100));
     lv_obj_set_style_text_color(itemLabel, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(itemLabel, &lv_font_montserrat_12, 0);
 
-    lv_obj_t* detailContainer = lv_obj_create(modal);
+    lv_obj_t* detailContainer = lv_obj_create(mainColumn);
     lv_obj_set_width(detailContainer, LV_PCT(100));
+    lv_obj_set_height(detailContainer, LV_PCT(100));
     lv_obj_set_flex_grow(detailContainer, 1);
     lv_obj_set_style_bg_opa(detailContainer, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(detailContainer, 0, 0);
@@ -378,26 +470,91 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_set_style_text_color(detailLabel, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(detailLabel, &lv_font_montserrat_12, 0);
 
-    lv_obj_t* buttonRow = lv_obj_create(modal);
-    lv_obj_set_size(buttonRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(buttonRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(buttonRow, 0, 0);
-    lv_obj_set_style_pad_all(buttonRow, 0, 0);
-    lv_obj_set_style_pad_column(buttonRow, 8, 0);
-    lv_obj_set_flex_flow(buttonRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        buttonRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(buttonRow, LV_OBJ_FLAG_SCROLLABLE);
+    if (detailSidePanel_.has_value()) {
+        modalSideColumn_ = lv_obj_create(modal);
+        lv_obj_set_width(modalSideColumn_, 240);
+        lv_obj_set_height(modalSideColumn_, LV_PCT(100));
+        lv_obj_set_style_bg_color(modalSideColumn_, lv_color_hex(0x24243A), 0);
+        lv_obj_set_style_bg_opa(modalSideColumn_, LV_OPA_50, 0);
+        lv_obj_set_style_radius(modalSideColumn_, 10, 0);
+        lv_obj_set_style_border_width(modalSideColumn_, 0, 0);
+        lv_obj_set_style_pad_all(modalSideColumn_, 8, 0);
+        lv_obj_set_style_pad_row(modalSideColumn_, 6, 0);
+        lv_obj_set_flex_flow(modalSideColumn_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_scroll_dir(modalSideColumn_, LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(modalSideColumn_, LV_SCROLLBAR_MODE_AUTO);
+        modalSideContent_ = lv_obj_create(modalSideColumn_);
+        lv_obj_set_size(modalSideContent_, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_opa(modalSideContent_, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(modalSideContent_, 0, 0);
+        lv_obj_set_style_pad_all(modalSideContent_, 0, 0);
+        lv_obj_set_flex_flow(modalSideContent_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_scroll_dir(modalSideContent_, LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(modalSideContent_, LV_SCROLLBAR_MODE_AUTO);
+        detailSidePanel_->builder(modalSideContent_, item);
+        setSidePanelVisible(false);
+    }
 
-    LVGLBuilder::actionButton(buttonRow)
+    lv_obj_t* bottomRow = lv_obj_create(mainColumn);
+    lv_obj_set_size(bottomRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(bottomRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(bottomRow, 0, 0);
+    lv_obj_set_style_pad_all(bottomRow, 0, 0);
+    lv_obj_set_style_pad_column(bottomRow, 16, 0);
+    lv_obj_set_flex_flow(bottomRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(bottomRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(bottomRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* leftButtons = lv_obj_create(bottomRow);
+    lv_obj_set_width(leftButtons, LV_SIZE_CONTENT);
+    lv_obj_set_height(leftButtons, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(leftButtons, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(leftButtons, 0, 0);
+    lv_obj_set_style_pad_all(leftButtons, 0, 0);
+    lv_obj_set_style_pad_row(leftButtons, 8, 0);
+    lv_obj_set_flex_flow(leftButtons, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        leftButtons, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(leftButtons, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* rightButtons = lv_obj_create(bottomRow);
+    lv_obj_set_width(rightButtons, LV_SIZE_CONTENT);
+    lv_obj_set_height(rightButtons, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_opa(rightButtons, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(rightButtons, 0, 0);
+    lv_obj_set_style_pad_all(rightButtons, 0, 0);
+    lv_obj_set_style_pad_row(rightButtons, 8, 0);
+    lv_obj_set_flex_flow(rightButtons, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        rightButtons, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(rightButtons, LV_OBJ_FLAG_SCROLLABLE);
+
+    LVGLBuilder::actionButton(leftButtons)
         .text("OK")
         .mode(LVGLBuilder::ActionMode::Push)
-        .size(80)
+        .height(LVGLBuilder::Style::ACTION_SIZE)
+        .width(120)
+        .layoutRow()
+        .alignLeft()
         .backgroundColor(0x00AA66)
         .callback(onModalOkClicked, this)
         .buildOrLog();
 
-    lv_obj_t* deleteRow = lv_obj_create(buttonRow);
+    if (detailAction_.has_value()) {
+        modalActionButton_ = LVGLBuilder::actionButton(leftButtons)
+                                 .text(detailAction_->label.c_str())
+                                 .mode(LVGLBuilder::ActionMode::Push)
+                                 .height(LVGLBuilder::Style::ACTION_SIZE)
+                                 .width(120)
+                                 .layoutRow()
+                                 .alignLeft()
+                                 .backgroundColor(detailAction_->color)
+                                 .callback(onModalActionClicked, this)
+                                 .buildOrLog();
+    }
+
+    lv_obj_t* deleteRow = lv_obj_create(rightButtons);
+    lv_obj_set_size(deleteRow, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(deleteRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(deleteRow, 0, 0);
     lv_obj_set_style_pad_all(deleteRow, 0, 0);
@@ -410,7 +567,10 @@ void BrowserPanel::openDetailModal(size_t index)
     modalDeleteButton_ = LVGLBuilder::actionButton(deleteRow)
                              .text("Delete")
                              .mode(LVGLBuilder::ActionMode::Push)
-                             .size(LVGLBuilder::Style::ACTION_SIZE)
+                             .height(LVGLBuilder::Style::ACTION_SIZE)
+                             .width(120)
+                             .layoutRow()
+                             .alignLeft()
                              .backgroundColor(0xCC0000)
                              .callback(onModalDeleteClicked, this)
                              .buildOrLog();
@@ -423,6 +583,21 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_clear_flag(modalConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
     styleCheckbox(modalConfirmCheckbox_, LVGLBuilder::Style::ACTION_SIZE, true);
 
+    if (detailSidePanel_.has_value()) {
+        modalToggleButton_ = LVGLBuilder::actionButton(rightButtons)
+                                 .text(detailSidePanel_->label.c_str())
+                                 .icon(LV_SYMBOL_RIGHT)
+                                 .mode(LVGLBuilder::ActionMode::Push)
+                                 .height(LVGLBuilder::Style::ACTION_SIZE)
+                                 .width(160)
+                                 .layoutRow()
+                                 .alignLeft()
+                                 .backgroundColor(detailSidePanel_->color)
+                                 .callback(onModalToggleClicked, this)
+                                 .buildOrLog();
+        updateSidePanelToggleIcon();
+    }
+
     updateModalDeleteState();
 }
 
@@ -433,9 +608,14 @@ void BrowserPanel::closeModal()
         modalOverlay_ = nullptr;
     }
 
+    modalActionButton_ = nullptr;
     modalConfirmCheckbox_ = nullptr;
     modalDeleteButton_ = nullptr;
+    modalSideColumn_ = nullptr;
+    modalSideContent_ = nullptr;
+    modalToggleButton_ = nullptr;
     modalItemId_.reset();
+    sidePanelVisible_ = false;
 }
 
 bool BrowserPanel::isDeleteConfirmChecked() const
@@ -462,6 +642,47 @@ void BrowserPanel::setButtonEnabled(lv_obj_t* buttonContainer, bool enabled)
         lv_obj_add_state(buttonContainer, LV_STATE_DISABLED);
         lv_obj_set_style_opa(buttonContainer, LV_OPA_50, 0);
     }
+}
+
+void BrowserPanel::toggleSidePanel()
+{
+    if (!modalSideColumn_ || !detailSidePanel_.has_value()) {
+        return;
+    }
+
+    setSidePanelVisible(!sidePanelVisible_);
+}
+
+void BrowserPanel::setSidePanelVisible(bool visible)
+{
+    sidePanelVisible_ = visible;
+    if (!modalSideColumn_) {
+        return;
+    }
+
+    if (visible) {
+        lv_obj_set_style_bg_opa(modalSideColumn_, LV_OPA_50, 0);
+        if (modalSideContent_) {
+            lv_obj_clear_flag(modalSideContent_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    else {
+        lv_obj_set_style_bg_opa(modalSideColumn_, LV_OPA_TRANSP, 0);
+        if (modalSideContent_) {
+            lv_obj_add_flag(modalSideContent_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    updateSidePanelToggleIcon();
+}
+
+void BrowserPanel::updateSidePanelToggleIcon()
+{
+    if (!modalToggleButton_) {
+        return;
+    }
+
+    const char* symbol = sidePanelVisible_ ? LV_SYMBOL_LEFT : LV_SYMBOL_RIGHT;
+    LVGLBuilder::ActionButtonBuilder::setIcon(modalToggleButton_, symbol);
 }
 
 void BrowserPanel::onItemButtonClicked(lv_event_t* e)
@@ -641,6 +862,47 @@ void BrowserPanel::onModalDeleteConfirmToggled(lv_event_t* e)
     }
 
     self->updateModalDeleteState();
+}
+
+void BrowserPanel::onModalActionClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<BrowserPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->detailAction_.has_value() || !self->modalItemId_.has_value()) {
+        return;
+    }
+
+    auto it = std::find_if(self->items_.begin(), self->items_.end(), [&](const Item& item) {
+        return item.id == self->modalItemId_.value();
+    });
+    if (it == self->items_.end()) {
+        return;
+    }
+
+    auto result = self->detailAction_->handler(*it);
+    if (result.isError()) {
+        LOG_WARN(Controls, "BrowserPanel: Modal action failed: {}", result.errorValue());
+        return;
+    }
+
+    self->closeModal();
+}
+
+void BrowserPanel::onModalToggleClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* self = static_cast<BrowserPanel*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->toggleSidePanel();
 }
 
 void BrowserPanel::onModalOkClicked(lv_event_t* e)

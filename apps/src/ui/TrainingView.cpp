@@ -400,7 +400,7 @@ void TrainingView::createGenomeBrowserPanel()
         return;
     }
 
-    genomeBrowserPanel_ = std::make_unique<GenomeBrowserPanel>(container, wsService_);
+    genomeBrowserPanel_ = std::make_unique<GenomeBrowserPanel>(container, wsService_, &eventSink_);
     LOG_INFO(Controls, "TrainingView: Created Genome browser panel");
 }
 
@@ -448,6 +448,43 @@ void TrainingView::createTrainingResultBrowserPanel()
     trainingResultBrowserPanel_ =
         std::make_unique<TrainingResultBrowserPanel>(container, wsService_);
     LOG_INFO(Controls, "TrainingView: Created Training result browser panel");
+}
+
+Result<GenomeId, std::string> TrainingView::openGenomeDetailByIndex(int index)
+{
+    if (index < 0) {
+        return Result<GenomeId, std::string>::error("Genome detail index must be non-negative");
+    }
+
+    if (!genomeBrowserPanel_) {
+        createGenomeBrowserPanel();
+    }
+    if (!genomeBrowserPanel_) {
+        return Result<GenomeId, std::string>::error("Genome browser panel not available");
+    }
+
+    return genomeBrowserPanel_->openDetailByIndex(static_cast<size_t>(index));
+}
+
+Result<GenomeId, std::string> TrainingView::openGenomeDetailById(const GenomeId& genomeId)
+{
+    if (!genomeBrowserPanel_) {
+        createGenomeBrowserPanel();
+    }
+    if (!genomeBrowserPanel_) {
+        return Result<GenomeId, std::string>::error("Genome browser panel not available");
+    }
+
+    return genomeBrowserPanel_->openDetailById(genomeId);
+}
+
+Result<std::monostate, std::string> TrainingView::loadGenomeDetail(const GenomeId& genomeId)
+{
+    if (!genomeBrowserPanel_) {
+        return Result<std::monostate, std::string>::error("Genome browser panel not available");
+    }
+
+    return genomeBrowserPanel_->loadDetailForId(genomeId);
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)

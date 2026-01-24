@@ -61,6 +61,9 @@ CommandDispatcher::CommandDispatcher()
     // Register UI API commands.
     registerCommand<UiApi::DrawDebugToggle::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::Exit::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::GenomeBrowserOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::GenomeDetailLoad::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::GenomeDetailOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);

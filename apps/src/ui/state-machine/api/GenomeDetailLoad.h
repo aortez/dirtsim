@@ -6,19 +6,17 @@
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
 #include <nlohmann/json.hpp>
-#include <optional>
-#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace TrainingResultSave {
+namespace GenomeDetailLoad {
 
-DEFINE_API_NAME(TrainingResultSave);
+DEFINE_API_NAME(GenomeDetailLoad);
 
 struct Command {
-    std::optional<int> count;
+    GenomeId id{};
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
@@ -28,22 +26,19 @@ struct Command {
 };
 
 struct Okay {
-    bool queued = false;
-    int savedCount = 0;
-    int discardedCount = 0;
-    std::vector<GenomeId> savedIds;
+    bool queued = true;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<1>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace TrainingResultSave
+} // namespace GenomeDetailLoad
 } // namespace UiApi
 } // namespace DirtSim

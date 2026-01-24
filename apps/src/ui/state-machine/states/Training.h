@@ -33,11 +33,15 @@ struct Training {
     Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::GenomeBrowserOpen::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::GenomeDetailOpen::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm);
     Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm);

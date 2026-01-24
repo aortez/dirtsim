@@ -12,6 +12,11 @@ void ScenarioMetadataCache::load(const std::vector<Api::ScenarioListGet::Scenari
     scenarios_ = scenarios;
 }
 
+bool ScenarioMetadataCache::hasScenarios()
+{
+    return !scenarios_.empty();
+}
+
 std::string ScenarioMetadataCache::buildDropdownOptions()
 {
     assert(!scenarios_.empty() && "ScenarioMetadataCache::load() must be called first");
@@ -54,6 +59,22 @@ uint16_t ScenarioMetadataCache::indexFromScenarioId(Scenario::EnumType id)
     }
     assert(false && "Scenario ID not found in cache");
     return 0;
+}
+
+std::optional<Api::ScenarioListGet::ScenarioInfo> ScenarioMetadataCache::getScenarioInfo(
+    Scenario::EnumType id)
+{
+    if (scenarios_.empty()) {
+        return std::nullopt;
+    }
+
+    for (const auto& scenario : scenarios_) {
+        if (scenario.id == id) {
+            return scenario;
+        }
+    }
+
+    return std::nullopt;
 }
 
 } // namespace Ui

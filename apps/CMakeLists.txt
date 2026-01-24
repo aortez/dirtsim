@@ -440,6 +440,9 @@ add_library(dirtsim-ui-lib STATIC
     # UI API commands.
     src/ui/state-machine/api/DrawDebugToggle.cpp
     src/ui/state-machine/api/Exit.cpp
+    src/ui/state-machine/api/GenomeBrowserOpen.cpp
+    src/ui/state-machine/api/GenomeDetailLoad.cpp
+    src/ui/state-machine/api/GenomeDetailOpen.cpp
     src/ui/state-machine/api/MouseDown.cpp
     src/ui/state-machine/api/MouseMove.cpp
     src/ui/state-machine/api/MouseUp.cpp

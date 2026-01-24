@@ -111,6 +111,50 @@ Vector2i resolveSeedPlacement(World& world, Vector2i requested)
     data.at(x, y).clear();
     return requested;
 }
+
+void populateOrganismDebug(World& world, WorldData& data)
+{
+    data.organism_debug.clear();
+
+    world.getOrganismManager().forEachOrganism([&](const Organism::Body& org) {
+        WorldData::OrganismDebugInfo debug{
+            .id = org.getId(),
+            .type = "", // Set below based on type.
+            .anchor_cell = org.getAnchorCell(),
+            .material_at_anchor = "",                     // Set below.
+            .organism_id_at_anchor = INVALID_ORGANISM_ID, // Set below.
+            .genome_id = std::nullopt,
+        };
+
+        switch (org.getType()) {
+            case OrganismType::DUCK:
+                debug.type = "DUCK";
+                break;
+            case OrganismType::TREE:
+                debug.type = "TREE";
+                break;
+            case OrganismType::GOOSE:
+                debug.type = "GOOSE";
+                break;
+        }
+
+        const WorldData& worldData = world.getData();
+        if (worldData.inBounds(debug.anchor_cell.x, debug.anchor_cell.y)) {
+            const Cell& cell = worldData.at(debug.anchor_cell.x, debug.anchor_cell.y);
+            debug.material_at_anchor = toString(cell.material_type);
+            debug.organism_id_at_anchor = world.getOrganismManager().at(debug.anchor_cell);
+        }
+        else {
+            debug.material_at_anchor = "OUT_OF_BOUNDS";
+        }
+
+        if (debug.type == "TREE") {
+            debug.genome_id = world.getOrganismManager().getGenomeId(org.getId());
+        }
+
+        data.organism_debug.push_back(std::move(debug));
+    });
+}
 } // namespace
 
 void SimRunning::onEnter(StateMachine& dsm)
@@ -440,7 +484,9 @@ void SimRunning::tick(StateMachine& dsm)
         goose_organism_count == goose_entity_count,
         "Goose entities must match goose organisms before caching!");
 
-    dsm.updateCachedWorldData(world->getData());
+    WorldData cachedData = world->getData();
+    populateOrganismDebug(*world, cachedData);
+    dsm.updateCachedWorldData(cachedData);
     dsm.getTimers().stopTimer("cache_update");
 
     spdlog::debug("SimRunning: Advanced simulation, total step {})", stepCount);
@@ -859,12 +905,14 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
 
     // Build brain from genome if provided.
     std::unique_ptr<TreeBrain> brain = nullptr;
+    std::optional<GenomeId> loadedGenomeId;
     if (cwc.command.genome_id) {
         auto& repo = dsm.getGenomeRepository();
         GenomeId id = GenomeId::fromString(cwc.command.genome_id.value());
         auto genome = repo.get(id);
         if (genome) {
             brain = std::make_unique<NeuralNetBrain>(*genome);
+            loadedGenomeId = id;
             spdlog::info(
                 "SeedAdd: Using genome '{}' for tree brain", cwc.command.genome_id.value());
         }
@@ -890,6 +938,9 @@ State::Any SimRunning::onEvent(const Api::SeedAdd::Cwc& cwc, StateMachine& dsm)
     spdlog::info("SeedAdd: Planting seed at ({}, {})", spawnCell.x, spawnCell.y);
     OrganismId tree_id =
         world->getOrganismManager().createTree(*world, spawnCell.x, spawnCell.y, std::move(brain));
+    if (loadedGenomeId.has_value()) {
+        world->getOrganismManager().setGenomeId(tree_id, loadedGenomeId.value());
+    }
     spdlog::info("SeedAdd: Created tree organism {}", tree_id);
 
     cwc.sendResponse(Response::okay(std::monostate{}));
@@ -974,42 +1025,7 @@ State::Any SimRunning::onEvent(const Api::StateGet::Cwc& cwc, StateMachine& dsm)
         responseData.worldData = world->getData();
     }
 
-    // Populate organism debug info (always fresh, not from cache).
-    world->getOrganismManager().forEachOrganism([&](const Organism::Body& org) {
-        WorldData::OrganismDebugInfo debug{
-            .id = org.getId(),
-            .type = "", // Set below based on type.
-            .anchor_cell = org.getAnchorCell(),
-            .material_at_anchor = "",                    // Set below.
-            .organism_id_at_anchor = INVALID_ORGANISM_ID // Set below.
-        };
-
-        // Get organism type name.
-        switch (org.getType()) {
-            case OrganismType::DUCK:
-                debug.type = "DUCK";
-                break;
-            case OrganismType::TREE:
-                debug.type = "TREE";
-                break;
-            case OrganismType::GOOSE:
-                debug.type = "GOOSE";
-                break;
-        }
-
-        // Check what's actually at the anchor position.
-        const WorldData& data = world->getData();
-        if (data.inBounds(debug.anchor_cell.x, debug.anchor_cell.y)) {
-            const Cell& cell = data.at(debug.anchor_cell.x, debug.anchor_cell.y);
-            debug.material_at_anchor = toString(cell.material_type);
-            debug.organism_id_at_anchor = world->getOrganismManager().at(debug.anchor_cell);
-        }
-        else {
-            debug.material_at_anchor = "OUT_OF_BOUNDS";
-        }
-
-        responseData.worldData.organism_debug.push_back(debug);
-    });
+    populateOrganismDebug(*world, responseData.worldData);
 
     cwc.sendResponse(Response::okay(std::move(responseData)));
 
