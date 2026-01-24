@@ -136,6 +136,8 @@ The CLI tool provides remote control, testing, and automation capabilities:
 ./build-debug/bin/cli cleanup
 ```
 
+**UI documentation:** `src/ui/README.md`
+
 **See [src/cli/README.md](src/cli/README.md) for complete documentation.**
 
 ## Development
