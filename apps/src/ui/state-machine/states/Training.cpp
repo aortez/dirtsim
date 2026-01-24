@@ -6,6 +6,7 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/GenomeGet.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
@@ -21,6 +22,42 @@
 namespace DirtSim {
 namespace Ui {
 namespace State {
+
+namespace {
+
+Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServer(
+    StateMachine& sm, const std::vector<GenomeId>& ids)
+{
+    if (ids.empty()) {
+        return Result<Api::TrainingResultSave::OkayType, std::string>::error("No ids provided");
+    }
+    if (!sm.hasWebSocketService()) {
+        return Result<Api::TrainingResultSave::OkayType, std::string>::error(
+            "No WebSocketService available");
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return Result<Api::TrainingResultSave::OkayType, std::string>::error(
+            "Not connected to server");
+    }
+
+    Api::TrainingResultSave::Command cmd;
+    cmd.ids = ids;
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingResultSave::OkayType>(cmd, 5000);
+    if (result.isError()) {
+        return Result<Api::TrainingResultSave::OkayType, std::string>::error(result.errorValue());
+    }
+    if (result.value().isError()) {
+        return Result<Api::TrainingResultSave::OkayType, std::string>::error(
+            result.value().errorValue().message);
+    }
+
+    return Result<Api::TrainingResultSave::OkayType, std::string>::okay(result.value().value());
+}
+
+} // namespace
 
 void Training::onEnter(StateMachine& sm)
 {
@@ -327,10 +364,105 @@ State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMac
         return std::move(*this);
     }
 
-    TrainingResultSaveClickedEvent evt{ .ids = std::move(ids) };
-    auto nextState = onEvent(evt, sm);
-    cwc.sendResponse(UiApi::TrainingResultSave::Response::okay({ .queued = true }));
-    return nextState;
+    const auto saveResult = saveTrainingResultToServer(sm, ids);
+    if (saveResult.isError()) {
+        LOG_ERROR(State, "TrainingResultSave failed: {}", saveResult.errorValue());
+        cwc.sendResponse(
+            UiApi::TrainingResultSave::Response::error(ApiError(saveResult.errorValue())));
+        return std::move(*this);
+    }
+
+    if (view_) {
+        view_->hideTrainingResultModal();
+    }
+
+    UiApi::TrainingResultSave::Okay response{
+        .queued = false,
+        .savedCount = saveResult.value().savedCount,
+        .discardedCount = saveResult.value().discardedCount,
+        .savedIds = saveResult.value().savedIds,
+    };
+    cwc.sendResponse(UiApi::TrainingResultSave::Response::okay(std::move(response)));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::GenomeBrowserOpen::Cwc& cwc, StateMachine& sm)
+{
+    using Response = UiApi::GenomeBrowserOpen::Response;
+
+    if (!view_) {
+        cwc.sendResponse(Response::error(ApiError("Training view not available")));
+        return std::move(*this);
+    }
+
+    auto* uiManager = sm.getUiComponentManager();
+    if (!uiManager) {
+        cwc.sendResponse(Response::error(ApiError("UiComponentManager not available")));
+        return std::move(*this);
+    }
+
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        panel->clearContent();
+        panel->show();
+    }
+
+    view_->clearPanelContent();
+    view_->createGenomeBrowserPanel();
+
+    if (auto* iconRail = uiManager->getIconRail()) {
+        iconRail->selectIcon(IconId::GENOME_BROWSER);
+    }
+
+    cwc.sendResponse(Response::okay({ .opened = true }));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::GenomeDetailOpen::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::GenomeDetailOpen::Response;
+
+    if (!view_) {
+        cwc.sendResponse(Response::error(ApiError("Training view not available")));
+        return std::move(*this);
+    }
+
+    Result<GenomeId, std::string> result;
+    if (cwc.command.id.has_value()) {
+        result = view_->openGenomeDetailById(cwc.command.id.value());
+    }
+    else {
+        result = view_->openGenomeDetailByIndex(cwc.command.index);
+    }
+    if (result.isError()) {
+        cwc.sendResponse(Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    UiApi::GenomeDetailOpen::Okay response{
+        .opened = true,
+        .id = result.value(),
+    };
+    cwc.sendResponse(Response::okay(std::move(response)));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::GenomeDetailLoad::Response;
+
+    if (!view_) {
+        cwc.sendResponse(Response::error(ApiError("Training view not available")));
+        return std::move(*this);
+    }
+
+    auto result = view_->loadGenomeDetail(cwc.command.id);
+    if (result.isError()) {
+        cwc.sendResponse(Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(Response::okay({ .queued = true }));
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
@@ -409,26 +541,9 @@ State::Any Training::onEvent(const TrainingResultSaveClickedEvent& evt, StateMac
         return std::move(*this);
     }
 
-    if (!sm.hasWebSocketService()) {
-        LOG_ERROR(State, "No WebSocketService available");
-        return std::move(*this);
-    }
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_WARN(State, "Not connected to server, cannot save training result");
-        return std::move(*this);
-    }
-
-    Api::TrainingResultSave::Command cmd;
-    cmd.ids = evt.ids;
-    const auto result =
-        wsService.sendCommandAndGetResponse<Api::TrainingResultSave::OkayType>(cmd, 5000);
+    const auto result = saveTrainingResultToServer(sm, evt.ids);
     if (result.isError()) {
         LOG_ERROR(State, "TrainingResultSave failed: {}", result.errorValue());
-        return std::move(*this);
-    }
-    if (result.value().isError()) {
-        LOG_ERROR(State, "TrainingResultSave error: {}", result.value().errorValue().message);
         return std::move(*this);
     }
 
@@ -470,6 +585,101 @@ State::Any Training::onEvent(const TrainingResultDiscardClickedEvent& /*evt*/, S
     }
 
     return std::move(*this);
+}
+
+State::Any Training::onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(State, "Genome load requested (genome_id={})", evt.genomeId.toShortString());
+
+    if (!sm.hasWebSocketService()) {
+        LOG_WARN(State, "Genome load ignored: no WebSocketService");
+        return std::move(*this);
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Genome load ignored: not connected to server");
+        return std::move(*this);
+    }
+
+    Api::GenomeGet::Command getCmd{ .id = evt.genomeId };
+    auto getResult = wsService.sendCommandAndGetResponse<Api::GenomeGet::Okay>(getCmd, 5000);
+    if (getResult.isError()) {
+        LOG_ERROR(State, "GenomeGet failed: {}", getResult.errorValue());
+        return std::move(*this);
+    }
+    if (getResult.value().isError()) {
+        LOG_ERROR(State, "GenomeGet error: {}", getResult.value().errorValue().message);
+        return std::move(*this);
+    }
+
+    const auto& response = getResult.value().value();
+    if (!response.found) {
+        LOG_WARN(State, "Genome load ignored: genome not found");
+        return std::move(*this);
+    }
+    if (!response.metadata.organismType.has_value()) {
+        LOG_WARN(State, "Genome load ignored: missing organism type");
+        return std::move(*this);
+    }
+    if (response.metadata.organismType.value() != OrganismType::TREE) {
+        LOG_WARN(State, "Genome load only supported for tree organisms");
+        return std::move(*this);
+    }
+
+    if (evt.genomeId.isNil()) {
+        LOG_WARN(State, "Genome load ignored: genome_id is nil");
+        return std::move(*this);
+    }
+
+    if (evolutionStarted_) {
+        Api::EvolutionStop::Command stopCmd;
+        auto stopResult =
+            wsService.sendCommandAndGetResponse<Api::EvolutionStop::OkayType>(stopCmd, 2000);
+        if (stopResult.isError() || stopResult.value().isError()) {
+            LOG_ERROR(State, "EvolutionStop failed");
+            return std::move(*this);
+        }
+        evolutionStarted_ = false;
+    }
+
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+
+    Api::SimRun::Command simRunCmd{ .timestep = 0.016,
+                                    .max_steps = -1,
+                                    .max_frame_ms = 16,
+                                    .scenario_id = evt.scenarioId,
+                                    .start_paused = false,
+                                    .container_size = containerSize };
+
+    auto simResult = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(simRunCmd, 2000);
+    if (simResult.isError() || simResult.value().isError()) {
+        LOG_ERROR(State, "SimRun failed");
+        return std::move(*this);
+    }
+
+    constexpr int targetCellSize = 16;
+    const int worldWidth = std::max(10, static_cast<int>(containerSize.x) / targetCellSize);
+    const int worldHeight = std::max(10, static_cast<int>(containerSize.y) / targetCellSize);
+    const int centerX = worldWidth / 2;
+    const int centerY = worldHeight / 2;
+
+    Api::SeedAdd::Command seedCmd;
+    seedCmd.x = centerX;
+    seedCmd.y = centerY;
+    seedCmd.genome_id = evt.genomeId.toString();
+
+    auto seedResult = wsService.sendCommandAndGetResponse<Api::SeedAdd::OkayType>(seedCmd, 2000);
+    if (seedResult.isError() || seedResult.value().isError()) {
+        LOG_ERROR(State, "SeedAdd failed");
+    }
+
+    LOG_INFO(State, "Transitioning to SimRunning with genome");
+    return SimRunning{};
 }
 
 State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
