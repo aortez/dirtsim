@@ -297,10 +297,34 @@ std::string getExamplesHelp()
     examples += "  cli ui StatusGet\n";
     examples += "  cli server StatusGet\n";
     examples += "  cli os-manager SystemStatus\n";
-    examples += "  cli screenshot output.png\n";
+    examples += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
+    examples += "  cli os-manager WebSocketAccessSet '{\"enabled\": true}'\n";
+    examples += "  cli os-manager StartServer\n";
+    examples += "  cli os-manager StopUi\n";
+    examples += "  cli os-manager RestartServer\n";
+    examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     examples += "  cli run-all\n";
-    examples += "  cli network status\n\n";
-    examples += "Target-specific help:\n";
+    examples += "  cli network status\n";
+
+    // Screenshot examples.
+    examples += "\nScreenshot:\n";
+    examples += "  cli screenshot output.png                              # Local UI\n";
+    examples += "  cli screenshot --address ws://dirtsim.local:7070 out.png  # Remote UI\n";
+
+    // Functional test examples.
+    examples += "\nFunctional Tests:\n";
+    examples += "  cli functional-test canExit\n";
+    examples += "  cli functional-test canExit --restart\n";
+    examples += "  cli functional-test canTrain\n";
+    examples += "  cli functional-test canSetGenerationsAndTrain\n";
+    examples += "  cli functional-test canPlantTreeSeed\n";
+    examples += "  cli functional-test canLoadGenomeFromBrowser\n";
+    examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
+                "--server-address ws://dirtsim.local:8080\n";
+    examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
+
+    // Target-specific help.
+    examples += "\nTarget-specific help:\n";
     examples += "  cli ui help\n";
     examples += "  cli server help\n";
     examples += "  cli os-manager help\n";

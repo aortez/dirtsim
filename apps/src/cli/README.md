@@ -79,6 +79,7 @@ Send commands to the server or UI:
 # OS manager commands
 ./build-debug/bin/cli os-manager SystemStatus
 ./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
+./build-debug/bin/cli os-manager WebSocketAccessSet '{"enabled": true}'
 ./build-debug/bin/cli os-manager StartServer
 ./build-debug/bin/cli os-manager StopServer
 ./build-debug/bin/cli os-manager RestartServer
@@ -88,7 +89,8 @@ Send commands to the server or UI:
 ./build-debug/bin/cli os-manager Reboot
 
 # Remote connections (override default addresses)
-# Remote WebSockets require ?token=... when LAN Web UI is enabled.
+# Remote WebSockets require ?token=... when incoming WebSocket access is enabled.
+# LAN Web UI enables incoming WebSocket access automatically.
 # When LAN Web UI is disabled, use SSH and run dirtsim-cli locally on the device.
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080?token=TOKEN

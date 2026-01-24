@@ -9,6 +9,7 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
+#include "api/WebSocketAccessSet.h"
 #include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
@@ -293,6 +294,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::WebSocketAccessSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::WebUiAccessSet);
         DISPATCH_JSON_CMD_EMPTY(Api::WorldResize);
 
@@ -355,8 +357,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
     });
 
-    service.registerHandler<Api::WebUiAccessSet::Cwc>([this](Api::WebUiAccessSet::Cwc cwc) {
-        using Response = Api::WebUiAccessSet::Response;
+    service.registerHandler<Api::WebSocketAccessSet::Cwc>([this](Api::WebSocketAccessSet::Cwc cwc) {
+        using Response = Api::WebSocketAccessSet::Response;
 
         if (!pImpl->wsService_) {
             cwc.sendResponse(Response::error(ApiError("WebSocket service not available")));
@@ -368,7 +370,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
             return;
         }
 
-        Api::WebUiAccessSet::Okay okay;
+        Api::WebSocketAccessSet::Okay okay;
         okay.enabled = cwc.command.enabled;
         cwc.sendResponse(Response::okay(std::move(okay)));
 
@@ -386,7 +388,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         if (listenResult.isError()) {
             LOG_ERROR(
                 Network,
-                "WebUiAccessSet failed to bind {}:{}: {}",
+                "WebSocketAccessSet failed to bind {}:{}: {}",
                 bindAddress,
                 pImpl->webSocketPort_,
                 listenResult.errorValue());
@@ -394,20 +396,33 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         }
 
         if (cwc.command.enabled) {
-            if (pImpl->httpServer_) {
-                const bool started = pImpl->httpServer_->start("0.0.0.0");
-                if (!started) {
-                    LOG_ERROR(Network, "Failed to start HTTP server for /garden");
-                }
-            }
             startPeerAdvertisement(pImpl->webSocketPort_, pImpl->peerServiceName_);
         }
         else {
-            if (pImpl->httpServer_) {
-                pImpl->httpServer_->stop();
-            }
             pImpl->peerAdvertisement_.stop();
         }
+    });
+
+    service.registerHandler<Api::WebUiAccessSet::Cwc>([this](Api::WebUiAccessSet::Cwc cwc) {
+        using Response = Api::WebUiAccessSet::Response;
+
+        Api::WebUiAccessSet::Okay okay;
+        okay.enabled = cwc.command.enabled;
+        cwc.sendResponse(Response::okay(std::move(okay)));
+
+        if (!pImpl->httpServer_) {
+            return;
+        }
+
+        if (cwc.command.enabled) {
+            const bool started = pImpl->httpServer_->start("0.0.0.0");
+            if (!started) {
+                LOG_ERROR(Network, "Failed to start HTTP server for /garden");
+            }
+            return;
+        }
+
+        pImpl->httpServer_->stop();
     });
 
     // PeersGet - return discovered mDNS peers.

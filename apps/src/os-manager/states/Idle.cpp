@@ -79,6 +79,13 @@ Any Idle::onEvent(const OsApi::SystemStatus::Cwc& cwc, OperatingSystemManager& o
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "WebSocketAccessSet command received");
+    cwc.sendResponse(osm.setWebSocketAccess(cwc.command.enabled));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "WebUiAccessSet command received");
