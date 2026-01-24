@@ -317,12 +317,14 @@ void OrganismManager::removeOrganism(OrganismId id)
     }
 
     organisms_.erase(it);
+    organismGenomeIds_.erase(id);
 }
 
 void OrganismManager::clear()
 {
     spdlog::info("OrganismManager: Clearing all organisms (count={})", organisms_.size());
     organisms_.clear();
+    organismGenomeIds_.clear();
     std::fill(grid_.begin(), grid_.end(), INVALID_ORGANISM_ID);
 }
 
@@ -336,6 +338,20 @@ const Organism::Body* OrganismManager::getOrganism(OrganismId id) const
 {
     auto it = organisms_.find(id);
     return it != organisms_.end() ? it->second.get() : nullptr;
+}
+
+void OrganismManager::setGenomeId(OrganismId id, const GenomeId& genomeId)
+{
+    organismGenomeIds_[id] = genomeId;
+}
+
+std::optional<GenomeId> OrganismManager::getGenomeId(OrganismId id) const
+{
+    auto it = organismGenomeIds_.find(id);
+    if (it == organismGenomeIds_.end()) {
+        return std::nullopt;
+    }
+    return it->second;
 }
 
 Tree* OrganismManager::getTree(OrganismId id)

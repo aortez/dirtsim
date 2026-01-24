@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Result.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -71,6 +72,9 @@ public:
     void createGenomeBrowserPanel();
     void createTrainingConfigPanel();
     void createTrainingResultBrowserPanel();
+    Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
+    Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
+    Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
 
 private:
     bool evolutionStarted_ = false;

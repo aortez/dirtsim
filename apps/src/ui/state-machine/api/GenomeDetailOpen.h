@@ -7,43 +7,41 @@
 #include "server/api/ApiMacros.h"
 #include <nlohmann/json.hpp>
 #include <optional>
-#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace TrainingResultSave {
+namespace GenomeDetailOpen {
 
-DEFINE_API_NAME(TrainingResultSave);
+DEFINE_API_NAME(GenomeDetailOpen);
 
 struct Command {
-    std::optional<int> count;
+    std::optional<GenomeId> id;
+    int index = 0;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {
-    bool queued = false;
-    int savedCount = 0;
-    int discardedCount = 0;
-    std::vector<GenomeId> savedIds;
+    bool opened = true;
+    GenomeId id{};
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<2>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace TrainingResultSave
+} // namespace GenomeDetailOpen
 } // namespace UiApi
 } // namespace DirtSim

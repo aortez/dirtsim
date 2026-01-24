@@ -1,6 +1,9 @@
 #include "CommandDeserializerJson.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/api/Exit.h"
+#include "ui/state-machine/api/GenomeBrowserOpen.h"
+#include "ui/state-machine/api/GenomeDetailLoad.h"
+#include "ui/state-machine/api/GenomeDetailOpen.h"
 #include "ui/state-machine/api/MouseDown.h"
 #include "ui/state-machine/api/MouseMove.h"
 #include "ui/state-machine/api/MouseUp.h"
@@ -58,6 +61,18 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::Exit::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::Exit::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::GenomeBrowserOpen::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::GenomeBrowserOpen::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::GenomeDetailLoad::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::GenomeDetailLoad::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::GenomeDetailOpen::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::GenomeDetailOpen::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::MouseDown::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::MouseDown::Command::fromJson(cmd));
