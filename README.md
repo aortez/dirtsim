@@ -23,18 +23,12 @@ It also has a very nice clock mode, just hacked in because why not make use of t
 
 ```
 dirtsim/
-├── apps/              # Main simulation application (server, UI, CLI)
+├── apps/              # Main simulation application
+│   ├── src/server/    # Headless physics simulation (WebSocket API :8080)
+│   ├── src/ui/        # LVGL display client (WebSocket API :7070)
+│   └── src/cli/       # Command-line tool for control, testing, benchmarking
 └── yocto/             # Yocto layer for building Pi images
 ```
-
-### apps/ - The Simulation
-
-The main application lives here. It's a client/server architecture:
-- **Server**: Headless physics simulation with WebSocket API (port 8080)
-- **UI**: LVGL-based display client with controls (port 7070)
-- **CLI**: Command-line tool for control, testing, and benchmarking
-
-### yocto/ - Pi Image Building
 
 ## Quick Start
 

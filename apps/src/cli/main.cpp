@@ -18,6 +18,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
+#include <algorithm>
 #include <args.hxx>
 #include <atomic>
 #include <chrono>
@@ -128,80 +129,173 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "watch", "Subscribe to server broadcasts and dump to stdout" },
 };
 
-std::string getCommandListHelp()
+std::vector<CliCommandInfo> getSortedCliCommands()
 {
-    std::string help = "Available commands:\n\n";
+    std::vector<CliCommandInfo> commands = CLI_COMMANDS;
+    std::sort(commands.begin(), commands.end(), [](const auto& left, const auto& right) {
+        return left.name < right.name;
+    });
+    return commands;
+}
 
-    // CLI-specific commands.
-    help += "CLI Commands:\n";
-    for (const auto& cmd : CLI_COMMANDS) {
+template <typename CommandList>
+std::vector<std::string> getSortedCommandNames(const CommandList& commands)
+{
+    std::vector<std::string> names;
+    names.reserve(commands.size());
+    for (const auto& cmd : commands) {
+        names.emplace_back(cmd);
+    }
+    std::sort(names.begin(), names.end());
+    return names;
+}
+
+std::string buildCliCommandHelp()
+{
+    std::string help = "CLI Commands:\n";
+    const auto sortedCommands = getSortedCliCommands();
+    for (const auto& cmd : sortedCommands) {
         help += "  " + cmd.name + " - " + cmd.description + "\n";
     }
-
-    // Auto-generated server API commands.
-    help += "\nServer API Commands (ws://localhost:8080):\n";
-    for (const auto& cmdName : Client::SERVER_COMMAND_NAMES) {
-        help += "  " + std::string(cmdName) + "\n";
-    }
-
-    // Auto-generated UI API commands.
-    help += "\nUI API Commands (ws://localhost:7070):\n";
-    for (const auto& cmdName : Client::UI_COMMAND_NAMES) {
-        help += "  " + std::string(cmdName) + "\n";
-    }
-
-    // Auto-generated OS manager API commands.
-    help += "\nOS Manager API Commands (ws://localhost:9090):\n";
-    for (const auto& cmdName : Client::OS_COMMAND_NAMES) {
-        help += "  " + std::string(cmdName) + "\n";
-    }
-
     return help;
+}
+
+template <typename CommandList>
+std::string buildApiCommandHelp(const std::string& title, const CommandList& commands)
+{
+    std::string help = title + ":\n";
+    const auto names = getSortedCommandNames(commands);
+    for (const auto& name : names) {
+        help += "  " + name + "\n";
+    }
+    return help;
+}
+
+std::string getGlobalHelp()
+{
+    std::string help = "Available targets:\n";
+    help += "  benchmark\n";
+    help += "  cleanup\n";
+    help += "  functional-test\n";
+    help += "  gamepad-test\n";
+    help += "  genome-db-benchmark\n";
+    help += "  integration_test\n";
+    help += "  network\n";
+    help += "  os-manager\n";
+    help += "  run-all\n";
+    help += "  screenshot\n";
+    help += "  server\n";
+    help += "  test_binary\n";
+    help += "  train\n";
+    help += "  ui\n";
+    help += "  watch\n\n";
+    help += buildCliCommandHelp();
+    help += "\nTarget-specific help:\n";
+    help += "  cli server help\n";
+    help += "  cli ui help\n";
+    help += "  cli os-manager help\n";
+    help += "  cli network help\n";
+    return help;
+}
+
+std::string getUiHelp()
+{
+    std::string help;
+    help += "Usage: cli ui <command> [params]\n\n";
+    help += "Options:\n";
+    help += "  --address=ws://host:7070   Override default UI WebSocket URL\n";
+    help += "  --example                  Print default JSON for a command\n";
+    help += "  --timeout=MS               Response timeout in milliseconds\n\n";
+    help += buildApiCommandHelp("UI API Commands (ws://localhost:7070)", Client::UI_COMMAND_NAMES);
+    help += "\nExamples:\n";
+    help += "  cli ui StatusGet\n";
+    help += "  cli ui ScreenGrab --example\n";
+    help += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
+    return help;
+}
+
+std::string getServerHelp()
+{
+    std::string help;
+    help += "Usage: cli server <command> [params]\n\n";
+    help += "Options:\n";
+    help += "  --address=ws://host:8080   Override default server WebSocket URL\n";
+    help += "  --example                  Print default JSON for a command\n";
+    help += "  --timeout=MS               Response timeout in milliseconds\n\n";
+    help += buildApiCommandHelp(
+        "Server API Commands (ws://localhost:8080)", Client::SERVER_COMMAND_NAMES);
+    help += "\nExamples:\n";
+    help += "  cli server StatusGet\n";
+    help += "  cli server SimRun --example\n";
+    help += "  cli --address ws://dirtsim.local:8080 server StatusGet\n";
+    return help;
+}
+
+std::string getOsManagerHelp()
+{
+    std::string help;
+    help += "Usage: cli os-manager <command> [params]\n\n";
+    help += "Options:\n";
+    help += "  --address=ws://host:9090   Override default os-manager WebSocket URL\n";
+    help += "  --example                  Print default JSON for a command\n";
+    help += "  --timeout=MS               Response timeout in milliseconds\n\n";
+    help += buildApiCommandHelp(
+        "OS Manager API Commands (ws://localhost:9090)", Client::OS_COMMAND_NAMES);
+    help += "\nExamples:\n";
+    help += "  cli os-manager SystemStatus\n";
+    help += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
+    help += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
+    return help;
+}
+
+std::string getNetworkHelp()
+{
+    std::string help;
+    help += "Usage: cli network <command> [args]\n\n";
+    help += "Commands:\n";
+    help += "  status\n";
+    help += "  list\n";
+    help += "  scan\n";
+    help += "  connect <ssid> [--password \"secret\"]\n";
+    help += "  disconnect [ssid]\n";
+    help += "  forget <ssid>\n\n";
+    help += "Examples:\n";
+    help += "  cli network status\n";
+    help += "  cli network list\n";
+    help += "  cli network scan\n";
+    help += "  cli network connect \"MySSID\" --password \"secret\"\n";
+    help += "  cli network disconnect\n";
+    help += "  cli network forget \"MySSID\"\n";
+    return help;
+}
+
+std::string getTargetHelp(const std::string& targetName)
+{
+    if (targetName == "server") {
+        return getServerHelp();
+    }
+    if (targetName == "ui") {
+        return getUiHelp();
+    }
+    if (targetName == "os-manager") {
+        return getOsManagerHelp();
+    }
+    if (targetName == "network") {
+        return getNetworkHelp();
+    }
+    return getGlobalHelp();
+}
+
+std::string getCommandListHelp()
+{
+    return getGlobalHelp();
 }
 
 std::string getExamplesHelp()
 {
     std::string examples = "Examples:\n\n";
-
-    // CLI-specific examples.
-    examples += "CLI Commands:\n";
-    for (const auto& cmd : CLI_COMMANDS) {
-        examples += "  cli " + cmd.name + "\n";
-    }
-    examples += "\nNetwork:\n";
-    examples += "  cli network status\n";
-    examples += "  cli network list\n";
-    examples += "  cli network scan\n";
-    examples += "  cli network connect \"MySSID\"\n";
-    examples += "  cli network connect \"MySSID\" --password \"secret\"\n";
-    examples += "  cli network disconnect\n";
-    examples += "  cli network disconnect \"MySSID\"\n";
-    examples += "  cli network forget \"MySSID\"\n";
-
-    // Server API examples (show a few common ones).
-    examples += "\nServer API Examples:\n";
-    examples += "  cli server StatusGet\n";
-    examples += "  cli server SimRun '{\"scenario\": \"sandbox\"}'\n";
-    examples += "  cli server SimRun --example\n";
-    examples += "  cli server DiagramGet\n";
-    examples += "  cli server CellSet '{\"x\": 50, \"y\": 50, \"material\": \"WATER\", \"fill\": "
-                "1.0}'\n";
-
-    // Remote server.
-    examples += "\nRemote Server:\n";
-    examples += "  cli --address ws://dirtsim.local:8080 server StatusGet\n";
-    examples += "  cli --address ws://dirtsim.local:8080 server SimRun '{\"scenario\": "
-                "\"tree_germination\"}'\n";
-
-    // UI API examples.
-    examples += "\nUI API Examples:\n";
     examples += "  cli ui StatusGet\n";
-    examples += "  cli ui ScreenGrab\n";
-    examples += "  cli ui ScreenGrab --example\n";
-    examples += "  cli --address ws://dirtsim.local:7070 ui StatusGet\n";
-
-    // OS manager API examples.
-    examples += "\nOS Manager API Examples:\n";
+    examples += "  cli server StatusGet\n";
     examples += "  cli os-manager SystemStatus\n";
     examples += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
     examples += "  cli os-manager WebSocketAccessSet '{\"enabled\": true}'\n";
@@ -209,6 +303,8 @@ std::string getExamplesHelp()
     examples += "  cli os-manager StopUi\n";
     examples += "  cli os-manager RestartServer\n";
     examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
+    examples += "  cli run-all\n";
+    examples += "  cli network status\n";
 
     // Screenshot examples.
     examples += "\nScreenshot:\n";
@@ -227,6 +323,12 @@ std::string getExamplesHelp()
                 "--server-address ws://dirtsim.local:8080\n";
     examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
 
+    // Target-specific help.
+    examples += "\nTarget-specific help:\n";
+    examples += "  cli ui help\n";
+    examples += "  cli server help\n";
+    examples += "  cli os-manager help\n";
+    examples += "  cli network help\n";
     return examples;
 }
 
@@ -1184,11 +1286,15 @@ int main(int argc, char** argv)
     if (targetName == "network") {
         if (!command) {
             std::cerr << "Error: command is required for network target\n\n";
-            std::cerr << "Usage: cli network status|list|scan|connect|disconnect|forget [ssid]\n";
+            std::cerr << getNetworkHelp();
             return 1;
         }
 
         const std::string subcommand = args::get(command);
+        if (subcommand == "help") {
+            std::cout << getNetworkHelp();
+            return 0;
+        }
         Network::WifiManager wifi;
 
         if (subcommand == "status") {
@@ -1320,11 +1426,15 @@ int main(int argc, char** argv)
     // Require command argument for server/ui targets.
     if (!command) {
         std::cerr << "Error: command is required for " << targetName << " target\n\n";
-        std::cerr << parser;
+        std::cerr << getTargetHelp(targetName);
         return 1;
     }
 
     std::string commandName = args::get(command);
+    if (commandName == "help") {
+        std::cout << getTargetHelp(targetName);
+        return 0;
+    }
     if (example) {
         Client::CommandDispatcher dispatcher;
         auto dispatchTarget =
