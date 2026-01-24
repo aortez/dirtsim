@@ -304,8 +304,9 @@ State::Any Training::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine&
 State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {
-        cwc.sendResponse(UiApi::TrainingResultSave::Response::error(
-            ApiError("Training result modal not visible")));
+        cwc.sendResponse(
+            UiApi::TrainingResultSave::Response::error(
+                ApiError("Training result modal not visible")));
         return std::move(*this);
     }
 
@@ -331,8 +332,9 @@ State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMac
 State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {
-        cwc.sendResponse(UiApi::TrainingResultDiscard::Response::error(
-            ApiError("Training result modal not visible")));
+        cwc.sendResponse(
+            UiApi::TrainingResultDiscard::Response::error(
+                ApiError("Training result modal not visible")));
         return std::move(*this);
     }
 

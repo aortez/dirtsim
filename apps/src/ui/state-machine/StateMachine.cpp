@@ -422,8 +422,9 @@ void StateMachine::handleEvent(const Event& event)
                 h264Encoder_ = std::make_unique<H264Encoder>();
                 if (!h264Encoder_->initialize(screenshotData->width, screenshotData->height)) {
                     LOG_ERROR(State, "Failed to initialize H.264 encoder");
-                    cwc.sendResponse(UiApi::ScreenGrab::Response::error(
-                        ApiError("Failed to initialize H.264 encoder")));
+                    cwc.sendResponse(
+                        UiApi::ScreenGrab::Response::error(
+                            ApiError("Failed to initialize H.264 encoder")));
                     return;
                 }
             }
@@ -635,8 +636,9 @@ void StateMachine::handleEvent(const Event& event)
 
                             // If this is an API command with sendResponse, send error.
                             if constexpr (requires {
-                                              evt.sendResponse(std::declval<typename std::decay_t<
-                                                                   decltype(evt)>::Response>());
+                                              evt.sendResponse(
+                                                  std::declval<typename std::decay_t<
+                                                      decltype(evt)>::Response>());
                                           }) {
                                 auto errorMsg = std::string("Command not supported in state: ")
                                     + State::getCurrentStateName(fsmState);

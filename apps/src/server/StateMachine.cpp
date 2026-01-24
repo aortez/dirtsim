@@ -373,8 +373,9 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         }
         auto found = std::move(getResult).value();
         if (!found.has_value()) {
-            cwc.sendResponse(Api::TrainingResultGet::Response::error(ApiError(
-                "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
+            cwc.sendResponse(
+                Api::TrainingResultGet::Response::error(ApiError(
+                    "TrainingResultGet not found: " + cwc.command.trainingSessionId.toString())));
             return;
         }
 
@@ -739,18 +740,19 @@ void StateMachine::handleEvent(const Event& event)
         genome.weights = cwc.command.weights;
 
         // Use provided metadata or create default.
-        GenomeMetadata meta = cwc.command.metadata.value_or(GenomeMetadata{
-            .name = "imported_" + cwc.command.id.toShortString(),
-            .fitness = 0.0,
-            .generation = 0,
-            .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-            .scenarioId = Scenario::EnumType::TreeGermination,
-            .notes = "",
-            .organismType = std::nullopt,
-            .brainKind = std::nullopt,
-            .brainVariant = std::nullopt,
-            .trainingSessionId = std::nullopt,
-        });
+        GenomeMetadata meta = cwc.command.metadata.value_or(
+            GenomeMetadata{
+                .name = "imported_" + cwc.command.id.toShortString(),
+                .fitness = 0.0,
+                .generation = 0,
+                .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+                .scenarioId = Scenario::EnumType::TreeGermination,
+                .notes = "",
+                .organismType = std::nullopt,
+                .brainKind = std::nullopt,
+                .brainVariant = std::nullopt,
+                .trainingSessionId = std::nullopt,
+            });
 
         repo.store(cwc.command.id, genome, meta);
 
@@ -814,8 +816,9 @@ void StateMachine::handleEvent(const Event& event)
         const auto& result = cwc.command.result;
 
         if (result.summary.trainingSessionId.isNil()) {
-            cwc.sendResponse(Api::TrainingResultSet::Response::error(
-                ApiError("TrainingResultSet requires trainingSessionId")));
+            cwc.sendResponse(
+                Api::TrainingResultSet::Response::error(
+                    ApiError("TrainingResultSet requires trainingSessionId")));
             return;
         }
 
@@ -851,8 +854,9 @@ void StateMachine::handleEvent(const Event& event)
             return;
         }
         if (rejected) {
-            cwc.sendResponse(Api::TrainingResultSet::Response::error(
-                ApiError("TrainingResultSet already exists")));
+            cwc.sendResponse(
+                Api::TrainingResultSet::Response::error(
+                    ApiError("TrainingResultSet already exists")));
             return;
         }
 
@@ -870,8 +874,9 @@ void StateMachine::handleEvent(const Event& event)
         assert(!connectionId.empty() && "RenderFormatSet: connectionId must be populated!");
 
         if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
-            cwc.sendResponse(Api::RenderFormatSet::Response::error(
-                ApiError{ "Client did not request render updates" }));
+            cwc.sendResponse(
+                Api::RenderFormatSet::Response::error(
+                    ApiError{ "Client did not request render updates" }));
             return;
         }
 
@@ -938,8 +943,9 @@ void StateMachine::handleEvent(const Event& event)
 
                             // If this is an API command with sendResponse, send error.
                             if constexpr (requires {
-                                              evt.sendResponse(std::declval<typename std::decay_t<
-                                                                   decltype(evt)>::Response>());
+                                              evt.sendResponse(
+                                                  std::declval<typename std::decay_t<
+                                                      decltype(evt)>::Response>());
                                           }) {
                                 auto errorMsg = std::string("Command not supported in state: ")
                                     + State::getCurrentStateName(pImpl->fsmState_);

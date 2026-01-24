@@ -448,8 +448,9 @@ void OperatingSystemManager::handleEvent(const Event& event)
                             getEventName(Event{ evt }));
 
                         if constexpr (requires {
-                                          evt.sendResponse(std::declval<typename std::decay_t<
-                                                               decltype(evt)>::Response>());
+                                          evt.sendResponse(
+                                              std::declval<typename std::decay_t<
+                                                  decltype(evt)>::Response>());
                                       }) {
                             auto errorMsg = std::string("Command not supported in state: ")
                                 + State::getCurrentStateName(fsmState_);

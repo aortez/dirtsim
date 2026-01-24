@@ -21,13 +21,13 @@ namespace DirtSim {
 class LightHandHeld {
 public:
     struct Config {
-        float weight = 1.5f;
-        float inertia = 0.4f;
-        float max_torque = 3.0f;
-        float damping = 2.0f;
-        float accel_sensitivity = 0.08f;
+        float weight = 3.0f;
+        float inertia = 0.1f;
+        float max_torque = 3.1f;
+        float damping = 1.5f;
+        float accel_sensitivity = 0.2f;
         float shutoff_angle = -0.6f;
-        float recovery_angle = -0.4f;
+        float recovery_angle = -0.5f;
     };
 
     explicit LightHandHeld(LightHandle light);

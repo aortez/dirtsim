@@ -3137,8 +3137,9 @@ concept has_member_name = detail::has_member_name_impl<std::remove_cvref_t<T>, N
     or detail::member_name_diagnosis<std::remove_cvref_t<T>, Name>;
 
 template <fixed_string Name, class T>
-    requires(std::is_aggregate_v<std::remove_cvref_t<T>>
-             and has_member_name<std::remove_cvref_t<T>, Name>)
+    requires(
+        std::is_aggregate_v<std::remove_cvref_t<T>>
+        and has_member_name<std::remove_cvref_t<T>, Name>)
 [[nodiscard]] constexpr auto index_of() noexcept -> std::size_t
 {
     return []<auto... Ns>(std::index_sequence<Ns...>) {
@@ -3230,8 +3231,9 @@ template <std::size_t N, class T>
 }
 
 template <fixed_string Name, class T>
-    requires(std::is_aggregate_v<std::remove_cvref_t<T>>
-             and has_member_name<std::remove_cvref_t<T>, Name>)
+    requires(
+        std::is_aggregate_v<std::remove_cvref_t<T>>
+        and has_member_name<std::remove_cvref_t<T>, Name>)
 [[nodiscard]] constexpr auto size_of() noexcept -> std::size_t
 {
     return size_of<index_of<Name, std::remove_cvref_t<T>>(), std::remove_cvref_t<T>>();
@@ -3259,8 +3261,9 @@ template <std::size_t N, class T>
 }
 
 template <fixed_string Name, class T>
-    requires(std::is_aggregate_v<std::remove_cvref_t<T>>
-             and has_member_name<std::remove_cvref_t<T>, Name>)
+    requires(
+        std::is_aggregate_v<std::remove_cvref_t<T>>
+        and has_member_name<std::remove_cvref_t<T>, Name>)
 [[nodiscard]] constexpr auto align_of() noexcept -> std::size_t
 {
     return align_of<index_of<Name, std::remove_cvref_t<T>>(), std::remove_cvref_t<T>>();
@@ -3312,8 +3315,9 @@ template <std::size_t N, class T>
 }
 
 template <fixed_string Name, class T>
-    requires(std::is_aggregate_v<std::remove_cvref_t<T>>
-             and has_member_name<std::remove_cvref_t<T>, Name>)
+    requires(
+        std::is_aggregate_v<std::remove_cvref_t<T>>
+        and has_member_name<std::remove_cvref_t<T>, Name>)
 [[nodiscard]] constexpr auto offset_of() noexcept -> std::size_t
 {
     return offset_of<index_of<Name, std::remove_cvref_t<T>>(), std::remove_cvref_t<T>>();
@@ -3778,10 +3782,9 @@ static_assert((
             static_assert(
                 [](auto e) { return requires { enum_name<mask, "", 1, 2>(e); }; }(mask::a));
             static_assert(
-                not [](auto e) { return requires { enum_name<foobar, "", 1, 2>(e); }; }(0));
-            static_assert(not [](auto e) { return requires { enum_name<int, "", 1, 2>(e); }; }(0));
-            static_assert(
-                not [](auto e) { return requires { enum_name<int, "", 1, 2>(e); }; }(42u));
+                not[](auto e) { return requires { enum_name<foobar, "", 1, 2>(e); }; }(0));
+            static_assert(not[](auto e) { return requires { enum_name<int, "", 1, 2>(e); }; }(0));
+            static_assert(not[](auto e) { return requires { enum_name<int, "", 1, 2>(e); }; }(42u));
 
             static_assert(
                 std::string_view{ "" } == enum_name<foobar, "", 1, 2>(static_cast<foobar>(42)));
@@ -3852,7 +3855,7 @@ static_assert((
                 static_assert(
                     []<auto N> { return requires { get<N>(f); }; }.template operator()<1>());
                 static_assert(
-                    not []<auto N> { return requires { get<N>(f); }; }.template operator()<2>());
+                    not[]<auto N> { return requires { get<N>(f); }; }.template operator()<2>());
 
                 static_assert(42 == get<0>(f));
                 static_assert(true == get<1>(f));
@@ -3977,7 +3980,7 @@ static_assert((
                 static_assert([]<fixed_string Name> {
                     return requires { get<Name>(f); };
                 }.template operator()<"b">());
-                static_assert(not []<fixed_string Name> {
+                static_assert(not[]<fixed_string Name> {
                     return requires { get<Name>(f); };
                 }.template operator()<"unknown">());
 

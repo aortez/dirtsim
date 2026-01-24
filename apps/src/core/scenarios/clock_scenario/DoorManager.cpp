@@ -32,7 +32,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
 
     // Validate positions are within bounds.
     if (!data.inBounds(door_pos.x, door_pos.y)) {
-        spdlog::warn(
+        spdlog::error(
             "DoorManager: Door {} position ({}, {}) is outside world bounds {}x{}",
             id,
             door_pos.x,
@@ -43,7 +43,7 @@ bool DoorManager::openDoor(DoorId id, World& world)
     }
 
     if (!data.inBounds(roof_pos.x, roof_pos.y)) {
-        spdlog::warn(
+        spdlog::error(
             "DoorManager: Door {} roof position ({}, {}) is outside world bounds {}x{}",
             id,
             roof_pos.x,
