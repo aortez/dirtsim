@@ -484,7 +484,7 @@ ssh dirtsim.local
 
 ### WebRTC Video Streaming
 
-The HTTP server (port 8080) serves a web dashboard at `/garden` that displays real-time video streams from connected UI instances via WebRTC.
+The HTTP server (port 8080) serves a web dashboard at `/garden` that displays real-time video streams from connected UI instances via WebRTC. By default, `/garden` and non-local WebSockets are disabled. Enable LAN access via os-manager to serve `/garden` and accept LAN WebSocket connections with a token. When LAN Web UI is disabled, server/UI WebSocket ports are localhost-only, so remote control must be done over SSH (use `dirtsim-cli` on the device).
 
 **Architecture:**
 - UI application runs headless with LVGL display
@@ -498,9 +498,16 @@ The HTTP server (port 8080) serves a web dashboard at `/garden` that displays re
 # Local
 http://localhost:8081/garden
 
-# Remote (Pi)
+# Remote (Pi) - requires LAN Web UI enabled and token.
 http://dirtsim.local:8081/garden
 ```
+
+**Enable LAN Web UI:**
+```bash
+./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
+```
+
+The token is shown on the device UI Network panel and in `SystemStatus` as `lan_web_ui_token`. Remote WebSocket connections must include `?token=...` (localhost is exempt).
 
 **Implementation:**
 - **Server**: `src/ui/rendering/WebRtcStreamer.{h,cpp}` - Manages peer connections and H.264 RTP streaming

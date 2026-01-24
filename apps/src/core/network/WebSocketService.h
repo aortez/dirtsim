@@ -210,6 +210,18 @@ public:
 
     void setClientHello(const ClientHello& hello) override { clientHello_ = hello; }
 
+    void setAccessToken(std::string token)
+    {
+        std::lock_guard<std::mutex> lock(accessTokenMutex_);
+        accessToken_ = std::move(token);
+    }
+
+    void clearAccessToken()
+    {
+        std::lock_guard<std::mutex> lock(accessTokenMutex_);
+        accessToken_.clear();
+    }
+
     bool clientWantsEvents(const std::string& connectionId) const;
     bool clientWantsRender(const std::string& connectionId) const;
     void onConnected(ConnectionCallback callback) override { connectedCallback_ = callback; }
@@ -259,17 +271,21 @@ public:
      * @param port Port to listen on.
      * @return Result with success or error message.
      */
-    Result<std::monostate, std::string> listen(uint16_t port) override;
+    Result<std::monostate, std::string> listen(
+        uint16_t port, const std::string& bindAddress = "0.0.0.0") override;
 
     /**
      * @brief Stop listening for connections.
      */
     void stopListening() override;
+    void stopListening(bool disconnectClients);
 
     /**
      * @brief Check if server is currently listening.
      */
     bool isListening() const override;
+
+    void closeNonLocalClients();
 
     void broadcastBinary(const std::vector<std::byte>& data);
 
@@ -492,6 +508,9 @@ private:
 
     JsonDeserializer jsonDeserializer_;    // Injected JSON deserializer (server/UI provides).
     JsonCommandDispatcher jsonDispatcher_; // Injected JSON command dispatcher (server/UI provides).
+
+    std::string accessToken_;
+    mutable std::mutex accessTokenMutex_;
 
     void onClientConnected(std::shared_ptr<rtc::WebSocket> ws);
     void onClientMessage(std::shared_ptr<rtc::WebSocket> ws, const rtc::binary& data);

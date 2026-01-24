@@ -221,10 +221,30 @@ void WebRtcStreamer::removeClient(const std::string& clientId)
 
     auto it = clients_.find(clientId);
     if (it != clients_.end()) {
+        if (it->second.pc) {
+            it->second.pc->close();
+        }
         clients_.erase(it);
         spdlog::info(
             "WebRtcStreamer: Removed client {} (remaining: {})", clientId, clients_.size());
     }
+}
+
+void WebRtcStreamer::closeAllClients()
+{
+    std::lock_guard<std::mutex> lock(clientsMutex_);
+
+    for (auto& [clientId, client] : clients_) {
+        if (client.pc) {
+            client.pc->close();
+        }
+    }
+
+    if (!clients_.empty()) {
+        spdlog::info("WebRtcStreamer: Closing {} client(s)", clients_.size());
+    }
+
+    clients_.clear();
 }
 
 void WebRtcStreamer::sendFrame()

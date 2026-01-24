@@ -28,6 +28,7 @@
 #include "server/api/TrainingResultList.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingResultSet.h"
+#include "server/api/WebUiAccessSet.h"
 #include <cctype>
 #include <spdlog/spdlog.h>
 
@@ -160,6 +161,9 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TrainingResultSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::WebUiAccessSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::WebUiAccessSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::WorldResize::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::WorldResize::Command::fromJson(cmd));
