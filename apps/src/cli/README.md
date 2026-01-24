@@ -124,7 +124,7 @@ For a full UI overview, see `apps/src/ui/README.md`.
 
 **Panel navigation inside SimRunning:**
 There are no direct CLI commands for Scenario/Physics/Core panels yet.
-Use `MouseDown`, `MouseMove`, and `MouseUp` with pixel coordinates, and verify with `ScreenGrab`.
+TODO: Add explicit CLI navigation commands for these panels.
 
 ### Run-All Mode
 

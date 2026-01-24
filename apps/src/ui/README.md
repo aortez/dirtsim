@@ -71,10 +71,8 @@ Use the CLI to move between UI states and open training views:
 ## Panel Navigation
 
 The Scenario/Physics/Core panels are managed by the icon rail and expandable panels.
-There are no direct CLI commands for opening these panels yet. To navigate them remotely:
-
-- Use `ui MouseDown`, `ui MouseMove`, `ui MouseUp` with pixel coordinates.
-- Use `ui ScreenGrab` to confirm the current screen.
+There are no direct CLI commands for opening these panels yet.
+TODO: Add explicit CLI navigation commands for these panels.
 
 ## Related Docs
 
