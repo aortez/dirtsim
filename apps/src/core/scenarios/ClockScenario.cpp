@@ -1130,21 +1130,19 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         LightManager& lights = world.getLightManager();
 
         // Entrance door light (will be bright since door opens immediately).
-        Vector2i entrance_light_pos =
+        Vector2f entrance_light_pos =
             door_manager_.getLightPosition(duck_state.entrance_door_id, data);
         duck_state.entrance_light = lights.createLight(
-            PointLight{ .position = Vector2d{ static_cast<double>(entrance_light_pos.x),
-                                              static_cast<double>(entrance_light_pos.y) },
+            PointLight{ .position = entrance_light_pos,
                         .color = ColorNames::torchOrange(),
                         .intensity = kDoorLightOpenIntensity,
                         .radius = kDoorLightRadius,
                         .attenuation = kDoorLightAttenuation });
 
         // Exit door light (starts dim since door is closed).
-        Vector2i exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
+        Vector2f exit_light_pos = door_manager_.getLightPosition(duck_state.exit_door_id, data);
         duck_state.exit_light = lights.createLight(
-            PointLight{ .position = Vector2d{ static_cast<double>(exit_light_pos.x),
-                                              static_cast<double>(exit_light_pos.y) },
+            PointLight{ .position = exit_light_pos,
                         .color = ColorNames::torchOrange(),
                         .intensity = kDoorLightClosedIntensity,
                         .radius = kDoorLightRadius,

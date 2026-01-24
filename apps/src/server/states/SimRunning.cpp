@@ -794,10 +794,9 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     // Create fresh world for new scenario.
     const auto& metadata = newScenario->getMetadata();
-    uint32_t newWidth =
-        (metadata.requiredWidth > 0) ? metadata.requiredWidth : world->getData().width;
+    uint32_t newWidth = (metadata.requiredWidth > 0) ? metadata.requiredWidth : dsm.defaultWidth;
     uint32_t newHeight =
-        (metadata.requiredHeight > 0) ? metadata.requiredHeight : world->getData().height;
+        (metadata.requiredHeight > 0) ? metadata.requiredHeight : dsm.defaultHeight;
     world = std::make_unique<World>(newWidth, newHeight);
 
     // Clear gamepad-controlled duck mappings (ducks are gone with the old world).

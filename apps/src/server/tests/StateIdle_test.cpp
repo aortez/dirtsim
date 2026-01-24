@@ -1,4 +1,7 @@
 #include "core/World.h"
+#include "core/scenarios/Scenario.h"
+#include "core/scenarios/ScenarioRegistry.h"
+#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -65,8 +68,19 @@ TEST_F(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
     // Verify: SimRunning has valid World.
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
     ASSERT_NE(simRunning.world, nullptr) << "SimRunning should have a World";
-    EXPECT_EQ(simRunning.world->getData().width, stateMachine->defaultWidth);
-    EXPECT_EQ(simRunning.world->getData().height, stateMachine->defaultHeight);
+    const auto scenario_id = getScenarioId(stateMachine->serverConfig->startupConfig);
+    const auto* metadata = stateMachine->getScenarioRegistry().getMetadata(scenario_id);
+    ASSERT_NE(metadata, nullptr);
+
+    uint32_t expected_width = stateMachine->defaultWidth;
+    uint32_t expected_height = stateMachine->defaultHeight;
+    if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
+        expected_width = metadata->requiredWidth;
+        expected_height = metadata->requiredHeight;
+    }
+
+    EXPECT_EQ(simRunning.world->getData().width, expected_width);
+    EXPECT_EQ(simRunning.world->getData().height, expected_height);
 
     // Verify: SimRunning has correct run parameters.
     EXPECT_EQ(simRunning.stepCount, 0u) << "Initial step count should be 0";

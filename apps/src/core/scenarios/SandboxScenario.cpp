@@ -16,6 +16,8 @@ SandboxScenario::SandboxScenario()
     metadata_.name = "Sandbox";
     metadata_.description = "Default sandbox with dirt quadrant and particle streams (no walls)";
     metadata_.category = "sandbox";
+    metadata_.requiredWidth = 47;
+    metadata_.requiredHeight = 30;
 
     // Initialize with default config.
     config_.quadrantEnabled = true;

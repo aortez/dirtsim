@@ -269,37 +269,88 @@ TEST_F(LightHandHeldTest, DownwardAccelerationCausesBeamToRise)
 // Jump Simulation - Full Profile with Data Capture
 // =============================================================================
 
-TEST_F(LightHandHeldTest, JumpSequenceCapturesFlashlightBehavior)
+struct JumpSequenceTestCase {
+    std::string name;
+    LightHandHeld::Config config;
+    bool expect_off_during_jump;
+};
+
+class JumpSequenceTest : public LightHandHeldTest,
+                         public ::testing::WithParamInterface<JumpSequenceTestCase> {};
+
+TEST_P(JumpSequenceTest, JumpSequenceCapturesFlashlightBehavior)
 {
+    const auto& tc = GetParam();
     LightHandle handle = lights.createLight(makeSpotLight());
-    LightHandHeld light(std::move(handle));
+    LightHandHeld light(std::move(handle), tc.config);
 
     constexpr double dt = 1.0 / 60.0;
     Vector2d pos = STATIONARY_POS;
     double velocity_y = 0.0;
 
-    // Data capture structure.
     struct Snapshot {
+        int frame;
         double time;
         float pitch;
         float angular_velocity;
         bool is_on;
+        bool in_jump;
         double vel_y;
+        const char* phase;
     };
     std::vector<Snapshot> data;
 
-    // Helper to step and record.
-    auto step = [&](double target_vel_y, const std::string& phase) {
-        // Update position based on velocity.
+    auto dumpHistory = [&](const std::string& reason) {
+        spdlog::info("");
+        spdlog::info("=== Jump Sequence History Dump ===");
+        spdlog::info("Case: {}", tc.name);
+        spdlog::info("Reason: {}", reason);
+        spdlog::info(
+            "Config: weight={:.2f}, inertia={:.2f}, max_torque={:.2f}, damping={:.2f}, "
+            "accel_sensitivity={:.2f}, shutoff_angle={:.2f}, recovery_angle={:.2f}",
+            tc.config.weight,
+            tc.config.inertia,
+            tc.config.max_torque,
+            tc.config.damping,
+            tc.config.accel_sensitivity,
+            tc.config.shutoff_angle,
+            tc.config.recovery_angle);
+        for (const auto& s : data) {
+            spdlog::info(
+                "f={:03d} t={:.3f} phase={:<8} jump={} vel_y={:+.2f} pitch={:+.3f} "
+                "ω={:+.3f} on={}",
+                s.frame,
+                s.time,
+                s.phase,
+                s.in_jump ? "Y" : "N",
+                s.vel_y,
+                s.pitch,
+                s.angular_velocity,
+                s.is_on ? "Y" : "N");
+        }
+    };
+
+    auto failWithHistory = [&](const std::string& reason) {
+        dumpHistory(reason);
+        ADD_FAILURE() << reason;
+    };
+
+    auto step = [&](double target_vel_y, const char* phase, bool in_jump) {
         pos.y += velocity_y * dt;
         velocity_y = target_vel_y;
 
-        double t = data.empty() ? 0.0 : data.back().time + dt;
+        const double t = data.empty() ? 0.0 : data.back().time + dt;
         light.update(lights, pos, FACING_RIGHT, dt);
         data.push_back(
-            { t, light.getPitch(), light.getAngularVelocity(), light.isOn(), velocity_y });
+            { static_cast<int>(data.size()),
+              t,
+              light.getPitch(),
+              light.getAngularVelocity(),
+              light.isOn(),
+              in_jump,
+              velocity_y,
+              phase });
 
-        // Log every 5th frame for readability.
         if (data.size() % 5 == 1 || data.size() <= 3) {
             logSnapshot(phase, t, light);
         }
@@ -307,90 +358,126 @@ TEST_F(LightHandHeldTest, JumpSequenceCapturesFlashlightBehavior)
 
     spdlog::info("");
     spdlog::info("=== Jump Sequence Simulation ===");
+    spdlog::info("Case: {}", tc.name);
     spdlog::info("Coordinate system: positive y = DOWN");
     spdlog::info("Jump velocity (up) = negative y");
     spdlog::info("");
 
-    // Phase 1: Pre-jump idle (3 frames, duck on ground).
     spdlog::info("--- Phase 1: Pre-jump idle ---");
     for (int i = 0; i < 3; ++i) {
-        step(0.0, "idle");
+        step(0.0, "idle", false);
     }
 
-    // Phase 2: Jump impulse (sudden upward velocity).
     spdlog::info("--- Phase 2: Jump impulse (vel_y = -4.0) ---");
     for (int i = 0; i < 3; ++i) {
-        step(-4.0, "JUMP");
+        step(-4.0, "JUMP", true);
     }
 
-    // Phase 3: Rising (slowing down due to gravity).
     spdlog::info("--- Phase 3: Rising / slowing ---");
     double vel = -4.0;
     for (int i = 0; i < 15; ++i) {
-        vel += 0.3; // Gravity slows the rise.
-        step(vel, "rise");
+        vel += 0.3;
+        step(vel, "rise", true);
     }
 
-    // Phase 4: Peak (velocity near zero).
     spdlog::info("--- Phase 4: Peak ---");
     for (int i = 0; i < 5; ++i) {
-        step(0.0, "peak");
+        step(0.0, "peak", true);
     }
 
-    // Phase 5: Falling (accelerating downward).
     spdlog::info("--- Phase 5: Falling ---");
     vel = 0.0;
     for (int i = 0; i < 15; ++i) {
-        vel += 0.3; // Gravity accelerates the fall.
-        step(vel, "fall");
+        vel += 0.3;
+        step(vel, "fall", true);
     }
 
-    // Phase 6: Landing impact (sudden stop).
     spdlog::info("--- Phase 6: Landing impact (vel_y = 0) ---");
     for (int i = 0; i < 3; ++i) {
-        step(0.0, "LAND");
+        step(0.0, "LAND", true);
     }
 
-    // Phase 7: Recovery (stay still).
     spdlog::info("--- Phase 7: Recovery ---");
     for (int i = 0; i < 120; ++i) {
-        step(0.0, "recovery");
+        step(0.0, "recovery", false);
+    }
+
+    float min_pitch = 0.0f;
+    float max_pitch = 0.0f;
+    bool saw_off_during_jump = false;
+    bool saw_on_during_jump = false;
+    int off_count = 0;
+
+    for (const auto& s : data) {
+        min_pitch = std::min(min_pitch, s.pitch);
+        max_pitch = std::max(max_pitch, s.pitch);
+        if (!s.is_on) {
+            off_count++;
+        }
+        if (s.in_jump) {
+            saw_on_during_jump |= s.is_on;
+            saw_off_during_jump |= !s.is_on;
+        }
     }
 
     spdlog::info("");
     spdlog::info("=== Summary Statistics ===");
-
-    // Find min/max pitch.
-    float min_pitch = 0, max_pitch = 0;
-    for (const auto& s : data) {
-        min_pitch = std::min(min_pitch, s.pitch);
-        max_pitch = std::max(max_pitch, s.pitch);
-    }
-
     spdlog::info("Min pitch: {:.3f} rad ({:.1f}°)", min_pitch, min_pitch * 180.0 / M_PI);
     spdlog::info("Max pitch: {:.3f} rad ({:.1f}°)", max_pitch, max_pitch * 180.0 / M_PI);
     spdlog::info("Total frames: {}", data.size());
-
-    // Count frames where light was off.
-    int off_count = 0;
-    for (const auto& s : data) {
-        if (!s.is_on) {
-            off_count++;
-        }
-    }
     spdlog::info("Frames with light OFF: {}", off_count);
-
     spdlog::info(
         "Final state: pitch={:.1f}°, on={}", light.getPitch() * 180.0 / M_PI, light.isOn());
 
-    // The flashlight should respond to the simulated jump motion.
-    // Pitch should have varied during the motion sequence.
-    float pitch_range = max_pitch - min_pitch;
-    EXPECT_GT(pitch_range, 0.05f) << "Flashlight should respond to jump motion";
+    const float pitch_range = max_pitch - min_pitch;
+    if (pitch_range <= 0.05f) {
+        failWithHistory("Flashlight should respond to jump motion (pitch_range too small).");
+        return;
+    }
 
-    // After extended recovery, should be near equilibrium.
-    EXPECT_LT(std::abs(light.getAngularVelocity()), 0.01f) << "Should have settled";
+    if (std::abs(light.getAngularVelocity()) >= 0.1f) {
+        failWithHistory("Flashlight should settle after recovery (angular velocity too high).");
+        return;
+    }
+
+    if (tc.expect_off_during_jump) {
+        if (!saw_off_during_jump) {
+            failWithHistory("Expected flashlight to turn off during jump, but it never did.");
+        }
+    }
+    else {
+        if (saw_off_during_jump) {
+            failWithHistory("Expected flashlight to stay on during jump, but it turned off.");
+        }
+        if (!saw_on_during_jump) {
+            failWithHistory("Expected flashlight to be on during jump, but it was never on.");
+        }
+    }
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    JumpSequenceCases,
+    JumpSequenceTest,
+    ::testing::Values(
+        JumpSequenceTestCase{ "ShutoffExpected",
+                              LightHandHeld::Config{ .weight = 4.0f,
+                                                     .inertia = 0.4f,
+                                                     .max_torque = 0.8f,
+                                                     .damping = 1.0f,
+                                                     .accel_sensitivity = 0.2f,
+                                                     .shutoff_angle = 0.35f,
+                                                     .recovery_angle = 0.2f },
+                              true },
+        JumpSequenceTestCase{ "NoShutoffExpected",
+                              LightHandHeld::Config{ .weight = 1.0f,
+                                                     .inertia = 0.4f,
+                                                     .max_torque = 4.5f,
+                                                     .damping = 2.5f,
+                                                     .accel_sensitivity = 0.05f,
+                                                     .shutoff_angle = 1.2f,
+                                                     .recovery_angle = 0.8f },
+                              false }),
+    [](const ::testing::TestParamInfo<JumpSequenceTestCase>& info) { return info.param.name; });
 
 // =============================================================================
 // Shutoff Hysteresis

@@ -3,6 +3,7 @@
 #include "core/World.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -235,8 +236,19 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
 
     // Verify: WorldData has correct properties.
     const WorldData& worldData = capturedResponse.value().worldData;
-    EXPECT_EQ(worldData.width, stateMachine->defaultWidth);
-    EXPECT_EQ(worldData.height, stateMachine->defaultHeight);
+    const auto scenario_id = getScenarioId(stateMachine->serverConfig->startupConfig);
+    const auto* metadata = stateMachine->getScenarioRegistry().getMetadata(scenario_id);
+    ASSERT_NE(metadata, nullptr);
+
+    uint32_t expected_width = stateMachine->defaultWidth;
+    uint32_t expected_height = stateMachine->defaultHeight;
+    if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
+        expected_width = metadata->requiredWidth;
+        expected_height = metadata->requiredHeight;
+    }
+
+    EXPECT_EQ(worldData.width, expected_width);
+    EXPECT_EQ(worldData.height, expected_height);
     // Scenario ID is now in SimRunning state, not WorldData.
     EXPECT_EQ(updatedState.scenario_id, Scenario::EnumType::Sandbox);
     EXPECT_EQ(worldData.timestep, updatedState.stepCount);
