@@ -60,6 +60,12 @@ protected:
         scenario_->tick(*world_, 0.016);
     }
 
+    void TearDown() override
+    {
+        scenario_.reset();
+        world_.reset();
+    }
+
     std::unique_ptr<ClockScenario> scenario_;
     std::unique_ptr<World> world_;
 
@@ -200,7 +206,10 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
 {
     // Create scenario with short duck duration for faster test.
     // Duration of 0.5s will timeout before the door even finishes opening.
-    auto short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
+    std::unique_ptr<World> short_world;
+    std::unique_ptr<ClockScenario> short_scenario;
+
+    short_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
         .digit_slide = {},
@@ -213,7 +222,7 @@ TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)
         .rain = {},
     });
     const auto& metadata = short_scenario->getMetadata();
-    auto short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
+    short_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     short_scenario->setup(*short_world);
     short_scenario->tick(*short_world, 0.016); // Initialize event timing.
 
@@ -284,7 +293,10 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     // Create scenario with duration long enough to observe full door cycle.
     // Exit door opens at remaining_time <= 7.0, so need duration > 7.0.
     // Door open delay is 2.0s, door close delay is 1.0s.
-    auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
+    std::unique_ptr<World> test_world;
+    std::unique_ptr<ClockScenario> test_scenario;
+
+    test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{
         .color_cycle = {},
         .color_showcase = {},
         .digit_slide = {},
@@ -298,7 +310,7 @@ TEST_F(ClockScenarioTest, DuckEvent_DoorsOpenAndCloseAtCorrectPositions)
     });
 
     const auto& metadata = test_scenario->getMetadata();
-    auto test_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
+    test_world = std::make_unique<World>(metadata.requiredWidth, metadata.requiredHeight);
     test_scenario->setup(*test_world);
     test_scenario->tick(*test_world, 0.016); // Initialize event timing.
 
@@ -935,7 +947,10 @@ TEST_F(ClockScenarioTest, AutoScale_AllFontsRenderAtTargetPercent)
     std::map<Config::ClockFont, double> actual_pixel_heights;
 
     for (auto font : fonts) {
-        auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
+        std::unique_ptr<World> test_world;
+        std::unique_ptr<ClockScenario> test_scenario;
+
+        test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
 
         auto config = std::get<Config::Clock>(test_scenario->getConfig());
         config.autoScale = true;
@@ -945,7 +960,7 @@ TEST_F(ClockScenarioTest, AutoScale_AllFontsRenderAtTargetPercent)
         config.targetDigitHeightPercent = target_percent;
 
         // Trigger dimension recalculation.
-        auto test_world = std::make_unique<World>(1, 1);
+        test_world = std::make_unique<World>(1, 1);
         test_scenario->setConfig(config, *test_world);
 
         const auto& metadata = test_scenario->getMetadata();
@@ -1049,7 +1064,10 @@ TEST_F(ClockScenarioTest, AutoScale_TargetPercentScalesWithDisplay)
     };
 
     for (const auto& display : displays) {
-        auto test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
+        std::unique_ptr<World> test_world;
+        std::unique_ptr<ClockScenario> test_scenario;
+
+        test_scenario = std::make_unique<ClockScenario>(ClockEventConfigs{});
 
         auto config = std::get<Config::Clock>(test_scenario->getConfig());
         config.autoScale = true;
@@ -1058,7 +1076,7 @@ TEST_F(ClockScenarioTest, AutoScale_TargetPercentScalesWithDisplay)
         config.targetDisplayHeight = display.height;
         config.targetDigitHeightPercent = target_percent;
 
-        auto test_world = std::make_unique<World>(1, 1);
+        test_world = std::make_unique<World>(1, 1);
         test_scenario->setConfig(config, *test_world);
 
         const auto& metadata = test_scenario->getMetadata();

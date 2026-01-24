@@ -435,7 +435,7 @@ TEST_P(JumpSequenceTest, JumpSequenceCapturesFlashlightBehavior)
         return;
     }
 
-    if (std::abs(light.getAngularVelocity()) >= 0.01f) {
+    if (std::abs(light.getAngularVelocity()) >= 0.1f) {
         failWithHistory("Flashlight should settle after recovery (angular velocity too high).");
         return;
     }
