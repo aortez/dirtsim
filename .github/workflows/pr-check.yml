@@ -15,6 +15,7 @@ concurrency:
 jobs:
   build-docker-image:
     uses: ./.github/workflows/docker-build.yml
+    if: contains(github.event.pull_request.labels.*.name, 'iheartci') || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
 
   build-and-test:
     runs-on: self-hosted
