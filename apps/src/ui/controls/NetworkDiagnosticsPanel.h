@@ -56,8 +56,9 @@ private:
     lv_obj_t* wifiStatusLabel_ = nullptr;
     lv_obj_t* networksContainer_ = nullptr;
     lv_obj_t* webUiToggle_ = nullptr;
-    lv_obj_t* webUiTokenTitleLabel_ = nullptr;
-    lv_obj_t* webUiTokenLabel_ = nullptr;
+    lv_obj_t* webSocketToggle_ = nullptr;
+    lv_obj_t* webSocketTokenTitleLabel_ = nullptr;
+    lv_obj_t* webSocketTokenLabel_ = nullptr;
     lv_timer_t* refreshTimer_ = nullptr;
 
     struct ConnectContext {
@@ -77,20 +78,16 @@ private:
         std::string ssid;
     };
 
-    struct WebUiStatus {
-        bool enabled = false;
-        std::string token;
-    };
-
-    struct WebUiAccessUpdate {
-        bool enabled = false;
-        std::string token;
+    struct NetworkAccessStatus {
+        bool webUiEnabled = false;
+        bool webSocketEnabled = false;
+        std::string webSocketToken;
     };
 
     struct PendingRefreshData {
         Result<Network::WifiStatus, std::string> statusResult;
         Result<std::vector<Network::WifiNetworkInfo>, std::string> listResult;
-        Result<WebUiStatus, std::string> webUiStatusResult;
+        Result<NetworkAccessStatus, std::string> accessStatusResult;
     };
 
     struct AsyncState {
@@ -99,7 +96,9 @@ private:
         std::optional<PendingRefreshData> pendingRefresh;
         std::optional<Result<Network::WifiConnectResult, std::string>> pendingConnect;
         std::optional<Result<Network::WifiForgetResult, std::string>> pendingForget;
-        std::optional<Result<WebUiAccessUpdate, std::string>> pendingWebUiUpdate;
+        std::optional<Result<NetworkAccessStatus, std::string>> pendingWebSocketUpdate;
+        std::optional<Result<NetworkAccessStatus, std::string>> pendingWebUiUpdate;
+        bool webSocketUpdateInProgress = false;
         bool webUiUpdateInProgress = false;
     };
 
@@ -109,8 +108,10 @@ private:
     std::shared_ptr<AsyncState> asyncState_;
     AsyncActionState actionState_;
     bool webUiEnabled_ = false;
-    std::string webUiToken_;
+    bool webSocketEnabled_ = false;
+    std::string webSocketToken_;
     bool webUiToggleLocked_ = false;
+    bool webSocketToggleLocked_ = false;
 
     void createUI();
     bool startAsyncRefresh();
@@ -123,14 +124,17 @@ private:
     void applyPendingUpdates();
     void setLoadingState();
     void setRefreshButtonEnabled(bool enabled);
+    void setWebSocketToggleEnabled(bool enabled);
     void setWebUiToggleEnabled(bool enabled);
     void updateAddressDisplay();
     void updateNetworkDisplay(
         const Result<std::vector<Network::WifiNetworkInfo>, std::string>& listResult);
     void updateWifiStatus(const Result<Network::WifiStatus, std::string>& statusResult);
-    void updateWebUiStatus(const Result<WebUiStatus, std::string>& statusResult);
-    void updateWebUiTokenLabel();
+    void updateWebSocketStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
+    void updateWebSocketTokenLabel();
+    void updateWebUiStatus(const Result<NetworkAccessStatus, std::string>& statusResult);
     bool startAsyncWebUiAccessSet(bool enabled);
+    bool startAsyncWebSocketAccessSet(bool enabled);
 
     std::string formatNetworkDetails(const Network::WifiNetworkInfo& info) const;
     std::string statusText(const Network::WifiNetworkInfo& info) const;
@@ -139,6 +143,7 @@ private:
     static void onRefreshTimer(lv_timer_t* timer);
     static void onConnectClicked(lv_event_t* e);
     static void onForgetClicked(lv_event_t* e);
+    static void onWebSocketToggleChanged(lv_event_t* e);
     static void onWebUiToggleChanged(lv_event_t* e);
 };
 

@@ -19,6 +19,7 @@ struct Idle {
     Any onEvent(const OsApi::StopServer::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::StopUi::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::SystemStatus::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm);
 
     static constexpr const char* name() { return "Idle"; }

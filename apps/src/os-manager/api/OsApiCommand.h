@@ -8,6 +8,7 @@
 #include "StopServer.h"
 #include "StopUi.h"
 #include "SystemStatus.h"
+#include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
 #include <variant>
 
@@ -23,6 +24,7 @@ using OsApiCommand = std::variant<
     StopServer::Command,
     StopUi::Command,
     SystemStatus::Command,
+    WebSocketAccessSet::Command,
     WebUiAccessSet::Command>;
 
 } // namespace OsApi

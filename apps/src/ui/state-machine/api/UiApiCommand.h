@@ -24,7 +24,7 @@
 #include "TrainingStart.h"
 #include "WebRtcAnswer.h"
 #include "WebRtcCandidate.h"
-#include "WebUiAccessSet.h"
+#include "WebSocketAccessSet.h"
 #include <variant>
 
 namespace DirtSim {
@@ -56,9 +56,9 @@ using UiApiCommand = std::variant<
     UiApi::TrainingResultDiscard::Command,
     UiApi::TrainingResultSave::Command,
     UiApi::TrainingStart::Command,
+    UiApi::WebSocketAccessSet::Command,
     UiApi::WebRtcAnswer::Command,
-    UiApi::WebRtcCandidate::Command,
-    UiApi::WebUiAccessSet::Command>;
+    UiApi::WebRtcCandidate::Command>;
 
 } // namespace Ui
 } // namespace DirtSim

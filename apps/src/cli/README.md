@@ -79,6 +79,7 @@ Send commands to the server or UI:
 # OS manager commands
 ./build-debug/bin/cli os-manager SystemStatus
 ./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
+./build-debug/bin/cli os-manager WebSocketAccessSet '{"enabled": true}'
 ./build-debug/bin/cli os-manager StartServer
 ./build-debug/bin/cli os-manager StopServer
 ./build-debug/bin/cli os-manager RestartServer
@@ -88,7 +89,8 @@ Send commands to the server or UI:
 ./build-debug/bin/cli os-manager Reboot
 
 # Remote connections (override default addresses)
-# Remote WebSockets require ?token=... when LAN Web UI is enabled.
+# Remote WebSockets require ?token=... when incoming WebSocket access is enabled.
+# LAN Web UI enables incoming WebSocket access automatically.
 # When LAN Web UI is disabled, use SSH and run dirtsim-cli locally on the device.
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080
 ./build-debug/bin/cli server StateGet --address ws://dirtsim.local:8080?token=TOKEN
@@ -96,6 +98,33 @@ Send commands to the server or UI:
 ./build-debug/bin/cli ui StatusGet --address ws://dirtsim.local:7070?token=TOKEN
 ./build-debug/bin/cli os-manager SystemStatus --address ws://dirtsim.local:9090
 ```
+
+### UI Navigation (State Machine)
+
+The UI exposes a small state machine that you can drive via the CLI.
+For a full UI overview, see `apps/src/ui/README.md`.
+
+**Common state transitions:**
+
+- `StartMenu` → `SimRunning`: `./build-debug/bin/cli ui SimRun`
+- `SimRunning` → `Paused`: `./build-debug/bin/cli ui SimPause`
+- `Paused` → `SimRunning`: `./build-debug/bin/cli ui SimRun`
+- `SimRunning` or `Paused` → `StartMenu`: `./build-debug/bin/cli ui SimStop`
+- `StartMenu` → `Training`: `./build-debug/bin/cli ui TrainingStart '{...}'`
+- `Training` → `Genome Browser panel`: `./build-debug/bin/cli ui GenomeBrowserOpen`
+- `Training` → `SimRunning` (load genome): `./build-debug/bin/cli ui GenomeDetailLoad '{\"id\": \"...\"}'`
+- Any → `Shutdown`: `./build-debug/bin/cli ui Exit`
+
+**State inspection:**
+
+```bash
+./build-debug/bin/cli ui StateGet
+./build-debug/bin/cli ui StatusGet
+```
+
+**Panel navigation inside SimRunning:**
+There are no direct CLI commands for Scenario/Physics/Core panels yet.
+TODO: Add explicit CLI navigation commands for these panels.
 
 ### Run-All Mode
 
