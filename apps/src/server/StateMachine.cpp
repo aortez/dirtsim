@@ -66,6 +66,59 @@ std::filesystem::path getDefaultDataDir()
     return std::filesystem::path(home) / ".dirtsim";
 }
 
+bool isMissingTimestamp(uint64_t timestamp)
+{
+    return timestamp == 0;
+}
+
+bool compareGenomeListEntries(
+    const Api::GenomeList::GenomeEntry& left,
+    const Api::GenomeList::GenomeEntry& right,
+    GenomeSortKey sortKey,
+    GenomeSortDirection sortDirection)
+{
+    const auto leftId = left.id.toString();
+    const auto rightId = right.id.toString();
+    const auto idLess = leftId < rightId;
+
+    const auto compareValue = [&](const auto& leftValue, const auto& rightValue) {
+        if (leftValue == rightValue) {
+            return idLess;
+        }
+        if (sortDirection == GenomeSortDirection::Asc) {
+            return leftValue < rightValue;
+        }
+        return leftValue > rightValue;
+    };
+
+    switch (sortKey) {
+        case GenomeSortKey::CreatedTimestamp: {
+            const bool leftMissing = isMissingTimestamp(left.metadata.createdTimestamp);
+            const bool rightMissing = isMissingTimestamp(right.metadata.createdTimestamp);
+            if (leftMissing != rightMissing) {
+                return !leftMissing;
+            }
+            return compareValue(left.metadata.createdTimestamp, right.metadata.createdTimestamp);
+        }
+        case GenomeSortKey::Fitness:
+            return compareValue(left.metadata.fitness, right.metadata.fitness);
+        case GenomeSortKey::Generation:
+            return compareValue(left.metadata.generation, right.metadata.generation);
+    }
+
+    return idLess;
+}
+
+void sortGenomeListEntries(
+    std::vector<Api::GenomeList::GenomeEntry>& entries,
+    GenomeSortKey sortKey,
+    GenomeSortDirection sortDirection)
+{
+    std::sort(entries.begin(), entries.end(), [&](const auto& left, const auto& right) {
+        return compareGenomeListEntries(left, right, sortKey, sortDirection);
+    });
+}
+
 } // namespace
 
 struct StateMachine::Impl {
@@ -820,6 +873,8 @@ void StateMachine::handleEvent(const Event& event)
         for (const auto& [id, meta] : repo.list()) {
             response.genomes.push_back(Api::GenomeList::GenomeEntry{ .id = id, .metadata = meta });
         }
+
+        sortGenomeListEntries(response.genomes, cwc.command.sortKey, cwc.command.sortDirection);
 
         cwc.sendResponse(Api::GenomeList::Response::okay(std::move(response)));
         return;

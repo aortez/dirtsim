@@ -63,6 +63,11 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanOpenTrainingConfigPanel(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
 };
 
 } // namespace Client

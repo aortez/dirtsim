@@ -15,6 +15,7 @@
 #include "ui/state-machine/api/GenomeBrowserOpen.h"
 #include "ui/state-machine/api/GenomeDetailLoad.h"
 #include "ui/state-machine/api/GenomeDetailOpen.h"
+#include "ui/state-machine/api/IconSelect.h"
 #include "ui/state-machine/api/PlantSeed.h"
 #include "ui/state-machine/api/SimRun.h"
 #include "ui/state-machine/api/SimStop.h"
@@ -60,6 +61,13 @@ Result<UiApi::StateGet::Okay, std::string> requestUiState(
     return unwrapResponse(client.sendCommandAndGetResponse<UiApi::StateGet::Okay>(cmd, timeoutMs));
 }
 
+Result<UiApi::StatusGet::Okay, std::string> requestUiStatus(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    UiApi::StatusGet::Command cmd{};
+    return unwrapResponse(client.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(cmd, timeoutMs));
+}
+
 Result<UiApi::StateGet::Okay, std::string> waitForUiState(
     Network::WebSocketService& client, const std::string& expectedState, int timeoutMs)
 {
@@ -82,6 +90,35 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
         if (elapsedMs >= timeoutMs) {
             return Result<UiApi::StateGet::Okay, std::string>::error(
                 "Timeout waiting for UI state '" + expectedState + "'");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<UiApi::StatusGet::Okay, std::string> waitForUiPanel(
+    Network::WebSocketService& client, Ui::IconId expectedIcon, bool expectedVisible, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+    while (true) {
+        auto result = requestUiStatus(client, requestTimeoutMs);
+        if (result.isError()) {
+            return Result<UiApi::StatusGet::Okay, std::string>::error(result.errorValue());
+        }
+        const auto& status = result.value();
+        if (status.selected_icon == expectedIcon && status.panel_visible == expectedVisible) {
+            return result;
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            return Result<UiApi::StatusGet::Okay, std::string>::error(
+                "Timeout waiting for UI panel selection");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -1286,6 +1323,172 @@ FunctionalTestSummary FunctionalTestRunner::runCanLoadGenomeFromBrowser(
 
     return FunctionalTestSummary{
         .name = "canLoadGenomeFromBrowser",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    static_cast<void>(serverAddress);
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        UiApi::StatusGet::Command uiStatusCmd{};
+        auto uiStatusResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(uiStatusCmd, timeoutMs));
+        if (uiStatusResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StatusGet failed: " + uiStatusResult.errorValue());
+        }
+
+        const auto& uiStatus = uiStatusResult.value();
+        if (!uiStatus.connected_to_server) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error("UI not connected to server");
+        }
+
+        auto uiStateResult = requestUiState(uiClient, timeoutMs);
+        if (uiStateResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StateGet failed: " + uiStateResult.errorValue());
+        }
+
+        const std::string& uiState = uiStateResult.value().state;
+        if (uiState != "StartMenu" && uiState != "Training") {
+            if (uiState == "SimRunning" || uiState == "Paused") {
+                UiApi::SimStop::Command simStopCmd{};
+                auto simStopResult =
+                    unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(
+                        simStopCmd, timeoutMs));
+                if (simStopResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(
+                        "UI SimStop failed: " + simStopResult.errorValue());
+                }
+
+                auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+                if (startMenuResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+                }
+            }
+            else {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Unsupported UI state for canOpenTrainingConfigPanel: " + uiState);
+            }
+        }
+
+        if (uiState != "StartMenu") {
+            auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+            if (startMenuResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+            }
+        }
+
+        UiApi::IconSelect::Command startTrainCmd{ .id = Ui::IconId::EVOLUTION };
+        auto startTrainResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(startTrainCmd, timeoutMs));
+        if (startTrainResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) failed: " + startTrainResult.errorValue());
+        }
+        if (!startTrainResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) did not select");
+        }
+
+        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        if (trainingStateResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
+        }
+
+        UiApi::IconSelect::Command configCmd{ .id = Ui::IconId::EVOLUTION };
+        auto configResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(configCmd, timeoutMs));
+        if (configResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) failed in Training: " + configResult.errorValue());
+        }
+        if (!configResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) not selectable in Training");
+        }
+
+        auto panelResult = waitForUiPanel(uiClient, Ui::IconId::EVOLUTION, true, timeoutMs);
+        if (panelResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(panelResult.errorValue());
+        }
+
+        UiApi::IconSelect::Command browserCmd{ .id = Ui::IconId::GENOME_BROWSER };
+        auto browserResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(browserCmd, timeoutMs));
+        if (browserResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (GENOME_BROWSER) failed: " + browserResult.errorValue());
+        }
+        if (!browserResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (GENOME_BROWSER) did not select");
+        }
+
+        auto verifySwitch = requestUiState(uiClient, timeoutMs);
+        if (verifySwitch.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StateGet failed after GENOME_BROWSER select: " + verifySwitch.errorValue());
+        }
+
+        uiClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canOpenTrainingConfigPanel",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .training_summary = std::nullopt,

@@ -10,6 +10,7 @@ const YOCTO_DIR = realpathSync(dirname(dirname(__dirname)));
 const PROJECT_ROOT = realpathSync(dirname(YOCTO_DIR));
 const DOCKER_DIR = join(PROJECT_ROOT, 'docker');
 const DOCKER_HOME = join(YOCTO_DIR, '.docker-home');
+const DEFAULT_CACHE_ROOT = join(dirname(PROJECT_ROOT), 'yocto-cache');
 
 const IMAGE_NAME = 'dirtsim-builder';
 
@@ -67,7 +68,7 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
   const user = options.user || (userId !== null && groupId !== null ? `${userId}:${groupId}` : null);
   const workdir = options.workdir || YOCTO_DIR;
   const env = options.env || {};
-  const cacheRoot = options.cacheRoot || process.env.DIRTSIM_CACHE_ROOT;
+  const cacheRoot = options.cacheRoot || process.env.DIRTSIM_CACHE_ROOT || DEFAULT_CACHE_ROOT;
   const extraArgs = options.extraArgs || [];
   const interactive = Boolean(options.interactive);
   const tty = Boolean(options.tty);

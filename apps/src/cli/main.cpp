@@ -319,6 +319,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canSetGenerationsAndTrain\n";
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
+    examples += "  cli functional-test canOpenTrainingConfigPanel\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
     examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
@@ -834,10 +835,11 @@ int main(int argc, char** argv)
         const std::string testName = args::get(command);
         if (testName != "canExit" && testName != "canTrain"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
-            && testName != "canLoadGenomeFromBrowser") {
+            && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
-                         "canPlantTreeSeed, canLoadGenomeFromBrowser\n";
+                         "canPlantTreeSeed, canLoadGenomeFromBrowser, "
+                         "canOpenTrainingConfigPanel\n";
             return 1;
         }
 
@@ -876,6 +878,10 @@ int main(int argc, char** argv)
         }
         else if (testName == "canLoadGenomeFromBrowser") {
             summary = runner.runCanLoadGenomeFromBrowser(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canOpenTrainingConfigPanel") {
+            summary = runner.runCanOpenTrainingConfigPanel(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else {

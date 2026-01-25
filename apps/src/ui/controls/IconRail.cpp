@@ -264,6 +264,28 @@ void IconRail::selectIcon(IconId id)
     }
 }
 
+bool IconRail::isIconSelectable(IconId id) const
+{
+    if (id == IconId::COUNT) {
+        return false;
+    }
+
+    for (size_t i = 0; i < iconConfigs_.size() && i < buttons_.size(); i++) {
+        if (iconConfigs_[i].id != id) {
+            continue;
+        }
+
+        lv_obj_t* button = buttons_[i];
+        if (!button) {
+            return false;
+        }
+
+        return !lv_obj_has_flag(button, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    return false;
+}
+
 void IconRail::deselectAll()
 {
     if (selectedId_ == IconId::COUNT) return;
