@@ -2,6 +2,7 @@
 #include "api/GenomeBrowserOpen.h"
 #include "api/GenomeDetailLoad.h"
 #include "api/GenomeDetailOpen.h"
+#include "api/IconSelect.h"
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
@@ -102,6 +103,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::GenomeDetailLoad::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeDetailOpen::Cwc>(
         [this](UiApi::GenomeDetailOpen::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::IconSelect::Cwc>(
+        [this](UiApi::IconSelect::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StateGet::Cwc>(
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
@@ -249,6 +252,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeBrowserOpen);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeDetailLoad);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::GenomeDetailOpen);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::IconSelect);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseDown);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseMove);
             DISPATCH_UI_CMD_EMPTY(UiApi::MouseUp);
@@ -439,6 +443,17 @@ void StateMachine::handleEvent(const Event& event)
         // Get system health metrics.
         auto metrics = systemMetrics_.get();
 
+        Ui::IconId selectedIcon = Ui::IconId::COUNT;
+        bool panelVisible = false;
+        if (auto* uiManager = getUiComponentManager()) {
+            if (auto* iconRail = uiManager->getIconRail()) {
+                selectedIcon = iconRail->getSelectedIcon();
+            }
+            if (auto* panel = uiManager->getExpandablePanel()) {
+                panelVisible = panel->isVisible();
+            }
+        }
+
         UiApi::StatusGet::Okay status{
             .state = getCurrentStateName(),
             .connected_to_server = wsService_ && wsService_->isConnected(),
@@ -449,11 +464,42 @@ void StateMachine::handleEvent(const Event& event)
                 display ? static_cast<uint32_t>(lv_display_get_vertical_resolution(display)) : 0U,
             .fps = getUiFps(),
             .cpu_percent = metrics.cpu_percent,
-            .memory_percent = metrics.memory_percent
+            .memory_percent = metrics.memory_percent,
+            .selected_icon = selectedIcon,
+            .panel_visible = panelVisible,
         };
 
         LOG_DEBUG(State, "Sending StatusGet response (state={})", status.state);
         cwc.sendResponse(UiApi::StatusGet::Response::okay(std::move(status)));
+        return;
+    }
+
+    if (std::holds_alternative<UiApi::IconSelect::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::IconSelect::Cwc>(event);
+        auto* uiManager = getUiComponentManager();
+        if (!uiManager) {
+            cwc.sendResponse(
+                UiApi::IconSelect::Response::error(ApiError("UI manager unavailable")));
+            return;
+        }
+
+        auto* iconRail = uiManager->getIconRail();
+        if (!iconRail) {
+            cwc.sendResponse(UiApi::IconSelect::Response::error(ApiError("IconRail unavailable")));
+            return;
+        }
+
+        bool selected = false;
+        if (cwc.command.id == IconId::COUNT) {
+            iconRail->deselectAll();
+        }
+        else if (iconRail->isIconSelectable(cwc.command.id)) {
+            iconRail->selectIcon(cwc.command.id);
+            selected = true;
+        }
+
+        UiApi::IconSelect::Okay response{ .selected = selected };
+        cwc.sendResponse(UiApi::IconSelect::Response::okay(std::move(response)));
         return;
     }
 

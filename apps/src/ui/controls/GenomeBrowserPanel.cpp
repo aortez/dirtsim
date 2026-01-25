@@ -10,9 +10,18 @@
 #include <algorithm>
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 namespace DirtSim {
 namespace Ui {
+
+namespace {
+constexpr int kSortArrowWidth = LVGLBuilder::Style::ACTION_SIZE;
+constexpr int kSortRowGap = 8;
+constexpr int kSortRowHeight = LVGLBuilder::Style::ACTION_SIZE;
+constexpr const char* kSortArrowDown = "↓";
+constexpr const char* kSortArrowUp = "↑";
+} // namespace
 
 GenomeBrowserPanel::GenomeBrowserPanel(
     lv_obj_t* parent, Network::WebSocketServiceInterface* wsService, EventSink* eventSink)
@@ -36,6 +45,10 @@ GenomeBrowserPanel::GenomeBrowserPanel(
                       buildScenarioPanel(parent, item);
                   },
               .color = 0x4B6EAF,
+          },
+          BrowserPanel::ListActionPanel{
+              .label = "Sort Order",
+              .builder = [this](lv_obj_t* parent) { buildSortControls(parent); },
           },
           BrowserPanel::ModalStyle(420, 440, 90, 0, LV_OPA_60, LV_OPA_80))
 {
@@ -72,7 +85,10 @@ Result<std::vector<BrowserPanel::Item>, std::string> GenomeBrowserPanel::fetchLi
         return Result<std::vector<BrowserPanel::Item>, std::string>::error("Server not connected");
     }
 
-    Api::GenomeList::Command cmd{};
+    Api::GenomeList::Command cmd{
+        .sortKey = sortKey_,
+        .sortDirection = sortDirections_[sortKeyIndex(sortKey_)],
+    };
     auto response = wsService_->sendCommandAndGetResponse<Api::GenomeList::Okay>(cmd, 5000);
     if (response.isError()) {
         return Result<std::vector<BrowserPanel::Item>, std::string>::error(response.errorValue());
@@ -85,21 +101,8 @@ Result<std::vector<BrowserPanel::Item>, std::string> GenomeBrowserPanel::fetchLi
     metadataById_.clear();
     std::vector<BrowserPanel::Item> items;
     const auto& ok = response.value().value();
-    std::vector<Api::GenomeList::GenomeEntry> entries = ok.genomes;
-    std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
-        const bool leftHasTime = left.metadata.createdTimestamp > 0;
-        const bool rightHasTime = right.metadata.createdTimestamp > 0;
-        if (leftHasTime && rightHasTime) {
-            return left.metadata.createdTimestamp > right.metadata.createdTimestamp;
-        }
-        if (leftHasTime != rightHasTime) {
-            return leftHasTime;
-        }
-        return left.id.toString() < right.id.toString();
-    });
-
-    items.reserve(entries.size());
-    for (const auto& entry : entries) {
+    items.reserve(ok.genomes.size());
+    for (const auto& entry : ok.genomes) {
         metadataById_[entry.id] = entry.metadata;
         BrowserPanel::Item item;
         item.id = entry.id;
@@ -164,6 +167,88 @@ Result<std::monostate, std::string> GenomeBrowserPanel::loadItem(const BrowserPa
 
     eventSink_->queueEvent(GenomeLoadClickedEvent{ item.id, scenarioId });
     return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+void GenomeBrowserPanel::buildSortControls(lv_obj_t* parent)
+{
+    if (!parent) {
+        return;
+    }
+
+    sortRows_.clear();
+
+    lv_obj_update_layout(parent);
+    int columnWidth = lv_obj_get_width(parent);
+    if (columnWidth <= 0) {
+        columnWidth = LVGLBuilder::Style::ACTION_SIZE * 4;
+    }
+
+    const int labelWidth = std::max(0, columnWidth - kSortArrowWidth - kSortRowGap);
+
+    const std::array<std::pair<GenomeSortKey, const char*>, kSortKeyCount> sortOptions{
+        std::make_pair(GenomeSortKey::Fitness, "Fitness"),
+        std::make_pair(GenomeSortKey::Generation, "Generation"),
+        std::make_pair(GenomeSortKey::CreatedTimestamp, "Created"),
+    };
+
+    sortRows_.reserve(sortOptions.size());
+    for (const auto& [key, label] : sortOptions) {
+        lv_obj_t* row = lv_obj_create(parent);
+        lv_obj_set_size(row, LV_PCT(100), kSortRowHeight);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_set_style_pad_column(row, kSortRowGap, 0);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_clear_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+
+        auto* keyContext = new SortButtonContext{ this, key };
+        lv_obj_t* keyButton = LVGLBuilder::actionButton(row)
+                                  .text(label)
+                                  .mode(LVGLBuilder::ActionMode::Toggle)
+                                  .height(kSortRowHeight)
+                                  .width(labelWidth)
+                                  .layoutRow()
+                                  .alignLeft()
+                                  .callback(onSortKeyClicked, keyContext)
+                                  .buildOrLog();
+        if (keyButton) {
+            lv_obj_add_event_cb(keyButton, onSortButtonDeleted, LV_EVENT_DELETE, keyContext);
+        }
+        else {
+            delete keyContext;
+        }
+
+        auto* dirContext = new SortButtonContext{ this, key };
+        const auto arrow = sortDirections_[sortKeyIndex(key)] == GenomeSortDirection::Asc
+            ? kSortArrowUp
+            : kSortArrowDown;
+        lv_obj_t* directionButton = LVGLBuilder::actionButton(row)
+                                        .icon(arrow)
+                                        .mode(LVGLBuilder::ActionMode::Toggle)
+                                        .height(kSortRowHeight)
+                                        .width(kSortArrowWidth)
+                                        .layoutRow()
+                                        .alignCenter()
+                                        .callback(onSortDirectionClicked, dirContext)
+                                        .buildOrLog();
+        if (directionButton) {
+            lv_obj_add_event_cb(directionButton, onSortButtonDeleted, LV_EVENT_DELETE, dirContext);
+        }
+        else {
+            delete dirContext;
+        }
+
+        sortRows_.push_back(
+            SortRowWidgets{
+                .sortKey = key,
+                .keyButton = keyButton,
+                .directionButton = directionButton,
+            });
+    }
+
+    updateSortButtons();
 }
 
 void GenomeBrowserPanel::buildScenarioPanel(lv_obj_t* parent, const BrowserPanel::Item& item)
@@ -302,6 +387,11 @@ void GenomeBrowserPanel::selectScenario(Scenario::EnumType scenarioId)
     }
 }
 
+size_t GenomeBrowserPanel::sortKeyIndex(GenomeSortKey key) const
+{
+    return static_cast<size_t>(key);
+}
+
 void GenomeBrowserPanel::updateScenarioLabels()
 {
     if (!scenarioNameLabel_ || !scenarioDescriptionLabel_) {
@@ -330,6 +420,23 @@ void GenomeBrowserPanel::updateScenarioLabels()
     }
 }
 
+void GenomeBrowserPanel::updateSortButtons()
+{
+    for (const auto& row : sortRows_) {
+        const bool isSelected = row.sortKey == sortKey_;
+        if (row.keyButton) {
+            LVGLBuilder::ActionButtonBuilder::setChecked(row.keyButton, isSelected);
+        }
+        if (row.directionButton) {
+            LVGLBuilder::ActionButtonBuilder::setChecked(row.directionButton, isSelected);
+            const auto direction = sortDirections_[sortKeyIndex(row.sortKey)];
+            const auto arrow =
+                direction == GenomeSortDirection::Asc ? kSortArrowUp : kSortArrowDown;
+            LVGLBuilder::ActionButtonBuilder::setIcon(row.directionButton, arrow);
+        }
+    }
+}
+
 void GenomeBrowserPanel::onScenarioSelected(lv_event_t* e)
 {
     if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
@@ -353,6 +460,52 @@ void GenomeBrowserPanel::onScenarioButtonDeleted(lv_event_t* e)
 
     auto* context = static_cast<ScenarioButtonContext*>(lv_event_get_user_data(e));
     delete context;
+}
+
+void GenomeBrowserPanel::onSortButtonDeleted(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_DELETE) {
+        return;
+    }
+
+    auto* context = static_cast<SortButtonContext*>(lv_event_get_user_data(e));
+    delete context;
+}
+
+void GenomeBrowserPanel::onSortDirectionClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* context = static_cast<SortButtonContext*>(lv_event_get_user_data(e));
+    if (!context || !context->panel) {
+        return;
+    }
+
+    const size_t index = context->panel->sortKeyIndex(context->sortKey);
+    auto& direction = context->panel->sortDirections_[index];
+    direction = direction == GenomeSortDirection::Asc ? GenomeSortDirection::Desc
+                                                      : GenomeSortDirection::Asc;
+    context->panel->sortKey_ = context->sortKey;
+    context->panel->updateSortButtons();
+    context->panel->refresh();
+}
+
+void GenomeBrowserPanel::onSortKeyClicked(lv_event_t* e)
+{
+    if (lv_event_get_code(e) != LV_EVENT_CLICKED) {
+        return;
+    }
+
+    auto* context = static_cast<SortButtonContext*>(lv_event_get_user_data(e));
+    if (!context || !context->panel) {
+        return;
+    }
+
+    context->panel->sortKey_ = context->sortKey;
+    context->panel->updateSortButtons();
+    context->panel->refresh();
 }
 
 } // namespace Ui

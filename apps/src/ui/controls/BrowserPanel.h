@@ -62,6 +62,11 @@ public:
         uint32_t color = 0x2A7FDB;
     };
 
+    struct ListActionPanel {
+        std::string label;
+        std::function<void(lv_obj_t* parent)> builder;
+    };
+
     using ListFetcher = std::function<Result<std::vector<Item>, std::string>()>;
     using DetailFetcher = std::function<Result<DetailText, std::string>(const Item& item)>;
     using DeleteHandler = std::function<Result<bool, std::string>(const Item& item)>;
@@ -74,6 +79,7 @@ public:
         DeleteHandler deleteHandler,
         std::optional<DetailAction> detailAction = std::nullopt,
         std::optional<DetailSidePanel> detailSidePanel = std::nullopt,
+        std::optional<ListActionPanel> listActionPanel = std::nullopt,
         ModalStyle modalStyle = ModalStyle{});
     ~BrowserPanel();
 
@@ -121,6 +127,7 @@ private:
     DeleteHandler deleteHandler_;
     std::optional<DetailAction> detailAction_;
     std::optional<DetailSidePanel> detailSidePanel_;
+    std::optional<ListActionPanel> listActionPanel_;
     ModalStyle modalStyle_{};
 
     void createLayout();

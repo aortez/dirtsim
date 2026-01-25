@@ -65,6 +65,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::GenomeBrowserOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::GenomeDetailLoad::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::GenomeDetailOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::IconSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseUp::Cwc>(uiHandlers_, uiExampleHandlers_);

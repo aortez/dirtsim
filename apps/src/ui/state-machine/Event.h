@@ -7,6 +7,7 @@
 #include "api/GenomeBrowserOpen.h"
 #include "api/GenomeDetailLoad.h"
 #include "api/GenomeDetailOpen.h"
+#include "api/IconSelect.h"
 #include "api/MouseDown.h"
 #include "api/MouseMove.h"
 #include "api/MouseUp.h"
@@ -258,6 +259,7 @@ using Event = std::variant<
     DirtSim::UiApi::GenomeBrowserOpen::Cwc,
     DirtSim::UiApi::GenomeDetailLoad::Cwc,
     DirtSim::UiApi::GenomeDetailOpen::Cwc,
+    DirtSim::UiApi::IconSelect::Cwc,
     DirtSim::UiApi::MouseDown::Cwc,
     DirtSim::UiApi::MouseMove::Cwc,
     DirtSim::UiApi::MouseUp::Cwc,

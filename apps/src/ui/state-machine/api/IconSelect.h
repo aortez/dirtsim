@@ -6,44 +6,39 @@
 #include "server/api/ApiMacros.h"
 #include "ui/controls/IconRail.h"
 #include <nlohmann/json.hpp>
-#include <string>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace StatusGet {
+namespace IconSelect {
 
-DEFINE_API_NAME(StatusGet);
+DEFINE_API_NAME(IconSelect);
 
 struct Command {
+    Ui::IconId id = Ui::IconId::COUNT;
+
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
+
+    using serialize = zpp::bits::members<1>;
 };
 
 struct Okay {
-    std::string state; // UI state machine current state.
-    bool connected_to_server = false;
-    std::string server_url;
-    uint32_t display_width = 0;
-    uint32_t display_height = 0;
-    double fps = 0.0;
-
-    // System health metrics.
-    double cpu_percent = 0.0;
-    double memory_percent = 0.0;
-    Ui::IconId selected_icon = Ui::IconId::COUNT;
-    bool panel_visible = false;
+    bool selected = true;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
+
+    using serialize = zpp::bits::members<1>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace StatusGet
+} // namespace IconSelect
 } // namespace UiApi
 } // namespace DirtSim

@@ -190,6 +190,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canTrain
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 ./build-debug/bin/cli functional-test canPlantTreeSeed
+./build-debug/bin/cli functional-test canOpenTrainingConfigPanel
 
 # Note: canExit shuts down the UI, so run it last or restart the UI before other tests.
 # Use --restart with canExit to relaunch local server/UI (skips remote addresses).
@@ -211,6 +212,7 @@ Run a minimal UI/server workflow check against a running system:
 - For canTrain: runs TrainingStart with defaults, waits for UnsavedTrainingResult, saves all candidates, then requests TrainingResultList/TrainingResultGet for the newest session.
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.
 - For canPlantTreeSeed: starts Tree Germination, plants a seed via the UI API, and waits for tree_vision.
+- For canOpenTrainingConfigPanel: starts training, opens the Training config panel via UI API, and verifies UI still responds.
 
 ### Network Mode
 
