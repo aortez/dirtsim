@@ -216,6 +216,9 @@ void GenomeBrowserPanel::buildSortControls(lv_obj_t* parent)
         if (keyButton) {
             lv_obj_add_event_cb(keyButton, onSortButtonDeleted, LV_EVENT_DELETE, keyContext);
         }
+        else {
+            delete keyContext;
+        }
 
         auto* dirContext = new SortButtonContext{ this, key };
         const auto arrow = sortDirections_[sortKeyIndex(key)] == GenomeSortDirection::Asc
@@ -232,6 +235,9 @@ void GenomeBrowserPanel::buildSortControls(lv_obj_t* parent)
                                         .buildOrLog();
         if (directionButton) {
             lv_obj_add_event_cb(directionButton, onSortButtonDeleted, LV_EVENT_DELETE, dirContext);
+        }
+        else {
+            delete dirContext;
         }
 
         sortRows_.push_back(

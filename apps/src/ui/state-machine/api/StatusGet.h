@@ -4,6 +4,7 @@
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
+#include "ui/controls/IconRail.h"
 #include <nlohmann/json.hpp>
 #include <string>
 
@@ -31,6 +32,8 @@ struct Okay {
     // System health metrics.
     double cpu_percent = 0.0;
     double memory_percent = 0.0;
+    Ui::IconId selected_icon = Ui::IconId::COUNT;
+    bool panel_visible = false;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

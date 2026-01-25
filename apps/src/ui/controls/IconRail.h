@@ -86,6 +86,11 @@ public:
     IconId getSelectedIcon() const { return selectedId_; }
 
     /**
+     * @brief Check if an icon is currently visible/selectable.
+     */
+    bool isIconSelectable(IconId id) const;
+
+    /**
      * @brief Programmatically select an icon (updates visuals and queues event).
      */
     void selectIcon(IconId id);

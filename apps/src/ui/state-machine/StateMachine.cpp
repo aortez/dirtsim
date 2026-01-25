@@ -443,6 +443,17 @@ void StateMachine::handleEvent(const Event& event)
         // Get system health metrics.
         auto metrics = systemMetrics_.get();
 
+        Ui::IconId selectedIcon = Ui::IconId::COUNT;
+        bool panelVisible = false;
+        if (auto* uiManager = getUiComponentManager()) {
+            if (auto* iconRail = uiManager->getIconRail()) {
+                selectedIcon = iconRail->getSelectedIcon();
+            }
+            if (auto* panel = uiManager->getExpandablePanel()) {
+                panelVisible = panel->isVisible();
+            }
+        }
+
         UiApi::StatusGet::Okay status{
             .state = getCurrentStateName(),
             .connected_to_server = wsService_ && wsService_->isConnected(),
@@ -453,7 +464,9 @@ void StateMachine::handleEvent(const Event& event)
                 display ? static_cast<uint32_t>(lv_display_get_vertical_resolution(display)) : 0U,
             .fps = getUiFps(),
             .cpu_percent = metrics.cpu_percent,
-            .memory_percent = metrics.memory_percent
+            .memory_percent = metrics.memory_percent,
+            .selected_icon = selectedIcon,
+            .panel_visible = panelVisible,
         };
 
         LOG_DEBUG(State, "Sending StatusGet response (state={})", status.state);
@@ -476,14 +489,16 @@ void StateMachine::handleEvent(const Event& event)
             return;
         }
 
+        bool selected = false;
         if (cwc.command.id == IconId::COUNT) {
             iconRail->deselectAll();
         }
-        else {
+        else if (iconRail->isIconSelectable(cwc.command.id)) {
             iconRail->selectIcon(cwc.command.id);
+            selected = true;
         }
 
-        UiApi::IconSelect::Okay response{ .selected = true };
+        UiApi::IconSelect::Okay response{ .selected = selected };
         cwc.sendResponse(UiApi::IconSelect::Response::okay(std::move(response)));
         return;
     }

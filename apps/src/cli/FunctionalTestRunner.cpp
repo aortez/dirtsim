@@ -61,6 +61,13 @@ Result<UiApi::StateGet::Okay, std::string> requestUiState(
     return unwrapResponse(client.sendCommandAndGetResponse<UiApi::StateGet::Okay>(cmd, timeoutMs));
 }
 
+Result<UiApi::StatusGet::Okay, std::string> requestUiStatus(
+    Network::WebSocketService& client, int timeoutMs)
+{
+    UiApi::StatusGet::Command cmd{};
+    return unwrapResponse(client.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(cmd, timeoutMs));
+}
+
 Result<UiApi::StateGet::Okay, std::string> waitForUiState(
     Network::WebSocketService& client, const std::string& expectedState, int timeoutMs)
 {
@@ -83,6 +90,35 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
         if (elapsedMs >= timeoutMs) {
             return Result<UiApi::StateGet::Okay, std::string>::error(
                 "Timeout waiting for UI state '" + expectedState + "'");
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+    }
+}
+
+Result<UiApi::StatusGet::Okay, std::string> waitForUiPanel(
+    Network::WebSocketService& client, Ui::IconId expectedIcon, bool expectedVisible, int timeoutMs)
+{
+    const auto start = std::chrono::steady_clock::now();
+    const int pollDelayMs = 200;
+    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+    while (true) {
+        auto result = requestUiStatus(client, requestTimeoutMs);
+        if (result.isError()) {
+            return Result<UiApi::StatusGet::Okay, std::string>::error(result.errorValue());
+        }
+        const auto& status = result.value();
+        if (status.selected_icon == expectedIcon && status.panel_visible == expectedVisible) {
+            return result;
+        }
+
+        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::steady_clock::now() - start)
+                                   .count();
+        if (elapsedMs >= timeoutMs) {
+            return Result<UiApi::StatusGet::Okay, std::string>::error(
+                "Timeout waiting for UI panel selection");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
@@ -1380,11 +1416,36 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
             return Result<std::monostate, std::string>::error(
                 "UI IconSelect (EVOLUTION) failed: " + startTrainResult.errorValue());
         }
+        if (!startTrainResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) did not select");
+        }
 
         auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
         if (trainingStateResult.isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
+        }
+
+        UiApi::IconSelect::Command configCmd{ .id = Ui::IconId::EVOLUTION };
+        auto configResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(configCmd, timeoutMs));
+        if (configResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) failed in Training: " + configResult.errorValue());
+        }
+        if (!configResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (EVOLUTION) not selectable in Training");
+        }
+
+        auto panelResult = waitForUiPanel(uiClient, Ui::IconId::EVOLUTION, true, timeoutMs);
+        if (panelResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(panelResult.errorValue());
         }
 
         UiApi::IconSelect::Command browserCmd{ .id = Ui::IconId::GENOME_BROWSER };
@@ -1394,6 +1455,11 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(
                 "UI IconSelect (GENOME_BROWSER) failed: " + browserResult.errorValue());
+        }
+        if (!browserResult.value().selected) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI IconSelect (GENOME_BROWSER) did not select");
         }
 
         auto verifySwitch = requestUiState(uiClient, timeoutMs);
