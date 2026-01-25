@@ -5,6 +5,7 @@
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include "core/organisms/evolution/GenomeSort.h"
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <zpp_bits.h>
@@ -19,11 +20,14 @@ DEFINE_API_NAME(GenomeList);
 struct Okay; // Forward declaration for API_COMMAND() macro.
 
 struct Command {
+    GenomeSortKey sortKey = GenomeSortKey::CreatedTimestamp;
+    GenomeSortDirection sortDirection = GenomeSortDirection::Desc;
+
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<0>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct GenomeEntry {

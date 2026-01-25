@@ -79,6 +79,7 @@ BrowserPanel::BrowserPanel(
     DeleteHandler deleteHandler,
     std::optional<DetailAction> detailAction,
     std::optional<DetailSidePanel> detailSidePanel,
+    std::optional<ListActionPanel> listActionPanel,
     ModalStyle modalStyle)
     : parent_(parent),
       title_(std::move(title)),
@@ -87,6 +88,7 @@ BrowserPanel::BrowserPanel(
       deleteHandler_(std::move(deleteHandler)),
       detailAction_(std::move(detailAction)),
       detailSidePanel_(std::move(detailSidePanel)),
+      listActionPanel_(std::move(listActionPanel)),
       modalStyle_(std::move(modalStyle))
 {
     createLayout();
@@ -266,6 +268,15 @@ void BrowserPanel::createLayout()
     styleCheckbox(deleteConfirmCheckbox_, kRowHeight, true);
 
     setButtonEnabled(deleteSelectedButton_, false);
+
+    if (listActionPanel_.has_value()) {
+        lv_obj_t* actionLabel = lv_label_create(actionColumn);
+        lv_label_set_text(actionLabel, listActionPanel_->label.c_str());
+        lv_obj_set_style_text_color(actionLabel, lv_color_hex(0xFFFFFF), 0);
+        lv_obj_set_style_text_font(actionLabel, &lv_font_montserrat_12, 0);
+
+        listActionPanel_->builder(actionColumn);
+    }
 }
 
 void BrowserPanel::rebuildList()
