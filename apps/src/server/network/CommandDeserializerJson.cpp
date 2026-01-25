@@ -3,6 +3,7 @@
 #include "server/api/CellSet.h"
 #include "server/api/ClockEventTrigger.h"
 #include "server/api/DiagramGet.h"
+#include "server/api/EventSubscribe.h"
 #include "server/api/Exit.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
@@ -14,6 +15,7 @@
 #include "server/api/PhysicsSettingsSet.h"
 #include "server/api/RenderFormatGet.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/RenderStreamConfigSet.h"
 #include "server/api/Reset.h"
 #include "server/api/ScenarioConfigSet.h"
 #include "server/api/SeedAdd.h"
@@ -75,6 +77,9 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::DiagramGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::DiagramGet::Command::fromJson(cmd));
         }
+        else if (commandName == Api::EventSubscribe::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::EventSubscribe::Command::fromJson(cmd));
+        }
         else if (commandName == Api::Exit::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Exit::Command::fromJson(cmd));
         }
@@ -109,6 +114,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::RenderFormatSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::RenderFormatSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::RenderStreamConfigSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::RenderStreamConfigSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::Reset::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::Reset::Command::fromJson(cmd));

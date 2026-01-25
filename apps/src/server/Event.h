@@ -4,6 +4,7 @@
 #include "api/CellSet.h"
 #include "api/ClockEventTrigger.h"
 #include "api/DiagramGet.h"
+#include "api/EventSubscribe.h"
 #include "api/EvolutionStart.h"
 #include "api/EvolutionStop.h"
 #include "api/Exit.h"
@@ -21,6 +22,7 @@
 #include "api/PhysicsSettingsSet.h"
 #include "api/RenderFormatGet.h"
 #include "api/RenderFormatSet.h"
+#include "api/RenderStreamConfigSet.h"
 #include "api/Reset.h"
 #include "api/ScenarioConfigSet.h"
 #include "api/ScenarioListGet.h"
@@ -419,6 +421,7 @@ public:
         DirtSim::Api::CellSet::Cwc,
         DirtSim::Api::ClockEventTrigger::Cwc,
         DirtSim::Api::DiagramGet::Cwc,
+        DirtSim::Api::EventSubscribe::Cwc,
         DirtSim::Api::EvolutionStart::Cwc,
         DirtSim::Api::EvolutionStop::Cwc,
         DirtSim::Api::Exit::Cwc,
@@ -436,6 +439,7 @@ public:
         DirtSim::Api::PhysicsSettingsSet::Cwc,
         DirtSim::Api::RenderFormatGet::Cwc,
         DirtSim::Api::RenderFormatSet::Cwc,
+        DirtSim::Api::RenderStreamConfigSet::Cwc,
         DirtSim::Api::Reset::Cwc,
         DirtSim::Api::ScenarioConfigSet::Cwc,
         DirtSim::Api::ScenarioListGet::Cwc,

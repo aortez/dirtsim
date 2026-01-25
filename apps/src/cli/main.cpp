@@ -14,6 +14,7 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/network/WifiManager.h"
+#include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
@@ -1106,6 +1107,26 @@ int main(int argc, char** argv)
         auto connectResult = client.connect(serverAddress, 5000);
         if (connectResult.isError()) {
             std::cerr << "Failed to connect: " << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        // Subscribe to event stream.
+        Api::EventSubscribe::Command eventCmd{
+            .enabled = true,
+            .connectionId = "",
+        };
+        auto eventResult =
+            client.sendCommandAndGetResponse<Api::EventSubscribe::Okay>(eventCmd, 5000);
+        if (eventResult.isError()) {
+            std::cerr << "Failed to subscribe to event stream: " << eventResult.errorValue()
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+        if (eventResult.value().isError()) {
+            std::cerr << "EventSubscribe rejected: " << eventResult.value().errorValue().message
+                      << std::endl;
+            client.disconnect();
             return 1;
         }
 

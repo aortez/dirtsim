@@ -235,6 +235,25 @@ wsService->onBinary([](const std::vector<std::byte>& data) {
     // Deserialize RenderMessage and update display
 });
 
+// Subscribe to event stream (requires ClientHello.wantsEvents = true)
+Api::EventSubscribe::Command eventCmd{
+    .enabled = true,
+};
+wsService->sendCommandAndGetResponse<Api::EventSubscribe::OkayType>(eventCmd, 2000);
+
+// Subscribe to render stream (requires ClientHello.wantsRender = true)
+Api::RenderFormatSet::Command renderCmd{
+    .format = RenderFormat::EnumType::Basic,
+};
+wsService->sendCommandAndGetResponse<Api::RenderFormatSet::OkayType>(renderCmd, 2000);
+
+// Optional: throttle or disable render stream per client
+Api::RenderStreamConfigSet::Command renderCfg{
+    .renderEnabled = true,
+    .renderEveryN = 4,
+};
+wsService->sendCommandAndGetResponse<Api::RenderStreamConfigSet::OkayType>(renderCfg, 2000);
+
 // Cleanup
 wsService->disconnect();
 ```

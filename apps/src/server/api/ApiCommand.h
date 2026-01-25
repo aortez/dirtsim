@@ -5,6 +5,7 @@
 #include "CellSet.h"
 #include "ClockEventTrigger.h"
 #include "DiagramGet.h"
+#include "EventSubscribe.h"
 #include "EvolutionStart.h"
 #include "EvolutionStop.h"
 #include "Exit.h"
@@ -22,6 +23,7 @@
 #include "PhysicsSettingsSet.h"
 #include "RenderFormatGet.h"
 #include "RenderFormatSet.h"
+#include "RenderStreamConfigSet.h"
 #include "Reset.h"
 #include "ScenarioConfigSet.h"
 #include "ScenarioListGet.h"
@@ -72,6 +74,7 @@ using ApiCommand = std::variant<
     Api::CellSet::Command,
     Api::ClockEventTrigger::Command,
     Api::DiagramGet::Command,
+    Api::EventSubscribe::Command,
     Api::EvolutionStart::Command,
     Api::EvolutionStop::Command,
     Api::Exit::Command,
@@ -89,6 +92,7 @@ using ApiCommand = std::variant<
     Api::PhysicsSettingsSet::Command,
     Api::RenderFormatGet::Command,
     Api::RenderFormatSet::Command,
+    Api::RenderStreamConfigSet::Command,
     Api::Reset::Command,
     Api::ScenarioConfigSet::Command,
     Api::ScenarioListGet::Command,
