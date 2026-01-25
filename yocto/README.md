@@ -144,6 +144,21 @@ cd yocto
 npm run runtime-image
 ```
 
+Run functional tests inside the x86 runtime container:
+
+```bash
+cd yocto
+npm run runtime-functional-tests
+```
+
+Target a single test or ensure the image is pulled/built first:
+
+```bash
+cd yocto
+npm run runtime-functional-tests -- --test canExit
+npm run runtime-functional-tests -- --ensure --build-if-missing
+```
+
 Publish to a local registry (oldman-desktop.local):
 
 ```bash
