@@ -32,6 +32,8 @@ do_configure() {
     export LDFLAGS=""
 
     # Ensure we don't reuse a stale CMakeCache from a previous toolchain/flag config.
+    # BitBake may run this task from inside ${B}, so hop out before removing it.
+    cd ${WORKDIR}
     rm -rf ${B}
     install -d ${B}
 
