@@ -9,6 +9,7 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
+#include "api/TrainingStreamConfigSet.h"
 #include "api/WebSocketAccessSet.h"
 #include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
@@ -557,6 +558,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::RenderFormatSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::RenderStreamConfigSet::Cwc>(
         [this](Api::RenderStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingStreamConfigSet::Cwc>(
+        [this](Api::TrainingStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
 
     // =========================================================================
     // Queued handlers - queue to state machine for processing.

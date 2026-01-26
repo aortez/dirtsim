@@ -234,6 +234,21 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
         // Set up open handler.
         ws_->onOpen([this]() {
             LOG_DEBUG(Network, "Connection opened");
+            if (protocol_ == Protocol::BINARY) {
+                const auto payload = serialize_payload(clientHello_);
+                MessageEnvelope hello{
+                    .id = 0,
+                    .message_type = kClientHelloMessageType,
+                    .payload = payload,
+                };
+                auto helloResult = sendBinary(serialize_envelope(hello));
+                if (helloResult.isError()) {
+                    LOG_WARN(
+                        Network,
+                        "Failed to send binary hello message: {}",
+                        helloResult.errorValue());
+                }
+            }
             if (connectedCallback_) {
                 connectedCallback_();
             }
@@ -273,20 +288,6 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
 
         if (connectionFailed_) {
             return Result<std::monostate, std::string>::error("Connection failed");
-        }
-
-        if (protocol_ == Protocol::BINARY) {
-            const auto payload = serialize_payload(clientHello_);
-            MessageEnvelope hello{
-                .id = 0,
-                .message_type = kClientHelloMessageType,
-                .payload = payload,
-            };
-            auto helloResult = sendBinary(serialize_envelope(hello));
-            if (helloResult.isError()) {
-                LOG_WARN(
-                    Network, "Failed to send binary hello message: {}", helloResult.errorValue());
-            }
         }
 
         LOG_INFO(Network, "Connected to {}", url);

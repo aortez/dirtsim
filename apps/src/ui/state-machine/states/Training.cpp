@@ -540,6 +540,10 @@ State::Any Training::onEvent(const TrainingStreamConfigChangedEvent& evt, StateM
 {
     streamIntervalMs_ = std::max(0, evt.intervalMs);
 
+    if (view_) {
+        view_->setStreamIntervalMs(streamIntervalMs_);
+    }
+
     if (!evolutionStarted_) {
         return std::move(*this);
     }

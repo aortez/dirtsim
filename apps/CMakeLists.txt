@@ -330,6 +330,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
+    src/server/api/TrainingStreamConfigSet.cpp
     src/server/api/WorldResize.cpp
 
     # Server network.

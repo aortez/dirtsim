@@ -83,6 +83,8 @@ struct Evolution {
     double finalAverageFitness_ = 0.0;
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
+    int streamIntervalMs_ = 0;
+    std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
 
@@ -96,6 +98,7 @@ struct Evolution {
     std::optional<Any> tick(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
 
     static constexpr const char* name() { return "Evolution"; }

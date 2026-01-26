@@ -41,6 +41,7 @@ struct Training {
     Any onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm);
     Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm);
     Any onEvent(const OpenTrainingGenomeBrowserClickedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& sm);
@@ -58,6 +59,7 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     bool evolutionStarted_ = false;
+    int streamIntervalMs_ = 0;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
 };

@@ -38,6 +38,7 @@
 #include "api/TrainingResultDiscard.h"
 #include "api/TrainingResultSave.h"
 #include "api/TrainingResultSet.h"
+#include "api/TrainingStreamConfigSet.h"
 #include "api/WorldResize.h"
 #include "core/MaterialType.h"
 #include "core/SimulationStats.h"
@@ -455,6 +456,7 @@ public:
         DirtSim::Api::TrainingResultDelete::Cwc,
         DirtSim::Api::TrainingResultSave::Cwc,
         DirtSim::Api::TrainingResultSet::Cwc,
+        DirtSim::Api::TrainingStreamConfigSet::Cwc,
         DirtSim::Api::WorldResize::Cwc,
 
         // State transitions.

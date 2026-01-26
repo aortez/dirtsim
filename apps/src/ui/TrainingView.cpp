@@ -48,8 +48,12 @@ int computeBrowserPanelWidth()
 TrainingView::TrainingView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
-    Network::WebSocketServiceInterface* wsService)
-    : uiManager_(uiManager), eventSink_(eventSink), wsService_(wsService)
+    Network::WebSocketServiceInterface* wsService,
+    int& streamIntervalMs)
+    : uiManager_(uiManager),
+      eventSink_(eventSink),
+      wsService_(wsService),
+      streamIntervalMs_(streamIntervalMs)
 {
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
@@ -83,9 +87,24 @@ void TrainingView::createUI()
     }
     starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
 
-    // Main layout: column with stats on top, world views on bottom.
-    mainLayout_ = lv_obj_create(container_);
+    // Main layout: left stream panel + stats/world content.
+    contentRow_ = lv_obj_create(container_);
+    lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(contentRow_, 0, 0);
+    lv_obj_set_style_pad_all(contentRow_, 0, 0);
+    lv_obj_set_style_pad_left(contentRow_, IconRail::RAIL_WIDTH + 10, 0);
+    lv_obj_set_style_pad_gap(contentRow_, 10, 0);
+    lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    createStreamPanel(contentRow_);
+
+    mainLayout_ = lv_obj_create(contentRow_);
     lv_obj_set_size(mainLayout_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_grow(mainLayout_, 1);
     lv_obj_set_style_bg_opa(mainLayout_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(mainLayout_, 0, 0);
     lv_obj_set_style_pad_all(mainLayout_, 5, 0);
@@ -337,7 +356,10 @@ void TrainingView::destroyUI()
     genLabel_ = nullptr;
     generationBar_ = nullptr;
     bottomRow_ = nullptr;
+    contentRow_ = nullptr;
     mainLayout_ = nullptr;
+    streamPanel_ = nullptr;
+    streamIntervalStepper_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
@@ -364,6 +386,17 @@ void TrainingView::clearPanelContent()
     genomeBrowserPanel_.reset();
     trainingConfigPanel_.reset();
     trainingResultBrowserPanel_.reset();
+}
+
+void TrainingView::setStreamIntervalMs(int value)
+{
+    streamIntervalMs_ = value;
+    if (streamIntervalStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
+    }
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setStreamIntervalMs(value);
+    }
 }
 
 void TrainingView::createCorePanel()
@@ -433,7 +466,8 @@ void TrainingView::createTrainingConfigPanel()
         evolutionStarted_,
         evolutionConfig_,
         mutationConfig_,
-        trainingSpec_);
+        trainingSpec_,
+        streamIntervalMs_);
     LOG_INFO(Controls, "TrainingView: Created Training config panel");
 }
 
@@ -742,6 +776,17 @@ void TrainingView::updateEvolutionVisibility()
     const bool hasStarfield = starfield_ && starfield_->getCanvas();
     const bool showEvolution = evolutionStarted_ || !hasStarfield;
 
+    if (contentRow_) {
+        if (showEvolution) {
+            lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(contentRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(contentRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+
     if (mainLayout_) {
         if (showEvolution) {
             lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_HIDDEN);
@@ -784,6 +829,39 @@ void TrainingView::renderBestWorld()
         snprintf(buf, sizeof(buf), "Best: %.2f (Gen %d)", bestFitness_, bestGeneration_);
         lv_label_set_text(bestFitnessLabel_, buf);
     }
+}
+
+void TrainingView::createStreamPanel(lv_obj_t* parent)
+{
+    streamPanel_ = lv_obj_create(parent);
+    lv_obj_set_size(streamPanel_, 220, LV_PCT(100));
+    lv_obj_set_style_bg_color(streamPanel_, lv_color_hex(0x141420), 0);
+    lv_obj_set_style_bg_opa(streamPanel_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(streamPanel_, 0, 0);
+    lv_obj_set_style_border_width(streamPanel_, 1, 0);
+    lv_obj_set_style_border_color(streamPanel_, lv_color_hex(0x2A2A44), 0);
+    lv_obj_set_style_pad_all(streamPanel_, 10, 0);
+    lv_obj_set_style_pad_row(streamPanel_, 10, 0);
+    lv_obj_set_flex_flow(streamPanel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        streamPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(streamPanel_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(streamPanel_);
+    lv_label_set_text(titleLabel, "Stream");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_14, 0);
+
+    streamIntervalStepper_ = LVGLBuilder::actionStepper(streamPanel_)
+                                 .label("Interval (ms)")
+                                 .range(0, 5000)
+                                 .step(100)
+                                 .value(streamIntervalMs_)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(100))
+                                 .callback(onStreamIntervalChanged, this)
+                                 .buildOrLog();
 }
 
 void TrainingView::showTrainingResultModal(
@@ -943,6 +1021,16 @@ void TrainingView::showTrainingResultModal(
         .buildOrLog();
 
     updateTrainingResultSaveButton();
+}
+
+void TrainingView::onStreamIntervalChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self || !self->streamIntervalStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
+    self->setStreamIntervalMs(value);
+    self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
 }
 
 void TrainingView::hideTrainingResultModal()

@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -9,7 +10,6 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
-#include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionProgress.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
@@ -398,28 +398,9 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     return StartMenu{};
 }
 
-State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& sm)
+State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Server connection established");
-
-    auto& wsService = sm.getWebSocketService();
-    if (wsService.isConnected()) {
-        Api::EventSubscribe::Command eventCmd{
-            .enabled = true,
-            .connectionId = "",
-        };
-        auto result =
-            wsService.sendCommandAndGetResponse<Api::EventSubscribe::OkayType>(eventCmd, 2000);
-        if (result.isError()) {
-            LOG_WARN(State, "Failed to subscribe to event stream: {}", result.errorValue());
-        }
-        else if (result.value().isError()) {
-            LOG_WARN(State, "EventSubscribe rejected: {}", result.value().errorValue().message);
-        }
-    }
-    else {
-        LOG_WARN(State, "WebSocketService not connected; event subscription skipped");
-    }
 
     LOG_INFO(State, "Transitioning to StartMenu");
 
