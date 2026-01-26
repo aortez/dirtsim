@@ -452,6 +452,7 @@ private:
         const CommandT& cmd, int timeoutMs);
 
     Result<std::monostate, std::string> sendBinaryToDefaultPeer(const std::vector<std::byte>& data);
+    void sendClientHelloIfNeeded();
 
     // WebSocket connection.
     std::shared_ptr<rtc::WebSocket> ws_;
@@ -460,6 +461,7 @@ private:
 
     // Connection state.
     std::atomic<bool> connectionFailed_{ false };
+    std::atomic<bool> helloSent_{ false };
 
     // Pending requests with correlation IDs.
     struct PendingRequest {
