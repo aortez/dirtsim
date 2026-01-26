@@ -282,6 +282,8 @@ Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachin
     streamIntervalMs_ = cwc.command.intervalMs;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
 
+    LOG_INFO(State, "Evolution: Training stream interval set to {}ms", streamIntervalMs_);
+
     Api::TrainingStreamConfigSet::Okay response{
         .intervalMs = streamIntervalMs_,
         .message = "Training stream interval updated",

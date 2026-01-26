@@ -1095,17 +1095,24 @@ void StateMachine::handleEvent(const Event& event)
             pImpl->subscribedClients_.end(),
             [&connectionId](const SubscribedClient& c) { return c.connectionId == connectionId; });
 
+        bool renderEnabled = true;
+        int renderEveryN = 1;
         if (it != pImpl->subscribedClients_.end()) {
             it->renderFormat = cwc.command.format;
+            renderEnabled = it->renderEnabled;
+            renderEveryN = it->renderEveryN;
         }
         else {
             pImpl->subscribedClients_.push_back({ connectionId, cwc.command.format, true, 1 });
         }
 
         spdlog::info(
-            "StateMachine: Client '{}' subscribed (format={}, total={})",
+            "StateMachine: Client '{}' subscribed (format={}, render_enabled={}, "
+            "render_every_n={}, total={})",
             connectionId,
             cwc.command.format == RenderFormat::EnumType::Basic ? "Basic" : "Debug",
+            renderEnabled,
+            renderEveryN,
             pImpl->subscribedClients_.size());
 
         Api::RenderFormatSet::Okay okay;
@@ -1148,6 +1155,12 @@ void StateMachine::handleEvent(const Event& event)
 
         it->renderEnabled = cwc.command.renderEnabled;
         it->renderEveryN = std::max(1, cwc.command.renderEveryN);
+
+        spdlog::info(
+            "StateMachine: Client '{}' render stream config set (enabled={}, every_n={})",
+            connectionId,
+            it->renderEnabled,
+            it->renderEveryN);
 
         Api::RenderStreamConfigSet::Okay okay;
         okay.renderEnabled = it->renderEnabled;

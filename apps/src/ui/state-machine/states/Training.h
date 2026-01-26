@@ -5,6 +5,7 @@
 #include "server/api/EvolutionProgress.h"
 #include "ui/TrainingView.h"
 #include "ui/state-machine/Event.h"
+#include <chrono>
 #include <memory>
 
 typedef struct _lv_event_t lv_event_t;
@@ -62,6 +63,12 @@ struct Training {
     int streamIntervalMs_ = 0;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
+    uint64_t progressEventCount_ = 0;
+    uint64_t renderMessageCount_ = 0;
+    std::chrono::steady_clock::time_point lastRenderRateLog_;
+    uint64_t uiLoopCount_ = 0;
+    std::chrono::steady_clock::time_point lastUiLoopLog_;
+    std::chrono::steady_clock::time_point lastProgressRateLog_;
 };
 
 } // namespace State

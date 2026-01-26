@@ -5,6 +5,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/TrainingResult.h"
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -100,6 +101,7 @@ private:
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
+    lv_obj_t* statsPanel_ = nullptr;
     lv_obj_t* etaLabel_ = nullptr;
     lv_obj_t* simTimeLabel_ = nullptr;
     lv_obj_t* speedupLabel_ = nullptr;
@@ -109,6 +111,10 @@ private:
     lv_obj_t* mainLayout_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
     lv_obj_t* streamPanel_ = nullptr;
+    int progressUiUpdateCount_ = 0;
+    std::chrono::steady_clock::time_point lastLabelStateLog_{};
+    std::chrono::steady_clock::time_point lastProgressUiLog_{};
+    std::chrono::steady_clock::time_point lastStatsInvalidate_{};
     lv_obj_t* streamIntervalStepper_ = nullptr;
 
     // Best snapshot display.

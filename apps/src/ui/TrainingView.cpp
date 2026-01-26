@@ -115,22 +115,22 @@ void TrainingView::createUI()
     lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_SCROLLABLE);
 
     // ========== TOP: Stats panel (condensed) ==========
-    lv_obj_t* statsPanel = lv_obj_create(mainLayout_);
-    lv_obj_set_size(statsPanel, 580, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(statsPanel, lv_color_hex(0x1A1A2E), 0);
-    lv_obj_set_style_bg_opa(statsPanel, LV_OPA_90, 0);
-    lv_obj_set_style_radius(statsPanel, 8, 0);
-    lv_obj_set_style_border_width(statsPanel, 1, 0);
-    lv_obj_set_style_border_color(statsPanel, lv_color_hex(0x4A4A6A), 0);
-    lv_obj_set_style_pad_all(statsPanel, 10, 0);
-    lv_obj_set_style_pad_gap(statsPanel, 4, 0);
-    lv_obj_set_flex_flow(statsPanel, LV_FLEX_FLOW_COLUMN);
+    statsPanel_ = lv_obj_create(mainLayout_);
+    lv_obj_set_size(statsPanel_, 580, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(statsPanel_, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_opa(statsPanel_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(statsPanel_, 8, 0);
+    lv_obj_set_style_border_width(statsPanel_, 1, 0);
+    lv_obj_set_style_border_color(statsPanel_, lv_color_hex(0x4A4A6A), 0);
+    lv_obj_set_style_pad_all(statsPanel_, 10, 0);
+    lv_obj_set_style_pad_gap(statsPanel_, 4, 0);
+    lv_obj_set_flex_flow(statsPanel_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        statsPanel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(statsPanel, LV_OBJ_FLAG_SCROLLABLE);
+        statsPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(statsPanel_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title row: "EVOLUTION" + status.
-    lv_obj_t* titleRow = lv_obj_create(statsPanel);
+    lv_obj_t* titleRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(titleRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(titleRow, 0, 0);
@@ -152,7 +152,7 @@ void TrainingView::createUI()
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
 
     // Time stats row (compact horizontal).
-    lv_obj_t* timeRow = lv_obj_create(statsPanel);
+    lv_obj_t* timeRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(timeRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(timeRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(timeRow, 0, 0);
@@ -184,7 +184,7 @@ void TrainingView::createUI()
     lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
 
     // Progress bars row.
-    lv_obj_t* progressRow = lv_obj_create(statsPanel);
+    lv_obj_t* progressRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(progressRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(progressRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(progressRow, 0, 0);
@@ -226,7 +226,7 @@ void TrainingView::createUI()
     lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
 
     // Fitness stats row.
-    lv_obj_t* fitnessRow = lv_obj_create(statsPanel);
+    lv_obj_t* fitnessRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(fitnessRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(fitnessRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(fitnessRow, 0, 0);
@@ -355,6 +355,7 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    statsPanel_ = nullptr;
     bottomRow_ = nullptr;
     contentRow_ = nullptr;
     mainLayout_ = nullptr;
@@ -609,6 +610,33 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
 {
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
 
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {
+        lastProgressUiLog_ = now;
+        progressUiUpdateCount_ = 0;
+    }
+    progressUiUpdateCount_++;
+    const auto elapsed = now - lastProgressUiLog_;
+    if (elapsed >= std::chrono::seconds(1)) {
+        const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+        const double rate = elapsedSeconds > 0.0 ? (progressUiUpdateCount_ / elapsedSeconds) : 0.0;
+        LOG_INFO(
+            Controls,
+            "TrainingView progress UI: gen {}/{}, eval {}/{}, time {:.1f}s sim {:.1f}s speed "
+            "{:.1f}x eta {:.1f}s updates {:.1f}/s",
+            progress.generation,
+            progress.maxGenerations,
+            progress.currentEval,
+            progress.populationSize,
+            progress.totalTrainingSeconds,
+            progress.currentSimTime,
+            progress.speedupFactor,
+            progress.etaSeconds,
+            rate);
+        progressUiUpdateCount_ = 0;
+        lastProgressUiLog_ = now;
+    }
+
     // Detect evaluation change with fitness improvement for best snapshot.
     // Note: Depends on renderWorld() being called first to populate lastRenderedWorld_.
     const bool evalChanged = (progress.currentEval != lastEval_)
@@ -714,6 +742,25 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     if (averageLabel_) {
         snprintf(buf, sizeof(buf), "Avg: %.2f", progress.averageFitness);
         lv_label_set_text(averageLabel_, buf);
+    }
+
+    // LVGL doesn't always repaint this panel promptly under high-rate event load.
+    // Invalidate at a bounded rate so we don't force full-panel redraw for every message.
+    if (statsPanel_) {
+        const auto invalidateNow = std::chrono::steady_clock::now();
+        if (lastStatsInvalidate_ == std::chrono::steady_clock::time_point{}
+            || (invalidateNow - lastStatsInvalidate_) >= std::chrono::milliseconds(16)) {
+            lv_obj_invalidate(statsPanel_);
+            lastStatsInvalidate_ = invalidateNow;
+        }
+    }
+
+    const auto logNow = std::chrono::steady_clock::now();
+    if (lastLabelStateLog_ == std::chrono::steady_clock::time_point{}) {
+        lastLabelStateLog_ = logNow;
+    }
+    if (logNow - lastLabelStateLog_ >= std::chrono::seconds(1)) {
+        lastLabelStateLog_ = logNow;
     }
 }
 

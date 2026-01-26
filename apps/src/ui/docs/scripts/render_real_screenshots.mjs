@@ -108,6 +108,16 @@ const getUiState = async () => {
   }
 };
 
+const isUiConnected = async () => {
+  try {
+    const output = await runCliCapture(["ui", "StatusGet"]);
+    const parsed = parseJsonLine(output);
+    return Boolean(parsed?.value?.connected_to_server);
+  } catch {
+    return false;
+  }
+};
+
 const waitForUiState = async (targets, timeoutMs = 8000) => {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -118,6 +128,18 @@ const waitForUiState = async (targets, timeoutMs = 8000) => {
     await sleep(400);
   }
   return null;
+};
+
+const waitForUiConnected = async (timeoutMs = 8000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const connected = await isUiConnected();
+    if (connected) {
+      return true;
+    }
+    await sleep(400);
+  }
+  return false;
 };
 
 const clearTrainingState = async () => {
@@ -179,11 +201,19 @@ const run = async () => {
       if (!screen.skipClearTraining) {
         await clearTrainingState();
       }
+      await waitForUiConnected();
       await waitForUiState(["StartMenu", "SimRunning", "Paused", "Training"]);
     }
 
     const steps = screen.steps ?? [];
     for (const step of steps) {
+      if (step.waitForState) {
+        await waitForUiState(
+          Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
+          step.waitTimeoutMs
+        );
+        continue;
+      }
       try {
         await runCli(step.args, { allowFailure: step.allowFailure });
       } catch (error) {
@@ -197,6 +227,12 @@ const run = async () => {
       }
       if (step.waitMs) {
         await sleep(step.waitMs);
+      }
+      if (step.waitForState) {
+        await waitForUiState(
+          Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
+          step.waitTimeoutMs
+        );
       }
     }
 

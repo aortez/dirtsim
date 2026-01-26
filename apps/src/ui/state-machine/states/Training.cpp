@@ -97,6 +97,12 @@ void Training::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training state (waiting for start command)");
     evolutionStarted_ = false;
+    progressEventCount_ = 0;
+    renderMessageCount_ = 0;
+    lastRenderRateLog_ = std::chrono::steady_clock::time_point{};
+    uiLoopCount_ = 0;
+    lastUiLoopLog_ = std::chrono::steady_clock::time_point{};
+    lastProgressRateLog_ = std::chrono::steady_clock::time_point{};
 
     // Create training view.
     auto* uiManager = sm.getUiComponentManager();
@@ -135,6 +141,24 @@ void Training::onExit(StateMachine& sm)
 
 void Training::updateAnimations()
 {
+    if (evolutionStarted_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (lastUiLoopLog_ == std::chrono::steady_clock::time_point{}) {
+            lastUiLoopLog_ = now;
+            uiLoopCount_ = 0;
+        }
+
+        uiLoopCount_++;
+        const auto elapsed = now - lastUiLoopLog_;
+        if (elapsed >= std::chrono::seconds(1)) {
+            const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+            const double rate = elapsedSeconds > 0.0 ? (uiLoopCount_ / elapsedSeconds) : 0.0;
+            LOG_INFO(State, "Training UI loop FPS: {:.1f}", rate);
+            uiLoopCount_ = 0;
+            lastUiLoopLog_ = now;
+        }
+    }
+
     if (view_) {
         view_->updateAnimations();
     }
@@ -149,6 +173,22 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
 {
     // Update progress from server broadcast.
     progress = evt.progress;
+    progressEventCount_++;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressRateLog_ == std::chrono::steady_clock::time_point{}) {
+        lastProgressRateLog_ = now;
+        progressEventCount_ = 0;
+    }
+
+    const auto elapsed = now - lastProgressRateLog_;
+    if (elapsed >= std::chrono::seconds(1)) {
+        const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+        const double rate = elapsedSeconds > 0.0 ? (progressEventCount_ / elapsedSeconds) : 0.0;
+        LOG_INFO(State, "Training progress rate: {:.1f} msgs/s", rate);
+        progressEventCount_ = 0;
+        lastProgressRateLog_ = now;
+    }
 
     LOG_DEBUG(
         State,
@@ -334,6 +374,12 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(State, "Evolution started on server");
     evolutionStarted_ = true;
+    progressEventCount_ = 0;
+    renderMessageCount_ = 0;
+    lastRenderRateLog_ = std::chrono::steady_clock::now();
+    uiLoopCount_ = 0;
+    lastUiLoopLog_ = std::chrono::steady_clock::now();
+    lastProgressRateLog_ = std::chrono::steady_clock::now();
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
 
@@ -851,6 +897,22 @@ State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
 {
     // Render live training world.
     if (view_ && evolutionStarted_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (lastRenderRateLog_ == std::chrono::steady_clock::time_point{}) {
+            lastRenderRateLog_ = now;
+            renderMessageCount_ = 0;
+        }
+
+        renderMessageCount_++;
+        const auto elapsed = now - lastRenderRateLog_;
+        if (elapsed >= std::chrono::seconds(1)) {
+            const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+            const double rate = elapsedSeconds > 0.0 ? (renderMessageCount_ / elapsedSeconds) : 0.0;
+            LOG_INFO(State, "Training render msg rate: {:.1f} msgs/s", rate);
+            renderMessageCount_ = 0;
+            lastRenderRateLog_ = now;
+        }
+
         view_->renderWorld(evt.worldData);
     }
 
