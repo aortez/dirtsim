@@ -1,6 +1,6 @@
 [submodule "apps/lvgl"]
 	path = apps/lvgl
-	url = https://github.com/lvgl/lvgl.git
+	url = https://github.com/aortez/lvgl.git
 [submodule "apps/spdlog"]
 	path = apps/spdlog
 	url = https://github.com/gabime/spdlog.git
