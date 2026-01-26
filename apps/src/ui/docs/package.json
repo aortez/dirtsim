@@ -1,0 +1,25 @@
+{
+  "name": "dirtsim-ui-docs",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "shots:markdown": "node scripts/render_docs_screenshots.mjs",
+    "shots:real": "node scripts/render_real_screenshots.mjs",
+    "shots:stack": "node scripts/stack_screenshots.mjs"
+  },
+  "dependencies": {
+    "marked": "^16.2.0",
+    "mermaid": "^10.9.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "pngjs": "^7.0.0",
+    "playwright": "^1.52.0",
+    "vite": "^5.4.0"
+  }
+}

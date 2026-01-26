@@ -24,6 +24,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::CellSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ClockEventTrigger::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::DiagramGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::EventSubscribe::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::EvolutionStart::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::EvolutionStop::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::Exit::Cwc>(serverHandlers_, serverExampleHandlers_);
@@ -41,6 +42,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::RenderFormatGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::RenderFormatSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::RenderStreamConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::Reset::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ScenarioConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::ScenarioListGet::Cwc>(serverHandlers_, serverExampleHandlers_);

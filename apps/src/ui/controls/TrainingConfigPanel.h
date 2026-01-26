@@ -34,11 +34,13 @@ public:
         bool evolutionStarted,
         EvolutionConfig& evolutionConfig,
         MutationConfig& mutationConfig,
-        TrainingSpec& trainingSpec);
+        TrainingSpec& trainingSpec,
+        int& streamIntervalMs);
     ~TrainingConfigPanel();
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted();
+    void setStreamIntervalMs(int value);
     void showView(View view);
     void addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId);
 
@@ -54,6 +56,7 @@ private:
     EvolutionConfig& evolutionConfig_;
     MutationConfig& mutationConfig_;
     TrainingSpec& trainingSpec_;
+    int& streamIntervalMs_;
 
     int collapsedWidth_ = 0;
     int expandedWidth_ = 0;
@@ -76,6 +79,7 @@ private:
     lv_obj_t* mutationRateStepper_ = nullptr;
     lv_obj_t* tournamentSizeStepper_ = nullptr;
     lv_obj_t* maxSimTimeStepper_ = nullptr;
+    lv_obj_t* streamIntervalStepper_ = nullptr;
 
     std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
@@ -98,6 +102,7 @@ private:
     static void onMutationRateChanged(lv_event_t* e);
     static void onTournamentSizeChanged(lv_event_t* e);
     static void onMaxSimTimeChanged(lv_event_t* e);
+    static void onStreamIntervalChanged(lv_event_t* e);
 };
 
 } // namespace Ui

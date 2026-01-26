@@ -2,10 +2,10 @@
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h" // For deserialize_payload.
 #include "core/network/ClientHello.h"
+#include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/Exit.h"
-#include "server/api/RenderFormatSet.h"
 #include "server/api/TrainingResult.h"
 
 #include <chrono>
@@ -69,7 +69,7 @@ TrainResults TrainRunner::run(
     client_.setProtocol(Network::Protocol::BINARY);
     Network::ClientHello hello{
         .protocolVersion = Network::kClientHelloProtocolVersion,
-        .wantsRender = true,
+        .wantsRender = false,
         .wantsEvents = true,
     };
     client_.setClientHello(hello);
@@ -103,14 +103,21 @@ TrainResults TrainRunner::run(
         }
     });
 
-    // Subscribe to broadcasts.
-    Api::RenderFormatSet::Command subCmd{
-        .format = RenderFormat::EnumType::Basic,
+    // Subscribe to event stream (EvolutionProgress).
+    Api::EventSubscribe::Command eventCmd{
+        .enabled = true,
         .connectionId = "",
     };
-    auto subResult = client_.sendCommandAndGetResponse<Api::RenderFormatSet::Okay>(subCmd, 5000);
-    if (subResult.isError()) {
-        results.errorMessage = "Failed to subscribe to broadcasts: " + subResult.errorValue();
+    auto eventResult = client_.sendCommandAndGetResponse<Api::EventSubscribe::Okay>(eventCmd, 5000);
+    if (eventResult.isError()) {
+        results.errorMessage = "Failed to subscribe to event stream: " + eventResult.errorValue();
+        SLOG_ERROR("{}", results.errorMessage);
+        client_.disconnect();
+        return results;
+    }
+    if (eventResult.value().isError()) {
+        results.errorMessage =
+            "EventSubscribe rejected: " + eventResult.value().errorValue().message;
         SLOG_ERROR("{}", results.errorMessage);
         client_.disconnect();
         return results;

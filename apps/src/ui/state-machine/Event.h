@@ -165,6 +165,11 @@ struct TrainingResultSaveClickedEvent {
 struct TrainingResultDiscardClickedEvent {
     static constexpr const char* name() { return "TrainingResultDiscardClickedEvent"; }
 };
+
+struct TrainingStreamConfigChangedEvent {
+    int intervalMs = 0;
+    static constexpr const char* name() { return "TrainingStreamConfigChangedEvent"; }
+};
 struct GenomeLoadClickedEvent {
     GenomeId genomeId;
     Scenario::EnumType scenarioId = Scenario::EnumType::Sandbox;
@@ -249,6 +254,7 @@ using Event = std::variant<
     ViewBestButtonClickedEvent,
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
+    TrainingStreamConfigChangedEvent,
     GenomeLoadClickedEvent,
     OpenTrainingGenomeBrowserClickedEvent,
     GenomeAddToTrainingClickedEvent,

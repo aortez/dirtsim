@@ -27,7 +27,8 @@ TrainingConfigPanel::TrainingConfigPanel(
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
     MutationConfig& mutationConfig,
-    TrainingSpec& trainingSpec)
+    TrainingSpec& trainingSpec,
+    int& streamIntervalMs)
     : container_(container),
       eventSink_(eventSink),
       panel_(panel),
@@ -35,7 +36,8 @@ TrainingConfigPanel::TrainingConfigPanel(
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
       mutationConfig_(mutationConfig),
-      trainingSpec_(trainingSpec)
+      trainingSpec_(trainingSpec),
+      streamIntervalMs_(streamIntervalMs)
 {
     collapsedWidth_ = ExpandablePanel::DefaultWidth;
     const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
@@ -91,6 +93,14 @@ void TrainingConfigPanel::setEvolutionCompleted()
 
     if (trainingPopulationPanel_) {
         trainingPopulationPanel_->setEvolutionCompleted();
+    }
+}
+
+void TrainingConfigPanel::setStreamIntervalMs(int value)
+{
+    streamIntervalMs_ = value;
+    if (streamIntervalStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
 }
 
@@ -325,6 +335,17 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                              .callback(onMaxSimTimeChanged, this)
                              .buildOrLog();
 
+    streamIntervalStepper_ = LVGLBuilder::actionStepper(parent)
+                                 .label("Stream Interval (ms)")
+                                 .range(0, 5000)
+                                 .step(100)
+                                 .value(streamIntervalMs_)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(95))
+                                 .callback(onStreamIntervalChanged, this)
+                                 .buildOrLog();
+
     statusLabel_ = lv_label_create(parent);
     lv_label_set_text(statusLabel_, "");
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(kStatusReadyColor), 0);
@@ -393,6 +414,7 @@ void TrainingConfigPanel::updateControlsEnabled()
     setEnabled(mutationRateStepper_, enabled);
     setEnabled(tournamentSizeStepper_, enabled);
     setEnabled(maxSimTimeStepper_, enabled);
+    setEnabled(streamIntervalStepper_, true);
 
     if (startButton_) {
         if (evolutionStarted_) {
@@ -521,6 +543,16 @@ void TrainingConfigPanel::onMaxSimTimeChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->maxSimTimeStepper_);
     self->evolutionConfig_.maxSimulationTime = static_cast<double>(value);
+}
+
+void TrainingConfigPanel::onStreamIntervalChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->streamIntervalStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
+    self->streamIntervalMs_ = value;
+    self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
 }
 
 } // namespace Ui

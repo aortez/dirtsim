@@ -109,6 +109,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
 
         // Reset connection state.
         connectionFailed_ = false;
+        helloSent_ = false;
         url_ = url;
 
         // Create WebSocket with large message size.
@@ -234,6 +235,7 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
         // Set up open handler.
         ws_->onOpen([this]() {
             LOG_DEBUG(Network, "Connection opened");
+            sendClientHelloIfNeeded();
             if (connectedCallback_) {
                 connectedCallback_();
             }
@@ -275,26 +277,35 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
             return Result<std::monostate, std::string>::error("Connection failed");
         }
 
-        if (protocol_ == Protocol::BINARY) {
-            const auto payload = serialize_payload(clientHello_);
-            MessageEnvelope hello{
-                .id = 0,
-                .message_type = kClientHelloMessageType,
-                .payload = payload,
-            };
-            auto helloResult = sendBinary(serialize_envelope(hello));
-            if (helloResult.isError()) {
-                LOG_WARN(
-                    Network, "Failed to send binary hello message: {}", helloResult.errorValue());
-            }
-        }
-
+        sendClientHelloIfNeeded();
         LOG_INFO(Network, "Connected to {}", url);
         return Result<std::monostate, std::string>::okay(std::monostate{});
     }
     catch (const std::exception& e) {
         return Result<std::monostate, std::string>::error(
             std::string("Connection error: ") + e.what());
+    }
+}
+
+void WebSocketService::sendClientHelloIfNeeded()
+{
+    if (protocol_ != Protocol::BINARY) {
+        return;
+    }
+    if (helloSent_.exchange(true)) {
+        return;
+    }
+
+    const auto payload = serialize_payload(clientHello_);
+    MessageEnvelope hello{
+        .id = 0,
+        .message_type = kClientHelloMessageType,
+        .payload = payload,
+    };
+    auto helloResult = sendBinary(serialize_envelope(hello));
+    if (helloResult.isError()) {
+        LOG_WARN(Network, "Failed to send binary hello message: {}", helloResult.errorValue());
+        helloSent_ = false;
     }
 }
 
