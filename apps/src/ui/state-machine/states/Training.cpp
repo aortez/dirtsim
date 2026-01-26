@@ -4,6 +4,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/GenomeGet.h"
@@ -12,6 +13,7 @@
 #include "server/api/SimRun.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultSave.h"
+#include "server/api/TrainingStreamConfigSet.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
@@ -57,6 +59,38 @@ Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServe
     return Result<Api::TrainingResultSave::OkayType, std::string>::okay(result.value().value());
 }
 
+Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
+    StateMachine& sm, int intervalMs)
+{
+    if (!sm.hasWebSocketService()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            "No WebSocketService available");
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            "Not connected to server");
+    }
+
+    Api::TrainingStreamConfigSet::Command cmd{
+        .intervalMs = intervalMs,
+    };
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            result.errorValue());
+    }
+    if (result.value().isError()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            result.value().errorValue().message);
+    }
+
+    return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::okay(
+        result.value().value());
+}
+
 } // namespace
 
 void Training::onEnter(StateMachine& sm)
@@ -75,7 +109,7 @@ void Training::onEnter(StateMachine& sm)
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
-    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService);
+    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, streamIntervalMs_);
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -148,7 +182,18 @@ State::Any Training::onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& 
 {
     LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());
 
+    evolutionStarted_ = false;
+    GenomeId bestGenomeId = INVALID_GENOME_ID;
+    if (!cwc.command.candidates.empty()) {
+        const auto bestIt = std::max_element(
+            cwc.command.candidates.begin(),
+            cwc.command.candidates.end(),
+            [](const auto& a, const auto& b) { return a.fitness < b.fitness; });
+        bestGenomeId = bestIt->id;
+    }
+
     if (view_) {
+        view_->setEvolutionCompleted(bestGenomeId);
         view_->showTrainingResultModal(cwc.command.summary, cwc.command.candidates);
     }
 
@@ -291,6 +336,18 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
     evolutionStarted_ = true;
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
+
+    const auto streamResult = sendTrainingStreamConfig(sm, streamIntervalMs_);
+    if (streamResult.isError()) {
+        LOG_WARN(
+            State,
+            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            streamIntervalMs_,
+            streamResult.errorValue());
+    }
+    else {
+        LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
+    }
 
     // Subscribe to render stream for live training view.
     static std::atomic<uint64_t> nextId{ 1 };
@@ -477,6 +534,28 @@ State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, State
     auto nextState = onEvent(TrainingResultDiscardClickedEvent{}, sm);
     cwc.sendResponse(UiApi::TrainingResultDiscard::Response::okay({ .queued = true }));
     return nextState;
+}
+
+State::Any Training::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
+{
+    streamIntervalMs_ = std::max(0, evt.intervalMs);
+
+    if (!evolutionStarted_) {
+        return std::move(*this);
+    }
+
+    const auto result = sendTrainingStreamConfig(sm, streamIntervalMs_);
+    if (result.isError()) {
+        LOG_WARN(
+            State,
+            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            streamIntervalMs_,
+            result.errorValue());
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "Training stream interval set to {}ms", result.value().intervalMs);
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)
