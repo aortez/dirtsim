@@ -7,12 +7,14 @@ SRC_URI = "\
     gitsm://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master;destsuffix=pico-sdk \
     git://github.com/raspberrypi/pico-extras.git;name=pico-extras;protocol=https;branch=master;destsuffix=pico-extras \
     git://github.com/pimoroni/pimoroni-pico.git;name=pimoroni-pico;protocol=https;branch=main;destsuffix=pimoroni-pico \
+    git://github.com/hathach/tinyusb.git;name=tinyusb;protocol=https;branch=master;destsuffix=tinyusb \
 "
 
 SRCREV_pico-sdk = "a1438dff1d38bd9c65dbd693f0e5db4b9ae91779"
 SRCREV_pico-extras = "82409a94de00802105c84e5c06f333114bb8b316"
 SRCREV_pimoroni-pico = "1e7fb9e723c18fea24aa9353e767cadee2a87d70"
-SRCREV_FORMAT = "pico-sdk_pico-extras_pimoroni-pico"
+SRCREV_tinyusb = "3af1bec1a9161ee8dec29487831f7ac7ade9e189"
+SRCREV_FORMAT = "pico-sdk_pico-extras_pimoroni-pico_tinyusb"
 
 S = "${WORKDIR}/picade-max-audio"
 B = "${WORKDIR}/build"
@@ -38,6 +40,7 @@ do_configure() {
         -DCMAKE_STATIC_LINKER_FLAGS= \
         -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY \
         -DPICO_SDK_PATH=${WORKDIR}/pico-sdk \
+        -DPICO_TINYUSB_PATH=${WORKDIR}/tinyusb \
         -DPICO_EXTRAS_PATH=${WORKDIR}/pico-extras \
         -DPIMORONI_PICO_PATH=${WORKDIR}/pimoroni-pico \
         -DPICO_COMPILER=pico_arm_cortex_m0plus_gcc \
