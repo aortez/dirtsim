@@ -4,9 +4,9 @@ LIC_FILES_CHKSUM = "file://src/main.cpp;beginline=1;endline=23;md5=7a07b78504a13
 
 SRC_URI = "\
     file://picade-max-audio-61eef4b.tar.gz \
-    git://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master \
-    git://github.com/raspberrypi/pico-extras.git;name=pico-extras;protocol=https;branch=master \
-    git://github.com/pimoroni/pimoroni-pico.git;name=pimoroni-pico;protocol=https;branch=main \
+    git://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master;destsuffix=pico-sdk \
+    git://github.com/raspberrypi/pico-extras.git;name=pico-extras;protocol=https;branch=master;destsuffix=pico-extras \
+    git://github.com/pimoroni/pimoroni-pico.git;name=pimoroni-pico;protocol=https;branch=main;destsuffix=pimoroni-pico \
 "
 
 SRCREV_pico-sdk = "a1438dff1d38bd9c65dbd693f0e5db4b9ae91779"
