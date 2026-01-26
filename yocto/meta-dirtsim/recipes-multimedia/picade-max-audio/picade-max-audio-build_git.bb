@@ -15,18 +15,31 @@ SRCREV_pimoroni-pico = "1e7fb9e723c18fea24aa9353e767cadee2a87d70"
 SRCREV_FORMAT = "pico-sdk_pico-extras_pimoroni-pico"
 
 S = "${WORKDIR}/picade-max-audio"
-
-inherit cmake
+B = "${WORKDIR}/build"
 
 DEPENDS += "cmake-native ninja-native"
 
-EXTRA_OECMAKE += "\
-    -DPICO_SDK_PATH=${WORKDIR}/pico-sdk \
-    -DPICO_EXTRAS_PATH=${WORKDIR}/pico-extras \
-    -DPIMORONI_PICO_PATH=${WORKDIR}/pimoroni-pico \
-    -DPICO_COMPILER=pico_arm_cortex_m0plus_gcc \
-    -DPICO_TOOLCHAIN_PATH=${HOSTTOOLS_DIR} \
-"
+# Do not use cmake.bbclass here.
+# cmake.bbclass injects native build flags (eg -pthread) which break the Pico
+# cross toolchain (arm-none-eabi-gcc), causing CMake compiler checks to fail.
+do_configure() {
+    # Keep Yocto's native build flags out of the Pico toolchain invocation.
+    export CFLAGS=""
+    export CXXFLAGS=""
+    export CPPFLAGS=""
+    export LDFLAGS=""
+
+    cmake -S ${S} -B ${B} -G Ninja \
+        -DPICO_SDK_PATH=${WORKDIR}/pico-sdk \
+        -DPICO_EXTRAS_PATH=${WORKDIR}/pico-extras \
+        -DPIMORONI_PICO_PATH=${WORKDIR}/pimoroni-pico \
+        -DPICO_COMPILER=pico_arm_cortex_m0plus_gcc \
+        -DPICO_TOOLCHAIN_PATH=${HOSTTOOLS_DIR}
+}
+
+do_compile() {
+    ninja -C ${B}
+}
 
 do_install() {
     install -d ${D}${datadir}/dirtsim/firmware
