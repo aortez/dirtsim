@@ -31,6 +31,10 @@ do_configure() {
     export CPPFLAGS=""
     export LDFLAGS=""
 
+    # Ensure we don't reuse a stale CMakeCache from a previous toolchain/flag config.
+    rm -rf ${B}
+    install -d ${B}
+
     cmake -S ${S} -B ${B} -G Ninja \
         -DCMAKE_EXE_LINKER_FLAGS= \
         -DCMAKE_MODULE_LINKER_FLAGS= \
