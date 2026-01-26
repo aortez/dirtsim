@@ -75,6 +75,7 @@ public:
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
+    void addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId);
 
 private:
     bool evolutionStarted_ = false;
@@ -146,6 +147,7 @@ private:
     void renderBestWorld();
     void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
+    void createGenomeBrowserPanelInternal();
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);

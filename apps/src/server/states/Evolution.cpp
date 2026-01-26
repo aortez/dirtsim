@@ -118,6 +118,14 @@ Vector2i findSpawnCell(World& world)
     data.at(centerX, centerY).clear();
     return { centerX, centerY };
 }
+
+Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
+{
+    if (!spec.population.empty()) {
+        return spec.population.front().scenarioId;
+    }
+    return spec.scenarioId;
+}
 } // namespace
 
 void Evolution::onEnter(StateMachine& dsm)
@@ -127,7 +135,7 @@ void Evolution::onEnter(StateMachine& dsm)
         "Evolution: Starting with population={}, generations={}, scenario={}, organism_type={}",
         evolutionConfig.populationSize,
         evolutionConfig.maxGenerations,
-        toString(trainingSpec.scenarioId),
+        toString(getPrimaryScenarioId(trainingSpec)),
         static_cast<int>(trainingSpec.organismType));
 
     // Record training start time.
@@ -198,7 +206,7 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     dsm.broadcastRenderMessage(
         evalWorld_->getData(),
         evalWorld_->getOrganismManager().getGrid(),
-        trainingSpec.scenarioId,
+        evalScenarioId_,
         evalScenarioConfig_);
 
     // Broadcast progress for real-time time display updates.
@@ -276,6 +284,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
+                                .scenarioId = spec.scenarioId,
                                 .genome = genome.value(),
                                 .allowsMutation = entry->allowsMutation });
             }
@@ -284,6 +293,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
+                                .scenarioId = spec.scenarioId,
                                 .genome = Genome::random(rng),
                                 .allowsMutation = entry->allowsMutation });
             }
@@ -300,6 +310,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
+                                .scenarioId = spec.scenarioId,
                                 .genome = std::nullopt,
                                 .allowsMutation = entry->allowsMutation });
             }
@@ -322,6 +333,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     evalSimTime_ = 0.0;
     evalMaxEnergy_ = 0.0;
     evalScenarioConfig_ = Config::Empty{};
+    evalScenarioId_ = getPrimaryScenarioId(trainingSpec);
 }
 
 void Evolution::startEvaluation(StateMachine& dsm)
@@ -331,7 +343,8 @@ void Evolution::startEvaluation(StateMachine& dsm)
         "currentEval must be within population bounds");
 
     auto& registry = dsm.getScenarioRegistry();
-    const ScenarioMetadata* metadata = registry.getMetadata(trainingSpec.scenarioId);
+    const Individual& individual = population[currentEval];
+    const ScenarioMetadata* metadata = registry.getMetadata(individual.scenarioId);
     DIRTSIM_ASSERT(metadata != nullptr, "Training scenario not found in registry");
 
     const int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
@@ -340,16 +353,16 @@ void Evolution::startEvaluation(StateMachine& dsm)
     evalWorld_ = std::make_unique<World>(width, height);
     DIRTSIM_ASSERT(evalWorld_ != nullptr, "World creation must succeed");
 
-    evalScenario_ = registry.createScenario(trainingSpec.scenarioId);
+    evalScenario_ = registry.createScenario(individual.scenarioId);
     DIRTSIM_ASSERT(evalScenario_ != nullptr, "Training scenario factory failed");
 
     evalScenario_->setup(*evalWorld_);
     evalWorld_->setScenario(evalScenario_.get());
     evalScenarioConfig_ = evalScenario_->getConfig();
+    evalScenarioId_ = individual.scenarioId;
 
     const Vector2i spawnCell = findSpawnCell(*evalWorld_);
 
-    const Individual& individual = population[currentEval];
     const std::string variant = individual.brainVariant.value_or("");
     const BrainRegistryEntry* entry =
         brainRegistry_.find(trainingSpec.organismType, individual.brainKind, variant);
@@ -425,7 +438,7 @@ void Evolution::finishEvaluation(StateMachine& dsm)
                 .fitness = fitness,
                 .generation = generation,
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-                .scenarioId = trainingSpec.scenarioId,
+                .scenarioId = individual.scenarioId,
                 .notes = "",
                 .organismType = trainingSpec.organismType,
                 .brainKind = individual.brainKind,
@@ -677,7 +690,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .fitness = bestFit,
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-        .scenarioId = trainingSpec.scenarioId,
+        .scenarioId = population[bestIdx].scenarioId,
         .notes = "",
         .organismType = trainingSpec.organismType,
         .brainKind = population[bestIdx].brainKind,
@@ -699,7 +712,7 @@ void Evolution::storeBestGenome(StateMachine& dsm)
 UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
 {
     UnsavedTrainingResult result;
-    result.summary.scenarioId = trainingSpec.scenarioId;
+    result.summary.scenarioId = getPrimaryScenarioId(trainingSpec);
     result.summary.organismType = trainingSpec.organismType;
     result.summary.populationSize = evolutionConfig.populationSize;
     result.summary.maxGenerations = evolutionConfig.maxGenerations;
@@ -736,7 +749,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
             .fitness = candidate.fitness,
             .generation = generationIndex,
             .createdTimestamp = now,
-            .scenarioId = trainingSpec.scenarioId,
+            .scenarioId = population[i].scenarioId,
             .notes = "",
             .organismType = trainingSpec.organismType,
             .brainKind = candidate.brainKind,

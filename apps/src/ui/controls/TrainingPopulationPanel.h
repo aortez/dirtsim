@@ -2,10 +2,11 @@
 
 #include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include "lvgl/lvgl.h"
-#include "ui/PanelViewController.h"
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -13,7 +14,11 @@
 namespace DirtSim {
 
 struct EvolutionConfig;
+struct PopulationSpec;
 struct TrainingSpec;
+namespace Network {
+class WebSocketServiceInterface;
+}
 
 namespace Ui {
 
@@ -30,6 +35,7 @@ public:
     TrainingPopulationPanel(
         lv_obj_t* container,
         EventSink& eventSink,
+        Network::WebSocketServiceInterface* wsService,
         bool evolutionStarted,
         EvolutionConfig& evolutionConfig,
         TrainingSpec& trainingSpec);
@@ -39,12 +45,23 @@ public:
     void setEvolutionCompleted();
     void setPopulationTotal(int total);
     void setPopulationTotalChangedCallback(const PopulationTotalChangedCallback& callback);
+    void addSeedGenome(const GenomeId& id, Scenario::EnumType scenarioId);
 
 private:
+    struct PopulationEntry {
+        Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
+        std::optional<GenomeId> genomeId;
+        bool isRandom = false;
+    };
+
+    struct EntryContext {
+        TrainingPopulationPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
     lv_obj_t* container_ = nullptr;
     EventSink& eventSink_;
-
-    std::unique_ptr<PanelViewController> viewController_;
+    Network::WebSocketServiceInterface* wsService_ = nullptr;
 
     bool evolutionStarted_ = false;
     bool ignoreEvents_ = false;
@@ -52,13 +69,21 @@ private:
     EvolutionConfig& evolutionConfig_;
     TrainingSpec& trainingSpec_;
 
-    lv_obj_t* brainAButton_ = nullptr;
-    lv_obj_t* brainBButton_ = nullptr;
-    lv_obj_t* countAStepper_ = nullptr;
-    lv_obj_t* countBStepper_ = nullptr;
+    lv_obj_t* addCountStepper_ = nullptr;
+    lv_obj_t* addButton_ = nullptr;
+    lv_obj_t* populationList_ = nullptr;
+    lv_obj_t* clearAllButton_ = nullptr;
+    lv_obj_t* clearAllConfirmCheckbox_ = nullptr;
+    lv_obj_t* detailConfirmCheckbox_ = nullptr;
+    lv_obj_t* detailRemoveButton_ = nullptr;
+    lv_obj_t* detailOverlay_ = nullptr;
     lv_obj_t* organismButton_ = nullptr;
+    lv_obj_t* organismList_ = nullptr;
     lv_obj_t* scenarioButton_ = nullptr;
     lv_obj_t* totalCountLabel_ = nullptr;
+    lv_obj_t* scenarioColumn_ = nullptr;
+    lv_obj_t* mainColumn_ = nullptr;
+    lv_obj_t* listColumn_ = nullptr;
 
     std::vector<Scenario::EnumType> scenarioOptions_;
     std::vector<std::string> scenarioLabels_;
@@ -70,46 +95,64 @@ private:
 
     std::unordered_map<lv_obj_t*, Scenario::EnumType> scenarioButtonToValue_;
     std::unordered_map<lv_obj_t*, OrganismType> organismButtonToValue_;
-    std::unordered_map<lv_obj_t*, std::string> brainAButtonToValue_;
-    std::unordered_map<lv_obj_t*, std::string> brainBButtonToValue_;
 
     Scenario::EnumType selectedScenario_ = Scenario::EnumType::TreeGermination;
     OrganismType selectedOrganism_ = OrganismType::TREE;
-    std::string brainA_;
-    std::string brainB_;
-    int countA_ = 0;
-    int countB_ = 0;
+    std::string brainKind_;
+    bool brainRequiresGenome_ = false;
+    int populationTotal_ = 0;
+    int addCount_ = 1;
+    bool scenarioColumnVisible_ = false;
+    bool organismListVisible_ = false;
+    std::optional<size_t> detailEntryIndex_;
+    std::vector<PopulationEntry> populationEntries_;
+    std::vector<std::unique_ptr<EntryContext>> entryContexts_;
 
     PopulationTotalChangedCallback populationTotalChangedCallback_;
 
-    void createMainView(lv_obj_t* view);
-    void createScenarioSelectView(lv_obj_t* view);
-    void createOrganismSelectView(lv_obj_t* view);
-    void createBrainSelectView(
-        lv_obj_t* view,
-        const char* title,
-        bool includeNone,
-        std::unordered_map<lv_obj_t*, std::string>& buttonMap,
-        lv_event_cb_t callback);
+    void createLayout();
+    void createMainColumn(lv_obj_t* parent);
+    void createListColumn(lv_obj_t* parent);
+    void createScenarioColumn(lv_obj_t* parent);
     void updateControlsEnabled();
     void updateSelectorLabels();
     void refreshFromSpec();
-    void applySpec();
+    void applySpecUpdates();
     void setBrainOptionsForOrganism(OrganismType organismType);
     void syncUiFromState();
-    void updatePopulationSpec();
+    void updateCountsLabel();
+    void updatePrimaryScenario();
+    void rebuildPopulationList();
+    void closeDetailModal();
+    void openDetailModal(size_t index);
+    void updateDetailRemoveState();
+    void updateClearAllState();
+    void setControlEnabled(lv_obj_t* control, bool enabled);
+    void setScenarioColumnVisible(bool visible);
+    void setOrganismListVisible(bool visible);
+    PopulationSpec* findPopulationSpec(Scenario::EnumType scenarioId);
+    PopulationSpec& ensurePopulationSpec(Scenario::EnumType scenarioId);
+    void pruneEmptySpecs();
+    void removeEntry(size_t index);
+    int computeTotalPopulation() const;
+    int computeSeedCount() const;
+    int computeRandomCount() const;
+    std::string formatEntryLabel(const PopulationEntry& entry, int index) const;
+    std::string formatEntryDetailText(const PopulationEntry& entry) const;
 
     static void onScenarioButtonClicked(lv_event_t* e);
     static void onOrganismButtonClicked(lv_event_t* e);
-    static void onBrainAButtonClicked(lv_event_t* e);
-    static void onBrainBButtonClicked(lv_event_t* e);
-    static void onSelectionBackClicked(lv_event_t* e);
+    static void onScenarioBackClicked(lv_event_t* e);
     static void onScenarioSelected(lv_event_t* e);
     static void onOrganismSelected(lv_event_t* e);
-    static void onBrainASelected(lv_event_t* e);
-    static void onBrainBSelected(lv_event_t* e);
-    static void onCountAChanged(lv_event_t* e);
-    static void onCountBChanged(lv_event_t* e);
+    static void onAddCountChanged(lv_event_t* e);
+    static void onAddClicked(lv_event_t* e);
+    static void onEntryClicked(lv_event_t* e);
+    static void onDetailOkClicked(lv_event_t* e);
+    static void onDetailRemoveClicked(lv_event_t* e);
+    static void onDetailConfirmToggled(lv_event_t* e);
+    static void onClearAllClicked(lv_event_t* e);
+    static void onClearAllConfirmToggled(lv_event_t* e);
 };
 
 } // namespace Ui

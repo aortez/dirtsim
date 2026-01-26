@@ -51,6 +51,7 @@ public:
 
     struct Individual {
         BrainSpec brain;
+        Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         std::optional<Genome> genome;
     };
 

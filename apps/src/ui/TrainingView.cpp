@@ -9,6 +9,7 @@
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/reflect.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
@@ -387,6 +388,11 @@ void TrainingView::createCorePanel()
 
 void TrainingView::createGenomeBrowserPanel()
 {
+    createGenomeBrowserPanelInternal();
+}
+
+void TrainingView::createGenomeBrowserPanelInternal()
+{
     ExpandablePanel* panel = uiManager_->getExpandablePanel();
     if (!panel) {
         LOG_ERROR(Controls, "TrainingView: No expandable panel available");
@@ -423,6 +429,7 @@ void TrainingView::createTrainingConfigPanel()
         container,
         eventSink_,
         panel,
+        wsService_,
         evolutionStarted_,
         evolutionConfig_,
         mutationConfig_,
@@ -485,6 +492,83 @@ Result<std::monostate, std::string> TrainingView::loadGenomeDetail(const GenomeI
     }
 
     return genomeBrowserPanel_->loadDetailForId(genomeId);
+}
+
+void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId)
+{
+    if (genomeId.isNil()) {
+        return;
+    }
+
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->addSeedGenome(genomeId, scenarioId);
+        return;
+    }
+
+    PopulationSpec* targetSpec = nullptr;
+    for (auto& spec : trainingSpec_.population) {
+        if (spec.scenarioId == scenarioId) {
+            targetSpec = &spec;
+            break;
+        }
+    }
+
+    if (!targetSpec) {
+        PopulationSpec spec;
+        spec.scenarioId = scenarioId;
+        switch (trainingSpec_.organismType) {
+            case OrganismType::TREE:
+                spec.brainKind = TrainingBrainKind::NeuralNet;
+                break;
+            case OrganismType::DUCK:
+            case OrganismType::GOOSE:
+                spec.brainKind = TrainingBrainKind::Random;
+                break;
+            default:
+                spec.brainKind = TrainingBrainKind::Random;
+                break;
+        }
+        spec.count = std::max(1, evolutionConfig_.populationSize);
+        trainingSpec_.population.push_back(spec);
+        targetSpec = &trainingSpec_.population.back();
+    }
+
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const std::string variant = targetSpec->brainVariant.value_or("");
+    const BrainRegistryEntry* entry =
+        registry.find(trainingSpec_.organismType, targetSpec->brainKind, variant);
+    if (!entry || !entry->requiresGenome) {
+        LOG_WARN(Controls, "TrainingView: Genome add ignored for non-genome brain");
+        return;
+    }
+
+    if (std::find(targetSpec->seedGenomes.begin(), targetSpec->seedGenomes.end(), genomeId)
+        != targetSpec->seedGenomes.end()) {
+        return;
+    }
+
+    targetSpec->seedGenomes.push_back(genomeId);
+    const int seedCount = static_cast<int>(targetSpec->seedGenomes.size());
+    if (targetSpec->count < seedCount) {
+        targetSpec->count = seedCount;
+    }
+    targetSpec->randomCount = targetSpec->count - seedCount;
+    int totalPopulation = 0;
+    for (const auto& spec : trainingSpec_.population) {
+        const std::string specVariant = spec.brainVariant.value_or("");
+        const BrainRegistryEntry* specEntry =
+            registry.find(trainingSpec_.organismType, spec.brainKind, specVariant);
+        if (specEntry && specEntry->requiresGenome) {
+            totalPopulation += static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
+        }
+        else {
+            totalPopulation += spec.count;
+        }
+    }
+    evolutionConfig_.populationSize = totalPopulation;
+    if (!trainingSpec_.population.empty()) {
+        trainingSpec_.scenarioId = trainingSpec_.population.front().scenarioId;
+    }
 }
 
 void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
