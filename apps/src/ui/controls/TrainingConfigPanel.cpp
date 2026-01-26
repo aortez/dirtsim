@@ -23,6 +23,7 @@ TrainingConfigPanel::TrainingConfigPanel(
     lv_obj_t* container,
     EventSink& eventSink,
     ExpandablePanel* panel,
+    Network::WebSocketServiceInterface* wsService,
     bool evolutionStarted,
     EvolutionConfig& evolutionConfig,
     MutationConfig& mutationConfig,
@@ -30,6 +31,7 @@ TrainingConfigPanel::TrainingConfigPanel(
     : container_(container),
       eventSink_(eventSink),
       panel_(panel),
+      wsService_(wsService),
       evolutionStarted_(evolutionStarted),
       evolutionConfig_(evolutionConfig),
       mutationConfig_(mutationConfig),
@@ -38,7 +40,7 @@ TrainingConfigPanel::TrainingConfigPanel(
     collapsedWidth_ = ExpandablePanel::DefaultWidth;
     const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
     const int maxWidth = displayWidth > 0 ? displayWidth - IconRail::RAIL_WIDTH : 0;
-    int panelWidth = ExpandablePanel::DefaultWidth * 2;
+    int panelWidth = ExpandablePanel::DefaultWidth * 3;
     if (panelWidth > maxWidth && maxWidth > 0) {
         panelWidth = maxWidth;
     }
@@ -52,6 +54,9 @@ TrainingConfigPanel::TrainingConfigPanel(
     if (maxLeftWidth < kMinLeftColumnWidth) {
         leftColumnWidth_ = maxLeftWidth;
     }
+    leftColumnWidth_ = static_cast<int>(leftColumnWidth_ * 0.6f);
+    leftColumnWidth_ = std::max(kMinLeftColumnWidth, leftColumnWidth_);
+    leftColumnWidth_ = std::min(leftColumnWidth_, maxLeftWidth);
 
     createLayout();
     setRightColumnVisible(false);
@@ -87,6 +92,15 @@ void TrainingConfigPanel::setEvolutionCompleted()
     if (trainingPopulationPanel_) {
         trainingPopulationPanel_->setEvolutionCompleted();
     }
+}
+
+void TrainingConfigPanel::addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId)
+{
+    if (!trainingPopulationPanel_) {
+        return;
+    }
+
+    trainingPopulationPanel_->addSeedGenome(genomeId, scenarioId);
 }
 
 void TrainingConfigPanel::showView(View view)
@@ -257,8 +271,8 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
 
     populationStepper_ = LVGLBuilder::actionStepper(parent)
                              .label("Population")
-                             .range(10, 200)
-                             .step(10)
+                             .range(0, 9999)
+                             .step(1)
                              .value(evolutionConfig_.populationSize)
                              .valueFormat("%.0f")
                              .valueScale(1.0)
@@ -321,7 +335,7 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
 void TrainingConfigPanel::createPopulationView(lv_obj_t* parent)
 {
     trainingPopulationPanel_ = std::make_unique<TrainingPopulationPanel>(
-        parent, eventSink_, evolutionStarted_, evolutionConfig_, trainingSpec_);
+        parent, eventSink_, wsService_, evolutionStarted_, evolutionConfig_, trainingSpec_);
     trainingPopulationPanel_->setPopulationTotalChangedCallback([this](int total) {
         if (populationStepper_) {
             LVGLBuilder::ActionStepperBuilder::setValue(populationStepper_, total);

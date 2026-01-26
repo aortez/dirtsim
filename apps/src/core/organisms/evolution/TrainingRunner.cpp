@@ -106,7 +106,7 @@ TrainingRunner::TrainingRunner(
 {
     // Create scenario from registry.
     auto registry = ScenarioRegistry::createDefault(genomeRepository);
-    scenario_ = registry.createScenario(trainingSpec_.scenarioId);
+    scenario_ = registry.createScenario(individual_.scenarioId);
     DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario factory returned null");
 
     // Create world with scenario's required dimensions.

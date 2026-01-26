@@ -33,10 +33,21 @@ GenomeBrowserPanel::GenomeBrowserPanel(
           [this]() { return fetchList(); },
           [this](const BrowserPanel::Item& item) { return fetchDetail(item); },
           [this](const BrowserPanel::Item& item) { return deleteItem(item); },
-          BrowserPanel::DetailAction{
-              .label = "Load",
-              .handler = [this](const BrowserPanel::Item& item) { return loadItem(item); },
-              .color = 0x2A7FDB,
+          std::vector<BrowserPanel::DetailAction>{
+              BrowserPanel::DetailAction{
+                  .label = "Load",
+                  .handler = [this](const BrowserPanel::Item& item) { return loadItem(item); },
+                  .color = 0x2A7FDB,
+                  .column = BrowserPanel::DetailActionColumn::Left,
+              },
+              BrowserPanel::DetailAction{
+                  .label = "Add to Training",
+                  .handler =
+                      [this](const BrowserPanel::Item& item) { return addItemToTraining(item); },
+                  .color = 0x00AA66,
+                  .column = BrowserPanel::DetailActionColumn::Right,
+                  .shareRowWithSidePanel = true,
+              },
           },
           BrowserPanel::DetailSidePanel{
               .label = "Scenario",
@@ -166,6 +177,26 @@ Result<std::monostate, std::string> GenomeBrowserPanel::loadItem(const BrowserPa
     }
 
     eventSink_->queueEvent(GenomeLoadClickedEvent{ item.id, scenarioId });
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> GenomeBrowserPanel::addItemToTraining(
+    const BrowserPanel::Item& item)
+{
+    if (!eventSink_) {
+        return Result<std::monostate, std::string>::error("No EventSink available");
+    }
+
+    Scenario::EnumType scenarioId = Scenario::EnumType::Sandbox;
+    auto metaIt = metadataById_.find(item.id);
+    if (metaIt != metadataById_.end()) {
+        scenarioId = metaIt->second.scenarioId;
+    }
+    if (selectedScenarioId_.has_value()) {
+        scenarioId = selectedScenarioId_.value();
+    }
+
+    eventSink_->queueEvent(GenomeAddToTrainingClickedEvent{ item.id, scenarioId });
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 

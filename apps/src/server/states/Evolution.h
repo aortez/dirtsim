@@ -40,6 +40,7 @@ struct Evolution {
     struct Individual {
         std::string brainKind;
         std::optional<std::string> brainVariant;
+        Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         std::optional<Genome> genome;
         bool allowsMutation = false;
     };
@@ -74,6 +75,7 @@ struct Evolution {
     double evalMaxEnergy_ = 0.0;
     std::optional<TreeResourceTotals> evalTreeResourceTotals_;
     ScenarioConfig evalScenarioConfig_ = Config::Empty{};
+    Scenario::EnumType evalScenarioId_ = Scenario::EnumType::TreeGermination;
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;

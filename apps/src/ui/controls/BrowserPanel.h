@@ -50,10 +50,17 @@ public:
         {}
     };
 
+    enum class DetailActionColumn {
+        Left,
+        Right,
+    };
+
     struct DetailAction {
         std::string label;
         std::function<Result<std::monostate, std::string>(const Item& item)> handler;
         uint32_t color = 0x00AA66;
+        DetailActionColumn column = DetailActionColumn::Left;
+        bool shareRowWithSidePanel = false;
     };
 
     struct DetailSidePanel {
@@ -77,7 +84,7 @@ public:
         ListFetcher listFetcher,
         DetailFetcher detailFetcher,
         DeleteHandler deleteHandler,
-        std::optional<DetailAction> detailAction = std::nullopt,
+        std::vector<DetailAction> detailActions = {},
         std::optional<DetailSidePanel> detailSidePanel = std::nullopt,
         std::optional<ListActionPanel> listActionPanel = std::nullopt,
         ModalStyle modalStyle = ModalStyle{});
@@ -90,6 +97,11 @@ public:
 
 private:
     struct CallbackContext {
+        BrowserPanel* panel = nullptr;
+        size_t index = 0;
+    };
+
+    struct ModalActionContext {
         BrowserPanel* panel = nullptr;
         size_t index = 0;
     };
@@ -109,7 +121,6 @@ private:
     lv_obj_t* modalDeleteButton_ = nullptr;
     lv_obj_t* modalOverlay_ = nullptr;
     lv_obj_t* selectAllButton_ = nullptr;
-    lv_obj_t* modalActionButton_ = nullptr;
     lv_obj_t* modalSideColumn_ = nullptr;
     lv_obj_t* modalSideContent_ = nullptr;
     lv_obj_t* modalToggleButton_ = nullptr;
@@ -118,6 +129,7 @@ private:
     std::vector<Item> items_;
     std::vector<RowWidgets> rows_;
     std::vector<std::unique_ptr<CallbackContext>> rowContexts_;
+    std::vector<std::unique_ptr<ModalActionContext>> modalActionContexts_;
     std::unordered_set<GenomeId> selectedIds_;
     std::optional<GenomeId> modalItemId_;
     bool sidePanelVisible_ = false;
@@ -125,7 +137,7 @@ private:
     ListFetcher listFetcher_;
     DetailFetcher detailFetcher_;
     DeleteHandler deleteHandler_;
-    std::optional<DetailAction> detailAction_;
+    std::vector<DetailAction> detailActions_;
     std::optional<DetailSidePanel> detailSidePanel_;
     std::optional<ListActionPanel> listActionPanel_;
     ModalStyle modalStyle_{};
@@ -137,6 +149,7 @@ private:
     void updateSelectionCheckboxes();
     void openDetailModal(size_t index);
     void closeModal();
+    void handleModalAction(size_t index);
 
     bool isDeleteConfirmChecked() const;
     bool isModalDeleteConfirmChecked() const;

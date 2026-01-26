@@ -77,7 +77,7 @@ BrowserPanel::BrowserPanel(
     ListFetcher listFetcher,
     DetailFetcher detailFetcher,
     DeleteHandler deleteHandler,
-    std::optional<DetailAction> detailAction,
+    std::vector<DetailAction> detailActions,
     std::optional<DetailSidePanel> detailSidePanel,
     std::optional<ListActionPanel> listActionPanel,
     ModalStyle modalStyle)
@@ -86,7 +86,7 @@ BrowserPanel::BrowserPanel(
       listFetcher_(std::move(listFetcher)),
       detailFetcher_(std::move(detailFetcher)),
       deleteHandler_(std::move(deleteHandler)),
-      detailAction_(std::move(detailAction)),
+      detailActions_(std::move(detailActions)),
       detailSidePanel_(std::move(detailSidePanel)),
       listActionPanel_(std::move(listActionPanel)),
       modalStyle_(std::move(modalStyle))
@@ -147,7 +147,7 @@ Result<GenomeId, std::string> BrowserPanel::openDetailById(const GenomeId& id)
 
 Result<std::monostate, std::string> BrowserPanel::triggerDetailActionForModalId(const GenomeId& id)
 {
-    if (!detailAction_.has_value()) {
+    if (detailActions_.empty()) {
         return Result<std::monostate, std::string>::error("Detail action not available");
     }
     if (!modalItemId_.has_value()) {
@@ -163,7 +163,7 @@ Result<std::monostate, std::string> BrowserPanel::triggerDetailActionForModalId(
         return Result<std::monostate, std::string>::error("Detail item not found");
     }
 
-    auto result = detailAction_->handler(*it);
+    auto result = detailActions_.front().handler(*it);
     if (result.isError()) {
         return Result<std::monostate, std::string>::error(result.errorValue());
     }
@@ -516,6 +516,27 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_set_flex_align(bottomRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(bottomRow, LV_OBJ_FLAG_SCROLLABLE);
 
+    std::vector<size_t> leftActionIndices;
+    std::vector<size_t> rightActionIndices;
+    std::vector<size_t> rightScenarioRowIndices;
+    leftActionIndices.reserve(detailActions_.size());
+    rightActionIndices.reserve(detailActions_.size());
+    rightScenarioRowIndices.reserve(detailActions_.size());
+    for (size_t i = 0; i < detailActions_.size(); ++i) {
+        const auto& action = detailActions_[i];
+        if (action.column == DetailActionColumn::Right) {
+            if (action.shareRowWithSidePanel) {
+                rightScenarioRowIndices.push_back(i);
+            }
+            else {
+                rightActionIndices.push_back(i);
+            }
+        }
+        else {
+            leftActionIndices.push_back(i);
+        }
+    }
+
     lv_obj_t* leftButtons = lv_obj_create(bottomRow);
     lv_obj_set_width(leftButtons, LV_SIZE_CONTENT);
     lv_obj_set_height(leftButtons, LV_SIZE_CONTENT);
@@ -540,6 +561,26 @@ void BrowserPanel::openDetailModal(size_t index)
         rightButtons, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(rightButtons, LV_OBJ_FLAG_SCROLLABLE);
 
+    auto createActionButton = [&](lv_obj_t* parent, size_t actionIndex, int width) {
+        auto context = std::make_unique<ModalActionContext>();
+        context->panel = this;
+        context->index = actionIndex;
+        auto* container = LVGLBuilder::actionButton(parent)
+                              .text(detailActions_[actionIndex].label.c_str())
+                              .mode(LVGLBuilder::ActionMode::Push)
+                              .height(LVGLBuilder::Style::ACTION_SIZE)
+                              .width(width)
+                              .layoutRow()
+                              .alignLeft()
+                              .backgroundColor(detailActions_[actionIndex].color)
+                              .callback(onModalActionClicked, context.get())
+                              .buildOrLog();
+        if (!container) {
+            return;
+        }
+        modalActionContexts_.push_back(std::move(context));
+    };
+
     LVGLBuilder::actionButton(leftButtons)
         .text("OK")
         .mode(LVGLBuilder::ActionMode::Push)
@@ -551,17 +592,9 @@ void BrowserPanel::openDetailModal(size_t index)
         .callback(onModalOkClicked, this)
         .buildOrLog();
 
-    if (detailAction_.has_value()) {
-        modalActionButton_ = LVGLBuilder::actionButton(leftButtons)
-                                 .text(detailAction_->label.c_str())
-                                 .mode(LVGLBuilder::ActionMode::Push)
-                                 .height(LVGLBuilder::Style::ACTION_SIZE)
-                                 .width(120)
-                                 .layoutRow()
-                                 .alignLeft()
-                                 .backgroundColor(detailAction_->color)
-                                 .callback(onModalActionClicked, this)
-                                 .buildOrLog();
+    modalActionContexts_.clear();
+    for (const auto index : leftActionIndices) {
+        createActionButton(leftButtons, index, 120);
     }
 
     lv_obj_t* deleteRow = lv_obj_create(rightButtons);
@@ -594,19 +627,40 @@ void BrowserPanel::openDetailModal(size_t index)
     lv_obj_clear_flag(modalConfirmCheckbox_, LV_OBJ_FLAG_SCROLLABLE);
     styleCheckbox(modalConfirmCheckbox_, LVGLBuilder::Style::ACTION_SIZE, true);
 
-    if (detailSidePanel_.has_value()) {
-        modalToggleButton_ = LVGLBuilder::actionButton(rightButtons)
-                                 .text(detailSidePanel_->label.c_str())
-                                 .icon(LV_SYMBOL_RIGHT)
-                                 .mode(LVGLBuilder::ActionMode::Push)
-                                 .height(LVGLBuilder::Style::ACTION_SIZE)
-                                 .width(160)
-                                 .layoutRow()
-                                 .alignLeft()
-                                 .backgroundColor(detailSidePanel_->color)
-                                 .callback(onModalToggleClicked, this)
-                                 .buildOrLog();
-        updateSidePanelToggleIcon();
+    if (detailSidePanel_.has_value() || !rightScenarioRowIndices.empty()) {
+        lv_obj_t* scenarioRow = lv_obj_create(rightButtons);
+        lv_obj_set_size(scenarioRow, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
+        lv_obj_set_style_bg_opa(scenarioRow, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(scenarioRow, 0, 0);
+        lv_obj_set_style_pad_all(scenarioRow, 0, 0);
+        lv_obj_set_style_pad_column(scenarioRow, 6, 0);
+        lv_obj_set_flex_flow(scenarioRow, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(
+            scenarioRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_clear_flag(scenarioRow, LV_OBJ_FLAG_SCROLLABLE);
+
+        if (detailSidePanel_.has_value()) {
+            modalToggleButton_ = LVGLBuilder::actionButton(scenarioRow)
+                                     .text(detailSidePanel_->label.c_str())
+                                     .icon(LV_SYMBOL_RIGHT)
+                                     .mode(LVGLBuilder::ActionMode::Push)
+                                     .height(LVGLBuilder::Style::ACTION_SIZE)
+                                     .width(120)
+                                     .layoutRow()
+                                     .alignLeft()
+                                     .backgroundColor(detailSidePanel_->color)
+                                     .callback(onModalToggleClicked, this)
+                                     .buildOrLog();
+            updateSidePanelToggleIcon();
+        }
+
+        for (const auto index : rightScenarioRowIndices) {
+            createActionButton(scenarioRow, index, 120);
+        }
+    }
+
+    for (const auto index : rightActionIndices) {
+        createActionButton(rightButtons, index, 120);
     }
 
     updateModalDeleteState();
@@ -619,7 +673,7 @@ void BrowserPanel::closeModal()
         modalOverlay_ = nullptr;
     }
 
-    modalActionButton_ = nullptr;
+    modalActionContexts_.clear();
     modalConfirmCheckbox_ = nullptr;
     modalDeleteButton_ = nullptr;
     modalSideColumn_ = nullptr;
@@ -627,6 +681,34 @@ void BrowserPanel::closeModal()
     modalToggleButton_ = nullptr;
     modalItemId_.reset();
     sidePanelVisible_ = false;
+}
+
+void BrowserPanel::handleModalAction(size_t index)
+{
+    if (index >= detailActions_.size()) {
+        LOG_WARN(Controls, "BrowserPanel: Modal action index out of range");
+        return;
+    }
+    if (!modalItemId_.has_value()) {
+        LOG_WARN(Controls, "BrowserPanel: Modal action clicked without active item");
+        return;
+    }
+
+    auto it = std::find_if(items_.begin(), items_.end(), [&](const Item& item) {
+        return item.id == modalItemId_.value();
+    });
+    if (it == items_.end()) {
+        LOG_WARN(Controls, "BrowserPanel: Modal item not found");
+        return;
+    }
+
+    auto result = detailActions_[index].handler(*it);
+    if (result.isError()) {
+        LOG_WARN(Controls, "BrowserPanel: Modal action failed: {}", result.errorValue());
+        return;
+    }
+
+    closeModal();
 }
 
 bool BrowserPanel::isDeleteConfirmChecked() const
@@ -881,25 +963,12 @@ void BrowserPanel::onModalActionClicked(lv_event_t* e)
         return;
     }
 
-    auto* self = static_cast<BrowserPanel*>(lv_event_get_user_data(e));
-    if (!self || !self->detailAction_.has_value() || !self->modalItemId_.has_value()) {
+    auto* context = static_cast<ModalActionContext*>(lv_event_get_user_data(e));
+    if (!context || !context->panel) {
         return;
     }
 
-    auto it = std::find_if(self->items_.begin(), self->items_.end(), [&](const Item& item) {
-        return item.id == self->modalItemId_.value();
-    });
-    if (it == self->items_.end()) {
-        return;
-    }
-
-    auto result = self->detailAction_->handler(*it);
-    if (result.isError()) {
-        LOG_WARN(Controls, "BrowserPanel: Modal action failed: {}", result.errorValue());
-        return;
-    }
-
-    self->closeModal();
+    context->panel->handleModalAction(context->index);
 }
 
 void BrowserPanel::onModalToggleClicked(lv_event_t* e)

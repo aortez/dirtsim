@@ -286,6 +286,7 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
             return;
         }
         PopulationSpec entry;
+        entry.scenarioId = spec.scenarioId;
         switch (spec.organismType) {
             case OrganismType::TREE:
                 entry.brainKind = TrainingBrainKind::NeuralNet;
