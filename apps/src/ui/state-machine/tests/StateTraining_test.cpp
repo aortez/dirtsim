@@ -12,6 +12,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/TrainingStreamConfigSet.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/state-machine/states/State.h"
@@ -283,6 +284,8 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
 {
     // Setup: Configure expected responses.
     mockWs->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    mockWs->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = 0, .message = "OK" });
     mockWs->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
 
@@ -307,6 +310,10 @@ TEST_F(StateTrainingTest, StartEvolutionSendsCommand)
     // Verify: EvolutionStart command was sent.
     ASSERT_GE(mockWs->sentCommands().size(), 1) << "Should send at least EvolutionStart command";
     EXPECT_EQ(mockWs->sentCommands()[0], "EvolutionStart");
+    ASSERT_GE(mockWs->sentCommands().size(), 2) << "Should send TrainingStreamConfigSet command";
+    EXPECT_EQ(mockWs->sentCommands()[1], "TrainingStreamConfigSet");
+    ASSERT_GE(mockWs->sentCommands().size(), 3) << "Should send RenderFormatSet command";
+    EXPECT_EQ(mockWs->sentCommands()[2], "RenderFormatSet");
 }
 
 /**
@@ -342,6 +349,8 @@ TEST_F(StateTrainingTest, QuitButtonStopsWhenRunning)
 {
     // Setup: Configure expected response.
     mockWs->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    mockWs->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = 0, .message = "OK" });
     mockWs->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
     mockWs->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
