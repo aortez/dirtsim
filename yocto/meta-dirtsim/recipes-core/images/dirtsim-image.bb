@@ -19,7 +19,7 @@ HOSTNAME_DEFAULT = "dirtsim"
 inherit extrausers
 
 EXTRA_USERS_PARAMS = " \
-    useradd -m -s /bin/bash -G sudo,input dirtsim; \
+    useradd -m -s /bin/bash -G sudo,input,audio dirtsim; \
     usermod -p '*' dirtsim; \
 "
 
@@ -122,6 +122,7 @@ ROOTFS_POSTPROCESS_COMMAND:append = " setup_coredump_config;"
 # ============================================================================
 # Tools beyond what pi-base-image provides.
 IMAGE_INSTALL:append = " \
+    alsa-utils \
     file \
     jq \
     nmon \
@@ -150,4 +151,5 @@ IMAGE_INSTALL:append = " \
     dirtsim-os-manager \
     dirtsim-server \
     dirtsim-ui \
+    picade-max-audio \
 "

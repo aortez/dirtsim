@@ -1,0 +1,9 @@
+[Unit]
+Description=Set Picade USB Audio mixer levels for %I
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/dirtsim-picade-audio-setup.sh %I
+
+[Install]
+WantedBy=multi-user.target

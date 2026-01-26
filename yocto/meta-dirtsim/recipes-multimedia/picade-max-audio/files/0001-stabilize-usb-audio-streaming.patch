@@ -1,0 +1,230 @@
+From 61eef4b25fd05e88a00fc52c85a1c65a74d44505 Mon Sep 17 00:00:00 2001
+From: Allan Ortiz <aortez@gmail.com>
+Date: Sun, 25 Jan 2026 21:10:59 -0800
+Subject: [PATCH] Stabilize USB audio streaming
+
+---
+ src/i2s_audio.cpp       | 51 +++--------------------------------------
+ src/main.cpp            | 10 +++++---
+ src/tusb_config.h       |  2 +-
+ src/usb_descriptors.cpp | 45 +++++++++++++++++++++++++++++++++---
+ 4 files changed, 53 insertions(+), 55 deletions(-)
+
+diff --git a/src/i2s_audio.cpp b/src/i2s_audio.cpp
+index 7319934..2ecee59 100644
+--- a/src/i2s_audio.cpp
++++ b/src/i2s_audio.cpp
+@@ -1,13 +1,11 @@
+ #include "pico/audio.h"
+ #include "pico/audio_i2s.h"
+-#include "pico/sample_conversion.h"
+ #include "board_config.h"
+ #include "pico/stdlib.h"
+ #include "hardware/dma.h"
+ #include "hardware/irq.h"
+ #include "board.h"
+ #include "tusb.h"
+-#include <algorithm>
+ #include <math.h>
+ 
+ static struct audio_buffer_pool *producer_pool;
+@@ -15,47 +13,6 @@ static constexpr uint32_t kFramesPerBuffer =
+         CFG_TUD_AUDIO_FUNC_1_EP_OUT_SW_BUF_SZ /
+         (CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX * CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX);
+ 
+-static void producer_pool_nonblocking_give(audio_connection_t *connection, audio_buffer_t *buffer) {
+-    auto *pbc = reinterpret_cast<producer_pool_blocking_give_connection *>(connection);
+-    uint32_t pos = 0;
+-    while (pos < buffer->sample_count) {
+-        if (!pbc->current_consumer_buffer) {
+-            pbc->current_consumer_buffer = get_free_audio_buffer(pbc->core.consumer_pool, false);
+-            pbc->current_consumer_buffer_pos = 0;
+-            if (!pbc->current_consumer_buffer) {
+-                queue_free_audio_buffer(pbc->core.producer_pool, buffer);
+-                return;
+-            }
+-        }
+-        uint sample_count = std::min<uint32_t>(buffer->sample_count - pos,
+-                                               pbc->current_consumer_buffer->max_sample_count - pbc->current_consumer_buffer_pos);
+-        assert(buffer->format->sample_stride == Stereo<FmtS16>::frame_stride);
+-        assert(buffer->format->format->channel_count == Stereo<FmtS16>::channel_count);
+-        converting_copy<Stereo<FmtS16>, Stereo<FmtS16>>::copy(
+-                ((Stereo<FmtS16>::sample_t *) pbc->current_consumer_buffer->buffer->bytes) +
+-                pbc->current_consumer_buffer_pos * Stereo<FmtS16>::channel_count,
+-                ((Stereo<FmtS16>::sample_t *) buffer->buffer->bytes) + pos * Stereo<FmtS16>::channel_count,
+-                sample_count);
+-        pos += sample_count;
+-        pbc->current_consumer_buffer_pos += sample_count;
+-        if (pbc->current_consumer_buffer_pos == pbc->current_consumer_buffer->max_sample_count) {
+-            pbc->current_consumer_buffer->sample_count = pbc->current_consumer_buffer->max_sample_count;
+-            queue_full_audio_buffer(pbc->core.consumer_pool, pbc->current_consumer_buffer);
+-            pbc->current_consumer_buffer = NULL;
+-        }
+-    }
+-    queue_free_audio_buffer(pbc->core.producer_pool, buffer);
+-}
+-
+-static producer_pool_blocking_give_connection m2s_audio_i2s_nb_connection = {
+-        .core = {
+-                .producer_pool_take = producer_pool_take_buffer_default,
+-                .producer_pool_give = producer_pool_nonblocking_give,
+-                .consumer_pool_take = consumer_pool_take_buffer_default,
+-                .consumer_pool_give = consumer_pool_give_buffer_default,
+-        }
+-};
+-
+ void i2s_audio_init() {
+     gpio_init(PICO_AUDIO_I2S_AMP_ENABLE);
+     gpio_set_function(PICO_AUDIO_I2S_AMP_ENABLE, GPIO_FUNC_SIO);
+@@ -99,13 +56,11 @@ void i2s_audio_init() {
+     irq_set_priority(DMA_IRQ_0 + PICO_AUDIO_I2S_DMA_IRQ, 0x80);
+ 
+     bool __unused ok;
+-    // Use buffer_on_give so sample conversion happens in the producer context,
+-    // avoiding work inside the DMA IRQ handler.
+     ok = audio_i2s_connect_extra(producer_pool,
+-                                 true,
+-                                 3,
++                                 false,
++                                 2,
+                                  kFramesPerBuffer,
+-                                 &m2s_audio_i2s_nb_connection.core);
++                                 NULL);
+     assert(ok);
+     {
+         audio_buffer_t *buffer = take_audio_buffer(producer_pool, true);
+diff --git a/src/main.cpp b/src/main.cpp
+index e1c3b1f..08a9300 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -65,7 +65,7 @@ enum
+ 
+ static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
+ 
+-int system_volume = 255;
++int system_volume = 128;
+ int volume_speed = 10;
+ 
+ uint8_t led_red = 0;
+@@ -577,18 +577,22 @@ bool tud_audio_set_itf_cb(uint8_t rhport, tusb_control_request_t const * p_reque
+     audio_streaming = true;
+     audio_out_len = 0;
+     tud_audio_clear_ep_out_ff();
++#if CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP
+     tud_audio_n_fb_set(0, current_sample_rate << 16);
++#endif
+     i2s_audio_set_enabled(true);
+   }
+   return true;
+ }
+ 
++#if CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP
+ void tud_audio_feedback_params_cb(uint8_t func_id, uint8_t alt_itf, audio_feedback_params_t *feedback_param) {
+   (void) func_id;
+   (void) alt_itf;
+   feedback_param->method = AUDIO_FEEDBACK_METHOD_DISABLED;
+   feedback_param->sample_freq = current_sample_rate;
+ }
++#endif
+ 
+ //--------------------------------------------------------------------+
+ // AUDIO Task
+@@ -607,7 +611,7 @@ void audio_task(void)
+     }
+ 
+     uint32_t frame_bytes = CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX * CFG_TUD_AUDIO_FUNC_1_N_CHANNELS_RX;
+-    uint32_t available = tud_audio_available();
++    uint32_t available = MIN(tud_audio_available(), (uint32_t)CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_FS);
+     while (available >= frame_bytes) {
+       uint32_t to_read = MIN(available, (uint32_t)sizeof(audio_out_buf));
+       to_read -= (to_read % frame_bytes);
+@@ -621,7 +625,7 @@ void audio_task(void)
+       }
+       audio_out_len += read;
+       if (audio_out_len >= sizeof(audio_out_buf)) {
+-        i2s_audio_give_buffer(audio_out_buf, audio_out_len, CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX, 255);
++        i2s_audio_give_buffer(audio_out_buf, audio_out_len, CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX, (uint8_t)system_volume);
+         audio_out_len = 0;
+       }
+       available -= read;
+diff --git a/src/tusb_config.h b/src/tusb_config.h
+index 68e9abf..3fba439 100644
+--- a/src/tusb_config.h
++++ b/src/tusb_config.h
+@@ -147,7 +147,7 @@ extern "C" {
+ #define CFG_TUD_AUDIO_ENABLE_EP_OUT                 1
+ 
+ // Enable feedback EP
+-#define CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP            1
++#define CFG_TUD_AUDIO_ENABLE_FEEDBACK_EP            0
+ 
+ #ifdef __cplusplus
+ }
+diff --git a/src/usb_descriptors.cpp b/src/usb_descriptors.cpp
+index 4629832..c764e50 100644
+--- a/src/usb_descriptors.cpp
++++ b/src/usb_descriptors.cpp
+@@ -98,10 +98,49 @@ void usb_serial_init(void) {
+   #define EPNUM_DEBUG       0x02
+ #endif
+ 
++#define TUD_AUDIO10_SPEAKER_STEREO_DESC_LEN(_nfreqs) (\
++  + TUD_AUDIO10_DESC_STD_AC_LEN\
++  + TUD_AUDIO10_DESC_CS_AC_LEN(1)\
++  + TUD_AUDIO10_DESC_INPUT_TERM_LEN\
++  + TUD_AUDIO10_DESC_OUTPUT_TERM_LEN\
++  + TUD_AUDIO10_DESC_FEATURE_UNIT_LEN(2)\
++  + TUD_AUDIO10_DESC_STD_AS_LEN\
++  + TUD_AUDIO10_DESC_STD_AS_LEN\
++  + TUD_AUDIO10_DESC_CS_AS_INT_LEN\
++  + TUD_AUDIO10_DESC_TYPE_I_FORMAT_LEN(_nfreqs)\
++  + TUD_AUDIO10_DESC_STD_AS_ISO_EP_LEN\
++  + TUD_AUDIO10_DESC_CS_AS_ISO_EP_LEN)
++
++#define TUD_AUDIO10_SPEAKER_STEREO_DESCRIPTOR(_itfnum, _stridx, _nBytesPerSample, _nBitsUsedPerSample, _epout, _epoutsize, ...) \
++  /* Standard AC Interface Descriptor(4.3.1) */\
++  TUD_AUDIO10_DESC_STD_AC(/*_itfnum*/ _itfnum, /*_nEPs*/ 0x00, /*_stridx*/ _stridx),\
++  /* Class-Specific AC Interface Header Descriptor(4.3.2) */\
++  TUD_AUDIO10_DESC_CS_AC(/*_bcdADC*/ 0x0100, /*_totallen*/ (TUD_AUDIO10_DESC_INPUT_TERM_LEN+TUD_AUDIO10_DESC_OUTPUT_TERM_LEN+TUD_AUDIO10_DESC_FEATURE_UNIT_LEN(2)), /*_itf*/ ((_itfnum)+1)),\
++  /* Input Terminal Descriptor(4.3.2.1) */\
++  TUD_AUDIO10_DESC_INPUT_TERM(/*_termid*/ 0x01, /*_termtype*/ AUDIO_TERM_TYPE_USB_STREAMING, /*_assocTerm*/ 0x00, /*_nchannels*/ 0x02, /*_channelcfg*/ AUDIO10_CHANNEL_CONFIG_LEFT_FRONT | AUDIO10_CHANNEL_CONFIG_RIGHT_FRONT, /*_idxchannelnames*/ 0x00, /*_stridx*/ 0x00),\
++  /* Output Terminal Descriptor(4.3.2.2) */\
++  TUD_AUDIO10_DESC_OUTPUT_TERM(/*_termid*/ 0x03, /*_termtype*/ AUDIO_TERM_TYPE_OUT_DESKTOP_SPEAKER, /*_assocTerm*/ 0x00, /*_srcid*/ 0x02, /*_stridx*/ 0x00),\
++  /* Feature Unit Descriptor(4.3.2.5) */\
++  TUD_AUDIO10_DESC_FEATURE_UNIT(/*_unitid*/ 0x02, /*_srcid*/ 0x01, /*_stridx*/ 0x00, /*_ctrlmaster*/ (AUDIO10_FU_CONTROL_BM_MUTE | AUDIO10_FU_CONTROL_BM_VOLUME), /*_ctrlch1*/ (AUDIO10_FU_CONTROL_BM_MUTE | AUDIO10_FU_CONTROL_BM_VOLUME), /*_ctrlch2*/ (AUDIO10_FU_CONTROL_BM_MUTE | AUDIO10_FU_CONTROL_BM_VOLUME)),\
++  /* Standard AS Interface Descriptor(4.5.1) */\
++  /* Interface 1, Alternate 0 - default alternate setting with 0 bandwidth */\
++  TUD_AUDIO10_DESC_STD_AS_INT(/*_itfnum*/ (uint8_t)((_itfnum)+1), /*_altset*/ 0x00, /*_nEPs*/ 0x00, /*_stridx*/ 0x00),\
++  /* Standard AS Interface Descriptor(4.5.1) */\
++  /* Interface 1, Alternate 1 - alternate interface for data streaming */\
++  TUD_AUDIO10_DESC_STD_AS_INT(/*_itfnum*/ (uint8_t)((_itfnum)+1), /*_altset*/ 0x01, /*_nEPs*/ 0x01, /*_stridx*/ 0x00),\
++  /* Class-Specific AS Interface Descriptor(4.5.2) */\
++  TUD_AUDIO10_DESC_CS_AS_INT(/*_termid*/ 0x01, /*_delay*/ 0x00, /*_formattype*/ AUDIO10_DATA_FORMAT_TYPE_I_PCM),\
++  /* Type I Format Type Descriptor(2.2.5) */\
++  TUD_AUDIO10_DESC_TYPE_I_FORMAT(/*_nrchannels*/ 0x02, /*_subframesize*/ _nBytesPerSample, /*_bitresolution*/ _nBitsUsedPerSample, /*_freqs*/ __VA_ARGS__),\
++  /* Standard AS Isochronous Audio Data Endpoint Descriptor(4.6.1.1) */\
++  TUD_AUDIO10_DESC_STD_AS_ISO_EP(/*_ep*/ _epout, /*_attr*/ (uint8_t) ((uint8_t)TUSB_XFER_ISOCHRONOUS | (uint8_t)TUSB_ISO_EP_ATT_ADAPTIVE), /*_maxEPsize*/ _epoutsize, /*_interval*/ 0x01, /*_syncep*/ 0x00),\
++  /* Class-Specific AS Isochronous Audio Data Endpoint Descriptor(4.6.1.2) */\
++  TUD_AUDIO10_DESC_CS_AS_ISO_EP(/*_attr*/ AUDIO10_CS_AS_ISO_DATA_EP_ATT_NON_MAX_PACKETS_OK, /*_lockdelayunits*/ AUDIO10_CS_AS_ISO_DATA_EP_LOCK_DELAY_UNIT_UNDEFINED, /*_lockdelay*/ 0x0000)
++
+ #if CFG_AUDIO_DEBUG
+-  #define CONFIG_UAC1_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_AUDIO10_SPEAKER_STEREO_FB_DESC_LEN(1) + TUD_HID_DESC_LEN)
++  #define CONFIG_UAC1_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_AUDIO10_SPEAKER_STEREO_DESC_LEN(1) + TUD_HID_DESC_LEN)
+ #else
+-  #define CONFIG_UAC1_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_AUDIO10_SPEAKER_STEREO_FB_DESC_LEN(1))
++  #define CONFIG_UAC1_TOTAL_LEN     (TUD_CONFIG_DESC_LEN + TUD_AUDIO10_SPEAKER_STEREO_DESC_LEN(1))
+ #endif
+ 
+ uint8_t const desc_uac1_configuration[] = {
+@@ -109,7 +148,7 @@ uint8_t const desc_uac1_configuration[] = {
+   TUD_CONFIG_DESCRIPTOR(1, ITF_NUM_TOTAL, 0, CONFIG_UAC1_TOTAL_LEN, 0x00, 100),
+ 
+   // Interface number, string index, byte per sample, bit per sample, EP Out, EP size, EP feedback, sample rates (48kHz)
+-  TUD_AUDIO10_SPEAKER_STEREO_FB_DESCRIPTOR(ITF_NUM_AUDIO_CONTROL, 5, CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX, CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX, EPNUM_AUDIO, CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_FS, EPNUM_AUDIO_FB | 0x80, 48000),
++  TUD_AUDIO10_SPEAKER_STEREO_DESCRIPTOR(ITF_NUM_AUDIO_CONTROL, 5, CFG_TUD_AUDIO_FUNC_1_N_BYTES_PER_SAMPLE_RX, CFG_TUD_AUDIO_FUNC_1_RESOLUTION_RX, EPNUM_AUDIO, CFG_TUD_AUDIO_FUNC_1_EP_OUT_SZ_FS, 48000),
+ 
+ #if CFG_AUDIO_DEBUG
+   // Interface number, string index, protocol, report descriptor len, EP In address, size & polling interval
+-- 
+2.51.0
+
