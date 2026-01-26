@@ -4,6 +4,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
+#include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/GenomeGet.h"
@@ -12,6 +13,7 @@
 #include "server/api/SimRun.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultSave.h"
+#include "server/api/TrainingStreamConfigSet.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/TrainingView.h"
 #include "ui/UiComponentManager.h"
@@ -57,12 +59,50 @@ Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServe
     return Result<Api::TrainingResultSave::OkayType, std::string>::okay(result.value().value());
 }
 
+Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
+    StateMachine& sm, int intervalMs)
+{
+    if (!sm.hasWebSocketService()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            "No WebSocketService available");
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            "Not connected to server");
+    }
+
+    Api::TrainingStreamConfigSet::Command cmd{
+        .intervalMs = intervalMs,
+    };
+    const auto result =
+        wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, 2000);
+    if (result.isError()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            result.errorValue());
+    }
+    if (result.value().isError()) {
+        return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
+            result.value().errorValue().message);
+    }
+
+    return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::okay(
+        result.value().value());
+}
+
 } // namespace
 
 void Training::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training state (waiting for start command)");
     evolutionStarted_ = false;
+    progressEventCount_ = 0;
+    renderMessageCount_ = 0;
+    lastRenderRateLog_ = std::chrono::steady_clock::time_point{};
+    uiLoopCount_ = 0;
+    lastUiLoopLog_ = std::chrono::steady_clock::time_point{};
+    lastProgressRateLog_ = std::chrono::steady_clock::time_point{};
 
     // Create training view.
     auto* uiManager = sm.getUiComponentManager();
@@ -75,7 +115,7 @@ void Training::onEnter(StateMachine& sm)
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
-    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService);
+    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, streamIntervalMs_);
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -101,6 +141,24 @@ void Training::onExit(StateMachine& sm)
 
 void Training::updateAnimations()
 {
+    if (evolutionStarted_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (lastUiLoopLog_ == std::chrono::steady_clock::time_point{}) {
+            lastUiLoopLog_ = now;
+            uiLoopCount_ = 0;
+        }
+
+        uiLoopCount_++;
+        const auto elapsed = now - lastUiLoopLog_;
+        if (elapsed >= std::chrono::seconds(1)) {
+            const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+            const double rate = elapsedSeconds > 0.0 ? (uiLoopCount_ / elapsedSeconds) : 0.0;
+            LOG_INFO(State, "Training UI loop FPS: {:.1f}", rate);
+            uiLoopCount_ = 0;
+            lastUiLoopLog_ = now;
+        }
+    }
+
     if (view_) {
         view_->updateAnimations();
     }
@@ -115,6 +173,22 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
 {
     // Update progress from server broadcast.
     progress = evt.progress;
+    progressEventCount_++;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressRateLog_ == std::chrono::steady_clock::time_point{}) {
+        lastProgressRateLog_ = now;
+        progressEventCount_ = 0;
+    }
+
+    const auto elapsed = now - lastProgressRateLog_;
+    if (elapsed >= std::chrono::seconds(1)) {
+        const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+        const double rate = elapsedSeconds > 0.0 ? (progressEventCount_ / elapsedSeconds) : 0.0;
+        LOG_INFO(State, "Training progress rate: {:.1f} msgs/s", rate);
+        progressEventCount_ = 0;
+        lastProgressRateLog_ = now;
+    }
 
     LOG_DEBUG(
         State,
@@ -148,7 +222,18 @@ State::Any Training::onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& 
 {
     LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());
 
+    evolutionStarted_ = false;
+    GenomeId bestGenomeId = INVALID_GENOME_ID;
+    if (!cwc.command.candidates.empty()) {
+        const auto bestIt = std::max_element(
+            cwc.command.candidates.begin(),
+            cwc.command.candidates.end(),
+            [](const auto& a, const auto& b) { return a.fitness < b.fitness; });
+        bestGenomeId = bestIt->id;
+    }
+
     if (view_) {
+        view_->setEvolutionCompleted(bestGenomeId);
         view_->showTrainingResultModal(cwc.command.summary, cwc.command.candidates);
     }
 
@@ -289,8 +374,26 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
 
     LOG_INFO(State, "Evolution started on server");
     evolutionStarted_ = true;
+    progressEventCount_ = 0;
+    renderMessageCount_ = 0;
+    lastRenderRateLog_ = std::chrono::steady_clock::now();
+    uiLoopCount_ = 0;
+    lastUiLoopLog_ = std::chrono::steady_clock::now();
+    lastProgressRateLog_ = std::chrono::steady_clock::now();
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
+
+    const auto streamResult = sendTrainingStreamConfig(sm, streamIntervalMs_);
+    if (streamResult.isError()) {
+        LOG_WARN(
+            State,
+            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            streamIntervalMs_,
+            streamResult.errorValue());
+    }
+    else {
+        LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
+    }
 
     // Subscribe to render stream for live training view.
     static std::atomic<uint64_t> nextId{ 1 };
@@ -477,6 +580,32 @@ State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, State
     auto nextState = onEvent(TrainingResultDiscardClickedEvent{}, sm);
     cwc.sendResponse(UiApi::TrainingResultDiscard::Response::okay({ .queued = true }));
     return nextState;
+}
+
+State::Any Training::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
+{
+    streamIntervalMs_ = std::max(0, evt.intervalMs);
+
+    if (view_) {
+        view_->setStreamIntervalMs(streamIntervalMs_);
+    }
+
+    if (!evolutionStarted_) {
+        return std::move(*this);
+    }
+
+    const auto result = sendTrainingStreamConfig(sm, streamIntervalMs_);
+    if (result.isError()) {
+        LOG_WARN(
+            State,
+            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            streamIntervalMs_,
+            result.errorValue());
+        return std::move(*this);
+    }
+
+    LOG_INFO(State, "Training stream interval set to {}ms", result.value().intervalMs);
+    return std::move(*this);
 }
 
 State::Any Training::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)
@@ -768,6 +897,22 @@ State::Any Training::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
 {
     // Render live training world.
     if (view_ && evolutionStarted_) {
+        const auto now = std::chrono::steady_clock::now();
+        if (lastRenderRateLog_ == std::chrono::steady_clock::time_point{}) {
+            lastRenderRateLog_ = now;
+            renderMessageCount_ = 0;
+        }
+
+        renderMessageCount_++;
+        const auto elapsed = now - lastRenderRateLog_;
+        if (elapsed >= std::chrono::seconds(1)) {
+            const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+            const double rate = elapsedSeconds > 0.0 ? (renderMessageCount_ / elapsedSeconds) : 0.0;
+            LOG_INFO(State, "Training render msg rate: {:.1f} msgs/s", rate);
+            renderMessageCount_ = 0;
+            lastRenderRateLog_ = now;
+        }
+
         view_->renderWorld(evt.worldData);
     }
 

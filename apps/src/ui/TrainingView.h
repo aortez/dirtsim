@@ -5,6 +5,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/TrainingResult.h"
+#include <chrono>
 #include <memory>
 #include <vector>
 
@@ -49,7 +50,8 @@ public:
     explicit TrainingView(
         UiComponentManager* uiManager,
         EventSink& eventSink,
-        Network::WebSocketServiceInterface* wsService);
+        Network::WebSocketServiceInterface* wsService,
+        int& streamIntervalMs);
     ~TrainingView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
@@ -72,6 +74,7 @@ public:
     void createGenomeBrowserPanel();
     void createTrainingConfigPanel();
     void createTrainingResultBrowserPanel();
+    void setStreamIntervalMs(int value);
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
@@ -87,15 +90,18 @@ private:
     EvolutionConfig evolutionConfig_;
     MutationConfig mutationConfig_;
     TrainingSpec trainingSpec_;
+    int& streamIntervalMs_;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
     lv_obj_t* bestThisGenLabel_ = nullptr;
     lv_obj_t* container_ = nullptr;
+    lv_obj_t* contentRow_ = nullptr;
     lv_obj_t* evalLabel_ = nullptr;
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
+    lv_obj_t* statsPanel_ = nullptr;
     lv_obj_t* etaLabel_ = nullptr;
     lv_obj_t* simTimeLabel_ = nullptr;
     lv_obj_t* speedupLabel_ = nullptr;
@@ -104,6 +110,12 @@ private:
     lv_obj_t* worldContainer_ = nullptr;
     lv_obj_t* mainLayout_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
+    lv_obj_t* streamPanel_ = nullptr;
+    int progressUiUpdateCount_ = 0;
+    std::chrono::steady_clock::time_point lastLabelStateLog_{};
+    std::chrono::steady_clock::time_point lastProgressUiLog_{};
+    std::chrono::steady_clock::time_point lastStatsInvalidate_{};
+    lv_obj_t* streamIntervalStepper_ = nullptr;
 
     // Best snapshot display.
     lv_obj_t* bestWorldContainer_ = nullptr;
@@ -148,10 +160,12 @@ private:
     void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
     void createGenomeBrowserPanelInternal();
+    void createStreamPanel(lv_obj_t* parent);
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);
     static void onTrainingResultCountChanged(lv_event_t* e);
+    static void onStreamIntervalChanged(lv_event_t* e);
 };
 
 } // namespace Ui

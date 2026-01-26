@@ -15,6 +15,7 @@
 #include "core/network/JsonProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
+#include "server/api/EventSubscribe.h"
 #include "server/network/PeerAdvertisement.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
@@ -433,6 +434,23 @@ void StateMachine::handleEvent(const Event& event)
 
         cwc.sendResponse(UiApi::StateGet::Response::okay(std::move(state)));
         return;
+    }
+
+    if (std::holds_alternative<ServerConnectedEvent>(event)) {
+        DIRTSIM_ASSERT(wsService_, "WebSocketService must exist for ServerConnectedEvent");
+        DIRTSIM_ASSERT(wsService_->isConnected(), "WebSocketService must be connected");
+
+        Api::EventSubscribe::Command eventCmd{
+            .enabled = true,
+            .connectionId = "",
+        };
+        auto result =
+            wsService_->sendCommandAndGetResponse<Api::EventSubscribe::OkayType>(eventCmd, 2000);
+        DIRTSIM_ASSERT(!result.isError(), "EventSubscribe failed: " + result.errorValue());
+        DIRTSIM_ASSERT(
+            !result.value().isError(),
+            "EventSubscribe rejected: " + result.value().errorValue().message);
+        LOG_INFO(State, "Subscribed to server event stream");
     }
 
     // Handle StatusGet universally (works in all states).

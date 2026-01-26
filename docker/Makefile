@@ -9,7 +9,7 @@
 #   make clean-image    # Remove Docker image
 #   make help           # Show this help
 
-.PHONY: help build-image build-debug build-release test format format-check ccache-stats shell clean-image
+.PHONY: help build-image build-debug build-release test format format-check ccache-stats shell clean-image print-image
 
 # Image name and tag.
 IMAGE_NAME := dirtsim-builder
@@ -57,6 +57,9 @@ help:
 	@echo "  make build-image    # First time only (or when deps change)"
 	@echo "  make build-debug    # Build the project"
 	@echo "  make test           # Run tests"
+
+print-image:
+	@echo $(IMAGE)
 
 build-image:
 	@echo "Building Docker image $(IMAGE)..."

@@ -9,6 +9,7 @@
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
+#include "api/TrainingStreamConfigSet.h"
 #include "api/WebSocketAccessSet.h"
 #include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
@@ -53,6 +54,8 @@ namespace Server {
 struct SubscribedClient {
     std::string connectionId;
     RenderFormat::EnumType renderFormat;
+    bool renderEnabled = true;
+    int renderEveryN = 1;
 };
 
 namespace {
@@ -141,6 +144,7 @@ struct StateMachine::Impl {
     mutable std::mutex cachedWorldDataMutex_;
 
     std::vector<SubscribedClient> subscribedClients_;
+    std::vector<std::string> eventSubscribers_;
     mutable std::mutex trainingResultsMutex_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
@@ -279,6 +283,16 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
                 connectionId,
                 pImpl->subscribedClients_.size());
         }
+        auto evtIt = std::remove(
+            pImpl->eventSubscribers_.begin(), pImpl->eventSubscribers_.end(), connectionId);
+        if (evtIt != pImpl->eventSubscribers_.end()) {
+            pImpl->eventSubscribers_.erase(evtIt, pImpl->eventSubscribers_.end());
+            spdlog::info(
+                "StateMachine: Client '{}' disconnected, removed from event subscribers "
+                "(remaining={})",
+                connectionId,
+                pImpl->eventSubscribers_.size());
+        }
     });
 
     // =========================================================================
@@ -330,6 +344,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::CellGet);
         DISPATCH_JSON_CMD_EMPTY(Api::CellSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::DiagramGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PeersGet);
@@ -338,6 +353,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::RenderFormatGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::RenderFormatSet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::RenderStreamConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::Reset);
         DISPATCH_JSON_CMD_WITH_RESP(Api::ScenarioConfigSet);
         DISPATCH_JSON_CMD_EMPTY(Api::SeedAdd);
@@ -536,8 +552,14 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         cwc.sendResponse(Api::TrainingResultGet::Response::okay(std::move(response)));
     });
 
+    service.registerHandler<Api::EventSubscribe::Cwc>(
+        [this](Api::EventSubscribe::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::RenderFormatSet::Cwc>(
         [this](Api::RenderFormatSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::RenderStreamConfigSet::Cwc>(
+        [this](Api::RenderStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::TrainingStreamConfigSet::Cwc>(
+        [this](Api::TrainingStreamConfigSet::Cwc cwc) { queueEvent(cwc); });
 
     // =========================================================================
     // Queued handlers - queue to state machine for processing.
@@ -1020,6 +1042,40 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
+    // Handle EventSubscribe globally (works in any state).
+    if (std::holds_alternative<Api::EventSubscribe::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::EventSubscribe::Cwc>(event.getVariant());
+        const std::string& connectionId = cwc.command.connectionId;
+        assert(!connectionId.empty() && "EventSubscribe: connectionId must be populated!");
+
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsEvents(connectionId)) {
+            cwc.sendResponse(
+                Api::EventSubscribe::Response::error(
+                    ApiError{ "Client did not request event updates" }));
+            return;
+        }
+
+        if (cwc.command.enabled) {
+            auto it = std::find(
+                pImpl->eventSubscribers_.begin(), pImpl->eventSubscribers_.end(), connectionId);
+            if (it == pImpl->eventSubscribers_.end()) {
+                pImpl->eventSubscribers_.push_back(connectionId);
+            }
+        }
+        else {
+            auto it = std::remove(
+                pImpl->eventSubscribers_.begin(), pImpl->eventSubscribers_.end(), connectionId);
+            pImpl->eventSubscribers_.erase(it, pImpl->eventSubscribers_.end());
+        }
+
+        Api::EventSubscribe::Okay okay;
+        okay.subscribed = cwc.command.enabled;
+        okay.message =
+            cwc.command.enabled ? "Subscribed to event stream" : "Unsubscribed from event stream";
+        cwc.sendResponse(Api::EventSubscribe::Response::okay(std::move(okay)));
+        return;
+    }
+
     // Handle RenderFormatSet globally (works in any state).
     if (std::holds_alternative<Api::RenderFormatSet::Cwc>(event.getVariant())) {
         const auto& cwc = std::get<Api::RenderFormatSet::Cwc>(event.getVariant());
@@ -1039,23 +1095,78 @@ void StateMachine::handleEvent(const Event& event)
             pImpl->subscribedClients_.end(),
             [&connectionId](const SubscribedClient& c) { return c.connectionId == connectionId; });
 
+        bool renderEnabled = true;
+        int renderEveryN = 1;
         if (it != pImpl->subscribedClients_.end()) {
             it->renderFormat = cwc.command.format;
+            renderEnabled = it->renderEnabled;
+            renderEveryN = it->renderEveryN;
         }
         else {
-            pImpl->subscribedClients_.push_back({ connectionId, cwc.command.format });
+            pImpl->subscribedClients_.push_back({ connectionId, cwc.command.format, true, 1 });
         }
 
         spdlog::info(
-            "StateMachine: Client '{}' subscribed (format={}, total={})",
+            "StateMachine: Client '{}' subscribed (format={}, render_enabled={}, "
+            "render_every_n={}, total={})",
             connectionId,
             cwc.command.format == RenderFormat::EnumType::Basic ? "Basic" : "Debug",
+            renderEnabled,
+            renderEveryN,
             pImpl->subscribedClients_.size());
 
         Api::RenderFormatSet::Okay okay;
         okay.active_format = cwc.command.format;
         okay.message = "Subscribed to render messages";
         cwc.sendResponse(Api::RenderFormatSet::Response::okay(std::move(okay)));
+        return;
+    }
+
+    // Handle RenderStreamConfigSet globally (works in any state).
+    if (std::holds_alternative<Api::RenderStreamConfigSet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::RenderStreamConfigSet::Cwc>(event.getVariant());
+        const std::string& connectionId = cwc.command.connectionId;
+        assert(!connectionId.empty() && "RenderStreamConfigSet: connectionId must be populated!");
+
+        if (cwc.command.renderEveryN <= 0) {
+            cwc.sendResponse(
+                Api::RenderStreamConfigSet::Response::error(
+                    ApiError{ "renderEveryN must be >= 1" }));
+            return;
+        }
+
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(connectionId)) {
+            cwc.sendResponse(
+                Api::RenderStreamConfigSet::Response::error(
+                    ApiError{ "Client did not request render updates" }));
+            return;
+        }
+
+        auto it = std::find_if(
+            pImpl->subscribedClients_.begin(),
+            pImpl->subscribedClients_.end(),
+            [&connectionId](const SubscribedClient& c) { return c.connectionId == connectionId; });
+        if (it == pImpl->subscribedClients_.end()) {
+            cwc.sendResponse(
+                Api::RenderStreamConfigSet::Response::error(
+                    ApiError{ "Render stream not active for client" }));
+            return;
+        }
+
+        it->renderEnabled = cwc.command.renderEnabled;
+        it->renderEveryN = std::max(1, cwc.command.renderEveryN);
+
+        spdlog::info(
+            "StateMachine: Client '{}' render stream config set (enabled={}, every_n={})",
+            connectionId,
+            it->renderEnabled,
+            it->renderEveryN);
+
+        Api::RenderStreamConfigSet::Okay okay;
+        okay.renderEnabled = it->renderEnabled;
+        okay.renderEveryN = it->renderEveryN;
+        okay.message = "Render stream config updated";
+        cwc.sendResponse(Api::RenderStreamConfigSet::Response::okay(std::move(okay)));
         return;
     }
 
@@ -1180,6 +1291,31 @@ void StateMachine::broadcastRenderMessage(
         return;
     }
 
+    const auto shouldSendForClient = [&data](const SubscribedClient& client) {
+        if (!client.renderEnabled) {
+            return false;
+        }
+        const int everyN = client.renderEveryN;
+        if (everyN <= 1) {
+            return true;
+        }
+        return (data.timestep % everyN) == 0;
+    };
+
+    bool hasEligibleClient = false;
+    for (const auto& client : pImpl->subscribedClients_) {
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(client.connectionId)) {
+            continue;
+        }
+        if (shouldSendForClient(client)) {
+            hasEligibleClient = true;
+            break;
+        }
+    }
+    if (!hasEligibleClient) {
+        return;
+    }
+
     spdlog::debug(
         "StateMachine: Broadcasting to {} subscribed clients (step {})",
         pImpl->subscribedClients_.size(),
@@ -1187,6 +1323,9 @@ void StateMachine::broadcastRenderMessage(
 
     for (const auto& client : pImpl->subscribedClients_) {
         if (pImpl->wsService_ && !pImpl->wsService_->clientWantsRender(client.connectionId)) {
+            continue;
+        }
+        if (!shouldSendForClient(client)) {
             continue;
         }
 
@@ -1229,7 +1368,7 @@ void StateMachine::broadcastCommand(const std::string& messageType)
 void StateMachine::broadcastEventData(
     const std::string& messageType, const std::vector<std::byte>& payload)
 {
-    if (pImpl->subscribedClients_.empty()) {
+    if (pImpl->eventSubscribers_.empty()) {
         return;
     }
 
@@ -1237,7 +1376,7 @@ void StateMachine::broadcastEventData(
         "StateMachine: Broadcasting '{}' ({} bytes) to {} clients",
         messageType,
         payload.size(),
-        pImpl->subscribedClients_.size());
+        pImpl->eventSubscribers_.size());
 
     Network::MessageEnvelope envelope{
         .id = 0,
@@ -1247,17 +1386,17 @@ void StateMachine::broadcastEventData(
 
     std::vector<std::byte> envelopeData = Network::serialize_envelope(envelope);
 
-    for (const auto& client : pImpl->subscribedClients_) {
-        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsEvents(client.connectionId)) {
+    for (const auto& connectionId : pImpl->eventSubscribers_) {
+        if (pImpl->wsService_ && !pImpl->wsService_->clientWantsEvents(connectionId)) {
             continue;
         }
 
-        auto result = pImpl->wsService_->sendToClient(client.connectionId, envelopeData);
+        auto result = pImpl->wsService_->sendToClient(connectionId, envelopeData);
         if (result.isError()) {
             spdlog::error(
                 "StateMachine: Failed to send '{}' to '{}': {}",
                 messageType,
-                client.connectionId,
+                connectionId,
                 result.errorValue());
         }
     }

@@ -48,8 +48,12 @@ int computeBrowserPanelWidth()
 TrainingView::TrainingView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
-    Network::WebSocketServiceInterface* wsService)
-    : uiManager_(uiManager), eventSink_(eventSink), wsService_(wsService)
+    Network::WebSocketServiceInterface* wsService,
+    int& streamIntervalMs)
+    : uiManager_(uiManager),
+      eventSink_(eventSink),
+      wsService_(wsService),
+      streamIntervalMs_(streamIntervalMs)
 {
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
@@ -83,9 +87,24 @@ void TrainingView::createUI()
     }
     starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
 
-    // Main layout: column with stats on top, world views on bottom.
-    mainLayout_ = lv_obj_create(container_);
+    // Main layout: left stream panel + stats/world content.
+    contentRow_ = lv_obj_create(container_);
+    lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(contentRow_, 0, 0);
+    lv_obj_set_style_pad_all(contentRow_, 0, 0);
+    lv_obj_set_style_pad_left(contentRow_, IconRail::RAIL_WIDTH + 10, 0);
+    lv_obj_set_style_pad_gap(contentRow_, 10, 0);
+    lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    createStreamPanel(contentRow_);
+
+    mainLayout_ = lv_obj_create(contentRow_);
     lv_obj_set_size(mainLayout_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_flex_grow(mainLayout_, 1);
     lv_obj_set_style_bg_opa(mainLayout_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(mainLayout_, 0, 0);
     lv_obj_set_style_pad_all(mainLayout_, 5, 0);
@@ -96,22 +115,22 @@ void TrainingView::createUI()
     lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_SCROLLABLE);
 
     // ========== TOP: Stats panel (condensed) ==========
-    lv_obj_t* statsPanel = lv_obj_create(mainLayout_);
-    lv_obj_set_size(statsPanel, 580, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_color(statsPanel, lv_color_hex(0x1A1A2E), 0);
-    lv_obj_set_style_bg_opa(statsPanel, LV_OPA_90, 0);
-    lv_obj_set_style_radius(statsPanel, 8, 0);
-    lv_obj_set_style_border_width(statsPanel, 1, 0);
-    lv_obj_set_style_border_color(statsPanel, lv_color_hex(0x4A4A6A), 0);
-    lv_obj_set_style_pad_all(statsPanel, 10, 0);
-    lv_obj_set_style_pad_gap(statsPanel, 4, 0);
-    lv_obj_set_flex_flow(statsPanel, LV_FLEX_FLOW_COLUMN);
+    statsPanel_ = lv_obj_create(mainLayout_);
+    lv_obj_set_size(statsPanel_, 580, LV_SIZE_CONTENT);
+    lv_obj_set_style_bg_color(statsPanel_, lv_color_hex(0x1A1A2E), 0);
+    lv_obj_set_style_bg_opa(statsPanel_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(statsPanel_, 8, 0);
+    lv_obj_set_style_border_width(statsPanel_, 1, 0);
+    lv_obj_set_style_border_color(statsPanel_, lv_color_hex(0x4A4A6A), 0);
+    lv_obj_set_style_pad_all(statsPanel_, 10, 0);
+    lv_obj_set_style_pad_gap(statsPanel_, 4, 0);
+    lv_obj_set_flex_flow(statsPanel_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
-        statsPanel, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(statsPanel, LV_OBJ_FLAG_SCROLLABLE);
+        statsPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(statsPanel_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Title row: "EVOLUTION" + status.
-    lv_obj_t* titleRow = lv_obj_create(statsPanel);
+    lv_obj_t* titleRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(titleRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(titleRow, 0, 0);
@@ -133,7 +152,7 @@ void TrainingView::createUI()
     lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0x888888), 0);
 
     // Time stats row (compact horizontal).
-    lv_obj_t* timeRow = lv_obj_create(statsPanel);
+    lv_obj_t* timeRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(timeRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(timeRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(timeRow, 0, 0);
@@ -165,7 +184,7 @@ void TrainingView::createUI()
     lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
 
     // Progress bars row.
-    lv_obj_t* progressRow = lv_obj_create(statsPanel);
+    lv_obj_t* progressRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(progressRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(progressRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(progressRow, 0, 0);
@@ -207,7 +226,7 @@ void TrainingView::createUI()
     lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
 
     // Fitness stats row.
-    lv_obj_t* fitnessRow = lv_obj_create(statsPanel);
+    lv_obj_t* fitnessRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(fitnessRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(fitnessRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(fitnessRow, 0, 0);
@@ -336,8 +355,12 @@ void TrainingView::destroyUI()
     evaluationBar_ = nullptr;
     genLabel_ = nullptr;
     generationBar_ = nullptr;
+    statsPanel_ = nullptr;
     bottomRow_ = nullptr;
+    contentRow_ = nullptr;
     mainLayout_ = nullptr;
+    streamPanel_ = nullptr;
+    streamIntervalStepper_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
@@ -364,6 +387,17 @@ void TrainingView::clearPanelContent()
     genomeBrowserPanel_.reset();
     trainingConfigPanel_.reset();
     trainingResultBrowserPanel_.reset();
+}
+
+void TrainingView::setStreamIntervalMs(int value)
+{
+    streamIntervalMs_ = value;
+    if (streamIntervalStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
+    }
+    if (trainingConfigPanel_) {
+        trainingConfigPanel_->setStreamIntervalMs(value);
+    }
 }
 
 void TrainingView::createCorePanel()
@@ -433,7 +467,8 @@ void TrainingView::createTrainingConfigPanel()
         evolutionStarted_,
         evolutionConfig_,
         mutationConfig_,
-        trainingSpec_);
+        trainingSpec_,
+        streamIntervalMs_);
     LOG_INFO(Controls, "TrainingView: Created Training config panel");
 }
 
@@ -575,6 +610,33 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
 {
     if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
 
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {
+        lastProgressUiLog_ = now;
+        progressUiUpdateCount_ = 0;
+    }
+    progressUiUpdateCount_++;
+    const auto elapsed = now - lastProgressUiLog_;
+    if (elapsed >= std::chrono::seconds(1)) {
+        const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+        const double rate = elapsedSeconds > 0.0 ? (progressUiUpdateCount_ / elapsedSeconds) : 0.0;
+        LOG_INFO(
+            Controls,
+            "TrainingView progress UI: gen {}/{}, eval {}/{}, time {:.1f}s sim {:.1f}s speed "
+            "{:.1f}x eta {:.1f}s updates {:.1f}/s",
+            progress.generation,
+            progress.maxGenerations,
+            progress.currentEval,
+            progress.populationSize,
+            progress.totalTrainingSeconds,
+            progress.currentSimTime,
+            progress.speedupFactor,
+            progress.etaSeconds,
+            rate);
+        progressUiUpdateCount_ = 0;
+        lastProgressUiLog_ = now;
+    }
+
     // Detect evaluation change with fitness improvement for best snapshot.
     // Note: Depends on renderWorld() being called first to populate lastRenderedWorld_.
     const bool evalChanged = (progress.currentEval != lastEval_)
@@ -681,6 +743,25 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
         snprintf(buf, sizeof(buf), "Avg: %.2f", progress.averageFitness);
         lv_label_set_text(averageLabel_, buf);
     }
+
+    // LVGL doesn't always repaint this panel promptly under high-rate event load.
+    // Invalidate at a bounded rate so we don't force full-panel redraw for every message.
+    if (statsPanel_) {
+        const auto invalidateNow = std::chrono::steady_clock::now();
+        if (lastStatsInvalidate_ == std::chrono::steady_clock::time_point{}
+            || (invalidateNow - lastStatsInvalidate_) >= std::chrono::milliseconds(16)) {
+            lv_obj_invalidate(statsPanel_);
+            lastStatsInvalidate_ = invalidateNow;
+        }
+    }
+
+    const auto logNow = std::chrono::steady_clock::now();
+    if (lastLabelStateLog_ == std::chrono::steady_clock::time_point{}) {
+        lastLabelStateLog_ = logNow;
+    }
+    if (logNow - lastLabelStateLog_ >= std::chrono::seconds(1)) {
+        lastLabelStateLog_ = logNow;
+    }
 }
 
 void TrainingView::updateAnimations()
@@ -742,6 +823,17 @@ void TrainingView::updateEvolutionVisibility()
     const bool hasStarfield = starfield_ && starfield_->getCanvas();
     const bool showEvolution = evolutionStarted_ || !hasStarfield;
 
+    if (contentRow_) {
+        if (showEvolution) {
+            lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+        else {
+            lv_obj_add_flag(contentRow_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(contentRow_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+
     if (mainLayout_) {
         if (showEvolution) {
             lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_HIDDEN);
@@ -784,6 +876,39 @@ void TrainingView::renderBestWorld()
         snprintf(buf, sizeof(buf), "Best: %.2f (Gen %d)", bestFitness_, bestGeneration_);
         lv_label_set_text(bestFitnessLabel_, buf);
     }
+}
+
+void TrainingView::createStreamPanel(lv_obj_t* parent)
+{
+    streamPanel_ = lv_obj_create(parent);
+    lv_obj_set_size(streamPanel_, 220, LV_PCT(100));
+    lv_obj_set_style_bg_color(streamPanel_, lv_color_hex(0x141420), 0);
+    lv_obj_set_style_bg_opa(streamPanel_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(streamPanel_, 0, 0);
+    lv_obj_set_style_border_width(streamPanel_, 1, 0);
+    lv_obj_set_style_border_color(streamPanel_, lv_color_hex(0x2A2A44), 0);
+    lv_obj_set_style_pad_all(streamPanel_, 10, 0);
+    lv_obj_set_style_pad_row(streamPanel_, 10, 0);
+    lv_obj_set_flex_flow(streamPanel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        streamPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_clear_flag(streamPanel_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* titleLabel = lv_label_create(streamPanel_);
+    lv_label_set_text(titleLabel, "Stream");
+    lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_14, 0);
+
+    streamIntervalStepper_ = LVGLBuilder::actionStepper(streamPanel_)
+                                 .label("Interval (ms)")
+                                 .range(0, 5000)
+                                 .step(100)
+                                 .value(streamIntervalMs_)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(100))
+                                 .callback(onStreamIntervalChanged, this)
+                                 .buildOrLog();
 }
 
 void TrainingView::showTrainingResultModal(
@@ -943,6 +1068,16 @@ void TrainingView::showTrainingResultModal(
         .buildOrLog();
 
     updateTrainingResultSaveButton();
+}
+
+void TrainingView::onStreamIntervalChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self || !self->streamIntervalStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
+    self->setStreamIntervalMs(value);
+    self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
 }
 
 void TrainingView::hideTrainingResultModal()

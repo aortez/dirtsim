@@ -34,6 +34,8 @@ zephyrproject/modules/
 
 # Node.js dependencies.
 node_modules/
+apps/src/ui/docs/dist/
+apps/src/ui/docs/screenshots/
 
 # Zephyr project (not currently used).
 zephyrproject/

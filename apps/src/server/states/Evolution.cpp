@@ -143,6 +143,8 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
+    streamIntervalMs_ = 0;
+    lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
     pendingTrainingResult_.reset();
 
@@ -202,15 +204,32 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
     evalWorld_->advanceTime(TIMESTEP);
     evalSimTime_ += TIMESTEP;
 
-    // Broadcast render message for live training view.
-    dsm.broadcastRenderMessage(
-        evalWorld_->getData(),
-        evalWorld_->getOrganismManager().getGrid(),
-        evalScenarioId_,
-        evalScenarioConfig_);
+    const auto now = std::chrono::steady_clock::now();
+    bool shouldBroadcast = true;
+    if (streamIntervalMs_ > 0) {
+        const auto interval = std::chrono::milliseconds(streamIntervalMs_);
+        if (now - lastStreamBroadcastTime_ < interval) {
+            shouldBroadcast = false;
+        }
+        else {
+            lastStreamBroadcastTime_ = now;
+        }
+    }
+    else {
+        lastStreamBroadcastTime_ = now;
+    }
 
-    // Broadcast progress for real-time time display updates.
-    broadcastProgress(dsm);
+    if (shouldBroadcast) {
+        // Broadcast render message for live training view.
+        dsm.broadcastRenderMessage(
+            evalWorld_->getData(),
+            evalWorld_->getOrganismManager().getGrid(),
+            evalScenarioId_,
+            evalScenarioConfig_);
+
+        // Broadcast progress for real-time time display updates.
+        broadcastProgress(dsm);
+    }
 
     Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
     if (organism) {
@@ -249,6 +268,28 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
+}
+
+Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    if (cwc.command.intervalMs < 0) {
+        cwc.sendResponse(
+            Api::TrainingStreamConfigSet::Response::error(
+                ApiError("TrainingStreamConfigSet intervalMs must be >= 0")));
+        return std::move(*this);
+    }
+
+    streamIntervalMs_ = cwc.command.intervalMs;
+    lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
+
+    LOG_INFO(State, "Evolution: Training stream interval set to {}ms", streamIntervalMs_);
+
+    Api::TrainingStreamConfigSet::Okay response{
+        .intervalMs = streamIntervalMs_,
+        .message = "Training stream interval updated",
+    };
+    cwc.sendResponse(Api::TrainingStreamConfigSet::Response::okay(std::move(response)));
+    return std::move(*this);
 }
 
 Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)

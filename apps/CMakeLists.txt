@@ -296,6 +296,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/CellSet.cpp
     src/server/api/ClockEventTrigger.cpp
     src/server/api/DiagramGet.cpp
+    src/server/api/EventSubscribe.cpp
     src/server/api/EvolutionProgress.cpp
     src/server/api/EvolutionStart.cpp
     src/server/api/EvolutionStop.cpp
@@ -314,6 +315,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/PhysicsSettingsSet.cpp
     src/server/api/RenderFormatGet.cpp
     src/server/api/RenderFormatSet.cpp
+    src/server/api/RenderStreamConfigSet.cpp
     src/server/api/Reset.cpp
     src/server/api/ScenarioConfigSet.cpp
     src/server/api/ScenarioListGet.cpp
@@ -328,6 +330,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
+    src/server/api/TrainingStreamConfigSet.cpp
     src/server/api/WorldResize.cpp
 
     # Server network.

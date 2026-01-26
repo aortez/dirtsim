@@ -5,6 +5,7 @@
 #include "server/api/EvolutionProgress.h"
 #include "ui/TrainingView.h"
 #include "ui/state-machine/Event.h"
+#include <chrono>
 #include <memory>
 
 typedef struct _lv_event_t lv_event_t;
@@ -41,6 +42,7 @@ struct Training {
     Any onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm);
     Any onEvent(const TrainingResultSaveClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm);
     Any onEvent(const OpenTrainingGenomeBrowserClickedEvent& evt, StateMachine& sm);
     Any onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& sm);
@@ -58,8 +60,15 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     bool evolutionStarted_ = false;
+    int streamIntervalMs_ = 0;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
+    uint64_t progressEventCount_ = 0;
+    uint64_t renderMessageCount_ = 0;
+    std::chrono::steady_clock::time_point lastRenderRateLog_;
+    uint64_t uiLoopCount_ = 0;
+    std::chrono::steady_clock::time_point lastUiLoopLog_;
+    std::chrono::steady_clock::time_point lastProgressRateLog_;
 };
 
 } // namespace State

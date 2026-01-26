@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/RenderMessage.h"
 #include "core/RenderMessageFull.h"
@@ -400,6 +401,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Server connection established");
+
     LOG_INFO(State, "Transitioning to StartMenu");
 
     return StartMenu{};
