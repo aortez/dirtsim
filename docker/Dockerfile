@@ -28,6 +28,9 @@ RUN apt-get update && apt-get install -y \
     libwayland-cursor0 \
     libxkbcommon-dev \
     wayland-protocols \
+    graphviz \
+    openjdk-17-jre-headless \
+    plantuml \
     clang-format-20 \
     git \
     openssh-client \
