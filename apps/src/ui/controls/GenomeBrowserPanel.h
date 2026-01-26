@@ -66,6 +66,7 @@ private:
     Result<BrowserPanel::DetailText, std::string> fetchDetail(const BrowserPanel::Item& item);
     Result<bool, std::string> deleteItem(const BrowserPanel::Item& item);
     Result<std::monostate, std::string> loadItem(const BrowserPanel::Item& item);
+    Result<std::monostate, std::string> addItemToTraining(const BrowserPanel::Item& item);
     void buildSortControls(lv_obj_t* parent);
     void buildScenarioPanel(lv_obj_t* parent, const BrowserPanel::Item& item);
     void clearScenarioPanelState();

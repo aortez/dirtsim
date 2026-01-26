@@ -171,6 +171,16 @@ struct GenomeLoadClickedEvent {
     static constexpr const char* name() { return "GenomeLoadClickedEvent"; }
 };
 
+struct OpenTrainingGenomeBrowserClickedEvent {
+    static constexpr const char* name() { return "OpenTrainingGenomeBrowserClickedEvent"; }
+};
+
+struct GenomeAddToTrainingClickedEvent {
+    GenomeId genomeId;
+    Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
+    static constexpr const char* name() { return "GenomeAddToTrainingClickedEvent"; }
+};
+
 /**
  * @brief Physics settings received from server.
  */
@@ -240,6 +250,8 @@ using Event = std::variant<
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
     GenomeLoadClickedEvent,
+    OpenTrainingGenomeBrowserClickedEvent,
+    GenomeAddToTrainingClickedEvent,
     RequestWorldUpdateCommand,
 
     // Server data updates

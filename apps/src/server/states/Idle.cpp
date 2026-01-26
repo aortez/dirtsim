@@ -30,18 +30,13 @@ std::optional<ApiError> validateTrainingConfig(
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
 
-    const ScenarioMetadata* metadata = registry.getMetadata(outSpec.scenarioId);
-    if (!metadata) {
-        return ApiError(
-            std::string("Scenario not found: ") + std::string(toString(outSpec.scenarioId)));
-    }
-
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
             return ApiError("populationSize must be > 0 when population is empty");
         }
 
         PopulationSpec defaultSpec;
+        defaultSpec.scenarioId = outSpec.scenarioId;
         defaultSpec.count = command.evolution.populationSize;
 
         switch (outSpec.organismType) {
@@ -66,6 +61,11 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (const auto& spec : outSpec.population) {
+        const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
+        if (!metadata) {
+            return ApiError(
+                std::string("Scenario not found: ") + std::string(toString(spec.scenarioId)));
+        }
         if (spec.count <= 0) {
             return ApiError("Population entry count must be > 0");
         }
@@ -112,6 +112,10 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         outPopulationSize += spec.count;
+    }
+
+    if (!outSpec.population.empty()) {
+        outSpec.scenarioId = outSpec.population.front().scenarioId;
     }
 
     if (outPopulationSize <= 0) {

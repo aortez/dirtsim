@@ -682,6 +682,45 @@ State::Any Training::onEvent(const GenomeLoadClickedEvent& evt, StateMachine& sm
     return SimRunning{};
 }
 
+State::Any Training::onEvent(const OpenTrainingGenomeBrowserClickedEvent& /*evt*/, StateMachine& sm)
+{
+    if (!view_) {
+        LOG_WARN(State, "Training view not available for genome browser");
+        return std::move(*this);
+    }
+
+    auto* uiManager = sm.getUiComponentManager();
+    if (!uiManager) {
+        LOG_WARN(State, "UiComponentManager not available for genome browser");
+        return std::move(*this);
+    }
+
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        panel->clearContent();
+        panel->show();
+    }
+
+    view_->clearPanelContent();
+    view_->createGenomeBrowserPanel();
+
+    if (auto* iconRail = uiManager->getIconRail()) {
+        iconRail->selectIcon(IconId::GENOME_BROWSER);
+    }
+
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& /*sm*/)
+{
+    if (!view_) {
+        LOG_WARN(State, "Training view not available for genome add");
+        return std::move(*this);
+    }
+
+    view_->addGenomeToTraining(evt.genomeId, evt.scenarioId);
+    return std::move(*this);
+}
+
 State::Any Training::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Exit command received, shutting down");
