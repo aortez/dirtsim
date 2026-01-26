@@ -1,23 +1,20 @@
 SUMMARY = "Picade Max USB Audio firmware"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://src/usb_descriptors.cpp;beginline=1;endline=23;md5=838c39d6f2530c893e977de19739e415"
+LIC_FILES_CHKSUM = "file://picade-max-audio/src/main.cpp;beginline=1;endline=23;md5=7a07b78504a13b96d4b350b16cde4fa9"
 
 SRC_URI = "\
-    git://github.com/pimoroni/picade-max-audio.git;protocol=https;branch=main \
+    file://picade-max-audio-61eef4b.tar.gz \
     git://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master \
     git://github.com/raspberrypi/pico-extras.git;name=pico-extras;protocol=https;branch=master \
     git://github.com/pimoroni/pimoroni-pico.git;name=pimoroni-pico;protocol=https;branch=main \
-    file://0001-stabilize-usb-audio-streaming.patch \
 "
 
-# Pinned to upstream main so our patch applies deterministically.
-SRCREV = "81904da748f8fe468785a5d0d6305438fba9cc05"
 SRCREV_pico-sdk = "a1438dff1d38bd9c65dbd693f0e5db4b9ae91779"
 SRCREV_pico-extras = "82409a94de00802105c84e5c06f333114bb8b316"
 SRCREV_pimoroni-pico = "1e7fb9e723c18fea24aa9353e767cadee2a87d70"
 SRCREV_FORMAT = "default_pico-sdk_pico-extras_pimoroni-pico"
 
-S = "${WORKDIR}/git"
+S = "${WORKDIR}/picade-max-audio"
 
 inherit cmake
 
