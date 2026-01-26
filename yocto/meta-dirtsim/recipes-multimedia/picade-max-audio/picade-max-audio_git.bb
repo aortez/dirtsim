@@ -1,6 +1,6 @@
 SUMMARY = "Picade Max USB Audio firmware"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://picade-max-audio/src/main.cpp;beginline=1;endline=23;md5=7a07b78504a13b96d4b350b16cde4fa9"
+LIC_FILES_CHKSUM = "file://src/main.cpp;beginline=1;endline=23;md5=7a07b78504a13b96d4b350b16cde4fa9"
 
 SRC_URI = "\
     file://picade-max-audio-61eef4b.tar.gz \
