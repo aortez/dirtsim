@@ -97,7 +97,7 @@ local_conf_header:
 
     # Allow building RP2040 firmware (Picade USB Audio) using an external
     # ARM GNU toolchain installed on the build host/container.
-    HOSTTOOLS += "arm-none-eabi-ar arm-none-eabi-g++ arm-none-eabi-gcc arm-none-eabi-nm arm-none-eabi-objcopy arm-none-eabi-objdump arm-none-eabi-ranlib arm-none-eabi-size arm-none-eabi-strip"
+    HOSTTOOLS += "arm-none-eabi-ar arm-none-eabi-as arm-none-eabi-g++ arm-none-eabi-gcc arm-none-eabi-ld arm-none-eabi-nm arm-none-eabi-objcopy arm-none-eabi-objdump arm-none-eabi-ranlib arm-none-eabi-size arm-none-eabi-strip"
 
     # Prune work dirs after packaging to keep disk usage down.
     INHERIT += "rm_work"

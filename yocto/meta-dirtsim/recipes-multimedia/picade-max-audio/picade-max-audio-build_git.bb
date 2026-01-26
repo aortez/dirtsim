@@ -4,7 +4,7 @@ LIC_FILES_CHKSUM = "file://src/main.cpp;beginline=1;endline=23;md5=7a07b78504a13
 
 SRC_URI = "\
     file://picade-max-audio-61eef4b.tar.gz \
-    git://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master;destsuffix=pico-sdk \
+    gitsm://github.com/raspberrypi/pico-sdk.git;name=pico-sdk;protocol=https;branch=master;destsuffix=pico-sdk \
     git://github.com/raspberrypi/pico-extras.git;name=pico-extras;protocol=https;branch=master;destsuffix=pico-extras \
     git://github.com/pimoroni/pimoroni-pico.git;name=pimoroni-pico;protocol=https;branch=main;destsuffix=pimoroni-pico \
 "
@@ -24,6 +24,8 @@ EXTRA_OECMAKE += "\
     -DPICO_SDK_PATH=${WORKDIR}/pico-sdk \
     -DPICO_EXTRAS_PATH=${WORKDIR}/pico-extras \
     -DPIMORONI_PICO_PATH=${WORKDIR}/pimoroni-pico \
+    -DPICO_COMPILER=pico_arm_cortex_m0plus_gcc \
+    -DPICO_TOOLCHAIN_PATH=${HOSTTOOLS_DIR} \
 "
 
 do_install() {
