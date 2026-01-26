@@ -1,6 +1,6 @@
 SUMMARY = "Picade Max USB Audio firmware"
 LICENSE = "MIT"
-LIC_FILES_CHKSUM = "file://src/usb_descriptors.cpp;beginline=1;endline=23;md5=a1e8a2ebf104edf803f13393611dab45"
+LIC_FILES_CHKSUM = "file://src/usb_descriptors.cpp;beginline=1;endline=23;md5=838c39d6f2530c893e977de19739e415"
 
 SRC_URI = "\
     git://github.com/pimoroni/picade-max-audio.git;protocol=https;branch=main \
@@ -10,7 +10,8 @@ SRC_URI = "\
     file://0001-stabilize-usb-audio-streaming.patch \
 "
 
-SRCREV = "003120df3f33286b5bd4692c5a33e8d5762314f5"
+# Pinned to upstream main so our patch applies deterministically.
+SRCREV = "81904da748f8fe468785a5d0d6305438fba9cc05"
 SRCREV_pico-sdk = "a1438dff1d38bd9c65dbd693f0e5db4b9ae91779"
 SRCREV_pico-extras = "82409a94de00802105c84e5c06f333114bb8b316"
 SRCREV_pimoroni-pico = "1e7fb9e723c18fea24aa9353e767cadee2a87d70"
