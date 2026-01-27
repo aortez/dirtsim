@@ -2,6 +2,9 @@
 
 Local Markdown viewer for documenting DirtSim UI screens (PlantUML/Salt wireframes).
 
+For state-aware screenshot capture, see `../STATE_MACHINE.md` for the UI states,
+transitions, and the `StatusGet`/`StateGet` commands used to verify where the UI is.
+
 ## Run
 
 ```bash
@@ -78,6 +81,16 @@ In another terminal, start the UI (local example):
 ```bash
 cd apps
 ./build-debug/bin/cli run-all
+```
+
+State checks (useful when captures are state dependent):
+
+```bash
+# Detailed status (state + selected icon + panel visibility).
+dirtsim-cli ui StatusGet
+
+# State only.
+dirtsim-cli ui StateGet
 ```
 
 Then run:

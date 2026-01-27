@@ -47,19 +47,23 @@ const runRemoteCli = async (args, { allowFailure = false } = {}) => {
   });
 };
 
-const runRemoteCapture = async (args) =>
+const runRemoteCapture = async (args, { allowFailure = false } = {}) =>
   new Promise((resolve, reject) => {
     const command = ["dirtsim-cli", ...args].map(quoteForShell).join(" ");
     const child = spawn("ssh", [sshTarget, command], {
       stdio: ["ignore", "pipe", "pipe"]
     });
     let output = "";
+    let errorOutput = "";
     child.stdout.on("data", (chunk) => {
       output += chunk.toString();
     });
+    child.stderr.on("data", (chunk) => {
+      errorOutput += chunk.toString();
+    });
     child.on("close", (code) => {
-      if (code === 0) {
-        resolve(output);
+      if (code === 0 || allowFailure) {
+        resolve({ output, errorOutput, code });
       } else {
         reject(new Error(`SSH command failed (${code}) for: ${command}`));
       }
@@ -81,7 +85,7 @@ const runSsh = async (command, { allowFailure = false } = {}) => {
 
 const runCli = async (args, options) => runRemoteCli(args, options);
 
-const runCliCapture = async (args) => runRemoteCapture(args);
+const runCliCapture = async (args, options) => runRemoteCapture(args, options);
 
 const parseJsonLine = (text) => {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
@@ -98,9 +102,64 @@ const parseJsonLine = (text) => {
   return null;
 };
 
+const extractCommandError = (output) => {
+  const parsed = parseJsonLine(output);
+  if (parsed?.error) {
+    return String(parsed.error);
+  }
+  if (parsed?.value?.error) {
+    return String(parsed.value.error);
+  }
+  return null;
+};
+
+const clipText = (text, maxLength = 800) => {
+  if (!text) {
+    return "";
+  }
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) {
+    return trimmed;
+  }
+  return `${trimmed.slice(0, maxLength)}...`;
+};
+
+const logStatusSnapshot = async (context) => {
+  try {
+    const status = await getUiStatus();
+    if (status) {
+      console.error(`Status snapshot (${context}): ${JSON.stringify(status)}`);
+      return;
+    }
+  } catch {
+    // Ignore snapshot failures.
+  }
+  console.error(`Status snapshot (${context}): unavailable`);
+};
+
+const getUiStatus = async () => {
+  try {
+    const { output } = await runCliCapture(["ui", "StatusGet"]);
+    const parsed = parseJsonLine(output);
+    return parsed?.value ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const getServerStatus = async () => {
+  try {
+    const { output } = await runCliCapture(["server", "StatusGet"]);
+    const parsed = parseJsonLine(output);
+    return parsed?.value ?? null;
+  } catch {
+    return null;
+  }
+};
+
 const getUiState = async () => {
   try {
-    const output = await runCliCapture(["ui", "StatusGet"]);
+    const { output } = await runCliCapture(["ui", "StatusGet"]);
     const parsed = parseJsonLine(output);
     return parsed?.value?.state ?? null;
   } catch {
@@ -108,9 +167,14 @@ const getUiState = async () => {
   }
 };
 
+const getServerState = async () => {
+  const status = await getServerStatus();
+  return status?.state ?? null;
+};
+
 const isUiConnected = async () => {
   try {
-    const output = await runCliCapture(["ui", "StatusGet"]);
+    const { output } = await runCliCapture(["ui", "StatusGet"]);
     const parsed = parseJsonLine(output);
     return Boolean(parsed?.value?.connected_to_server);
   } catch {
@@ -130,6 +194,16 @@ const waitForUiState = async (targets, timeoutMs = 8000) => {
   return null;
 };
 
+const requireUiState = async (targets, timeoutMs = 8000, label = "") => {
+  const state = await waitForUiState(targets, timeoutMs);
+  if (!state) {
+    const targetLabel = Array.isArray(targets) ? targets.join(", ") : targets;
+    const suffix = label ? ` (${label})` : "";
+    throw new Error(`Timeout waiting for UI state: ${targetLabel}${suffix}`);
+  }
+  return state;
+};
+
 const waitForUiConnected = async (timeoutMs = 8000) => {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -142,9 +216,98 @@ const waitForUiConnected = async (timeoutMs = 8000) => {
   return false;
 };
 
+const waitForUiStatus = async (predicate, timeoutMs = 8000) => {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const status = await getUiStatus();
+    if (status && predicate(status)) {
+      return status;
+    }
+    await sleep(400);
+  }
+  return null;
+};
+
+const matchesExpectedStatus = (status, expected) => {
+  if (!status) {
+    return false;
+  }
+  if (expected.state) {
+    const states = Array.isArray(expected.state) ? expected.state : [expected.state];
+    if (!states.includes(status.state)) {
+      return false;
+    }
+  }
+  if (expected.selectedIcon !== undefined && status.selected_icon !== expected.selectedIcon) {
+    return false;
+  }
+  if (expected.panelVisible !== undefined && status.panel_visible !== expected.panelVisible) {
+    return false;
+  }
+  return true;
+};
+
+const isIconSelectCommand = (args) =>
+  Array.isArray(args) && args[0] === "ui" && args[1] === "IconSelect";
+
+const runCliStep = async (step, screenId) => {
+  if (!step.args || step.args.length === 0) {
+    throw new Error(`Missing args for step in ${screenId}`);
+  }
+
+  const { output, errorOutput, code } = await runCliCapture(step.args, { allowFailure: true });
+  const commandError = extractCommandError(output) || extractCommandError(errorOutput);
+  const stdoutSnippet = clipText(output);
+  const stderrSnippet = clipText(errorOutput);
+  console.error(
+    `CLI step (${screenId}): ${step.args.join(" ")} (exit ${code ?? "unknown"})`
+  );
+  if (stdoutSnippet) {
+    console.error(`CLI stdout (${screenId}): ${stdoutSnippet}`);
+  }
+  if (stderrSnippet) {
+    console.error(`CLI stderr (${screenId}): ${stderrSnippet}`);
+  }
+
+  if (!isIconSelectCommand(step.args)) {
+    if (code !== 0 && !step.allowFailure) {
+      throw new Error(
+        `Command failed (${code}) during ${screenId}` +
+          (commandError ? `: ${commandError}` : "")
+      );
+    }
+    if (commandError && !step.allowFailure) {
+      throw new Error(`Command error during ${screenId}: ${commandError}`);
+    }
+    if (commandError && step.allowFailure) {
+      console.error(`CLI warning (${screenId}): ${commandError}`);
+    }
+    return;
+  }
+
+  if (commandError && commandError.includes("IconRail unavailable")) {
+    await logStatusSnapshot(`${screenId} iconrail-unavailable`);
+    throw new Error(`IconRail unavailable during ${screenId}: ${commandError}`);
+  }
+  if (code !== 0 && !step.allowFailure) {
+    await logStatusSnapshot(`${screenId} iconselect-exit-${code}`);
+    throw new Error(
+      `IconSelect failed (${code}) during ${screenId}` +
+        (commandError ? `: ${commandError}` : "")
+    );
+  }
+  if (commandError && !step.allowFailure) {
+    await logStatusSnapshot(`${screenId} iconselect-error`);
+    throw new Error(`IconSelect error during ${screenId}: ${commandError}`);
+  }
+};
+
 const clearTrainingState = async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    await runCli(["server", "TrainingResultDiscard"], { allowFailure: true });
+    const serverState = await getServerState();
+    if (serverState === "UnsavedTrainingResult") {
+      await runCli(["server", "TrainingResultDiscard"], { allowFailure: true });
+    }
     const state = await getUiState();
     if (!state) {
       return;
@@ -202,25 +365,30 @@ const run = async () => {
         await clearTrainingState();
       }
       await waitForUiConnected();
-      await waitForUiState(["StartMenu", "SimRunning", "Paused", "Training"]);
+      await requireUiState(["StartMenu", "SimRunning", "Paused", "Training"], 8000, "after reset");
     }
 
     const steps = screen.steps ?? [];
     for (const step of steps) {
-      if (step.waitForState) {
-        await waitForUiState(
+      if (step.waitForState && (!step.args || step.args.length === 0)) {
+        await requireUiState(
           Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
-          step.waitTimeoutMs
+          step.waitTimeoutMs,
+          `${screen.id} step waitForState`
         );
         continue;
       }
       try {
-        await runCli(step.args, { allowFailure: step.allowFailure });
+        await runCliStep(step, screen.id);
       } catch (error) {
         if (step.retryOnTrainingResult) {
           await clearTrainingState();
-          await waitForUiState(["StartMenu", "Paused", "SimRunning"]);
-          await runCli(step.args, { allowFailure: step.allowFailure });
+          await requireUiState(
+            ["StartMenu", "Paused", "SimRunning"],
+            8000,
+            `${screen.id} retryOnTrainingResult`
+          );
+          await runCliStep(step, screen.id);
         } else {
           throw error;
         }
@@ -229,9 +397,37 @@ const run = async () => {
         await sleep(step.waitMs);
       }
       if (step.waitForState) {
-        await waitForUiState(
+        await requireUiState(
           Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
-          step.waitTimeoutMs
+          step.waitTimeoutMs,
+          `${screen.id} step waitForState`
+        );
+      }
+    }
+
+    if (screen.expect) {
+      const expectTimeoutMs = screen.expectTimeoutMs ?? 8000;
+      const status = await waitForUiStatus(
+        (current) => matchesExpectedStatus(current, screen.expect),
+        expectTimeoutMs
+      );
+      if (!status && screen.expect.selectedIcon) {
+        await runCliStep(
+          {
+            args: ["ui", "IconSelect", JSON.stringify({ id: screen.expect.selectedIcon })],
+            allowFailure: true
+          },
+          screen.id
+        );
+      }
+      const finalStatus = await waitForUiStatus(
+        (current) => matchesExpectedStatus(current, screen.expect),
+        expectTimeoutMs
+      );
+      if (!finalStatus) {
+        throw new Error(
+          `UI did not reach expected status for ${screen.id}: ` +
+            JSON.stringify(screen.expect)
         );
       }
     }
