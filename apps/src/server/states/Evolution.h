@@ -10,22 +10,24 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/Event.h"
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <deque>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <random>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace DirtSim {
-class World;
-class ScenarioRunner;
-} // namespace DirtSim
-
-namespace DirtSim {
+class GenomeRepository;
 namespace Server {
 namespace State {
 
@@ -65,21 +67,44 @@ struct Evolution {
     // RNG.
     std::mt19937 rng;
 
-    // Current evaluation state (for non-blocking tick).
-    std::unique_ptr<World> evalWorld_;
-    std::unique_ptr<ScenarioRunner> evalScenario_;
-    OrganismId evalOrganismId_{};
-    Vector2d evalSpawnPosition_{ 0.0, 0.0 };
-    Vector2d evalLastPosition_{ 0.0, 0.0 };
-    double evalSimTime_ = 0.0;
-    double evalMaxEnergy_ = 0.0;
-    std::optional<TreeResourceTotals> evalTreeResourceTotals_;
-    ScenarioConfig evalScenarioConfig_ = Config::Empty{};
-    Scenario::EnumType evalScenarioId_ = Scenario::EnumType::TreeGermination;
+    struct WorkerResult {
+        int index = -1;
+        double fitness = 0.0;
+        double simTime = 0.0;
+    };
+
+    struct WorkerTask {
+        int index = -1;
+        Individual individual;
+    };
+
+    struct WorkerState {
+        int backgroundWorkerCount = 0;
+        std::vector<std::thread> workers;
+        std::deque<WorkerTask> taskQueue;
+        std::mutex taskMutex;
+        std::condition_variable taskCv;
+        std::deque<WorkerResult> resultQueue;
+        std::mutex resultMutex;
+        std::atomic<bool> stopRequested{ false };
+        TrainingSpec trainingSpec;
+        EvolutionConfig evolutionConfig;
+        TrainingBrainRegistry brainRegistry;
+        GenomeRepository* genomeRepository = nullptr;
+    };
+
+    std::unique_ptr<TrainingRunner> visibleRunner_;
+    int visibleEvalIndex_ = -1;
+    ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
+    Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
+    std::deque<int> visibleQueue_;
+
+    std::unique_ptr<WorkerState> workerState_;
 
     // Training timing.
     std::chrono::steady_clock::time_point trainingStartTime_;
     double cumulativeSimTime_ = 0.0; // Total sim time across all completed individuals.
+    double sumFitnessThisGen_ = 0.0;
     double finalAverageFitness_ = 0.0;
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
@@ -105,8 +130,15 @@ struct Evolution {
 
 private:
     void initializePopulation(StateMachine& dsm);
-    void startEvaluation(StateMachine& dsm);
-    void finishEvaluation(StateMachine& dsm);
+    void startWorkers(StateMachine& dsm);
+    void stopWorkers();
+    void queueGenerationTasks();
+    void drainResults(StateMachine& dsm);
+    void startNextVisibleEvaluation(StateMachine& dsm);
+    void stepVisibleEvaluation(StateMachine& dsm);
+    static WorkerResult runEvaluationTask(const WorkerTask& task, const WorkerState& state);
+    void processResult(StateMachine& dsm, const WorkerResult& result);
+    void maybeCompleteGeneration(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
     std::optional<Any> broadcastTrainingResult(StateMachine& dsm);

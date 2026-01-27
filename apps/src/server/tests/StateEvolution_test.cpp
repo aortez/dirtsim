@@ -58,6 +58,18 @@ TrainingSpec makeTrainingSpec(int populationSize)
     return spec;
 }
 
+struct EvolutionWorkerGuard {
+    Evolution* evolution = nullptr;
+    StateMachine* stateMachine = nullptr;
+
+    ~EvolutionWorkerGuard()
+    {
+        if (evolution && stateMachine) {
+            evolution->onExit(*stateMachine);
+        }
+    }
+};
+
 } // namespace
 
 /**
@@ -151,6 +163,7 @@ TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 0.1;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state (populates population).
@@ -188,6 +201,7 @@ TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016; // Single frame.
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
@@ -216,6 +230,7 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
 
     PopulationSpec population;
     population.brainKind = TrainingBrainKind::RuleBased;
@@ -247,6 +262,7 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingRes
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize the state.
@@ -280,6 +296,7 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize and run through one generation.
@@ -322,26 +339,29 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
     evolutionState.evolutionConfig.maxSimulationTime = 0.1; // ~6 physics steps at 0.016s each.
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
     evolutionState.onEnter(*stateMachine);
 
-    // Verify: No world exists yet.
-    EXPECT_EQ(evolutionState.evalWorld_, nullptr);
+    // Verify: No runner exists yet.
+    EXPECT_EQ(evolutionState.visibleRunner_, nullptr);
 
     // Execute: First tick should create world and advance one step.
     auto result1 = evolutionState.tick(*stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should exist mid-evaluation";
+    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
-    EXPECT_GT(evolutionState.evalSimTime_, 0.0) << "Sim time should have advanced";
-    EXPECT_LT(evolutionState.evalSimTime_, 0.1) << "Sim time should not be complete";
+    ASSERT_NE(evolutionState.visibleRunner_, nullptr);
+    EXPECT_GT(evolutionState.visibleRunner_->getSimTime(), 0.0) << "Sim time should have advanced";
+    EXPECT_LT(evolutionState.visibleRunner_->getSimTime(), 0.1)
+        << "Sim time should not be complete";
 
     // Execute: Second tick should advance further but not complete.
     auto result2 = evolutionState.tick(*stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
-    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should still exist";
+    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should still exist";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
 
     // Execute: Tick until first evaluation completes.
@@ -354,7 +374,8 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Verify: First evaluation completed after multiple ticks.
     EXPECT_GT(tickCount, 2) << "Should require multiple ticks for evaluation";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should have advanced to second organism";
-    EXPECT_EQ(evolutionState.evalWorld_, nullptr) << "World should be cleaned up between evals";
+    EXPECT_EQ(evolutionState.visibleRunner_, nullptr)
+        << "Runner should be cleaned up between evals";
 }
 
 /**
@@ -370,6 +391,7 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxSimulationTime = 1.0; // Very long - would be ~62 ticks.
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize and tick once to start evaluation.
@@ -377,8 +399,9 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     evolutionState.tick(*stateMachine);
 
     // Verify: Evaluation is in progress.
-    EXPECT_NE(evolutionState.evalWorld_, nullptr) << "World should exist mid-evaluation";
-    EXPECT_LT(evolutionState.evalSimTime_, 0.5) << "Should be early in evaluation";
+    EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
+    ASSERT_NE(evolutionState.visibleRunner_, nullptr);
+    EXPECT_LT(evolutionState.visibleRunner_->getSimTime(), 0.5) << "Should be early in evaluation";
 
     // Setup: Create EvolutionStop command.
     bool callbackInvoked = false;
@@ -417,6 +440,7 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     evolutionState.evolutionConfig.populationSize = 3;
     evolutionState.evolutionConfig.maxGenerations = 3;
     evolutionState.evolutionConfig.maxSimulationTime = 1.0; // 1 second per organism.
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(3);
 
     // Initialize.
@@ -471,6 +495,66 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
         << "Stored fitness should match tracked best";
 }
 
+TEST_F(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
+{
+    Evolution evolutionState;
+    EvolutionWorkerGuard guard{ &evolutionState, stateMachine.get() };
+    evolutionState.evolutionConfig.populationSize = 5;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 3;
+    evolutionState.trainingSpec = makeTrainingSpec(5);
+
+    evolutionState.onEnter(*stateMachine);
+
+    ASSERT_NE(evolutionState.workerState_, nullptr);
+    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
+    EXPECT_EQ(evolutionState.workerState_->workers.size(), 2u);
+    EXPECT_GT(evolutionState.visibleQueue_.size(), 0u);
+    EXPECT_LT(evolutionState.visibleQueue_.size(), evolutionState.population.size());
+
+    std::optional<Any> finalState;
+    constexpr int maxTicks = 2000;
+    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+        finalState = evolutionState.tick(*stateMachine);
+    }
+
+    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete with parallel workers";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()))
+        << "Should transition to UnsavedTrainingResult";
+    EXPECT_EQ(evolutionState.generation, 1);
+    EXPECT_EQ(evolutionState.currentEval, evolutionState.evolutionConfig.populationSize);
+}
+
+TEST_F(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
+{
+    Evolution evolutionState;
+    EvolutionWorkerGuard guard{ &evolutionState, stateMachine.get() };
+    evolutionState.evolutionConfig.populationSize = 4;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 2;
+    evolutionState.trainingSpec = makeTrainingSpec(4);
+
+    evolutionState.onEnter(*stateMachine);
+
+    bool sawBackgroundCompletion = false;
+    constexpr int maxTicks = 200;
+    for (int i = 0; i < maxTicks; ++i) {
+        evolutionState.tick(*stateMachine);
+        if (evolutionState.visibleRunner_ != nullptr
+            && evolutionState.visibleRunner_->getSimTime()
+                < evolutionState.evolutionConfig.maxSimulationTime
+            && evolutionState.currentEval > 0) {
+            sawBackgroundCompletion = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(sawBackgroundCompletion)
+        << "Background results should arrive while visible evaluation is running";
+}
+
 /**
  * @brief Test that Exit command from Evolution transitions to Shutdown.
  */
@@ -480,6 +564,7 @@ TEST_F(StateEvolutionTest, ExitCommandTransitionsToShutdown)
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
     evolutionState.onEnter(*stateMachine);
 
