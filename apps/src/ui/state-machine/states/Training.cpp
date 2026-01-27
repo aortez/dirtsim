@@ -218,6 +218,19 @@ State::Any Training::onEvent(const EvolutionProgressReceivedEvent& evt, StateMac
     return std::move(*this);
 }
 
+State::Any Training::onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& /*sm*/)
+{
+    if (!view_) {
+        return std::move(*this);
+    }
+
+    WorldData worldData = evt.snapshot.worldData;
+    worldData.organism_ids = evt.snapshot.organismIds;
+    view_->updateBestSnapshot(worldData, evt.snapshot.fitness, evt.snapshot.generation);
+
+    return std::move(*this);
+}
+
 State::Any Training::onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "Training result available (candidates={})", cwc.command.candidates.size());

@@ -4,6 +4,7 @@
 #include "UnsavedTrainingResult.h"
 #include "core/ScenarioConfig.h"
 #include "core/Vector2.h"
+#include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/Genome.h"
@@ -47,6 +48,11 @@ struct Evolution {
         bool allowsMutation = false;
     };
 
+    struct BestSnapshotData {
+        WorldData worldData;
+        std::vector<OrganismId> organismIds;
+    };
+
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
@@ -71,6 +77,7 @@ struct Evolution {
         int index = -1;
         double fitness = 0.0;
         double simTime = 0.0;
+        std::optional<BestSnapshotData> bestSnapshot;
     };
 
     struct WorkerTask {
@@ -87,6 +94,7 @@ struct Evolution {
         std::deque<WorkerResult> resultQueue;
         std::mutex resultMutex;
         std::atomic<bool> stopRequested{ false };
+        std::atomic<double> bestFitnessHint{ 0.0 };
         TrainingSpec trainingSpec;
         EvolutionConfig evolutionConfig;
         TrainingBrainRegistry brainRegistry;
@@ -136,8 +144,10 @@ private:
     void drainResults(StateMachine& dsm);
     void startNextVisibleEvaluation(StateMachine& dsm);
     void stepVisibleEvaluation(StateMachine& dsm);
-    static WorkerResult runEvaluationTask(const WorkerTask& task, const WorkerState& state);
-    void processResult(StateMachine& dsm, const WorkerResult& result);
+    static WorkerResult runEvaluationTask(const WorkerTask& task, WorkerState& state);
+    void processResult(
+        StateMachine& dsm, WorkerResult result, const TrainingRunner* snapshotRunner = nullptr);
+    static std::optional<BestSnapshotData> buildBestSnapshotData(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);

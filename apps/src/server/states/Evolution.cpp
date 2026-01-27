@@ -16,6 +16,7 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include <algorithm>
 #include <ctime>
@@ -63,6 +64,18 @@ int resolveParallelEvaluations(int requested, int populationSize)
         resolved = populationSize;
     }
     return resolved;
+}
+
+bool updateBestFitnessHint(std::atomic<double>& hint, double fitness)
+{
+    double current = hint.load(std::memory_order_relaxed);
+    while (fitness > current) {
+        if (hint.compare_exchange_weak(
+                current, fitness, std::memory_order_relaxed, std::memory_order_relaxed)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
@@ -115,6 +128,20 @@ Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
     return spec.scenarioId;
 }
 } // namespace
+
+std::optional<Evolution::BestSnapshotData> Evolution::buildBestSnapshotData(
+    const TrainingRunner& runner)
+{
+    const World* world = runner.getWorld();
+    if (!world) {
+        return std::nullopt;
+    }
+
+    BestSnapshotData snapshot;
+    snapshot.worldData = world->getData();
+    snapshot.organismIds = world->getOrganismManager().getGrid();
+    return snapshot;
+}
 
 void Evolution::onEnter(StateMachine& dsm)
 {
@@ -312,6 +339,7 @@ void Evolution::startWorkers(StateMachine& dsm)
     workerState_->evolutionConfig = evolutionConfig;
     workerState_->brainRegistry = brainRegistry_;
     workerState_->genomeRepository = &dsm.getGenomeRepository();
+    workerState_->bestFitnessHint = bestFitnessAllTime;
 
     workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
     if (workerState_->backgroundWorkerCount <= 0) {
@@ -420,8 +448,8 @@ void Evolution::drainResults(StateMachine& dsm)
         results.swap(workerState_->resultQueue);
     }
 
-    for (const auto& result : results) {
-        processResult(dsm, result);
+    for (auto& result : results) {
+        processResult(dsm, std::move(result));
     }
 }
 
@@ -451,7 +479,6 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
 void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 {
     if (!visibleRunner_) {
-        broadcastProgress(dsm);
         return;
     }
 
@@ -482,22 +509,24 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
             visibleScenarioConfig_);
     }
 
+    const bool evalComplete = status.state != TrainingRunner::State::Running;
     if (status.state != TrainingRunner::State::Running) {
         WorkerResult result;
         result.index = visibleEvalIndex_;
         result.simTime = status.simTime;
         result.fitness = computeFitnessForRunner(
             *visibleRunner_, status, trainingSpec.organismType, evolutionConfig);
-        processResult(dsm, result);
+        processResult(dsm, std::move(result), visibleRunner_.get());
         visibleRunner_.reset();
         visibleEvalIndex_ = -1;
     }
 
-    broadcastProgress(dsm);
+    if (shouldBroadcast || evalComplete) {
+        broadcastProgress(dsm);
+    }
 }
 
-Evolution::WorkerResult Evolution::runEvaluationTask(
-    const WorkerTask& task, const WorkerState& state)
+Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, WorkerState& state)
 {
     DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
     DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
@@ -520,10 +549,17 @@ Evolution::WorkerResult Evolution::runEvaluationTask(
     result.simTime = status.simTime;
     result.fitness = computeFitnessForRunner(
         runner, status, state.trainingSpec.organismType, state.evolutionConfig);
+    if (updateBestFitnessHint(state.bestFitnessHint, result.fitness)) {
+        auto snapshot = buildBestSnapshotData(runner);
+        if (snapshot.has_value()) {
+            result.bestSnapshot = std::move(snapshot);
+        }
+    }
     return result;
 }
 
-void Evolution::processResult(StateMachine& dsm, const WorkerResult& result)
+void Evolution::processResult(
+    StateMachine& dsm, WorkerResult result, const TrainingRunner* snapshotRunner)
 {
     if (result.index < 0 || result.index >= static_cast<int>(population.size())) {
         return;
@@ -539,6 +575,23 @@ void Evolution::processResult(StateMachine& dsm, const WorkerResult& result)
     }
     if (result.fitness > bestFitnessAllTime) {
         bestFitnessAllTime = result.fitness;
+        if (workerState_) {
+            updateBestFitnessHint(workerState_->bestFitnessHint, bestFitnessAllTime);
+        }
+
+        std::optional<BestSnapshotData> snapshot = std::move(result.bestSnapshot);
+        if (!snapshot.has_value() && snapshotRunner) {
+            snapshot = buildBestSnapshotData(*snapshotRunner);
+        }
+        if (snapshot.has_value()) {
+            Api::TrainingBestSnapshot bestSnapshot;
+            bestSnapshot.worldData = std::move(snapshot->worldData);
+            bestSnapshot.organismIds = std::move(snapshot->organismIds);
+            bestSnapshot.fitness = result.fitness;
+            bestSnapshot.generation = generation;
+            dsm.broadcastEventData(
+                Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
+        }
 
         const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {

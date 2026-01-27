@@ -27,6 +27,7 @@ struct Training {
     void updateAnimations();
 
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
