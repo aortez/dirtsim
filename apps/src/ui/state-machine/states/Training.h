@@ -61,7 +61,7 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     bool evolutionStarted_ = false;
-    int streamIntervalMs_ = 0;
+    int streamIntervalMs_ = 16;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
     uint64_t progressEventCount_ = 0;

@@ -116,7 +116,7 @@ struct Evolution {
     double finalAverageFitness_ = 0.0;
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
-    int streamIntervalMs_ = 0;
+    int streamIntervalMs_ = 16;
     std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     UUID trainingSessionId_{};

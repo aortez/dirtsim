@@ -161,7 +161,7 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
-    streamIntervalMs_ = 0;
+    streamIntervalMs_ = 16;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
     lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
