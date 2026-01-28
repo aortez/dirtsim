@@ -25,6 +25,18 @@ Any UnsavedTrainingResult::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMac
     return idle.onEvent(cwc, dsm);
 }
 
+Any UnsavedTrainingResult::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::TimerStatsGet::Response;
+
+    Api::TimerStatsGet::Okay okay;
+    okay.timers = timerStats;
+
+    LOG_INFO(State, "UnsavedTrainingResult: TimerStatsGet returning {} timers", okay.timers.size());
+    cwc.sendResponse(Response::okay(std::move(okay)));
+    return std::move(*this);
+}
+
 Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm)
 {
     std::unordered_map<GenomeId, const Candidate*> candidateLookup;

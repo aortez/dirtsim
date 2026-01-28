@@ -25,6 +25,7 @@
 #include <random>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace DirtSim {
@@ -53,6 +54,11 @@ struct Evolution {
         std::vector<OrganismId> organismIds;
     };
 
+    struct TimerAggregate {
+        double totalMs = 0.0;
+        uint32_t calls = 0;
+    };
+
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
@@ -78,6 +84,7 @@ struct Evolution {
         double fitness = 0.0;
         double simTime = 0.0;
         std::optional<BestSnapshotData> bestSnapshot;
+        std::unordered_map<std::string, TimerAggregate> timerStats;
     };
 
     struct WorkerTask {
@@ -121,6 +128,7 @@ struct Evolution {
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
+    std::unordered_map<std::string, TimerAggregate> timerStatsAggregate_;
 
     TrainingBrainRegistry brainRegistry_;
 
@@ -132,6 +140,7 @@ struct Evolution {
     std::optional<Any> tick(StateMachine& dsm);
 
     Any onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm);
+    Any onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& dsm);
     Any onEvent(const Api::Exit::Cwc& cwc, StateMachine& dsm);
 

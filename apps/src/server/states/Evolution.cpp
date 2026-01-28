@@ -1,6 +1,7 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/Timers.h"
 #include "core/UUID.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -130,6 +131,20 @@ Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
     }
     return spec.scenarioId;
 }
+
+std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
+{
+    std::unordered_map<std::string, Evolution::TimerAggregate> stats;
+    const auto names = timers.getAllTimerNames();
+    stats.reserve(names.size());
+    for (const auto& name : names) {
+        Evolution::TimerAggregate entry;
+        entry.totalMs = timers.getAccumulatedTime(name);
+        entry.calls = timers.getCallCount(name);
+        stats.emplace(name, entry);
+    }
+    return stats;
+}
 } // namespace
 
 std::optional<Evolution::BestSnapshotData> Evolution::buildBestSnapshotData(
@@ -168,6 +183,7 @@ void Evolution::onEnter(StateMachine& dsm)
     pendingTrainingResult_.reset();
     cumulativeSimTime_ = 0.0;
     sumFitnessThisGen_ = 0.0;
+    timerStatsAggregate_.clear();
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
@@ -227,6 +243,24 @@ Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
+}
+
+Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::TimerStatsGet::Response;
+
+    Api::TimerStatsGet::Okay okay;
+    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+        Api::TimerStatsGet::TimerEntry entry;
+        entry.total_ms = aggregate.totalMs;
+        entry.calls = aggregate.calls;
+        entry.avg_ms = entry.calls > 0 ? entry.total_ms / entry.calls : 0.0;
+        okay.timers[name] = entry;
+    }
+
+    LOG_INFO(State, "Evolution: TimerStatsGet returning {} timers", okay.timers.size());
+    cwc.sendResponse(Response::okay(std::move(okay)));
+    return std::move(*this);
 }
 
 Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
@@ -524,6 +558,9 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         result.simTime = status.simTime;
         result.fitness = computeFitnessForRunner(
             *visibleRunner_, status, trainingSpec.organismType, evolutionConfig);
+        if (const World* world = visibleRunner_->getWorld()) {
+            result.timerStats = collectTimerStats(world->getTimers());
+        }
         processResult(dsm, std::move(result), visibleRunner_.get());
         visibleRunner_.reset();
         visibleEvalIndex_ = -1;
@@ -557,6 +594,9 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     result.simTime = status.simTime;
     result.fitness = computeFitnessForRunner(
         runner, status, state.trainingSpec.organismType, state.evolutionConfig);
+    if (const World* world = runner.getWorld()) {
+        result.timerStats = collectTimerStats(world->getTimers());
+    }
     if (updateBestFitnessHint(state.bestFitnessHint, result.fitness)) {
         auto snapshot = buildBestSnapshotData(runner);
         if (snapshot.has_value()) {
@@ -577,6 +617,17 @@ void Evolution::processResult(
     sumFitnessThisGen_ += result.fitness;
     currentEval++;
     cumulativeSimTime_ += result.simTime;
+    for (const auto& [name, entry] : result.timerStats) {
+        auto& aggregate = timerStatsAggregate_[name];
+        aggregate.totalMs += entry.totalMs;
+        aggregate.calls += entry.calls;
+    }
+    const auto totalSimulation = result.timerStats.find("total_simulation");
+    if (totalSimulation != result.timerStats.end()) {
+        auto& aggregate = timerStatsAggregate_["training_total"];
+        aggregate.totalMs += totalSimulation->second.totalMs;
+        aggregate.calls += totalSimulation->second.calls;
+    }
 
     if (result.fitness > bestFitnessThisGen) {
         bestFitnessThisGen = result.fitness;
@@ -885,6 +936,14 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
     result.summary.averageFitness = finalAverageFitness_;
     result.summary.totalTrainingSeconds = finalTrainingSeconds_;
     result.summary.trainingSessionId = trainingSessionId_;
+    result.timerStats.reserve(timerStatsAggregate_.size());
+    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+        Api::TimerStatsGet::TimerEntry entry;
+        entry.total_ms = aggregate.totalMs;
+        entry.calls = aggregate.calls;
+        entry.avg_ms = entry.calls > 0 ? entry.total_ms / entry.calls : 0.0;
+        result.timerStats.emplace(name, entry);
+    }
 
     if (!trainingSpec.population.empty()) {
         result.summary.primaryBrainKind = trainingSpec.population.front().brainKind;
