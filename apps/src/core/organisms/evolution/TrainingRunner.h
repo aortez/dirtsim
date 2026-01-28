@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/ScenarioConfig.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/TreeResourceTotals.h"
@@ -84,6 +85,7 @@ public:
 
     const World* getWorld() const { return world_.get(); }
     World* getWorld() { return world_.get(); }
+    ScenarioConfig getScenarioConfig() const;
 
     const Organism::Body* getOrganism() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const

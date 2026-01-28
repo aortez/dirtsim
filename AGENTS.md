@@ -42,7 +42,7 @@
 - JSON is only for transport boundaries; convert to typed structs internally.
 - CLI output: machine-readable data to stdout, logs/errors to stderr.
 - Prefer alphabetical ordering where it improves readability.
-- Favor poka-yoke/root-cause prevention over patching symptoms.
+- Favor root-cause fixes and eliminating classes of problems through design.
 - Prefer const, early exits, and RAII; avoid `std::move` unless required; use designated initializers.
 - Keep implementations in `.cpp` when possible; use forward declarations and `unique_ptr`/`shared_ptr` to cut compile chains.
 - Use logging macros (`LOG_*`, `SLOG_*`) instead of manual `spdlog` prefixes.
@@ -53,4 +53,4 @@
 - Install hooks with `cd apps && ./hooks/install-hooks.sh`.
 
 ## Logs
-- Log file: `dirtsim.log` next to executables; console defaults to INFO and file includes DEBUG/TRACE.
+- Log file: `dirtsim.log` next to executables; defaults to INFO.

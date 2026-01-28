@@ -466,9 +466,11 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 
     // Execute: Send SeedAdd command.
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = static_cast<int>(testX),
+        .y = static_cast<int>(testY),
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
@@ -535,9 +537,11 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
     data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = testX,
+        .y = testY,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
@@ -584,9 +588,11 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
     data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = testX,
+        .y = testY,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
@@ -614,9 +620,11 @@ TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 
     // Test negative coordinates.
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = -1;
-    cmd.y = 10;
+    Api::SeedAdd::Command cmd{
+        .x = -1,
+        .y = 10,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isError()) << "SeedAdd should fail for negative x";
@@ -633,9 +641,11 @@ TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 
     // Test coordinates beyond world bounds.
     callbackInvoked = false;
-    Api::SeedAdd::Command cmd2;
-    cmd2.x = simRunning.world->getData().width + 10;
-    cmd2.y = 10;
+    Api::SeedAdd::Command cmd2{
+        .x = simRunning.world->getData().width + 10,
+        .y = 10,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc2(cmd2, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isError()) << "SeedAdd should fail for out-of-bounds x";

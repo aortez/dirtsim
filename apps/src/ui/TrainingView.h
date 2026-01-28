@@ -58,6 +58,7 @@ public:
     void updateAnimations();
 
     void renderWorld(const WorldData& worldData);
+    void updateBestSnapshot(const WorldData& worldData, double fitness, int generation);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
@@ -134,6 +135,7 @@ private:
     int lastEval_ = -1;
     int lastGeneration_ = -1;
     double lastBestFitness_ = -1.0;
+    bool bestSnapshotFromServer_ = false;
 
     // Best snapshot data.
     std::unique_ptr<WorldData> bestWorldData_;

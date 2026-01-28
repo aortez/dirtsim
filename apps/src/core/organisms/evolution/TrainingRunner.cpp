@@ -200,6 +200,14 @@ const Organism::Body* TrainingRunner::getOrganism() const
     return world_->getOrganismManager().getOrganism(organismId_);
 }
 
+ScenarioConfig TrainingRunner::getScenarioConfig() const
+{
+    if (!scenario_) {
+        return DirtSim::Config::Empty{};
+    }
+    return scenario_->getConfig();
+}
+
 bool TrainingRunner::isOrganismAlive() const
 {
     return getOrganism() != nullptr;
