@@ -21,15 +21,19 @@ scale 1.6
       [Connected] [Forget]
     }
     .
-    "LAN Web UI" | [On]
-    "Incoming WebSockets" | [On]
-    .
     "WebSocket token"
     .
     "IP Address:"
     "wlan0: 192.168.1.143"
     .
     [Refresh]
+  } | {
+    .
+    "LAN Web UI"
+    [On]
+    .
+    "Incoming WebSockets"
+    [On]
   }
 }
 @endsalt
