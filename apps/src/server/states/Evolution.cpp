@@ -19,6 +19,7 @@
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <limits>
 #include <spdlog/spdlog.h>
@@ -28,6 +29,8 @@ namespace Server {
 namespace State {
 
 namespace {
+constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
+
 int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
 {
     DIRTSIM_ASSERT(!fitness.empty(), "Tournament selection requires non-empty fitness list");
@@ -160,6 +163,7 @@ void Evolution::onEnter(StateMachine& dsm)
     finalTrainingSeconds_ = 0.0;
     streamIntervalMs_ = 0;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
     pendingTrainingResult_.reset();
     cumulativeSimTime_ = 0.0;
@@ -451,6 +455,10 @@ void Evolution::drainResults(StateMachine& dsm)
     for (auto& result : results) {
         processResult(dsm, std::move(result));
     }
+
+    if (!results.empty()) {
+        broadcastProgress(dsm);
+    }
 }
 
 void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
@@ -726,6 +734,13 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
 void Evolution::broadcastProgress(StateMachine& dsm)
 {
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressBroadcastTime_ != std::chrono::steady_clock::time_point{}
+        && now - lastProgressBroadcastTime_ < kProgressBroadcastInterval) {
+        return;
+    }
+    lastProgressBroadcastTime_ = now;
+
     // Calculate average fitness of evaluated individuals.
     double avgFitness = 0.0;
     if (currentEval > 0) {
@@ -733,7 +748,6 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     }
 
     // Calculate total training time.
-    auto now = std::chrono::steady_clock::now();
     double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
 
     const double visibleSimTime = visibleRunner_ ? visibleRunner_->getSimTime() : 0.0;

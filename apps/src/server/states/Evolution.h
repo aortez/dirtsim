@@ -117,6 +117,7 @@ struct Evolution {
     double finalTrainingSeconds_ = 0.0;
     bool trainingComplete_ = false;
     int streamIntervalMs_ = 0;
+    std::chrono::steady_clock::time_point lastProgressBroadcastTime_{};
     std::chrono::steady_clock::time_point lastStreamBroadcastTime_{};
     UUID trainingSessionId_{};
     std::optional<UnsavedTrainingResult> pendingTrainingResult_;
