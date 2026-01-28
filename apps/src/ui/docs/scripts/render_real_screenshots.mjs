@@ -113,6 +113,17 @@ const extractCommandError = (output) => {
   return null;
 };
 
+const extractSelectedFlag = (output) => {
+  const parsed = parseJsonLine(output);
+  if (parsed?.value?.selected !== undefined) {
+    return Boolean(parsed.value.selected);
+  }
+  if (parsed?.selected !== undefined) {
+    return Boolean(parsed.selected);
+  }
+  return null;
+};
+
 const clipText = (text, maxLength = 800) => {
   if (!text) {
     return "";
@@ -122,6 +133,13 @@ const clipText = (text, maxLength = 800) => {
     return trimmed;
   }
   return `${trimmed.slice(0, maxLength)}...`;
+};
+
+const ensureIconRailExpanded = async (screenId) => {
+  console.error(`Ensuring icon rail expanded (${screenId})`);
+  await clickIconRailExpand();
+  await sleep(200);
+  await clickIconRailExpand();
 };
 
 const logStatusSnapshot = async (context) => {
@@ -247,6 +265,21 @@ const matchesExpectedStatus = (status, expected) => {
   return true;
 };
 
+const clickIconRailExpand = async () => {
+  const expandX = 40;
+  const expandY = 240;
+  await runCli(["ui", "MouseMove", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
+    allowFailure: true
+  });
+  await runCli(["ui", "MouseDown", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
+    allowFailure: true
+  });
+  await runCli(["ui", "MouseUp", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
+    allowFailure: true
+  });
+  await sleep(200);
+};
+
 const isIconSelectCommand = (args) =>
   Array.isArray(args) && args[0] === "ui" && args[1] === "IconSelect";
 
@@ -255,8 +288,12 @@ const runCliStep = async (step, screenId) => {
     throw new Error(`Missing args for step in ${screenId}`);
   }
 
+  const allowDeselected = Boolean(step.allowDeselected);
+  const retryOnUnselected = Boolean(step.retryOnUnselected);
+
   const { output, errorOutput, code } = await runCliCapture(step.args, { allowFailure: true });
   const commandError = extractCommandError(output) || extractCommandError(errorOutput);
+  const selectedFlag = extractSelectedFlag(output);
   const stdoutSnippet = clipText(output);
   const stderrSnippet = clipText(errorOutput);
   console.error(
@@ -300,6 +337,35 @@ const runCliStep = async (step, screenId) => {
     await logStatusSnapshot(`${screenId} iconselect-error`);
     throw new Error(`IconSelect error during ${screenId}: ${commandError}`);
   }
+  if (selectedFlag !== false) {
+    return;
+  }
+
+  if (!retryOnUnselected && !allowDeselected && !step.allowFailure) {
+    await logStatusSnapshot(`${screenId} iconselect-unselected`);
+    throw new Error(`IconSelect returned selected=false during ${screenId}`);
+  }
+
+  if (!retryOnUnselected) {
+    if (!allowDeselected) {
+      console.error(`CLI step (${screenId}): IconSelect returned selected=false`);
+    }
+    return;
+  }
+
+  console.error(`CLI step (${screenId}): IconSelect returned selected=false, expanding rail`);
+  await clickIconRailExpand();
+  const retry = await runCliCapture(step.args, { allowFailure: true });
+  const retrySelected = extractSelectedFlag(retry.output);
+  const retryError = extractCommandError(retry.output) || extractCommandError(retry.errorOutput);
+  if (retryError && !step.allowFailure) {
+    await logStatusSnapshot(`${screenId} iconselect-retry-error`);
+    throw new Error(`IconSelect retry error during ${screenId}: ${retryError}`);
+  }
+  if (retrySelected === false && !allowDeselected && !step.allowFailure) {
+    await logStatusSnapshot(`${screenId} iconselect-retry-false`);
+    throw new Error(`IconSelect retry still unselected during ${screenId}`);
+  }
 };
 
 const clearTrainingState = async () => {
@@ -325,6 +391,20 @@ const clearTrainingState = async () => {
     }
     return;
   }
+};
+
+const resetSystem = async (screen) => {
+  await runCli(["os-manager", "RestartServer"], { allowFailure: true });
+  await runCli(["os-manager", "RestartUi"], { allowFailure: true });
+  await runCli(["os-manager", "StartServer"], { allowFailure: true });
+  await runCli(["os-manager", "StartUi"], { allowFailure: true });
+  await sleep(screen.resetWaitMs ?? resetWaitMs);
+  await waitForUiConnected();
+  await requireUiState(
+    ["StartMenu", "SimRunning", "Paused", "Training"],
+    8000,
+    "after reset"
+  );
 };
 
 const run = async () => {
@@ -355,17 +435,17 @@ const run = async () => {
     return;
   }
 
+  let activeFlowId = null;
   for (const screen of selectedScreens) {
-    if (screen.resetUi) {
-      await runCli(["os-manager", "StartServer"], { allowFailure: true });
-      await runCli(["os-manager", "RestartUi"], { allowFailure: true });
-      await runCli(["os-manager", "StartUi"], { allowFailure: true });
-      await sleep(screen.resetWaitMs ?? resetWaitMs);
-      if (!screen.skipClearTraining) {
-        await clearTrainingState();
+    const flowId = screen.flowId ?? screen.id;
+    if (flowId !== activeFlowId) {
+      if (screen.resetSystem !== false) {
+        await resetSystem(screen);
+        if (!screen.skipClearTraining) {
+          await clearTrainingState();
+        }
       }
-      await waitForUiConnected();
-      await requireUiState(["StartMenu", "SimRunning", "Paused", "Training"], 8000, "after reset");
+      activeFlowId = flowId;
     }
 
     const steps = screen.steps ?? [];
@@ -454,6 +534,10 @@ const run = async () => {
         allowFailure: true
       });
       await sleep(400);
+    }
+
+    if (screen.ensureRailExpanded) {
+      await ensureIconRailExpanded(screen.id);
     }
 
     const outputPath = path.join(outputDir, `${screen.id}.png`);
