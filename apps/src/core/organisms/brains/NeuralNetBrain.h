@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <memory>
 
+class Timers;
+
 namespace DirtSim {
 
 struct Genome;
@@ -23,6 +25,7 @@ public:
     ~NeuralNetBrain() override;
 
     TreeCommand decide(const TreeSensoryData& sensory) override;
+    TreeCommand decideWithTimers(const TreeSensoryData& sensory, ::Timers& timers);
 
     Genome getGenome() const;
     void setGenome(const Genome& genome);
