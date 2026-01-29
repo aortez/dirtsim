@@ -568,6 +568,13 @@ State::Any Training::onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateMachi
     return std::move(*this);
 }
 
+State::Any Training::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm)
+{
+    auto nextState = onEvent(QuitTrainingClickedEvent{}, sm);
+    cwc.sendResponse(UiApi::TrainingQuit::Response::okay({ .queued = true }));
+    return nextState;
+}
+
 State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {

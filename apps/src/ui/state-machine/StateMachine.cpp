@@ -92,6 +92,8 @@ void StateMachine::setupWebSocketService()
     ws->registerHandler<UiApi::SimPause::Cwc>(
         [this](UiApi::SimPause::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::SimStop::Cwc>([this](UiApi::SimStop::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingQuit::Cwc>(
+        [this](UiApi::TrainingQuit::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingResultDiscard::Cwc>(
         [this](UiApi::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingResultSave::Cwc>(
@@ -266,6 +268,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StateGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingQuit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebSocketAccessSet);

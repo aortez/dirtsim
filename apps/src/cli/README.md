@@ -111,6 +111,7 @@ For a full UI overview, see `apps/src/ui/README.md`.
 - `Paused` → `SimRunning`: `./build-debug/bin/cli ui SimRun`
 - `SimRunning` or `Paused` → `StartMenu`: `./build-debug/bin/cli ui SimStop`
 - `StartMenu` → `Training`: `./build-debug/bin/cli ui TrainingStart '{...}'`
+- `Training` → `StartMenu`: `./build-debug/bin/cli ui TrainingQuit`
 - `Training` → `Genome Browser panel`: `./build-debug/bin/cli ui GenomeBrowserOpen`
 - `Training` → `SimRunning` (load genome): `./build-debug/bin/cli ui GenomeDetailLoad '{\"id\": \"...\"}'`
 - Any → `Shutdown`: `./build-debug/bin/cli ui Exit`

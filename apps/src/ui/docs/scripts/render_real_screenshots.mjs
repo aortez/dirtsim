@@ -6,7 +6,26 @@ import { screens } from "./real_screens.mjs";
 const rootDir = process.cwd();
 const outputDir = path.join(rootDir, "screenshots", "real");
 
-const sshHost = process.env.DIRTSIM_SSH_HOST ?? "dirtsim3.local";
+const shouldPrintHelp = process.argv.includes("--help") || process.argv.includes("-h");
+if (shouldPrintHelp) {
+  console.log(`Usage: npm run shots:real
+
+Capture real UI screenshots from a remote dirtsim target.
+
+Environment:
+  DIRTSIM_SSH_HOST           SSH host (default: dirtsim2.local)
+  DIRTSIM_SSH_USER           SSH user (optional)
+  DIRTSIM_REMOTE_TMP         Remote temp dir (default: /tmp/dirtsim-ui-docs)
+  DOCS_SCREENSHOT_ONLY       Comma-separated screen ids (e.g. start-menu,training)
+  DOCS_SCREENSHOT_ACTIVITY   0/1 to disable/enable activity nudges (default: 1)
+  DOCS_SCREENSHOT_RESET_WAIT_MS   Reset wait override (ms)
+  DOCS_SCREENSHOT_MIN_BYTES       Minimum screenshot size (bytes)
+  DOCS_SCREENSHOT_MAX_RETRIES     Retry count for small screenshots
+`);
+  process.exit(0);
+}
+
+const sshHost = process.env.DIRTSIM_SSH_HOST ?? "dirtsim2.local";
 const sshUser = process.env.DIRTSIM_SSH_USER;
 const sshTarget = sshUser ? `${sshUser}@${sshHost}` : sshHost;
 const remoteTmpDir = process.env.DIRTSIM_REMOTE_TMP ?? "/tmp/dirtsim-ui-docs";
@@ -33,12 +52,12 @@ const quoteForShell = (value) => {
   return `'${text.replace(/'/g, `'\"'\"'`)}'`;
 };
 
-const runRemoteCli = async (args, { allowFailure = false } = {}) => {
+const runRemoteCli = async (args) => {
   const command = ["dirtsim-cli", ...args].map(quoteForShell).join(" ");
   await new Promise((resolve, reject) => {
     const child = spawn("ssh", [sshTarget, command], { stdio: "inherit" });
     child.on("close", (code) => {
-      if (code === 0 || allowFailure) {
+      if (code === 0) {
         resolve();
       } else {
         reject(new Error(`SSH command failed (${code}) for: ${command}`));
@@ -47,7 +66,7 @@ const runRemoteCli = async (args, { allowFailure = false } = {}) => {
   });
 };
 
-const runRemoteCapture = async (args, { allowFailure = false } = {}) =>
+const runRemoteCapture = async (args) =>
   new Promise((resolve, reject) => {
     const command = ["dirtsim-cli", ...args].map(quoteForShell).join(" ");
     const child = spawn("ssh", [sshTarget, command], {
@@ -62,19 +81,22 @@ const runRemoteCapture = async (args, { allowFailure = false } = {}) =>
       errorOutput += chunk.toString();
     });
     child.on("close", (code) => {
-      if (code === 0 || allowFailure) {
-        resolve({ output, errorOutput, code });
-      } else {
-        reject(new Error(`SSH command failed (${code}) for: ${command}`));
+      const result = { output, errorOutput, code };
+      if (code === 0) {
+        resolve(result);
+        return;
       }
+      const error = new Error(`SSH command failed (${code}) for: ${command}`);
+      error.result = result;
+      reject(error);
     });
   });
 
-const runSsh = async (command, { allowFailure = false } = {}) => {
+const runSsh = async (command) => {
   await new Promise((resolve, reject) => {
     const child = spawn("ssh", [sshTarget, command], { stdio: "inherit" });
     child.on("close", (code) => {
-      if (code === 0 || allowFailure) {
+      if (code === 0) {
         resolve();
       } else {
         reject(new Error(`SSH command failed (${code}) for: ${command}`));
@@ -83,9 +105,9 @@ const runSsh = async (command, { allowFailure = false } = {}) => {
   });
 };
 
-const runCli = async (args, options) => runRemoteCli(args, options);
+const runCli = async (args) => runRemoteCli(args);
 
-const runCliCapture = async (args, options) => runRemoteCapture(args, options);
+const runCliCapture = async (args) => runRemoteCapture(args);
 
 const parseJsonLine = (text) => {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
@@ -135,13 +157,6 @@ const clipText = (text, maxLength = 800) => {
   return `${trimmed.slice(0, maxLength)}...`;
 };
 
-const ensureIconRailExpanded = async (screenId) => {
-  console.error(`Ensuring icon rail expanded (${screenId})`);
-  await clickIconRailExpand();
-  await sleep(200);
-  await clickIconRailExpand();
-};
-
 const logStatusSnapshot = async (context) => {
   try {
     const status = await getUiStatus();
@@ -185,6 +200,43 @@ const getUiState = async () => {
   }
 };
 
+const requireUiStateFromStateGet = async (context) => {
+  let result;
+  let capturedError = null;
+  try {
+    result = await runCliCapture(["ui", "StateGet"]);
+  } catch (error) {
+    capturedError = error;
+    result = error?.result ?? { output: "", errorOutput: "", code: null };
+  }
+
+  const output = result.output ?? "";
+  const errorOutput = result.errorOutput ?? "";
+  const code = result.code ?? null;
+  const commandError = extractCommandError(output) || extractCommandError(errorOutput);
+  const stdoutSnippet = clipText(output);
+  const stderrSnippet = clipText(errorOutput);
+  const label = context ? ` (${context})` : "";
+
+  if (capturedError || code !== 0 || commandError) {
+    const detail = commandError ? `: ${commandError}` : "";
+    throw new Error(
+      `StateGet failed${label} (exit ${code ?? "unknown"})${detail}\n` +
+        `stdout: ${stdoutSnippet}\nstderr: ${stderrSnippet}`.trim()
+    );
+  }
+
+  const parsed = parseJsonLine(output) ?? parseJsonLine(errorOutput);
+  const state = parsed?.value?.state ?? parsed?.state ?? null;
+  if (!state) {
+    throw new Error(
+      `StateGet missing state${label}\n` +
+        `stdout: ${stdoutSnippet}\nstderr: ${stderrSnippet}`.trim()
+    );
+  }
+  return state;
+};
+
 const getServerState = async () => {
   const status = await getServerStatus();
   return status?.state ?? null;
@@ -207,7 +259,7 @@ const waitForUiState = async (targets, timeoutMs = 8000) => {
     if (state && targets.includes(state)) {
       return state;
     }
-    await sleep(400);
+    await sleep(100);
   }
   return null;
 };
@@ -265,23 +317,55 @@ const matchesExpectedStatus = (status, expected) => {
   return true;
 };
 
-const clickIconRailExpand = async () => {
-  const expandX = 40;
-  const expandY = 240;
-  await runCli(["ui", "MouseMove", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
-    allowFailure: true
-  });
-  await runCli(["ui", "MouseDown", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
-    allowFailure: true
-  });
-  await runCli(["ui", "MouseUp", `{\"pixelX\":${expandX},\"pixelY\":${expandY}}`], {
-    allowFailure: true
-  });
-  await sleep(200);
-};
-
 const isIconSelectCommand = (args) =>
   Array.isArray(args) && args[0] === "ui" && args[1] === "IconSelect";
+
+const isMouseClickCommand = (args) =>
+  Array.isArray(args)
+  && args[0] === "ui"
+  && (args[1] === "MouseDown" || args[1] === "MouseUp");
+
+const navigateToScreen = async (step, screenId) => {
+  const target = step.target;
+  if (target !== "StartMenu" && target !== "Training") {
+    throw new Error(`Unsupported NavigateToScreen target (${screenId}): ${target}`);
+  }
+
+  const state = await requireUiStateFromStateGet(`${screenId} NavigateToScreen`);
+  if (state === target) {
+    return;
+  }
+
+  if (target === "StartMenu") {
+    if (state === "SimRunning" || state === "Paused") {
+      await runCliStep({ args: ["ui", "SimStop"] }, screenId);
+      await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      return;
+    }
+    if (state === "Training") {
+      await runCliStep({ args: ["ui", "TrainingQuit"] }, screenId);
+      await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      return;
+    }
+    throw new Error(`NavigateToScreen(${target}) unsupported from state ${state} (${screenId})`);
+  }
+
+  if (target === "Training") {
+    if (state === "StartMenu") {
+      await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
+      await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      return;
+    }
+    if (state === "SimRunning" || state === "Paused") {
+      await runCliStep({ args: ["ui", "SimStop"] }, screenId);
+      await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
+      await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      return;
+    }
+    throw new Error(`NavigateToScreen(${target}) unsupported from state ${state} (${screenId})`);
+  }
+};
 
 const runCliStep = async (step, screenId) => {
   if (!step.args || step.args.length === 0) {
@@ -289,9 +373,26 @@ const runCliStep = async (step, screenId) => {
   }
 
   const allowDeselected = Boolean(step.allowDeselected);
-  const retryOnUnselected = Boolean(step.retryOnUnselected);
+  if (isMouseClickCommand(step.args)) {
+    throw new Error(`MouseDown/MouseUp not allowed in docs DSL (${screenId}).`);
+  }
 
-  const { output, errorOutput, code } = await runCliCapture(step.args, { allowFailure: true });
+  let output = "";
+  let errorOutput = "";
+  let code = null;
+  let capturedError = null;
+  try {
+    const result = await runCliCapture(step.args);
+    output = result.output;
+    errorOutput = result.errorOutput;
+    code = result.code;
+  } catch (error) {
+    capturedError = error;
+    const result = error?.result ?? {};
+    output = result.output ?? "";
+    errorOutput = result.errorOutput ?? "";
+    code = result.code ?? null;
+  }
   const commandError = extractCommandError(output) || extractCommandError(errorOutput);
   const selectedFlag = extractSelectedFlag(output);
   const stdoutSnippet = clipText(output);
@@ -306,18 +407,25 @@ const runCliStep = async (step, screenId) => {
     console.error(`CLI stderr (${screenId}): ${stderrSnippet}`);
   }
 
+  if (capturedError) {
+    if (isIconSelectCommand(step.args)) {
+      await logStatusSnapshot(`${screenId} iconselect-exit-${code ?? "unknown"}`);
+    }
+    throw new Error(
+      `Command failed (${code ?? "unknown"}) during ${screenId}` +
+        (commandError ? `: ${commandError}` : "")
+    );
+  }
+
   if (!isIconSelectCommand(step.args)) {
-    if (code !== 0 && !step.allowFailure) {
+    if (code !== 0) {
       throw new Error(
         `Command failed (${code}) during ${screenId}` +
           (commandError ? `: ${commandError}` : "")
       );
     }
-    if (commandError && !step.allowFailure) {
+    if (commandError) {
       throw new Error(`Command error during ${screenId}: ${commandError}`);
-    }
-    if (commandError && step.allowFailure) {
-      console.error(`CLI warning (${screenId}): ${commandError}`);
     }
     return;
   }
@@ -326,14 +434,14 @@ const runCliStep = async (step, screenId) => {
     await logStatusSnapshot(`${screenId} iconrail-unavailable`);
     throw new Error(`IconRail unavailable during ${screenId}: ${commandError}`);
   }
-  if (code !== 0 && !step.allowFailure) {
+  if (code !== 0) {
     await logStatusSnapshot(`${screenId} iconselect-exit-${code}`);
     throw new Error(
       `IconSelect failed (${code}) during ${screenId}` +
         (commandError ? `: ${commandError}` : "")
     );
   }
-  if (commandError && !step.allowFailure) {
+  if (commandError) {
     await logStatusSnapshot(`${screenId} iconselect-error`);
     throw new Error(`IconSelect error during ${screenId}: ${commandError}`);
   }
@@ -341,51 +449,31 @@ const runCliStep = async (step, screenId) => {
     return;
   }
 
-  if (!retryOnUnselected && !allowDeselected && !step.allowFailure) {
+  if (!allowDeselected) {
     await logStatusSnapshot(`${screenId} iconselect-unselected`);
     throw new Error(`IconSelect returned selected=false during ${screenId}`);
   }
-
-  if (!retryOnUnselected) {
-    if (!allowDeselected) {
-      console.error(`CLI step (${screenId}): IconSelect returned selected=false`);
-    }
-    return;
-  }
-
-  console.error(`CLI step (${screenId}): IconSelect returned selected=false, expanding rail`);
-  await clickIconRailExpand();
-  const retry = await runCliCapture(step.args, { allowFailure: true });
-  const retrySelected = extractSelectedFlag(retry.output);
-  const retryError = extractCommandError(retry.output) || extractCommandError(retry.errorOutput);
-  if (retryError && !step.allowFailure) {
-    await logStatusSnapshot(`${screenId} iconselect-retry-error`);
-    throw new Error(`IconSelect retry error during ${screenId}: ${retryError}`);
-  }
-  if (retrySelected === false && !allowDeselected && !step.allowFailure) {
-    await logStatusSnapshot(`${screenId} iconselect-retry-false`);
-    throw new Error(`IconSelect retry still unselected during ${screenId}`);
-  }
+  return;
 };
 
 const clearTrainingState = async () => {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const serverState = await getServerState();
     if (serverState === "UnsavedTrainingResult") {
-      await runCli(["server", "TrainingResultDiscard"], { allowFailure: true });
+      await runCli(["server", "TrainingResultDiscard"]);
     }
     const state = await getUiState();
     if (!state) {
       return;
     }
     if (state === "UnsavedTrainingResult") {
-      await runCli(["ui", "TrainingResultDiscard"], { allowFailure: true });
+      await runCli(["ui", "TrainingResultDiscard"]);
       await sleep(700);
       continue;
     }
     if (state === "Training") {
-      await runCli(["ui", "TrainingResultDiscard"], { allowFailure: true });
-      await runCli(["ui", "SimStop"], { allowFailure: true });
+      await runCli(["ui", "TrainingResultDiscard"]);
+      await runCli(["ui", "SimStop"]);
       await sleep(700);
       continue;
     }
@@ -393,16 +481,13 @@ const clearTrainingState = async () => {
   }
 };
 
-const resetSystem = async (screen) => {
-  await runCli(["os-manager", "RestartServer"], { allowFailure: true });
-  await runCli(["os-manager", "RestartUi"], { allowFailure: true });
-  await runCli(["os-manager", "StartServer"], { allowFailure: true });
-  await runCli(["os-manager", "StartUi"], { allowFailure: true });
-  await sleep(screen.resetWaitMs ?? resetWaitMs);
+const resetSystem = async () => {
+  await runCli(["os-manager", "RestartServer"]);
+  await runCli(["os-manager", "RestartUi"]);
   await waitForUiConnected();
   await requireUiState(
     ["StartMenu", "SimRunning", "Paused", "Training"],
-    8000,
+    2000,
     "after reset"
   );
 };
@@ -437,10 +522,11 @@ const run = async () => {
 
   let activeFlowId = null;
   for (const screen of selectedScreens) {
+    console.info(`Screenshot scenario: ${screen.id}`);
     const flowId = screen.flowId ?? screen.id;
     if (flowId !== activeFlowId) {
       if (screen.resetSystem !== false) {
-        await resetSystem(screen);
+        await resetSystem();
         if (!screen.skipClearTraining) {
           await clearTrainingState();
         }
@@ -450,7 +536,10 @@ const run = async () => {
 
     const steps = screen.steps ?? [];
     for (const step of steps) {
-      if (step.waitForState && (!step.args || step.args.length === 0)) {
+      if (step.kind === "NavigateToScreen") {
+        await navigateToScreen(step, screen.id);
+      }
+      else if (step.waitForState && (!step.args || step.args.length === 0)) {
         await requireUiState(
           Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
           step.waitTimeoutMs,
@@ -458,19 +547,21 @@ const run = async () => {
         );
         continue;
       }
-      try {
-        await runCliStep(step, screen.id);
-      } catch (error) {
-        if (step.retryOnTrainingResult) {
-          await clearTrainingState();
-          await requireUiState(
-            ["StartMenu", "Paused", "SimRunning"],
-            8000,
-            `${screen.id} retryOnTrainingResult`
-          );
+      else {
+        try {
           await runCliStep(step, screen.id);
-        } else {
-          throw error;
+        } catch (error) {
+          if (step.retryOnTrainingResult) {
+            await clearTrainingState();
+            await requireUiState(
+              ["StartMenu", "Paused", "SimRunning"],
+              8000,
+              `${screen.id} retryOnTrainingResult`
+            );
+            await runCliStep(step, screen.id);
+          } else {
+            throw error;
+          }
         }
       }
       if (step.waitMs) {
@@ -493,10 +584,7 @@ const run = async () => {
       );
       if (!status && screen.expect.selectedIcon) {
         await runCliStep(
-          {
-            args: ["ui", "IconSelect", JSON.stringify({ id: screen.expect.selectedIcon })],
-            allowFailure: true
-          },
+          { args: ["ui", "IconSelect", JSON.stringify({ id: screen.expect.selectedIcon })] },
           screen.id
         );
       }
@@ -518,26 +606,10 @@ const run = async () => {
       if (!screen.skipClearTraining) {
         await clearTrainingState();
       }
-      await runCli(["ui", "MouseMove", "{\"pixelX\":15,\"pixelY\":80}"], {
-        allowFailure: true
-      });
-      await runCli(["ui", "MouseDown", "{\"pixelX\":15,\"pixelY\":80}"], {
-        allowFailure: true
-      });
-      await runCli(["ui", "MouseUp", "{\"pixelX\":15,\"pixelY\":80}"], {
-        allowFailure: true
-      });
-      await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"], {
-        allowFailure: true
-      });
-      await runCli(["ui", "MouseMove", "{\"pixelX\":60,\"pixelY\":60}"], {
-        allowFailure: true
-      });
+      await runCli(["ui", "MouseMove", "{\"pixelX\":15,\"pixelY\":80}"]);
+      await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"]);
+      await runCli(["ui", "MouseMove", "{\"pixelX\":60,\"pixelY\":60}"]);
       await sleep(400);
-    }
-
-    if (screen.ensureRailExpanded) {
-      await ensureIconRailExpanded(screen.id);
     }
 
     const outputPath = path.join(outputDir, `${screen.id}.png`);
@@ -568,16 +640,12 @@ const run = async () => {
         break;
       }
       attempt += 1;
-      await sleep(800);
+      await sleep(100);
       if (activityEnabled) {
-        await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"], {
-          allowFailure: true
-        });
+        await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"]);
       }
     }
-    await runSsh(`rm -f ${quoteForShell(remotePath)}`, {
-      allowFailure: true
-    });
+    await runSsh(`rm -f ${quoteForShell(remotePath)}`);
 
     if (screen.afterMs) {
       await sleep(screen.afterMs);

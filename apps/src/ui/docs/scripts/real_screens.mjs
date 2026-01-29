@@ -3,20 +3,19 @@ export const screens = [
     id: "start-menu",
     resetSystem: true,
     activityEnabled: false,
-    ensureRailExpanded: true,
     expect: {
       state: "StartMenu"
     },
     steps: [
       {
-        args: ["ui", "SimStop"],
-        waitMs: 300
+        kind: "NavigateToScreen",
+        target: "StartMenu"
       }
     ]
   },
   {
     id: "training",
-    resetSystem: true,
+    resetSystem: false,
     activityEnabled: false,
     expect: {
       state: "Training",
@@ -25,21 +24,13 @@ export const screens = [
     },
     steps: [
       {
-        args: ["ui", "SimStop"],
-        waitMs: 300,
-        waitForState: "StartMenu"
+        kind: "NavigateToScreen",
+        target: "Training"
       },
       {
         args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"],
-        waitMs: 700,
-        waitForState: "Training",
-        retryOnUnselected: true,
-        allowDeselected: true
-      },
-      {
-        args: ["ui", "IconSelect", "{\"id\":\"CORE\"}"],
-        waitMs: 600,
-        retryOnUnselected: true
+        waitMs: 500,
+        waitForState: "Training"
       }
     ]
   },
@@ -54,14 +45,12 @@ export const screens = [
     },
     steps: [
       {
-        args: ["ui", "SimStop"],
-        waitMs: 300,
-        waitForState: "StartMenu"
+        kind: "NavigateToScreen",
+        target: "StartMenu"
       },
       {
         args: ["ui", "IconSelect", "{\"id\":\"NETWORK\"}"],
-        waitMs: 800,
-        allowFailure: true
+        waitMs: 800
       },
       {
         args: ["ui", "IconSelect", "{\"id\":\"NETWORK\"}"],
@@ -82,8 +71,8 @@ export const screens = [
     },
     steps: [
       {
-        args: ["ui", "SimStop"],
-        waitMs: 300
+        kind: "NavigateToScreen",
+        target: "Training"
       },
       {
         args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"],
@@ -108,15 +97,6 @@ export const screens = [
     steps: [
       {
         args: ["ui", "MouseMove", "{\"pixelX\":200,\"pixelY\":170}"],
-        waitMs: 100,
-        allowFailure: true
-      },
-      {
-        args: ["ui", "MouseDown", "{\"pixelX\":200,\"pixelY\":170}"],
-        waitMs: 80
-      },
-      {
-        args: ["ui", "MouseUp", "{\"pixelX\":200,\"pixelY\":170}"],
         waitMs: 500
       }
     ]
