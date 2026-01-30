@@ -750,23 +750,50 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     }
 
     // Elitist replacement: keep best from parents + offspring.
-    std::vector<std::pair<double, Individual>> pool;
+    struct PoolEntry {
+        double fitness = 0.0;
+        Individual individual;
+        bool isOffspring = false;
+        int order = 0;
+    };
+
+    std::vector<PoolEntry> pool;
     pool.reserve(population.size() + offspring.size());
     for (size_t i = 0; i < population.size(); ++i) {
-        pool.emplace_back(fitnessScores[i], population[i]);
+        pool.push_back(
+            PoolEntry{
+                .fitness = fitnessScores[i],
+                .individual = population[i],
+                .isOffspring = false,
+                .order = static_cast<int>(i),
+            });
     }
+    const int parentCount = static_cast<int>(population.size());
     for (size_t i = 0; i < offspring.size(); ++i) {
-        pool.emplace_back(offspringFitness[i], offspring[i]);
+        pool.push_back(
+            PoolEntry{
+                .fitness = offspringFitness[i],
+                .individual = offspring[i],
+                .isOffspring = true,
+                .order = parentCount + static_cast<int>(i),
+            });
     }
 
-    std::sort(
-        pool.begin(), pool.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::sort(pool.begin(), pool.end(), [](const PoolEntry& a, const PoolEntry& b) {
+        if (a.fitness != b.fitness) {
+            return a.fitness > b.fitness;
+        }
+        if (a.isOffspring != b.isOffspring) {
+            return a.isOffspring;
+        }
+        return a.order < b.order;
+    });
 
     population.clear();
     population.reserve(evolutionConfig.populationSize);
     const int count = std::min(evolutionConfig.populationSize, static_cast<int>(pool.size()));
     for (int i = 0; i < count; ++i) {
-        population.push_back(pool[i].second);
+        population.push_back(pool[i].individual);
     }
 
     // Advance to next generation.

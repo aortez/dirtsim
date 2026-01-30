@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <optional>
+#include <vector>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
@@ -249,6 +250,181 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
     for (const auto& individual : evolutionState.population) {
         EXPECT_EQ(individual.brainKind, TrainingBrainKind::RuleBased);
         EXPECT_FALSE(individual.genome.has_value());
+    }
+}
+
+TEST_F(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
+{
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.mutationConfig = MutationConfig{
+        .rate = 0.0,
+        .sigma = 0.5,
+        .resetRate = 0.0,
+    };
+    evolutionState.trainingSpec = makeTrainingSpec(2);
+
+    evolutionState.onEnter(*stateMachine);
+
+    std::vector<Genome> parents;
+    parents.reserve(evolutionState.population.size());
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        parents.push_back(individual.genome.value());
+    }
+
+    constexpr int maxTicks = 20;
+    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+        auto result = evolutionState.tick(*stateMachine);
+        ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+    }
+
+    ASSERT_EQ(evolutionState.generation, 1);
+    ASSERT_EQ(evolutionState.population.size(), parents.size());
+
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        const auto& genome = individual.genome.value();
+        bool matchesParent = false;
+        for (const auto& parent : parents) {
+            if (genome.weights == parent.weights) {
+                matchesParent = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(matchesParent);
+    }
+}
+
+TEST_F(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
+{
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.mutationConfig = MutationConfig{
+        .rate = 0.0,
+        .sigma = 0.5,
+        .resetRate = 1.0,
+    };
+    evolutionState.trainingSpec = makeTrainingSpec(2);
+
+    evolutionState.onEnter(*stateMachine);
+
+    std::vector<Genome> parents;
+    parents.reserve(evolutionState.population.size());
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        parents.push_back(individual.genome.value());
+    }
+
+    evolutionState.rng.seed(123u);
+
+    constexpr int maxTicks = 20;
+    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+        auto result = evolutionState.tick(*stateMachine);
+        ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+    }
+
+    ASSERT_EQ(evolutionState.generation, 1);
+    ASSERT_EQ(evolutionState.population.size(), parents.size());
+
+    bool foundMutation = false;
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        const auto& genome = individual.genome.value();
+        bool matchesParent = false;
+        for (const auto& parent : parents) {
+            if (genome.weights == parent.weights) {
+                matchesParent = true;
+                break;
+            }
+        }
+        if (!matchesParent) {
+            foundMutation = true;
+            break;
+        }
+    }
+
+    EXPECT_TRUE(foundMutation);
+}
+
+TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
+{
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.048;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.mutationConfig = MutationConfig{
+        .rate = 0.0,
+        .sigma = 0.5,
+        .resetRate = 1.0,
+    };
+    auto& repo = stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const Genome seedGenome = Genome::constant(0.1);
+    const GenomeId seedId = UUID::generate();
+    const GenomeMetadata seedMeta{
+        .name = "seed",
+        .fitness = 1.0,
+        .generation = 0,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+    };
+    repo.store(seedId, seedGenome, seedMeta);
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 2;
+    population.seedGenomes = { seedId, seedId };
+    population.randomCount = 0;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*stateMachine);
+
+    std::vector<Genome> parents;
+    parents.reserve(evolutionState.population.size());
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        parents.push_back(individual.genome.value());
+    }
+
+    evolutionState.rng.seed(42u);
+
+    constexpr int maxTicks = 40;
+    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+        auto result = evolutionState.tick(*stateMachine);
+        ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
+    }
+
+    ASSERT_EQ(evolutionState.generation, 1);
+    ASSERT_EQ(evolutionState.population.size(), parents.size());
+
+    for (const auto& individual : evolutionState.population) {
+        ASSERT_TRUE(individual.genome.has_value());
+        const auto& genome = individual.genome.value();
+        bool matchesParent = false;
+        for (const auto& parent : parents) {
+            if (genome.weights == parent.weights) {
+                matchesParent = true;
+                break;
+            }
+        }
+        EXPECT_TRUE(matchesParent);
     }
 }
 

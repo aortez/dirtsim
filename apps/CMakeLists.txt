@@ -409,6 +409,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp
+    src/core/organisms/evolution/TreeEvaluator.cpp
     src/core/organisms/components/LightHandHeld.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
     src/core/organisms/tests/MultiCellTestOrganism.cpp

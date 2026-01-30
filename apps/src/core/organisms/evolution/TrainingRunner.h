@@ -3,10 +3,10 @@
 #include "core/ScenarioConfig.h"
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
-#include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/organisms/evolution/TreeEvaluator.h"
 #include <memory>
 #include <optional>
 #include <string>
@@ -88,16 +88,13 @@ public:
     ScenarioConfig getScenarioConfig() const;
 
     const Organism::Body* getOrganism() const;
-    const std::optional<TreeResourceTotals>& getTreeResourceTotals() const
-    {
-        return treeResourceTotals_;
-    }
+    const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
 
     double getSimTime() const { return simTime_; }
     double getMaxTime() const { return maxTime_; }
     float getProgress() const { return static_cast<float>(simTime_ / maxTime_); }
 
-    double getCurrentMaxEnergy() const { return maxEnergy_; }
+    double getCurrentMaxEnergy() const;
     bool isOrganismAlive() const;
 
 private:
@@ -112,8 +109,7 @@ private:
 
     double simTime_ = 0.0;
     double maxTime_ = 600.0;
-    double maxEnergy_ = 0.0;
-    std::optional<TreeResourceTotals> treeResourceTotals_;
+    TreeEvaluator treeEvaluator_;
     Vector2d spawnPosition_{ 0.0, 0.0 };
     Vector2d lastPosition_{ 0.0, 0.0 };
 

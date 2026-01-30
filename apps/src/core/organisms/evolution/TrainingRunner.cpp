@@ -156,8 +156,7 @@ TrainingRunner::Status TrainingRunner::step(int frames)
         if (trainingSpec_.organismType == OrganismType::TREE) {
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
-                maxEnergy_ = std::max(maxEnergy_, tree->getEnergy());
-                treeResourceTotals_ = tree->getResourceTotals();
+                treeEvaluator_.update(*tree);
             }
         }
 
@@ -180,7 +179,7 @@ TrainingRunner::Status TrainingRunner::getStatus() const
         Vector2d delta{ lastPosition_.x - spawnPosition_.x, lastPosition_.y - spawnPosition_.y };
         status.distanceTraveled = delta.mag();
     }
-    status.maxEnergy = maxEnergy_;
+    status.maxEnergy = treeEvaluator_.getMaxEnergy();
 
     if (const Organism::Body* organism = getOrganism()) {
         status.lifespan = organism->getAge();
@@ -190,6 +189,16 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     }
 
     return status;
+}
+
+const std::optional<TreeResourceTotals>& TrainingRunner::getTreeResourceTotals() const
+{
+    return treeEvaluator_.getResourceTotals();
+}
+
+double TrainingRunner::getCurrentMaxEnergy() const
+{
+    return treeEvaluator_.getMaxEnergy();
 }
 
 const Organism::Body* TrainingRunner::getOrganism() const
@@ -239,7 +248,7 @@ void TrainingRunner::spawnEvaluationOrganism()
     spawnPosition_ = organism->position;
     lastPosition_ = spawnPosition_;
     if (trainingSpec_.organismType == OrganismType::TREE) {
-        treeResourceTotals_ = TreeResourceTotals{};
+        treeEvaluator_.start();
     }
 }
 
