@@ -2,62 +2,50 @@
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "server/StateMachine.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/states/Idle.h"
 #include "server/states/State.h"
 #include "server/states/UnsavedTrainingResult.h"
-#include <filesystem>
+#include "server/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
 using namespace DirtSim::Server::State;
+using namespace DirtSim::Server::Tests;
 
-class StateUnsavedTrainingResultTest : public ::testing::Test {
-protected:
-    void SetUp() override
-    {
-        testDataDir_ = std::filesystem::temp_directory_path() / "dirtsim-test-unsaved";
-        stateMachine = std::make_unique<StateMachine>(testDataDir_);
-    }
+namespace {
 
-    void TearDown() override
-    {
-        stateMachine.reset();
-        std::filesystem::remove_all(testDataDir_);
-    }
-
-    UnsavedTrainingResult::Candidate makeCandidate(double fitness, double weightValue)
-    {
-        UnsavedTrainingResult::Candidate candidate;
-        candidate.id = UUID::generate();
-        candidate.genome = Genome::constant(weightValue);
-        candidate.metadata = GenomeMetadata{
-            .name = "candidate",
-            .fitness = fitness,
-            .generation = 1,
-            .createdTimestamp = 1234567890,
-            .scenarioId = Scenario::EnumType::TreeGermination,
-            .notes = "",
-            .organismType = OrganismType::TREE,
-            .brainKind = TrainingBrainKind::NeuralNet,
-            .brainVariant = std::nullopt,
-            .trainingSessionId = UUID::generate(),
-        };
-        candidate.brainKind = TrainingBrainKind::NeuralNet;
-        candidate.fitness = fitness;
-        candidate.generation = 1;
-        return candidate;
-    }
-
-    std::filesystem::path testDataDir_;
-    std::unique_ptr<StateMachine> stateMachine;
-};
-
-TEST_F(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
+UnsavedTrainingResult::Candidate makeCandidate(double fitness, double weightValue)
 {
+    UnsavedTrainingResult::Candidate candidate;
+    candidate.id = UUID::generate();
+    candidate.genome = Genome::constant(weightValue);
+    candidate.metadata = GenomeMetadata{
+        .name = "candidate",
+        .fitness = fitness,
+        .generation = 1,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = UUID::generate(),
+    };
+    candidate.brainKind = TrainingBrainKind::NeuralNet;
+    candidate.fitness = fitness;
+    candidate.generation = 1;
+    return candidate;
+}
+
+} // namespace
+
+TEST(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
+{
+    TestStateMachineFixture fixture("dirtsim-test-unsaved");
+
     UnsavedTrainingResult state;
     state.summary.scenarioId = Scenario::EnumType::TreeGermination;
     state.summary.organismType = OrganismType::TREE;
@@ -79,7 +67,7 @@ TEST_F(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
         capturedResponse = std::move(response);
     });
 
-    State::Any newState = state.onEvent(cwc, *stateMachine);
+    State::Any newState = state.onEvent(cwc, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
     ASSERT_TRUE(capturedResponse.isValue());
@@ -87,14 +75,16 @@ TEST_F(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
     EXPECT_EQ(value.savedCount, 2);
     EXPECT_EQ(value.discardedCount, 1);
 
-    auto& repo = stateMachine->getGenomeRepository();
+    auto& repo = fixture.stateMachine->getGenomeRepository();
     EXPECT_TRUE(repo.exists(candidateA.id));
     EXPECT_TRUE(repo.exists(candidateC.id));
     EXPECT_FALSE(repo.exists(candidateB.id));
 }
 
-TEST_F(StateUnsavedTrainingResultTest, TrainingResultDiscardTransitionsToIdle)
+TEST(StateUnsavedTrainingResultTest, TrainingResultDiscardTransitionsToIdle)
 {
+    TestStateMachineFixture fixture("dirtsim-test-unsaved");
+
     UnsavedTrainingResult state;
 
     Api::TrainingResultDiscard::Response capturedResponse;
@@ -103,7 +93,7 @@ TEST_F(StateUnsavedTrainingResultTest, TrainingResultDiscardTransitionsToIdle)
         capturedResponse = std::move(response);
     });
 
-    State::Any newState = state.onEvent(cwc, *stateMachine);
+    State::Any newState = state.onEvent(cwc, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
     ASSERT_TRUE(capturedResponse.isValue());

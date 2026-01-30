@@ -2,14 +2,13 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
-#include "server/StateMachine.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/State.h"
-#include <filesystem>
+#include "server/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 #include <optional>
 #include <vector>
@@ -17,30 +16,7 @@
 using namespace DirtSim;
 using namespace DirtSim::Server;
 using namespace DirtSim::Server::State;
-
-/**
- * @brief Test fixture for Evolution state tests.
- *
- * Provides common setup: a StateMachine instance for state context.
- */
-class StateEvolutionTest : public ::testing::Test {
-protected:
-    void SetUp() override
-    {
-        testDataDir_ = std::filesystem::temp_directory_path() / "dirtsim-test";
-        stateMachine = std::make_unique<StateMachine>(testDataDir_);
-    }
-
-    void TearDown() override
-    {
-        stateMachine.reset();
-        std::filesystem::remove_all(testDataDir_);
-    }
-
-    std::filesystem::path testDataDir_;
-
-    std::unique_ptr<StateMachine> stateMachine;
-};
+using namespace DirtSim::Server::Tests;
 
 namespace {
 
@@ -76,8 +52,10 @@ struct EvolutionWorkerGuard {
 /**
  * @brief Test that EvolutionStart command transitions Idle to Evolution.
  */
-TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
+TEST(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Idle state.
     Idle idleState;
 
@@ -97,7 +75,7 @@ TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     });
 
     // Execute: Send EvolutionStart command to Idle state.
-    State::Any newState = idleState.onEvent(cwc, *stateMachine);
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: State transitioned to Evolution.
     ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()))
@@ -116,8 +94,10 @@ TEST_F(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
 }
 
-TEST_F(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
+TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
 {
+    TestStateMachineFixture fixture;
+
     Idle idleState;
 
     Api::EvolutionStart::Command cmd;
@@ -134,11 +114,13 @@ TEST_F(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& /*response*/) {});
 
-    EXPECT_DEATH({ idleState.onEvent(cwc, *stateMachine); }, ".*");
+    EXPECT_DEATH({ idleState.onEvent(cwc, *fixture.stateMachine); }, ".*");
 }
 
-TEST_F(StateEvolutionTest, MissingBrainKindTriggersDeath)
+TEST(StateEvolutionTest, MissingBrainKindTriggersDeath)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 1;
     evolutionState.evolutionConfig.maxGenerations = 1;
@@ -151,14 +133,16 @@ TEST_F(StateEvolutionTest, MissingBrainKindTriggersDeath)
     evolutionState.trainingSpec.organismType = OrganismType::TREE;
     evolutionState.trainingSpec.population.push_back(spec);
 
-    EXPECT_DEATH({ evolutionState.onEnter(*stateMachine); }, ".*");
+    EXPECT_DEATH({ evolutionState.onEnter(*fixture.stateMachine); }, ".*");
 }
 
 /**
  * @brief Test that EvolutionStop command transitions Evolution to Idle.
  */
-TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
+TEST(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state with minimal config.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
@@ -168,7 +152,7 @@ TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state (populates population).
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Setup: Create EvolutionStop command with callback.
     bool callbackInvoked = false;
@@ -181,7 +165,7 @@ TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
     });
 
     // Execute: Send EvolutionStop command.
-    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+    State::Any newState = evolutionState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: State transitioned to Idle.
     ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()))
@@ -195,8 +179,10 @@ TEST_F(StateEvolutionTest, EvolutionStopTransitionsEvolutionToIdle)
 /**
  * @brief Test that tick() evaluates organisms and advances through population.
  */
-TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
+TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state with tiny population.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
@@ -206,7 +192,7 @@ TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Verify initial state.
     EXPECT_EQ(evolutionState.generation, 0);
@@ -214,19 +200,21 @@ TEST_F(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.population.size(), 2u);
 
     // Execute: First tick evaluates first organism.
-    auto result1 = evolutionState.tick(*stateMachine);
+    auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should advance to next organism";
 
     // Execute: Second tick completes generation.
-    auto result2 = evolutionState.tick(*stateMachine);
+    auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
     EXPECT_EQ(evolutionState.generation, 1) << "Should advance to next generation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
 
-TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
+TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
@@ -241,10 +229,10 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
     evolutionState.trainingSpec.organismType = OrganismType::TREE;
     evolutionState.trainingSpec.population.push_back(population);
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
-    evolutionState.tick(*stateMachine);
-    evolutionState.tick(*stateMachine);
+    evolutionState.tick(*fixture.stateMachine);
+    evolutionState.tick(*fixture.stateMachine);
 
     EXPECT_EQ(evolutionState.generation, 1);
     for (const auto& individual : evolutionState.population) {
@@ -253,8 +241,10 @@ TEST_F(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
     }
 }
 
-TEST_F(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
+TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
@@ -267,7 +257,7 @@ TEST_F(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     };
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     std::vector<Genome> parents;
     parents.reserve(evolutionState.population.size());
@@ -278,7 +268,7 @@ TEST_F(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
 
     constexpr int maxTicks = 20;
     for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
-        auto result = evolutionState.tick(*stateMachine);
+        auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
     }
 
@@ -299,8 +289,10 @@ TEST_F(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     }
 }
 
-TEST_F(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
+TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
@@ -313,7 +305,7 @@ TEST_F(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     };
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     std::vector<Genome> parents;
     parents.reserve(evolutionState.population.size());
@@ -326,7 +318,7 @@ TEST_F(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
 
     constexpr int maxTicks = 20;
     for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
-        auto result = evolutionState.tick(*stateMachine);
+        auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
     }
 
@@ -353,8 +345,10 @@ TEST_F(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     EXPECT_TRUE(foundMutation);
 }
 
-TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
+TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 2;
@@ -365,7 +359,7 @@ TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
         .sigma = 0.5,
         .resetRate = 1.0,
     };
-    auto& repo = stateMachine->getGenomeRepository();
+    auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
     const Genome seedGenome = Genome::constant(0.1);
@@ -394,7 +388,7 @@ TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
     evolutionState.trainingSpec.organismType = OrganismType::TREE;
     evolutionState.trainingSpec.population = { population };
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     std::vector<Genome> parents;
     parents.reserve(evolutionState.population.size());
@@ -407,7 +401,7 @@ TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
 
     constexpr int maxTicks = 40;
     for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
-        auto result = evolutionState.tick(*stateMachine);
+        auto result = evolutionState.tick(*fixture.stateMachine);
         ASSERT_FALSE(result.has_value()) << "Should stay in Evolution";
     }
 
@@ -431,8 +425,10 @@ TEST_F(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
 /**
  * @brief Test that evolution completes and transitions after training result delivery.
  */
-TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResult)
+TEST(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResult)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state with minimal run.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 1;
@@ -442,13 +438,13 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingRes
     evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize the state.
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Execute: Tick until transition occurs.
     std::optional<Any> result;
     constexpr int maxTicks = 10;
     for (int i = 0; i < maxTicks && !result.has_value(); ++i) {
-        result = evolutionState.tick(*stateMachine);
+        result = evolutionState.tick(*fixture.stateMachine);
     }
 
     ASSERT_TRUE(result.has_value()) << "Should transition after training result delivery";
@@ -460,10 +456,12 @@ TEST_F(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingRes
 /**
  * @brief Test that best genome is stored in repository.
  */
-TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
+TEST(StateEvolutionTest, BestGenomeStoredInRepository)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Clear repository.
-    auto& repo = stateMachine->getGenomeRepository();
+    auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
     EXPECT_TRUE(repo.empty());
 
@@ -476,11 +474,11 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize and run through one generation.
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Tick through both organisms.
-    evolutionState.tick(*stateMachine);
-    evolutionState.tick(*stateMachine);
+    evolutionState.tick(*fixture.stateMachine);
+    evolutionState.tick(*fixture.stateMachine);
 
     // Verify: Repository should have at least one genome stored.
     EXPECT_FALSE(repo.empty()) << "Repository should have stored genome(s)";
@@ -507,8 +505,10 @@ TEST_F(StateEvolutionTest, BestGenomeStoredInRepository)
  * With a longer simulation time, multiple ticks are needed per evaluation.
  * This verifies the non-blocking architecture where each tick does one physics step.
  */
-TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
+TEST(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state with longer simulation time.
     // Use population=2 and maxGenerations=2 so we can observe currentEval advancing.
     Evolution evolutionState;
@@ -519,13 +519,13 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     evolutionState.trainingSpec = makeTrainingSpec(2);
 
     // Initialize the state.
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Verify: No runner exists yet.
     EXPECT_EQ(evolutionState.visibleRunner_, nullptr);
 
     // Execute: First tick should create world and advance one step.
-    auto result1 = evolutionState.tick(*stateMachine);
+    auto result1 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
     EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
@@ -535,7 +535,7 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
         << "Sim time should not be complete";
 
     // Execute: Second tick should advance further but not complete.
-    auto result2 = evolutionState.tick(*stateMachine);
+    auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
     EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should still exist";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should still be on first organism";
@@ -543,7 +543,7 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
     // Execute: Tick until first evaluation completes.
     int tickCount = 2;
     while (evolutionState.currentEval == 0 && tickCount < 20) {
-        evolutionState.tick(*stateMachine);
+        evolutionState.tick(*fixture.stateMachine);
         tickCount++;
     }
 
@@ -560,8 +560,10 @@ TEST_F(StateEvolutionTest, TickAdvancesEvaluationIncrementally)
  * This is the key test for responsive event handling - verifies that stop
  * events don't have to wait for a full evaluation to complete.
  */
-TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
+TEST(StateEvolutionTest, StopCommandProcessedMidEvaluation)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state with long simulation time.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 1;
@@ -571,8 +573,8 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     evolutionState.trainingSpec = makeTrainingSpec(1);
 
     // Initialize and tick once to start evaluation.
-    evolutionState.onEnter(*stateMachine);
-    evolutionState.tick(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
+    evolutionState.tick(*fixture.stateMachine);
 
     // Verify: Evaluation is in progress.
     EXPECT_NE(evolutionState.visibleRunner_, nullptr) << "Runner should exist mid-evaluation";
@@ -588,7 +590,7 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
     });
 
     // Execute: Send stop command mid-evaluation.
-    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+    State::Any newState = evolutionState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Stop was processed immediately (non-blocking).
     ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()))
@@ -605,10 +607,12 @@ TEST_F(StateEvolutionTest, StopCommandProcessedMidEvaluation)
  * - Best genome is stored in repository
  * - Repository contains expected data
  */
-TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
+TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Clear repository for clean test.
-    auto& repo = stateMachine->getGenomeRepository();
+    auto& repo = fixture.stateMachine->getGenomeRepository();
     repo.clear();
 
     // Setup: Create Evolution state with small but complete config.
@@ -620,7 +624,7 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     evolutionState.trainingSpec = makeTrainingSpec(3);
 
     // Initialize.
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
     EXPECT_EQ(evolutionState.population.size(), 3u);
     EXPECT_EQ(evolutionState.generation, 0);
 
@@ -630,7 +634,7 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     std::optional<Any> finalState;
 
     while (tickCount < MAX_TICKS && !finalState.has_value()) {
-        finalState = evolutionState.tick(*stateMachine);
+        finalState = evolutionState.tick(*fixture.stateMachine);
         tickCount++;
     }
 
@@ -671,17 +675,19 @@ TEST_F(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
         << "Stored fitness should match tracked best";
 }
 
-TEST_F(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
+TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, stateMachine.get() };
+    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
     evolutionState.evolutionConfig.populationSize = 5;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.016;
     evolutionState.evolutionConfig.maxParallelEvaluations = 3;
     evolutionState.trainingSpec = makeTrainingSpec(5);
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     ASSERT_NE(evolutionState.workerState_, nullptr);
     EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
@@ -692,7 +698,7 @@ TEST_F(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
     std::optional<Any> finalState;
     constexpr int maxTicks = 2000;
     for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
-        finalState = evolutionState.tick(*stateMachine);
+        finalState = evolutionState.tick(*fixture.stateMachine);
     }
 
     ASSERT_TRUE(finalState.has_value()) << "Evolution should complete with parallel workers";
@@ -702,22 +708,24 @@ TEST_F(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
     EXPECT_EQ(evolutionState.currentEval, evolutionState.evolutionConfig.populationSize);
 }
 
-TEST_F(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
+TEST(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
 {
+    TestStateMachineFixture fixture;
+
     Evolution evolutionState;
-    EvolutionWorkerGuard guard{ &evolutionState, stateMachine.get() };
+    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
     evolutionState.evolutionConfig.populationSize = 4;
     evolutionState.evolutionConfig.maxGenerations = 1;
     evolutionState.evolutionConfig.maxSimulationTime = 0.5;
     evolutionState.evolutionConfig.maxParallelEvaluations = 2;
     evolutionState.trainingSpec = makeTrainingSpec(4);
 
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     bool sawBackgroundCompletion = false;
     constexpr int maxTicks = 200;
     for (int i = 0; i < maxTicks; ++i) {
-        evolutionState.tick(*stateMachine);
+        evolutionState.tick(*fixture.stateMachine);
         if (evolutionState.visibleRunner_ != nullptr
             && evolutionState.visibleRunner_->getSimTime()
                 < evolutionState.evolutionConfig.maxSimulationTime
@@ -734,15 +742,17 @@ TEST_F(StateEvolutionTest, BackgroundResultsArriveWhileVisibleEvaluationRunning)
 /**
  * @brief Test that Exit command from Evolution transitions to Shutdown.
  */
-TEST_F(StateEvolutionTest, ExitCommandTransitionsToShutdown)
+TEST(StateEvolutionTest, ExitCommandTransitionsToShutdown)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Evolution state.
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
     evolutionState.evolutionConfig.maxGenerations = 10;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.trainingSpec = makeTrainingSpec(2);
-    evolutionState.onEnter(*stateMachine);
+    evolutionState.onEnter(*fixture.stateMachine);
 
     // Setup: Create Exit command.
     bool callbackInvoked = false;
@@ -753,7 +763,7 @@ TEST_F(StateEvolutionTest, ExitCommandTransitionsToShutdown)
     });
 
     // Execute: Send Exit command.
-    State::Any newState = evolutionState.onEvent(cwc, *stateMachine);
+    State::Any newState = evolutionState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: State transitioned to Shutdown.
     ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
