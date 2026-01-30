@@ -281,7 +281,7 @@ const waitForUiConnected = async (timeoutMs = 8000) => {
     if (connected) {
       return true;
     }
-    await sleep(400);
+    await sleep(100);
   }
   return false;
 };
@@ -293,7 +293,7 @@ const waitForUiStatus = async (predicate, timeoutMs = 8000) => {
     if (status && predicate(status)) {
       return status;
     }
-    await sleep(400);
+    await sleep(100);
   }
   return null;
 };
@@ -325,6 +325,11 @@ const isMouseClickCommand = (args) =>
   && args[0] === "ui"
   && (args[1] === "MouseDown" || args[1] === "MouseUp");
 
+const ensureIconRailExpanded = async (screenId) => {
+  await runCliStep({ args: ["ui", "IconRailShowIcons"] }, screenId);
+  await sleep(200);
+};
+
 const navigateToScreen = async (step, screenId) => {
   const target = step.target;
   if (target !== "StartMenu" && target !== "Training") {
@@ -333,6 +338,7 @@ const navigateToScreen = async (step, screenId) => {
 
   const state = await requireUiStateFromStateGet(`${screenId} NavigateToScreen`);
   if (state === target) {
+    await ensureIconRailExpanded(screenId);
     return;
   }
 
@@ -340,11 +346,13 @@ const navigateToScreen = async (step, screenId) => {
     if (state === "SimRunning" || state === "Paused") {
       await runCliStep({ args: ["ui", "SimStop"] }, screenId);
       await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      await ensureIconRailExpanded(screenId);
       return;
     }
     if (state === "Training") {
       await runCliStep({ args: ["ui", "TrainingQuit"] }, screenId);
       await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      await ensureIconRailExpanded(screenId);
       return;
     }
     throw new Error(`NavigateToScreen(${target}) unsupported from state ${state} (${screenId})`);
@@ -352,15 +360,19 @@ const navigateToScreen = async (step, screenId) => {
 
   if (target === "Training") {
     if (state === "StartMenu") {
+      await ensureIconRailExpanded(screenId);
       await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
       await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      await ensureIconRailExpanded(screenId);
       return;
     }
     if (state === "SimRunning" || state === "Paused") {
       await runCliStep({ args: ["ui", "SimStop"] }, screenId);
       await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
+      await ensureIconRailExpanded(screenId);
       await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
       await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      await ensureIconRailExpanded(screenId);
       return;
     }
     throw new Error(`NavigateToScreen(${target}) unsupported from state ${state} (${screenId})`);

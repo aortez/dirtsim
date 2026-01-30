@@ -105,6 +105,8 @@ public:
      */
     bool isTreeIconVisible() const { return treeIconVisible_; }
 
+    void showIcons();
+
     RailMode getMode() const { return mode_; }
     void setMode(RailMode mode);
     void toggleMode();

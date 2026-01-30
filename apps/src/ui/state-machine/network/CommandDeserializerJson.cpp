@@ -4,6 +4,8 @@
 #include "ui/state-machine/api/GenomeBrowserOpen.h"
 #include "ui/state-machine/api/GenomeDetailLoad.h"
 #include "ui/state-machine/api/GenomeDetailOpen.h"
+#include "ui/state-machine/api/IconRailExpand.h"
+#include "ui/state-machine/api/IconRailShowIcons.h"
 #include "ui/state-machine/api/IconSelect.h"
 #include "ui/state-machine/api/MouseDown.h"
 #include "ui/state-machine/api/MouseMove.h"
@@ -75,6 +77,14 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         else if (commandName == UiApi::GenomeDetailOpen::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(
                 UiApi::GenomeDetailOpen::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::IconRailExpand::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::IconRailExpand::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::IconRailShowIcons::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::IconRailShowIcons::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::IconSelect::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::IconSelect::Command::fromJson(cmd));

@@ -242,6 +242,14 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
     resetAutoShrinkTimer();
 }
 
+void IconRail::showIcons()
+{
+    setMode(RailMode::Normal);
+    if (!allowedIcons_.empty()) {
+        setVisibleIcons(allowedIcons_);
+    }
+}
+
 void IconRail::selectIcon(IconId id)
 {
     if (id == selectedId_) return;

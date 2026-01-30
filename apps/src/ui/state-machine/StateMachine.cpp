@@ -2,6 +2,8 @@
 #include "api/GenomeBrowserOpen.h"
 #include "api/GenomeDetailLoad.h"
 #include "api/GenomeDetailOpen.h"
+#include "api/IconRailExpand.h"
+#include "api/IconRailShowIcons.h"
 #include "api/IconSelect.h"
 #include "api/StreamStart.h"
 #include "api/WebRtcAnswer.h"
@@ -106,6 +108,10 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::GenomeDetailLoad::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeDetailOpen::Cwc>(
         [this](UiApi::GenomeDetailOpen::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::IconRailExpand::Cwc>(
+        [this](UiApi::IconRailExpand::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::IconRailShowIcons::Cwc>(
+        [this](UiApi::IconRailShowIcons::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::IconSelect::Cwc>(
         [this](UiApi::IconSelect::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StateGet::Cwc>(
@@ -521,6 +527,54 @@ void StateMachine::handleEvent(const Event& event)
 
         UiApi::IconSelect::Okay response{ .selected = selected };
         cwc.sendResponse(UiApi::IconSelect::Response::okay(std::move(response)));
+        return;
+    }
+
+    if (std::holds_alternative<UiApi::IconRailExpand::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::IconRailExpand::Cwc>(event);
+        auto* uiManager = getUiComponentManager();
+        if (!uiManager) {
+            cwc.sendResponse(
+                UiApi::IconRailExpand::Response::error(ApiError("UI manager unavailable")));
+            return;
+        }
+
+        auto* iconRail = uiManager->getIconRail();
+        if (!iconRail) {
+            cwc.sendResponse(
+                UiApi::IconRailExpand::Response::error(ApiError("IconRail unavailable")));
+            return;
+        }
+
+        iconRail->setMode(RailMode::Normal);
+        UiApi::IconRailExpand::Okay response{ .expanded = !iconRail->isMinimized() };
+        cwc.sendResponse(UiApi::IconRailExpand::Response::okay(std::move(response)));
+        return;
+    }
+
+    if (std::holds_alternative<UiApi::IconRailShowIcons::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::IconRailShowIcons::Cwc>(event);
+        auto* uiManager = getUiComponentManager();
+        if (!uiManager) {
+            cwc.sendResponse(
+                UiApi::IconRailShowIcons::Response::error(ApiError("UI manager unavailable")));
+            return;
+        }
+
+        auto* iconRail = uiManager->getIconRail();
+        if (!iconRail) {
+            cwc.sendResponse(
+                UiApi::IconRailShowIcons::Response::error(ApiError("IconRail unavailable")));
+            return;
+        }
+
+        iconRail->showIcons();
+        if (display) {
+            lv_display_trigger_activity(display);
+            lastInactiveMs_ = 0;
+        }
+        UiApi::IconRailShowIcons::Okay response{ .shown = !iconRail->isMinimized() };
+        cwc.sendResponse(UiApi::IconRailShowIcons::Response::okay(std::move(response)));
         return;
     }
 

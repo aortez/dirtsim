@@ -447,6 +447,8 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/GenomeBrowserOpen.cpp
     src/ui/state-machine/api/GenomeDetailLoad.cpp
     src/ui/state-machine/api/GenomeDetailOpen.cpp
+    src/ui/state-machine/api/IconRailExpand.cpp
+    src/ui/state-machine/api/IconRailShowIcons.cpp
     src/ui/state-machine/api/IconSelect.cpp
     src/ui/state-machine/api/MouseDown.cpp
     src/ui/state-machine/api/MouseMove.cpp

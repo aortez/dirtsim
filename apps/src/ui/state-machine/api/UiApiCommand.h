@@ -5,6 +5,8 @@
 #include "GenomeBrowserOpen.h"
 #include "GenomeDetailLoad.h"
 #include "GenomeDetailOpen.h"
+#include "IconRailExpand.h"
+#include "IconRailShowIcons.h"
 #include "IconSelect.h"
 #include "MouseDown.h"
 #include "MouseMove.h"
@@ -40,6 +42,8 @@ using UiApiCommand = std::variant<
     UiApi::GenomeBrowserOpen::Command,
     UiApi::GenomeDetailLoad::Command,
     UiApi::GenomeDetailOpen::Command,
+    UiApi::IconRailExpand::Command,
+    UiApi::IconRailShowIcons::Command,
     UiApi::IconSelect::Command,
     UiApi::MouseDown::Command,
     UiApi::MouseMove::Command,

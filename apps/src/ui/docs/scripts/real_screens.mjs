@@ -78,10 +78,6 @@ export const screens = [
         args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"],
         waitMs: 400,
         waitForState: "Training"
-      },
-      {
-        args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"],
-        waitMs: 600
       }
     ]
   },

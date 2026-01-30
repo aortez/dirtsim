@@ -114,7 +114,7 @@ The output lands in `screenshots/compare/`, with the real screenshot on top and
 the markdown version below. A red bar marks the real section, and a blue bar
 marks the markdown section.
 
-Optional environment overrides (defaults to dirtsim3.local):
+Optional environment overrides (defaults to dirtsim2.local):
 
 ```bash
 DIRTSIM_SSH_HOST=dirtsim3.local
