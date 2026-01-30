@@ -23,6 +23,9 @@ SRC_URI = " \
     file://dirtsim-set-hostname.sh \
     file://dirtsim-config-setup.service \
     file://dirtsim-config-setup.sh \
+    file://dirtsim-picade-audio-setup@.service \
+    file://dirtsim-picade-audio-setup.sh \
+    file://99-dirtsim-picade-audio.rules \
 "
 
 # Dependencies.
@@ -69,6 +72,7 @@ do_install() {
     install -m 0755 ${WORKDIR}/dirtsim-detect-display.sh ${D}${bindir}/
     install -m 0755 ${WORKDIR}/dirtsim-set-hostname.sh ${D}${bindir}/
     install -m 0755 ${WORKDIR}/dirtsim-config-setup.sh ${D}${bindir}/
+    install -m 0755 ${WORKDIR}/dirtsim-picade-audio-setup.sh ${D}${bindir}/
 
     # Install systemd services (from WORKDIR, fetched via SRC_URI).
     install -d ${D}${systemd_system_unitdir}
@@ -76,6 +80,11 @@ do_install() {
     install -m 0644 ${WORKDIR}/dirtsim-detect-display.service ${D}${systemd_system_unitdir}/
     install -m 0644 ${WORKDIR}/dirtsim-set-hostname.service ${D}${systemd_system_unitdir}/
     install -m 0644 ${WORKDIR}/dirtsim-config-setup.service ${D}${systemd_system_unitdir}/
+    install -m 0644 ${WORKDIR}/dirtsim-picade-audio-setup@.service ${D}${systemd_system_unitdir}/
+
+    # Install udev rules.
+    install -d ${D}${sysconfdir}/udev/rules.d
+    install -m 0644 ${WORKDIR}/99-dirtsim-picade-audio.rules ${D}${sysconfdir}/udev/rules.d/
 
     # Install default UI configuration.
     install -d ${D}${sysconfdir}/dirtsim
@@ -103,14 +112,17 @@ FILES:${PN} = " \
     ${bindir}/dirtsim-detect-display.sh \
     ${bindir}/dirtsim-set-hostname.sh \
     ${bindir}/dirtsim-config-setup.sh \
+    ${bindir}/dirtsim-picade-audio-setup.sh \
     /data/dirtsim/fonts/NotoColorEmoji.ttf \
     /usr/share/dirtsim/fonts/NotoColorEmoji.ttf \
     /usr/share/fonts/fontawesome/fa-solid-900.ttf \
     ${sysconfdir}/dirtsim/ui.json \
+    ${sysconfdir}/udev/rules.d/99-dirtsim-picade-audio.rules \
     ${systemd_system_unitdir}/dirtsim-ui.service \
     ${systemd_system_unitdir}/dirtsim-detect-display.service \
     ${systemd_system_unitdir}/dirtsim-set-hostname.service \
     ${systemd_system_unitdir}/dirtsim-config-setup.service \
+    ${systemd_system_unitdir}/dirtsim-picade-audio-setup@.service \
 "
 
 # Runtime dependencies.
