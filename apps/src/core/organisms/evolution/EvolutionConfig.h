@@ -12,6 +12,7 @@ struct EvolutionConfig {
     int populationSize = 10;
     int tournamentSize = 3;
     int maxGenerations = 1;
+    int maxParallelEvaluations = 0; // 0 = auto (use detected core count).
 
     // Evaluation settings.
     double maxSimulationTime = 10.0; // Seconds of sim time per organism.

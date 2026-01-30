@@ -409,6 +409,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp
+    src/core/organisms/evolution/TreeEvaluator.cpp
     src/core/organisms/components/LightHandHeld.cpp
     src/core/organisms/components/LocalShapeProjection.cpp
     src/core/organisms/tests/MultiCellTestOrganism.cpp
@@ -624,8 +625,11 @@ add_executable(dirtsim-tests
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
+    src/server/tests/TestStateMachineFixture.cpp
     src/server/tests/TrainingResultRepository_test.cpp
+    src/tests/MockWebSocketService.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp
+    src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
     src/os-manager/tests/StateError_test.cpp
     src/os-manager/tests/StateIdle_test.cpp
