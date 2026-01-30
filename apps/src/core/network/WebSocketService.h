@@ -210,20 +210,20 @@ public:
 
     void setClientHello(const ClientHello& hello) override { clientHello_ = hello; }
 
-    void setAccessToken(std::string token)
+    void setAccessToken(std::string token) override
     {
         std::lock_guard<std::mutex> lock(accessTokenMutex_);
         accessToken_ = std::move(token);
     }
 
-    void clearAccessToken()
+    void clearAccessToken() override
     {
         std::lock_guard<std::mutex> lock(accessTokenMutex_);
         accessToken_.clear();
     }
 
-    bool clientWantsEvents(const std::string& connectionId) const;
-    bool clientWantsRender(const std::string& connectionId) const;
+    bool clientWantsEvents(const std::string& connectionId) const override;
+    bool clientWantsRender(const std::string& connectionId) const override;
     void onConnected(ConnectionCallback callback) override { connectedCallback_ = callback; }
     void onDisconnected(ConnectionCallback callback) override { disconnectedCallback_ = callback; }
     void onError(ErrorCallback callback) override { errorCallback_ = callback; }
@@ -278,14 +278,14 @@ public:
      * @brief Stop listening for connections.
      */
     void stopListening() override;
-    void stopListening(bool disconnectClients);
+    void stopListening(bool disconnectClients) override;
 
     /**
      * @brief Check if server is currently listening.
      */
     bool isListening() const override;
 
-    void closeNonLocalClients();
+    void closeNonLocalClients() override;
 
     void broadcastBinary(const std::vector<std::byte>& data);
 
@@ -312,7 +312,7 @@ public:
         const std::string& connectionId, const std::string& message) override;
 
     Result<std::monostate, std::string> sendToClient(
-        const std::string& connectionId, const std::vector<std::byte>& data);
+        const std::string& connectionId, const std::vector<std::byte>& data) override;
 
     /**
      * @brief Get the connection ID for a WebSocket.

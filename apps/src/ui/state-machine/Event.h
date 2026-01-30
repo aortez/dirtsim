@@ -32,6 +32,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include "ui/state-machine/api/TrainingStart.h"
 #include <concepts>
@@ -203,6 +204,14 @@ struct EvolutionProgressReceivedEvent {
     static constexpr const char* name() { return "EvolutionProgressReceivedEvent"; }
 };
 
+/**
+ * @brief Best snapshot received from server (new all-time fitness).
+ */
+struct TrainingBestSnapshotReceivedEvent {
+    Api::TrainingBestSnapshot snapshot;
+    static constexpr const char* name() { return "TrainingBestSnapshotReceivedEvent"; }
+};
+
 // =================================================================
 // UI CONTROL EVENTS
 // =================================================================
@@ -264,6 +273,7 @@ using Event = std::variant<
     // Server data updates
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
+    TrainingBestSnapshotReceivedEvent,
     PhysicsSettingsReceivedEvent,
 
     // UI control events

@@ -1,14 +1,12 @@
 #!/bin/bash
 set -e
 
-# Default log level.
+# Defaults.
 LOG_LEVEL=""
+BUILD_TYPE="debug"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APPS_DIR="$REPO_ROOT/apps"
-BIN_DIR="$APPS_DIR/build-debug/bin"
 CONFIG_DIR="$APPS_DIR/config"
-SERVER_MATCH="build-debug/bin/dirtsim-server"
-UI_MATCH="build-debug/bin/dirtsim-ui"
 
 # Parse command line arguments.
 while [[ $# -gt 0 ]]; do
@@ -17,18 +15,29 @@ while [[ $# -gt 0 ]]; do
             LOG_LEVEL="$2"
             shift 2
             ;;
+        -r|--release)
+            BUILD_TYPE="release"
+            shift
+            ;;
+        -d|--debug)
+            BUILD_TYPE="debug"
+            shift
+            ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
             echo ""
             echo "Options:"
             echo "  -l, --log-level LEVEL    Set log level (trace, debug, info, warn, error, critical, off)"
             echo "                           Default: info (built into apps)"
+            echo "  -r, --release            Build and run release mode"
+            echo "  -d, --debug              Build and run debug mode (default)"
             echo "  -h, --help              Show this help message"
             echo ""
             echo "Examples:"
             echo "  $0                      # Run with default info level"
             echo "  $0 -l debug             # Run with debug logging"
             echo "  $0 --log-level trace    # Run with trace logging"
+            echo "  $0 --release            # Build and run release mode"
             exit 0
             ;;
         *)
@@ -39,23 +48,28 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Check if our debug binaries are already running.
-# Match the debug binary path to avoid release builds or other processes.
+BUILD_DIR="$APPS_DIR/build-$BUILD_TYPE"
+BIN_DIR="$BUILD_DIR/bin"
+SERVER_MATCH="build-$BUILD_TYPE/bin/dirtsim-server"
+UI_MATCH="build-$BUILD_TYPE/bin/dirtsim-ui"
+
+# Check if our binaries are already running.
+# Match the binary path to avoid other processes.
 if pgrep -f "$SERVER_MATCH" > /dev/null; then
-    echo "Error: dirtsim-server (debug) is already running"
+    echo "Error: dirtsim-server ($BUILD_TYPE) is already running"
     echo "Kill it with: pkill -f '$SERVER_MATCH'"
     exit 1
 fi
 
 if pgrep -f "$UI_MATCH" > /dev/null; then
-    echo "Error: dirtsim-ui (debug) is already running"
+    echo "Error: dirtsim-ui ($BUILD_TYPE) is already running"
     echo "Kill it with: pkill -f '$UI_MATCH'"
     exit 1
 fi
 
-# Build debug version.
-echo "Building debug version..."
-if ! make -C "$APPS_DIR" debug; then
+# Build version.
+echo "Building $BUILD_TYPE version..."
+if ! make -C "$APPS_DIR" "$BUILD_TYPE"; then
     echo "Build failed!"
     exit 1
 fi

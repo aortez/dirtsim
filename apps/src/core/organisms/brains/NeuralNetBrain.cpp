@@ -3,6 +3,7 @@
 #include "Genome.h"
 #include "WeightType.h"
 #include "core/Assert.h"
+#include "core/ScopeTimer.h"
 #include "core/organisms/TreeCommands.h"
 #include "core/organisms/TreeSensoryData.h"
 
@@ -38,9 +39,9 @@ constexpr int NUM_POSITIONS = 225;
 constexpr int GRID_SIZE = 15;
 constexpr int NUM_MATERIALS = 10;
 
-double relu(double x)
+WeightType relu(WeightType x)
 {
-    return std::max(0.0, x);
+    return std::max(static_cast<WeightType>(0.0f), x);
 }
 
 } // namespace
@@ -50,9 +51,18 @@ struct NeuralNetBrain::Impl {
     std::vector<WeightType> b_h;
     std::vector<WeightType> w_ho;
     std::vector<WeightType> b_o;
+    std::vector<WeightType> input_buffer;
+    std::vector<WeightType> hidden_buffer;
+    std::vector<WeightType> output_buffer;
 
     Impl()
-        : w_ih(W_IH_SIZE, 0.0f), b_h(B_H_SIZE, 0.0f), w_ho(W_HO_SIZE, 0.0f), b_o(OUTPUT_SIZE, 0.0f)
+        : w_ih(W_IH_SIZE, 0.0f),
+          b_h(B_H_SIZE, 0.0f),
+          w_ho(W_HO_SIZE, 0.0f),
+          b_o(OUTPUT_SIZE, 0.0f),
+          input_buffer(INPUT_SIZE, 0.0f),
+          hidden_buffer(HIDDEN_SIZE, 0.0f),
+          output_buffer(OUTPUT_SIZE, 0.0f)
     {}
 
     void loadFromGenome(const Genome& g)
@@ -94,41 +104,46 @@ struct NeuralNetBrain::Impl {
         return g;
     }
 
-    std::vector<double> forward(const std::vector<double>& input)
+    const std::vector<WeightType>& forward(const std::vector<WeightType>& input)
     {
-        // Hidden layer: h = ReLU(W_ih @ input + b_h).
-        std::vector<double> hidden(HIDDEN_SIZE);
-        for (int h = 0; h < HIDDEN_SIZE; h++) {
-            double sum = b_h[h];
-            for (int i = 0; i < INPUT_SIZE; i++) {
-                sum += input[i] * w_ih[i * HIDDEN_SIZE + h];
+        std::copy(b_h.begin(), b_h.end(), hidden_buffer.begin());
+        for (int i = 0; i < INPUT_SIZE; i++) {
+            const WeightType input_value = input[i];
+            if (input_value == 0.0f) {
+                continue;
             }
-            hidden[h] = relu(sum);
+            const WeightType* weights = &w_ih[i * HIDDEN_SIZE];
+            for (int h = 0; h < HIDDEN_SIZE; h++) {
+                hidden_buffer[h] += input_value * weights[h];
+            }
+        }
+        for (int h = 0; h < HIDDEN_SIZE; h++) {
+            hidden_buffer[h] = relu(hidden_buffer[h]);
         }
 
         // Output layer: o = W_ho @ hidden + b_o (linear).
-        std::vector<double> output(OUTPUT_SIZE);
-        for (int o = 0; o < OUTPUT_SIZE; o++) {
-            double sum = b_o[o];
-            for (int h = 0; h < HIDDEN_SIZE; h++) {
-                sum += hidden[h] * w_ho[h * OUTPUT_SIZE + o];
+        std::copy(b_o.begin(), b_o.end(), output_buffer.begin());
+        for (int h = 0; h < HIDDEN_SIZE; h++) {
+            const WeightType hidden_value = hidden_buffer[h];
+            const WeightType* weights = &w_ho[h * OUTPUT_SIZE];
+            for (int o = 0; o < OUTPUT_SIZE; o++) {
+                output_buffer[o] += hidden_value * weights[o];
             }
-            output[o] = sum;
         }
 
-        return output;
+        return output_buffer;
     }
 
-    std::vector<double> flattenSensoryData(const TreeSensoryData& sensory)
+    const std::vector<WeightType>& flattenSensoryData(const TreeSensoryData& sensory)
     {
-        std::vector<double> input;
-        input.reserve(INPUT_SIZE);
+        int index = 0;
 
         // Flatten material histograms: [y][x][material].
         for (int y = 0; y < GRID_SIZE; y++) {
             for (int x = 0; x < GRID_SIZE; x++) {
                 for (int m = 0; m < NUM_MATERIALS; m++) {
-                    input.push_back(sensory.material_histograms[y][x][m]);
+                    input_buffer[index++] =
+                        static_cast<WeightType>(sensory.material_histograms[y][x][m]);
                 }
             }
         }
@@ -136,41 +151,42 @@ struct NeuralNetBrain::Impl {
         // Flatten light levels: [y][x].
         for (int y = 0; y < GRID_SIZE; y++) {
             for (int x = 0; x < GRID_SIZE; x++) {
-                input.push_back(sensory.light_levels[y][x]);
+                input_buffer[index++] = static_cast<WeightType>(sensory.light_levels[y][x]);
             }
         }
 
         // Internal state (normalized to ~[0,1] range).
-        input.push_back(sensory.total_energy / 200.0);
-        input.push_back(sensory.total_water / 100.0);
-        input.push_back(sensory.age_seconds / 100.0);
-        input.push_back(static_cast<double>(sensory.stage) / 4.0);
-        input.push_back(sensory.scale_factor / 10.0);
-        input.push_back(0.0); // Reserved for future use.
+        input_buffer[index++] = static_cast<WeightType>(sensory.total_energy / 200.0);
+        input_buffer[index++] = static_cast<WeightType>(sensory.total_water / 100.0);
+        input_buffer[index++] = static_cast<WeightType>(sensory.age_seconds / 100.0);
+        input_buffer[index++] = static_cast<WeightType>(static_cast<double>(sensory.stage) / 4.0);
+        input_buffer[index++] = static_cast<WeightType>(sensory.scale_factor / 10.0);
+        input_buffer[index++] = static_cast<WeightType>(0.0f); // Reserved for future use.
 
         // Current action one-hot encoding (6 values).
         // Note: Wait and Cancel are never "in progress", so these will be 0.
         for (int i = 0; i < NUM_COMMANDS; i++) {
             if (sensory.current_action.has_value()
                 && static_cast<int>(sensory.current_action.value()) == i) {
-                input.push_back(1.0);
+                input_buffer[index++] = static_cast<WeightType>(1.0f);
             }
             else {
-                input.push_back(0.0);
+                input_buffer[index++] = static_cast<WeightType>(0.0f);
             }
         }
 
         // Action progress (0.0 to 1.0).
-        input.push_back(sensory.action_progress);
+        input_buffer[index++] = static_cast<WeightType>(sensory.action_progress);
 
-        return input;
+        return input_buffer;
     }
 
-    TreeCommand interpretOutput(const std::vector<double>& output, const TreeSensoryData& sensory)
+    TreeCommand interpretOutput(
+        const std::vector<WeightType>& output, const TreeSensoryData& sensory)
     {
         // First 6 outputs are command logits - use argmax.
         int command_idx = 0;
-        double max_command = output[0];
+        WeightType max_command = output[0];
         for (int i = 1; i < NUM_COMMANDS; i++) {
             if (output[i] > max_command) {
                 max_command = output[i];
@@ -190,7 +206,7 @@ struct NeuralNetBrain::Impl {
 
         // Action commands need position - extract from next 225 outputs.
         int pos_idx = 0;
-        double max_pos = output[NUM_COMMANDS];
+        WeightType max_pos = output[NUM_COMMANDS];
         for (int i = 1; i < NUM_POSITIONS; i++) {
             if (output[NUM_COMMANDS + i] > max_pos) {
                 max_pos = output[NUM_COMMANDS + i];
@@ -249,9 +265,26 @@ NeuralNetBrain::~NeuralNetBrain() = default;
 
 TreeCommand NeuralNetBrain::decide(const TreeSensoryData& sensory)
 {
-    auto input = impl_->flattenSensoryData(sensory);
-    auto output = impl_->forward(input);
+    const auto& input = impl_->flattenSensoryData(sensory);
+    const auto& output = impl_->forward(input);
     return impl_->interpretOutput(output, sensory);
+}
+
+TreeCommand NeuralNetBrain::decideWithTimers(const TreeSensoryData& sensory, Timers& timers)
+{
+    const std::vector<WeightType>* input = nullptr;
+    {
+        ScopeTimer timer(timers, "tree_brain_flatten");
+        input = &impl_->flattenSensoryData(sensory);
+    }
+
+    const std::vector<WeightType>* output = nullptr;
+    {
+        ScopeTimer timer(timers, "tree_brain_forward");
+        output = &impl_->forward(*input);
+    }
+
+    return impl_->interpretOutput(*output, sensory);
 }
 
 Genome NeuralNetBrain::getGenome() const

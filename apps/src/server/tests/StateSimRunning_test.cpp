@@ -4,93 +4,67 @@
 #include "core/organisms/OrganismManager.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
-#include "server/StateMachine.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
 #include "server/states/State.h"
-#include <filesystem>
+#include "server/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
 using namespace DirtSim::Server::State;
+using namespace DirtSim::Server::Tests;
 
-/**
- * @brief Test fixture for SimRunning state tests.
- *
- * Provides common setup including a StateMachine and helper to create initialized SimRunning
- * states.
- */
-class StateSimRunningTest : public ::testing::Test {
-protected:
-    void SetUp() override
-    {
-        testDataDir_ = std::filesystem::temp_directory_path() / "dirtsim-test";
-        stateMachine = std::make_unique<StateMachine>(testDataDir_);
-    }
+namespace {
 
-    void TearDown() override
-    {
-        stateMachine.reset();
-        std::filesystem::remove_all(testDataDir_);
-    }
+SimRunning createSimRunningWithWorld(StateMachine& stateMachine)
+{
+    // Create Idle and transition to SimRunning.
+    Idle idleState;
+    Api::SimRun::Command cmd{ 0.016, 150, 0, std::nullopt, false, {} };
+    Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
+    State::Any state = idleState.onEvent(cwc, stateMachine);
 
-    std::filesystem::path testDataDir_;
+    SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
 
-    /**
-     * @brief Helper to create a SimRunning state with initialized world.
-     * @return SimRunning state after onEnter() has been called.
-     */
-    SimRunning createSimRunningWithWorld()
-    {
-        // Create Idle and transition to SimRunning.
-        Idle idleState;
-        Api::SimRun::Command cmd{ 0.016, 150, 0, std::nullopt, false, {} };
-        Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
-        State::Any state = idleState.onEvent(cwc, *stateMachine);
+    // Call onEnter to initialize scenario.
+    simRunning.onEnter(stateMachine);
 
-        SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
+    return simRunning;
+}
 
-        // Call onEnter to initialize scenario.
-        simRunning.onEnter(*stateMachine);
+void applyCleanScenario(StateMachine& stateMachine, SimRunning& simRunning)
+{
+    Config::Sandbox cleanConfig;
+    cleanConfig.quadrantEnabled = false;
+    cleanConfig.waterColumnEnabled = false;
+    cleanConfig.rightThrowEnabled = false;
+    cleanConfig.rainRate = 0.0;
 
-        return simRunning;
-    }
+    Api::ScenarioConfigSet::Command cmd;
+    cmd.config = cleanConfig;
+    Api::ScenarioConfigSet::Cwc cwc(cmd, [](auto&&) {});
 
-    /**
-     * @brief Helper to apply clean scenario config (all features disabled).
-     */
-    void applyCleanScenario(SimRunning& simRunning)
-    {
-        Config::Sandbox cleanConfig;
-        cleanConfig.quadrantEnabled = false;
-        cleanConfig.waterColumnEnabled = false;
-        cleanConfig.rightThrowEnabled = false;
-        cleanConfig.rainRate = 0.0;
+    State::Any newState = simRunning.onEvent(cwc, stateMachine);
+    simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
+}
 
-        Api::ScenarioConfigSet::Command cmd;
-        cmd.config = cleanConfig;
-        Api::ScenarioConfigSet::Cwc cwc(cmd, [](auto&&) {});
-
-        State::Any newState = simRunning.onEvent(cwc, *stateMachine);
-        simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
-    }
-
-    std::unique_ptr<StateMachine> stateMachine;
-};
+} // namespace
 
 /**
  * @brief Test that onEnter applies default Sandbox scenario.
  */
-TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
+TEST(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create SimRunning state with Sandbox scenario (applied by Idle).
     Idle idleState;
     Api::SimRun::Command cmd{ 0.016, 100, 0, std::nullopt, false, {} };
     Api::SimRun::Cwc cwc(cmd, [](auto&&) {});
-    State::Any state = idleState.onEvent(cwc, *stateMachine);
+    State::Any state = idleState.onEvent(cwc, *fixture.stateMachine);
     SimRunning simRunning = std::move(std::get<SimRunning>(state.getVariant()));
 
     // Verify: World exists and scenario already applied by Idle.
@@ -98,7 +72,7 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
     EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox) << "Scenario applied by Idle";
 
     // Execute: Call onEnter (should not change scenario since it's already set).
-    simRunning.onEnter(*stateMachine);
+    simRunning.onEnter(*fixture.stateMachine);
 
     // Verify: Sandbox scenario is still applied.
     EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Sandbox)
@@ -115,11 +89,13 @@ TEST_F(StateSimRunningTest, OnEnter_AppliesDefaultScenario)
 /**
  * @brief Test that tick() steps physics and dirt falls.
  */
-TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
+TEST(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning with clean scenario (no features).
-    SimRunning simRunning = createSimRunningWithWorld();
-    applyCleanScenario(simRunning);
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(*fixture.stateMachine, simRunning);
 
     // Setup: Manually add dirt at top center.
     const uint32_t testX = 14;
@@ -158,7 +134,7 @@ TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
     // Execute: Advance simulation up to 200 frames, checking for dirt movement.
     bool dirtFell = false;
     for (int i = 0; i < 200; ++i) {
-        simRunning.tick(*stateMachine);
+        simRunning.tick(*fixture.stateMachine);
 
         // Debug: Log first few steps.
         if (i < 5 || i % 20 == 0) {
@@ -206,10 +182,12 @@ TEST_F(StateSimRunningTest, AdvanceSimulation_StepsPhysicsAndDirtFalls)
 /**
  * @brief Test that StateGet returns correct WorldData.
  */
-TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
+TEST(StateSimRunningTest, StateGet_ReturnsWorldData)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning.
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Setup: Create StateGet command with callback to capture response.
     bool callbackInvoked = false;
@@ -222,7 +200,7 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
     });
 
     // Execute: Send StateGet command.
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Stays in SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
@@ -236,12 +214,12 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
 
     // Verify: WorldData has correct properties.
     const WorldData& worldData = capturedResponse.value().worldData;
-    const auto scenario_id = getScenarioId(stateMachine->serverConfig->startupConfig);
-    const auto* metadata = stateMachine->getScenarioRegistry().getMetadata(scenario_id);
+    const auto scenario_id = getScenarioId(fixture.stateMachine->serverConfig->startupConfig);
+    const auto* metadata = fixture.stateMachine->getScenarioRegistry().getMetadata(scenario_id);
     ASSERT_NE(metadata, nullptr);
 
-    uint32_t expected_width = stateMachine->defaultWidth;
-    uint32_t expected_height = stateMachine->defaultHeight;
+    uint32_t expected_width = fixture.stateMachine->defaultWidth;
+    uint32_t expected_height = fixture.stateMachine->defaultHeight;
     if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
         expected_width = metadata->requiredWidth;
         expected_height = metadata->requiredHeight;
@@ -257,10 +235,12 @@ TEST_F(StateSimRunningTest, StateGet_ReturnsWorldData)
 /**
  * @brief Test that ScenarioConfigSet toggles water column off and on.
  */
-TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
+TEST(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning (water column ON by default).
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Verify: Water column initially exists (check a few cells).
     // Water column height = world.height / 3 = 28 / 3 = 9, so check y=5 (middle of column).
@@ -284,7 +264,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
         EXPECT_TRUE(response.isValue()) << "ScenarioConfigSet should succeed";
     });
 
-    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *stateMachine);
+    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *fixture.stateMachine);
     simRunning = std::move(std::get<SimRunning>(stateAfterOff.getVariant()));
 
     // Verify: Water column removed.
@@ -309,7 +289,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *stateMachine);
+    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *fixture.stateMachine);
     simRunning = std::move(std::get<SimRunning>(stateAfterOn.getVariant()));
 
     // Verify: Water column restored.
@@ -323,10 +303,12 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesWaterColumn)
 /**
  * @brief Test that ScenarioConfigSet toggles dirt quadrant off and on.
  */
-TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
+TEST(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning (quadrant ON by default).
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Verify: Dirt quadrant initially exists (check a cell in lower-right).
     uint32_t quadX = simRunning.world->getData().width - 5;
@@ -351,7 +333,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *stateMachine);
+    State::Any stateAfterOff = simRunning.onEvent(cwcOff, *fixture.stateMachine);
     simRunning = std::move(std::get<SimRunning>(stateAfterOff.getVariant()));
 
     // Verify: Quadrant removed.
@@ -373,7 +355,7 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *stateMachine);
+    State::Any stateAfterOn = simRunning.onEvent(cwcOn, *fixture.stateMachine);
     simRunning = std::move(std::get<SimRunning>(stateAfterOn.getVariant()));
 
     // Verify: Quadrant restored.
@@ -387,10 +369,12 @@ TEST_F(StateSimRunningTest, ScenarioConfigSet_TogglesDirtQuadrant)
 /**
  * @brief Test that Exit command transitions to Shutdown.
  */
-TEST_F(StateSimRunningTest, Exit_TransitionsToShutdown)
+TEST(StateSimRunningTest, Exit_TransitionsToShutdown)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning.
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Setup: Create Exit command with callback.
     bool callbackInvoked = false;
@@ -401,7 +385,7 @@ TEST_F(StateSimRunningTest, Exit_TransitionsToShutdown)
     });
 
     // Execute: Send Exit command.
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Transitioned to Shutdown.
     ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
@@ -412,16 +396,18 @@ TEST_F(StateSimRunningTest, Exit_TransitionsToShutdown)
 /**
  * @brief Test that SimRun updates run parameters without recreating world.
  */
-TEST_F(StateSimRunningTest, SimRun_UpdatesRunParameters)
+TEST(StateSimRunningTest, SimRun_UpdatesRunParameters)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning with initial parameters.
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
     EXPECT_EQ(simRunning.targetSteps, 150u);
     EXPECT_DOUBLE_EQ(simRunning.stepDurationMs, 16.0);
 
     // Advance a few steps to verify world isn't recreated.
     for (int i = 0; i < 5; ++i) {
-        simRunning.tick(*stateMachine);
+        simRunning.tick(*fixture.stateMachine);
     }
     EXPECT_EQ(simRunning.stepCount, 5u);
 
@@ -433,7 +419,7 @@ TEST_F(StateSimRunningTest, SimRun_UpdatesRunParameters)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
     simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
 
     // Verify: Parameters updated but world preserved.
@@ -448,11 +434,13 @@ TEST_F(StateSimRunningTest, SimRun_UpdatesRunParameters)
 /**
  * @brief Test that SeedAdd command places SEED material at the specified coordinates.
  */
-TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
+TEST(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning with clean scenario.
-    SimRunning simRunning = createSimRunningWithWorld();
-    applyCleanScenario(simRunning);
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(*fixture.stateMachine, simRunning);
 
     // Setup: Choose test coordinates (world is 28x28, avoid walls at boundaries).
     const uint32_t testX = 14;
@@ -466,15 +454,17 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 
     // Execute: Send SeedAdd command.
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = static_cast<int>(testX),
+        .y = static_cast<int>(testY),
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Stays in SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
@@ -500,10 +490,12 @@ TEST_F(StateSimRunningTest, SeedAdd_PlacesSeedAtCoordinates)
 /**
  * @brief Test that SeedAdd uses the nearest air cell in the top half (including the source row).
  */
-TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
+TEST(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
 {
-    SimRunning simRunning = createSimRunningWithWorld();
-    applyCleanScenario(simRunning);
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(*fixture.stateMachine, simRunning);
 
     const int testX = 14;
     const int testY = 14;
@@ -535,15 +527,17 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
     data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = testX,
+        .y = testY,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
     simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
@@ -561,10 +555,12 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToNearestAirInTopHalf)
 /**
  * @brief Test that SeedAdd uses the bottom half when the top half is full.
  */
-TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
+TEST(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
 {
-    SimRunning simRunning = createSimRunningWithWorld();
-    applyCleanScenario(simRunning);
+    TestStateMachineFixture fixture;
+
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(*fixture.stateMachine, simRunning);
 
     const int testX = 14;
     const int testY = 14;
@@ -584,15 +580,17 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
     data.at(bottomX, bottomY).clear();
 
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = testX;
-    cmd.y = testY;
+    Api::SeedAdd::Command cmd{
+        .x = testX,
+        .y = testY,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isValue()) << "SeedAdd should succeed";
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
     simRunning = std::move(std::get<SimRunning>(newState.getVariant()));
@@ -607,23 +605,27 @@ TEST_F(StateSimRunningTest, SeedAdd_FallsBackToBottomHalfWhenTopHalfIsFull)
 /**
  * @brief Test that SeedAdd rejects invalid coordinates.
  */
-TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
+TEST(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning.
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Test negative coordinates.
     bool callbackInvoked = false;
-    Api::SeedAdd::Command cmd;
-    cmd.x = -1;
-    cmd.y = 10;
+    Api::SeedAdd::Command cmd{
+        .x = -1,
+        .y = 10,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc(cmd, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isError()) << "SeedAdd should fail for negative x";
         EXPECT_EQ(response.errorValue().message, "Invalid coordinates");
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked for invalid coordinates";
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
         << "Should stay in SimRunning";
@@ -633,16 +635,18 @@ TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 
     // Test coordinates beyond world bounds.
     callbackInvoked = false;
-    Api::SeedAdd::Command cmd2;
-    cmd2.x = simRunning.world->getData().width + 10;
-    cmd2.y = 10;
+    Api::SeedAdd::Command cmd2{
+        .x = simRunning.world->getData().width + 10,
+        .y = 10,
+        .genome_id = std::nullopt,
+    };
     Api::SeedAdd::Cwc cwc2(cmd2, [&](Api::SeedAdd::Response&& response) {
         callbackInvoked = true;
         EXPECT_TRUE(response.isError()) << "SeedAdd should fail for out-of-bounds x";
         EXPECT_EQ(response.errorValue().message, "Invalid coordinates");
     });
 
-    newState = simRunning.onEvent(cwc2, *stateMachine);
+    newState = simRunning.onEvent(cwc2, *fixture.stateMachine);
     ASSERT_TRUE(callbackInvoked) << "Callback should be invoked for out-of-bounds coordinates";
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
         << "Should stay in SimRunning";
@@ -651,10 +655,12 @@ TEST_F(StateSimRunningTest, SeedAdd_RejectsInvalidCoordinates)
 /**
  * @brief Test that WorldResize command resizes the world grid.
  */
-TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
+TEST(StateSimRunningTest, WorldResize_ResizesWorldGrid)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning state.
-    SimRunning simRunning = createSimRunningWithWorld();
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
 
     // Get initial world size.
     const uint32_t initialWidth = simRunning.world->getData().width;
@@ -673,7 +679,7 @@ TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
         EXPECT_TRUE(response.isValue()) << "WorldResize should succeed";
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Still in SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
@@ -695,7 +701,7 @@ TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
         EXPECT_TRUE(response.isValue()) << "WorldResize should succeed for smaller size";
     });
 
-    newState = simRunning.onEvent(cwc2, *stateMachine);
+    newState = simRunning.onEvent(cwc2, *fixture.stateMachine);
 
     // Verify: Still in SimRunning with smaller world.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
@@ -716,7 +722,7 @@ TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
         EXPECT_TRUE(response.isValue()) << "WorldResize should succeed for larger size";
     });
 
-    newState = simRunning.onEvent(cwc3, *stateMachine);
+    newState = simRunning.onEvent(cwc3, *fixture.stateMachine);
 
     // Verify: Still in SimRunning with larger world.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
@@ -731,11 +737,13 @@ TEST_F(StateSimRunningTest, WorldResize_ResizesWorldGrid)
 /**
  * @brief Test that ScenarioSwitch clears organisms from previous scenario.
  */
-TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
+TEST(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create initialized SimRunning with Sandbox scenario.
-    SimRunning simRunning = createSimRunningWithWorld();
-    applyCleanScenario(simRunning);
+    SimRunning simRunning = createSimRunningWithWorld(*fixture.stateMachine);
+    applyCleanScenario(*fixture.stateMachine, simRunning);
 
     // Add a duck organism.
     const uint32_t duckX = 10;
@@ -757,7 +765,7 @@ TEST_F(StateSimRunningTest, ScenarioSwitch_ClearsOrganisms)
         EXPECT_TRUE(response.isValue()) << "ScenarioSwitch should succeed";
     });
 
-    State::Any newState = simRunning.onEvent(cwc, *stateMachine);
+    State::Any newState = simRunning.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: Still in SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));

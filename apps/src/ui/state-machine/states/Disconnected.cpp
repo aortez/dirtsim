@@ -11,6 +11,7 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -262,6 +263,16 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 }
                 catch (const std::exception& e) {
                     LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
+                }
+            }
+            else if (messageType == Api::TrainingBestSnapshot::name()) {
+                try {
+                    auto snapshot =
+                        Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
+                    sm.queueEvent(TrainingBestSnapshotReceivedEvent{ std::move(snapshot) });
+                }
+                catch (const std::exception& e) {
+                    LOG_ERROR(Network, "Failed to deserialize TrainingBestSnapshot: {}", e.what());
                 }
             }
             else {
