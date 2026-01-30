@@ -134,9 +134,10 @@ struct StateMachine::Impl {
     Timers timers_;
     std::unique_ptr<HttpServer> httpServer_;
     PeerAdvertisement peerAdvertisement_;
-    PeerDiscovery peerDiscovery_;
+    std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;
     State::Any fsmState_{ State::PreStartup{} };
-    Network::WebSocketService* wsService_ = nullptr;
+    std::unique_ptr<Network::WebSocketServiceInterface> wsServiceOwned_;
+    Network::WebSocketServiceInterface* wsService_ = nullptr;
     std::string peerServiceName_ = "dirtsim";
     uint16_t webSocketPort_ = 8080;
     uint16_t httpPort_ = 8081;
@@ -175,7 +176,11 @@ private:
     }
 };
 
-StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) : pImpl(dataDir)
+StateMachine::StateMachine(
+    std::unique_ptr<Network::WebSocketServiceInterface> webSocketService,
+    std::unique_ptr<PeerDiscoveryInterface> peerDiscovery,
+    const std::optional<std::filesystem::path>& dataDir)
+    : pImpl(dataDir)
 {
     serverConfig = std::make_unique<ServerConfig>();
     serverConfig->dataDir = dataDir;
@@ -185,12 +190,28 @@ StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir) 
     pImpl->peerServiceName_ = hostname;
     pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
 
+    if (peerDiscovery) {
+        pImpl->peerDiscovery_ = std::move(peerDiscovery);
+    }
+    else {
+        pImpl->peerDiscovery_ = std::make_unique<PeerDiscovery>();
+    }
+
+    if (webSocketService) {
+        pImpl->wsServiceOwned_ = std::move(webSocketService);
+        pImpl->wsService_ = pImpl->wsServiceOwned_.get();
+    }
+
     LOG_INFO(
         State,
         "Server::StateMachine initialized in headless mode in state: {}",
         getCurrentStateName());
+}
 
-    if (pImpl->peerDiscovery_.start()) {
+StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir)
+    : StateMachine(nullptr, std::make_unique<PeerDiscovery>(), dataDir)
+{
+    if (pImpl->peerDiscovery_ && pImpl->peerDiscovery_->start()) {
         spdlog::info("PeerDiscovery started successfully");
     }
     else {
@@ -204,7 +225,9 @@ StateMachine::~StateMachine()
         pImpl->httpServer_->stop();
     }
     pImpl->peerAdvertisement_.stop();
-    pImpl->peerDiscovery_.stop();
+    if (pImpl->peerDiscovery_) {
+        pImpl->peerDiscovery_->stop();
+    }
     LOG_INFO(State, "Server::StateMachine shutting down from state: {}", getCurrentStateName());
 }
 
@@ -248,12 +271,12 @@ const EventProcessor& StateMachine::getEventProcessor() const
     return pImpl->eventProcessor_;
 }
 
-Network::WebSocketService* StateMachine::getWebSocketService()
+Network::WebSocketServiceInterface* StateMachine::getWebSocketService()
 {
     return pImpl->wsService_;
 }
 
-void StateMachine::setWebSocketService(Network::WebSocketService* service)
+void StateMachine::setWebSocketService(Network::WebSocketServiceInterface* service)
 {
     pImpl->wsService_ = service;
 }
@@ -496,7 +519,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
 
     // PeersGet - return discovered mDNS peers.
     service.registerHandler<Api::PeersGet::Cwc>([this](Api::PeersGet::Cwc cwc) {
-        auto peers = pImpl->peerDiscovery_.getPeers();
+        auto peers = pImpl->peerDiscovery_->getPeers();
         Api::PeersGet::Okay response;
         response.peers = std::move(peers);
         cwc.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
@@ -661,14 +684,14 @@ const Timers& StateMachine::getTimers() const
     return pImpl->timers_;
 }
 
-PeerDiscovery& StateMachine::getPeerDiscovery()
+PeerDiscoveryInterface& StateMachine::getPeerDiscovery()
 {
-    return pImpl->peerDiscovery_;
+    return *pImpl->peerDiscovery_;
 }
 
-const PeerDiscovery& StateMachine::getPeerDiscovery() const
+const PeerDiscoveryInterface& StateMachine::getPeerDiscovery() const
 {
-    return pImpl->peerDiscovery_;
+    return *pImpl->peerDiscovery_;
 }
 
 GamepadManager& StateMachine::getGamepadManager()
@@ -1194,7 +1217,7 @@ void StateMachine::handleEvent(const Event& event)
                             spdlog::debug(
                                 "Server::StateMachine: Handling PeersGet generically (state: {})",
                                 State::getCurrentStateName(pImpl->fsmState_));
-                            auto peers = pImpl->peerDiscovery_.getPeers();
+                            auto peers = pImpl->peerDiscovery_->getPeers();
                             Api::PeersGet::Okay response;
                             response.peers = std::move(peers);
                             evt.sendResponse(Api::PeersGet::Response::okay(std::move(response)));

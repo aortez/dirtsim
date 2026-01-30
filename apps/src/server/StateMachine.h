@@ -31,13 +31,14 @@ struct TrainingResult;
 
 namespace Network {
 class WebSocketService;
-}
+class WebSocketServiceInterface;
+} // namespace Network
 
 namespace Server {
 
 class Event;
 class EventProcessor;
-class PeerDiscovery;
+class PeerDiscoveryInterface;
 class WebSocketServer;
 struct QuitApplicationCommand;
 struct GetFPSCommand;
@@ -50,6 +51,10 @@ class Any;
 class StateMachine : public StateMachineBase, public StateMachineInterface<Event> {
 public:
     explicit StateMachine(const std::optional<std::filesystem::path>& dataDir = std::nullopt);
+    StateMachine(
+        std::unique_ptr<Network::WebSocketServiceInterface> webSocketService,
+        std::unique_ptr<PeerDiscoveryInterface> peerDiscovery,
+        const std::optional<std::filesystem::path>& dataDir = std::nullopt);
     ~StateMachine();
 
     void mainLoopRun();
@@ -64,8 +69,8 @@ public:
     EventProcessor& getEventProcessor();
     const EventProcessor& getEventProcessor() const;
 
-    Network::WebSocketService* getWebSocketService();
-    void setWebSocketService(Network::WebSocketService* service);
+    Network::WebSocketServiceInterface* getWebSocketService();
+    void setWebSocketService(Network::WebSocketServiceInterface* service);
     void setWebSocketPort(uint16_t port);
 
     /**
@@ -83,8 +88,8 @@ public:
     Timers& getTimers();
     const Timers& getTimers() const;
 
-    PeerDiscovery& getPeerDiscovery();
-    const PeerDiscovery& getPeerDiscovery() const;
+    PeerDiscoveryInterface& getPeerDiscovery();
+    const PeerDiscoveryInterface& getPeerDiscovery() const;
 
     GamepadManager& getGamepadManager();
     const GamepadManager& getGamepadManager() const;

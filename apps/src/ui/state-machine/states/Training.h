@@ -27,6 +27,7 @@ struct Training {
     void updateAnimations();
 
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
@@ -60,7 +61,7 @@ struct Training {
     Api::EvolutionProgress progress;
     std::unique_ptr<TrainingView> view_;
     bool evolutionStarted_ = false;
-    int streamIntervalMs_ = 0;
+    int streamIntervalMs_ = 16;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
     uint64_t progressEventCount_ = 0;

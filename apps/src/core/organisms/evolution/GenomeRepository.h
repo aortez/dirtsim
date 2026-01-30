@@ -5,6 +5,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -20,6 +21,7 @@ namespace DirtSim {
 /**
  * Storage and retrieval for evolved genomes.
  * Persists across server state changes, tracks the best performer.
+ * Public methods are thread-safe but serialized internally.
  *
  * Two modes:
  * - In-memory only (default constructor): For tests and temporary use.
@@ -82,6 +84,9 @@ private:
 
     // Optional SQLite database for persistence.
     std::unique_ptr<sqlite::database> db_;
+
+    // Heap-allocated to preserve move semantics.
+    mutable std::unique_ptr<std::mutex> mutex_ = std::make_unique<std::mutex>();
 
     // Database operations.
     void initSchema();

@@ -43,10 +43,20 @@ public:
         uint16_t port, const std::string& bindAddress = "0.0.0.0") = 0;
     virtual bool isListening() const = 0;
     virtual void stopListening() = 0;
+    virtual void stopListening(bool disconnectClients) = 0;
 
     virtual Result<std::monostate, std::string> sendBinary(const std::vector<std::byte>& data) = 0;
     virtual Result<std::monostate, std::string> sendToClient(
         const std::string& connectionId, const std::string& message) = 0;
+    virtual Result<std::monostate, std::string> sendToClient(
+        const std::string& connectionId, const std::vector<std::byte>& data) = 0;
+
+    virtual void setAccessToken(std::string token) = 0;
+    virtual void clearAccessToken() = 0;
+    virtual void closeNonLocalClients() = 0;
+
+    virtual bool clientWantsEvents(const std::string& connectionId) const = 0;
+    virtual bool clientWantsRender(const std::string& connectionId) const = 0;
 
     virtual void onConnected(ConnectionCallback callback) = 0;
     virtual void onDisconnected(ConnectionCallback callback) = 0;

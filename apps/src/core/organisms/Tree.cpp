@@ -1,12 +1,14 @@
 #include "Tree.h"
 #include "OrganismManager.h"
 #include "TreeCommandProcessor.h"
+#include "brains/NeuralNetBrain.h"
 #include "components/RigidBodyComponent.h"
 #include "core/Cell.h"
 #include "core/ColorNames.h"
 #include "core/LightBuffer.h"
 #include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
+#include "core/ScopeTimer.h"
 #include "core/World.h"
 #include "core/WorldData.h"
 #include <algorithm>
@@ -112,8 +114,12 @@ void Tree::update(World& world, double deltaTime)
 
     // Run rigid body physics (gravity, collision, ground support).
     // Trees don't have external forces (no walking), so just pass zero.
-    auto result = rigidBody_->update(
-        id_, position, velocity, mass, local_shape, world, deltaTime, Vector2d{ 0.0, 0.0 });
+    RigidBodyUpdateResult result;
+    {
+        ScopeTimer rigidBodyTimer(world.getTimers(), "tree_rigid_body");
+        result = rigidBody_->update(
+            id_, position, velocity, mass, local_shape, world, deltaTime, Vector2d{ 0.0, 0.0 });
+    }
 
     // Sync cells from projection.
     occupied_cells = result.occupied_cells;
@@ -122,10 +128,16 @@ void Tree::update(World& world, double deltaTime)
         cells_.insert(pos);
     }
 
-    updateResources(world, deltaTime);
+    {
+        ScopeTimer resourcesTimer(world.getTimers(), "tree_resources");
+        updateResources(world, deltaTime);
+    }
 
     // Brain runs every tick - it can propose new commands or cancel current ones.
-    processBrainDecision(world);
+    {
+        ScopeTimer brainTimer(world.getTimers(), "tree_brain_total");
+        processBrainDecision(world);
+    }
 
     const auto& worldData = world.getData();
     const Vector2i anchor = getAnchorCell();
@@ -165,10 +177,23 @@ void Tree::executeCommand(World& world)
 void Tree::processBrainDecision(World& world)
 {
     // Gather sensory data.
-    TreeSensoryData sensory = gatherSensoryData(world);
+    TreeSensoryData sensory;
+    {
+        ScopeTimer sensoryTimer(world.getTimers(), "tree_sensory");
+        sensory = gatherSensoryData(world);
+    }
 
     // Ask brain for decision.
-    TreeCommand command = brain_->decide(sensory);
+    TreeCommand command;
+    {
+        ScopeTimer decideTimer(world.getTimers(), "tree_brain_decide");
+        if (auto* neural = dynamic_cast<NeuralNetBrain*>(brain_.get())) {
+            command = neural->decideWithTimers(sensory, world.getTimers());
+        }
+        else {
+            command = brain_->decide(sensory);
+        }
+    }
 
     // Handle the command.
     std::visit(

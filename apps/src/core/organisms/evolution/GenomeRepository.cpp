@@ -173,6 +173,7 @@ void GenomeRepository::clearDb()
 
 void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMetadata& meta)
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     genomes_[id] = genome;
     metadata_[id] = meta;
 
@@ -183,11 +184,13 @@ void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMeta
 
 bool GenomeRepository::exists(GenomeId id) const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     return genomes_.find(id) != genomes_.end();
 }
 
 std::optional<Genome> GenomeRepository::get(GenomeId id) const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     auto it = genomes_.find(id);
     if (it == genomes_.end()) {
         return std::nullopt;
@@ -197,6 +200,7 @@ std::optional<Genome> GenomeRepository::get(GenomeId id) const
 
 std::optional<GenomeMetadata> GenomeRepository::getMetadata(GenomeId id) const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     auto it = metadata_.find(id);
     if (it == metadata_.end()) {
         return std::nullopt;
@@ -206,6 +210,7 @@ std::optional<GenomeMetadata> GenomeRepository::getMetadata(GenomeId id) const
 
 std::vector<std::pair<GenomeId, GenomeMetadata>> GenomeRepository::list() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     std::vector<std::pair<GenomeId, GenomeMetadata>> result;
     result.reserve(metadata_.size());
     for (const auto& [id, meta] : metadata_) {
@@ -216,6 +221,7 @@ std::vector<std::pair<GenomeId, GenomeMetadata>> GenomeRepository::list() const
 
 void GenomeRepository::remove(GenomeId id)
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     genomes_.erase(id);
     metadata_.erase(id);
 
@@ -234,6 +240,7 @@ void GenomeRepository::remove(GenomeId id)
 
 void GenomeRepository::clear()
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     genomes_.clear();
     metadata_.clear();
     bestId_ = std::nullopt;
@@ -245,6 +252,7 @@ void GenomeRepository::clear()
 
 void GenomeRepository::markAsBest(GenomeId id)
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     if (genomes_.find(id) != genomes_.end()) {
         bestId_ = id;
         if (db_) {
@@ -255,29 +263,38 @@ void GenomeRepository::markAsBest(GenomeId id)
 
 std::optional<GenomeId> GenomeRepository::getBestId() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     return bestId_;
 }
 
 std::optional<Genome> GenomeRepository::getBest() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     if (!bestId_) {
         return std::nullopt;
     }
-    return get(*bestId_);
+    auto it = genomes_.find(*bestId_);
+    if (it == genomes_.end()) {
+        return std::nullopt;
+    }
+    return it->second;
 }
 
 size_t GenomeRepository::count() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     return genomes_.size();
 }
 
 bool GenomeRepository::empty() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     return genomes_.empty();
 }
 
 bool GenomeRepository::isPersistent() const
 {
+    std::lock_guard<std::mutex> lock(*mutex_);
     return db_ != nullptr;
 }
 

@@ -3,9 +3,13 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 
+#include <atomic>
 #include <filesystem>
 #include <gtest/gtest.h>
 #include <optional>
+#include <thread>
+#include <unordered_set>
+#include <vector>
 
 using namespace DirtSim;
 
@@ -166,6 +170,82 @@ TEST_F(GenomeRepositoryTest, StoreOverwritesExistingGenome)
     ASSERT_TRUE(meta.has_value());
     EXPECT_EQ(meta->name, "updated");
     EXPECT_DOUBLE_EQ(meta->fitness, 9.0);
+}
+
+TEST_F(GenomeRepositoryTest, ConcurrentStoreAndReadIsThreadSafe)
+{
+    constexpr int threadCount = 4;
+    constexpr int genomesPerThread = 50;
+    const size_t expectedCount = static_cast<size_t>(threadCount * genomesPerThread);
+
+    std::vector<std::vector<GenomeId>> threadIds(threadCount);
+    std::vector<std::thread> writers;
+    writers.reserve(threadCount);
+    std::atomic<int> completed{ 0 };
+    std::atomic<bool> start{ false };
+
+    for (int t = 0; t < threadCount; ++t) {
+        threadIds[t].reserve(genomesPerThread);
+        writers.emplace_back([this, t, &threadIds, &completed, &start]() {
+            while (!start.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            for (int i = 0; i < genomesPerThread; ++i) {
+                GenomeId id = UUID::generate();
+                threadIds[t].push_back(id);
+                const double value = static_cast<double>((t + 1) * (i + 1)) * 0.01;
+                repo.store(
+                    id,
+                    createTestGenome(value),
+                    createTestMetadata(
+                        "gen_" + std::to_string(t) + "_" + std::to_string(i), value));
+                repo.exists(id);
+                repo.getMetadata(id);
+            }
+            if (!threadIds[t].empty()) {
+                repo.markAsBest(threadIds[t].back());
+            }
+            completed.fetch_add(1, std::memory_order_release);
+        });
+    }
+
+    std::thread reader([this, &completed, threadCount]() {
+        while (completed.load(std::memory_order_acquire) < threadCount) {
+            repo.count();
+            repo.list();
+            repo.getBestId();
+            std::this_thread::yield();
+        }
+    });
+
+    start.store(true, std::memory_order_release);
+
+    for (auto& writer : writers) {
+        writer.join();
+    }
+    reader.join();
+
+    EXPECT_EQ(repo.count(), expectedCount);
+
+    std::unordered_set<GenomeId> allIds;
+    allIds.reserve(expectedCount);
+    for (const auto& ids : threadIds) {
+        for (const auto& id : ids) {
+            allIds.insert(id);
+        }
+    }
+
+    EXPECT_EQ(allIds.size(), expectedCount);
+
+    for (const auto& id : allIds) {
+        EXPECT_TRUE(repo.exists(id));
+        EXPECT_TRUE(repo.get(id).has_value());
+    }
+
+    auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    EXPECT_TRUE(allIds.find(*bestId) != allIds.end());
+    EXPECT_TRUE(repo.getBest().has_value());
 }
 
 // ============================================================================

@@ -105,10 +105,11 @@ make test ARGS='--gtest_filter=State*'
 # UI with trace logging
 ./build-debug/bin/dirtsim-ui --log-level trace -b wayland
 
-# Use with run_debug.sh (from repo root)
-../run_debug.sh -l debug      # Debug level
-../run_debug.sh -l trace      # Maximum verbosity
-../run_debug.sh --log-level info  # Default
+# Use with run.sh (from repo root)
+../run.sh -l debug      # Debug level
+../run.sh -l trace      # Maximum verbosity
+../run.sh --log-level info  # Default
+../run.sh --release     # Build and run release mode
 
 # Valid levels: trace, debug, info, warn, error, critical, off
 ```

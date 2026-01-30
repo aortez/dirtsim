@@ -12,6 +12,7 @@
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
 #include "server/network/PeerDiscovery.h"
+#include <thread>
 
 namespace DirtSim {
 namespace Server {
@@ -125,6 +126,23 @@ std::optional<ApiError> validateTrainingConfig(
     return std::nullopt;
 }
 
+int resolveParallelEvaluations(int requested, int populationSize)
+{
+    int resolved = requested;
+    if (resolved <= 0) {
+        const unsigned int cores = std::thread::hardware_concurrency();
+        resolved = cores > 0 ? static_cast<int>(cores) : 1;
+    }
+
+    if (resolved < 1) {
+        resolved = 1;
+    }
+    if (populationSize > 0 && resolved > populationSize) {
+        resolved = populationSize;
+    }
+    return resolved;
+}
+
 } // namespace
 
 void Idle::onEnter(StateMachine& /*dsm*/)
@@ -160,6 +178,8 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
     newState.mutationConfig = cwc.command.mutation;
     newState.trainingSpec = std::move(trainingSpec);
     newState.evolutionConfig.populationSize = populationSize;
+    newState.evolutionConfig.maxParallelEvaluations =
+        resolveParallelEvaluations(cwc.command.evolution.maxParallelEvaluations, populationSize);
 
     LOG_INFO(
         State,
@@ -168,6 +188,10 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
         cwc.command.evolution.maxGenerations,
         toString(newState.trainingSpec.scenarioId),
         static_cast<int>(newState.trainingSpec.organismType));
+    LOG_INFO(
+        State,
+        "Evolution: max parallel evaluations = {}",
+        newState.evolutionConfig.maxParallelEvaluations);
 
     cwc.sendResponse(Api::EvolutionStart::Response::okay({ .started = true }));
     return newState;

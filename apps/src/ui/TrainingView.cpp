@@ -381,6 +381,16 @@ void TrainingView::renderWorld(const WorldData& worldData)
     renderer_->renderWorldData(worldData, worldContainer_, false, RenderMode::SHARP);
 }
 
+void TrainingView::updateBestSnapshot(const WorldData& worldData, double fitness, int generation)
+{
+    bestSnapshotFromServer_ = true;
+    bestWorldData_ = std::make_unique<WorldData>(worldData);
+    bestFitness_ = fitness;
+    bestGeneration_ = generation;
+    lastBestFitness_ = fitness;
+    renderBestWorld();
+}
+
 void TrainingView::clearPanelContent()
 {
     evolutionControls_.reset();
@@ -644,7 +654,7 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     const bool fitnessImproved =
         (progress.bestFitnessAllTime > lastBestFitness_ + FITNESS_IMPROVEMENT_EPSILON);
 
-    if (evalChanged && fitnessImproved && hasRenderedWorld_) {
+    if (!bestSnapshotFromServer_ && evalChanged && fitnessImproved && hasRenderedWorld_) {
         // Last rendered frame is the final frame of the new best!
         bestWorldData_ = std::make_unique<WorldData>(*lastRenderedWorld_);
         bestFitness_ = progress.bestFitnessAllTime;
@@ -774,6 +784,17 @@ void TrainingView::updateAnimations()
 void TrainingView::setEvolutionStarted(bool started)
 {
     evolutionStarted_ = started;
+    if (started) {
+        bestSnapshotFromServer_ = false;
+        bestWorldData_.reset();
+        bestFitness_ = 0.0;
+        bestGeneration_ = 0;
+        lastBestFitness_ = -1.0;
+        lastEval_ = -1;
+        lastGeneration_ = -1;
+        lastRenderedWorld_.reset();
+        hasRenderedWorld_ = false;
+    }
 
     if (statusLabel_) {
         if (started) {

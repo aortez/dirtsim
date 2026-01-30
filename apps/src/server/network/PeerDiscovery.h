@@ -30,7 +30,19 @@ void from_json(const nlohmann::json& j, PeerRole& role);
 void to_json(nlohmann::json& j, const PeerInfo& info);
 void from_json(const nlohmann::json& j, PeerInfo& info);
 
-class PeerDiscovery {
+class PeerDiscoveryInterface {
+public:
+    virtual ~PeerDiscoveryInterface() = default;
+
+    virtual bool start() = 0;
+    virtual void stop() = 0;
+    virtual bool isRunning() const = 0;
+
+    virtual std::vector<PeerInfo> getPeers() const = 0;
+    virtual void setOnPeersChanged(std::function<void(const std::vector<PeerInfo>&)> callback) = 0;
+};
+
+class PeerDiscovery : public PeerDiscoveryInterface {
 public:
     PeerDiscovery();
     ~PeerDiscovery();
@@ -38,12 +50,12 @@ public:
     PeerDiscovery(const PeerDiscovery&) = delete;
     PeerDiscovery& operator=(const PeerDiscovery&) = delete;
 
-    bool start();
-    void stop();
-    bool isRunning() const;
+    bool start() override;
+    void stop() override;
+    bool isRunning() const override;
 
-    std::vector<PeerInfo> getPeers() const;
-    void setOnPeersChanged(std::function<void(const std::vector<PeerInfo>&)> callback);
+    std::vector<PeerInfo> getPeers() const override;
+    void setOnPeersChanged(std::function<void(const std::vector<PeerInfo>&)> callback) override;
 
 private:
     struct Impl;

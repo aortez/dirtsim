@@ -2,46 +2,25 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
-#include "server/StateMachine.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
 #include "server/states/State.h"
-#include <filesystem>
+#include "server/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 
 using namespace DirtSim;
 using namespace DirtSim::Server;
 using namespace DirtSim::Server::State;
-
-/**
- * @brief Test fixture for Idle state tests.
- *
- * Provides common setup: a StateMachine instance for state context.
- */
-class StateIdleTest : public ::testing::Test {
-protected:
-    void SetUp() override
-    {
-        testDataDir_ = std::filesystem::temp_directory_path() / "dirtsim-test";
-        stateMachine = std::make_unique<StateMachine>(testDataDir_);
-    }
-
-    void TearDown() override
-    {
-        stateMachine.reset();
-        std::filesystem::remove_all(testDataDir_);
-    }
-
-    std::filesystem::path testDataDir_;
-    std::unique_ptr<StateMachine> stateMachine;
-};
+using namespace DirtSim::Server::Tests;
 
 /**
  * @brief Test that SimRun command creates a World and transitions to SimRunning.
  */
-TEST_F(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
+TEST(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Idle state.
     Idle idleState;
 
@@ -59,7 +38,7 @@ TEST_F(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
     });
 
     // Execute: Send SimRun command to Idle state.
-    State::Any newState = idleState.onEvent(cwc, *stateMachine);
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: State transitioned to SimRunning.
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()))
@@ -68,12 +47,12 @@ TEST_F(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
     // Verify: SimRunning has valid World.
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
     ASSERT_NE(simRunning.world, nullptr) << "SimRunning should have a World";
-    const auto scenario_id = getScenarioId(stateMachine->serverConfig->startupConfig);
-    const auto* metadata = stateMachine->getScenarioRegistry().getMetadata(scenario_id);
+    const auto scenario_id = getScenarioId(fixture.stateMachine->serverConfig->startupConfig);
+    const auto* metadata = fixture.stateMachine->getScenarioRegistry().getMetadata(scenario_id);
     ASSERT_NE(metadata, nullptr);
 
-    uint32_t expected_width = stateMachine->defaultWidth;
-    uint32_t expected_height = stateMachine->defaultHeight;
+    uint32_t expected_width = fixture.stateMachine->defaultWidth;
+    uint32_t expected_height = fixture.stateMachine->defaultHeight;
     if (metadata->requiredWidth > 0 && metadata->requiredHeight > 0) {
         expected_width = metadata->requiredWidth;
         expected_height = metadata->requiredHeight;
@@ -100,8 +79,10 @@ TEST_F(StateIdleTest, SimRunCreatesWorldAndTransitionsToSimRunning)
 /**
  * @brief Test that Exit command transitions to Shutdown.
  */
-TEST_F(StateIdleTest, ExitCommandTransitionsToShutdown)
+TEST(StateIdleTest, ExitCommandTransitionsToShutdown)
 {
+    TestStateMachineFixture fixture;
+
     // Setup: Create Idle state.
     Idle idleState;
 
@@ -116,7 +97,7 @@ TEST_F(StateIdleTest, ExitCommandTransitionsToShutdown)
     });
 
     // Execute: Send Exit command to Idle state.
-    State::Any newState = idleState.onEvent(cwc, *stateMachine);
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
 
     // Verify: State transitioned to Shutdown.
     ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
@@ -127,8 +108,10 @@ TEST_F(StateIdleTest, ExitCommandTransitionsToShutdown)
     ASSERT_TRUE(capturedResponse.isValue()) << "Response should be success";
 }
 
-TEST_F(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
+TEST(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
 {
+    TestStateMachineFixture fixture;
+
     Idle idleState;
 
     bool callbackInvoked = false;
@@ -140,7 +123,7 @@ TEST_F(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
 
     Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
 
-    State::Any newState = idleState.onEvent(cwc, *stateMachine);
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
     SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());

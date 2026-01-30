@@ -1,6 +1,7 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/Timers.h"
 #include "core/UUID.h"
 #include "core/World.h"
 #include "core/WorldData.h"
@@ -16,8 +17,10 @@
 #include "server/StateMachine.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include <algorithm>
+#include <chrono>
 #include <ctime>
 #include <limits>
 #include <spdlog/spdlog.h>
@@ -27,7 +30,7 @@ namespace Server {
 namespace State {
 
 namespace {
-constexpr double TIMESTEP = 0.016; // 60 FPS physics.
+constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
 
 int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
 {
@@ -50,73 +53,75 @@ int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize
     return bestIdx;
 }
 
-Vector2i findSpawnCell(World& world)
+int resolveParallelEvaluations(int requested, int populationSize)
 {
-    auto& data = world.getData();
-    const int width = data.width;
-    const int height = data.height;
-    const int centerX = width / 2;
-    const int centerY = height / 2;
+    int resolved = requested;
+    if (resolved <= 0) {
+        const unsigned int cores = std::thread::hardware_concurrency();
+        resolved = cores > 0 ? static_cast<int>(cores) : 1;
+    }
 
-    const auto isSpawnable = [&world, &data](int x, int y) {
-        if (!data.inBounds(x, y)) {
-            return false;
+    if (resolved < 1) {
+        resolved = 1;
+    }
+    if (populationSize > 0 && resolved > populationSize) {
+        resolved = populationSize;
+    }
+    return resolved;
+}
+
+bool updateBestFitnessHint(std::atomic<double>& hint, double fitness)
+{
+    double current = hint.load(std::memory_order_relaxed);
+    while (fitness > current) {
+        if (hint.compare_exchange_weak(
+                current, fitness, std::memory_order_relaxed, std::memory_order_relaxed)) {
+            return true;
         }
-        if (!data.at(x, y).isAir()) {
-            return false;
-        }
-        return !world.getOrganismManager().hasOrganism({ x, y });
+    }
+    return false;
+}
+
+TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
+{
+    TrainingRunner::Individual runner;
+    runner.brain.brainKind = individual.brainKind;
+    runner.brain.brainVariant = individual.brainVariant;
+    runner.scenarioId = individual.scenarioId;
+    runner.genome = individual.genome;
+    return runner;
+}
+
+double computeFitnessForRunner(
+    const TrainingRunner& runner,
+    const TrainingRunner::Status& status,
+    OrganismType organismType,
+    const EvolutionConfig& evolutionConfig)
+{
+    const World* world = runner.getWorld();
+    DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
+
+    const FitnessResult result{
+        .lifespan = status.lifespan,
+        .distanceTraveled = status.distanceTraveled,
+        .maxEnergy = status.maxEnergy,
     };
 
-    if (isSpawnable(centerX, centerY)) {
-        return { centerX, centerY };
-    }
+    const auto& treeResources = runner.getTreeResourceTotals();
+    const TreeResourceTotals* treeResourcesPtr =
+        treeResources.has_value() ? &treeResources.value() : nullptr;
 
-    auto findNearestInRows = [&](int startY, int endY) -> std::optional<Vector2i> {
-        if (startY > endY) {
-            return std::nullopt;
-        }
-
-        long long bestDistance = std::numeric_limits<long long>::max();
-        Vector2i best{ 0, 0 };
-        bool found = false;
-
-        for (int y = startY; y <= endY; ++y) {
-            for (int x = 0; x < width; ++x) {
-                if (!isSpawnable(x, y)) {
-                    continue;
-                }
-                const long long dx = static_cast<long long>(x) - centerX;
-                const long long dy = static_cast<long long>(y) - centerY;
-                const long long distance = dx * dx + dy * dy;
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    best = { x, y };
-                    found = true;
-                }
-            }
-        }
-
-        if (!found) {
-            return std::nullopt;
-        }
-        return best;
+    const FitnessContext context{
+        .result = result,
+        .organismType = organismType,
+        .worldWidth = world->getData().width,
+        .worldHeight = world->getData().height,
+        .evolutionConfig = evolutionConfig,
+        .finalOrganism = runner.getOrganism(),
+        .treeResources = treeResourcesPtr,
     };
 
-    if (auto above = findNearestInRows(0, centerY); above.has_value()) {
-        return above.value();
-    }
-
-    if (auto below = findNearestInRows(centerY + 1, height - 1); below.has_value()) {
-        return below.value();
-    }
-
-    if (world.getOrganismManager().hasOrganism({ centerX, centerY })) {
-        DIRTSIM_ASSERT(false, "Evolution: Spawn location already occupied");
-    }
-
-    data.at(centerX, centerY).clear();
-    return { centerX, centerY };
+    return computeFitnessForOrganism(context);
 }
 
 Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
@@ -126,7 +131,35 @@ Scenario::EnumType getPrimaryScenarioId(const TrainingSpec& spec)
     }
     return spec.scenarioId;
 }
+
+std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(const Timers& timers)
+{
+    std::unordered_map<std::string, Evolution::TimerAggregate> stats;
+    const auto names = timers.getAllTimerNames();
+    stats.reserve(names.size());
+    for (const auto& name : names) {
+        Evolution::TimerAggregate entry;
+        entry.totalMs = timers.getAccumulatedTime(name);
+        entry.calls = timers.getCallCount(name);
+        stats.emplace(name, entry);
+    }
+    return stats;
+}
 } // namespace
+
+std::optional<Evolution::BestSnapshotData> Evolution::buildBestSnapshotData(
+    const TrainingRunner& runner)
+{
+    const World* world = runner.getWorld();
+    if (!world) {
+        return std::nullopt;
+    }
+
+    BestSnapshotData snapshot;
+    snapshot.worldData = world->getData();
+    snapshot.organismIds = world->getOrganismManager().getGrid();
+    return snapshot;
+}
 
 void Evolution::onEnter(StateMachine& dsm)
 {
@@ -143,10 +176,18 @@ void Evolution::onEnter(StateMachine& dsm)
     trainingComplete_ = false;
     finalAverageFitness_ = 0.0;
     finalTrainingSeconds_ = 0.0;
-    streamIntervalMs_ = 0;
+    streamIntervalMs_ = 16;
     lastStreamBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    lastProgressBroadcastTime_ = std::chrono::steady_clock::time_point{};
     trainingSessionId_ = UUID::generate();
     pendingTrainingResult_.reset();
+    cumulativeSimTime_ = 0.0;
+    sumFitnessThisGen_ = 0.0;
+    timerStatsAggregate_.clear();
+    visibleRunner_.reset();
+    visibleQueue_.clear();
+    visibleEvalIndex_ = -1;
+    workerState_ = std::make_unique<WorkerState>();
 
     // Seed RNG.
     rng.seed(std::random_device{}());
@@ -155,17 +196,18 @@ void Evolution::onEnter(StateMachine& dsm)
 
     // Initialize population.
     initializePopulation(dsm);
+
+    evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
+        evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
+
+    startWorkers(dsm);
+    queueGenerationTasks();
 }
 
 void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
-
-    // Clean up any in-progress evaluation.
-    evalWorld_.reset();
-    evalScenario_.reset();
-
-    // Store final best genome.
+    stopWorkers();
     storeBestGenome(dsm);
 }
 
@@ -179,95 +221,46 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         return std::nullopt;
     }
 
-    // Check if evolution complete.
-    if (generation >= evolutionConfig.maxGenerations) {
-        LOG_INFO(State, "Evolution complete: {} generations", generation);
-        trainingComplete_ = true;
+    drainResults(dsm);
+    if (!trainingComplete_) {
+        startNextVisibleEvaluation(dsm);
+        stepVisibleEvaluation(dsm);
+    }
+
+    if (trainingComplete_) {
         auto nextState = broadcastTrainingResult(dsm);
         if (nextState.has_value()) {
             return nextState;
         }
-        return std::nullopt;
     }
-
-    DIRTSIM_ASSERT(!population.empty(), "Population must not be empty");
-    DIRTSIM_ASSERT(
-        currentEval < static_cast<int>(population.size()),
-        "currentEval must be within population bounds");
-
-    // Start a new evaluation if needed.
-    if (!evalWorld_) {
-        startEvaluation(dsm);
-    }
-
-    // Advance one physics step.
-    evalWorld_->advanceTime(TIMESTEP);
-    evalSimTime_ += TIMESTEP;
-
-    const auto now = std::chrono::steady_clock::now();
-    bool shouldBroadcast = true;
-    if (streamIntervalMs_ > 0) {
-        const auto interval = std::chrono::milliseconds(streamIntervalMs_);
-        if (now - lastStreamBroadcastTime_ < interval) {
-            shouldBroadcast = false;
-        }
-        else {
-            lastStreamBroadcastTime_ = now;
-        }
-    }
-    else {
-        lastStreamBroadcastTime_ = now;
-    }
-
-    if (shouldBroadcast) {
-        // Broadcast render message for live training view.
-        dsm.broadcastRenderMessage(
-            evalWorld_->getData(),
-            evalWorld_->getOrganismManager().getGrid(),
-            evalScenarioId_,
-            evalScenarioConfig_);
-
-        // Broadcast progress for real-time time display updates.
-        broadcastProgress(dsm);
-    }
-
-    Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
-    if (organism) {
-        evalLastPosition_ = organism->position;
-    }
-
-    if (trainingSpec.organismType == OrganismType::TREE) {
-        Tree* tree = evalWorld_->getOrganismManager().getTree(evalOrganismId_);
-        if (tree) {
-            evalMaxEnergy_ = std::max(evalMaxEnergy_, tree->getEnergy());
-            evalTreeResourceTotals_ = tree->getResourceTotals();
-        }
-    }
-
-    // Check if evaluation complete (organism died or max time reached).
-    const bool organismDied = (organism == nullptr);
-    const bool timeUp = (evalSimTime_ >= evolutionConfig.maxSimulationTime);
-
-    if (organismDied || timeUp) {
-        finishEvaluation(dsm);
-        if (trainingComplete_) {
-            auto nextState = broadcastTrainingResult(dsm);
-            if (nextState.has_value()) {
-                return nextState;
-            }
-            return std::nullopt;
-        }
-    }
-
     return std::nullopt;
 }
 
 Any Evolution::onEvent(const Api::EvolutionStop::Cwc& cwc, StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Stopping at generation {}, eval {}", generation, currentEval);
+    stopWorkers();
     storeBestGenome(dsm);
     cwc.sendResponse(Api::EvolutionStop::Response::okay(std::monostate{}));
     return Idle{};
+}
+
+Any Evolution::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMachine& /*dsm*/)
+{
+    using Response = Api::TimerStatsGet::Response;
+
+    Api::TimerStatsGet::Okay okay;
+    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+        Api::TimerStatsGet::TimerEntry entry;
+        entry.total_ms = aggregate.totalMs;
+        entry.calls = aggregate.calls;
+        entry.avg_ms = entry.calls > 0 ? entry.total_ms / entry.calls : 0.0;
+        okay.timers[name] = entry;
+    }
+
+    LOG_INFO(State, "Evolution: TimerStatsGet returning {} timers", okay.timers.size());
+    cwc.sendResponse(Response::okay(std::move(okay)));
+    return std::move(*this);
 }
 
 Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachine& /*dsm*/)
@@ -295,6 +288,7 @@ Any Evolution::onEvent(const Api::TrainingStreamConfigSet::Cwc& cwc, StateMachin
 Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 {
     LOG_INFO(State, "Evolution: Exit received, shutting down");
+    stopWorkers();
     cwc.sendResponse(Api::Exit::Response::okay(std::monostate{}));
     return Shutdown{};
 }
@@ -364,119 +358,307 @@ void Evolution::initializePopulation(StateMachine& dsm)
     generation = 0;
     currentEval = 0;
     bestFitnessThisGen = 0.0;
+    sumFitnessThisGen_ = 0.0;
 
-    // Clear evaluation state.
-    evalWorld_.reset();
-    evalScenario_.reset();
-    evalOrganismId_ = INVALID_ORGANISM_ID;
-    evalSpawnPosition_ = Vector2d{ 0.0, 0.0 };
-    evalLastPosition_ = Vector2d{ 0.0, 0.0 };
-    evalSimTime_ = 0.0;
-    evalMaxEnergy_ = 0.0;
-    evalScenarioConfig_ = Config::Empty{};
-    evalScenarioId_ = getPrimaryScenarioId(trainingSpec);
+    visibleRunner_.reset();
+    visibleQueue_.clear();
+    visibleEvalIndex_ = -1;
+    visibleScenarioConfig_ = Config::Empty{};
+    visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
 }
 
-void Evolution::startEvaluation(StateMachine& dsm)
+void Evolution::startWorkers(StateMachine& dsm)
 {
-    DIRTSIM_ASSERT(
-        currentEval < static_cast<int>(population.size()),
-        "currentEval must be within population bounds");
-
-    auto& registry = dsm.getScenarioRegistry();
-    const Individual& individual = population[currentEval];
-    const ScenarioMetadata* metadata = registry.getMetadata(individual.scenarioId);
-    DIRTSIM_ASSERT(metadata != nullptr, "Training scenario not found in registry");
-
-    const int width = metadata->requiredWidth > 0 ? metadata->requiredWidth : 9;
-    const int height = metadata->requiredHeight > 0 ? metadata->requiredHeight : 9;
-
-    evalWorld_ = std::make_unique<World>(width, height);
-    DIRTSIM_ASSERT(evalWorld_ != nullptr, "World creation must succeed");
-
-    evalScenario_ = registry.createScenario(individual.scenarioId);
-    DIRTSIM_ASSERT(evalScenario_ != nullptr, "Training scenario factory failed");
-
-    evalScenario_->setup(*evalWorld_);
-    evalWorld_->setScenario(evalScenario_.get());
-    evalScenarioConfig_ = evalScenario_->getConfig();
-    evalScenarioId_ = individual.scenarioId;
-
-    const Vector2i spawnCell = findSpawnCell(*evalWorld_);
-
-    const std::string variant = individual.brainVariant.value_or("");
-    const BrainRegistryEntry* entry =
-        brainRegistry_.find(trainingSpec.organismType, individual.brainKind, variant);
-    DIRTSIM_ASSERT(entry != nullptr, "Evolution: Brain kind is not registered");
-
-    const Genome* genomePtr = individual.genome.has_value() ? &individual.genome.value() : nullptr;
-    if (entry->requiresGenome) {
-        DIRTSIM_ASSERT(genomePtr != nullptr, "Evolution: Genome required but missing");
+    if (!workerState_) {
+        workerState_ = std::make_unique<WorkerState>();
     }
 
-    evalOrganismId_ = entry->spawn(*evalWorld_, spawnCell.x, spawnCell.y, genomePtr);
-    DIRTSIM_ASSERT(evalOrganismId_ != INVALID_ORGANISM_ID, "Evolution: Spawn failed");
+    workerState_->trainingSpec = trainingSpec;
+    workerState_->evolutionConfig = evolutionConfig;
+    workerState_->brainRegistry = brainRegistry_;
+    workerState_->genomeRepository = &dsm.getGenomeRepository();
+    workerState_->bestFitnessHint = bestFitnessAllTime;
 
-    const Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
-    DIRTSIM_ASSERT(organism != nullptr, "Evolution: Spawned organism not found");
-    evalSpawnPosition_ = organism->position;
-    evalLastPosition_ = evalSpawnPosition_;
+    workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
+    if (workerState_->backgroundWorkerCount <= 0) {
+        return;
+    }
 
-    // Reset evaluation tracking.
-    evalSimTime_ = 0.0;
-    evalMaxEnergy_ = 0.0;
-    evalTreeResourceTotals_.reset();
-    if (trainingSpec.organismType == OrganismType::TREE) {
-        evalTreeResourceTotals_ = TreeResourceTotals{};
+    workerState_->workers.reserve(workerState_->backgroundWorkerCount);
+    WorkerState* state = workerState_.get();
+    for (int i = 0; i < workerState_->backgroundWorkerCount; ++i) {
+        workerState_->workers.emplace_back([state]() {
+            while (true) {
+                WorkerTask task;
+                {
+                    std::unique_lock<std::mutex> lock(state->taskMutex);
+                    state->taskCv.wait(lock, [state]() {
+                        return state->stopRequested || !state->taskQueue.empty();
+                    });
+                    if (state->stopRequested) {
+                        return;
+                    }
+                    task = std::move(state->taskQueue.front());
+                    state->taskQueue.pop_front();
+                }
+
+                WorkerResult result = runEvaluationTask(task, *state);
+                if (state->stopRequested) {
+                    return;
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(state->resultMutex);
+                    state->resultQueue.push_back(std::move(result));
+                }
+            }
+        });
     }
 }
 
-void Evolution::finishEvaluation(StateMachine& dsm)
+void Evolution::stopWorkers()
 {
-    // Get final lifespan.
-    double lifespan = evalSimTime_;
-    Organism::Body* organism = evalWorld_->getOrganismManager().getOrganism(evalOrganismId_);
-    if (organism) {
-        lifespan = organism->getAge();
+    if (!workerState_) {
+        return;
     }
 
-    Vector2d delta{ evalLastPosition_.x - evalSpawnPosition_.x,
-                    evalLastPosition_.y - evalSpawnPosition_.y };
-    const double distanceTraveled = delta.mag();
+    workerState_->stopRequested = true;
+    workerState_->taskCv.notify_all();
 
-    // Compute fitness.
-    const FitnessResult result{ .lifespan = lifespan,
-                                .distanceTraveled = distanceTraveled,
-                                .maxEnergy = evalMaxEnergy_ };
-    const TreeResourceTotals* treeResources =
-        evalTreeResourceTotals_.has_value() ? &evalTreeResourceTotals_.value() : nullptr;
-    const FitnessContext context{
-        .result = result,
-        .organismType = trainingSpec.organismType,
-        .worldWidth = evalWorld_->getData().width,
-        .worldHeight = evalWorld_->getData().height,
-        .evolutionConfig = evolutionConfig,
-        .finalOrganism = organism,
-        .treeResources = treeResources,
-    };
-    const double fitness = computeFitnessForOrganism(context);
-
-    fitnessScores[currentEval] = fitness;
-
-    // Update tracking.
-    if (fitness > bestFitnessThisGen) {
-        bestFitnessThisGen = fitness;
+    for (auto& worker : workerState_->workers) {
+        if (worker.joinable()) {
+            worker.join();
+        }
     }
-    if (fitness > bestFitnessAllTime) {
-        bestFitnessAllTime = fitness;
+    workerState_->workers.clear();
+    workerState_->backgroundWorkerCount = 0;
 
-        const Individual& individual = population[currentEval];
+    {
+        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
+        workerState_->taskQueue.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(workerState_->resultMutex);
+        workerState_->resultQueue.clear();
+    }
+
+    visibleQueue_.clear();
+    visibleRunner_.reset();
+    visibleEvalIndex_ = -1;
+}
+
+void Evolution::queueGenerationTasks()
+{
+    visibleQueue_.clear();
+
+    if (!workerState_) {
+        workerState_ = std::make_unique<WorkerState>();
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
+        workerState_->taskQueue.clear();
+
+        const int totalWorkers = std::max(1, evolutionConfig.maxParallelEvaluations);
+        for (int i = 0; i < static_cast<int>(population.size()); ++i) {
+            if (totalWorkers == 1 || (i % totalWorkers) == 0) {
+                visibleQueue_.push_back(i);
+            }
+            else {
+                workerState_->taskQueue.push_back(
+                    WorkerTask{ .index = i, .individual = population[i] });
+            }
+        }
+    }
+
+    workerState_->taskCv.notify_all();
+}
+
+void Evolution::drainResults(StateMachine& dsm)
+{
+    std::deque<WorkerResult> results;
+    if (!workerState_) {
+        return;
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(workerState_->resultMutex);
+        results.swap(workerState_->resultQueue);
+    }
+
+    for (auto& result : results) {
+        processResult(dsm, std::move(result));
+    }
+
+    if (!results.empty()) {
+        broadcastProgress(dsm);
+    }
+}
+
+void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
+{
+    if (visibleRunner_ || visibleQueue_.empty()) {
+        return;
+    }
+
+    visibleEvalIndex_ = visibleQueue_.front();
+    visibleQueue_.pop_front();
+
+    const Individual& individual = population[visibleEvalIndex_];
+    const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+
+    visibleRunner_ = std::make_unique<TrainingRunner>(
+        trainingSpec,
+        makeRunnerIndividual(individual),
+        evolutionConfig,
+        dsm.getGenomeRepository(),
+        runnerConfig);
+
+    visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+    visibleScenarioId_ = individual.scenarioId;
+}
+
+void Evolution::stepVisibleEvaluation(StateMachine& dsm)
+{
+    if (!visibleRunner_) {
+        return;
+    }
+
+    const TrainingRunner::Status status = visibleRunner_->step(1);
+
+    const auto now = std::chrono::steady_clock::now();
+    bool shouldBroadcast = true;
+    if (streamIntervalMs_ > 0) {
+        const auto interval = std::chrono::milliseconds(streamIntervalMs_);
+        if (now - lastStreamBroadcastTime_ < interval) {
+            shouldBroadcast = false;
+        }
+        else {
+            lastStreamBroadcastTime_ = now;
+        }
+    }
+    else {
+        lastStreamBroadcastTime_ = now;
+    }
+
+    if (shouldBroadcast) {
+        World* world = visibleRunner_->getWorld();
+        DIRTSIM_ASSERT(world != nullptr, "Evolution: Visible runner missing World");
+        dsm.broadcastRenderMessage(
+            world->getData(),
+            world->getOrganismManager().getGrid(),
+            visibleScenarioId_,
+            visibleScenarioConfig_);
+    }
+
+    const bool evalComplete = status.state != TrainingRunner::State::Running;
+    if (status.state != TrainingRunner::State::Running) {
+        WorkerResult result;
+        result.index = visibleEvalIndex_;
+        result.simTime = status.simTime;
+        result.fitness = computeFitnessForRunner(
+            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig);
+        if (const World* world = visibleRunner_->getWorld()) {
+            result.timerStats = collectTimerStats(world->getTimers());
+        }
+        processResult(dsm, std::move(result), visibleRunner_.get());
+        visibleRunner_.reset();
+        visibleEvalIndex_ = -1;
+    }
+
+    if (shouldBroadcast || evalComplete) {
+        broadcastProgress(dsm);
+    }
+}
+
+Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, WorkerState& state)
+{
+    DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
+    DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
+
+    const TrainingRunner::Config runnerConfig{ .brainRegistry = state.brainRegistry };
+    TrainingRunner runner(
+        state.trainingSpec,
+        makeRunnerIndividual(task.individual),
+        state.evolutionConfig,
+        *state.genomeRepository,
+        runnerConfig);
+
+    TrainingRunner::Status status;
+    while (status.state == TrainingRunner::State::Running && !state.stopRequested) {
+        status = runner.step(1);
+    }
+
+    WorkerResult result;
+    result.index = task.index;
+    result.simTime = status.simTime;
+    result.fitness = computeFitnessForRunner(
+        runner, status, state.trainingSpec.organismType, state.evolutionConfig);
+    if (const World* world = runner.getWorld()) {
+        result.timerStats = collectTimerStats(world->getTimers());
+    }
+    if (updateBestFitnessHint(state.bestFitnessHint, result.fitness)) {
+        auto snapshot = buildBestSnapshotData(runner);
+        if (snapshot.has_value()) {
+            result.bestSnapshot = std::move(snapshot);
+        }
+    }
+    return result;
+}
+
+void Evolution::processResult(
+    StateMachine& dsm, WorkerResult result, const TrainingRunner* snapshotRunner)
+{
+    if (result.index < 0 || result.index >= static_cast<int>(population.size())) {
+        return;
+    }
+
+    fitnessScores[result.index] = result.fitness;
+    sumFitnessThisGen_ += result.fitness;
+    currentEval++;
+    cumulativeSimTime_ += result.simTime;
+    for (const auto& [name, entry] : result.timerStats) {
+        auto& aggregate = timerStatsAggregate_[name];
+        aggregate.totalMs += entry.totalMs;
+        aggregate.calls += entry.calls;
+    }
+    const auto totalSimulation = result.timerStats.find("total_simulation");
+    if (totalSimulation != result.timerStats.end()) {
+        auto& aggregate = timerStatsAggregate_["training_total"];
+        aggregate.totalMs += totalSimulation->second.totalMs;
+        aggregate.calls += totalSimulation->second.calls;
+    }
+
+    if (result.fitness > bestFitnessThisGen) {
+        bestFitnessThisGen = result.fitness;
+    }
+    if (result.fitness > bestFitnessAllTime) {
+        bestFitnessAllTime = result.fitness;
+        if (workerState_) {
+            updateBestFitnessHint(workerState_->bestFitnessHint, bestFitnessAllTime);
+        }
+
+        std::optional<BestSnapshotData> snapshot = std::move(result.bestSnapshot);
+        if (!snapshot.has_value() && snapshotRunner) {
+            snapshot = buildBestSnapshotData(*snapshotRunner);
+        }
+        if (snapshot.has_value()) {
+            Api::TrainingBestSnapshot bestSnapshot;
+            bestSnapshot.worldData = std::move(snapshot->worldData);
+            bestSnapshot.organismIds = std::move(snapshot->organismIds);
+            bestSnapshot.fitness = result.fitness;
+            bestSnapshot.generation = generation;
+            dsm.broadcastEventData(
+                Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
+        }
+
+        const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
             auto& repo = dsm.getGenomeRepository();
             const GenomeMetadata meta{
                 .name =
-                    "gen_" + std::to_string(generation) + "_eval_" + std::to_string(currentEval),
-                .fitness = fitness,
+                    "gen_" + std::to_string(generation) + "_eval_" + std::to_string(result.index),
+                .fitness = result.fitness,
                 .generation = generation,
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
                 .scenarioId = individual.scenarioId,
@@ -497,53 +679,41 @@ void Evolution::finishEvaluation(StateMachine& dsm)
         LOG_INFO(
             State,
             "Evolution: New best fitness {:.4f} at gen {} eval {}",
-            fitness,
+            result.fitness,
             generation,
-            currentEval);
+            result.index);
     }
 
     LOG_DEBUG(
         State,
         "Evolution: gen={} eval={}/{} fitness={:.4f}",
         generation,
-        currentEval + 1,
+        currentEval,
         evolutionConfig.populationSize,
-        fitness);
+        result.fitness);
 
-    // Add this individual's sim time to cumulative total.
-    cumulativeSimTime_ += evalSimTime_;
+    maybeCompleteGeneration(dsm);
+}
 
-    // Clean up world.
-    evalWorld_.reset();
-    evalScenario_.reset();
-    evalOrganismId_ = INVALID_ORGANISM_ID;
-
-    // Advance to next individual.
-    currentEval++;
-
-    if (currentEval >= evolutionConfig.populationSize) {
-        if (generation + 1 >= evolutionConfig.maxGenerations) {
-            double avgFitness = 0.0;
-            for (const double fitnessScore : fitnessScores) {
-                avgFitness += fitnessScore;
-            }
-            if (!fitnessScores.empty()) {
-                avgFitness /= fitnessScores.size();
-            }
-
-            auto now = std::chrono::steady_clock::now();
-            finalTrainingSeconds_ = std::chrono::duration<double>(now - trainingStartTime_).count();
-            finalAverageFitness_ = avgFitness;
-            trainingComplete_ = true;
-            generation = evolutionConfig.maxGenerations;
-        }
-        else {
-            advanceGeneration(dsm);
-        }
+void Evolution::maybeCompleteGeneration(StateMachine& dsm)
+{
+    if (currentEval < evolutionConfig.populationSize) {
+        return;
     }
 
-    // Broadcast progress.
-    broadcastProgress(dsm);
+    if (generation + 1 >= evolutionConfig.maxGenerations) {
+        finalAverageFitness_ = evolutionConfig.populationSize > 0
+            ? (sumFitnessThisGen_ / evolutionConfig.populationSize)
+            : 0.0;
+        auto now = std::chrono::steady_clock::now();
+        finalTrainingSeconds_ = std::chrono::duration<double>(now - trainingStartTime_).count();
+        trainingComplete_ = true;
+        generation = evolutionConfig.maxGenerations;
+        return;
+    }
+
+    advanceGeneration(dsm);
+    queueGenerationTasks();
 }
 
 void Evolution::advanceGeneration(StateMachine& dsm)
@@ -580,23 +750,50 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     }
 
     // Elitist replacement: keep best from parents + offspring.
-    std::vector<std::pair<double, Individual>> pool;
+    struct PoolEntry {
+        double fitness = 0.0;
+        Individual individual;
+        bool isOffspring = false;
+        int order = 0;
+    };
+
+    std::vector<PoolEntry> pool;
     pool.reserve(population.size() + offspring.size());
     for (size_t i = 0; i < population.size(); ++i) {
-        pool.emplace_back(fitnessScores[i], population[i]);
+        pool.push_back(
+            PoolEntry{
+                .fitness = fitnessScores[i],
+                .individual = population[i],
+                .isOffspring = false,
+                .order = static_cast<int>(i),
+            });
     }
+    const int parentCount = static_cast<int>(population.size());
     for (size_t i = 0; i < offspring.size(); ++i) {
-        pool.emplace_back(offspringFitness[i], offspring[i]);
+        pool.push_back(
+            PoolEntry{
+                .fitness = offspringFitness[i],
+                .individual = offspring[i],
+                .isOffspring = true,
+                .order = parentCount + static_cast<int>(i),
+            });
     }
 
-    std::sort(
-        pool.begin(), pool.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    std::sort(pool.begin(), pool.end(), [](const PoolEntry& a, const PoolEntry& b) {
+        if (a.fitness != b.fitness) {
+            return a.fitness > b.fitness;
+        }
+        if (a.isOffspring != b.isOffspring) {
+            return a.isOffspring;
+        }
+        return a.order < b.order;
+    });
 
     population.clear();
     population.reserve(evolutionConfig.populationSize);
     const int count = std::min(evolutionConfig.populationSize, static_cast<int>(pool.size()));
     for (int i = 0; i < count; ++i) {
-        population.push_back(pool[i].second);
+        population.push_back(pool[i].individual);
     }
 
     // Advance to next generation.
@@ -608,27 +805,31 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     if (generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
         bestFitnessThisGen = 0.0;
+        sumFitnessThisGen_ = 0.0;
         std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
     }
 }
 
 void Evolution::broadcastProgress(StateMachine& dsm)
 {
+    const auto now = std::chrono::steady_clock::now();
+    if (lastProgressBroadcastTime_ != std::chrono::steady_clock::time_point{}
+        && now - lastProgressBroadcastTime_ < kProgressBroadcastInterval) {
+        return;
+    }
+    lastProgressBroadcastTime_ = now;
+
     // Calculate average fitness of evaluated individuals.
     double avgFitness = 0.0;
     if (currentEval > 0) {
-        for (int i = 0; i < currentEval; ++i) {
-            avgFitness += fitnessScores[i];
-        }
-        avgFitness /= currentEval;
+        avgFitness = sumFitnessThisGen_ / currentEval;
     }
 
     // Calculate total training time.
-    auto now = std::chrono::steady_clock::now();
     double totalSeconds = std::chrono::duration<double>(now - trainingStartTime_).count();
 
-    // Cumulative sim time = completed individuals + current individual's progress.
-    double cumulative = cumulativeSimTime_ + evalSimTime_;
+    const double visibleSimTime = visibleRunner_ ? visibleRunner_->getSimTime() : 0.0;
+    double cumulative = cumulativeSimTime_ + visibleSimTime;
 
     // Speedup factor = how much faster than real-time.
     double speedup = (totalSeconds > 0.0) ? (cumulative / totalSeconds) : 0.0;
@@ -653,7 +854,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .averageFitness = avgFitness,
         .bestGenomeId = bestGenomeId,
         .totalTrainingSeconds = totalSeconds,
-        .currentSimTime = evalSimTime_,
+        .currentSimTime = visibleSimTime,
         .cumulativeSimTime = cumulative,
         .speedupFactor = speedup,
         .etaSeconds = eta,
@@ -762,6 +963,14 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
     result.summary.averageFitness = finalAverageFitness_;
     result.summary.totalTrainingSeconds = finalTrainingSeconds_;
     result.summary.trainingSessionId = trainingSessionId_;
+    result.timerStats.reserve(timerStatsAggregate_.size());
+    for (const auto& [name, aggregate] : timerStatsAggregate_) {
+        Api::TimerStatsGet::TimerEntry entry;
+        entry.total_ms = aggregate.totalMs;
+        entry.calls = aggregate.calls;
+        entry.avg_ms = entry.calls > 0 ? entry.total_ms / entry.calls : 0.0;
+        result.timerStats.emplace(name, entry);
+    }
 
     if (!trainingSpec.population.empty()) {
         result.summary.primaryBrainKind = trainingSpec.population.front().brainKind;
