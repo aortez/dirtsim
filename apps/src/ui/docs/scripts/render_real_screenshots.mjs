@@ -17,7 +17,6 @@ Environment:
   DIRTSIM_SSH_USER           SSH user (optional)
   DIRTSIM_REMOTE_TMP         Remote temp dir (default: /tmp/dirtsim-ui-docs)
   DOCS_SCREENSHOT_ONLY       Comma-separated screen ids (e.g. start-menu,training)
-  DOCS_SCREENSHOT_ACTIVITY   0/1 to disable/enable activity nudges (default: 1)
   DOCS_SCREENSHOT_RESET_WAIT_MS   Reset wait override (ms)
   DOCS_SCREENSHOT_MIN_BYTES       Minimum screenshot size (bytes)
   DOCS_SCREENSHOT_MAX_RETRIES     Retry count for small screenshots
@@ -29,8 +28,20 @@ const sshHost = process.env.DIRTSIM_SSH_HOST ?? "dirtsim2.local";
 const sshUser = process.env.DIRTSIM_SSH_USER;
 const sshTarget = sshUser ? `${sshUser}@${sshHost}` : sshHost;
 const remoteTmpDir = process.env.DIRTSIM_REMOTE_TMP ?? "/tmp/dirtsim-ui-docs";
+const sshControlPath = path.join(
+  process.env.HOME ?? "",
+  ".ssh",
+  "cm-%r@%h:%p"
+);
+const sshControlArgs = [
+  "-o",
+  "ControlMaster=auto",
+  "-o",
+  "ControlPersist=60s",
+  "-o",
+  `ControlPath=${sshControlPath}`
+];
 
-const activityEnabled = (process.env.DOCS_SCREENSHOT_ACTIVITY ?? "1") !== "0";
 const resetWaitMs = Number(process.env.DOCS_SCREENSHOT_RESET_WAIT_MS ?? 1500);
 const minScreenshotBytes = Number(
   process.env.DOCS_SCREENSHOT_MIN_BYTES ?? 2048
@@ -40,6 +51,17 @@ const maxScreenshotRetries = Number(
 );
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const formatMs = (ms) => {
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+  return `${(ms / 1000).toFixed(2)}s`;
+};
+
+const logTiming = (label, ms) => {
+  console.info(`[timing] ${label}: ${formatMs(ms)}`);
+};
 
 const quoteForShell = (value) => {
   if (value === undefined || value === null) {
@@ -55,7 +77,9 @@ const quoteForShell = (value) => {
 const runRemoteCli = async (args) => {
   const command = ["dirtsim-cli", ...args].map(quoteForShell).join(" ");
   await new Promise((resolve, reject) => {
-    const child = spawn("ssh", [sshTarget, command], { stdio: "inherit" });
+    const child = spawn("ssh", [...sshControlArgs, sshTarget, command], {
+      stdio: "inherit"
+    });
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
@@ -69,7 +93,7 @@ const runRemoteCli = async (args) => {
 const runRemoteCapture = async (args) =>
   new Promise((resolve, reject) => {
     const command = ["dirtsim-cli", ...args].map(quoteForShell).join(" ");
-    const child = spawn("ssh", [sshTarget, command], {
+    const child = spawn("ssh", [...sshControlArgs, sshTarget, command], {
       stdio: ["ignore", "pipe", "pipe"]
     });
     let output = "";
@@ -94,7 +118,9 @@ const runRemoteCapture = async (args) =>
 
 const runSsh = async (command) => {
   await new Promise((resolve, reject) => {
-    const child = spawn("ssh", [sshTarget, command], { stdio: "inherit" });
+    const child = spawn("ssh", [...sshControlArgs, sshTarget, command], {
+      stdio: "inherit"
+    });
     child.on("close", (code) => {
       if (code === 0) {
         resolve();
@@ -108,6 +134,7 @@ const runSsh = async (command) => {
 const runCli = async (args) => runRemoteCli(args);
 
 const runCliCapture = async (args) => runRemoteCapture(args);
+
 
 const parseJsonLine = (text) => {
   const lines = text.split(/\r?\n/).map((line) => line.trim());
@@ -384,6 +411,7 @@ const runCliStep = async (step, screenId) => {
     throw new Error(`Missing args for step in ${screenId}`);
   }
 
+  const startTime = Date.now();
   const allowDeselected = Boolean(step.allowDeselected);
   if (isMouseClickCommand(step.args)) {
     throw new Error(`MouseDown/MouseUp not allowed in docs DSL (${screenId}).`);
@@ -418,6 +446,7 @@ const runCliStep = async (step, screenId) => {
   if (stderrSnippet) {
     console.error(`CLI stderr (${screenId}): ${stderrSnippet}`);
   }
+  logTiming(`${screenId} step ${step.args.join(" ")}`, Date.now() - startTime);
 
   if (capturedError) {
     if (isIconSelectCommand(step.args)) {
@@ -469,6 +498,7 @@ const runCliStep = async (step, screenId) => {
 };
 
 const clearTrainingState = async () => {
+  const startTime = Date.now();
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const serverState = await getServerState();
     if (serverState === "UnsavedTrainingResult") {
@@ -491,9 +521,11 @@ const clearTrainingState = async () => {
     }
     return;
   }
+  logTiming("clearTrainingState", Date.now() - startTime);
 };
 
 const resetSystem = async () => {
+  const startTime = Date.now();
   await runCli(["os-manager", "RestartServer"]);
   await runCli(["os-manager", "RestartUi"]);
   await waitForUiConnected();
@@ -502,6 +534,7 @@ const resetSystem = async () => {
     2000,
     "after reset"
   );
+  logTiming("resetSystem", Date.now() - startTime);
 };
 
 const run = async () => {
@@ -535,6 +568,7 @@ const run = async () => {
   let activeFlowId = null;
   for (const screen of selectedScreens) {
     console.info(`Screenshot scenario: ${screen.id}`);
+    const screenStartTime = Date.now();
     const flowId = screen.flowId ?? screen.id;
     if (flowId !== activeFlowId) {
       if (screen.resetSystem !== false) {
@@ -544,124 +578,116 @@ const run = async () => {
         }
       }
       activeFlowId = flowId;
-    }
+      }
 
-    const steps = screen.steps ?? [];
-    for (const step of steps) {
-      if (step.kind === "NavigateToScreen") {
-        await navigateToScreen(step, screen.id);
-      }
-      else if (step.waitForState && (!step.args || step.args.length === 0)) {
-        await requireUiState(
-          Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
-          step.waitTimeoutMs,
-          `${screen.id} step waitForState`
-        );
-        continue;
-      }
-      else {
-        try {
-          await runCliStep(step, screen.id);
-        } catch (error) {
-          if (step.retryOnTrainingResult) {
-            await clearTrainingState();
-            await requireUiState(
-              ["StartMenu", "Paused", "SimRunning"],
-              8000,
-              `${screen.id} retryOnTrainingResult`
-            );
+      const steps = screen.steps ?? [];
+      for (const step of steps) {
+        if (step.kind === "NavigateToScreen") {
+          await navigateToScreen(step, screen.id);
+        }
+        else if (step.waitForState && (!step.args || step.args.length === 0)) {
+          await requireUiState(
+            Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
+            step.waitTimeoutMs,
+            `${screen.id} step waitForState`
+          );
+          continue;
+        }
+        else {
+          try {
             await runCliStep(step, screen.id);
-          } else {
-            throw error;
+          } catch (error) {
+            if (step.retryOnTrainingResult) {
+              await clearTrainingState();
+              await requireUiState(
+                ["StartMenu", "Paused", "SimRunning"],
+                8000,
+                `${screen.id} retryOnTrainingResult`
+              );
+              await runCliStep(step, screen.id);
+            } else {
+              throw error;
+            }
           }
         }
+        if (step.waitMs) {
+          await sleep(step.waitMs);
+        }
+        if (step.waitForState) {
+          await requireUiState(
+            Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
+            step.waitTimeoutMs,
+            `${screen.id} step waitForState`
+          );
+        }
       }
-      if (step.waitMs) {
-        await sleep(step.waitMs);
-      }
-      if (step.waitForState) {
-        await requireUiState(
-          Array.isArray(step.waitForState) ? step.waitForState : [step.waitForState],
-          step.waitTimeoutMs,
-          `${screen.id} step waitForState`
-        );
-      }
-    }
 
-    if (screen.expect) {
-      const expectTimeoutMs = screen.expectTimeoutMs ?? 8000;
-      const status = await waitForUiStatus(
-        (current) => matchesExpectedStatus(current, screen.expect),
-        expectTimeoutMs
-      );
-      if (!status && screen.expect.selectedIcon) {
-        await runCliStep(
-          { args: ["ui", "IconSelect", JSON.stringify({ id: screen.expect.selectedIcon })] },
-          screen.id
+      if (screen.expect) {
+        const expectTimeoutMs = screen.expectTimeoutMs ?? 8000;
+        const expectStartTime = Date.now();
+        const status = await waitForUiStatus(
+          (current) => matchesExpectedStatus(current, screen.expect),
+          expectTimeoutMs
         );
-      }
-      const finalStatus = await waitForUiStatus(
-        (current) => matchesExpectedStatus(current, screen.expect),
-        expectTimeoutMs
-      );
-      if (!finalStatus) {
-        throw new Error(
-          `UI did not reach expected status for ${screen.id}: ` +
-            JSON.stringify(screen.expect)
+        if (!status && screen.expect.selectedIcon) {
+          await runCliStep(
+            { args: ["ui", "IconSelect", JSON.stringify({ id: screen.expect.selectedIcon })] },
+            screen.id
+          );
+        }
+        const finalStatus = await waitForUiStatus(
+          (current) => matchesExpectedStatus(current, screen.expect),
+          expectTimeoutMs
         );
+        if (!finalStatus) {
+          throw new Error(
+            `UI did not reach expected status for ${screen.id}: ` +
+              JSON.stringify(screen.expect)
+          );
+        }
+        logTiming(`${screen.id} expect`, Date.now() - expectStartTime);
       }
-    }
 
-    const shouldEnableActivity =
-      screen.activityEnabled ?? activityEnabled;
-    if (shouldEnableActivity) {
-      if (!screen.skipClearTraining) {
-        await clearTrainingState();
-      }
-      await runCli(["ui", "MouseMove", "{\"pixelX\":15,\"pixelY\":80}"]);
-      await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"]);
-      await runCli(["ui", "MouseMove", "{\"pixelX\":60,\"pixelY\":60}"]);
-      await sleep(400);
-    }
-
-    const outputPath = path.join(outputDir, `${screen.id}.png`);
-    await runSsh(`mkdir -p ${quoteForShell(remoteTmpDir)}`);
+      const outputPath = path.join(outputDir, `${screen.id}.png`);
+      await runSsh(`mkdir -p ${quoteForShell(remoteTmpDir)}`);
     const remotePath = path.posix.join(remoteTmpDir, `${screen.id}.png`);
+    const captureStartTime = Date.now();
     let attempt = 0;
     while (attempt <= maxScreenshotRetries) {
       await runRemoteCli(["screenshot", remotePath]);
       await new Promise((resolve, reject) => {
-        const child = spawn("scp", [`${sshTarget}:${remotePath}`, outputPath], {
-          stdio: "inherit"
+        const child = spawn(
+          "scp",
+          [...sshControlArgs, `${sshTarget}:${remotePath}`, outputPath],
+          { stdio: "inherit" }
+          );
+          child.on("close", (code) => {
+            if (code === 0) {
+              resolve();
+            } else {
+              reject(
+                new Error(
+                  `scp failed (${code}) for: ${sshTarget}:${remotePath}`
+                )
+              );
+            }
+          });
         });
-        child.on("close", (code) => {
-          if (code === 0) {
-            resolve();
-          } else {
-            reject(
-              new Error(
-                `scp failed (${code}) for: ${sshTarget}:${remotePath}`
-              )
-            );
-          }
-        });
-      });
 
-      const stats = await fs.stat(outputPath);
-      if (stats.size >= minScreenshotBytes || attempt >= maxScreenshotRetries) {
-        break;
+        const stats = await fs.stat(outputPath);
+        if (stats.size >= minScreenshotBytes || attempt >= maxScreenshotRetries) {
+          break;
+        }
+        attempt += 1;
+        await sleep(100);
       }
-      attempt += 1;
-      await sleep(100);
-      if (activityEnabled) {
-        await runCli(["ui", "MouseMove", "{\"pixelX\":20,\"pixelY\":20}"]);
-      }
-    }
-    await runSsh(`rm -f ${quoteForShell(remotePath)}`);
+      await runSsh(`rm -f ${quoteForShell(remotePath)}`);
+      logTiming(`${screen.id} capture`, Date.now() - captureStartTime);
 
     if (screen.afterMs) {
       await sleep(screen.afterMs);
     }
+    logTiming(`${screen.id} total`, Date.now() - screenStartTime);
   }
 };
 

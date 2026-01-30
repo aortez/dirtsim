@@ -9,6 +9,7 @@
 #include "TrainRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
+#include "core/Result.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/ClientHello.h"
@@ -75,6 +76,41 @@ std::vector<uint8_t> base64Decode(const std::string& encoded)
     }
 
     return decoded;
+}
+
+Result<std::vector<uint8_t>, std::string> grabScreenshotPng(
+    Network::WebSocketService& client, double scale, int timeoutMs, bool binaryPayload)
+{
+    UiApi::ScreenGrab::Command cmd{
+        .scale = scale,
+        .format = UiApi::ScreenGrab::Format::Png,
+        .quality = 23,
+        .binaryPayload = binaryPayload,
+    };
+
+    auto result = client.sendCommandAndGetResponse(cmd, timeoutMs);
+    if (result.isError()) {
+        return Result<std::vector<uint8_t>, std::string>::error(result.errorValue());
+    }
+
+    auto okay = result.value();
+    if (okay.format != UiApi::ScreenGrab::Format::Png) {
+        return Result<std::vector<uint8_t>, std::string>::error("Unexpected format in response");
+    }
+
+    std::vector<uint8_t> pngData;
+    if (binaryPayload) {
+        pngData.assign(okay.data.begin(), okay.data.end());
+    }
+    else {
+        pngData = base64Decode(okay.data);
+    }
+
+    if (pngData.empty()) {
+        return Result<std::vector<uint8_t>, std::string>::error("Failed to decode screenshot data");
+    }
+
+    return Result<std::vector<uint8_t>, std::string>::okay(std::move(pngData));
 }
 
 // Helper function to sort timer_stats by total_ms in descending order.
@@ -992,6 +1028,7 @@ int main(int argc, char** argv)
 
         // Connect to UI.
         Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
         auto connectResult = client.connect(uiAddress, timeoutMs);
         if (connectResult.isError()) {
             std::cerr << "Failed to connect to UI at " << uiAddress << ": "
@@ -999,34 +1036,15 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        // Build typed ScreenGrab command.
-        UiApi::ScreenGrab::Command cmd{
-            .scale = 1.0,
-            .format = UiApi::ScreenGrab::Format::Png,
-            .quality = 23,
-        };
-
-        auto result = client.sendCommandAndGetResponse(cmd, timeoutMs);
-        if (result.isError()) {
-            std::cerr << "ScreenGrab command failed: " << result.errorValue() << std::endl;
+        auto pngResult = grabScreenshotPng(client, 1.0, timeoutMs, true);
+        if (pngResult.isError()) {
+            std::cerr << "ScreenGrab command failed: " << pngResult.errorValue() << std::endl;
             client.disconnect();
             return 1;
         }
-
-        // Extract typed response from Result.
-        auto okay = result.value();
-
-        // Verify format.
-        if (okay.format != UiApi::ScreenGrab::Format::Png) {
-            std::cerr << "Unexpected format in response" << std::endl;
-            client.disconnect();
-            return 1;
-        }
-
-        // Decode base64 to PNG bytes.
-        auto pngData = base64Decode(okay.data);
+        auto pngData = pngResult.value();
         if (pngData.empty()) {
-            std::cerr << "Failed to decode base64 data" << std::endl;
+            std::cerr << "Failed to decode screenshot data" << std::endl;
             client.disconnect();
             return 1;
         }
@@ -1042,8 +1060,8 @@ int main(int argc, char** argv)
         outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
         outFile.close();
 
-        std::cerr << "✓ Screenshot saved to " << outputFile << " (" << okay.width << "x"
-                  << okay.height << ", " << pngData.size() << " bytes)" << std::endl;
+        std::cerr << "✓ Screenshot saved to " << outputFile << " (" << pngData.size() << " bytes)"
+                  << std::endl;
 
         client.disconnect();
         return 0;

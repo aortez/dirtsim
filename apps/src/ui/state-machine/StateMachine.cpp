@@ -598,7 +598,8 @@ void StateMachine::handleEvent(const Event& event)
             return;
         }
 
-        std::string base64Data;
+        const bool wantsBinaryPayload = cwc.usesBinary && cwc.command.binaryPayload;
+        std::string payloadData;
         bool isKeyframe = true;
         uint64_t timestampMs = 0;
         UiApi::ScreenGrab::Format responseFormat = cwc.command.format;
@@ -632,20 +633,39 @@ void StateMachine::handleEvent(const Event& event)
                 return;
             }
 
-            base64Data = base64Encode(encoded->data);
+            if (wantsBinaryPayload) {
+                payloadData.assign(
+                    reinterpret_cast<const char*>(encoded->data.data()), encoded->data.size());
+            }
+            else {
+                payloadData = base64Encode(encoded->data);
+            }
             isKeyframe = encoded->isKeyframe;
             timestampMs = encoded->timestampMs;
 
-            LOG_INFO(
-                State,
-                "ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264 -> {} bytes base64, "
-                "keyframe={})",
-                screenshotData->width,
-                screenshotData->height,
-                screenshotData->pixels.size(),
-                encoded->data.size(),
-                base64Data.size(),
-                isKeyframe);
+            if (wantsBinaryPayload) {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264, keyframe={})",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size(),
+                    encoded->data.size(),
+                    isKeyframe);
+            }
+            else {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab H.264 encoded {}x{} ({} bytes raw -> {} bytes h264 -> {} bytes "
+                    "base64,"
+                    " keyframe={})",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size(),
+                    encoded->data.size(),
+                    payloadData.size(),
+                    isKeyframe);
+            }
         }
         else if (cwc.command.format == UiApi::ScreenGrab::Format::Png) {
             // PNG encoding requested.
@@ -658,38 +678,72 @@ void StateMachine::handleEvent(const Event& event)
                 return;
             }
 
-            base64Data = base64Encode(pngData);
+            if (wantsBinaryPayload) {
+                payloadData.assign(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+            }
+            else {
+                payloadData = base64Encode(pngData);
+            }
 
             auto now = std::chrono::system_clock::now();
             timestampMs = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
                     .count());
 
-            LOG_INFO(
-                State,
-                "ScreenGrab PNG encoded {}x{} ({} bytes raw -> {} bytes png -> {} bytes base64)",
-                screenshotData->width,
-                screenshotData->height,
-                screenshotData->pixels.size(),
-                pngData.size(),
-                base64Data.size());
+            if (wantsBinaryPayload) {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab PNG encoded {}x{} ({} bytes raw -> {} bytes png)",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size(),
+                    pngData.size());
+            }
+            else {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab PNG encoded {}x{} ({} bytes raw -> {} bytes png -> {} bytes "
+                    "base64)",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size(),
+                    pngData.size(),
+                    payloadData.size());
+            }
         }
         else {
             // Raw ARGB8888 format.
-            base64Data = base64Encode(screenshotData->pixels);
+            if (wantsBinaryPayload) {
+                payloadData.assign(
+                    reinterpret_cast<const char*>(screenshotData->pixels.data()),
+                    screenshotData->pixels.size());
+            }
+            else {
+                payloadData = base64Encode(screenshotData->pixels);
+            }
 
             auto now = std::chrono::system_clock::now();
             timestampMs = static_cast<uint64_t>(
                 std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch())
                     .count());
 
-            LOG_INFO(
-                State,
-                "ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
-                screenshotData->width,
-                screenshotData->height,
-                screenshotData->pixels.size(),
-                base64Data.size());
+            if (wantsBinaryPayload) {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab captured {}x{} ({} bytes raw)",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size());
+            }
+            else {
+                LOG_INFO(
+                    State,
+                    "ScreenGrab captured {}x{} ({} bytes raw, {} bytes base64)",
+                    screenshotData->width,
+                    screenshotData->height,
+                    screenshotData->pixels.size(),
+                    payloadData.size());
+            }
         }
 
         try {
@@ -702,7 +756,7 @@ void StateMachine::handleEvent(const Event& event)
                 responseHeight = h264Encoder_->getHeight();
             }
 
-            UiApi::ScreenGrab::Okay response{ .data = std::move(base64Data),
+            UiApi::ScreenGrab::Okay response{ .data = std::move(payloadData),
                                               .width = responseWidth,
                                               .height = responseHeight,
                                               .format = responseFormat,

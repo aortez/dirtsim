@@ -2,7 +2,6 @@ export const screens = [
   {
     id: "start-menu",
     resetSystem: true,
-    activityEnabled: false,
     expect: {
       state: "StartMenu"
     },
@@ -16,7 +15,6 @@ export const screens = [
   {
     id: "training",
     resetSystem: false,
-    activityEnabled: false,
     expect: {
       state: "Training",
       selectedIcon: "CORE",
@@ -28,7 +26,7 @@ export const screens = [
         target: "Training"
       },
       {
-        args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"],
+        args: ["ui", "IconSelect", "{\"id\":\"CORE\"}"],
         waitMs: 500,
         waitForState: "Training"
       }
@@ -37,7 +35,6 @@ export const screens = [
   {
     id: "network",
     resetSystem: true,
-    activityEnabled: false,
     expect: {
       state: "StartMenu",
       selectedIcon: "NETWORK",
@@ -62,7 +59,6 @@ export const screens = [
     id: "training-config",
     flowId: "training-config",
     resetSystem: true,
-    activityEnabled: false,
     skipClearTraining: true,
     expect: {
       state: "Training",
@@ -84,7 +80,6 @@ export const screens = [
   {
     id: "training-config-evolution",
     flowId: "training-config",
-    activityEnabled: false,
     expect: {
       state: "Training",
       selectedIcon: "EVOLUTION",
