@@ -93,6 +93,22 @@ dirtsim-cli ui StatusGet
 dirtsim-cli ui StateGet
 ```
 
+StatusGet includes state-specific details via `state_details`. For Training:
+
+```json
+{
+  "value": {
+    "state": "Training",
+    "selected_icon": "CORE",
+    "panel_visible": true,
+    "state_details": {
+      "_variant_type": "DirtSim::UiApi::StatusGet::TrainingStateDetails",
+      "trainingModalVisible": false
+    }
+  }
+}
+```
+
 Then run:
 
 ```bash

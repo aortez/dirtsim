@@ -481,6 +481,19 @@ void StateMachine::handleEvent(const Event& event)
             }
         }
 
+        UiApi::StatusGet::StateDetails stateDetails = UiApi::StatusGet::NoStateDetails{};
+
+        std::visit(
+            [&stateDetails](const auto& currentState) {
+                using T = std::decay_t<decltype(currentState)>;
+                if constexpr (std::is_same_v<T, State::Training>) {
+                    stateDetails = UiApi::StatusGet::TrainingStateDetails{
+                        .trainingModalVisible = currentState.isTrainingResultModalVisible(),
+                    };
+                }
+            },
+            fsmState.getVariant());
+
         UiApi::StatusGet::Okay status{
             .state = getCurrentStateName(),
             .connected_to_server = wsService_ && wsService_->isConnected(),
@@ -494,6 +507,7 @@ void StateMachine::handleEvent(const Event& event)
             .memory_percent = metrics.memory_percent,
             .selected_icon = selectedIcon,
             .panel_visible = panelVisible,
+            .state_details = stateDetails,
         };
 
         LOG_DEBUG(State, "Sending StatusGet response (state={})", status.state);

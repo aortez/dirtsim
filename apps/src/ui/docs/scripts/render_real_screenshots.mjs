@@ -207,6 +207,9 @@ const getUiStatus = async () => {
   }
 };
 
+const isTrainingModalVisible = (status) =>
+  Boolean(status?.state_details?.trainingModalVisible);
+
 const getServerStatus = async () => {
   try {
     const { output } = await runCliCapture(["server", "StatusGet"]);
@@ -325,6 +328,18 @@ const waitForUiStatus = async (predicate, timeoutMs = 8000) => {
   return null;
 };
 
+const requireTrainingModalHidden = async (timeoutMs = 8000, label = "") => {
+  const status = await waitForUiStatus(
+    (current) => !isTrainingModalVisible(current),
+    timeoutMs
+  );
+  if (!status) {
+    const suffix = label ? ` (${label})` : "";
+    throw new Error(`Timeout waiting for training modal to close${suffix}`);
+  }
+  return status;
+};
+
 const matchesExpectedStatus = (status, expected) => {
   if (!status) {
     return false;
@@ -364,7 +379,14 @@ const navigateToScreen = async (step, screenId) => {
   }
 
   const state = await requireUiStateFromStateGet(`${screenId} NavigateToScreen`);
+  const status = await getUiStatus();
+  const trainingModalVisible = isTrainingModalVisible(status);
   if (state === target) {
+    if (target === "Training" && trainingModalVisible) {
+      console.info(`[ui] ${screenId}: closing training result modal`);
+      await runCliStep({ args: ["ui", "TrainingResultDiscard"] }, screenId);
+      await requireTrainingModalHidden(8000, `${screenId} NavigateToScreen`);
+    }
     await ensureIconRailExpanded(screenId);
     return;
   }
@@ -377,6 +399,10 @@ const navigateToScreen = async (step, screenId) => {
       return;
     }
     if (state === "Training") {
+      if (trainingModalVisible) {
+        await runCliStep({ args: ["ui", "TrainingResultDiscard"] }, screenId);
+        await requireTrainingModalHidden(8000, `${screenId} TrainingResultDiscard`);
+      }
       await runCliStep({ args: ["ui", "TrainingQuit"] }, screenId);
       await requireUiState(["StartMenu"], 8000, `${screenId} NavigateToScreen`);
       await ensureIconRailExpanded(screenId);
@@ -390,6 +416,7 @@ const navigateToScreen = async (step, screenId) => {
       await ensureIconRailExpanded(screenId);
       await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
       await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      await requireTrainingModalHidden(8000, `${screenId} NavigateToScreen`);
       await ensureIconRailExpanded(screenId);
       return;
     }
@@ -399,6 +426,7 @@ const navigateToScreen = async (step, screenId) => {
       await ensureIconRailExpanded(screenId);
       await runCliStep({ args: ["ui", "IconSelect", "{\"id\":\"EVOLUTION\"}"] }, screenId);
       await requireUiState(["Training"], 8000, `${screenId} NavigateToScreen`);
+      await requireTrainingModalHidden(8000, `${screenId} NavigateToScreen`);
       await ensureIconRailExpanded(screenId);
       return;
     }
@@ -504,18 +532,23 @@ const clearTrainingState = async () => {
     if (serverState === "UnsavedTrainingResult") {
       await runCli(["server", "TrainingResultDiscard"]);
     }
-    const state = await getUiState();
-    if (!state) {
+    const status = await getUiStatus();
+    if (!status) {
       return;
     }
-    if (state === "UnsavedTrainingResult") {
+    if (isTrainingModalVisible(status)) {
       await runCli(["ui", "TrainingResultDiscard"]);
+      await requireTrainingModalHidden(8000, "clearTrainingState");
       await sleep(700);
       continue;
     }
-    if (state === "Training") {
-      await runCli(["ui", "TrainingResultDiscard"]);
-      await runCli(["ui", "SimStop"]);
+    if (status.state === "Training") {
+      await runCli(["ui", "TrainingQuit"]);
+      await requireUiState(
+        ["StartMenu", "Paused", "SimRunning"],
+        8000,
+        "clearTrainingState"
+      );
       await sleep(700);
       continue;
     }
