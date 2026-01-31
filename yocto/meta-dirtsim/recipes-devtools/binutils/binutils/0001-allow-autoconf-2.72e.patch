@@ -1,14 +1,3 @@
-From 20a6f534c5d1766ff5df927c7043e1f0be7f4b5c Mon Sep 17 00:00:00 2001
-From: Codex <codex@openai.com>
-Date: Sat, 31 Jan 2026 22:45:00 +0000
-Subject: [PATCH] Allow Autoconf 2.72e for binutils
-
----
- config/override.m4 | 4 +++-
- 1 file changed, 3 insertions(+), 1 deletion(-)
-
-diff --git a/config/override.m4 b/config/override.m4
-index dbeae01f2b9..d85a2e3ec2c 100644
 --- a/config/override.m4
 +++ b/config/override.m4
 @@ -35,8 +35,10 @@ dnl Or for updating the whole tree at once with the definition above.
