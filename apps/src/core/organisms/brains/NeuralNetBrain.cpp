@@ -19,7 +19,7 @@ namespace {
 // Input layout:
 //   - 15×15×10 = 2250 (material histograms)
 //   - 15×15 = 225 (light levels)
-//   - 6 (internal state: energy, water, age, stage, scale_factor, reserved)
+//   - 6 (internal state: energy, water, age, stage, scale_factor, last_action_result)
 //   - 6 (current action one-hot, all zeros if idle)
 //   - 1 (action progress, 0.0 to 1.0)
 constexpr int INPUT_SIZE = 2488;
@@ -161,7 +161,7 @@ struct NeuralNetBrain::Impl {
         input_buffer[index++] = static_cast<WeightType>(sensory.age_seconds / 100.0);
         input_buffer[index++] = static_cast<WeightType>(static_cast<double>(sensory.stage) / 4.0);
         input_buffer[index++] = static_cast<WeightType>(sensory.scale_factor / 10.0);
-        input_buffer[index++] = static_cast<WeightType>(0.0f); // Reserved for future use.
+        input_buffer[index++] = static_cast<WeightType>(sensory.last_action_result);
 
         // Current action one-hot encoding (6 values).
         // Note: Wait and Cancel are never "in progress", so these will be 0.

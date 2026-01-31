@@ -3,21 +3,44 @@
 #include "OrganismType.h"
 #include "Tree.h"
 #include "core/Cell.h"
+#include "core/LoggingChannels.h"
 #include "core/MaterialType.h"
 #include "core/World.h"
 #include "core/WorldData.h"
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 
+namespace {
 // Energy costs for tree growth commands.
 constexpr double ENERGY_COST_WOOD = 10.0;
 constexpr double ENERGY_COST_LEAF = 8.0;
 constexpr double ENERGY_COST_ROOT = 12.0;
 constexpr double ENERGY_COST_PRODUCE_SEED = 50.0;
 
-CommandExecutionResult TreeCommandProcessor::execute(
-    Tree& tree, World& world, const TreeCommand& cmd)
+double getEnergyCostForCommand(const TreeCommand& cmd)
+{
+    return std::visit(
+        [](const auto& command) -> double {
+            using T = std::decay_t<decltype(command)>;
+            if constexpr (std::is_same_v<T, GrowWoodCommand>) {
+                return ENERGY_COST_WOOD;
+            }
+            else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
+                return ENERGY_COST_LEAF;
+            }
+            else if constexpr (std::is_same_v<T, GrowRootCommand>) {
+                return ENERGY_COST_ROOT;
+            }
+            else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
+                return ENERGY_COST_PRODUCE_SEED;
+            }
+            return 0.0;
+        },
+        cmd);
+}
+
+CommandExecutionResult validateCommand(
+    Tree& tree, World& world, const TreeCommand& cmd, bool checkEnergy)
 {
     const auto isTargetOwnedByTree = [&world, &tree](const Vector2i& pos) {
         return world.getOrganismManager().at(pos) == tree.getId();
@@ -28,7 +51,7 @@ CommandExecutionResult TreeCommandProcessor::execute(
             using T = std::decay_t<decltype(command)>;
 
             if constexpr (std::is_same_v<T, GrowWoodCommand>) {
-                if (tree.getEnergy() < ENERGY_COST_WOOD) {
+                if (checkEnergy && tree.getEnergy() < ENERGY_COST_WOOD) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for WOOD growth" };
                 }
@@ -43,50 +66,26 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 // Check cardinal adjacency to WOOD or SEED (structural elements only).
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                bool has_structural_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor =
-                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == Material::EnumType::Wood
-                                || neighbor.material_type == Material::EnumType::Seed) {
-                                has_structural_neighbor = true;
-                                break;
-                            }
-                        }
+                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
+                        continue;
+                    }
+                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
+                        continue;
+                    }
+                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                    if (neighbor.material_type == Material::EnumType::Wood
+                        || neighbor.material_type == Material::EnumType::Seed) {
+                        return { CommandResult::SUCCESS, "WOOD target valid" };
                     }
                 }
 
-                if (!has_structural_neighbor) {
-                    return { CommandResult::INVALID_TARGET,
-                             "WOOD requires cardinal adjacency to WOOD or SEED" };
-                }
-
-                // Convert world position to local coordinates.
-                Vector2i anchor = tree.getAnchorCell();
-                Vector2i localPos = command.target_pos - anchor;
-
-                // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, Material::EnumType::Wood, 1.0);
-                tree.setEnergy(tree.getEnergy() - ENERGY_COST_WOOD);
-
-                spdlog::info(
-                    "Tree {}: Grew WOOD at ({}, {})",
-                    tree.getId(),
-                    command.target_pos.x,
-                    command.target_pos.y);
-
-                if (tree.getStage() == GrowthStage::GERMINATION) {
-                    tree.setStage(GrowthStage::SAPLING);
-                    spdlog::info("Tree {}: Transitioned to SAPLING stage", tree.getId());
-                }
-
-                return { CommandResult::SUCCESS, "WOOD growth successful" };
+                return { CommandResult::INVALID_TARGET,
+                         "WOOD requires cardinal adjacency to WOOD or SEED" };
             }
             else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
-                if (tree.getEnergy() < ENERGY_COST_LEAF) {
+                if (checkEnergy && tree.getEnergy() < ENERGY_COST_LEAF) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for LEAF growth" };
                 }
@@ -101,44 +100,25 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 // Check cardinal adjacency to WOOD (leaves grow from branches).
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                bool has_wood_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor =
-                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == Material::EnumType::Wood) {
-                                has_wood_neighbor = true;
-                                break;
-                            }
-                        }
+                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
+                        continue;
+                    }
+                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
+                        continue;
+                    }
+                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                    if (neighbor.material_type == Material::EnumType::Wood) {
+                        return { CommandResult::SUCCESS, "LEAF target valid" };
                     }
                 }
 
-                if (!has_wood_neighbor) {
-                    return { CommandResult::INVALID_TARGET,
-                             "LEAF requires cardinal adjacency to WOOD" };
-                }
-
-                // Convert world position to local coordinates.
-                Vector2i anchor = tree.getAnchorCell();
-                Vector2i localPos = command.target_pos - anchor;
-
-                // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, Material::EnumType::Leaf, 1.0);
-                tree.setEnergy(tree.getEnergy() - ENERGY_COST_LEAF);
-
-                spdlog::info(
-                    "Tree {}: Grew LEAF at ({}, {})",
-                    tree.getId(),
-                    command.target_pos.x,
-                    command.target_pos.y);
-
-                return { CommandResult::SUCCESS, "LEAF growth successful" };
+                return { CommandResult::INVALID_TARGET,
+                         "LEAF requires cardinal adjacency to WOOD" };
             }
             else if constexpr (std::is_same_v<T, GrowRootCommand>) {
-                if (tree.getEnergy() < ENERGY_COST_ROOT) {
+                if (checkEnergy && tree.getEnergy() < ENERGY_COST_ROOT) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for ROOT growth" };
                 }
@@ -153,50 +133,26 @@ CommandExecutionResult TreeCommandProcessor::execute(
 
                 // Check cardinal adjacency to SEED or ROOT (root network).
                 Vector2i cardinal_dirs[] = { { 0, 1 }, { 0, -1 }, { -1, 0 }, { 1, 0 } };
-                bool has_root_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.target_pos + dir;
-                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor =
-                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == Material::EnumType::Root
-                                || neighbor.material_type == Material::EnumType::Seed) {
-                                has_root_neighbor = true;
-                                break;
-                            }
-                        }
+                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
+                        continue;
+                    }
+                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
+                        continue;
+                    }
+                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                    if (neighbor.material_type == Material::EnumType::Root
+                        || neighbor.material_type == Material::EnumType::Seed) {
+                        return { CommandResult::SUCCESS, "ROOT target valid" };
                     }
                 }
 
-                if (!has_root_neighbor) {
-                    return { CommandResult::INVALID_TARGET,
-                             "ROOT requires cardinal adjacency to SEED or ROOT" };
-                }
-
-                // Convert world position to local coordinates.
-                Vector2i anchor = tree.getAnchorCell();
-                Vector2i localPos = command.target_pos - anchor;
-
-                // Add cell to tree's local shape (rigid body will project it to grid).
-                tree.addCellToLocalShape(localPos, Material::EnumType::Root, 1.0);
-                tree.setEnergy(tree.getEnergy() - ENERGY_COST_ROOT);
-
-                spdlog::info(
-                    "Tree {}: Grew ROOT at ({}, {})",
-                    tree.getId(),
-                    command.target_pos.x,
-                    command.target_pos.y);
-
-                if (tree.getStage() == GrowthStage::SEED) {
-                    tree.setStage(GrowthStage::GERMINATION);
-                    spdlog::info("Tree {}: Transitioned to GERMINATION stage", tree.getId());
-                }
-
-                return { CommandResult::SUCCESS, "ROOT growth successful" };
+                return { CommandResult::INVALID_TARGET,
+                         "ROOT requires cardinal adjacency to SEED or ROOT" };
             }
             else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
-                if (tree.getEnergy() < ENERGY_COST_PRODUCE_SEED) {
+                if (checkEnergy && tree.getEnergy() < ENERGY_COST_PRODUCE_SEED) {
                     return { CommandResult::INSUFFICIENT_ENERGY,
                              "Not enough energy for seed production" };
                 }
@@ -210,16 +166,17 @@ CommandExecutionResult TreeCommandProcessor::execute(
                 bool has_branch_neighbor = false;
                 for (const auto& dir : cardinal_dirs) {
                     Vector2i neighbor_pos = command.position + dir;
-                    if (world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
-                        if (world.getOrganismManager().at(neighbor_pos) == tree.getId()) {
-                            const Cell& neighbor =
-                                world.getData().at(neighbor_pos.x, neighbor_pos.y);
-                            if (neighbor.material_type == Material::EnumType::Wood
-                                || neighbor.material_type == Material::EnumType::Leaf) {
-                                has_branch_neighbor = true;
-                                break;
-                            }
-                        }
+                    if (!world.getData().inBounds(neighbor_pos.x, neighbor_pos.y)) {
+                        continue;
+                    }
+                    if (world.getOrganismManager().at(neighbor_pos) != tree.getId()) {
+                        continue;
+                    }
+                    const Cell& neighbor = world.getData().at(neighbor_pos.x, neighbor_pos.y);
+                    if (neighbor.material_type == Material::EnumType::Wood
+                        || neighbor.material_type == Material::EnumType::Leaf) {
+                        has_branch_neighbor = true;
+                        break;
                     }
                 }
 
@@ -242,13 +199,105 @@ CommandExecutionResult TreeCommandProcessor::execute(
                              "Cannot place SEED in another organism's cell" };
                 }
 
+                return { CommandResult::SUCCESS, "SEED target valid" };
+            }
+            else if constexpr (std::is_same_v<T, WaitCommand>) {
+                // WaitCommand is instant - no action taken.
+                return { CommandResult::SUCCESS, "Wait" };
+            }
+            else if constexpr (std::is_same_v<T, CancelCommand>) {
+                // CancelCommand should be handled by Tree::processBrainDecision, not here.
+                return { CommandResult::SUCCESS, "Cancel" };
+            }
+
+            return { CommandResult::INVALID_TARGET, "Unknown command type" };
+        },
+        cmd);
+}
+} // namespace
+
+CommandExecutionResult TreeCommandProcessor::validate(
+    Tree& tree, World& world, const TreeCommand& cmd)
+{
+    return validateCommand(tree, world, cmd, true);
+}
+
+CommandExecutionResult TreeCommandProcessor::execute(
+    Tree& tree, World& world, const TreeCommand& cmd)
+{
+    CommandExecutionResult validation = validateCommand(tree, world, cmd, false);
+    if (!validation.succeeded()) {
+        return validation;
+    }
+
+    const double energyCost = getEnergyCostForCommand(cmd);
+    if (energyCost > 0.0 && !tree.isEnergyReservedForCommand(cmd, energyCost)) {
+        LOG_WARN(Tree, "Tree {}: Energy not reserved for command", tree.getId());
+        return { CommandResult::INSUFFICIENT_ENERGY, "Energy not reserved for command" };
+    }
+
+    return std::visit(
+        [&](auto&& command) -> CommandExecutionResult {
+            using T = std::decay_t<decltype(command)>;
+
+            if constexpr (std::is_same_v<T, GrowWoodCommand>) {
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
+
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, Material::EnumType::Wood, 1.0);
+
+                LOG_INFO(
+                    Tree,
+                    "Tree {}: Grew WOOD at ({}, {})",
+                    tree.getId(),
+                    command.target_pos.x,
+                    command.target_pos.y);
+
+                return { CommandResult::SUCCESS, "WOOD growth successful" };
+            }
+            else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
+
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, Material::EnumType::Leaf, 1.0);
+
+                LOG_INFO(
+                    Tree,
+                    "Tree {}: Grew LEAF at ({}, {})",
+                    tree.getId(),
+                    command.target_pos.x,
+                    command.target_pos.y);
+
+                return { CommandResult::SUCCESS, "LEAF growth successful" };
+            }
+            else if constexpr (std::is_same_v<T, GrowRootCommand>) {
+                // Convert world position to local coordinates.
+                Vector2i anchor = tree.getAnchorCell();
+                Vector2i localPos = command.target_pos - anchor;
+
+                // Add cell to tree's local shape (rigid body will project it to grid).
+                tree.addCellToLocalShape(localPos, Material::EnumType::Root, 1.0);
+
+                LOG_INFO(
+                    Tree,
+                    "Tree {}: Grew ROOT at ({}, {})",
+                    tree.getId(),
+                    command.target_pos.x,
+                    command.target_pos.y);
+
+                return { CommandResult::SUCCESS, "ROOT growth successful" };
+            }
+            else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
                 world.getData()
                     .at(command.position.x, command.position.y)
                     .replaceMaterial(Material::EnumType::Seed, 1.0);
 
-                tree.setEnergy(tree.getEnergy() - ENERGY_COST_PRODUCE_SEED);
-
-                spdlog::info(
+                LOG_INFO(
+                    Tree,
                     "Tree {}: Produced SEED at ({}, {})",
                     tree.getId(),
                     command.position.x,
@@ -268,6 +317,11 @@ CommandExecutionResult TreeCommandProcessor::execute(
             return { CommandResult::INVALID_TARGET, "Unknown command type" };
         },
         cmd);
+}
+
+double TreeCommandProcessor::getEnergyCost(const TreeCommand& cmd) const
+{
+    return getEnergyCostForCommand(cmd);
 }
 
 } // namespace DirtSim

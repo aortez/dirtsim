@@ -18,10 +18,20 @@ public:
         : inner_(std::move(inner))
     {}
 
-    CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override
+    CommandExecutionResult validate(Tree& tree, World& world, const TreeCommand& cmd) override
     {
         commands_.push_back(cmd);
+        return inner_->validate(tree, world, cmd);
+    }
+
+    CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override
+    {
         return inner_->execute(tree, world, cmd);
+    }
+
+    double getEnergyCost(const TreeCommand& cmd) const override
+    {
+        return inner_->getEnergyCost(cmd);
     }
 
     const std::vector<TreeCommand>& getCommands() const { return commands_; }

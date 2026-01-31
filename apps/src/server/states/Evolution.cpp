@@ -105,6 +105,8 @@ double computeFitnessForRunner(
         .lifespan = status.lifespan,
         .distanceTraveled = status.distanceTraveled,
         .maxEnergy = status.maxEnergy,
+        .commandsAccepted = status.commandsAccepted,
+        .commandsRejected = status.commandsRejected,
     };
 
     const auto& treeResources = runner.getTreeResourceTotals();

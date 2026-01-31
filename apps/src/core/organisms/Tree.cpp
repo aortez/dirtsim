@@ -13,6 +13,7 @@
 #include "core/WorldData.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
@@ -27,6 +28,18 @@ constexpr double kWaterFromAir = 0.02;
 constexpr double kWaterFromSoil = 0.3;
 constexpr double kWaterFromWater = 1.2;
 constexpr double kWaterUsePerLeaf = 0.12;
+constexpr double kMatureAgeSeconds = 1000.0;
+constexpr int kMatureLeafCount = 10;
+constexpr int kMatureRootCount = 10;
+constexpr int kMatureWoodCount = 10;
+
+struct TreeMaterialCounts {
+    int leafCount = 0;
+    int rootCount = 0;
+    int woodCount = 0;
+    bool hasSeed = false;
+    int minWoodY = std::numeric_limits<int>::max();
+};
 
 const char* growthStageName(GrowthStage stage)
 {
@@ -65,6 +78,61 @@ const char* treeCommandName(TreeCommandType type)
 
     return "UNKNOWN";
 }
+
+TreeMaterialCounts countTreeMaterials(const Tree& tree)
+{
+    TreeMaterialCounts counts;
+
+    for (const auto& cell : tree.local_shape) {
+        switch (cell.material) {
+            case Material::EnumType::Air:
+                break;
+            case Material::EnumType::Dirt:
+                break;
+            case Material::EnumType::Leaf:
+                counts.leafCount++;
+                break;
+            case Material::EnumType::Metal:
+                break;
+            case Material::EnumType::Root:
+                counts.rootCount++;
+                break;
+            case Material::EnumType::Sand:
+                break;
+            case Material::EnumType::Seed:
+                counts.hasSeed = true;
+                break;
+            case Material::EnumType::Wall:
+                break;
+            case Material::EnumType::Water:
+                break;
+            case Material::EnumType::Wood:
+                counts.woodCount++;
+                counts.minWoodY = std::min(counts.minWoodY, cell.localPos.y);
+                break;
+        }
+    }
+
+    return counts;
+}
+
+GrowthStage computeDynamicStage(const Tree& tree, const TreeMaterialCounts& counts)
+{
+    if (!counts.hasSeed || counts.rootCount == 0) {
+        return GrowthStage::SEED;
+    }
+
+    if (counts.woodCount == 0 || counts.minWoodY >= 0) {
+        return GrowthStage::GERMINATION;
+    }
+
+    if (tree.getAge() >= kMatureAgeSeconds && counts.leafCount >= kMatureLeafCount
+        && counts.rootCount >= kMatureRootCount && counts.woodCount >= kMatureWoodCount) {
+        return GrowthStage::MATURE;
+    }
+
+    return GrowthStage::SAPLING;
+}
 } // namespace
 
 Tree::Tree(
@@ -97,6 +165,23 @@ void Tree::setAnchorCell(Vector2i pos)
 {
     position.x = static_cast<double>(pos.x) + 0.5;
     position.y = static_cast<double>(pos.y) + 0.5;
+}
+
+bool Tree::isEnergyReservedForCommand(const TreeCommand& cmd, double energyCost) const
+{
+    if (energyCost <= 0.0) {
+        return true;
+    }
+
+    if (!hasReservedEnergy_) {
+        return false;
+    }
+
+    if (reservedCommandType_ != getCommandType(cmd)) {
+        return false;
+    }
+
+    return reservedEnergy_ >= energyCost;
 }
 
 void Tree::update(World& world, double deltaTime)
@@ -133,6 +218,13 @@ void Tree::update(World& world, double deltaTime)
         updateResources(world, deltaTime);
     }
 
+    const TreeMaterialCounts counts = countTreeMaterials(*this);
+    const GrowthStage newStage = computeDynamicStage(*this, counts);
+    if (newStage != stage_) {
+        stage_ = newStage;
+        LOG_INFO(Tree, "Tree {}: Transitioned to {} stage", id_, growthStageName(stage_));
+    }
+
     // Brain runs every tick - it can propose new commands or cancel current ones.
     {
         ScopeTimer brainTimer(world.getTimers(), "tree_brain_total");
@@ -145,13 +237,15 @@ void Tree::update(World& world, double deltaTime)
     if (current_command_.has_value()) {
         command = treeCommandName(getCommandType(*current_command_));
     }
+    const double lastFitness = hasLastFitness_ ? lastFitness_ : 0.0;
+    const char* fitnessStatus = hasLastFitness_ ? "valid" : "unset";
     static int counter = 0;
     counter++;
     if (counter % 1000 == 0) {
         LOG_INFO(
             Tree,
             "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
-            "anchor=({}, {}) cmd={}",
+            "anchor=({}, {}) cmd={} fitness={:.4f} fitness_status={}",
             id_,
             worldData.timestep,
             growthStageName(stage_),
@@ -161,15 +255,33 @@ void Tree::update(World& world, double deltaTime)
             cells_.size(),
             anchor.x,
             anchor.y,
-            command);
+            command,
+            lastFitness,
+            fitnessStatus);
     }
 }
 
 void Tree::executeCommand(World& world)
 {
     CommandExecutionResult result = processor->execute(*this, world, *current_command_);
+    const bool accepted = result.succeeded();
+    hasLastCommandResult_ = true;
+    lastCommandAccepted_ = accepted;
+    if (accepted) {
+        ++commandAcceptedCount_;
+    }
+    else {
+        ++commandRejectedCount_;
+    }
 
-    if (!result.succeeded()) {
+    if (!accepted && hasReservedEnergy_ && reservedEnergy_ > 0.0) {
+        total_energy_ = std::min(total_energy_ + reservedEnergy_, kEnergyCap);
+    }
+    reservedEnergy_ = 0.0;
+    hasReservedEnergy_ = false;
+    reservedCommandType_ = TreeCommandType::WaitCommand;
+
+    if (!accepted) {
         LOG_INFO(Brain, "Tree {}: {}", id_, result.message);
     }
 }
@@ -182,6 +294,7 @@ void Tree::processBrainDecision(World& world)
         ScopeTimer sensoryTimer(world.getTimers(), "tree_sensory");
         sensory = gatherSensoryData(world);
     }
+    hasLastCommandResult_ = false;
 
     // Ask brain for decision.
     TreeCommand command;
@@ -207,6 +320,12 @@ void Tree::processBrainDecision(World& world)
                 // Cancel in-progress action.
                 if (current_command_.has_value()) {
                     LOG_INFO(Brain, "Tree {}: Cancelled current action", id_);
+                    if (hasReservedEnergy_ && reservedEnergy_ > 0.0) {
+                        total_energy_ = std::min(total_energy_ + reservedEnergy_, kEnergyCap);
+                        reservedEnergy_ = 0.0;
+                        hasReservedEnergy_ = false;
+                        reservedCommandType_ = TreeCommandType::WaitCommand;
+                    }
                     current_command_.reset();
                     time_remaining_seconds_ = 0.0;
                     total_command_time_seconds_ = 0.0;
@@ -215,6 +334,40 @@ void Tree::processBrainDecision(World& world)
             else {
                 // Action command - only start if idle.
                 if (!current_command_.has_value()) {
+                    CommandExecutionResult validation = processor->validate(*this, world, cmd);
+                    if (!validation.succeeded()) {
+                        hasLastCommandResult_ = true;
+                        lastCommandAccepted_ = false;
+                        ++commandRejectedCount_;
+                        if (validation.result == CommandResult::INVALID_TARGET) {
+                            LOG_DEBUG(Brain, "Tree {}: {}", id_, validation.message);
+                        }
+                        else {
+                            LOG_INFO(Brain, "Tree {}: {}", id_, validation.message);
+                        }
+                        return;
+                    }
+
+                    const double energyCost = processor->getEnergyCost(cmd);
+                    if (energyCost > 0.0) {
+                        if (total_energy_ < energyCost) {
+                            hasLastCommandResult_ = true;
+                            lastCommandAccepted_ = false;
+                            ++commandRejectedCount_;
+                            LOG_INFO(Brain, "Tree {}: Not enough energy to reserve command", id_);
+                            return;
+                        }
+                        total_energy_ = std::max(0.0, total_energy_ - energyCost);
+                        reservedEnergy_ = energyCost;
+                        hasReservedEnergy_ = true;
+                        reservedCommandType_ = getCommandType(cmd);
+                    }
+                    else {
+                        reservedEnergy_ = 0.0;
+                        hasReservedEnergy_ = false;
+                        reservedCommandType_ = TreeCommandType::WaitCommand;
+                    }
+
                     current_command_ = cmd;
                     time_remaining_seconds_ = cmd.execution_time_seconds;
                     total_command_time_seconds_ = time_remaining_seconds_;
@@ -470,6 +623,12 @@ TreeSensoryData Tree::gatherSensoryData(const World& world) const
     data.stage = stage_;
     data.total_energy = total_energy_;
     data.total_water = total_water_;
+    if (hasLastCommandResult_) {
+        data.last_action_result = lastCommandAccepted_ ? 1.0 : -1.0;
+    }
+    else {
+        data.last_action_result = 0.0;
+    }
 
     // Current action state.
     if (current_command_.has_value()) {
