@@ -21,3 +21,4 @@ index dbeae01f2b9..d85a2e3ec2c 100644
  ])
  m4_define([AC_INIT], m4_defn([AC_INIT])[
  _GCC_AUTOCONF_VERSION_CHECK
+ ])
