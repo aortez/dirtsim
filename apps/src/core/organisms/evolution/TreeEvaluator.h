@@ -18,9 +18,13 @@ public:
 
     double getMaxEnergy() const;
     const std::optional<TreeResourceTotals>& getResourceTotals() const;
+    int getCommandAcceptedCount() const;
+    int getCommandRejectedCount() const;
 
 private:
     double maxEnergy_ = 0.0;
+    int commandAcceptedCount_ = 0;
+    int commandRejectedCount_ = 0;
     std::optional<TreeResourceTotals> resourceTotals_;
 };
 

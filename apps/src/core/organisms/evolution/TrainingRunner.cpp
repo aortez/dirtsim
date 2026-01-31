@@ -180,6 +180,8 @@ TrainingRunner::Status TrainingRunner::getStatus() const
         status.distanceTraveled = delta.mag();
     }
     status.maxEnergy = treeEvaluator_.getMaxEnergy();
+    status.commandsAccepted = treeEvaluator_.getCommandAcceptedCount();
+    status.commandsRejected = treeEvaluator_.getCommandRejectedCount();
 
     if (const Organism::Body* organism = getOrganism()) {
         status.lifespan = organism->getAge();

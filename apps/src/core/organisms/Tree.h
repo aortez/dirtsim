@@ -46,6 +46,15 @@ public:
     double getWater() const { return total_water_; }
     void setWater(double water) { total_water_ = water; }
     const TreeResourceTotals& getResourceTotals() const { return resourceTotals_; }
+    int getCommandAcceptedCount() const { return commandAcceptedCount_; }
+    int getCommandRejectedCount() const { return commandRejectedCount_; }
+    double getLastFitness() const { return lastFitness_; }
+    bool hasLastFitness() const { return hasLastFitness_; }
+    void setLastFitness(double fitness) const
+    {
+        lastFitness_ = fitness;
+        hasLastFitness_ = true;
+    }
 
     // Command state.
     const std::optional<TreeCommand>& getCurrentCommand() const { return current_command_; }
@@ -71,6 +80,14 @@ private:
     GrowthStage stage_ = GrowthStage::SEED;
     double total_energy_ = 0.0;
     double total_water_ = 0.0;
+    int commandAcceptedCount_ = 0;
+    int commandRejectedCount_ = 0;
+    bool hasLastCommandResult_ = false;
+    bool lastCommandAccepted_ = false;
+    double reservedEnergy_ = 0.0;
+    bool hasReservedEnergy_ = false;
+    mutable double lastFitness_ = 0.0;
+    mutable bool hasLastFitness_ = false;
     std::optional<TreeCommand> current_command_;
     double time_remaining_seconds_ = 0.0;
     double total_command_time_seconds_ = 0.0; // Original duration for progress calculation.
