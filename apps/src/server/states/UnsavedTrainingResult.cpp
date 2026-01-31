@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "server/StateMachine.h"
@@ -107,10 +108,12 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
         return Idle{};
     }
 
-    if (trainingSpec.population.empty() || evolutionConfig.populationSize <= 0) {
-        LOG_WARN(State, "UnsavedTrainingResult: Restart requested but training config invalid");
-        return Idle{};
-    }
+    DIRTSIM_ASSERT(
+        !trainingSpec.population.empty(),
+        "UnsavedTrainingResult: Restart requested with empty training population");
+    DIRTSIM_ASSERT(
+        evolutionConfig.populationSize > 0,
+        "UnsavedTrainingResult: Restart requested with non-positive population size");
 
     LOG_INFO(State, "UnsavedTrainingResult: Restarting evolution after save");
     Evolution nextState;
