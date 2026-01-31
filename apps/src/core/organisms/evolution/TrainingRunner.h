@@ -4,6 +4,7 @@
 #include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
+#include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
@@ -19,7 +20,6 @@ class Body;
 }
 class ScenarioRunner;
 class World;
-struct EvolutionConfig;
 
 /**
  * Incrementally evaluates a single organism by stepping a World one frame at a time.
@@ -43,6 +43,8 @@ public:
         double distanceTraveled = 0.0;
         double maxEnergy = 0.0;
         double lifespan = 0.0;
+        int commandsAccepted = 0;
+        int commandsRejected = 0;
     };
 
     struct BrainSpec {
@@ -115,6 +117,7 @@ private:
 
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;
+    EvolutionConfig evolutionConfig_;
 
     static constexpr double TIMESTEP = 0.016;
 };
