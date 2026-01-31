@@ -59,30 +59,40 @@ static void print_lvgl_version()
 
 static void playStartupBeep()
 {
-    DirtSim::Network::WebSocketService audioClient;
-    const auto connectResult = audioClient.connect("ws://localhost:6060", 250);
-    if (connectResult.isError()) {
-        SLOG_WARN("Audio startup beep skipped: {}", connectResult.errorValue());
-        return;
-    }
+    std::thread([]() {
+        constexpr int maxAttempts = 20;
+        constexpr int retryDelayMs = 200;
+        for (int attempt = 0; attempt < maxAttempts; ++attempt) {
+            DirtSim::Network::WebSocketService audioClient;
+            const auto connectResult = audioClient.connect("ws://localhost:6060", 250);
+            if (connectResult.isError()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(retryDelayMs));
+                continue;
+            }
 
-    DirtSim::AudioApi::NoteOn::Command cmd{};
-    cmd.frequency_hz = 440.0;
-    cmd.amplitude = 0.01;
-    cmd.attack_ms = 5.0;
-    cmd.release_ms = 120.0;
-    cmd.duration_ms = 120.0;
-    cmd.waveform = DirtSim::Audio::Waveform::Sine;
+            DirtSim::AudioApi::NoteOn::Command cmd{};
+            cmd.frequency_hz = 440.0;
+            cmd.amplitude = 0.01;
+            cmd.attack_ms = 5.0;
+            cmd.release_ms = 120.0;
+            cmd.duration_ms = 120.0;
+            cmd.waveform = DirtSim::Audio::Waveform::Sine;
 
-    const auto sendResult =
-        audioClient.sendCommandAndGetResponse<DirtSim::AudioApi::NoteOn::Okay>(cmd, 500);
-    if (sendResult.isError()) {
-        SLOG_WARN("Audio startup beep failed: {}", sendResult.errorValue());
-        return;
-    }
-    if (sendResult.value().isError()) {
-        SLOG_WARN("Audio startup beep rejected: {}", sendResult.value().errorValue().message);
-    }
+            const auto sendResult =
+                audioClient.sendCommandAndGetResponse<DirtSim::AudioApi::NoteOn::Okay>(cmd, 500);
+            if (sendResult.isError()) {
+                SLOG_WARN("Audio startup beep failed: {}", sendResult.errorValue());
+                return;
+            }
+            if (sendResult.value().isError()) {
+                SLOG_WARN(
+                    "Audio startup beep rejected: {}", sendResult.value().errorValue().message);
+            }
+            return;
+        }
+
+        SLOG_WARN("Audio startup beep skipped: audio service not ready");
+    }).detach();
 }
 
 int main(int argc, char** argv)
