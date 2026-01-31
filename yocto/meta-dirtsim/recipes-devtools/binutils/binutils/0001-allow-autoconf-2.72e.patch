@@ -1,3 +1,5 @@
+diff --git a/config/override.m4 b/config/override.m4
+index dbeae01f2b9..d85a2e3ec2c 100644
 --- a/config/override.m4
 +++ b/config/override.m4
 @@ -35,8 +35,10 @@ dnl Or for updating the whole tree at once with the definition above.
