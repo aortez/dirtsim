@@ -1,0 +1,21 @@
+{
+  "name": "dirtsim",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DirtSim - Cell-based multi-material physics simulation",
+  "workspaces": [
+    "yocto"
+  ],
+  "scripts": {
+    "lint": "eslint -c apps/eslint.config.js \"apps/src/server/web/**/*.js\"",
+    "lint:fix": "eslint -c apps/eslint.config.js \"apps/src/server/web/**/*.js\" --fix"
+  },
+  "devDependencies": {
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "inquirer": "^9.2.12",
+    "eslint": "^9.15.0",
+    "globals": "^15.12.0"
+  }
+}
