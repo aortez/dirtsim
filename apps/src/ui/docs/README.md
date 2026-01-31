@@ -118,6 +118,11 @@ npm run shots:real
 Screens and CLI steps live in `scripts/real_screens.mjs`. The output lands in
 `screenshots/real/`.
 
+Start Menu variants:
+- `start-menu`: StartMenu with no panel open (just the icon rail + background).
+- `start-menu-home`: StartMenu with the Core/Home panel open.
+- `start-menu-network`: StartMenu with the Network panel open.
+
 ## Stack real and markdown screenshots
 
 After capturing both sets, generate comparison stacks:
@@ -136,7 +141,7 @@ Optional environment overrides (defaults to dirtsim2.local):
 DIRTSIM_SSH_HOST=dirtsim3.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
-DOCS_SCREENSHOT_ONLY=start-menu,training
+DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,start-menu-network,training
 DOCS_SCREENSHOT_ACTIVITY=1
 DOCS_SCREENSHOT_RESET_WAIT_MS=1500
 DOCS_SCREENSHOT_MIN_BYTES=2048

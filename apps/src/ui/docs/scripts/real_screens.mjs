@@ -1,14 +1,72 @@
 export const screens = [
   {
     id: "start-menu",
+    flowId: "start-menu",
     resetSystem: true,
     expect: {
-      state: "StartMenu"
+      state: "StartMenu",
+      selectedIcon: "COUNT",
+      panelVisible: false
     },
     steps: [
       {
         kind: "NavigateToScreen",
         target: "StartMenu"
+      },
+      {
+        args: ["ui", "IconSelect", "{\"id\":\"COUNT\"}"],
+        allowDeselected: true,
+        waitMs: 300
+      }
+    ]
+  },
+  {
+    id: "start-menu-home",
+    flowId: "start-menu",
+    resetSystem: false,
+    expect: {
+      state: "StartMenu",
+      selectedIcon: "CORE",
+      panelVisible: true
+    },
+    steps: [
+      {
+        kind: "NavigateToScreen",
+        target: "StartMenu"
+      },
+      {
+        args: ["ui", "IconSelect", "{\"id\":\"COUNT\"}"],
+        allowDeselected: true,
+        waitMs: 200
+      },
+      {
+        args: ["ui", "IconSelect", "{\"id\":\"CORE\"}"],
+        waitMs: 400
+      }
+    ]
+  },
+  {
+    id: "start-menu-network",
+    flowId: "start-menu",
+    resetSystem: false,
+    expect: {
+      state: "StartMenu",
+      selectedIcon: "NETWORK",
+      panelVisible: true
+    },
+    steps: [
+      {
+        kind: "NavigateToScreen",
+        target: "StartMenu"
+      },
+      {
+        args: ["ui", "IconSelect", "{\"id\":\"COUNT\"}"],
+        allowDeselected: true,
+        waitMs: 200
+      },
+      {
+        args: ["ui", "IconSelect", "{\"id\":\"NETWORK\"}"],
+        waitMs: 500
       }
     ]
   },
@@ -29,29 +87,6 @@ export const screens = [
         args: ["ui", "IconSelect", "{\"id\":\"CORE\"}"],
         waitMs: 500,
         waitForState: "Training"
-      }
-    ]
-  },
-  {
-    id: "network",
-    resetSystem: true,
-    expect: {
-      state: "StartMenu",
-      selectedIcon: "NETWORK",
-      panelVisible: true
-    },
-    steps: [
-      {
-        kind: "NavigateToScreen",
-        target: "StartMenu"
-      },
-      {
-        args: ["ui", "IconSelect", "{\"id\":\"NETWORK\"}"],
-        waitMs: 800
-      },
-      {
-        args: ["ui", "IconSelect", "{\"id\":\"NETWORK\"}"],
-        waitMs: 500
       }
     ]
   },
