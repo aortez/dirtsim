@@ -180,6 +180,25 @@ Capture PNG screenshots from the UI display:
 - Recording evolution training progress
 - Remote monitoring of headless Pi deployments
 
+### UI Docs Screenshots
+
+Capture the UI docs screenshots using the same CLI (intended for CI/runtime images):
+
+```bash
+# Capture all docs screens to /tmp/dirtsim-ui-docs
+./build-debug/bin/cli docs-screenshots
+
+# Override output directory
+./build-debug/bin/cli docs-screenshots /tmp/dirtsim-ui-docs
+```
+
+**Env overrides**:
+- `DIRTSIM_UI_ADDRESS` (default: ws://localhost:7070)
+- `DIRTSIM_SERVER_ADDRESS` (default: ws://localhost:8080)
+- `DIRTSIM_DOCS_SCREENSHOT_DIR` (default: /tmp/dirtsim-ui-docs)
+- `DOCS_SCREENSHOT_ONLY` (comma-separated screen ids)
+- `DOCS_SCREENSHOT_MIN_BYTES` (minimum size check, default: 2048)
+
 ### Functional Test Mode
 
 Run a minimal UI/server workflow check against a running system:
