@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "server/StateMachine.h"
@@ -39,6 +40,7 @@ Any UnsavedTrainingResult::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMach
 
 Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm)
 {
+    const bool restartRequested = cwc.command.restart;
     std::unordered_map<GenomeId, const Candidate*> candidateLookup;
     candidateLookup.reserve(candidates.size());
     for (const auto& candidate : candidates) {
@@ -102,7 +104,23 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     dsm.storeTrainingResult(trainingResult);
 
     cwc.sendResponse(Api::TrainingResultSave::Response::okay(std::move(response)));
-    return Idle{};
+    if (!restartRequested) {
+        return Idle{};
+    }
+
+    DIRTSIM_ASSERT(
+        !trainingSpec.population.empty(),
+        "UnsavedTrainingResult: Restart requested with empty training population");
+    DIRTSIM_ASSERT(
+        evolutionConfig.populationSize > 0,
+        "UnsavedTrainingResult: Restart requested with non-positive population size");
+
+    LOG_INFO(State, "UnsavedTrainingResult: Restarting evolution after save");
+    Evolution nextState;
+    nextState.evolutionConfig = evolutionConfig;
+    nextState.mutationConfig = mutationConfig;
+    nextState.trainingSpec = trainingSpec;
+    return nextState;
 }
 
 Any UnsavedTrainingResult::onEvent(

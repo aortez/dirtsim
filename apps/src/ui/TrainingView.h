@@ -5,6 +5,7 @@
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/TrainingResult.h"
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <vector>
@@ -129,18 +130,12 @@ private:
     std::unique_ptr<CellRenderer> bestRenderer_;
     std::unique_ptr<Starfield> starfield_;
 
-    // Tracking state for best snapshot capture.
-    std::unique_ptr<WorldData> lastRenderedWorld_;
-    bool hasRenderedWorld_ = false;
-    int lastEval_ = -1;
-    int lastGeneration_ = -1;
-    double lastBestFitness_ = -1.0;
-    bool bestSnapshotFromServer_ = false;
-
     // Best snapshot data.
     std::unique_ptr<WorldData> bestWorldData_;
     double bestFitness_ = 0.0;
     int bestGeneration_ = 0;
+    bool hasShownBestSnapshot_ = false;
+    std::shared_ptr<std::atomic<bool>> alive_;
 
     // Panel content (created lazily).
     std::unique_ptr<EvolutionControls> evolutionControls_;
@@ -155,16 +150,20 @@ private:
     lv_obj_t* trainingResultCountLabel_ = nullptr;
     lv_obj_t* trainingResultSaveStepper_ = nullptr;
     lv_obj_t* trainingResultSaveButton_ = nullptr;
+    lv_obj_t* trainingResultSaveAndRestartButton_ = nullptr;
 
     void createUI();
     void destroyUI();
     void renderBestWorld();
+    void scheduleBestRender();
+    static void renderBestWorldAsync(void* data);
     void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
     void createGenomeBrowserPanelInternal();
     void createStreamPanel(lv_obj_t* parent);
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
+    static void onTrainingResultSaveAndRestartClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);
     static void onTrainingResultCountChanged(lv_event_t* e);
     static void onStreamIntervalChanged(lv_event_t* e);

@@ -81,6 +81,51 @@ TEST(StateUnsavedTrainingResultTest, TrainingResultSaveStoresRequestedGenomes)
     EXPECT_FALSE(repo.exists(candidateB.id));
 }
 
+TEST(StateUnsavedTrainingResultTest, TrainingResultSaveRestartsEvolutionWhenRequested)
+{
+    TestStateMachineFixture fixture("dirtsim-test-unsaved-restart");
+
+    UnsavedTrainingResult state;
+    state.summary.scenarioId = Scenario::EnumType::TreeGermination;
+    state.summary.organismType = OrganismType::TREE;
+    state.summary.populationSize = 2;
+    state.summary.maxGenerations = 1;
+    state.summary.completedGenerations = 1;
+    state.summary.primaryBrainKind = TrainingBrainKind::NeuralNet;
+    state.summary.primaryPopulationCount = 2;
+    state.summary.trainingSessionId = UUID::generate();
+    state.evolutionConfig.populationSize = 2;
+    state.mutationConfig = MutationConfig{};
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+    PopulationSpec populationSpec;
+    populationSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    populationSpec.brainKind = TrainingBrainKind::NeuralNet;
+    populationSpec.count = 2;
+    populationSpec.randomCount = 2;
+    spec.population.push_back(populationSpec);
+    state.trainingSpec = spec;
+
+    auto candidateA = makeCandidate(1.0, 0.1);
+    auto candidateB = makeCandidate(2.0, 0.2);
+    state.candidates = { candidateA, candidateB };
+
+    Api::TrainingResultSave::Response capturedResponse;
+    Api::TrainingResultSave::Command cmd;
+    cmd.ids = { candidateA.id };
+    cmd.restart = true;
+    Api::TrainingResultSave::Cwc cwc(cmd, [&](Api::TrainingResultSave::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = state.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+}
+
 TEST(StateUnsavedTrainingResultTest, TrainingResultDiscardTransitionsToIdle)
 {
     TestStateMachineFixture fixture("dirtsim-test-unsaved");

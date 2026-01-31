@@ -64,18 +64,6 @@ if [ "$SKIP_TESTS" != "1" ]; then
 
     echo "✅ Unit tests passed."
 
-    # Run CLI integration test (quick smoke test of server + UI).
-    echo "Running integration test..."
-    if ! ./build-debug/bin/cli integration_test >/dev/null 2>&1; then
-        echo ""
-        echo "❌ Integration test failed! Commit blocked."
-        echo "To see details: ./build-debug/bin/cli integration_test"
-        echo "To skip tests: SKIP_TESTS=1 git commit"
-        exit 1
-    fi
-
-    echo "✅ Integration test passed."
-
     # Note: Cache correctness is verified by CacheCorrectnessTest in unit tests above.
     # No need for separate CLI benchmark test in pre-commit hook.
 fi

@@ -87,7 +87,7 @@ void ScenarioRegistry::registerScenario(
         spdlog::warn("Scenario with ID '{}' already registered, overwriting", toString(id));
     }
 
-    spdlog::info("Registering scenario '{}' - {}", toString(id), metadata.name);
+    spdlog::debug("Registering scenario '{}' - {}", toString(id), metadata.name);
     scenarios_[id] = ScenarioEntry{ metadata, std::move(factory) };
 }
 

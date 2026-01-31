@@ -19,12 +19,13 @@ DEFINE_API_NAME(TrainingResultSave);
 
 struct Command {
     std::optional<int> count;
+    bool restart = false;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {

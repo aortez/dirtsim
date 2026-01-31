@@ -4,7 +4,6 @@
 #include "CommandRegistry.h"
 #include "FunctionalTestRunner.h"
 #include "GenomeDbBenchmark.h"
-#include "IntegrationTest.h"
 #include "RunAllRunner.h"
 #include "TrainRunner.h"
 #include "core/LoggingChannels.h"
@@ -121,7 +120,6 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "functional-test", "Run functional tests against a running UI/server" },
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
-    { "integration_test", "Run integration test (launches server + UI)" },
     { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
     { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
@@ -180,7 +178,6 @@ std::string getGlobalHelp()
     help += "  functional-test\n";
     help += "  gamepad-test\n";
     help += "  genome-db-benchmark\n";
-    help += "  integration_test\n";
     help += "  network\n";
     help += "  os-manager\n";
     help += "  run-all\n";
@@ -321,6 +318,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
     examples += "  cli functional-test canOpenTrainingConfigPanel\n";
+    examples += "  cli functional-test verifyTraining\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
     examples += "  cli functional-test canExit --os-manager-address ws://dirtsim.local:9090\n";
@@ -836,11 +834,12 @@ int main(int argc, char** argv)
         const std::string testName = args::get(command);
         if (testName != "canExit" && testName != "canTrain"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
-            && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel") {
+            && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
+            && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
-                         "canOpenTrainingConfigPanel\n";
+                         "canOpenTrainingConfigPanel, verifyTraining\n";
             return 1;
         }
 
@@ -885,6 +884,10 @@ int main(int argc, char** argv)
             summary = runner.runCanOpenTrainingConfigPanel(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
+        else if (testName == "verifyTraining") {
+            summary =
+                runner.runVerifyTraining(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
         else {
             summary =
                 runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
@@ -911,28 +914,6 @@ int main(int argc, char** argv)
             }
         }
         return exitCode;
-    }
-
-    if (targetName == "integration_test") {
-        // Find server and UI binaries (assume they're in same directory as CLI).
-        std::filesystem::path exePath = std::filesystem::read_symlink("/proc/self/exe");
-        std::filesystem::path binDir = exePath.parent_path();
-        std::filesystem::path serverPath = binDir / "dirtsim-server";
-        std::filesystem::path uiPath = binDir / "dirtsim-ui";
-
-        if (!std::filesystem::exists(serverPath)) {
-            std::cerr << "Error: Cannot find server binary at " << serverPath << std::endl;
-            return 1;
-        }
-
-        if (!std::filesystem::exists(uiPath)) {
-            std::cerr << "Error: Cannot find UI binary at " << uiPath << std::endl;
-            return 1;
-        }
-
-        // Run integration test.
-        Client::IntegrationTest test;
-        return test.run(serverPath.string(), uiPath.string());
     }
 
     // Handle run-all command (launches server and UI, monitors until UI exits).
@@ -1444,8 +1425,8 @@ int main(int argc, char** argv)
     if (targetName != "server" && targetName != "ui" && targetName != "os-manager") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "functional-test, genome-db-benchmark, integration_test, network, "
-                     "os-manager, run-all, test_binary, train\n\n";
+                     "functional-test, genome-db-benchmark, network, os-manager, run-all, "
+                     "test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }

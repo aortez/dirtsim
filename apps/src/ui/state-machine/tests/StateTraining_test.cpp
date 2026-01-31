@@ -6,20 +6,47 @@
  * Written TDD-style - tests first, then implementation.
  */
 
+#include "core/UUID.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
 #include "ui/state-machine/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
+#include <lvgl.h>
 #include <optional>
 
 using namespace DirtSim;
 using namespace DirtSim::Ui;
 using namespace DirtSim::Ui::State;
 using namespace DirtSim::Ui::Tests;
+
+namespace {
+
+struct LvglTestDisplay {
+    LvglTestDisplay()
+    {
+        lv_init();
+        display = lv_display_create(800, 600);
+    }
+
+    ~LvglTestDisplay()
+    {
+        if (display) {
+            lv_display_delete(display);
+        }
+        lv_deinit();
+    }
+
+    lv_display_t* display = nullptr;
+};
+
+} // namespace
 
 /**
  * @brief Test that TrainButtonClicked transitions StartMenu to Training.
@@ -274,92 +301,82 @@ TEST(StateTrainingTest, QuitButtonSkipsStopWhenIdle)
 }
 
 /**
- * @brief Test best snapshot capture detection logic.
- *
- * The TrainingView captures a snapshot when:
- * 1. Evaluation changes (currentEval differs OR generation changes with currentEval=0)
- * 2. Best fitness improved (bestFitnessAllTime increased)
- *
- * This test verifies the detection logic without requiring LVGL.
+ * @brief Test that TrainingResultSave with restart clears modal and restarts evolution session.
  */
-TEST(BestSnapshotDetectionTest, DetectsNewBestOnEvalChange)
+TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
 {
-    // Tracking state (mirrors TrainingView member variables).
-    int lastEval = -1;
-    int lastGeneration = -1;
-    double lastBestFitness = -1.0;
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
 
-    auto shouldCapture = [&](const Api::EvolutionProgress& progress) {
-        const bool evalChanged = (progress.currentEval != lastEval)
-            || (progress.generation != lastGeneration && progress.currentEval == 0);
-        const bool fitnessImproved = (progress.bestFitnessAllTime > lastBestFitness + 0.001);
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-        bool capture = evalChanged && fitnessImproved;
+    Training trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
 
-        // Update tracking state.
-        lastEval = progress.currentEval;
-        lastGeneration = progress.generation;
-        lastBestFitness = progress.bestFitnessAllTime;
+    Api::TrainingResult::Summary summary;
+    summary.scenarioId = Scenario::EnumType::TreeGermination;
+    summary.organismType = OrganismType::TREE;
+    summary.populationSize = 1;
+    summary.maxGenerations = 1;
+    summary.completedGenerations = 1;
+    summary.bestFitness = 1.0;
+    summary.averageFitness = 1.0;
+    summary.totalTrainingSeconds = 1.0;
+    summary.primaryBrainKind = TrainingBrainKind::NeuralNet;
+    summary.primaryPopulationCount = 1;
+    summary.trainingSessionId = UUID::generate();
 
-        return capture;
-    };
+    Api::TrainingResult::Candidate candidate;
+    candidate.id = UUID::generate();
+    candidate.fitness = 1.0;
+    candidate.brainKind = TrainingBrainKind::NeuralNet;
+    candidate.brainVariant = std::nullopt;
+    candidate.generation = 0;
 
-    // Scenario: First evaluation completes with fitness 0.5.
-    // Progress update arrives showing eval changed from 0 to 1, fitness improved from 0 to 0.5.
-    Api::EvolutionProgress progress1{
-        .generation = 0,
-        .maxGenerations = 10,
-        .currentEval = 1,
-        .populationSize = 5,
-        .bestFitnessThisGen = 0.5,
-        .bestFitnessAllTime = 0.5,
-        .averageFitness = 0.5,
-    };
+    trainingState.view_->showTrainingResultModal(summary, { candidate });
+    ASSERT_TRUE(trainingState.view_->isTrainingResultModalVisible());
 
-    // First update with improvement should capture.
-    EXPECT_TRUE(shouldCapture(progress1))
-        << "Should capture when first best is found (eval changed, fitness improved)";
+    Api::TrainingResultSave::Okay saveOkay;
+    saveOkay.savedCount = 1;
+    saveOkay.discardedCount = 0;
+    saveOkay.savedIds = { candidate.id };
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingResultSave::Command>(saveOkay);
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = trainingState.streamIntervalMs_, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->clearSentCommands();
 
-    // Scenario: Second evaluation completes, no improvement.
-    Api::EvolutionProgress progress2{
-        .generation = 0,
-        .currentEval = 2,
-        .populationSize = 5,
-        .bestFitnessAllTime = 0.5, // Same as before.
-    };
+    bool callbackInvoked = false;
+    UiApi::TrainingResultSave::Command cmd;
+    cmd.count = 1;
+    cmd.restart = true;
+    UiApi::TrainingResultSave::Cwc cwc(cmd, [&](UiApi::TrainingResultSave::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+        if (response.isValue()) {
+            EXPECT_EQ(response.value().savedCount, 1);
+            EXPECT_EQ(response.value().discardedCount, 0);
+            EXPECT_EQ(response.value().savedIds.size(), 1u);
+        }
+    });
 
-    EXPECT_FALSE(shouldCapture(progress2)) << "Should NOT capture when fitness did not improve";
+    State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
 
-    // Scenario: Third evaluation completes with new best.
-    Api::EvolutionProgress progress3{
-        .generation = 0,
-        .currentEval = 3,
-        .populationSize = 5,
-        .bestFitnessAllTime = 0.75, // Improved!
-    };
+    auto* updatedState = std::get_if<Training>(&newState.getVariant());
+    ASSERT_NE(updatedState, nullptr);
+    EXPECT_TRUE(callbackInvoked);
+    EXPECT_TRUE(updatedState->evolutionStarted_);
+    ASSERT_TRUE(updatedState->view_ != nullptr);
+    EXPECT_FALSE(updatedState->view_->isTrainingResultModalVisible());
 
-    EXPECT_TRUE(shouldCapture(progress3))
-        << "Should capture when new best found (eval changed, fitness improved)";
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_GE(sentCommands.size(), 3u);
+    EXPECT_EQ(sentCommands[0], "TrainingResultSave");
+    EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
 
-    // Scenario: Same eval, same fitness (mid-evaluation tick).
-    Api::EvolutionProgress progress4{
-        .generation = 0,
-        .currentEval = 3, // Same eval.
-        .populationSize = 5,
-        .bestFitnessAllTime = 0.75, // Same fitness.
-    };
-
-    EXPECT_FALSE(shouldCapture(progress4))
-        << "Should NOT capture on mid-evaluation tick (no eval change)";
-
-    // Scenario: Generation rollover with new best.
-    Api::EvolutionProgress progress5{
-        .generation = 1,  // New generation.
-        .currentEval = 0, // Reset to 0.
-        .populationSize = 5,
-        .bestFitnessAllTime = 0.8, // Improved!
-    };
-
-    EXPECT_TRUE(shouldCapture(progress5))
-        << "Should capture on generation rollover with improvement";
+    updatedState->onExit(*fixture.stateMachine);
+    fixture.stateMachine->uiManager_.reset();
 }

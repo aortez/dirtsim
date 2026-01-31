@@ -28,7 +28,7 @@ namespace State {
 namespace {
 
 Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServer(
-    StateMachine& sm, const std::vector<GenomeId>& ids)
+    StateMachine& sm, const std::vector<GenomeId>& ids, bool restart)
 {
     if (ids.empty()) {
         return Result<Api::TrainingResultSave::OkayType, std::string>::error("No ids provided");
@@ -46,6 +46,7 @@ Result<Api::TrainingResultSave::OkayType, std::string> saveTrainingResultToServe
 
     Api::TrainingResultSave::Command cmd;
     cmd.ids = ids;
+    cmd.restart = restart;
     const auto result =
         wsService.sendCommandAndGetResponse<Api::TrainingResultSave::OkayType>(cmd, 5000);
     if (result.isError()) {
@@ -89,6 +90,73 @@ Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamCo
 
     return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::okay(
         result.value().value());
+}
+
+void beginEvolutionSession(Training& state, StateMachine& sm)
+{
+    state.evolutionStarted_ = true;
+    state.progressEventCount_ = 0;
+    state.renderMessageCount_ = 0;
+    state.lastRenderRateLog_ = std::chrono::steady_clock::now();
+    state.uiLoopCount_ = 0;
+    state.lastUiLoopLog_ = std::chrono::steady_clock::now();
+    state.lastProgressRateLog_ = std::chrono::steady_clock::now();
+
+    if (state.view_) {
+        state.view_->setEvolutionStarted(true);
+        state.view_->hideTrainingResultModal();
+    }
+
+    if (!sm.hasWebSocketService()) {
+        LOG_WARN(State, "No WebSocketService available for training stream setup");
+        return;
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Not connected to server, cannot setup training streams");
+        return;
+    }
+
+    const auto streamResult = sendTrainingStreamConfig(sm, state.streamIntervalMs_);
+    if (streamResult.isError()) {
+        LOG_WARN(
+            State,
+            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            state.streamIntervalMs_,
+            streamResult.errorValue());
+    }
+    else {
+        LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
+    }
+
+    static std::atomic<uint64_t> nextId{ 1 };
+    Api::RenderFormatSet::Command renderCmd;
+    renderCmd.format = RenderFormat::EnumType::Basic;
+
+    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+    auto renderResult = wsService.sendBinaryAndReceive(envelope);
+    if (renderResult.isError()) {
+        LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
+    }
+    else {
+        LOG_INFO(State, "Subscribed to render stream for live training view");
+    }
+
+    if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+            panel->resetWidth();
+        }
+        if (auto* iconRail = uiManager->getIconRail()) {
+            iconRail->deselectAll();
+        }
+    }
+
+    if (state.view_) {
+        state.view_->clearPanelContent();
+    }
 }
 
 } // namespace
@@ -226,6 +294,17 @@ State::Any Training::onEvent(const TrainingBestSnapshotReceivedEvent& evt, State
 
     WorldData worldData = evt.snapshot.worldData;
     worldData.organism_ids = evt.snapshot.organismIds;
+    LOG_INFO(
+        State,
+        "Training best snapshot received: fitness={:.4f} gen={} world={}x{} cells={} colors={} "
+        "organism_ids={}",
+        evt.snapshot.fitness,
+        evt.snapshot.generation,
+        worldData.width,
+        worldData.height,
+        worldData.cells.size(),
+        worldData.colors.size(),
+        worldData.organism_ids.size());
     view_->updateBestSnapshot(worldData, evt.snapshot.fitness, evt.snapshot.generation);
 
     return std::move(*this);
@@ -386,62 +465,9 @@ State::Any Training::onEvent(const StartEvolutionButtonClickedEvent& evt, StateM
     }
 
     LOG_INFO(State, "Evolution started on server");
-    evolutionStarted_ = true;
-    progressEventCount_ = 0;
-    renderMessageCount_ = 0;
-    lastRenderRateLog_ = std::chrono::steady_clock::now();
-    uiLoopCount_ = 0;
-    lastUiLoopLog_ = std::chrono::steady_clock::now();
-    lastProgressRateLog_ = std::chrono::steady_clock::now();
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
-
-    const auto streamResult = sendTrainingStreamConfig(sm, streamIntervalMs_);
-    if (streamResult.isError()) {
-        LOG_WARN(
-            State,
-            "TrainingStreamConfigSet failed (intervalMs={}): {}",
-            streamIntervalMs_,
-            streamResult.errorValue());
-    }
-    else {
-        LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
-    }
-
-    // Subscribe to render stream for live training view.
-    static std::atomic<uint64_t> nextId{ 1 };
-    Api::RenderFormatSet::Command renderCmd;
-    renderCmd.format = RenderFormat::EnumType::Basic;
-
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
-    auto renderResult = wsService.sendBinaryAndReceive(envelope);
-    if (renderResult.isError()) {
-        LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
-    }
-    else {
-        LOG_INFO(State, "Subscribed to render stream for live training view");
-    }
-
-    // Update UI to show "running" state.
-    if (view_) {
-        view_->setEvolutionStarted(true);
-        view_->hideTrainingResultModal();
-    }
-
-    if (auto* uiManager = sm.getUiComponentManager()) {
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->clearContent();
-            panel->hide();
-            panel->resetWidth();
-        }
-        if (auto* iconRail = uiManager->getIconRail()) {
-            iconRail->deselectAll();
-        }
-    }
-
-    if (view_) {
-        view_->clearPanelContent();
-    }
+    beginEvolutionSession(*this, sm);
 
     return std::move(*this);
 }
@@ -480,7 +506,8 @@ State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMac
         return std::move(*this);
     }
 
-    const auto saveResult = saveTrainingResultToServer(sm, ids);
+    const bool restartRequested = cwc.command.restart;
+    const auto saveResult = saveTrainingResultToServer(sm, ids, restartRequested);
     if (saveResult.isError()) {
         LOG_ERROR(State, "TrainingResultSave failed: {}", saveResult.errorValue());
         cwc.sendResponse(
@@ -488,7 +515,10 @@ State::Any Training::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMac
         return std::move(*this);
     }
 
-    if (view_) {
+    if (restartRequested) {
+        beginEvolutionSession(*this, sm);
+    }
+    else if (view_) {
         view_->hideTrainingResultModal();
     }
 
@@ -683,13 +713,16 @@ State::Any Training::onEvent(const TrainingResultSaveClickedEvent& evt, StateMac
         return std::move(*this);
     }
 
-    const auto result = saveTrainingResultToServer(sm, evt.ids);
+    const auto result = saveTrainingResultToServer(sm, evt.ids, evt.restart);
     if (result.isError()) {
         LOG_ERROR(State, "TrainingResultSave failed: {}", result.errorValue());
         return std::move(*this);
     }
 
-    if (view_) {
+    if (evt.restart) {
+        beginEvolutionSession(*this, sm);
+    }
+    else if (view_) {
         view_->hideTrainingResultModal();
     }
 
