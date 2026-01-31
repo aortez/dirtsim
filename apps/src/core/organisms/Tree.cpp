@@ -167,6 +167,23 @@ void Tree::setAnchorCell(Vector2i pos)
     position.y = static_cast<double>(pos.y) + 0.5;
 }
 
+bool Tree::isEnergyReservedForCommand(const TreeCommand& cmd, double energyCost) const
+{
+    if (energyCost <= 0.0) {
+        return true;
+    }
+
+    if (!hasReservedEnergy_) {
+        return false;
+    }
+
+    if (reservedCommandType_ != getCommandType(cmd)) {
+        return false;
+    }
+
+    return reservedEnergy_ >= energyCost;
+}
+
 void Tree::update(World& world, double deltaTime)
 {
     age_seconds_ += deltaTime;
@@ -262,6 +279,7 @@ void Tree::executeCommand(World& world)
     }
     reservedEnergy_ = 0.0;
     hasReservedEnergy_ = false;
+    reservedCommandType_ = TreeCommandType::WaitCommand;
 
     if (!accepted) {
         LOG_INFO(Brain, "Tree {}: {}", id_, result.message);
@@ -276,6 +294,7 @@ void Tree::processBrainDecision(World& world)
         ScopeTimer sensoryTimer(world.getTimers(), "tree_sensory");
         sensory = gatherSensoryData(world);
     }
+    hasLastCommandResult_ = false;
 
     // Ask brain for decision.
     TreeCommand command;
@@ -305,6 +324,7 @@ void Tree::processBrainDecision(World& world)
                         total_energy_ = std::min(total_energy_ + reservedEnergy_, kEnergyCap);
                         reservedEnergy_ = 0.0;
                         hasReservedEnergy_ = false;
+                        reservedCommandType_ = TreeCommandType::WaitCommand;
                     }
                     current_command_.reset();
                     time_remaining_seconds_ = 0.0;
@@ -330,13 +350,22 @@ void Tree::processBrainDecision(World& world)
 
                     const double energyCost = processor->getEnergyCost(cmd);
                     if (energyCost > 0.0) {
+                        if (total_energy_ < energyCost) {
+                            hasLastCommandResult_ = true;
+                            lastCommandAccepted_ = false;
+                            ++commandRejectedCount_;
+                            LOG_INFO(Brain, "Tree {}: Not enough energy to reserve command", id_);
+                            return;
+                        }
                         total_energy_ = std::max(0.0, total_energy_ - energyCost);
                         reservedEnergy_ = energyCost;
                         hasReservedEnergy_ = true;
+                        reservedCommandType_ = getCommandType(cmd);
                     }
                     else {
                         reservedEnergy_ = 0.0;
                         hasReservedEnergy_ = false;
+                        reservedCommandType_ = TreeCommandType::WaitCommand;
                     }
 
                     current_command_ = cmd;

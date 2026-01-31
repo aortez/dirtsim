@@ -61,6 +61,7 @@ public:
     void setCurrentCommand(const std::optional<TreeCommand>& cmd) { current_command_ = cmd; }
     double getTimeRemaining() const { return time_remaining_seconds_; }
     void setTimeRemaining(double time) { time_remaining_seconds_ = time; }
+    bool isEnergyReservedForCommand(const TreeCommand& cmd, double energyCost) const;
 
     // Sensory data gathering for brain decisions.
     TreeSensoryData gatherSensoryData(const World& world) const;
@@ -86,6 +87,7 @@ private:
     bool lastCommandAccepted_ = false;
     double reservedEnergy_ = 0.0;
     bool hasReservedEnergy_ = false;
+    TreeCommandType reservedCommandType_ = TreeCommandType::WaitCommand;
     mutable double lastFitness_ = 0.0;
     mutable bool hasLastFitness_ = false;
     std::optional<TreeCommand> current_command_;

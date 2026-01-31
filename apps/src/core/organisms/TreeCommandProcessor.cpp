@@ -230,6 +230,12 @@ CommandExecutionResult TreeCommandProcessor::execute(
         return validation;
     }
 
+    const double energyCost = getEnergyCostForCommand(cmd);
+    if (energyCost > 0.0 && !tree.isEnergyReservedForCommand(cmd, energyCost)) {
+        LOG_WARN(Tree, "Tree {}: Energy not reserved for command", tree.getId());
+        return { CommandResult::INSUFFICIENT_ENERGY, "Energy not reserved for command" };
+    }
+
     return std::visit(
         [&](auto&& command) -> CommandExecutionResult {
             using T = std::decay_t<decltype(command)>;
@@ -248,11 +254,6 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     tree.getId(),
                     command.target_pos.x,
                     command.target_pos.y);
-
-                if (tree.getStage() == GrowthStage::GERMINATION) {
-                    tree.setStage(GrowthStage::SAPLING);
-                    LOG_INFO(Tree, "Tree {}: Transitioned to SAPLING stage", tree.getId());
-                }
 
                 return { CommandResult::SUCCESS, "WOOD growth successful" };
             }
@@ -287,11 +288,6 @@ CommandExecutionResult TreeCommandProcessor::execute(
                     tree.getId(),
                     command.target_pos.x,
                     command.target_pos.y);
-
-                if (tree.getStage() == GrowthStage::SEED) {
-                    tree.setStage(GrowthStage::GERMINATION);
-                    LOG_INFO(Tree, "Tree {}: Transitioned to GERMINATION stage", tree.getId());
-                }
 
                 return { CommandResult::SUCCESS, "ROOT growth successful" };
             }
