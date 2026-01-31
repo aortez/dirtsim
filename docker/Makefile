@@ -9,7 +9,7 @@
 #   make clean-image    # Remove Docker image
 #   make help           # Show this help
 
-.PHONY: help build-image build-debug build-release test format format-check ccache-stats shell clean-image print-image
+.PHONY: help build-image build-debug build-release test format format-check lint ccache-stats shell clean-image print-image
 
 # Image name and tag.
 IMAGE_NAME := dirtsim-builder
@@ -50,6 +50,7 @@ help:
 	@echo "  make test           - Run unit tests inside Docker container"
 	@echo "  make format         - Format code inside Docker container"
 	@echo "  make format-check   - Check code formatting inside Docker container"
+	@echo "  make lint           - Run JavaScript lint inside Docker container"
 	@echo "  make shell          - Start interactive bash shell in container"
 	@echo "  make clean-image    - Remove Docker image"
 	@echo ""
@@ -84,6 +85,10 @@ format: build-image
 format-check: build-image
 	@echo "Checking code formatting in Docker..."
 	$(DOCKER_RUN) bash -c "make format && git diff --quiet || (echo 'Code formatting issues detected. Run make format locally.' && git diff && exit 1)"
+
+lint: build-image
+	@echo "Linting JavaScript in Docker..."
+	$(DOCKER_RUN) bash -c "cd /workspace && mkdir -p /tmp/npm-cache && NPM_CONFIG_CACHE=/tmp/npm-cache npm ci --no-audit --no-fund && npm run lint"
 
 ccache-stats:
 	@$(DOCKER_RUN) ccache -s

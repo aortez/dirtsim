@@ -34,11 +34,9 @@ jobs:
       if: github.event_name == 'pull_request'
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
 
-    - name: Install npm deps (lint)
-      run: npm ci --no-audit --no-fund
-
     - name: Lint JavaScript
-      run: npm run lint
+      working-directory: docker
+      run: make lint
 
     - name: Check code formatting
       working-directory: docker
