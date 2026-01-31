@@ -26,7 +26,6 @@ namespace DirtSim {
 namespace Ui {
 
 namespace {
-constexpr double FITNESS_IMPROVEMENT_EPSILON = 0.001;
 constexpr int kBrowserRightGap = 60;
 
 int computeBrowserPanelWidth()
@@ -43,6 +42,12 @@ int computeBrowserPanelWidth()
     }
     return panelWidth;
 }
+
+struct BestRenderRequest {
+    TrainingView* view = nullptr;
+    std::shared_ptr<std::atomic<bool>> alive;
+};
+
 } // namespace
 
 TrainingView::TrainingView(
@@ -55,6 +60,7 @@ TrainingView::TrainingView(
       wsService_(wsService),
       streamIntervalMs_(streamIntervalMs)
 {
+    alive_ = std::make_shared<std::atomic<bool>>(true);
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
     createUI();
@@ -62,6 +68,9 @@ TrainingView::TrainingView(
 
 TrainingView::~TrainingView()
 {
+    if (alive_) {
+        alive_->store(false);
+    }
     destroyUI();
 }
 
@@ -370,10 +379,6 @@ void TrainingView::destroyUI()
 
 void TrainingView::renderWorld(const WorldData& worldData)
 {
-    // Store for potential best snapshot capture.
-    lastRenderedWorld_ = std::make_unique<WorldData>(worldData);
-    hasRenderedWorld_ = true;
-
     if (!renderer_ || !worldContainer_) {
         return;
     }
@@ -383,12 +388,37 @@ void TrainingView::renderWorld(const WorldData& worldData)
 
 void TrainingView::updateBestSnapshot(const WorldData& worldData, double fitness, int generation)
 {
-    bestSnapshotFromServer_ = true;
     bestWorldData_ = std::make_unique<WorldData>(worldData);
     bestFitness_ = fitness;
     bestGeneration_ = generation;
-    lastBestFitness_ = fitness;
-    renderBestWorld();
+    int nonZeroColors = 0;
+    float maxBrightness = 0.0f;
+    for (const auto& color : worldData.colors.data) {
+        if (color.r > 0.0f || color.g > 0.0f || color.b > 0.0f) {
+            ++nonZeroColors;
+        }
+        const float brightness = 0.299f * color.r + 0.587f * color.g + 0.114f * color.b;
+        maxBrightness = std::max(maxBrightness, brightness);
+    }
+    LOG_INFO(
+        Controls,
+        "TrainingView: updateBestSnapshot fitness={:.4f} gen={} world={}x{} cells={} colors={} "
+        "organism_ids={} nonzero_colors={} max_brightness={:.3f}",
+        fitness,
+        generation,
+        worldData.width,
+        worldData.height,
+        worldData.cells.size(),
+        worldData.colors.size(),
+        worldData.organism_ids.size(),
+        nonZeroColors,
+        maxBrightness);
+    if (bestAllTimeLabel_) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "All Time: %.2f", fitness);
+        lv_label_set_text(bestAllTimeLabel_, buf);
+    }
+    scheduleBestRender();
 }
 
 void TrainingView::clearPanelContent()
@@ -647,32 +677,6 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
         lastProgressUiLog_ = now;
     }
 
-    // Detect evaluation change with fitness improvement for best snapshot.
-    // Note: Depends on renderWorld() being called first to populate lastRenderedWorld_.
-    const bool evalChanged = (progress.currentEval != lastEval_)
-        || (progress.generation != lastGeneration_ && progress.currentEval == 0);
-    const bool fitnessImproved =
-        (progress.bestFitnessAllTime > lastBestFitness_ + FITNESS_IMPROVEMENT_EPSILON);
-
-    if (!bestSnapshotFromServer_ && evalChanged && fitnessImproved && hasRenderedWorld_) {
-        // Last rendered frame is the final frame of the new best!
-        bestWorldData_ = std::make_unique<WorldData>(*lastRenderedWorld_);
-        bestFitness_ = progress.bestFitnessAllTime;
-        bestGeneration_ = progress.generation;
-        renderBestWorld();
-
-        LOG_INFO(
-            Controls,
-            "TrainingView: Captured best snapshot (fitness={:.4f}, gen={})",
-            bestFitness_,
-            bestGeneration_);
-    }
-
-    // Update tracking state.
-    lastEval_ = progress.currentEval;
-    lastGeneration_ = progress.generation;
-    lastBestFitness_ = progress.bestFitnessAllTime;
-
     // Detect training completion.
     const bool isComplete =
         (progress.maxGenerations > 0 && progress.generation >= progress.maxGenerations
@@ -785,15 +789,10 @@ void TrainingView::setEvolutionStarted(bool started)
 {
     evolutionStarted_ = started;
     if (started) {
-        bestSnapshotFromServer_ = false;
         bestWorldData_.reset();
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
-        lastBestFitness_ = -1.0;
-        lastEval_ = -1;
-        lastGeneration_ = -1;
-        lastRenderedWorld_.reset();
-        hasRenderedWorld_ = false;
+        hasShownBestSnapshot_ = false;
     }
 
     if (statusLabel_) {
@@ -885,11 +884,45 @@ void TrainingView::updateEvolutionVisibility()
 void TrainingView::renderBestWorld()
 {
     if (!bestRenderer_ || !bestWorldContainer_ || !bestWorldData_) {
+        LOG_WARN(
+            Controls,
+            "TrainingView: renderBestWorld skipped (renderer={}, container={}, data={})",
+            static_cast<const void*>(bestRenderer_.get()),
+            static_cast<const void*>(bestWorldContainer_),
+            static_cast<const void*>(bestWorldData_.get()));
         return;
     }
 
+    if (bestWorldData_->width <= 0 || bestWorldData_->height <= 0
+        || bestWorldData_->cells.empty()) {
+        LOG_WARN(
+            Controls,
+            "TrainingView: renderBestWorld invalid data (world={}x{} cells={} colors={} "
+            "organism_ids={})",
+            bestWorldData_->width,
+            bestWorldData_->height,
+            bestWorldData_->cells.size(),
+            bestWorldData_->colors.size(),
+            bestWorldData_->organism_ids.size());
+        return;
+    }
+
+    const int32_t containerWidth = lv_obj_get_width(bestWorldContainer_);
+    const int32_t containerHeight = lv_obj_get_height(bestWorldContainer_);
+    LOG_INFO(
+        Controls,
+        "TrainingView: renderBestWorld container={}x{} world={}x{}",
+        containerWidth,
+        containerHeight,
+        bestWorldData_->width,
+        bestWorldData_->height);
+
     // Render the best world snapshot.
     bestRenderer_->renderWorldData(*bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
+    if (!hasShownBestSnapshot_) {
+        lv_refr_now(lv_display_get_default());
+        hasShownBestSnapshot_ = true;
+    }
 
     // Update the label to show fitness info.
     if (bestFitnessLabel_) {
@@ -897,6 +930,37 @@ void TrainingView::renderBestWorld()
         snprintf(buf, sizeof(buf), "Best: %.2f (Gen %d)", bestFitness_, bestGeneration_);
         lv_label_set_text(bestFitnessLabel_, buf);
     }
+}
+
+void TrainingView::scheduleBestRender()
+{
+    if (!bestWorldContainer_ || !bestRenderer_ || !bestWorldData_) {
+        return;
+    }
+
+    auto* request = new BestRenderRequest{
+        .view = this,
+        .alive = alive_,
+    };
+    lv_async_call(TrainingView::renderBestWorldAsync, request);
+}
+
+void TrainingView::renderBestWorldAsync(void* data)
+{
+    auto* request = static_cast<BestRenderRequest*>(data);
+    if (!request) {
+        return;
+    }
+
+    const bool alive = request->alive && request->alive->load();
+    if (alive && request->view) {
+        request->view->renderBestWorld();
+        if (request->view->bestWorldContainer_) {
+            lv_obj_invalidate(request->view->bestWorldContainer_);
+        }
+    }
+
+    delete request;
 }
 
 void TrainingView::createStreamPanel(lv_obj_t* parent)
@@ -1079,6 +1143,15 @@ void TrainingView::showTrainingResultModal(
                                     .callback(onTrainingResultSaveClicked, this)
                                     .buildOrLog();
 
+    trainingResultSaveAndRestartButton_ = LVGLBuilder::actionButton(buttonRow)
+                                              .text("Save+Run")
+                                              .icon(LV_SYMBOL_PLAY)
+                                              .mode(LVGLBuilder::ActionMode::Push)
+                                              .size(80)
+                                              .backgroundColor(0x0077CC)
+                                              .callback(onTrainingResultSaveAndRestartClicked, this)
+                                              .buildOrLog();
+
     LVGLBuilder::actionButton(buttonRow)
         .text("Discard")
         .icon(LV_SYMBOL_CLOSE)
@@ -1111,6 +1184,7 @@ void TrainingView::hideTrainingResultModal()
     trainingResultCountLabel_ = nullptr;
     trainingResultSaveStepper_ = nullptr;
     trainingResultSaveButton_ = nullptr;
+    trainingResultSaveAndRestartButton_ = nullptr;
     primaryCandidates_.clear();
     trainingResultSummary_ = Api::TrainingResult::Summary{};
 }
@@ -1122,7 +1196,7 @@ bool TrainingView::isTrainingResultModalVisible() const
 
 void TrainingView::updateTrainingResultSaveButton()
 {
-    if (!trainingResultSaveButton_) {
+    if (!trainingResultSaveButton_ && !trainingResultSaveAndRestartButton_) {
         return;
     }
     int32_t value = 0;
@@ -1131,14 +1205,22 @@ void TrainingView::updateTrainingResultSaveButton()
     }
 
     const bool enabled = (value > 0) && !primaryCandidates_.empty();
-    if (enabled) {
-        lv_obj_clear_state(trainingResultSaveButton_, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(trainingResultSaveButton_, LV_OPA_COVER, 0);
-    }
-    else {
-        lv_obj_add_state(trainingResultSaveButton_, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(trainingResultSaveButton_, LV_OPA_50, 0);
-    }
+    auto updateButton = [&](lv_obj_t* button) {
+        if (!button) {
+            return;
+        }
+        if (enabled) {
+            lv_obj_clear_state(button, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(button, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_state(button, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(button, LV_OPA_50, 0);
+        }
+    };
+
+    updateButton(trainingResultSaveButton_);
+    updateButton(trainingResultSaveAndRestartButton_);
 }
 
 std::vector<GenomeId> TrainingView::getTrainingResultSaveIds() const
@@ -1172,6 +1254,19 @@ void TrainingView::onTrainingResultSaveClicked(lv_event_t* e)
 
     TrainingResultSaveClickedEvent evt;
     evt.ids = self->getTrainingResultSaveIds();
+    self->eventSink_.queueEvent(evt);
+}
+
+void TrainingView::onTrainingResultSaveAndRestartClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    TrainingResultSaveClickedEvent evt;
+    evt.ids = self->getTrainingResultSaveIds();
+    evt.restart = true;
     self->eventSink_.queueEvent(evt);
 }
 

@@ -44,9 +44,6 @@ make -C build-debug -j12
 # Run both client and server (debug build).
 ./build-debug/bin/cli run-all
 
-# CLI integration test (quick, verifies ui, server, and cli).
-./build-debug/bin/cli integration_test
-
 # Easy clean of up all dirtsim processes.
 ./build-debug/bin/cli cleanup
 

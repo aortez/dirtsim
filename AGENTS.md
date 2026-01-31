@@ -16,7 +16,7 @@
 ## Build, Run, Test (run from `apps/` unless noted)
 - `make debug` / `make release`: build binaries into `build-debug/` or `build-release/`.
 - `./build-debug/bin/cli run-all`: run server + UI locally.
-- `./build-debug/bin/cli integration_test`: quick smoke test for server/UI/CLI.
+- `./build-debug/bin/cli functional-test canTrain`: functional smoke test (requires running UI/server).
 - `make test`: run unit tests (GoogleTest); filter with `make test ARGS='--gtest_filter=State*'`.
 - `make format`: apply formatting rules.
 - `./build-debug/bin/cli cleanup`: stop local dirtsim processes.

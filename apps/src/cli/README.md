@@ -191,6 +191,10 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 ./build-debug/bin/cli functional-test canPlantTreeSeed
 ./build-debug/bin/cli functional-test canOpenTrainingConfigPanel
+./build-debug/bin/cli functional-test verifyTraining
+
+# verifyTraining runs 5 one-generation training loops with a 50-sized population,
+# saving results between runs and verifying the genomes change.
 
 # Note: canExit shuts down the UI, so run it last or restart the UI before other tests.
 # Use --restart with canExit to relaunch local server/UI (skips remote addresses).
@@ -403,34 +407,9 @@ Find and gracefully shutdown rogue dirtsim processes:
 - Ensure clean slate before running benchmarks or tests
 - Fix "port already in use" errors
 
-### Integration Test Mode
-
-Automated end-to-end testing:
-
-```bash
-./build-debug/bin/cli integration_test
-```
-
-**What it does**:
-1. Launches server on port 8080
-2. Launches UI with Wayland backend, auto-connects to server
-3. Starts simulation with `sim_run` (1 step)
-4. Sends `exit` command to server
-5. Shuts down UI
-6. Verifies clean shutdown of both processes
-
-**Exit Codes**:
-- `0`: All tests passed
-- `1`: Test failed (check stderr for details)
-
 ## Architecture
 
 ### Components
-
-**IntegrationTest** (`IntegrationTest.{h,cpp}`)
-- Orchestrates server + UI launch and testing
-- Manages full lifecycle from launch to cleanup
-- Returns exit code for CI/CD integration
 
 **BenchmarkRunner** (`BenchmarkRunner.{h,cpp}`)
 - Launches server subprocess
@@ -510,7 +489,7 @@ Example:
 ./build-release/bin/cli benchmark --steps 120 > benchmark_results.json
 
 # Sanity check (debug build is fine)
-./build-debug/bin/cli integration_test || exit 1
+./build-debug/bin/cli functional-test canTrain || exit 1
 ```
 
 ### Always Cleanup
