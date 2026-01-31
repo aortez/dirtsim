@@ -72,7 +72,7 @@ static void playStartupBeep()
 
             DirtSim::AudioApi::NoteOn::Command cmd{};
             cmd.frequency_hz = 440.0;
-            cmd.amplitude = 0.01;
+            cmd.amplitude = 0.05;
             cmd.attack_ms = 5.0;
             cmd.release_ms = 120.0;
             cmd.duration_ms = 120.0;
