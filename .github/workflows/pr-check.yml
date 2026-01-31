@@ -66,6 +66,7 @@ jobs:
     - name: Build Yocto runtime image
       working-directory: yocto
       env:
+        DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
       run: npm run runtime-image -- --build
 

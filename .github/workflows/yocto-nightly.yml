@@ -14,7 +14,7 @@ jobs:
   yocto-build:
     runs-on: self-hosted
     env:
-      DIRTSIM_CACHE_ROOT: /home/data/yocto-cache
+      DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
 
     steps:
     - name: Checkout code
