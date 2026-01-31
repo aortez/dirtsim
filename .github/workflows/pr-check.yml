@@ -77,6 +77,7 @@ jobs:
         DL_DIR: /home/data/linux1/yocto-cache/downloads
         SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
         CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
+        DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
       run: npm run runtime-image -- --build
 
