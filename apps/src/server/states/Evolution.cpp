@@ -956,6 +956,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
 UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
 {
     UnsavedTrainingResult result;
+    result.evolutionConfig = evolutionConfig;
+    result.mutationConfig = mutationConfig;
+    result.trainingSpec = trainingSpec;
     result.summary.scenarioId = getPrimaryScenarioId(trainingSpec);
     result.summary.organismType = trainingSpec.organismType;
     result.summary.populationSize = evolutionConfig.populationSize;

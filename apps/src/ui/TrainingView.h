@@ -155,6 +155,7 @@ private:
     lv_obj_t* trainingResultCountLabel_ = nullptr;
     lv_obj_t* trainingResultSaveStepper_ = nullptr;
     lv_obj_t* trainingResultSaveButton_ = nullptr;
+    lv_obj_t* trainingResultSaveAndRestartButton_ = nullptr;
 
     void createUI();
     void destroyUI();
@@ -165,6 +166,7 @@ private:
     void createStreamPanel(lv_obj_t* parent);
 
     static void onTrainingResultSaveClicked(lv_event_t* e);
+    static void onTrainingResultSaveAndRestartClicked(lv_event_t* e);
     static void onTrainingResultDiscardClicked(lv_event_t* e);
     static void onTrainingResultCountChanged(lv_event_t* e);
     static void onStreamIntervalChanged(lv_event_t* e);

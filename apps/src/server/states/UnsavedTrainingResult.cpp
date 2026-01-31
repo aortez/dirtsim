@@ -39,6 +39,7 @@ Any UnsavedTrainingResult::onEvent(const Api::TimerStatsGet::Cwc& cwc, StateMach
 
 Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, StateMachine& dsm)
 {
+    const bool restartRequested = cwc.command.restart;
     std::unordered_map<GenomeId, const Candidate*> candidateLookup;
     candidateLookup.reserve(candidates.size());
     for (const auto& candidate : candidates) {
@@ -102,7 +103,21 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     dsm.storeTrainingResult(trainingResult);
 
     cwc.sendResponse(Api::TrainingResultSave::Response::okay(std::move(response)));
-    return Idle{};
+    if (!restartRequested) {
+        return Idle{};
+    }
+
+    if (trainingSpec.population.empty() || evolutionConfig.populationSize <= 0) {
+        LOG_WARN(State, "UnsavedTrainingResult: Restart requested but training config invalid");
+        return Idle{};
+    }
+
+    LOG_INFO(State, "UnsavedTrainingResult: Restarting evolution after save");
+    Evolution nextState;
+    nextState.evolutionConfig = evolutionConfig;
+    nextState.mutationConfig = mutationConfig;
+    nextState.trainingSpec = trainingSpec;
+    return nextState;
 }
 
 Any UnsavedTrainingResult::onEvent(

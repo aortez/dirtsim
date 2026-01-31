@@ -1079,6 +1079,15 @@ void TrainingView::showTrainingResultModal(
                                     .callback(onTrainingResultSaveClicked, this)
                                     .buildOrLog();
 
+    trainingResultSaveAndRestartButton_ = LVGLBuilder::actionButton(buttonRow)
+                                              .text("Save+Run")
+                                              .icon(LV_SYMBOL_PLAY)
+                                              .mode(LVGLBuilder::ActionMode::Push)
+                                              .size(80)
+                                              .backgroundColor(0x0077CC)
+                                              .callback(onTrainingResultSaveAndRestartClicked, this)
+                                              .buildOrLog();
+
     LVGLBuilder::actionButton(buttonRow)
         .text("Discard")
         .icon(LV_SYMBOL_CLOSE)
@@ -1111,6 +1120,7 @@ void TrainingView::hideTrainingResultModal()
     trainingResultCountLabel_ = nullptr;
     trainingResultSaveStepper_ = nullptr;
     trainingResultSaveButton_ = nullptr;
+    trainingResultSaveAndRestartButton_ = nullptr;
     primaryCandidates_.clear();
     trainingResultSummary_ = Api::TrainingResult::Summary{};
 }
@@ -1122,7 +1132,7 @@ bool TrainingView::isTrainingResultModalVisible() const
 
 void TrainingView::updateTrainingResultSaveButton()
 {
-    if (!trainingResultSaveButton_) {
+    if (!trainingResultSaveButton_ && !trainingResultSaveAndRestartButton_) {
         return;
     }
     int32_t value = 0;
@@ -1131,14 +1141,22 @@ void TrainingView::updateTrainingResultSaveButton()
     }
 
     const bool enabled = (value > 0) && !primaryCandidates_.empty();
-    if (enabled) {
-        lv_obj_clear_state(trainingResultSaveButton_, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(trainingResultSaveButton_, LV_OPA_COVER, 0);
-    }
-    else {
-        lv_obj_add_state(trainingResultSaveButton_, LV_STATE_DISABLED);
-        lv_obj_set_style_opa(trainingResultSaveButton_, LV_OPA_50, 0);
-    }
+    auto updateButton = [&](lv_obj_t* button) {
+        if (!button) {
+            return;
+        }
+        if (enabled) {
+            lv_obj_clear_state(button, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(button, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_state(button, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(button, LV_OPA_50, 0);
+        }
+    };
+
+    updateButton(trainingResultSaveButton_);
+    updateButton(trainingResultSaveAndRestartButton_);
 }
 
 std::vector<GenomeId> TrainingView::getTrainingResultSaveIds() const
@@ -1172,6 +1190,19 @@ void TrainingView::onTrainingResultSaveClicked(lv_event_t* e)
 
     TrainingResultSaveClickedEvent evt;
     evt.ids = self->getTrainingResultSaveIds();
+    self->eventSink_.queueEvent(evt);
+}
+
+void TrainingView::onTrainingResultSaveAndRestartClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    TrainingResultSaveClickedEvent evt;
+    evt.ids = self->getTrainingResultSaveIds();
+    evt.restart = true;
     self->eventSink_.queueEvent(evt);
 }
 
