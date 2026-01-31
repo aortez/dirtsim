@@ -17,6 +17,8 @@
 .github/.env
 
 /*.json
+!/package.json
+!/package-lock.json
 !yocto/package.json
 *.log
 screenshot.png

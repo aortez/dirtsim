@@ -378,12 +378,12 @@ function createWebUiConnectionManager() {
         '</div>' +
         '<div id="token-message" class="token-gate-message"></div>' +
         '</div>';
-    document.body.appendChild(gate);
+        document.body.appendChild(gate);
 
-    var input = gate.querySelector('#token-input');
-    var toggle = gate.querySelector('#token-toggle');
-    var button = gate.querySelector('#token-submit');
-    var message = gate.querySelector('#token-message');
+        var input = gate.querySelector('#token-input');
+        var toggle = gate.querySelector('#token-toggle');
+        var button = gate.querySelector('#token-submit');
+        var message = gate.querySelector('#token-message');
 
         function setMessage(text, isError) {
             message.textContent = text || '';
@@ -410,17 +410,17 @@ function createWebUiConnectionManager() {
             gate.classList.add('hidden');
         }
 
-    return {
-        show: show,
-        hide: hide,
-        setBusy: setBusy,
-        setMessage: setMessage,
-        setError: function(text) { setMessage(text, true); },
-        input: input,
-        toggle: toggle,
-        button: button
-    };
-}
+        return {
+            show: show,
+            hide: hide,
+            setBusy: setBusy,
+            setMessage: setMessage,
+            setError: function(text) { setMessage(text, true); },
+            input: input,
+            toggle: toggle,
+            button: button
+        };
+    }
 
     function testWebSocketToken(token, onResult) {
         var url = buildWebSocketUrl(8080, token);
@@ -456,7 +456,9 @@ function createWebUiConnectionManager() {
         timeoutTimer = setTimeout(function() {
             try {
                 if (ws) ws.close();
-            } catch (_unused) {}
+            } catch (_unused) {
+                void _unused;
+            }
             finish(false, 'timeout');
         }, 2500);
 
@@ -465,7 +467,9 @@ function createWebUiConnectionManager() {
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     try {
                         ws.close();
-                    } catch (_unused) {}
+                    } catch (_unused) {
+                        void _unused;
+                    }
                     finish(true);
                 }
             }, 700);
@@ -516,21 +520,21 @@ function createWebUiConnectionManager() {
         }
 
         if (!tokenGate) {
-        tokenGate = createTokenGate();
-        tokenGate.button.addEventListener('click', function() {
-            validateToken(tokenGate.input.value, false);
-        });
-        tokenGate.toggle.addEventListener('click', function() {
-            var isMasked = tokenGate.input.type === 'password';
-            tokenGate.input.type = isMasked ? 'text' : 'password';
-            tokenGate.toggle.textContent = isMasked ? 'Hide' : 'Show';
-            tokenGate.input.focus();
-        });
-        tokenGate.input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
+            tokenGate = createTokenGate();
+            tokenGate.button.addEventListener('click', function() {
                 validateToken(tokenGate.input.value, false);
-            }
-        });
+            });
+            tokenGate.toggle.addEventListener('click', function() {
+                var isMasked = tokenGate.input.type === 'password';
+                tokenGate.input.type = isMasked ? 'text' : 'password';
+                tokenGate.toggle.textContent = isMasked ? 'Hide' : 'Show';
+                tokenGate.input.focus();
+            });
+            tokenGate.input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    validateToken(tokenGate.input.value, false);
+                }
+            });
         }
 
         tokenGate.show();
