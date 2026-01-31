@@ -21,7 +21,7 @@ constexpr int kTreeMatureLeafCount = 10;
 constexpr int kTreeMatureRootCount = 10;
 constexpr int kTreeMatureWoodCount = 10;
 constexpr double kTreeCommandAcceptedReward = 0.001;
-constexpr double kTreeCommandRejectedPenalty = 0.001;
+constexpr double kTreeCommandRejectedPenalty = 0.00005;
 
 struct TreeStructureMetrics {
     bool hasLeaf = false;
