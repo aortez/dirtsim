@@ -8,6 +8,7 @@ BUILD_DEBUG_DIR := build-debug
 BUILD_RELEASE_DIR := build-release
 BUILD_DIR := build-debug  # Default to debug for backward compatibility.
 BIN_DIR := bin
+ROOT_DIR := $(abspath ..)
 
 # Cross-compilation directories (aarch64).
 BUILD_CROSS_DEBUG_DIR := build-aarch64-debug
@@ -160,19 +161,19 @@ format:
 
 lint:
 	@echo "Linting JavaScript..."
-	@if [ ! -d "node_modules" ]; then \
+	@if [ ! -d "$(ROOT_DIR)/node_modules" ]; then \
 		echo "Installing npm dependencies..."; \
-		npm install; \
+		npm --prefix "$(ROOT_DIR)" install; \
 	fi
-	@npm run lint
+	@npm --prefix "$(ROOT_DIR)" run lint
 
 lint-fix:
 	@echo "Linting and fixing JavaScript..."
-	@if [ ! -d "node_modules" ]; then \
+	@if [ ! -d "$(ROOT_DIR)/node_modules" ]; then \
 		echo "Installing npm dependencies..."; \
-		npm install; \
+		npm --prefix "$(ROOT_DIR)" install; \
 	fi
-	@npm run lint:fix
+	@npm --prefix "$(ROOT_DIR)" run lint:fix
 
 format-check:
 	@echo "Checking C++ formatting..."

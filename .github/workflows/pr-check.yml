@@ -34,6 +34,10 @@ jobs:
       if: github.event_name == 'pull_request'
       run: .github/scripts/merge-target-branch.sh ${{ github.event.pull_request.base.ref }}
 
+    - name: Lint JavaScript
+      working-directory: docker
+      run: make lint
+
     - name: Check code formatting
       working-directory: docker
       run: make format-check
