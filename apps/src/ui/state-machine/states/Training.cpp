@@ -294,6 +294,17 @@ State::Any Training::onEvent(const TrainingBestSnapshotReceivedEvent& evt, State
 
     WorldData worldData = evt.snapshot.worldData;
     worldData.organism_ids = evt.snapshot.organismIds;
+    LOG_INFO(
+        State,
+        "Training best snapshot received: fitness={:.4f} gen={} world={}x{} cells={} colors={} "
+        "organism_ids={}",
+        evt.snapshot.fitness,
+        evt.snapshot.generation,
+        worldData.width,
+        worldData.height,
+        worldData.cells.size(),
+        worldData.colors.size(),
+        worldData.organism_ids.size());
     view_->updateBestSnapshot(worldData, evt.snapshot.fitness, evt.snapshot.generation);
 
     return std::move(*this);
