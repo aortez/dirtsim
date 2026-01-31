@@ -95,3 +95,17 @@ jobs:
         # Extract markdown table from output and add to step summary.
         sed -n '/^### Functional Tests/,/^os-manager functional tests/p' functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
         exit $TEST_EXIT
+
+    - name: Ensure SSH known_hosts for docs capture
+      env:
+        DIRTSIM_SSH_HOST: dirtsim2.local
+      run: |
+        mkdir -p ~/.ssh
+        ssh-keyscan -H "${DIRTSIM_SSH_HOST}" >> ~/.ssh/known_hosts
+
+    - name: Run UI docs screenshots in Docker
+      working-directory: docker
+      env:
+        DIRTSIM_SSH_HOST: dirtsim2.local
+        DIRTSIM_SSH_CONTROL_PATH: /tmp/dirtsim-ssh/cm-%r@%h:%p
+      run: make docs-screenshots

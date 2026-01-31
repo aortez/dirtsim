@@ -16,6 +16,7 @@ Environment:
   DIRTSIM_SSH_HOST           SSH host (default: dirtsim2.local)
   DIRTSIM_SSH_USER           SSH user (optional)
   DIRTSIM_REMOTE_TMP         Remote temp dir (default: /tmp/dirtsim-ui-docs)
+  DIRTSIM_SSH_CONTROL_PATH   SSH control socket path (default: ~/.ssh/cm-%r@%h:%p)
   DOCS_SCREENSHOT_ONLY       Comma-separated screen ids (e.g. start-menu,training)
   DOCS_SCREENSHOT_RESET_WAIT_MS   Reset wait override (ms)
   DOCS_SCREENSHOT_MIN_BYTES       Minimum screenshot size (bytes)
@@ -28,11 +29,9 @@ const sshHost = process.env.DIRTSIM_SSH_HOST ?? "dirtsim2.local";
 const sshUser = process.env.DIRTSIM_SSH_USER;
 const sshTarget = sshUser ? `${sshUser}@${sshHost}` : sshHost;
 const remoteTmpDir = process.env.DIRTSIM_REMOTE_TMP ?? "/tmp/dirtsim-ui-docs";
-const sshControlPath = path.join(
-  process.env.HOME ?? "",
-  ".ssh",
-  "cm-%r@%h:%p"
-);
+const sshControlPath =
+  process.env.DIRTSIM_SSH_CONTROL_PATH
+  ?? path.join(process.env.HOME ?? "", ".ssh", "cm-%r@%h:%p");
 const sshControlArgs = [
   "-o",
   "ControlMaster=auto",
@@ -572,6 +571,7 @@ const resetSystem = async () => {
 
 const run = async () => {
   await fs.mkdir(outputDir, { recursive: true });
+  await fs.mkdir(path.dirname(sshControlPath), { recursive: true });
 
   try {
     const state = await getUiState();
