@@ -106,10 +106,22 @@ void AudioManager::handleNoteOn(AudioApi::NoteOn::Cwc cwc)
 {
     const auto& cmd = cwc.command;
     const double attackSeconds = cmd.attack_ms / 1000.0;
+    const double durationSeconds = cmd.duration_ms / 1000.0;
     const double releaseSeconds = cmd.release_ms / 1000.0;
 
+    if (cmd.duration_ms <= 0.0) {
+        cwc.sendResponse(AudioApi::NoteOn::Response::error(ApiError("duration_ms must be > 0")));
+        return;
+    }
+
     const uint32_t noteId = engine_.enqueueNoteOn(
-        cmd.frequency_hz, cmd.amplitude, attackSeconds, releaseSeconds, cmd.waveform, cmd.note_id);
+        cmd.frequency_hz,
+        cmd.amplitude,
+        attackSeconds,
+        durationSeconds,
+        releaseSeconds,
+        cmd.waveform,
+        cmd.note_id);
 
     AudioApi::NoteOn::Okay response{ .accepted = true, .note_id = noteId };
     cwc.sendResponse(AudioApi::NoteOn::Response::okay(response));

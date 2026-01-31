@@ -179,6 +179,7 @@ uint32_t AudioEngine::enqueueNoteOn(
     double frequencyHz,
     double amplitude,
     double attackSeconds,
+    double durationSeconds,
     double releaseSeconds,
     Audio::Waveform waveform,
     uint32_t noteId)
@@ -188,6 +189,7 @@ uint32_t AudioEngine::enqueueNoteOn(
     command.noteOn.frequencyHz = frequencyHz;
     command.noteOn.amplitude = amplitude;
     command.noteOn.attackSeconds = attackSeconds;
+    command.noteOn.durationSeconds = durationSeconds;
     command.noteOn.releaseSeconds = releaseSeconds;
     command.noteOn.waveform = waveform;
 
@@ -266,6 +268,14 @@ void AudioEngine::render(float* out, int frames, int channels)
         for (int ch = 0; ch < channels; ++ch) {
             out[base + ch] = outSample;
         }
+
+        if (autoNoteOffFramesRemaining_ > 0) {
+            --autoNoteOffFramesRemaining_;
+            if (autoNoteOffFramesRemaining_ == 0) {
+                voice_.noteOff();
+                autoNoteOffFramesRemaining_ = -1;
+            }
+        }
     }
 
     updateStatus();
@@ -315,6 +325,15 @@ void AudioEngine::applyCommand(const AudioCommand& command)
             command.noteOn.attackSeconds,
             command.noteOn.releaseSeconds,
             command.noteOn.waveform);
+        if (command.noteOn.durationSeconds > 0.0) {
+            const double frames =
+                command.noteOn.durationSeconds * static_cast<double>(config_.sampleRate);
+            autoNoteOffFramesRemaining_ =
+                std::max<int64_t>(1, static_cast<int64_t>(std::llround(frames)));
+        }
+        else {
+            autoNoteOffFramesRemaining_ = -1;
+        }
         activeNoteId_.store(command.noteOn.noteId);
         return;
     }
@@ -322,6 +341,7 @@ void AudioEngine::applyCommand(const AudioCommand& command)
     const uint32_t currentId = activeNoteId_.load();
     if (command.noteOff.noteId == 0 || command.noteOff.noteId == currentId) {
         voice_.noteOff();
+        autoNoteOffFramesRemaining_ = -1;
     }
 }
 

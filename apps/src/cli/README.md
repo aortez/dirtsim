@@ -93,7 +93,7 @@ Send commands to the server, UI, audio, or os-manager:
 
 # Audio commands
 ./build-debug/bin/cli audio StatusGet
-./build-debug/bin/cli audio NoteOn '{\"frequency_hz\": 440, \"amplitude\": 0.5}'
+./build-debug/bin/cli audio NoteOn '{\"frequency_hz\": 440, \"amplitude\": 0.5, \"duration_ms\": 120}'
 ./build-debug/bin/cli audio NoteOff
 
 # Remote connections (override default addresses)

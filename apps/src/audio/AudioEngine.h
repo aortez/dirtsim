@@ -45,6 +45,7 @@ public:
         double frequencyHz,
         double amplitude,
         double attackSeconds,
+        double durationSeconds,
         double releaseSeconds,
         Audio::Waveform waveform,
         uint32_t noteId);
@@ -57,6 +58,7 @@ private:
         double frequencyHz = 440.0;
         double amplitude = 0.5;
         double attackSeconds = 0.01;
+        double durationSeconds = 0.12;
         double releaseSeconds = 0.12;
         Audio::Waveform waveform = Audio::Waveform::Sine;
         uint32_t noteId = 0;
@@ -103,6 +105,7 @@ private:
 
     std::vector<float> mixBuffer_;
     std::vector<int16_t> s16Buffer_;
+    int64_t autoNoteOffFramesRemaining_ = -1;
 };
 
 } // namespace AudioProcess
