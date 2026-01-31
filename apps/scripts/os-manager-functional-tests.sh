@@ -73,11 +73,12 @@ TEST_FAILED=0
 
 run_test() {
   test_name="$1"
+  timeout_ms="${2:-$TEST_TIMEOUT_MS}"
   echo "Running functional test: $test_name"
 
   set +e
   result=$("$CLI_BIN" functional-test "$test_name" \
-    --timeout "$TEST_TIMEOUT_MS" \
+    --timeout "$timeout_ms" \
     --ui-address "$UI_ADDRESS" \
     --server-address "$SERVER_ADDRESS" \
     --os-manager-address "$OS_MANAGER_ADDRESS" 2>&1)
@@ -115,6 +116,7 @@ run_test canExit
 run_test canTrain
 run_test canSetGenerationsAndTrain
 run_test canPlantTreeSeed
+run_test verifyTraining 300000
 
 # Output markdown summary for GitHub Actions.
 echo ""
