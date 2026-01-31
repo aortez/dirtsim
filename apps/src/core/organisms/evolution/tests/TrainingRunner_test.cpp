@@ -84,6 +84,11 @@ public:
         : inner_(std::move(inner)), executed_(executed)
     {}
 
+    CommandExecutionResult validate(Tree& tree, World& world, const TreeCommand& cmd) override
+    {
+        return inner_->validate(tree, world, cmd);
+    }
+
     CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override
     {
         CommandExecutionResult result = inner_->execute(tree, world, cmd);
@@ -91,6 +96,11 @@ public:
             executed_->push_back(ExecutedCommand{ cmd, result });
         }
         return result;
+    }
+
+    double getEnergyCost(const TreeCommand& cmd) const override
+    {
+        return inner_->getEnergyCost(cmd);
     }
 
 private:
@@ -376,9 +386,9 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 
     for (const auto& brainCase : brains) {
         std::vector<TreeCommand> issued;
-        std::vector<TreeCommand> accepted;
+        std::vector<TreeCommand> started;
         std::vector<ExecutedCommand> executed;
-        std::optional<std::string> lastAccepted;
+        std::optional<std::string> lastStarted;
         bool processorWrapped = false;
 
         TrainingBrainRegistry registry;
@@ -473,13 +483,13 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             const auto& current = tree->getCurrentCommand();
             if (current.has_value()) {
                 std::string currentKey = formatCommand(*current);
-                if (!lastAccepted.has_value() || *lastAccepted != currentKey) {
-                    accepted.push_back(*current);
-                    lastAccepted = currentKey;
+                if (!lastStarted.has_value() || *lastStarted != currentKey) {
+                    started.push_back(*current);
+                    lastStarted = currentKey;
                 }
             }
             else {
-                lastAccepted.reset();
+                lastStarted.reset();
             }
         }
 
@@ -510,10 +520,10 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
         std::cout << "Final world:\n"
                   << WorldDiagramGeneratorEmoji::generateAnsiDiagram(*world, true, true) << "\n";
         printCommandSummary("Issued summary", countCommands(issued));
-        printCommandSummary("Accepted summary", countCommands(accepted));
+        printCommandSummary("Started summary", countCommands(started));
         printCommandSummary("Executed summary", countExecutedCommands(executed));
         printCommandListRolledUp("Issued commands", issued);
-        printCommandListRolledUp("Accepted commands", accepted);
+        printCommandListRolledUp("Started commands", started);
         printExecutedCommandListRolledUp("Executed commands", executed);
     }
 }

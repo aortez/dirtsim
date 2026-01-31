@@ -1,5 +1,6 @@
 #include "TrainingRunner.h"
 #include "EvolutionConfig.h"
+#include "FitnessCalculator.h"
 #include "GenomeRepository.h"
 #include "core/Assert.h"
 #include "core/World.h"
@@ -102,7 +103,8 @@ TrainingRunner::TrainingRunner(
     : trainingSpec_(trainingSpec),
       individual_(individual),
       maxTime_(evolutionConfig.maxSimulationTime),
-      brainRegistry_(runnerConfig.brainRegistry)
+      brainRegistry_(runnerConfig.brainRegistry),
+      evolutionConfig_(evolutionConfig)
 {
     // Create scenario from registry.
     auto registry = ScenarioRegistry::createDefault(genomeRepository);
@@ -157,6 +159,28 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
                 treeEvaluator_.update(*tree);
+                const Vector2d delta{
+                    lastPosition_.x - spawnPosition_.x,
+                    lastPosition_.y - spawnPosition_.y,
+                };
+                const FitnessResult result{
+                    .lifespan = tree->getAge(),
+                    .distanceTraveled = delta.mag(),
+                    .maxEnergy = treeEvaluator_.getMaxEnergy(),
+                    .commandsAccepted = treeEvaluator_.getCommandAcceptedCount(),
+                    .commandsRejected = treeEvaluator_.getCommandRejectedCount(),
+                };
+                const WorldData& data = world_->getData();
+                const FitnessContext context{
+                    .result = result,
+                    .organismType = OrganismType::TREE,
+                    .worldWidth = data.width,
+                    .worldHeight = data.height,
+                    .evolutionConfig = evolutionConfig_,
+                    .finalOrganism = tree,
+                    .treeResources = &tree->getResourceTotals(),
+                };
+                TreeEvaluator::evaluate(context);
             }
         }
 
@@ -180,6 +204,8 @@ TrainingRunner::Status TrainingRunner::getStatus() const
         status.distanceTraveled = delta.mag();
     }
     status.maxEnergy = treeEvaluator_.getMaxEnergy();
+    status.commandsAccepted = treeEvaluator_.getCommandAcceptedCount();
+    status.commandsRejected = treeEvaluator_.getCommandRejectedCount();
 
     if (const Organism::Body* organism = getOrganism()) {
         status.lifespan = organism->getAge();

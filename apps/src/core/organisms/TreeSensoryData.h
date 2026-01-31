@@ -46,8 +46,9 @@ struct TreeSensoryData {
     // Current action state.
     std::optional<TreeCommandType> current_action; // nullopt if idle.
     double action_progress = 0.0;                  // 0.0 to 1.0, how far along current action is.
+    double last_action_result = 0.0;               // -1.0 rejected, 0.0 none, 1.0 accepted.
 
-    using serialize = zpp::bits::members<14>;
+    using serialize = zpp::bits::members<15>;
 };
 
 void to_json(nlohmann::json& j, const GrowthStage& stage);

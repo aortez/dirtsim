@@ -25,7 +25,8 @@ void to_json(nlohmann::json& j, const TreeSensoryData& data)
                         { "stage", data.stage },
                         { "total_energy", data.total_energy },
                         { "total_water", data.total_water },
-                        { "current_thought", data.current_thought } };
+                        { "current_thought", data.current_thought },
+                        { "last_action_result", data.last_action_result } };
 }
 
 void from_json(const nlohmann::json& j, TreeSensoryData& data)
@@ -44,6 +45,9 @@ void from_json(const nlohmann::json& j, TreeSensoryData& data)
     j.at("total_energy").get_to(data.total_energy);
     j.at("total_water").get_to(data.total_water);
     j.at("current_thought").get_to(data.current_thought);
+    if (j.contains("last_action_result")) {
+        j.at("last_action_result").get_to(data.last_action_result);
+    }
 }
 
 } // namespace DirtSim
