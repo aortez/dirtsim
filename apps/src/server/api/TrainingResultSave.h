@@ -22,12 +22,13 @@ struct Okay;
 // Empty ids saves all candidates from the pending training result.
 struct Command {
     std::vector<GenomeId> ids;
+    bool restart = false;
 
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {

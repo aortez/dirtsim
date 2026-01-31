@@ -164,6 +164,7 @@ struct ViewBestButtonClickedEvent {
 
 struct TrainingResultSaveClickedEvent {
     std::vector<GenomeId> ids;
+    bool restart = false;
     static constexpr const char* name() { return "TrainingResultSaveClickedEvent"; }
 };
 

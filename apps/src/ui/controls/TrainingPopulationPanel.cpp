@@ -596,6 +596,17 @@ void TrainingPopulationPanel::refreshFromSpec()
     selectedOrganism_ = trainingSpec_.organismType;
     setBrainOptionsForOrganism(selectedOrganism_);
 
+    if (trainingSpec_.population.empty() && evolutionConfig_.populationSize > 0) {
+        PopulationSpec& spec = ensurePopulationSpec(selectedScenario_);
+        if (brainRequiresGenome_) {
+            spec.randomCount = evolutionConfig_.populationSize;
+            spec.count = spec.randomCount;
+        }
+        else {
+            spec.count = evolutionConfig_.populationSize;
+        }
+    }
+
     for (auto& spec : trainingSpec_.population) {
         spec.brainKind = brainKind_;
         spec.brainVariant.reset();

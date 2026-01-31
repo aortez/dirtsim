@@ -36,7 +36,7 @@ dirtsim/
 cd apps
 make debug                           # Build
 ./build-debug/bin/cli run-all        # Run server + UI
-./build-debug/bin/cli integration_test  # Quick smoke test
+./build-debug/bin/cli functional-test canTrain  # Smoke test (requires running UI/server)
 ```
 
 ## Documentation

@@ -6,6 +6,7 @@
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "server/api/GenomeDelete.h"
 #include "server/api/SimStop.h"
 #include "server/api/StateGet.h"
 #include "server/api/StatusGet.h"
@@ -273,7 +274,10 @@ Result<Api::TrainingResultList::Okay, std::string> waitForTrainingResultList(
 }
 
 Result<UiApi::TrainingResultSave::Okay, std::string> waitForUiTrainingResultSave(
-    Network::WebSocketService& client, int timeoutMs, std::optional<int> count)
+    Network::WebSocketService& client,
+    int timeoutMs,
+    std::optional<int> count,
+    bool restart = false)
 {
     const auto start = std::chrono::steady_clock::now();
     const int pollDelayMs = 200;
@@ -285,6 +289,7 @@ Result<UiApi::TrainingResultSave::Okay, std::string> waitForUiTrainingResultSave
         if (count.has_value()) {
             cmd.count = count;
         }
+        cmd.restart = restart;
 
         auto response =
             unwrapResponse(client.sendCommandAndGetResponse<UiApi::TrainingResultSave::Okay>(
@@ -308,6 +313,25 @@ Result<UiApi::TrainingResultSave::Okay, std::string> waitForUiTrainingResultSave
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
     }
+}
+
+Result<std::monostate, std::string> deleteGenomes(
+    Network::WebSocketService& client, const std::unordered_set<GenomeId>& ids, int timeoutMs)
+{
+    for (const auto& id : ids) {
+        Api::GenomeDelete::Command cmd{ .id = id };
+        auto response = unwrapResponse(
+            client.sendCommandAndGetResponse<Api::GenomeDelete::Okay>(cmd, timeoutMs));
+        if (response.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "GenomeDelete failed: " + response.errorValue());
+        }
+        if (!response.value().success) {
+            return Result<std::monostate, std::string>::error(
+                "GenomeDelete returned success=false for " + id.toShortString());
+        }
+    }
+    return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 Result<std::monostate, std::string> waitForGenomeInWorld(
@@ -1489,6 +1513,305 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
 
     return FunctionalTestSummary{
         .name = "canOpenTrainingConfigPanel",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runVerifyTraining(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        UiApi::StatusGet::Command uiStatusCmd{};
+        auto uiStatusResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(uiStatusCmd, timeoutMs));
+        if (uiStatusResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StatusGet failed: " + uiStatusResult.errorValue());
+        }
+
+        const auto& uiStatus = uiStatusResult.value();
+        std::cerr << "UI state: " << uiStatus.state
+                  << " (connected_to_server=" << (uiStatus.connected_to_server ? "true" : "false")
+                  << ")" << std::endl;
+        if (!uiStatus.connected_to_server) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error("UI not connected to server");
+        }
+        if (uiStatus.state == "SimRunning" || uiStatus.state == "Paused") {
+            std::cerr << "Sending UI SimStop to return to StartMenu..." << std::endl;
+            UiApi::SimStop::Command simStopCmd{};
+            auto simStopResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+            if (startMenuResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+            }
+        }
+
+        serverClient.setProtocol(Network::Protocol::BINARY);
+        Network::ClientHello hello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = false,
+            .wantsEvents = false,
+        };
+        serverClient.setClientHello(hello);
+
+        std::cerr << "Connecting to server at " << serverAddress << "..." << std::endl;
+        auto connectResult = serverClient.connect(serverAddress, timeoutMs);
+        if (connectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to server: " + connectResult.errorValue());
+        }
+
+        Api::StatusGet::Command statusCmd{};
+        auto statusResult = unwrapResponse(
+            serverClient.sendCommandAndGetResponse<Api::StatusGet::Okay>(statusCmd, timeoutMs));
+        if (statusResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server StatusGet failed: " + statusResult.errorValue());
+        }
+
+        const auto& status = statusResult.value();
+        std::cerr << "Server state: " << status.state << " (timestep=" << status.timestep << ")"
+                  << std::endl;
+        if (status.state == "SimRunning" || status.state == "SimPaused") {
+            std::cerr << "Sending SimStop to return to Idle..." << std::endl;
+            Api::SimStop::Command simStopCmd{};
+            auto simStopResult =
+                unwrapResponse(serverClient.sendCommandAndGetResponse<Api::SimStop::OkayType>(
+                    simStopCmd, timeoutMs));
+            if (simStopResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Server SimStop failed: " + simStopResult.errorValue());
+            }
+
+            auto idleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+            if (idleResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(idleResult.errorValue());
+            }
+        }
+
+        size_t initialResultCount = 0;
+        std::unordered_set<std::string> trainingResultIds;
+        {
+            Api::TrainingResultList::Command listCmd{};
+            auto listResult = unwrapResponse(
+                serverClient.sendCommandAndGetResponse<Api::TrainingResultList::Okay>(
+                    listCmd, timeoutMs));
+            if (listResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "TrainingResultList failed: " + listResult.errorValue());
+            }
+            const auto& results = listResult.value().results;
+            initialResultCount = results.size();
+            trainingResultIds.reserve(results.size());
+            for (const auto& entry : results) {
+                trainingResultIds.insert(entry.summary.trainingSessionId.toString());
+            }
+        }
+
+        const int populationSize = 5;
+        const int runCount = 5;
+        const int trainingTimeoutMs = std::max(timeoutMs, 300000);
+        const int saveTimeoutMs = std::max(timeoutMs, 20000);
+
+        UiApi::TrainingStart::Command trainCmd;
+        trainCmd.evolution.populationSize = populationSize;
+        trainCmd.evolution.maxGenerations = 1;
+        trainCmd.evolution.maxSimulationTime = 1000.0;
+        trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
+        trainCmd.training.organismType = OrganismType::TREE;
+        PopulationSpec population;
+        population.brainKind = TrainingBrainKind::NeuralNet;
+        population.count = populationSize;
+        population.randomCount = populationSize;
+        trainCmd.training.population = { population };
+
+        auto trainResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::TrainingStart::Okay>(trainCmd, timeoutMs));
+        if (trainResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI TrainingStart failed: " + trainResult.errorValue());
+        }
+
+        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        if (trainingStateResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
+        }
+
+        std::unordered_set<GenomeId> previousGenomes;
+        std::unordered_set<GenomeId> savedGenomes;
+        size_t expectedResultCount = initialResultCount;
+
+        for (int runIndex = 0; runIndex < runCount; ++runIndex) {
+            std::cerr << "verifyTraining: waiting for generation " << (runIndex + 1) << "/"
+                      << runCount << std::endl;
+            auto waitResult =
+                waitForServerState(serverClient, "UnsavedTrainingResult", trainingTimeoutMs);
+            if (waitResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(waitResult.errorValue());
+            }
+
+            const bool restart = (runIndex < runCount - 1);
+            std::cerr << "verifyTraining: saving generation " << (runIndex + 1)
+                      << " (restart=" << (restart ? "true" : "false") << ")" << std::endl;
+            auto saveResult =
+                waitForUiTrainingResultSave(uiClient, saveTimeoutMs, std::nullopt, restart);
+            if (saveResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI TrainingResultSave failed: " + saveResult.errorValue());
+            }
+
+            const auto& saveOkay = saveResult.value();
+            if (saveOkay.savedCount != populationSize) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "TrainingResultSave savedCount mismatch");
+            }
+            if (static_cast<int>(saveOkay.savedIds.size()) != populationSize) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "TrainingResultSave savedIds size mismatch");
+            }
+
+            std::unordered_set<GenomeId> currentGenomes;
+            currentGenomes.reserve(saveOkay.savedIds.size());
+            for (const auto& id : saveOkay.savedIds) {
+                currentGenomes.insert(id);
+                savedGenomes.insert(id);
+            }
+
+            if (!previousGenomes.empty() && currentGenomes == previousGenomes) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Generation genomes did not change between runs");
+            }
+
+            previousGenomes = currentGenomes;
+
+            expectedResultCount += 1;
+            auto listResult =
+                waitForTrainingResultList(serverClient, trainingTimeoutMs, expectedResultCount - 1);
+            if (listResult.isError()) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(listResult.errorValue());
+            }
+
+            bool foundNew = false;
+            for (const auto& entry : listResult.value().results) {
+                const std::string sessionId = entry.summary.trainingSessionId.toString();
+                if (trainingResultIds.insert(sessionId).second) {
+                    foundNew = true;
+                    if (entry.candidateCount != populationSize) {
+                        uiClient.disconnect();
+                        serverClient.disconnect();
+                        return Result<std::monostate, std::string>::error(
+                            "TrainingResultList candidate count mismatch");
+                    }
+                    if (entry.summary.maxGenerations != 1
+                        || entry.summary.completedGenerations != 1) {
+                        uiClient.disconnect();
+                        serverClient.disconnect();
+                        return Result<std::monostate, std::string>::error(
+                            "TrainingResultList generation mismatch");
+                    }
+                    break;
+                }
+            }
+
+            if (!foundNew) {
+                uiClient.disconnect();
+                serverClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "TrainingResultList did not include a new entry");
+            }
+        }
+
+        auto idleResult = waitForServerState(serverClient, "Idle", trainingTimeoutMs);
+        if (idleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(idleResult.errorValue());
+        }
+
+        auto deleteResult = deleteGenomes(serverClient, savedGenomes, timeoutMs);
+        if (deleteResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(deleteResult.errorValue());
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "verifyTraining",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .training_summary = std::nullopt,
