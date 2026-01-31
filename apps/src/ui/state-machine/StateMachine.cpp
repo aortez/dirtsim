@@ -6,6 +6,7 @@
 #include "api/IconRailShowIcons.h"
 #include "api/IconSelect.h"
 #include "api/StreamStart.h"
+#include "api/TrainingConfigShowEvolution.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
 #include "api/WebSocketAccessSet.h"
@@ -102,6 +103,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::TrainingResultSave::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::TrainingStart::Cwc>(
         [this](UiApi::TrainingStart::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::TrainingConfigShowEvolution::Cwc>(
+        [this](UiApi::TrainingConfigShowEvolution::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeBrowserOpen::Cwc>(
         [this](UiApi::GenomeBrowserOpen::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::GenomeDetailLoad::Cwc>(
@@ -274,6 +277,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StateGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingConfigShowEvolution);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingQuit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcCandidate);

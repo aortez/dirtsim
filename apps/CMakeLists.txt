@@ -463,6 +463,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
     src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp
     src/ui/state-machine/api/TrainingResultSave.cpp

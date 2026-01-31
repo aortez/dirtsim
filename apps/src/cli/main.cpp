@@ -29,6 +29,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
 #include <algorithm>
@@ -1338,6 +1339,17 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
+        auto showTrainingConfigEvolution = [&]() -> Result<std::monostate, std::string> {
+            UiApi::TrainingConfigShowEvolution::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::TrainingConfigShowEvolution::Command,
+                UiApi::TrainingConfigShowEvolution::Okay>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
         auto navigateToStartMenu = [&]() -> Result<std::monostate, std::string> {
             std::string state;
             auto stateResult = getUiState(state);
@@ -1492,6 +1504,12 @@ int main(int argc, char** argv)
 
         auto captureScreen =
             [&](const std::string& screenId) -> Result<std::monostate, std::string> {
+            auto railResult = ensureIconRailVisible();
+            if (railResult.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    "IconRailShowIcons failed: " + railResult.errorValue());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
             const std::filesystem::path outPath =
                 std::filesystem::path(outputDir) / (screenId + ".png");
             auto pngResult = grabScreenshotPng(uiClient, 1.0, timeoutMs, true);
@@ -1653,6 +1671,10 @@ int main(int argc, char** argv)
             auto select = selectIcon(Ui::IconId::EVOLUTION);
             if (select.isError()) {
                 return select;
+            }
+            auto showView = showTrainingConfigEvolution();
+            if (showView.isError()) {
+                return showView;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             UiApi::MouseMove::Command move{ .pixelX = 200, .pixelY = 170 };

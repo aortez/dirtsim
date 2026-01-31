@@ -21,6 +21,7 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "StreamStart.h"
+#include "TrainingConfigShowEvolution.h"
 #include "TrainingQuit.h"
 #include "TrainingResultDiscard.h"
 #include "TrainingResultSave.h"
@@ -58,6 +59,7 @@ using UiApiCommand = std::variant<
     UiApi::StateGet::Command,
     UiApi::StatusGet::Command,
     UiApi::StreamStart::Command,
+    UiApi::TrainingConfigShowEvolution::Command,
     UiApi::TrainingQuit::Command,
     UiApi::TrainingResultDiscard::Command,
     UiApi::TrainingResultSave::Command,

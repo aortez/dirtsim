@@ -23,6 +23,7 @@
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
 #include "api/StreamStart.h"
+#include "api/TrainingConfigShowEvolution.h"
 #include "api/TrainingQuit.h"
 #include "api/TrainingResultDiscard.h"
 #include "api/TrainingResultSave.h"
@@ -306,6 +307,7 @@ using Event = std::variant<
     DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
+    DirtSim::UiApi::TrainingConfigShowEvolution::Cwc,
     DirtSim::UiApi::TrainingQuit::Cwc,
     DirtSim::UiApi::TrainingResultDiscard::Cwc,
     DirtSim::UiApi::TrainingResultSave::Cwc,

@@ -115,7 +115,7 @@ Then run:
 npm run shots:real
 ```
 
-Screens and CLI steps live in `scripts/real_screens.mjs`. The output lands in
+Screens are captured via the CLI on the target device. The output lands in
 `screenshots/real/`.
 
 Start Menu variants:
@@ -141,11 +141,9 @@ Optional environment overrides (defaults to dirtsim2.local):
 DIRTSIM_SSH_HOST=dirtsim3.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
+DIRTSIM_SSH_CONTROL_PATH=~/.ssh/cm-%r@%h:%p
 DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,start-menu-network,training
-DOCS_SCREENSHOT_ACTIVITY=1
-DOCS_SCREENSHOT_RESET_WAIT_MS=1500
 DOCS_SCREENSHOT_MIN_BYTES=2048
-DOCS_SCREENSHOT_MAX_RETRIES=2
 ```
 
 Stacking overrides:

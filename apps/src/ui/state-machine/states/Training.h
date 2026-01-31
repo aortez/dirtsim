@@ -38,6 +38,7 @@ struct Training {
     Any onEvent(const UiApi::GenomeBrowserOpen::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::GenomeDetailOpen::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::TrainingConfigShowEvolution::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm);
