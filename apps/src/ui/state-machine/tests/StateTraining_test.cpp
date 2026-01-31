@@ -6,20 +6,47 @@
  * Written TDD-style - tests first, then implementation.
  */
 
+#include "core/UUID.h"
+#include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
 #include "ui/state-machine/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
+#include <lvgl.h>
 #include <optional>
 
 using namespace DirtSim;
 using namespace DirtSim::Ui;
 using namespace DirtSim::Ui::State;
 using namespace DirtSim::Ui::Tests;
+
+namespace {
+
+struct LvglTestDisplay {
+    LvglTestDisplay()
+    {
+        lv_init();
+        display = lv_display_create(800, 600);
+    }
+
+    ~LvglTestDisplay()
+    {
+        if (display) {
+            lv_display_delete(display);
+        }
+        lv_deinit();
+    }
+
+    lv_display_t* display = nullptr;
+};
+
+} // namespace
 
 /**
  * @brief Test that TrainButtonClicked transitions StartMenu to Training.
@@ -271,4 +298,85 @@ TEST(StateTrainingTest, QuitButtonSkipsStopWhenIdle)
 
     // Verify: No EvolutionStop command was sent.
     EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
+}
+
+/**
+ * @brief Test that TrainingResultSave with restart clears modal and restarts evolution session.
+ */
+TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    Training trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+
+    Api::TrainingResult::Summary summary;
+    summary.scenarioId = Scenario::EnumType::TreeGermination;
+    summary.organismType = OrganismType::TREE;
+    summary.populationSize = 1;
+    summary.maxGenerations = 1;
+    summary.completedGenerations = 1;
+    summary.bestFitness = 1.0;
+    summary.averageFitness = 1.0;
+    summary.totalTrainingSeconds = 1.0;
+    summary.primaryBrainKind = TrainingBrainKind::NeuralNet;
+    summary.primaryPopulationCount = 1;
+    summary.trainingSessionId = UUID::generate();
+
+    Api::TrainingResult::Candidate candidate;
+    candidate.id = UUID::generate();
+    candidate.fitness = 1.0;
+    candidate.brainKind = TrainingBrainKind::NeuralNet;
+    candidate.brainVariant = std::nullopt;
+    candidate.generation = 0;
+
+    trainingState.view_->showTrainingResultModal(summary, { candidate });
+    ASSERT_TRUE(trainingState.view_->isTrainingResultModalVisible());
+
+    Api::TrainingResultSave::Okay saveOkay;
+    saveOkay.savedCount = 1;
+    saveOkay.discardedCount = 0;
+    saveOkay.savedIds = { candidate.id };
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingResultSave::Command>(saveOkay);
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = trainingState.streamIntervalMs_, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->clearSentCommands();
+
+    bool callbackInvoked = false;
+    UiApi::TrainingResultSave::Command cmd;
+    cmd.count = 1;
+    cmd.restart = true;
+    UiApi::TrainingResultSave::Cwc cwc(cmd, [&](UiApi::TrainingResultSave::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+        if (response.isValue()) {
+            EXPECT_EQ(response.value().savedCount, 1);
+            EXPECT_EQ(response.value().discardedCount, 0);
+            EXPECT_EQ(response.value().savedIds.size(), 1u);
+        }
+    });
+
+    State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
+
+    auto* updatedState = std::get_if<Training>(&newState.getVariant());
+    ASSERT_NE(updatedState, nullptr);
+    EXPECT_TRUE(callbackInvoked);
+    EXPECT_TRUE(updatedState->evolutionStarted_);
+    ASSERT_TRUE(updatedState->view_ != nullptr);
+    EXPECT_FALSE(updatedState->view_->isTrainingResultModalVisible());
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_GE(sentCommands.size(), 3u);
+    EXPECT_EQ(sentCommands[0], "TrainingResultSave");
+    EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
+
+    updatedState->onExit(*fixture.stateMachine);
+    fixture.stateMachine->uiManager_.reset();
 }
