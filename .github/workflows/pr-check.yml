@@ -63,11 +63,11 @@ jobs:
       working-directory: docker
       run: make test
 
-    - name: Ensure Yocto runtime image
+    - name: Build Yocto runtime image
       working-directory: yocto
       env:
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
-      run: npm run runtime-image -- --ensure
+      run: npm run runtime-image -- --build
 
     - name: Run integration test in Yocto runtime
       run: |
