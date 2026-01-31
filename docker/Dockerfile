@@ -41,6 +41,8 @@ RUN apt-get update && apt-get install -y \
     libyuv-dev \
     libsdl2-dev \
     libsqlite3-dev \
+    nodejs \
+    npm \
     chrpath \
     cpio \
     debianutils \

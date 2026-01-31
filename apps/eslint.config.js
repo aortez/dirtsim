@@ -5,7 +5,7 @@ import globals from "globals";
 
 export default [
     {
-        files: ["src/server/web/**/*.js"],
+        files: ["apps/src/server/web/**/*.js", "src/server/web/**/*.js"],
         languageOptions: {
             ecmaVersion: 2020,
             sourceType: "script",
