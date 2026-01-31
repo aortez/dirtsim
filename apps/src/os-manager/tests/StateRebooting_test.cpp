@@ -36,9 +36,11 @@ TEST_F(OsManagerStateRebootingTest, StopsServicesAndRequestsReboot)
 
     ASSERT_TRUE(rebootRequested);
     ASSERT_TRUE(manager->shouldExit());
-    ASSERT_EQ(serviceCalls.size(), 2u);
+    ASSERT_EQ(serviceCalls.size(), 3u);
     EXPECT_EQ(serviceCalls[0].first, "stop");
     EXPECT_EQ(serviceCalls[0].second, "dirtsim-ui.service");
     EXPECT_EQ(serviceCalls[1].first, "stop");
     EXPECT_EQ(serviceCalls[1].second, "dirtsim-server.service");
+    EXPECT_EQ(serviceCalls[2].first, "stop");
+    EXPECT_EQ(serviceCalls[2].second, "dirtsim-audio.service");
 }

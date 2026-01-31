@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audio/api/AudioApiCommand.h"
 #include "os-manager/api/OsApiCommand.h"
 #include "server/api/ApiCommand.h"
 #include "ui/state-machine/api/UiApiCommand.h"
@@ -46,6 +47,12 @@ inline constexpr auto OS_COMMAND_NAMES =
     extractCommandNames(static_cast<OsApi::OsApiCommand*>(nullptr));
 
 /**
+ * @brief Compile-time array of all audio API command names.
+ */
+inline constexpr auto AUDIO_COMMAND_NAMES =
+    extractCommandNames(static_cast<AudioApi::AudioApiCommand*>(nullptr));
+
+/**
  * @brief Check if a command name is a valid server command.
  */
 inline bool isServerCommand(std::string_view name)
@@ -73,6 +80,17 @@ inline bool isUiCommand(std::string_view name)
 inline bool isOsCommand(std::string_view name)
 {
     for (const auto& cmd : OS_COMMAND_NAMES) {
+        if (cmd == name) return true;
+    }
+    return false;
+}
+
+/**
+ * @brief Check if a command name is a valid audio command.
+ */
+inline bool isAudioCommand(std::string_view name)
+{
+    for (const auto& cmd : AUDIO_COMMAND_NAMES) {
         if (cmd == name) return true;
     }
     return false;

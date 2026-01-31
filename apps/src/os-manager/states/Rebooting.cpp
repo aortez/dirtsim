@@ -10,6 +10,7 @@ namespace {
 
 constexpr const char* kServerService = "dirtsim-server.service";
 constexpr const char* kUiService = "dirtsim-ui.service";
+constexpr const char* kAudioService = "dirtsim-audio.service";
 
 } // namespace
 
@@ -25,6 +26,11 @@ void Rebooting::onEnter(OperatingSystemManager& osm)
     auto serverStop = osm.stopService(kServerService);
     if (serverStop.isError()) {
         LOG_WARN(State, "Failed to stop server service: {}", serverStop.errorValue().message);
+    }
+
+    auto audioStop = osm.stopService(kAudioService);
+    if (audioStop.isError()) {
+        LOG_WARN(State, "Failed to stop audio service: {}", audioStop.errorValue().message);
     }
 
     osm.scheduleReboot();

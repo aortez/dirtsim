@@ -38,12 +38,14 @@ processes that communicate over WebSocket APIs.
 - dirtsim-ui: LVGL UI client and control surface.
   - Connects to server for world updates.
   - WebSocket on 7070 for control commands and WebRTC signaling.
+- dirtsim-audio: Audio synthesis process for beeps and tones.
+  - WebSocket on 6060 for audio control commands (note on/off, status).
 - dirtsim-os-manager: Privileged control plane.
   - WebSocket on 9090 for SystemStatus and service control (start/stop/restart/reboot).
   - Manages server/UI services and reports health and system metrics.
 - dirtsim-cli: Command-line client for automation, testing, and diagnostics.
 - Web dashboard: Browser UI served from `apps/src/server/web/`.
-- Systemd units: `dirtsim-server.service`, `dirtsim-ui.service`, `dirtsim-os-manager.service`.
+- Systemd units: `dirtsim-server.service`, `dirtsim-ui.service`, `dirtsim-audio.service`, `dirtsim-os-manager.service`.
 
 ## Ports and Protocols
 
@@ -51,6 +53,7 @@ processes that communicate over WebSocket APIs.
 | --- | --- | --- | --- |
 | Server | 8080 | WebSocket (binary + JSON) | Physics data + control commands |
 | UI | 7070 | WebSocket (JSON) | UI control + WebRTC signaling |
+| Audio | 6060 | WebSocket (JSON + binary) | Audio synthesis control |
 | OS Manager | 9090 | WebSocket (JSON) | System status + service control |
 | Server HTTP | 8081 | HTTP | Web dashboard (`/garden`) |
 

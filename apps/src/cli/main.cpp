@@ -123,7 +123,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "integration_test", "Run integration test (launches server + UI)" },
     { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
-    { "run-all", "Launch server + UI and monitor (exits when UI closes)" },
+    { "run-all", "Launch server + UI + audio and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
     { "train", "Run evolution training with JSON config" },
@@ -175,6 +175,7 @@ std::string buildApiCommandHelp(const std::string& title, const CommandList& com
 std::string getGlobalHelp()
 {
     std::string help = "Available targets:\n";
+    help += "  audio\n";
     help += "  benchmark\n";
     help += "  cleanup\n";
     help += "  functional-test\n";
@@ -195,7 +196,25 @@ std::string getGlobalHelp()
     help += "  cli server help\n";
     help += "  cli ui help\n";
     help += "  cli os-manager help\n";
+    help += "  cli audio help\n";
     help += "  cli network help\n";
+    return help;
+}
+
+std::string getAudioHelp()
+{
+    std::string help;
+    help += "Usage: cli audio <command> [params]\n\n";
+    help += "Options:\n";
+    help += "  --address=ws://host:6060   Override default audio WebSocket URL\n";
+    help += "  --example                  Print default JSON for a command\n";
+    help += "  --timeout=MS               Response timeout in milliseconds\n\n";
+    help += buildApiCommandHelp(
+        "Audio API Commands (ws://localhost:6060)", Client::AUDIO_COMMAND_NAMES);
+    help += "\nExamples:\n";
+    help += "  cli audio StatusGet\n";
+    help += "  cli audio NoteOn --example\n";
+    help += "  cli --address ws://dirtsim.local:6060 audio StatusGet\n";
     return help;
 }
 
@@ -245,6 +264,7 @@ std::string getOsManagerHelp()
     help += "\nExamples:\n";
     help += "  cli os-manager SystemStatus\n";
     help += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
+    help += "  cli os-manager StartAudio\n";
     help += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     return help;
 }
@@ -281,6 +301,9 @@ std::string getTargetHelp(const std::string& targetName)
     if (targetName == "os-manager") {
         return getOsManagerHelp();
     }
+    if (targetName == "audio") {
+        return getAudioHelp();
+    }
     if (targetName == "network") {
         return getNetworkHelp();
     }
@@ -297,11 +320,14 @@ std::string getExamplesHelp()
     std::string examples = "Examples:\n\n";
     examples += "  cli ui StatusGet\n";
     examples += "  cli server StatusGet\n";
+    examples += "  cli audio StatusGet\n";
     examples += "  cli os-manager SystemStatus\n";
     examples += "  cli os-manager WebUiAccessSet '{\"enabled\": true}'\n";
     examples += "  cli os-manager WebSocketAccessSet '{\"enabled\": true}'\n";
     examples += "  cli os-manager StartServer\n";
+    examples += "  cli os-manager StartAudio\n";
     examples += "  cli os-manager StopUi\n";
+    examples += "  cli os-manager StopAudio\n";
     examples += "  cli os-manager RestartServer\n";
     examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     examples += "  cli run-all\n";
@@ -330,6 +356,7 @@ std::string getExamplesHelp()
     examples += "  cli ui help\n";
     examples += "  cli server help\n";
     examples += "  cli os-manager help\n";
+    examples += "  cli audio help\n";
     examples += "  cli network help\n";
     return examples;
 }
@@ -919,6 +946,7 @@ int main(int argc, char** argv)
         std::filesystem::path binDir = exePath.parent_path();
         std::filesystem::path serverPath = binDir / "dirtsim-server";
         std::filesystem::path uiPath = binDir / "dirtsim-ui";
+        std::filesystem::path audioPath = binDir / "dirtsim-audio";
 
         if (!std::filesystem::exists(serverPath)) {
             std::cerr << "Error: Cannot find server binary at " << serverPath << std::endl;
@@ -942,6 +970,7 @@ int main(int argc, char** argv)
         std::filesystem::path binDir = exePath.parent_path();
         std::filesystem::path serverPath = binDir / "dirtsim-server";
         std::filesystem::path uiPath = binDir / "dirtsim-ui";
+        std::filesystem::path audioPath = binDir / "dirtsim-audio";
 
         if (!std::filesystem::exists(serverPath)) {
             std::cerr << "Error: Cannot find server binary at " << serverPath << std::endl;
@@ -953,8 +982,13 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        // Run server and UI.
-        auto result = Client::runAll(serverPath.string(), uiPath.string());
+        if (!std::filesystem::exists(audioPath)) {
+            std::cerr << "Error: Cannot find audio binary at " << audioPath << std::endl;
+            return 1;
+        }
+
+        // Run server, UI, and audio.
+        auto result = Client::runAll(serverPath.string(), uiPath.string(), audioPath.string());
         if (result.isError()) {
             std::cerr << "Error: " << result.errorValue() << std::endl;
             return 1;
@@ -1441,11 +1475,12 @@ int main(int argc, char** argv)
     }
 
     // Handle server/ui targets - normal command mode.
-    if (targetName != "server" && targetName != "ui" && targetName != "os-manager") {
+    if (targetName != "server" && targetName != "ui" && targetName != "os-manager"
+        && targetName != "audio") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
                      "functional-test, genome-db-benchmark, integration_test, network, "
-                     "os-manager, run-all, test_binary, train\n\n";
+                     "os-manager, audio, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
@@ -1464,8 +1499,13 @@ int main(int argc, char** argv)
     }
     if (example) {
         Client::CommandDispatcher dispatcher;
-        auto dispatchTarget =
-            (targetName == "server") ? Client::Target::Server : Client::Target::Ui;
+        auto dispatchTarget = Client::Target::Ui;
+        if (targetName == "server") {
+            dispatchTarget = Client::Target::Server;
+        }
+        else if (targetName == "audio") {
+            dispatchTarget = Client::Target::Audio;
+        }
         auto exampleResult = dispatcher.getExample(dispatchTarget, commandName);
         if (exampleResult.isError()) {
             std::cerr << "Failed to build example: " << exampleResult.errorValue().message
@@ -1492,6 +1532,9 @@ int main(int argc, char** argv)
         }
         else if (targetName == "os-manager") {
             address = "ws://localhost:9090";
+        }
+        else if (targetName == "audio") {
+            address = "ws://localhost:6060";
         }
     }
 
@@ -1527,6 +1570,9 @@ int main(int argc, char** argv)
     }
     else if (targetName == "ui") {
         dispatchTarget = Client::Target::Ui;
+    }
+    else if (targetName == "audio") {
+        dispatchTarget = Client::Target::Audio;
     }
     auto responseResult = dispatcher.dispatch(dispatchTarget, client, commandName, bodyJson);
     if (responseResult.isError()) {
