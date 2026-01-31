@@ -12,7 +12,7 @@
  *   npm run yolo                              # Build + push + flash + reboot
  *   npm run yolo -- --target 192.168.1.50    # Target a specific host
  *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
- *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + image)
+ *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + audio + image)
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
  *   npm run yolo -- --docker                  # Build with Docker image
  *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
@@ -123,8 +123,13 @@ async function cleanImage() {
  * Clean both server and image sstate for a full rebuild.
  */
 async function cleanAll() {
-  info('Cleaning dirtsim-server and dirtsim-image sstate...');
-  await runKas(['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-server dirtsim-image']);
+  info('Cleaning dirtsim-server, dirtsim-audio, and dirtsim-image sstate...');
+  await runKas([
+    'shell',
+    'kas-dirtsim.yml',
+    '-c',
+    'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image',
+  ]);
   success('Clean complete!');
 }
 
@@ -405,8 +410,9 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const uiBuildDir = findBuildDir('dirtsim-ui');
   const serverBuildDir = findBuildDir('dirtsim-server');
   const osManagerBuildDir = findBuildDir('dirtsim-os-manager');
+  const audioBuildDir = findBuildDir('dirtsim-audio');
 
-  if (!uiBuildDir && !serverBuildDir && !osManagerBuildDir) {
+  if (!uiBuildDir && !serverBuildDir && !osManagerBuildDir && !audioBuildDir) {
     error('No build directories found.');
     error('Run a full build first: ./update.sh --target <host>');
     process.exit(1);
@@ -429,6 +435,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     info(`OS manager build dir: ${osManagerBuildDir}`);
     targets.push({ name: 'dirtsim-os-manager', buildDir: osManagerBuildDir, target: 'dirtsim-os-manager' });
   }
+  if (audioBuildDir) {
+    info(`Audio build dir: ${audioBuildDir}`);
+    targets.push({ name: 'dirtsim-audio', buildDir: audioBuildDir, target: 'dirtsim-audio' });
+  }
 
   for (const t of targets) {
     if (!dryRun) {
@@ -450,6 +460,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const uiBinary = findBinary('dirtsim-ui', 'dirtsim-ui');
   const serverBinary = findBinary('dirtsim-server', 'dirtsim-server');
   const osManagerBinary = findBinary('dirtsim-os-manager', 'dirtsim-os-manager');
+  const audioBinary = findBinary('dirtsim-audio', 'dirtsim-audio');
   const cliBinary = findBinary('dirtsim-ui', 'cli');  // CLI is built with UI.
 
   if (uiBinary) {
@@ -480,6 +491,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       size: stat.size,
       service: 'dirtsim-os-manager',
       remotePath: '/usr/bin/dirtsim-os-manager',
+    });
+  }
+  if (audioBinary) {
+    const stat = statSync(audioBinary);
+    binaries.push({
+      name: 'dirtsim-audio',
+      path: audioBinary,
+      size: stat.size,
+      service: 'dirtsim-audio',
+      remotePath: '/usr/bin/dirtsim-audio',
     });
   }
   if (cliBinary) {
@@ -679,7 +700,7 @@ async function main() {
     log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
     log('                     Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean            Force rebuild by cleaning image sstate first');
-    log('  --clean-all        Force full rebuild (cleans server + image sstate)');
+    log('  --clean-all        Force full rebuild (cleans server + audio + image sstate)');
     log('  --dry-run          Show what would happen without doing it');
     log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
     log('  -h, --help         Show this help');

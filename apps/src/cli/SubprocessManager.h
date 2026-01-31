@@ -9,7 +9,7 @@ namespace DirtSim {
 namespace Client {
 
 /**
- * @brief RAII wrapper for fork/exec/kill of server and UI subprocesses.
+ * @brief RAII wrapper for fork/exec/kill of server, UI, and audio subprocesses.
  */
 class SubprocessManager {
 public:
@@ -24,13 +24,19 @@ public:
     bool launchServer(const std::string& serverPath, const std::string& args = "");
     bool launchServer(
         const std::string& serverPath, const std::string& args, const ProcessOptions& options);
+    bool launchAudio(const std::string& audioPath, const std::string& args = "");
+    bool launchAudio(
+        const std::string& audioPath, const std::string& args, const ProcessOptions& options);
     bool launchUI(const std::string& uiPath, const std::string& args = "");
     bool launchUI(
         const std::string& uiPath, const std::string& args, const ProcessOptions& options);
     bool waitForServerReady(const std::string& url, int timeoutSec = 5);
+    bool waitForAudioReady(const std::string& url, int timeoutSec = 5);
     bool waitForUIReady(const std::string& url, int timeoutSec = 5);
+    void killAudio();
     void killServer();
     void killUI();
+    bool isAudioRunning();
     bool isServerRunning();
     bool isUIRunning();
 
@@ -43,6 +49,7 @@ private:
         const char* processLabel);
     pid_t serverPid_ = -1;
     pid_t uiPid_ = -1;
+    pid_t audioPid_ = -1;
     bool tryConnect(const std::string& url);
 };
 

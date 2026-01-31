@@ -32,6 +32,8 @@ public:
 
     struct BackendConfig {
         BackendType type = BackendType::Systemd;
+        std::string audioPath;
+        std::string audioArgs;
         std::string serverPath;
         std::string serverArgs;
         std::string uiPath;
