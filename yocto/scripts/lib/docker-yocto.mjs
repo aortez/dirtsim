@@ -68,6 +68,15 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
   const user = options.user || (userId !== null && groupId !== null ? `${userId}:${groupId}` : null);
   const workdir = options.workdir || YOCTO_DIR;
   const env = options.env || {};
+  if (process.env.CCACHE_DIR && !env.CCACHE_DIR) {
+    env.CCACHE_DIR = process.env.CCACHE_DIR;
+  }
+  if (process.env.DL_DIR && !env.DL_DIR) {
+    env.DL_DIR = process.env.DL_DIR;
+  }
+  if (process.env.SSTATE_DIR && !env.SSTATE_DIR) {
+    env.SSTATE_DIR = process.env.SSTATE_DIR;
+  }
   const cacheRoot = options.cacheRoot || process.env.DIRTSIM_CACHE_ROOT || DEFAULT_CACHE_ROOT;
   const extraArgs = options.extraArgs || [];
   const interactive = Boolean(options.interactive);
