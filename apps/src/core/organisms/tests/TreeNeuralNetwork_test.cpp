@@ -20,12 +20,12 @@ public:
 
     CommandExecutionResult validate(Tree& tree, World& world, const TreeCommand& cmd) override
     {
+        commands_.push_back(cmd);
         return inner_->validate(tree, world, cmd);
     }
 
     CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override
     {
-        commands_.push_back(cmd);
         return inner_->execute(tree, world, cmd);
     }
 

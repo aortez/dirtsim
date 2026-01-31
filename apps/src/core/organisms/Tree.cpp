@@ -319,7 +319,12 @@ void Tree::processBrainDecision(World& world)
                         hasLastCommandResult_ = true;
                         lastCommandAccepted_ = false;
                         ++commandRejectedCount_;
-                        LOG_INFO(Brain, "Tree {}: {}", id_, validation.message);
+                        if (validation.result == CommandResult::INVALID_TARGET) {
+                            LOG_DEBUG(Brain, "Tree {}: {}", id_, validation.message);
+                        }
+                        else {
+                            LOG_INFO(Brain, "Tree {}: {}", id_, validation.message);
+                        }
                         return;
                     }
 
