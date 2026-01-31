@@ -24,7 +24,9 @@ if [ ! -x "$CLI_BIN" ]; then
 fi
 
 if [ -z "$DOCS_CLI_BIN" ]; then
-  if [ -x "${REPO_ROOT}/apps/build-debug/bin/cli" ]; then
+  if [ -n "$DIRTSIM_CLI_BIN" ] && [ -x "$DIRTSIM_CLI_BIN" ]; then
+    DOCS_CLI_BIN="$DIRTSIM_CLI_BIN"
+  elif [ -x "${REPO_ROOT}/apps/build-debug/bin/cli" ]; then
     DOCS_CLI_BIN="${REPO_ROOT}/apps/build-debug/bin/cli"
   else
     DOCS_CLI_BIN="$CLI_BIN"
