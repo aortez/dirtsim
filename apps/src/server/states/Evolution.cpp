@@ -70,18 +70,6 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
-bool updateBestFitnessHint(std::atomic<double>& hint, double fitness)
-{
-    double current = hint.load(std::memory_order_relaxed);
-    while (fitness > current) {
-        if (hint.compare_exchange_weak(
-                current, fitness, std::memory_order_relaxed, std::memory_order_relaxed)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
 {
     TrainingRunner::Individual runner;
@@ -96,7 +84,8 @@ double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
     OrganismType organismType,
-    const EvolutionConfig& evolutionConfig)
+    const EvolutionConfig& evolutionConfig,
+    std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
     const World* world = runner.getWorld();
     DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
@@ -122,6 +111,18 @@ double computeFitnessForRunner(
         .finalOrganism = runner.getOrganism(),
         .treeResources = treeResourcesPtr,
     };
+
+    if (organismType == OrganismType::TREE) {
+        TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
+        if (breakdownOut) {
+            *breakdownOut = breakdown;
+        }
+        return breakdown.totalFitness;
+    }
+
+    if (breakdownOut) {
+        breakdownOut->reset();
+    }
 
     return computeFitnessForOrganism(context);
 }
@@ -149,7 +150,7 @@ std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(con
 }
 } // namespace
 
-std::optional<Evolution::BestSnapshotData> Evolution::buildBestSnapshotData(
+std::optional<Evolution::EvaluationSnapshot> Evolution::buildEvaluationSnapshot(
     const TrainingRunner& runner)
 {
     const World* world = runner.getWorld();
@@ -157,7 +158,7 @@ std::optional<Evolution::BestSnapshotData> Evolution::buildBestSnapshotData(
         return std::nullopt;
     }
 
-    BestSnapshotData snapshot;
+    EvaluationSnapshot snapshot;
     snapshot.worldData = world->getData();
     snapshot.organismIds = world->getOrganismManager().getGrid();
     return snapshot;
@@ -360,6 +361,8 @@ void Evolution::initializePopulation(StateMachine& dsm)
     generation = 0;
     currentEval = 0;
     bestFitnessThisGen = 0.0;
+    bestFitnessAllTime = std::numeric_limits<double>::lowest();
+    bestGenomeId = INVALID_GENOME_ID;
     sumFitnessThisGen_ = 0.0;
 
     visibleRunner_.reset();
@@ -379,7 +382,6 @@ void Evolution::startWorkers(StateMachine& dsm)
     workerState_->evolutionConfig = evolutionConfig;
     workerState_->brainRegistry = brainRegistry_;
     workerState_->genomeRepository = &dsm.getGenomeRepository();
-    workerState_->bestFitnessHint = bestFitnessAllTime;
 
     workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
     if (workerState_->backgroundWorkerCount <= 0) {
@@ -558,12 +560,15 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         WorkerResult result;
         result.index = visibleEvalIndex_;
         result.simTime = status.simTime;
+        std::optional<TreeFitnessBreakdown> breakdown;
         result.fitness = computeFitnessForRunner(
-            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig);
+            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
+        result.treeFitnessBreakdown = breakdown;
         if (const World* world = visibleRunner_->getWorld()) {
             result.timerStats = collectTimerStats(world->getTimers());
         }
-        processResult(dsm, std::move(result), visibleRunner_.get());
+        result.snapshot = buildEvaluationSnapshot(*visibleRunner_);
+        processResult(dsm, std::move(result));
         visibleRunner_.reset();
         visibleEvalIndex_ = -1;
     }
@@ -594,22 +599,18 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     WorkerResult result;
     result.index = task.index;
     result.simTime = status.simTime;
+    std::optional<TreeFitnessBreakdown> breakdown;
     result.fitness = computeFitnessForRunner(
-        runner, status, state.trainingSpec.organismType, state.evolutionConfig);
+        runner, status, state.trainingSpec.organismType, state.evolutionConfig, &breakdown);
+    result.treeFitnessBreakdown = breakdown;
     if (const World* world = runner.getWorld()) {
         result.timerStats = collectTimerStats(world->getTimers());
     }
-    if (updateBestFitnessHint(state.bestFitnessHint, result.fitness)) {
-        auto snapshot = buildBestSnapshotData(runner);
-        if (snapshot.has_value()) {
-            result.bestSnapshot = std::move(snapshot);
-        }
-    }
+    result.snapshot = buildEvaluationSnapshot(runner);
     return result;
 }
 
-void Evolution::processResult(
-    StateMachine& dsm, WorkerResult result, const TrainingRunner* snapshotRunner)
+void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 {
     if (result.index < 0 || result.index >= static_cast<int>(population.size())) {
         return;
@@ -636,22 +637,21 @@ void Evolution::processResult(
     }
     if (result.fitness > bestFitnessAllTime) {
         bestFitnessAllTime = result.fitness;
-        if (workerState_) {
-            updateBestFitnessHint(workerState_->bestFitnessHint, bestFitnessAllTime);
-        }
-
-        std::optional<BestSnapshotData> snapshot = std::move(result.bestSnapshot);
-        if (!snapshot.has_value() && snapshotRunner) {
-            snapshot = buildBestSnapshotData(*snapshotRunner);
-        }
-        if (snapshot.has_value()) {
+        if (result.snapshot.has_value()) {
             Api::TrainingBestSnapshot bestSnapshot;
-            bestSnapshot.worldData = std::move(snapshot->worldData);
-            bestSnapshot.organismIds = std::move(snapshot->organismIds);
+            bestSnapshot.worldData = std::move(result.snapshot->worldData);
+            bestSnapshot.organismIds = std::move(result.snapshot->organismIds);
             bestSnapshot.fitness = result.fitness;
             bestSnapshot.generation = generation;
             dsm.broadcastEventData(
                 Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
+        }
+        else {
+            LOG_WARN(
+                State,
+                "Evolution: Missing snapshot for new best (gen={} eval={})",
+                generation,
+                result.index);
         }
 
         const Individual& individual = population[result.index];
@@ -686,13 +686,33 @@ void Evolution::processResult(
             result.index);
     }
 
-    LOG_DEBUG(
-        State,
-        "Evolution: gen={} eval={}/{} fitness={:.4f}",
-        generation,
-        currentEval,
-        evolutionConfig.populationSize,
-        result.fitness);
+    if (result.treeFitnessBreakdown.has_value()) {
+        const auto& breakdown = result.treeFitnessBreakdown.value();
+        LOG_INFO(
+            State,
+            "Evolution: gen={} eval={}/{} fitness={:.4f} (surv={:.3f} energy={:.3f} res={:.3f} "
+            "stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
+            generation,
+            currentEval,
+            evolutionConfig.populationSize,
+            result.fitness,
+            breakdown.survivalScore,
+            breakdown.energyScore,
+            breakdown.resourceScore,
+            breakdown.stageBonus,
+            breakdown.structureBonus,
+            breakdown.milestoneBonus,
+            breakdown.commandScore);
+    }
+    else {
+        LOG_INFO(
+            State,
+            "Evolution: gen={} eval={}/{} fitness={:.4f}",
+            generation,
+            currentEval,
+            evolutionConfig.populationSize,
+            result.fitness);
+    }
 
     maybeCompleteGeneration(dsm);
 }
@@ -846,13 +866,19 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         eta = remainingIndividuals * avgRealTimePerIndividual;
     }
 
+    double bestAllTime = bestFitnessAllTime;
+    if (generation == 0 && currentEval == 0
+        && bestAllTime == std::numeric_limits<double>::lowest()) {
+        bestAllTime = 0.0;
+    }
+
     const Api::EvolutionProgress progress{
         .generation = generation,
         .maxGenerations = evolutionConfig.maxGenerations,
         .currentEval = currentEval,
         .populationSize = evolutionConfig.populationSize,
         .bestFitnessThisGen = bestFitnessThisGen,
-        .bestFitnessAllTime = bestFitnessAllTime,
+        .bestFitnessAllTime = bestAllTime,
         .averageFitness = avgFitness,
         .bestGenomeId = bestGenomeId,
         .totalTrainingSeconds = totalSeconds,
@@ -956,6 +982,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
 UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
 {
     UnsavedTrainingResult result;
+    result.evolutionConfig = evolutionConfig;
+    result.mutationConfig = mutationConfig;
+    result.trainingSpec = trainingSpec;
     result.summary.scenarioId = getPrimaryScenarioId(trainingSpec);
     result.summary.organismType = trainingSpec.organismType;
     result.summary.populationSize = evolutionConfig.populationSize;

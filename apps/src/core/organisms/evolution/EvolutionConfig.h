@@ -9,15 +9,15 @@ namespace DirtSim {
  * Configuration for the genetic algorithm evolution process.
  */
 struct EvolutionConfig {
-    int populationSize = 10;
+    int populationSize = 50;
     int tournamentSize = 3;
     int maxGenerations = 1;
     int maxParallelEvaluations = 0; // 0 = auto (use detected core count).
 
     // Evaluation settings.
-    double maxSimulationTime = 10.0; // Seconds of sim time per organism.
-    double energyReference = 100.0;  // Reference energy for fitness scaling.
-    double waterReference = 100.0;   // Reference water for resource scaling.
+    double maxSimulationTime = 1000.0; // Seconds of sim time per organism.
+    double energyReference = 100.0;    // Reference energy for fitness scaling.
+    double waterReference = 100.0;     // Reference water for resource scaling.
 };
 
 /**

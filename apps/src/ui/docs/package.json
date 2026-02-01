@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "shots:markdown": "node scripts/render_docs_screenshots.mjs",
-    "shots:real": "node scripts/render_real_screenshots.mjs",
+    "shots:real": "node scripts/render_cli_screenshots.mjs",
     "shots:stack": "node scripts/stack_screenshots.mjs"
   },
   "dependencies": {

@@ -32,6 +32,9 @@ struct UnsavedTrainingResult {
     Api::TrainingResult::Summary summary;
     std::vector<Candidate> candidates;
     std::unordered_map<std::string, Api::TimerStatsGet::TimerEntry> timerStats;
+    EvolutionConfig evolutionConfig;
+    MutationConfig mutationConfig;
+    TrainingSpec trainingSpec;
 
     void onEnter(StateMachine& dsm);
 

@@ -105,12 +105,12 @@ public:
      */
     bool isTreeIconVisible() const { return treeIconVisible_; }
 
+    void showIcons();
+
     RailMode getMode() const { return mode_; }
     void setMode(RailMode mode);
     void toggleMode();
     bool isMinimized() const { return mode_ == RailMode::Minimized; }
-
-    void setSwipeZoneEnabled(bool enabled);
 
 private:
     lv_obj_t* container_ = nullptr;
@@ -128,7 +128,6 @@ private:
     RailMode mode_ = RailMode::Normal;
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
-    lv_obj_t* swipeZone_ = nullptr;      // Invisible swipe detection area (overlay on screen).
 
     // Auto-shrink timer (minimizes rail after inactivity).
     lv_timer_t* autoShrinkTimer_ = nullptr;
@@ -138,7 +137,6 @@ private:
     // Dimensions optimized for HyperPixel 4.0 (480px height).
     static constexpr int ICON_SIZE = 96;
     static constexpr int GAP = 12;
-    static constexpr int SWIPE_ZONE_WIDTH = 80; // Width of invisible swipe detection area.
 
     void createIcons(lv_obj_t* parent);
     void createModeButtons();
@@ -151,7 +149,6 @@ private:
     static void onIconClicked(lv_event_t* e);
     static void onModeButtonClicked(lv_event_t* e);
     static void onAutoShrinkTimer(lv_timer_t* timer);
-    static void onGesture(lv_event_t* e);
 };
 
 } // namespace Ui

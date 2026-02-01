@@ -8,6 +8,17 @@ namespace DirtSim {
 class Tree;
 struct FitnessContext;
 
+struct TreeFitnessBreakdown {
+    double survivalScore = 0.0;
+    double energyScore = 0.0;
+    double resourceScore = 0.0;
+    double stageBonus = 0.0;
+    double structureBonus = 0.0;
+    double milestoneBonus = 0.0;
+    double commandScore = 0.0;
+    double totalFitness = 0.0;
+};
+
 class TreeEvaluator {
 public:
     void reset();
@@ -15,6 +26,7 @@ public:
     void update(const Tree& tree);
 
     static double evaluate(const FitnessContext& context);
+    static TreeFitnessBreakdown evaluateWithBreakdown(const FitnessContext& context);
 
     double getMaxEnergy() const;
     const std::optional<TreeResourceTotals>& getResourceTotals() const;

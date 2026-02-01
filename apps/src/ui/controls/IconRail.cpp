@@ -62,10 +62,6 @@ IconRail::~IconRail()
         lv_obj_delete(expandButton_);
         expandButton_ = nullptr;
     }
-    if (swipeZone_) {
-        lv_obj_delete(swipeZone_);
-        swipeZone_ = nullptr;
-    }
 
     // LVGL handles cleanup of child objects when parent is deleted.
     LOG_INFO(Controls, "IconRail destroyed");
@@ -92,10 +88,6 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
-
-    // Add gesture detection for swipe-to-expand.
-    lv_obj_set_user_data(container_, this);
-    lv_obj_add_event_cb(container_, onGesture, LV_EVENT_GESTURE, nullptr);
 
     // Create buttons for each icon using ActionButton.
     for (size_t i = 0; i < iconConfigs_.size(); i++) {
@@ -250,6 +242,14 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
     resetAutoShrinkTimer();
 }
 
+void IconRail::showIcons()
+{
+    setMode(RailMode::Normal);
+    if (!allowedIcons_.empty()) {
+        setVisibleIcons(allowedIcons_);
+    }
+}
+
 void IconRail::selectIcon(IconId id)
 {
     if (id == selectedId_) return;
@@ -365,32 +365,6 @@ void IconRail::createModeButtons()
         }
     }
 
-    // Create invisible swipe zone on right half of screen for gesture detection.
-    // Placed on right side to avoid blocking expand button and other controls.
-    if (screen) {
-        swipeZone_ = lv_obj_create(screen);
-        if (swipeZone_) {
-            // Right half of screen, full height.
-            lv_obj_set_size(swipeZone_, LV_PCT(50), LV_PCT(100));
-            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_FLOATING);
-            lv_obj_align(swipeZone_, LV_ALIGN_RIGHT_MID, 0, 0);
-
-            // Make it invisible but still receive touch events.
-            lv_obj_set_style_bg_opa(swipeZone_, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(swipeZone_, 0, 0);
-            lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_SCROLLABLE);
-
-            // Add gesture detection.
-            lv_obj_set_user_data(swipeZone_, this);
-            lv_obj_add_event_cb(swipeZone_, onGesture, LV_EVENT_GESTURE, nullptr);
-
-            // Start hidden (normal mode is default).
-            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
-
-            LOG_DEBUG(Controls, "Created swipe zone on right half of screen");
-        }
-    }
-
     LOG_DEBUG(Controls, "Created mode buttons (expand/collapse)");
 }
 
@@ -454,7 +428,7 @@ void IconRail::applyMode()
         }
     }
 
-    // Show/hide mode buttons and swipe zone.
+    // Show/hide mode buttons.
     if (expandButton_) {
         if (minimized) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
@@ -493,15 +467,6 @@ void IconRail::applyMode()
         }
         else {
             lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-
-    if (swipeZone_) {
-        if (minimized) {
-            lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
-        }
-        else {
-            lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
         }
     }
 
@@ -601,51 +566,6 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     }
 
     lv_timer_pause(timer);
-}
-
-void IconRail::onGesture(lv_event_t* e)
-{
-    if (lv_event_get_code(e) != LV_EVENT_GESTURE) return;
-
-    lv_obj_t* obj = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    IconRail* self = static_cast<IconRail*>(lv_obj_get_user_data(obj));
-    if (!self) return;
-
-    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_active());
-
-    // Log all gesture events for debugging.
-    const char* dirName = (dir == LV_DIR_LEFT) ? "LEFT"
-        : (dir == LV_DIR_RIGHT)                ? "RIGHT"
-        : (dir == LV_DIR_TOP)                  ? "UP"
-        : (dir == LV_DIR_BOTTOM)               ? "DOWN"
-                                               : "NONE";
-    LOG_INFO(
-        Controls,
-        "Gesture detected: {} (mode={})",
-        dirName,
-        self->mode_ == RailMode::Minimized ? "minimized" : "normal");
-
-    // Swipe right to expand when minimized.
-    if (dir == LV_DIR_RIGHT && self->mode_ == RailMode::Minimized) {
-        LOG_INFO(Controls, "Swipe right detected - expanding IconRail");
-        self->setMode(RailMode::Normal);
-    }
-    // Swipe left to minimize when expanded.
-    else if (dir == LV_DIR_LEFT && self->mode_ == RailMode::Normal) {
-        LOG_INFO(Controls, "Swipe left detected - minimizing IconRail");
-        self->setMode(RailMode::Minimized);
-    }
-}
-
-void IconRail::setSwipeZoneEnabled(bool enabled)
-{
-    if (enabled) {
-        DIRTSIM_ASSERT(swipeZone_, "Cannot enable swipe zone - not created");
-        lv_obj_clear_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
-    }
-    else if (swipeZone_) {
-        lv_obj_add_flag(swipeZone_, LV_OBJ_FLAG_HIDDEN);
-    }
 }
 
 } // namespace Ui
