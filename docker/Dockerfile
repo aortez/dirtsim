@@ -53,6 +53,8 @@ RUN apt-get update && apt-get install -y \
     libacl1 \
     liblz4-tool \
     locales \
+    nodejs \
+    npm \
     pipx \
     python3 \
     python3-git \

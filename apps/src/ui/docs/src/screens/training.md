@@ -1,9 +1,29 @@
-# Training
+# Training Home
 
-Document the training panel structure, inputs, and expected flow.
+```plantuml
+@startsalt
+scale 1.6
+{
+  {+
+    [Home]
+    [Evolution]
+    [Genome]
+    [Results]
+  } | {
+    "Training Home"
+    .
+    [Quit]
+  }
+}
+@endsalt
+```
 
-## Tasks
+## States
 
-- Identify primary controls
-- Capture any live data widgets
-- Note state transitions back to Start Menu
+```plantuml
+@startuml
+[*] --> Training
+
+Training --> StartMenu : Quit
+@enduml
+```

@@ -81,13 +81,14 @@ local_conf_header:
     PARALLEL_MAKE = "-j 8"
 
     # Cache root (override with DIRTSIM_CACHE_ROOT in the environment).
-    DIRTSIM_CACHE_ROOT = "${@os.getenv('DIRTSIM_CACHE_ROOT', '/home/data/workspace/yocto-cache')}"
+    BB_ENV_PASSTHROUGH_ADDITIONS:append = " DIRTSIM_CACHE_ROOT"
+    DIRTSIM_CACHE_ROOT = "${@os.getenv('DIRTSIM_CACHE_ROOT', '/home/data/linux1/yocto-cache' if os.path.isdir('/home/data/linux1') else '/home/data/workspace/yocto-cache')}"
 
     # Download directory (shared across builds).
-    DL_DIR = "${DIRTSIM_CACHE_ROOT}/downloads"
+    DL_DIR ?= "${DIRTSIM_CACHE_ROOT}/downloads"
 
     # Shared state cache (speeds up rebuilds).
-    SSTATE_DIR = "${DIRTSIM_CACHE_ROOT}/sstate-cache"
+    SSTATE_DIR ?= "${DIRTSIM_CACHE_ROOT}/sstate-cache"
 
     # Ccache for faster rebuilds (local cache).
     INHERIT += "ccache"
