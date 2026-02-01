@@ -1,8 +1,10 @@
 #include "AudioEngine.h"
 #include "core/LoggingChannels.h"
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cmath>
+#include <sstream>
 #include <thread>
 
 namespace DirtSim {
@@ -25,6 +27,28 @@ std::vector<std::string> listOutputDevices()
         }
     }
     return devices;
+}
+
+bool isUsbDeviceName(const std::string& name)
+{
+    std::string lowerName;
+    lowerName.reserve(name.size());
+    for (const char value : name) {
+        lowerName.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(value))));
+    }
+    return lowerName.find("usb") != std::string::npos;
+}
+
+std::string joinDeviceNames(const std::vector<std::string>& devices)
+{
+    std::ostringstream stream;
+    for (size_t index = 0; index < devices.size(); ++index) {
+        if (index > 0) {
+            stream << ", ";
+        }
+        stream << devices[index];
+    }
+    return stream.str();
 }
 
 } // namespace
@@ -60,7 +84,7 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
     const char* deviceName = config_.deviceName.empty() ? nullptr : config_.deviceName.c_str();
     const int allowedChanges = SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_CHANNELS_CHANGE
         | SDL_AUDIO_ALLOW_FORMAT_CHANGE;
-    const int maxAttempts = config_.deviceName.empty() ? 50 : 1;
+    const int maxAttempts = 1;
     const char* currentDriver = SDL_GetCurrentAudioDriver();
     if (currentDriver) {
         SLOG_INFO("Audio driver: {}", currentDriver);
@@ -70,6 +94,7 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
     }
 
     std::string openError;
+    std::string openedDeviceName;
     auto openWithRetries =
         [&](const char* name, SDL_AudioSpec* outSpec, int attempts) -> SDL_AudioDeviceID {
         SDL_AudioDeviceID deviceId = 0;
@@ -81,20 +106,32 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
                     std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
             }
+            else {
+                openedDeviceName = name ? name : "default";
+            }
         }
         return deviceId;
     };
 
-    deviceId_ = openWithRetries(deviceName, &obtained, maxAttempts);
+    if (!config_.deviceName.empty()) {
+        deviceId_ = openWithRetries(deviceName, &obtained, maxAttempts);
+    }
     if (deviceId_ == 0 && config_.deviceName.empty()) {
         const auto devices = listOutputDevices();
         if (devices.empty()) {
             SLOG_WARN("No SDL audio output devices reported");
         }
         else {
-            for (const auto& name : devices) {
+            auto orderedDevices = devices;
+            std::stable_partition(
+                orderedDevices.begin(), orderedDevices.end(), [](const std::string& name) {
+                    return isUsbDeviceName(name);
+                });
+            SLOG_INFO("Audio device probe order: {}", joinDeviceNames(orderedDevices));
+            for (const auto& name : orderedDevices) {
                 SDL_AudioSpec probe{};
-                const SDL_AudioDeviceID probeId = openWithRetries(name.c_str(), &probe, 1);
+                const SDL_AudioDeviceID probeId =
+                    openWithRetries(name.c_str(), &probe, maxAttempts);
                 if (probeId != 0) {
                     deviceId_ = probeId;
                     obtained = probe;
@@ -124,6 +161,7 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
                     "Audio device open failed ({}). Falling back to dummy driver.", fallbackError);
                 obtained = fallbackObtained;
                 config_.deviceName = "dummy";
+                openedDeviceName = "dummy";
             }
         }
     }
@@ -137,6 +175,17 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
             ApiError(std::string("SDL open audio device failed: ") + SDL_GetError()));
     }
 
+    if (obtained.format != AUDIO_F32SYS && obtained.format != AUDIO_S16SYS) {
+        SDL_CloseAudioDevice(deviceId_);
+        deviceId_ = 0;
+        if (sdlInitialized_) {
+            SDL_QuitSubSystem(SDL_INIT_AUDIO);
+            sdlInitialized_ = false;
+        }
+        return Result<std::monostate, ApiError>::error(
+            ApiError("Unsupported SDL audio format: " + std::to_string(obtained.format)));
+    }
+
     config_.sampleRate = obtained.freq;
     config_.channels = obtained.channels;
     config_.bufferFrames = obtained.samples;
@@ -144,11 +193,24 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
     if (config_.deviceName.empty()) {
         config_.deviceName = "default";
     }
+    if (openedDeviceName.empty()) {
+        openedDeviceName = config_.deviceName;
+    }
+
+    const int maxChannels = std::max(1, config_.channels);
+    const size_t maxSamples =
+        static_cast<size_t>(std::max(1, config_.bufferFrames)) * static_cast<size_t>(maxChannels);
+    mixBuffer_.assign(maxSamples, 0.0f);
+    s16Buffer_.assign(maxSamples, 0);
 
     voice_.setSampleRate(static_cast<double>(config_.sampleRate));
+    commandReadIndex_.store(0, std::memory_order_relaxed);
+    commandWriteIndex_.store(0, std::memory_order_relaxed);
+    autoNoteOffFramesRemaining_ = -1;
 
     SDL_PauseAudioDevice(deviceId_, 0);
 
+    SLOG_INFO("Audio device opened: {}", openedDeviceName);
     SLOG_INFO(
         "Audio engine started: {} Hz, {} ch, {} frames, format=0x{:x}",
         config_.sampleRate,
@@ -173,6 +235,9 @@ void AudioEngine::stop()
 
     active_.store(false);
     activeNoteId_.store(0);
+    commandReadIndex_.store(0, std::memory_order_relaxed);
+    commandWriteIndex_.store(0, std::memory_order_relaxed);
+    autoNoteOffFramesRemaining_ = -1;
 }
 
 uint32_t AudioEngine::enqueueNoteOn(
@@ -198,10 +263,7 @@ uint32_t AudioEngine::enqueueNoteOn(
     }
     command.noteOn.noteId = noteId;
 
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        commandQueue_.push_back(command);
-    }
+    enqueueCommand(command);
 
     return noteId;
 }
@@ -212,8 +274,7 @@ void AudioEngine::enqueueNoteOff(uint32_t noteId)
     command.type = CommandType::NoteOff;
     command.noteOff.noteId = noteId;
 
-    std::lock_guard<std::mutex> lock(queueMutex_);
-    commandQueue_.push_back(command);
+    enqueueCommand(command);
 }
 
 AudioStatus AudioEngine::getStatus() const
@@ -245,20 +306,12 @@ void AudioEngine::audioCallback(void* userdata, Uint8* stream, int len)
         return;
     }
     const int frames = len / frameBytes;
-    engine->renderToStream(stream, frames, channels);
+    engine->renderToStream(stream, frames, channels, len);
 }
 
 void AudioEngine::render(float* out, int frames, int channels)
 {
-    std::vector<AudioCommand> pending;
-    {
-        std::lock_guard<std::mutex> lock(queueMutex_);
-        pending.swap(commandQueue_);
-    }
-
-    for (const auto& command : pending) {
-        applyCommand(command);
-    }
+    drainCommands();
 
     for (int i = 0; i < frames; ++i) {
         const double sample = voice_.renderSample();
@@ -281,39 +334,82 @@ void AudioEngine::render(float* out, int frames, int channels)
     updateStatus();
 }
 
-void AudioEngine::renderToStream(Uint8* stream, int frames, int channels)
+void AudioEngine::renderToStream(Uint8* stream, int frames, int channels, int len)
 {
     const int samples = frames * channels;
     if (samples <= 0) {
+        if (len > 0) {
+            SDL_memset(stream, 0, static_cast<size_t>(len));
+        }
         return;
     }
 
     if (isFloatOutput()) {
         auto* out = reinterpret_cast<float*>(stream);
         render(out, frames, channels);
+        const int renderedBytes = samples * static_cast<int>(sizeof(float));
+        if (len > renderedBytes) {
+            SDL_memset(stream + renderedBytes, 0, static_cast<size_t>(len - renderedBytes));
+        }
         return;
     }
 
-    mixBuffer_.assign(static_cast<size_t>(samples), 0.0f);
+    if (static_cast<size_t>(samples) > mixBuffer_.size()) {
+        SDL_memset(stream, 0, static_cast<size_t>(len));
+        return;
+    }
+
     render(mixBuffer_.data(), frames, channels);
 
     if (deviceFormat_ == AUDIO_S16SYS) {
-        s16Buffer_.resize(static_cast<size_t>(samples));
+        if (static_cast<size_t>(samples) > s16Buffer_.size()) {
+            SDL_memset(stream, 0, static_cast<size_t>(len));
+            return;
+        }
         for (int i = 0; i < samples; ++i) {
             const float value = std::clamp(mixBuffer_[static_cast<size_t>(i)], -1.0f, 1.0f);
             s16Buffer_[static_cast<size_t>(i)] =
                 static_cast<int16_t>(std::lround(value * 32767.0f));
         }
         SDL_memcpy(stream, s16Buffer_.data(), static_cast<size_t>(samples) * sizeof(int16_t));
+        const int renderedBytes = samples * static_cast<int>(sizeof(int16_t));
+        if (len > renderedBytes) {
+            SDL_memset(stream + renderedBytes, 0, static_cast<size_t>(len - renderedBytes));
+        }
         return;
     }
 
-    SDL_memset(stream, 0, static_cast<size_t>(samples) * (SDL_AUDIO_BITSIZE(deviceFormat_) / 8));
+    SDL_memset(stream, 0, static_cast<size_t>(len));
 }
 
 bool AudioEngine::isFloatOutput() const
 {
     return deviceFormat_ == AUDIO_F32SYS;
+}
+
+bool AudioEngine::enqueueCommand(const AudioCommand& command)
+{
+    const size_t writeIndex = commandWriteIndex_.load(std::memory_order_relaxed);
+    const size_t readIndex = commandReadIndex_.load(std::memory_order_acquire);
+    if (writeIndex - readIndex >= kCommandQueueCapacity) {
+        SLOG_WARN("Audio command queue full; dropping command");
+        return false;
+    }
+
+    commandQueue_[writeIndex % kCommandQueueCapacity] = command;
+    commandWriteIndex_.store(writeIndex + 1, std::memory_order_release);
+    return true;
+}
+
+void AudioEngine::drainCommands()
+{
+    size_t readIndex = commandReadIndex_.load(std::memory_order_relaxed);
+    const size_t writeIndex = commandWriteIndex_.load(std::memory_order_acquire);
+    while (readIndex < writeIndex) {
+        applyCommand(commandQueue_[readIndex % kCommandQueueCapacity]);
+        ++readIndex;
+    }
+    commandReadIndex_.store(readIndex, std::memory_order_release);
 }
 
 void AudioEngine::applyCommand(const AudioCommand& command)
