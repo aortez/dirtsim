@@ -84,7 +84,8 @@ double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
     OrganismType organismType,
-    const EvolutionConfig& evolutionConfig)
+    const EvolutionConfig& evolutionConfig,
+    std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
     const World* world = runner.getWorld();
     DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
@@ -110,6 +111,18 @@ double computeFitnessForRunner(
         .finalOrganism = runner.getOrganism(),
         .treeResources = treeResourcesPtr,
     };
+
+    if (organismType == OrganismType::TREE) {
+        TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
+        if (breakdownOut) {
+            *breakdownOut = breakdown;
+        }
+        return breakdown.totalFitness;
+    }
+
+    if (breakdownOut) {
+        breakdownOut->reset();
+    }
 
     return computeFitnessForOrganism(context);
 }
@@ -547,8 +560,10 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         WorkerResult result;
         result.index = visibleEvalIndex_;
         result.simTime = status.simTime;
+        std::optional<TreeFitnessBreakdown> breakdown;
         result.fitness = computeFitnessForRunner(
-            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig);
+            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
+        result.treeFitnessBreakdown = breakdown;
         if (const World* world = visibleRunner_->getWorld()) {
             result.timerStats = collectTimerStats(world->getTimers());
         }
@@ -584,8 +599,10 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     WorkerResult result;
     result.index = task.index;
     result.simTime = status.simTime;
+    std::optional<TreeFitnessBreakdown> breakdown;
     result.fitness = computeFitnessForRunner(
-        runner, status, state.trainingSpec.organismType, state.evolutionConfig);
+        runner, status, state.trainingSpec.organismType, state.evolutionConfig, &breakdown);
+    result.treeFitnessBreakdown = breakdown;
     if (const World* world = runner.getWorld()) {
         result.timerStats = collectTimerStats(world->getTimers());
     }
@@ -669,13 +686,33 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             result.index);
     }
 
-    LOG_INFO(
-        State,
-        "Evolution: gen={} eval={}/{} fitness={:.4f}",
-        generation,
-        currentEval,
-        evolutionConfig.populationSize,
-        result.fitness);
+    if (result.treeFitnessBreakdown.has_value()) {
+        const auto& breakdown = result.treeFitnessBreakdown.value();
+        LOG_INFO(
+            State,
+            "Evolution: gen={} eval={}/{} fitness={:.4f} (surv={:.3f} energy={:.3f} res={:.3f} "
+            "stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
+            generation,
+            currentEval,
+            evolutionConfig.populationSize,
+            result.fitness,
+            breakdown.survivalScore,
+            breakdown.energyScore,
+            breakdown.resourceScore,
+            breakdown.stageBonus,
+            breakdown.structureBonus,
+            breakdown.milestoneBonus,
+            breakdown.commandScore);
+    }
+    else {
+        LOG_INFO(
+            State,
+            "Evolution: gen={} eval={}/{} fitness={:.4f}",
+            generation,
+            currentEval,
+            evolutionConfig.populationSize,
+            result.fitness);
+    }
 
     maybeCompleteGeneration(dsm);
 }

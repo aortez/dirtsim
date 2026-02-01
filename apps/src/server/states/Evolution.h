@@ -13,6 +13,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/organisms/evolution/TreeEvaluator.h"
 #include "server/Event.h"
 
 #include <atomic>
@@ -85,6 +86,7 @@ struct Evolution {
         double simTime = 0.0;
         std::optional<EvaluationSnapshot> snapshot;
         std::unordered_map<std::string, TimerAggregate> timerStats;
+        std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
     };
 
     struct WorkerTask {

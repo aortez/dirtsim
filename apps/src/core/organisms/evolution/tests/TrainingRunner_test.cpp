@@ -16,6 +16,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include <algorithm>
 #include <array>
 #include <gtest/gtest.h>
 #include <iostream>
@@ -77,16 +78,27 @@ struct ExecutedCommand {
     CommandExecutionResult result;
 };
 
+struct ValidatedCommand {
+    TreeCommand command;
+    CommandExecutionResult result;
+};
+
 class RecordingCommandProcessor : public ITreeCommandProcessor {
 public:
     RecordingCommandProcessor(
-        std::unique_ptr<ITreeCommandProcessor> inner, std::vector<ExecutedCommand>* executed)
-        : inner_(std::move(inner)), executed_(executed)
+        std::unique_ptr<ITreeCommandProcessor> inner,
+        std::vector<ValidatedCommand>* validated,
+        std::vector<ExecutedCommand>* executed)
+        : inner_(std::move(inner)), validated_(validated), executed_(executed)
     {}
 
     CommandExecutionResult validate(Tree& tree, World& world, const TreeCommand& cmd) override
     {
-        return inner_->validate(tree, world, cmd);
+        CommandExecutionResult result = inner_->validate(tree, world, cmd);
+        if (validated_) {
+            validated_->push_back(ValidatedCommand{ cmd, result });
+        }
+        return result;
     }
 
     CommandExecutionResult execute(Tree& tree, World& world, const TreeCommand& cmd) override
@@ -105,6 +117,7 @@ public:
 
 private:
     std::unique_ptr<ITreeCommandProcessor> inner_;
+    std::vector<ValidatedCommand>* validated_ = nullptr;
     std::vector<ExecutedCommand>* executed_ = nullptr;
 };
 
@@ -140,6 +153,21 @@ const char* commandResultName(CommandResult result)
             return "BLOCKED";
     }
     return "UNKNOWN";
+}
+
+size_t commandResultIndex(CommandResult result)
+{
+    switch (result) {
+        case CommandResult::SUCCESS:
+            return 0;
+        case CommandResult::INSUFFICIENT_ENERGY:
+            return 1;
+        case CommandResult::INVALID_TARGET:
+            return 2;
+        case CommandResult::BLOCKED:
+            return 3;
+    }
+    return 0;
 }
 
 std::string formatCommand(const TreeCommand& command)
@@ -186,14 +214,25 @@ std::array<int, NUM_TREE_COMMAND_TYPES> countCommands(const std::vector<TreeComm
     return counts;
 }
 
-std::array<int, NUM_TREE_COMMAND_TYPES> countExecutedCommands(
-    const std::vector<ExecutedCommand>& commands)
+template <typename T>
+std::array<int, NUM_TREE_COMMAND_TYPES> countCommandResults(const std::vector<T>& commands)
 {
     std::array<int, NUM_TREE_COMMAND_TYPES> counts{};
     counts.fill(0);
     for (const auto& cmd : commands) {
         const auto type = getCommandType(cmd.command);
         counts[static_cast<size_t>(type)]++;
+    }
+    return counts;
+}
+
+template <typename T>
+std::array<int, 4> countResultTypes(const std::vector<T>& commands)
+{
+    std::array<int, 4> counts{};
+    counts.fill(0);
+    for (const auto& cmd : commands) {
+        counts[commandResultIndex(cmd.result.result)]++;
     }
     return counts;
 }
@@ -205,6 +244,52 @@ void printCommandSummary(
     for (size_t i = 0; i < counts.size(); ++i) {
         const auto type = static_cast<TreeCommandType>(i);
         std::cout << "  - " << commandTypeName(type) << ": " << counts[i] << "\n";
+    }
+}
+
+void printResultSummary(const std::string& label, const std::array<int, 4>& counts)
+{
+    std::cout << label << "\n";
+    std::cout << "  - SUCCESS: " << counts[0] << "\n";
+    std::cout << "  - INSUFFICIENT_ENERGY: " << counts[1] << "\n";
+    std::cout << "  - INVALID_TARGET: " << counts[2] << "\n";
+    std::cout << "  - BLOCKED: " << counts[3] << "\n";
+}
+
+template <typename T>
+void printResultReasons(
+    const std::string& label,
+    const std::vector<T>& commands,
+    CommandResult filter,
+    size_t max_entries = 5)
+{
+    std::unordered_map<std::string, int> counts_by_message;
+    int total = 0;
+    for (const auto& entry : commands) {
+        if (entry.result.result != filter) {
+            continue;
+        }
+        counts_by_message[entry.result.message]++;
+        total++;
+    }
+
+    if (total == 0) {
+        return;
+    }
+
+    std::vector<std::pair<std::string, int>> rolled;
+    rolled.reserve(counts_by_message.size());
+    for (const auto& entry : counts_by_message) {
+        rolled.push_back(entry);
+    }
+    std::sort(rolled.begin(), rolled.end(), [](const auto& a, const auto& b) {
+        return a.second > b.second;
+    });
+
+    std::cout << label << " (" << total << ")\n";
+    const size_t limit = std::min(max_entries, rolled.size());
+    for (size_t i = 0; i < limit; ++i) {
+        std::cout << "  - " << rolled[i].first << " x" << rolled[i].second << "\n";
     }
 }
 
@@ -237,8 +322,8 @@ void printCommandListRolledUp(const std::string& label, const std::vector<TreeCo
     printRolledUpList(label, commands, [](const TreeCommand& cmd) { return formatCommand(cmd); });
 }
 
-void printExecutedCommandListRolledUp(
-    const std::string& label, const std::vector<ExecutedCommand>& commands)
+template <typename T>
+void printCommandResultsRolledUp(const std::string& label, const std::vector<T>& commands)
 {
     std::vector<TreeCommand> flattened;
     flattened.reserve(commands.size());
@@ -381,12 +466,15 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 
     std::vector<BrainCase> brains;
     brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
+    brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
+    brains.push_back({ TrainingBrainKind::NeuralNet, Genome::random(rng_) });
     brains.push_back({ TrainingBrainKind::RuleBased, std::nullopt });
     brains.push_back({ TrainingBrainKind::RuleBased2, std::nullopt });
 
     for (const auto& brainCase : brains) {
         std::vector<TreeCommand> issued;
         std::vector<TreeCommand> started;
+        std::vector<ValidatedCommand> validated;
         std::vector<ExecutedCommand> executed;
         std::optional<std::string> lastStarted;
         bool processorWrapped = false;
@@ -475,7 +563,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 
             if (!processorWrapped && tree->processor) {
                 auto wrapped = std::make_unique<RecordingCommandProcessor>(
-                    std::move(tree->processor), &executed);
+                    std::move(tree->processor), &validated, &executed);
                 tree->processor = std::move(wrapped);
                 processorWrapped = true;
             }
@@ -500,6 +588,8 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .lifespan = status.lifespan,
             .distanceTraveled = status.distanceTraveled,
             .maxEnergy = status.maxEnergy,
+            .commandsAccepted = status.commandsAccepted,
+            .commandsRejected = status.commandsRejected,
         };
         const auto& treeResources = runner.getTreeResourceTotals();
         const TreeResourceTotals* treeResourcesPtr =
@@ -521,10 +611,24 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                   << WorldDiagramGeneratorEmoji::generateAnsiDiagram(*world, true, true) << "\n";
         printCommandSummary("Issued summary", countCommands(issued));
         printCommandSummary("Started summary", countCommands(started));
-        printCommandSummary("Executed summary", countExecutedCommands(executed));
+        printCommandSummary("Validated summary", countCommandResults(validated));
+        printCommandSummary("Executed summary", countCommandResults(executed));
+        printResultSummary("Validated result summary", countResultTypes(validated));
+        printResultSummary("Executed result summary", countResultTypes(executed));
+        printResultReasons(
+            "Validated INVALID_TARGET reasons", validated, CommandResult::INVALID_TARGET);
+        printResultReasons("Validated BLOCKED reasons", validated, CommandResult::BLOCKED);
+        printResultReasons(
+            "Validated INSUFFICIENT_ENERGY reasons", validated, CommandResult::INSUFFICIENT_ENERGY);
+        printResultReasons(
+            "Executed INVALID_TARGET reasons", executed, CommandResult::INVALID_TARGET);
+        printResultReasons("Executed BLOCKED reasons", executed, CommandResult::BLOCKED);
+        printResultReasons(
+            "Executed INSUFFICIENT_ENERGY reasons", executed, CommandResult::INSUFFICIENT_ENERGY);
         printCommandListRolledUp("Issued commands", issued);
         printCommandListRolledUp("Started commands", started);
-        printExecutedCommandListRolledUp("Executed commands", executed);
+        printCommandResultsRolledUp("Validated commands", validated);
+        printCommandResultsRolledUp("Executed commands", executed);
     }
 }
 

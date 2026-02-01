@@ -241,7 +241,7 @@ void Tree::update(World& world, double deltaTime)
     const char* fitnessStatus = hasLastFitness_ ? "valid" : "unset";
     static int counter = 0;
     counter++;
-    if (counter % 100000 == 0) {
+    if (counter % 10000 == 0) {
         LOG_INFO(
             Tree,
             "Tree {}: timestep={} stage={} age={:.2f}s energy={:.2f} water={:.2f} cells={} "
