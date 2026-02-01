@@ -111,6 +111,7 @@ For a full UI overview, see `apps/src/ui/README.md`.
 - `Paused` → `SimRunning`: `./build-debug/bin/cli ui SimRun`
 - `SimRunning` or `Paused` → `StartMenu`: `./build-debug/bin/cli ui SimStop`
 - `StartMenu` → `Training`: `./build-debug/bin/cli ui TrainingStart '{...}'`
+- `Training` → `StartMenu`: `./build-debug/bin/cli ui TrainingQuit`
 - `Training` → `Genome Browser panel`: `./build-debug/bin/cli ui GenomeBrowserOpen`
 - `Training` → `SimRunning` (load genome): `./build-debug/bin/cli ui GenomeDetailLoad '{\"id\": \"...\"}'`
 - Any → `Shutdown`: `./build-debug/bin/cli ui Exit`
@@ -178,6 +179,25 @@ Capture PNG screenshots from the UI display:
 - Automated testing with visual verification
 - Recording evolution training progress
 - Remote monitoring of headless Pi deployments
+
+### UI Docs Screenshots
+
+Capture the UI docs screenshots using the same CLI (intended for CI/runtime images):
+
+```bash
+# Capture all docs screens to /tmp/dirtsim-ui-docs
+./build-debug/bin/cli docs-screenshots
+
+# Override output directory
+./build-debug/bin/cli docs-screenshots /tmp/dirtsim-ui-docs
+```
+
+**Env overrides**:
+- `DIRTSIM_UI_ADDRESS` (default: ws://localhost:7070)
+- `DIRTSIM_SERVER_ADDRESS` (default: ws://localhost:8080)
+- `DIRTSIM_DOCS_SCREENSHOT_DIR` (default: /tmp/dirtsim-ui-docs)
+- `DOCS_SCREENSHOT_ONLY` (comma-separated screen ids)
+- `DOCS_SCREENSHOT_MIN_BYTES` (minimum size check, default: 2048)
 
 ### Functional Test Mode
 

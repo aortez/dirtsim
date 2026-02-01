@@ -63,11 +63,23 @@ jobs:
       working-directory: docker
       run: make test
 
-    - name: Ensure Yocto runtime image
+    - name: Prepare Yocto cache
+      run: |
+        CACHE_ROOT="/home/data/linux1/yocto-cache"
+        mkdir -p "${CACHE_ROOT}/downloads" "${CACHE_ROOT}/sstate-cache" "${CACHE_ROOT}/.ccache/dirtsim-yocto"
+        find "${CACHE_ROOT}/sstate-cache" -type f -mtime +7 -delete || true
+        find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
+        find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
+
+    - name: Build Yocto runtime image
       working-directory: yocto
       env:
+        DL_DIR: /home/data/linux1/yocto-cache/downloads
+        SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
+        CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
+        DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
-      run: npm run runtime-image -- --ensure
+      run: npm run runtime-image -- --build
 
     - name: Run integration test in Yocto runtime
       run: |
