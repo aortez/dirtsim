@@ -575,10 +575,7 @@ void JuliaFractal::resize(int newWidth, int newHeight)
     size_t bufferSize = LV_CANVAS_BUF_SIZE(width_, height_, 32, 64);
     for (int i = 0; i < 3; i++) {
         buffers_[i] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
-        if (!buffers_[i]) {
-            LOG_ERROR(Render, "Failed to allocate buffer {} during resize", i);
-            return;
-        }
+        DIRTSIM_ASSERT(buffers_[i], "Failed to allocate render buffer during resize");
     }
 
     // Update front buffer to point to buffer 0.

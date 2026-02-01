@@ -161,12 +161,14 @@ void StartMenu::onExit(StateMachine& sm)
         lv_obj_t* container = uiManager->getMenuContentArea();
         if (container) {
             lv_obj_remove_event_cb(container, onDisplayResized);
+            lv_obj_remove_event_cb(container, onTouchEvent);
             sm.getFractalAnimator().parkIfParent(container);
-            LOG_INFO(State, "Removed resize event handler");
+            LOG_INFO(State, "Removed resize and touch event handlers");
         }
     }
 
     // Screen switch will clean up other widgets automatically.
+    touchDebugLabel_ = nullptr;
 }
 
 void StartMenu::updateAnimations()
