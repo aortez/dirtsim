@@ -1506,7 +1506,7 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network" || state == "Synth") {
+            if (state == "Network" || state == "Synth" || state == "SynthConfig") {
                 UiApi::SimStop::Command cmd{};
                 auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
                     uiClient, cmd, timeoutMs);
