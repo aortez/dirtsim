@@ -11,6 +11,7 @@
     "flash": "node scripts/flash.mjs",
     "runtime-image": "node scripts/runtime-image.mjs",
     "runtime-functional-tests": "node scripts/runtime-functional-tests.mjs",
+    "remote-functional-tests": "node scripts/remote-functional-tests.mjs",
     "smoke-test": "node scripts/smoke-test.mjs",
     "update": "node scripts/update.mjs",
     "yolo": "node scripts/yolo-update.mjs"

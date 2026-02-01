@@ -189,6 +189,16 @@ Available configuration options (all optional except GITHUB_TOKEN):
 - `RUNNER_LABELS`: Comma-separated list of labels (default: `self-hosted,linux,x64`).
 - `RUNNER_WORK_DIR`: Working directory for jobs (default: `_work`).
 
+### GitHub Secrets
+
+The PR workflow deploys to a remote unit and runs functional tests. It uses the
+`DIRTSIM_SSH_KEY` secret to inject an SSH public key into the Yocto image during
+the update.
+
+- **Secret name:** `DIRTSIM_SSH_KEY`
+- **Accepted values:** SSH public key (preferred) or private key (the workflow
+  derives the `.pub` via `ssh-keygen -y`).
+
 ### Workflow Customization
 
 Edit `.github/workflows/pr-check.yml` to:
