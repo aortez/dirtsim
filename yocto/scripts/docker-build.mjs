@@ -22,7 +22,7 @@ function showHelp() {
   log('');
   log('Options:');
   log('  --clean            Clean dirtsim-image sstate before build');
-  log('  --clean-all        Clean dirtsim-server + dirtsim-image sstate');
+  log('  --clean-all        Clean dirtsim-server + dirtsim-audio + dirtsim-image sstate');
   log('  --config           KAS config file (default: kas-dirtsim.yml)');
   log('  --image-target     Image target for cleansstate (default: dirtsim-image)');
   log('  --shell            Start an interactive shell in the container');
@@ -40,14 +40,14 @@ async function runKasBuild(cleanMode, imageRef, tty, kasConfig, imageTarget) {
       { imageRef, tty }
     );
   } else if (cleanMode === 'clean-all') {
-    info(`Cleaning dirtsim-server and ${imageTarget} sstate...`);
+    info(`Cleaning dirtsim-server, dirtsim-audio, and ${imageTarget} sstate...`);
     await runInYoctoDocker(
       [
         'kas',
         'shell',
         kasConfig,
         '-c',
-        `bitbake -c cleansstate dirtsim-server ${imageTarget}`,
+        `bitbake -c cleansstate dirtsim-server dirtsim-audio ${imageTarget}`,
       ],
       { imageRef, tty }
     );

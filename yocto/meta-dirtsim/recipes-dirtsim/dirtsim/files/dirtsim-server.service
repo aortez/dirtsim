@@ -1,6 +1,5 @@
 [Unit]
 Description=DirtSim Physics Simulation Server
-After=avahi-daemon.service
 
 [Service]
 Type=simple

@@ -1,9 +1,12 @@
 #include "CommandDeserializerJson.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
 #include "os-manager/api/StartUi.h"
+#include "os-manager/api/StopAudio.h"
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
@@ -46,6 +49,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::Reboot::Command::fromJson(cmd));
         }
+        else if (commandName == OsApi::RestartAudio::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::RestartAudio::Command::fromJson(cmd));
+        }
         else if (commandName == OsApi::RestartServer::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::RestartServer::Command::fromJson(cmd));
@@ -54,6 +61,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::RestartUi::Command::fromJson(cmd));
         }
+        else if (commandName == OsApi::StartAudio::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::StartAudio::Command::fromJson(cmd));
+        }
         else if (commandName == OsApi::StartServer::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::StartServer::Command::fromJson(cmd));
@@ -61,6 +72,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::StartUi::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::StartUi::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::StopAudio::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::StopAudio::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::StopServer::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

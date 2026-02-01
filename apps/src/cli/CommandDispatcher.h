@@ -19,7 +19,7 @@ namespace Client {
 /**
  * @brief Target type for command dispatch.
  */
-enum class Target { OsManager, Server, Ui };
+enum class Target { Audio, OsManager, Server, Ui };
 
 /**
  * @brief Generic command dispatcher for type-safe WebSocket command execution.
@@ -184,9 +184,11 @@ private:
     const HandlerMap& getHandlers(Target target) const;
     const ExampleHandlerMap& getExampleHandlers(Target target) const;
 
+    HandlerMap audioHandlers_;
     HandlerMap serverHandlers_;
     HandlerMap uiHandlers_;
     HandlerMap osHandlers_;
+    ExampleHandlerMap audioExampleHandlers_;
     ExampleHandlerMap serverExampleHandlers_;
     ExampleHandlerMap uiExampleHandlers_;
     ExampleHandlerMap osExampleHandlers_;

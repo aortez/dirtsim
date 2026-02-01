@@ -1,4 +1,5 @@
 #include "OperatingSystemManager.h"
+#include "audio/api/StatusGet.h"
 #include "cli/SubprocessManager.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -172,6 +173,8 @@ std::string generateWebSocketToken()
 class LocalProcessBackend {
 public:
     struct Config {
+        std::string audioArgs;
+        std::string audioPath;
         std::string serverPath;
         std::string serverArgs;
         std::string uiPath;
@@ -206,18 +209,23 @@ public:
 
     void poll()
     {
+        subprocessManager_.isAudioRunning();
         subprocessManager_.isServerRunning();
         subprocessManager_.isUIRunning();
     }
 
 private:
     enum class Service {
+        Audio,
         Server,
         Ui,
     };
 
     std::optional<Service> resolveService(const std::string& unitName) const
     {
+        if (unitName == "dirtsim-audio.service" || unitName == "dirtsim-audio") {
+            return Service::Audio;
+        }
         if (unitName == "dirtsim-server.service" || unitName == "dirtsim-server") {
             return Service::Server;
         }
@@ -245,6 +253,9 @@ private:
 
     Result<std::monostate, ApiError> startService(Service service)
     {
+        if (service == Service::Audio && config_.audioPath.empty()) {
+            return Result<std::monostate, ApiError>::error(ApiError("Audio binary not found"));
+        }
         if (service == Service::Server && config_.serverPath.empty()) {
             return Result<std::monostate, ApiError>::error(ApiError("Server binary not found"));
         }
@@ -255,6 +266,23 @@ private:
         std::string errorMessage;
         if (!ensureWorkDir(errorMessage)) {
             return Result<std::monostate, ApiError>::error(ApiError(errorMessage));
+        }
+
+        if (service == Service::Audio) {
+            if (subprocessManager_.isAudioRunning()) {
+                LOG_INFO(State, "Audio already running");
+                return Result<std::monostate, ApiError>::okay(std::monostate{});
+            }
+
+            Client::SubprocessManager::ProcessOptions options;
+            options.workingDirectory = config_.workDir;
+
+            if (!subprocessManager_.launchAudio(config_.audioPath, config_.audioArgs, options)) {
+                return Result<std::monostate, ApiError>::error(
+                    ApiError("Failed to launch audio process"));
+            }
+
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
         }
 
         if (service == Service::Server) {
@@ -294,6 +322,15 @@ private:
 
     Result<std::monostate, ApiError> stopService(Service service)
     {
+        if (service == Service::Audio) {
+            if (!subprocessManager_.isAudioRunning()) {
+                LOG_INFO(State, "Audio already stopped");
+                return Result<std::monostate, ApiError>::okay(std::monostate{});
+            }
+            subprocessManager_.killAudio();
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        }
+
         if (service == Service::Server) {
             if (!subprocessManager_.isServerRunning()) {
                 LOG_INFO(State, "Server already stopped");
@@ -377,6 +414,8 @@ OperatingSystemManager::BackendConfig OperatingSystemManager::BackendConfig::fro
     config.serverArgs = getEnvValue("DIRTSIM_SERVER_ARGS");
     config.uiPath = getEnvValue("DIRTSIM_UI_PATH");
     config.uiArgs = getEnvValue("DIRTSIM_UI_ARGS");
+    config.audioPath = getEnvValue("DIRTSIM_AUDIO_PATH");
+    config.audioArgs = getEnvValue("DIRTSIM_AUDIO_ARGS");
     config.uiBackend = getEnvValue("DIRTSIM_UI_BACKEND");
     config.uiDisplay = getEnvValue("DIRTSIM_UI_DISPLAY");
     config.workDir = getEnvValue("DIRTSIM_WORKDIR");
@@ -501,6 +540,12 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::StopServer::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::RestartServer::Cwc>(
         [this](OsApi::RestartServer::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::StartAudio::Cwc>(
+        [this](OsApi::StartAudio::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::StopAudio::Cwc>(
+        [this](OsApi::StopAudio::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::RestartAudio::Cwc>(
+        [this](OsApi::RestartAudio::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::StartUi::Cwc>(
         [this](OsApi::StartUi::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::StopUi::Cwc>(
@@ -556,10 +601,13 @@ void OperatingSystemManager::setupWebSocketService()
     }
 
             DISPATCH_OS_CMD_EMPTY(OsApi::Reboot);
+            DISPATCH_OS_CMD_EMPTY(OsApi::RestartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::RestartUi);
+            DISPATCH_OS_CMD_EMPTY(OsApi::StartAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StartUi);
+            DISPATCH_OS_CMD_EMPTY(OsApi::StopAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopUi);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::SystemStatus);
@@ -748,6 +796,32 @@ OperatingSystemManager::DiskStats OperatingSystemManager::getDiskStats(
     return stats;
 }
 
+std::string OperatingSystemManager::getAudioHealth(int timeoutMs)
+{
+    Network::WebSocketService client;
+    const std::string address = "ws://localhost:6060";
+    auto connectResult = client.connect(address, timeoutMs);
+    if (connectResult.isError()) {
+        return "Error: " + connectResult.errorValue();
+    }
+
+    AudioApi::StatusGet::Command statusCmd{};
+    auto statusResult =
+        client.sendCommandAndGetResponse<AudioApi::StatusGet::Okay>(statusCmd, timeoutMs);
+    client.disconnect();
+
+    if (statusResult.isError()) {
+        return "Error: " + statusResult.errorValue();
+    }
+
+    const auto& response = statusResult.value();
+    if (response.isError()) {
+        return "Error: " + response.errorValue().message;
+    }
+
+    return "OK";
+}
+
 std::string OperatingSystemManager::getServerHealth(int timeoutMs)
 {
     Network::WebSocketService client;
@@ -900,8 +974,10 @@ static LocalProcessBackend::Config resolveLocalProcessConfig(
     const OperatingSystemManager::BackendConfig& backendConfig)
 {
     LocalProcessBackend::Config config;
+    config.audioPath = resolveBinaryPath(backendConfig.audioPath, "dirtsim-audio");
     config.serverPath = resolveBinaryPath(backendConfig.serverPath, "dirtsim-server");
     config.uiPath = resolveBinaryPath(backendConfig.uiPath, "dirtsim-ui");
+    config.audioArgs = backendConfig.audioArgs.empty() ? "-p 6060" : backendConfig.audioArgs;
     config.serverArgs = backendConfig.serverArgs.empty() ? "-p 8080" : backendConfig.serverArgs;
 
     const std::string uiBackend = backendConfig.uiBackend.empty() ? "x11" : backendConfig.uiBackend;
@@ -963,6 +1039,7 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()
     status.disk_free_bytes_data = dataStats.free_bytes;
     status.disk_total_bytes_data = dataStats.total_bytes;
 
+    status.audio_status = getAudioHealth(1500);
     status.server_status = getServerHealth(1500);
     status.ui_status = getUiHealth(1500);
     status.lan_web_ui_enabled = webUiEnabled_;

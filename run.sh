@@ -52,6 +52,7 @@ BUILD_DIR="$APPS_DIR/build-$BUILD_TYPE"
 BIN_DIR="$BUILD_DIR/bin"
 SERVER_MATCH="build-$BUILD_TYPE/bin/dirtsim-server"
 UI_MATCH="build-$BUILD_TYPE/bin/dirtsim-ui"
+AUDIO_MATCH="build-$BUILD_TYPE/bin/dirtsim-audio"
 
 # Check if our binaries are already running.
 # Match the binary path to avoid other processes.
@@ -64,6 +65,12 @@ fi
 if pgrep -f "$UI_MATCH" > /dev/null; then
     echo "Error: dirtsim-ui ($BUILD_TYPE) is already running"
     echo "Kill it with: pkill -f '$UI_MATCH'"
+    exit 1
+fi
+
+if pgrep -f "$AUDIO_MATCH" > /dev/null; then
+    echo "Error: dirtsim-audio ($BUILD_TYPE) is already running"
+    echo "Kill it with: pkill -f '$AUDIO_MATCH'"
     exit 1
 fi
 
@@ -98,6 +105,8 @@ cleanup() {
     echo "Shutting down..."
     # Kill UI first (it's usually in foreground).
     pkill -f "$UI_MATCH" 2>/dev/null || true
+    # Kill audio.
+    pkill -f "$AUDIO_MATCH" 2>/dev/null || true
     # Kill server.
     pkill -f "$SERVER_MATCH" 2>/dev/null || true
     echo "Cleanup complete"
@@ -114,7 +123,7 @@ echo "Launching DSSM server on port 8080..."
 SERVER_PID=$!
 
 # Wait a moment for server to start.
-sleep 1
+sleep 0.1
 
 # Check if server is still running.
 if ! kill -0 $SERVER_PID 2>/dev/null; then
@@ -125,12 +134,30 @@ fi
 echo "Server is ready"
 echo ""
 
+# Launch audio in background.
+echo "Launching audio on port 6060..."
+"$BIN_DIR/dirtsim-audio" $LOG_ARGS $LOG_CONFIG_ARGS -p 6060 &
+AUDIO_PID=$!
+
+# Wait a moment for audio to start.
+sleep 0.1
+
+# Check if audio is still running.
+if ! kill -0 $AUDIO_PID 2>/dev/null; then
+    echo "Audio failed to start!"
+    exit 1
+fi
+
+echo "Audio is ready"
+echo ""
+
 # Launch UI in foreground (so Ctrl-C works naturally).
 echo "Launching UI (auto-detecting display backend)..."
 echo ""
-echo "=== Both server and UI are running ==="
+echo "=== Server, UI, and audio are running ==="
 echo "Server: ws://localhost:8080"
 echo "UI:     ws://localhost:7070"
+echo "Audio:  ws://localhost:6060"
 echo ""
 
 # Run UI in foreground - when it exits, cleanup will run.

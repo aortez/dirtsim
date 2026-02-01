@@ -5,9 +5,11 @@ LICENSE = "MIT"
 inherit core-image
 
 IMAGE_INSTALL:append = " \
+    alsa-utils \
     bash \
     coreutils \
     dirtsim-os-manager \
+    dirtsim-audio \
     dirtsim-server \
     dirtsim-ui \
     xkbcomp \

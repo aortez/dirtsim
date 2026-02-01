@@ -2,7 +2,7 @@
 /**
  * Quick deploy script for userspace applications.
  *
- * Rebuilds dirtsim-server and dirtsim-ui via Yocto cross-compilation,
+ * Rebuilds DirtSim apps via Yocto cross-compilation,
  * then SCPs the binaries to the Pi and restarts the services.
  *
  * Much faster than a full YOLO update (~60-90s vs 3+ minutes).
@@ -69,6 +69,13 @@ const APPS = {
         service: 'dirtsim-server',
         assets: [],
     },
+    audio: {
+        recipe: 'dirtsim-audio',
+        binaryName: 'dirtsim-audio',
+        remotePath: '/usr/bin/dirtsim-audio',
+        service: 'dirtsim-audio',
+        assets: [],
+    },
     ui: {
         recipe: 'dirtsim-ui',
         binaryName: 'dirtsim-ui',
@@ -101,8 +108,9 @@ Usage:
 
 Apps:
   server         Deploy server only
+  audio          Deploy audio only
   ui             Deploy UI only
-  (default)      Deploy both server and UI
+  (default)      Deploy server, audio, and UI
 
 Options:
   --host <host>  Target hostname (default: ${DEFAULT_HOST})
@@ -110,8 +118,9 @@ Options:
   -h, --help     Show this help
 
 Examples:
-  npm run deploy                                # Deploy both to dirtsim.local
+  npm run deploy                                # Deploy all apps to dirtsim.local
   npm run deploy server                         # Deploy server only
+  npm run deploy audio                          # Deploy audio only
   npm run deploy -- --host dirtsim-clock.local  # Deploy to different host
   npm run deploy -- --docker                    # Build in Docker
   npm run deploy -- --host dirtsim-clock.local ui  # Deploy UI to different host
@@ -232,12 +241,9 @@ async function main() {
     }
 
     // Determine which apps to deploy.
-    let apps = ['server', 'ui'];  // Default: both.
-    if (args.includes('server') && !args.includes('ui')) {
-        apps = ['server'];
-    } else if (args.includes('ui') && !args.includes('server')) {
-        apps = ['ui'];
-    }
+    const appNames = Object.keys(APPS);
+    const requestedApps = args.filter(arg => appNames.includes(arg));
+    const apps = requestedApps.length > 0 ? requestedApps : ['server', 'audio', 'ui'];
 
     useDocker = docker;
     if (useDocker) {

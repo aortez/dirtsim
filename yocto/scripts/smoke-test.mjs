@@ -2,7 +2,7 @@
 /**
  * Smoke test for a deployed DirtSim device.
  *
- * Runs StatusGet against server and UI via the deployed dirtsim-cli,
+ * Runs StatusGet against server, UI, and audio via the deployed dirtsim-cli,
  * and verifies the responses look healthy.
  */
 
@@ -202,6 +202,14 @@ async function main() {
   }
   console.log(
     `UI OK (state=${uiStatus.state}, connected_to_server=${uiStatus.connected_to_server})`
+  );
+
+  const audioStatus = await waitForStatus(remoteTarget, 'audio', retries, delaySec, timeoutMs);
+  if (!audioStatus) {
+    fail('audio StatusGet failed');
+  }
+  console.log(
+    `Audio OK (sample_rate=${audioStatus.sample_rate}, device=${audioStatus.device_name})`
   );
 
   console.log('Smoke test passed.');

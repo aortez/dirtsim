@@ -23,6 +23,7 @@ SubprocessManager::SubprocessManager()
 
 SubprocessManager::~SubprocessManager()
 {
+    killAudio();
     killUI();
     killServer();
 }
@@ -36,6 +37,17 @@ bool SubprocessManager::launchServer(
     const std::string& serverPath, const std::string& args, const ProcessOptions& options)
 {
     return launchProcess(serverPath, args, options, serverPid_, "server");
+}
+
+bool SubprocessManager::launchAudio(const std::string& audioPath, const std::string& args)
+{
+    return launchAudio(audioPath, args, ProcessOptions{});
+}
+
+bool SubprocessManager::launchAudio(
+    const std::string& audioPath, const std::string& args, const ProcessOptions& options)
+{
+    return launchProcess(audioPath, args, options, audioPid_, "audio");
 }
 
 bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSec)
@@ -93,6 +105,63 @@ bool SubprocessManager::waitForServerReady(const std::string& url, int timeoutSe
 
         // Wait a bit before retrying.
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
+bool SubprocessManager::waitForAudioReady(const std::string& url, int timeoutSec)
+{
+    SLOG_INFO("SubprocessManager: Waiting for audio to be ready at {}", url);
+
+    auto startTime = std::chrono::steady_clock::now();
+
+    while (true) {
+        if (!isAudioRunning()) {
+            SLOG_ERROR("SubprocessManager: Audio process died");
+            return false;
+        }
+
+        if (tryConnect(url)) {
+            SLOG_INFO("SubprocessManager: Audio is ready");
+            return true;
+        }
+
+        auto elapsed = std::chrono::steady_clock::now() - startTime;
+        if (std::chrono::duration_cast<std::chrono::seconds>(elapsed).count() >= timeoutSec) {
+            SLOG_ERROR("SubprocessManager: Timeout waiting for audio");
+            return false;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+}
+
+void SubprocessManager::killAudio()
+{
+    if (audioPid_ > 0) {
+        if (!isAudioRunning()) {
+            return;
+        }
+
+        SLOG_INFO("SubprocessManager: Killing audio (PID: {})", audioPid_);
+
+        kill(audioPid_, SIGTERM);
+
+        int status;
+        int waitResult = waitpid(audioPid_, &status, WNOHANG);
+
+        if (waitResult == 0) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            waitResult = waitpid(audioPid_, &status, WNOHANG);
+
+            if (waitResult == 0) {
+                SLOG_WARN("SubprocessManager: Audio didn't respond to SIGTERM, sending SIGKILL");
+                kill(audioPid_, SIGKILL);
+                waitpid(audioPid_, &status, 0);
+            }
+        }
+
+        audioPid_ = -1;
+        SLOG_INFO("SubprocessManager: Audio killed");
     }
 }
 
@@ -154,6 +223,29 @@ bool SubprocessManager::isServerRunning()
 
     SLOG_WARN("SubprocessManager: waitpid failed for server: {}", std::strerror(errno));
     serverPid_ = -1;
+    return false;
+}
+
+bool SubprocessManager::isAudioRunning()
+{
+    if (audioPid_ <= 0) {
+        return false;
+    }
+
+    int status;
+    pid_t result = waitpid(audioPid_, &status, WNOHANG);
+
+    if (result == audioPid_) {
+        SLOG_INFO("SubprocessManager: Audio process {} has exited", audioPid_);
+        audioPid_ = -1;
+        return false;
+    }
+    else if (result == 0) {
+        return true;
+    }
+
+    SLOG_WARN("SubprocessManager: waitpid failed for audio: {}", std::strerror(errno));
+    audioPid_ = -1;
     return false;
 }
 

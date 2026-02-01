@@ -1,7 +1,6 @@
 [Unit]
 Description=DirtSim Simulation UI
-After=dirtsim-server.service
-Requires=dirtsim-server.service
+Wants=dirtsim-audio.service dirtsim-server.service
 
 [Service]
 Type=simple

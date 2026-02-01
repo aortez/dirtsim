@@ -32,6 +32,7 @@ TEST_F(OsManagerStateErrorTest, SystemStatusReturnsProvidedStatus)
 {
     status.ui_status = "OK";
     status.server_status = "OK";
+    status.audio_status = "OK";
 
     Error errorState;
     errorState.error_message = "test-error";
@@ -52,4 +53,5 @@ TEST_F(OsManagerStateErrorTest, SystemStatusReturnsProvidedStatus)
     ASSERT_TRUE(capturedResponse.isValue());
     EXPECT_EQ(capturedResponse.value().ui_status, "OK");
     EXPECT_EQ(capturedResponse.value().server_status, "OK");
+    EXPECT_EQ(capturedResponse.value().audio_status, "OK");
 }

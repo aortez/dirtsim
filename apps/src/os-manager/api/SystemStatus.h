@@ -36,6 +36,7 @@ struct Okay {
     uint64_t disk_total_bytes_data = 0;
     std::string ui_status;
     std::string server_status;
+    std::string audio_status;
     bool lan_web_ui_enabled = false;
     bool lan_websocket_enabled = false;
     std::string lan_websocket_token;
@@ -44,7 +45,7 @@ struct Okay {
     nlohmann::json toJson() const;
     static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<13>;
+    using serialize = zpp::bits::members<14>;
 };
 
 using OkayType = Okay;

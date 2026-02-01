@@ -1,7 +1,5 @@
 [Unit]
 Description=DirtSim OS Manager
-After=network.target
-Requires=network.target
 
 [Service]
 Type=simple

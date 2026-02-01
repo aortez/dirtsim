@@ -49,6 +49,26 @@ TEST_F(OsManagerStateIdleTest, StartServerCallsServiceCommand)
     EXPECT_EQ(serviceCalls[0].second, "dirtsim-server.service");
 }
 
+TEST_F(OsManagerStateIdleTest, StartAudioCallsServiceCommand)
+{
+    Idle idleState;
+    bool callbackInvoked = false;
+
+    OsApi::StartAudio::Command cmd;
+    OsApi::StartAudio::Cwc cwc(cmd, [&](OsApi::StartAudio::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *manager);
+
+    ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_EQ(serviceCalls.size(), 1u);
+    EXPECT_EQ(serviceCalls[0].first, "start");
+    EXPECT_EQ(serviceCalls[0].second, "dirtsim-audio.service");
+}
+
 TEST_F(OsManagerStateIdleTest, RestartServerCallsServiceCommand)
 {
     Idle idleState;
@@ -69,6 +89,26 @@ TEST_F(OsManagerStateIdleTest, RestartServerCallsServiceCommand)
     EXPECT_EQ(serviceCalls[0].second, "dirtsim-server.service");
 }
 
+TEST_F(OsManagerStateIdleTest, RestartAudioCallsServiceCommand)
+{
+    Idle idleState;
+    bool callbackInvoked = false;
+
+    OsApi::RestartAudio::Command cmd;
+    OsApi::RestartAudio::Cwc cwc(cmd, [&](OsApi::RestartAudio::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *manager);
+
+    ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_EQ(serviceCalls.size(), 1u);
+    EXPECT_EQ(serviceCalls[0].first, "restart");
+    EXPECT_EQ(serviceCalls[0].second, "dirtsim-audio.service");
+}
+
 TEST_F(OsManagerStateIdleTest, StopServerCallsServiceCommand)
 {
     Idle idleState;
@@ -87,6 +127,26 @@ TEST_F(OsManagerStateIdleTest, StopServerCallsServiceCommand)
     ASSERT_EQ(serviceCalls.size(), 1u);
     EXPECT_EQ(serviceCalls[0].first, "stop");
     EXPECT_EQ(serviceCalls[0].second, "dirtsim-server.service");
+}
+
+TEST_F(OsManagerStateIdleTest, StopAudioCallsServiceCommand)
+{
+    Idle idleState;
+    bool callbackInvoked = false;
+
+    OsApi::StopAudio::Command cmd;
+    OsApi::StopAudio::Cwc cwc(cmd, [&](OsApi::StopAudio::Response&& response) {
+        callbackInvoked = true;
+        EXPECT_TRUE(response.isValue());
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *manager);
+
+    ASSERT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_EQ(serviceCalls.size(), 1u);
+    EXPECT_EQ(serviceCalls[0].first, "stop");
+    EXPECT_EQ(serviceCalls[0].second, "dirtsim-audio.service");
 }
 
 TEST_F(OsManagerStateIdleTest, StartUiCallsServiceCommand)
@@ -153,6 +213,7 @@ TEST_F(OsManagerStateIdleTest, SystemStatusReturnsProvidedStatus)
 {
     status.ui_status = "OK";
     status.server_status = "Error: unavailable";
+    status.audio_status = "OK";
 
     Idle idleState;
     bool callbackInvoked = false;
@@ -171,6 +232,7 @@ TEST_F(OsManagerStateIdleTest, SystemStatusReturnsProvidedStatus)
     ASSERT_TRUE(capturedResponse.isValue());
     EXPECT_EQ(capturedResponse.value().ui_status, "OK");
     EXPECT_EQ(capturedResponse.value().server_status, "Error: unavailable");
+    EXPECT_EQ(capturedResponse.value().audio_status, "OK");
 }
 
 TEST_F(OsManagerStateIdleTest, ServiceCommandErrorPropagates)
