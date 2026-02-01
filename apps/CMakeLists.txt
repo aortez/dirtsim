@@ -439,11 +439,15 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/StateMachine.cpp
     src/ui/state-machine/EventProcessor.cpp
     src/ui/state-machine/states/Disconnected.cpp
+    src/ui/state-machine/states/Network.cpp
     src/ui/state-machine/states/Paused.cpp
     src/ui/state-machine/states/Shutdown.cpp
     src/ui/state-machine/states/SimRunning.cpp
     src/ui/state-machine/states/StartMenu.cpp
     src/ui/state-machine/states/Startup.cpp
+    src/ui/state-machine/states/Synth.cpp
+    src/ui/state-machine/states/SynthConfig.cpp
+    src/ui/state-machine/states/SynthKeyboard.cpp
     src/ui/state-machine/states/Training.cpp
 
     # UI API commands.
@@ -467,7 +471,9 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/SimStop.cpp
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
+    src/ui/state-machine/api/StopButtonPress.cpp
     src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/SynthKeyPress.cpp
     src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
     src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp
@@ -492,6 +498,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
     src/ui/rendering/FramebufferCapture.cpp
+    src/ui/rendering/FractalAnimator.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
@@ -501,6 +508,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/BrowserPanel.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
+    src/ui/controls/DuckStopButton.cpp
     src/ui/controls/EvolutionConfigPanel.cpp
     src/ui/controls/EvolutionControls.cpp
     src/ui/controls/ExpandablePanel.cpp
@@ -516,6 +524,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/ScenarioPanel.cpp
     src/ui/controls/StartMenuCorePanel.cpp
+    src/ui/controls/StopPanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
     src/ui/controls/TrainingConfigPanel.cpp

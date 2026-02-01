@@ -233,8 +233,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         sm.queueEvent(ServerDisconnectedEvent{ error });
     });
 
-    Network::ClientHello hello{
-        .protocolVersion = Network::kClientHelloProtocolVersion,
+    DirtSim::Network::ClientHello hello{
+        .protocolVersion = DirtSim::Network::kClientHelloProtocolVersion,
         .wantsRender = true,
         .wantsEvents = true,
     };
@@ -251,7 +251,8 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             else if (messageType == "EvolutionProgress") {
                 // Deserialize evolution progress broadcast.
                 try {
-                    auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                    auto progress =
+                        DirtSim::Network::deserialize_payload<Api::EvolutionProgress>(payload);
                     LOG_DEBUG(
                         Network,
                         "Received EvolutionProgress: gen {}/{}, eval {}/{}",
@@ -268,7 +269,7 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
             else if (messageType == Api::TrainingBestSnapshot::name()) {
                 try {
                     auto snapshot =
-                        Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
+                        DirtSim::Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
                     sm.queueEvent(TrainingBestSnapshotReceivedEvent{ std::move(snapshot) });
                 }
                 catch (const std::exception& e) {

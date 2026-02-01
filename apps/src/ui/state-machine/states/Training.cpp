@@ -134,7 +134,7 @@ void beginEvolutionSession(Training& state, StateMachine& sm)
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
 
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+    auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
     auto renderResult = wsService.sendBinaryAndReceive(envelope);
     if (renderResult.isError()) {
         LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
@@ -179,32 +179,34 @@ void Training::onEnter(StateMachine& sm)
         return;
     }
 
-    Network::WebSocketServiceInterface* wsService = nullptr;
+    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
-    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, streamIntervalMs_);
+    view_ = std::make_unique<TrainingView>(
+        uiManager, sm, wsService, streamIntervalMs_, &sm.getFractalAnimator());
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setLayout(RailLayout::SingleColumn);
     iconRail->setVisibleIcons(
         { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
-    iconRail->deselectAll(); // Start fresh, no panel open.
+    iconRail->selectIcon(IconId::EVOLUTION);
 }
 
 void Training::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting Training state");
 
-    // Clear panel content before view is destroyed.
+    view_.reset();
+
+    // Clear panel content after view cleanup.
     if (auto* uiManager = sm.getUiComponentManager()) {
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
         }
     }
-
-    view_.reset();
 }
 
 void Training::updateAnimations()
@@ -349,7 +351,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     // Closing panel (deselected icon).
-    if (evt.selectedId == IconId::COUNT) {
+    if (evt.selectedId == IconId::NONE) {
         view_->clearPanelContent();
         panel->clearContent();
         panel->hide();
@@ -382,11 +384,13 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             break;
 
         case IconId::TREE:
+        case IconId::MUSIC:
         case IconId::NETWORK:
+        case IconId::DUCK:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
-        case IconId::COUNT:
+        case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in Training state");
             break;
     }

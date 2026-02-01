@@ -117,9 +117,10 @@ public:
     static constexpr const char* FILE_CABINET = "\xEF\x86\x87"; // U+F187 (box-archive).
 
     // Media.
-    static constexpr const char* FILM = "\xEF\x80\x88";   // U+F008 (video/scenario)
-    static constexpr const char* CAMERA = "\xEF\x80\xB0"; // U+F030
-    static constexpr const char* IMAGE = "\xEF\x80\xBE";  // U+F03E
+    static constexpr const char* FILM = "\xEF\x80\x88";        // U+F008 (video/scenario)
+    static constexpr const char* CAMERA = "\xEF\x80\xB0";      // U+F030
+    static constexpr const char* IMAGE = "\xEF\x80\xBE";       // U+F03E
+    static constexpr const char* WAVE_SQUARE = "\xEF\xA0\xBE"; // U+F83E
 
 private:
     lv_font_t* font_ = nullptr;

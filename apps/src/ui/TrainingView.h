@@ -36,6 +36,7 @@ class Starfield;
 class TrainingConfigPanel;
 class TrainingResultBrowserPanel;
 class UiComponentManager;
+class FractalAnimator;
 
 /**
  * Coordinates the training view display.
@@ -59,7 +60,8 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
-        int& streamIntervalMs);
+        int& streamIntervalMs,
+        FractalAnimator* fractalAnimator);
     ~TrainingView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
@@ -101,6 +103,7 @@ private:
     MutationConfig mutationConfig_;
     TrainingSpec trainingSpec_;
     int& streamIntervalMs_;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;

@@ -4,41 +4,41 @@
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
-#include "ui/controls/IconRail.h"
 #include <nlohmann/json.hpp>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace IconSelect {
+namespace SynthKeyPress {
 
-DEFINE_API_NAME(IconSelect);
+DEFINE_API_NAME(SynthKeyPress);
 
 struct Command {
-    Ui::IconId id = Ui::IconId::NONE;
+    int key_index = 0;
+    bool is_black = false;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 struct Okay {
-    bool selected = true;
+    int key_index = 0;
+    bool is_black = false;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
-    static Okay fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<2>;
 };
 
 using OkayType = Okay;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace IconSelect
+} // namespace SynthKeyPress
 } // namespace UiApi
 } // namespace DirtSim

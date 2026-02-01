@@ -65,7 +65,7 @@ void SimRunning::onEnter(StateMachine& sm)
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = wsService.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -83,10 +83,12 @@ void SimRunning::onEnter(StateMachine& sm)
         auto* uiManager = sm.getUiComponentManager();
         uiManager->getSimulationContainer();
 
-        playground_ = std::make_unique<SimPlayground>(uiManager, &sm.getWebSocketService(), sm);
+        playground_ = std::make_unique<SimPlayground>(
+            uiManager, &sm.getWebSocketService(), sm, &sm.getFractalAnimator());
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+        iconRail->setLayout(RailLayout::SingleColumn);
         iconRail->setVisibleIcons({ IconId::CORE, IconId::SCENARIO, IconId::PHYSICS });
         iconRail->deselectAll(); // Start fresh, no panel open.
 
@@ -98,15 +100,15 @@ void SimRunning::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting SimRunning state");
 
-    // Clear panel content before playground is destroyed.
+    playground_.reset();
+
+    // Clear panel content after playground cleanup.
     if (auto* uiManager = sm.getUiComponentManager()) {
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
         }
     }
-
-    playground_.reset();
 }
 
 State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
@@ -134,10 +136,10 @@ State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     // Show/hide expandable panel based on selection.
     if (auto* panel = uiManager->getExpandablePanel()) {
-        if (evt.selectedId != IconId::COUNT && evt.selectedId != IconId::TREE) {
+        if (evt.selectedId != IconId::NONE && evt.selectedId != IconId::TREE) {
             panel->show();
         }
-        else if (evt.selectedId == IconId::COUNT) {
+        else if (evt.selectedId == IconId::NONE) {
             panel->hide();
         }
     }
@@ -212,7 +214,7 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = wsServiceRef.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -291,8 +293,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
 
             LOG_INFO(State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, toString(material));
         }
@@ -328,8 +330,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
         }
     }
 

@@ -11,6 +11,8 @@ namespace DirtSim {
 namespace Ui {
 
 class EventSink;
+class FractalAnimator;
+class DuckStopButton;
 
 /**
  * @brief Home panel for Training state.
@@ -24,7 +26,8 @@ public:
         lv_obj_t* container,
         EventSink& eventSink,
         bool evolutionStarted,
-        TrainingSpec& trainingSpec);
+        TrainingSpec& trainingSpec,
+        FractalAnimator* fractalAnimator);
     ~EvolutionControls();
 
     void setEvolutionStarted(bool started);
@@ -33,6 +36,7 @@ public:
 private:
     lv_obj_t* container_;
     EventSink& eventSink_;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     std::unique_ptr<PanelViewController> viewController_;
 
@@ -44,7 +48,7 @@ private:
     TrainingSpec& trainingSpec_;
 
     lv_obj_t* viewBestButton_ = nullptr;
-    lv_obj_t* quitButton_ = nullptr;
+    std::unique_ptr<DuckStopButton> quitButton_;
 
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();

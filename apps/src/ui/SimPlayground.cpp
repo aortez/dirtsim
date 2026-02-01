@@ -26,8 +26,12 @@ namespace Ui {
 SimPlayground::SimPlayground(
     UiComponentManager* uiManager,
     Network::WebSocketServiceInterface* wsService,
-    EventSink& eventSink)
-    : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
+    EventSink& eventSink,
+    FractalAnimator* fractalAnimator)
+    : uiManager_(uiManager),
+      wsService_(wsService),
+      eventSink_(eventSink),
+      fractalAnimator_(fractalAnimator)
 {
     renderer_ = std::make_unique<CellRenderer>();
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
@@ -59,10 +63,10 @@ void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
     // We don't need to do anything extra here for tree.
 
     // For other icons, show the appropriate panel content.
-    if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
+    if (selectedId != IconId::NONE && selectedId != IconId::TREE && selectedId != IconId::DUCK) {
         showPanelContent(selectedId);
     }
-    else if (selectedId == IconId::COUNT) {
+    else if (selectedId == IconId::NONE) {
         // No icon selected - clear panel.
         clearPanelContent();
 
@@ -104,12 +108,14 @@ void SimPlayground::showPanelContent(IconId panelId)
             createPhysicsPanel(container);
             break;
         case IconId::EVOLUTION:
+        case IconId::MUSIC:
         case IconId::NETWORK:
+        case IconId::DUCK:
         case IconId::PLAY:
         case IconId::TREE:
         case IconId::GENOME_BROWSER:
         case IconId::TRAINING_RESULTS:
-        case IconId::COUNT:
+        case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;
     }
@@ -135,7 +141,7 @@ void SimPlayground::clearPanelContent()
         panel->clearContent();
     }
 
-    activePanel_ = IconId::COUNT;
+    activePanel_ = IconId::NONE;
 }
 
 void SimPlayground::createCorePanel(lv_obj_t* container)
@@ -143,7 +149,7 @@ void SimPlayground::createCorePanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Core panel");
 
     coreControls_ = std::make_unique<CoreControls>(
-        container, wsService_, eventSink_, coreControlsState_, uiManager_);
+        container, wsService_, eventSink_, coreControlsState_, uiManager_, fractalAnimator_);
 }
 
 void SimPlayground::createScenarioPanel(lv_obj_t* container)

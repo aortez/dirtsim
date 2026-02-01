@@ -28,6 +28,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/StopButtonPress.h"
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
@@ -471,6 +472,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
     examples += "  cli functional-test canOpenTrainingConfigPanel\n";
+    examples += "  cli functional-test canPlaySynthKeys\n";
     examples += "  cli functional-test verifyTraining\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
                 "--server-address ws://dirtsim.local:8080\n";
@@ -989,11 +991,11 @@ int main(int argc, char** argv)
         if (testName != "canExit" && testName != "canTrain"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
             && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
-            && testName != "verifyTraining") {
+            && testName != "canPlaySynthKeys" && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
-                         "canOpenTrainingConfigPanel, verifyTraining\n";
+                         "canOpenTrainingConfigPanel, canPlaySynthKeys, verifyTraining\n";
             return 1;
         }
 
@@ -1037,6 +1039,10 @@ int main(int argc, char** argv)
         else if (testName == "canOpenTrainingConfigPanel") {
             summary = runner.runCanOpenTrainingConfigPanel(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canPlaySynthKeys") {
+            summary =
+                runner.runCanPlaySynthKeys(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "verifyTraining") {
             summary =
@@ -1353,6 +1359,17 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
+        auto pressStopButton = [&]() -> Result<std::monostate, std::string> {
+            UiApi::StopButtonPress::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::StopButtonPress::Command,
+                UiApi::StopButtonPress::OkayType>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
         auto showTrainingConfigEvolution = [&]() -> Result<std::monostate, std::string> {
             UiApi::TrainingConfigShowEvolution::Command cmd{};
             auto result = sendBinaryCommand<
@@ -1389,6 +1406,43 @@ int main(int argc, char** argv)
                     uiClient, cmd, timeoutMs);
                 if (stopResult.isError()) {
                     return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "Network") {
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::CORE);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                auto pressResult = pressStopButton();
+                if (pressResult.isError()) {
+                    return Result<std::monostate, std::string>::error(pressResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "Synth" || state == "SynthConfig") {
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::DUCK);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
                 }
                 auto waitResult = waitForUiState({ "StartMenu" }, 8000);
                 if (waitResult.isError()) {
@@ -1451,6 +1505,20 @@ int main(int argc, char** argv)
                     return Result<std::monostate, std::string>::error(clearModal.errorValue());
                 }
                 return ensureIconRailVisible();
+            }
+            if (state == "Network" || state == "Synth" || state == "SynthConfig") {
+                UiApi::SimStop::Command cmd{};
+                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
+                    uiClient, cmd, timeoutMs);
+                if (stopResult.isError()) {
+                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                state = waitResult.value();
             }
             if (state == "StartMenu") {
                 auto showResult = ensureIconRailVisible();
@@ -1577,7 +1645,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1596,7 +1664,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1615,12 +1683,12 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("start-menu-network", [&]() {
+        result = runScreen("network", [&]() {
             auto nav = navigateToStartMenu();
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1630,7 +1698,80 @@ int main(int argc, char** argv)
                 return select;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("start-menu-network");
+            auto waitResult = waitForUiState({ "Network" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("network");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("synth", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::NONE);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::MUSIC);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto waitResult = waitForUiState({ "Synth" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("synth");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("synth-config", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::NONE);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::MUSIC);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto waitResult = waitForUiState({ "Synth" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto openConfig = selectIcon(Ui::IconId::MUSIC);
+            if (openConfig.isError()) {
+                return openConfig;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            waitResult = waitForUiState({ "SynthConfig" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("synth-config");
         });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;
@@ -1644,9 +1785,9 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto select = selectIcon(Ui::IconId::CORE);
-            if (select.isError()) {
-                return select;
+            auto deselect = selectIcon(Ui::IconId::NONE);
+            if (deselect.isError()) {
+                return deselect;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             return captureScreen("training");

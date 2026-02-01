@@ -11,6 +11,7 @@ namespace Ui {
 
 // Forward declaration.
 class EventSink;
+class FractalAnimator;
 
 /**
  * @brief Lightweight manager for LVGL resources and screen management.
@@ -38,6 +39,8 @@ public:
      * Must be called before creating layouts that include IconRail.
      */
     void setEventSink(EventSink* sink) { eventSink_ = sink; }
+
+    void setFractalAnimator(FractalAnimator* animator) { fractalAnimator_ = animator; }
 
     /**
      * @brief Get container for simulation UI.
@@ -138,6 +141,7 @@ public:
 private:
     lv_disp_t* display;
     EventSink* eventSink_ = nullptr;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     // Screens for different states.
     lv_obj_t* simulationScreen = nullptr;

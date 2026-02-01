@@ -4,12 +4,15 @@
 // Each state has its own header file for better organization.
 
 #include "Disconnected.h"
+#include "Network.h"
 #include "Paused.h"
 #include "Shutdown.h"
 #include "SimRunning.h"
 #include "StartMenu.h"
 #include "Startup.h"
 #include "StateForward.h"
+#include "Synth.h"
+#include "SynthConfig.h"
 #include "Training.h"
 
 namespace DirtSim {
@@ -24,8 +27,17 @@ namespace State {
  */
 class Any {
 public:
-    using Variant =
-        std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup, Training>;
+    using Variant = std::variant<
+        Disconnected,
+        Network,
+        Paused,
+        Shutdown,
+        SimRunning,
+        StartMenu,
+        Startup,
+        Synth,
+        SynthConfig,
+        Training>;
 
     template <typename T>
     Any(T&& state) : variant_(std::forward<T>(state))

@@ -48,3 +48,8 @@ jobs:
       env:
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
       run: npm run runtime-image -- --build --publish
+
+  docker-cleanup:
+    uses: ./.github/workflows/docker-cleanup.yml
+    needs: yocto-build
+    if: always()

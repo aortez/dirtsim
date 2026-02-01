@@ -221,6 +221,7 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 ./build-debug/bin/cli functional-test canPlantTreeSeed
 ./build-debug/bin/cli functional-test canOpenTrainingConfigPanel
+./build-debug/bin/cli functional-test canPlaySynthKeys
 ./build-debug/bin/cli functional-test verifyTraining
 
 # verifyTraining runs 5 one-generation training loops with a 50-sized population,
@@ -247,6 +248,7 @@ Run a minimal UI/server workflow check against a running system:
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.
 - For canPlantTreeSeed: starts Tree Germination, plants a seed via the UI API, and waits for tree_vision.
 - For canOpenTrainingConfigPanel: starts training, opens the Training config panel via UI API, and verifies UI still responds.
+- For canPlaySynthKeys: opens the Synth screen and sends programmatic key presses via UI API, verifying state details.
 
 ### Network Mode
 

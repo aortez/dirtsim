@@ -19,6 +19,8 @@ namespace Ui {
 
 // Forward declaration.
 class EventSink;
+class FractalAnimator;
+class DuckStopButton;
 class UiComponentManager;
 
 struct CoreControlsState {
@@ -42,7 +44,8 @@ public:
         Network::WebSocketServiceInterface* wsService,
         EventSink& eventSink,
         CoreControlsState& sharedState,
-        UiComponentManager* uiManager);
+        UiComponentManager* uiManager,
+        FractalAnimator* fractalAnimator);
     ~CoreControls();
 
     void updateFromState();
@@ -54,12 +57,13 @@ private:
     EventSink& eventSink_;
     CoreControlsState& state_;
     UiComponentManager* uiManager_;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     // View controller for modal navigation.
     std::unique_ptr<PanelViewController> viewController_;
 
     // Widgets.
-    lv_obj_t* stopButton_ = nullptr;
+    std::unique_ptr<DuckStopButton> stopButton_;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;

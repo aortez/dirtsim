@@ -22,6 +22,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/SynthKeyPress.h"
 #include "ui/state-machine/api/TrainingResultSave.h"
 #include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
@@ -1513,6 +1514,176 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
 
     return FunctionalTestSummary{
         .name = "canOpenTrainingConfigPanel",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanPlaySynthKeys(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    static_cast<void>(serverAddress);
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiStateResult = requestUiState(uiClient, timeoutMs);
+        if (uiStateResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI StateGet failed: " + uiStateResult.errorValue());
+        }
+
+        const std::string& uiState = uiStateResult.value().state;
+        if (uiState != "StartMenu" && uiState != "Synth") {
+            if (uiState == "SimRunning" || uiState == "Paused") {
+                UiApi::SimStop::Command simStopCmd{};
+                auto simStopResult =
+                    unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(
+                        simStopCmd, timeoutMs));
+                if (simStopResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(
+                        "UI SimStop failed: " + simStopResult.errorValue());
+                }
+
+                auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+                if (startMenuResult.isError()) {
+                    uiClient.disconnect();
+                    return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+                }
+            }
+            else {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Unsupported UI state for canPlaySynthKeys: " + uiState);
+            }
+        }
+
+        if (uiState != "Synth") {
+            UiApi::IconSelect::Command synthCmd{ .id = Ui::IconId::MUSIC };
+            auto synthResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::IconSelect::Okay>(synthCmd, timeoutMs));
+            if (synthResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI IconSelect (MUSIC) failed: " + synthResult.errorValue());
+            }
+            if (!synthResult.value().selected) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI IconSelect (MUSIC) did not select");
+            }
+
+            auto synthStateResult = waitForUiState(uiClient, "Synth", timeoutMs);
+            if (synthStateResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(synthStateResult.errorValue());
+            }
+        }
+
+        struct KeyPress {
+            int index = 0;
+            bool isBlack = false;
+        };
+        const std::vector<KeyPress> presses = {
+            { 0, false }, { 0, true }, { 2, false }, { 2, true },
+            { 4, false }, { 4, true }, { 6, false },
+        };
+
+        for (const auto& press : presses) {
+            UiApi::SynthKeyPress::Command cmd{
+                .key_index = press.index,
+                .is_black = press.isBlack,
+            };
+            auto pressResult = unwrapResponse(
+                uiClient.sendCommandAndGetResponse<UiApi::SynthKeyPress::Okay>(cmd, timeoutMs));
+            if (pressResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI SynthKeyPress failed: " + pressResult.errorValue());
+            }
+
+            const auto& response = pressResult.value();
+            if (response.key_index != press.index || response.is_black != press.isBlack) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "SynthKeyPress response mismatch");
+            }
+
+            auto statusResult = requestUiStatus(uiClient, timeoutMs);
+            if (statusResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI StatusGet failed: " + statusResult.errorValue());
+            }
+
+            const auto& status = statusResult.value();
+            const auto* synthDetails =
+                std::get_if<UiApi::StatusGet::SynthStateDetails>(&status.state_details);
+            if (!synthDetails) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Expected SynthStateDetails in StatusGet");
+            }
+            if (synthDetails->last_key_index != press.index
+                || synthDetails->last_key_is_black != press.isBlack) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "SynthStateDetails did not update after key press");
+            }
+        }
+
+        UiApi::SynthKeyPress::Command invalidCmd{ .key_index = 99, .is_black = false };
+        auto invalidResult =
+            uiClient.sendCommandAndGetResponse<UiApi::SynthKeyPress::Okay>(invalidCmd, timeoutMs);
+        if (invalidResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SynthKeyPress request failed: " + invalidResult.errorValue());
+        }
+        if (!invalidResult.value().isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Expected SynthKeyPress error for invalid key index");
+        }
+
+        uiClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canPlaySynthKeys",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .training_summary = std::nullopt,

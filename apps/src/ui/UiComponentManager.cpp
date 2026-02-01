@@ -37,7 +37,7 @@ void UiComponentManager::createSharedComponents()
     lv_obj_clear_flag(railContainer_, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(railContainer_, LV_OBJ_FLAG_FLOATING);
 
-    iconRail_ = std::make_unique<IconRail>(railContainer_, eventSink_);
+    iconRail_ = std::make_unique<IconRail>(railContainer_, eventSink_, fractalAnimator_);
     expandablePanel_ = std::make_unique<ExpandablePanel>(railContainer_);
 
     SLOG_INFO("Created shared IconRail and ExpandablePanel on top layer");

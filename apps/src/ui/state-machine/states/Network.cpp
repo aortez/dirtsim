@@ -1,0 +1,204 @@
+#include "State.h"
+#include "core/Assert.h"
+#include "core/LoggingChannels.h"
+#include "ui/RemoteInputDevice.h"
+#include "ui/UiComponentManager.h"
+#include "ui/state-machine/StateMachine.h"
+
+namespace DirtSim {
+namespace Ui {
+namespace State {
+
+void Network::onEnter(StateMachine& sm)
+{
+    LOG_INFO(State, "Entering Network state");
+
+    auto* uiManager = sm.getUiComponentManager();
+    if (!uiManager) {
+        LOG_ERROR(State, "No UiComponentManager available");
+        return;
+    }
+
+    uiManager->getMainMenuContainer();
+    lv_obj_t* contentArea = uiManager->getMenuContentArea();
+    if (!contentArea) {
+        LOG_ERROR(State, "No menu content area available");
+        return;
+    }
+
+    lv_obj_clean(contentArea);
+
+    contentRoot_ = lv_obj_create(contentArea);
+    lv_obj_set_size(contentRoot_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_color(contentRoot_, lv_color_hex(0x000000), 0);
+    lv_obj_set_style_bg_opa(contentRoot_, LV_OPA_COVER, 0);
+    lv_obj_set_style_pad_all(contentRoot_, 20, 0);
+    lv_obj_set_style_border_width(contentRoot_, 0, 0);
+    lv_obj_clear_flag(contentRoot_, LV_OBJ_FLAG_SCROLLABLE);
+
+    networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(contentRoot_);
+
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        panel->hide();
+        panel->clearContent();
+        panel->resetWidth();
+    }
+
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setLayout(RailLayout::SingleColumn);
+    iconRail->setVisibleIcons({ IconId::CORE, IconId::NETWORK });
+    iconRail->selectIcon(IconId::NETWORK);
+}
+
+void Network::onExit(StateMachine& sm)
+{
+    LOG_INFO(State, "Exiting Network state");
+
+    homePanel_.reset();
+    networkPanel_.reset();
+
+    if (auto* uiManager = sm.getUiComponentManager()) {
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+            panel->resetWidth();
+        }
+    }
+
+    if (contentRoot_) {
+        lv_obj_del(contentRoot_);
+        contentRoot_ = nullptr;
+    }
+}
+
+State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
+{
+    LOG_INFO(
+        State,
+        "Icon selection changed: {} -> {}",
+        static_cast<int>(evt.previousId),
+        static_cast<int>(evt.selectedId));
+
+    auto* uiManager = sm.getUiComponentManager();
+
+    if (evt.selectedId == IconId::CORE) {
+        LOG_INFO(State, "Home icon selected, showing Stop panel");
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->clearContent();
+            panel->resetWidth();
+            homePanel_ =
+                std::make_unique<StopPanel>(panel->getContentArea(), sm, sm.getFractalAnimator());
+            panel->show();
+        }
+        return std::move(*this);
+    }
+
+    if (evt.previousId == IconId::CORE) {
+        LOG_INFO(State, "Home icon deselected, hiding Stop panel");
+        homePanel_.reset();
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->hide();
+            panel->clearContent();
+            panel->resetWidth();
+        }
+    }
+
+    if (evt.selectedId == IconId::NONE || evt.selectedId == IconId::NETWORK) {
+        return std::move(*this);
+    }
+
+    DIRTSIM_ASSERT(false, "Unexpected icon selection in Network state");
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
+
+    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
+        iconRail->setMode(RailMode::Minimized);
+    }
+
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
+{
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "Stop button clicked, returning to StartMenu");
+    return StartMenu{};
+}
+
+State::Any Network::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
+{
+    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+    LOG_INFO(State, "Transitioning back to Disconnected");
+
+    if (!sm.queueReconnectToLastServer()) {
+        LOG_WARN(State, "No previous server address available for reconnect");
+    }
+
+    return Disconnected{};
+}
+
+State::Any Network::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "Exit command received, shutting down");
+    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
+    return Shutdown{};
+}
+
+State::Any Network::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
+{
+    LOG_INFO(State, "SimStop command received, returning to StartMenu");
+    cwc.sendResponse(UiApi::SimStop::Response::okay({ true }));
+    return StartMenu{};
+}
+
+State::Any Network::onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm)
+{
+    LOG_INFO(State, "StopButtonPress command received, returning to StartMenu");
+    cwc.sendResponse(UiApi::StopButtonPress::Response::okay(std::monostate{}));
+    return onEvent(StopButtonClickedEvent{}, sm);
+}
+
+State::Any Network::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(true);
+    }
+
+    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+    }
+
+    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
+    return std::move(*this);
+}
+
+State::Any Network::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
+{
+    if (sm.getRemoteInputDevice()) {
+        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+        sm.getRemoteInputDevice()->updatePressed(false);
+    }
+
+    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
+    return std::move(*this);
+}
+
+} // namespace State
+} // namespace Ui
+} // namespace DirtSim

@@ -6,11 +6,13 @@ scale 1.6
 {
   {+
     [Home]
-    [Graphs]
-    [Scenes]
-    [Wireless]
-    [Settings]
+    [Network]
+    [Minimize]
   } | {
+    {+
+      [Stop]
+    }
+    .
     "Network"
     "WiFi: onionchan"
     .
@@ -21,19 +23,25 @@ scale 1.6
       [Connected] [Forget]
     }
     .
-    "LAN Web UI" | [On]
-    "Incoming WebSockets" | [On]
-    .
     "WebSocket token"
     .
     "IP Address:"
     "wlan0: 192.168.1.143"
     .
     [Refresh]
+  } | {
+    .
+    "LAN Web UI"
+    [On]
+    .
+    "Incoming WebSockets"
+    [On]
   }
 }
 @endsalt
 ```
+
+Background is black. NetworkDiagnosticsPanel content spans the full screen (minus icon rail).
 
 ## States
 
@@ -41,6 +49,7 @@ scale 1.6
 @startuml
 [*] --> StartMenu
 
-StartMenu --> StartMenu : Select Network
+StartMenu --> Network : Network
+Network --> StartMenu : Stop
 @enduml
 ```

@@ -4,41 +4,29 @@
 #include "core/Result.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
-#include "ui/controls/IconRail.h"
 #include <nlohmann/json.hpp>
+#include <variant>
 #include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
 
-namespace IconSelect {
+namespace StopButtonPress {
 
-DEFINE_API_NAME(IconSelect);
+DEFINE_API_NAME(StopButtonPress);
 
 struct Command {
-    Ui::IconId id = Ui::IconId::NONE;
-
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<1>;
+    using serialize = zpp::bits::members<0>;
 };
 
-struct Okay {
-    bool selected = true;
-
-    API_COMMAND_NAME();
-    nlohmann::json toJson() const;
-    static Okay fromJson(const nlohmann::json& j);
-
-    using serialize = zpp::bits::members<1>;
-};
-
-using OkayType = Okay;
+using OkayType = std::monostate;
 using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
-} // namespace IconSelect
+} // namespace StopButtonPress
 } // namespace UiApi
 } // namespace DirtSim

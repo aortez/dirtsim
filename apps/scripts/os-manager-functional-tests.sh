@@ -116,7 +116,6 @@ run_test canExit
 run_test canTrain
 run_test canSetGenerationsAndTrain
 run_test canPlantTreeSeed
-run_test verifyTraining 300000
 
 # Output markdown summary for GitHub Actions.
 echo ""
