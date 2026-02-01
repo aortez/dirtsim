@@ -134,7 +134,7 @@ void beginEvolutionSession(Training& state, StateMachine& sm)
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
 
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+    auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
     auto renderResult = wsService.sendBinaryAndReceive(envelope);
     if (renderResult.isError()) {
         LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
@@ -179,7 +179,7 @@ void Training::onEnter(StateMachine& sm)
         return;
     }
 
-    Network::WebSocketServiceInterface* wsService = nullptr;
+    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }

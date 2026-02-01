@@ -65,7 +65,7 @@ void SimRunning::onEnter(StateMachine& sm)
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = wsService.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -213,7 +213,7 @@ State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMach
             debugDrawEnabled ? RenderFormat::EnumType::Debug : RenderFormat::EnumType::Basic;
 
         // Send binary command and wait for response.
-        auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
+        auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
         auto result = wsServiceRef.sendBinaryAndReceive(envelope);
         if (result.isError()) {
             LOG_ERROR(State, "Failed to send RenderFormatSet: {}", result.errorValue());
@@ -292,8 +292,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& s
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
 
             LOG_INFO(State, "Draw: cell ({}, {}) -> {}", cell->x, cell->y, toString(material));
         }
@@ -329,8 +329,8 @@ State::Any SimRunning::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& s
 
             static std::atomic<uint64_t> nextId{ 1 };
             Api::CellSet::Command cmd{ cell->x, cell->y, material, 1.0 };
-            auto envelope = Network::make_command_envelope(nextId.fetch_add(1), cmd);
-            sm.getWebSocketService().sendBinary(Network::serialize_envelope(envelope));
+            auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), cmd);
+            sm.getWebSocketService().sendBinary(DirtSim::Network::serialize_envelope(envelope));
         }
     }
 
