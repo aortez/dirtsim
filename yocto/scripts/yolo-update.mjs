@@ -798,13 +798,22 @@ async function main() {
   }
 
   // Load SSH key config for remote injection.
-  const config = loadConfig(CONFIG_FILE);
-  let sshKeyPath = null;
+  const envSshKeyPath = process.env.DIRTSIM_SSH_KEY_PATH || null;
+  if (envSshKeyPath && !existsSync(envSshKeyPath)) {
+    error(`DIRTSIM_SSH_KEY_PATH not found: ${envSshKeyPath}`);
+    process.exit(1);
+  }
 
-  if (!config) {
+  const config = loadConfig(CONFIG_FILE);
+  let sshKeyPath = envSshKeyPath;
+
+  if (!sshKeyPath && !config) {
     warn('No SSH key configured. Run "npm run flash -- --reconfigure" first.');
     warn('Image will be flashed without SSH key - you may be locked out!');
-    // Skip prompt in dry-run mode.
+    if (process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true') {
+      error('Missing SSH key configuration in CI.');
+      process.exit(1);
+    }
     if (!dryRun) {
       const { prompt } = await import('../pi-base/scripts/lib/cli-utils.mjs');
       const proceed = await prompt('Continue anyway? (y/N): ');
@@ -813,8 +822,11 @@ async function main() {
         process.exit(1);
       }
     }
-  } else {
+  } else if (!sshKeyPath && config) {
     sshKeyPath = config.ssh_key_path;
+  }
+
+  if (sshKeyPath) {
     info(`SSH key: ${basename(sshKeyPath)}`);
   }
 
