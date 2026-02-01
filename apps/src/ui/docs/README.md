@@ -138,7 +138,7 @@ marks the markdown section.
 Optional environment overrides (defaults to dirtsim2.local):
 
 ```bash
-DIRTSIM_SSH_HOST=dirtsim3.local
+DIRTSIM_SSH_HOST=dirtsim2.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
 DIRTSIM_SSH_CONTROL_PATH=~/.ssh/cm-%r@%h:%p
