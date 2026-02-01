@@ -17,21 +17,24 @@ class EventSink;
  */
 enum class IconId {
     CORE = 0,
-    EVOLUTION,
-    NETWORK,
-    PHYSICS,
-    PLAY,
-    SCENARIO,
-    TREE,
-    GENOME_BROWSER,
-    TRAINING_RESULTS,
-    COUNT
+    EVOLUTION = 1,
+    NETWORK = 2,
+    PHYSICS = 3,
+    PLAY = 4,
+    SCENARIO = 5,
+    TREE = 6,
+    GENOME_BROWSER = 7,
+    TRAINING_RESULTS = 8,
+    COUNT = 9,
+    MUSIC = 10
 };
 
 enum class RailMode {
     Normal,   // Full width with all icon buttons.
     Minimized // Narrow width with single expand button.
 };
+
+enum class RailLayout { SingleColumn, TwoColumn };
 
 /**
  * @brief Configuration for a single icon in an IconRail.
@@ -54,6 +57,7 @@ struct IconConfig {
 class IconRail {
 public:
     static constexpr int RAIL_WIDTH = 108;
+    static constexpr int RAIL_WIDTH_TWO_COLUMN = 216;
     static constexpr int MINIMIZED_RAIL_WIDTH = 0;
 
     /**
@@ -112,6 +116,9 @@ public:
     void toggleMode();
     bool isMinimized() const { return mode_ == RailMode::Minimized; }
 
+    RailLayout getLayout() const { return layout_; }
+    void setLayout(RailLayout layout);
+
 private:
     lv_obj_t* container_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
@@ -126,6 +133,7 @@ private:
 
     // Mode support.
     RailMode mode_ = RailMode::Normal;
+    RailLayout layout_ = RailLayout::SingleColumn;
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
 
@@ -137,6 +145,7 @@ private:
     // Dimensions optimized for HyperPixel 4.0 (480px height).
     static constexpr int ICON_SIZE = 96;
     static constexpr int GAP = 12;
+    static constexpr int ICON_PAD = (RAIL_WIDTH - ICON_SIZE) / 2;
 
     void createIcons(lv_obj_t* parent);
     void createModeButtons();

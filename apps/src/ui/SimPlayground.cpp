@@ -104,6 +104,7 @@ void SimPlayground::showPanelContent(IconId panelId)
             createPhysicsPanel(container);
             break;
         case IconId::EVOLUTION:
+        case IconId::MUSIC:
         case IconId::NETWORK:
         case IconId::PLAY:
         case IconId::TREE:

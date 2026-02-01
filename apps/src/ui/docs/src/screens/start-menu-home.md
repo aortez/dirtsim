@@ -6,9 +6,8 @@ scale 1.6
 {
   {+
     [Home] | [Music]
-    [Training] | .
-    [Scenarios] | .
-    [Minimize] | .
+    [Training] | [Network]
+    [Scenarios] | [Minimize]
   } | {
     {+
       [Quit]

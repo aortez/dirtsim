@@ -9,11 +9,13 @@ namespace State {
 
 // Forward declarations.
 struct Disconnected;
+struct Network;
 struct Paused;
 struct Shutdown;
 struct SimRunning;
 struct StartMenu;
 struct Startup;
+struct Synth;
 struct Training;
 
 // Forward declaration of wrapper (definition in State.h after state includes).

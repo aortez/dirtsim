@@ -439,11 +439,13 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/StateMachine.cpp
     src/ui/state-machine/EventProcessor.cpp
     src/ui/state-machine/states/Disconnected.cpp
+    src/ui/state-machine/states/Network.cpp
     src/ui/state-machine/states/Paused.cpp
     src/ui/state-machine/states/Shutdown.cpp
     src/ui/state-machine/states/SimRunning.cpp
     src/ui/state-machine/states/StartMenu.cpp
     src/ui/state-machine/states/Startup.cpp
+    src/ui/state-machine/states/Synth.cpp
     src/ui/state-machine/states/Training.cpp
 
     # UI API commands.
@@ -516,6 +518,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/ScenarioPanel.cpp
     src/ui/controls/StartMenuCorePanel.cpp
+    src/ui/controls/StopPanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
     src/ui/controls/TrainingConfigPanel.cpp

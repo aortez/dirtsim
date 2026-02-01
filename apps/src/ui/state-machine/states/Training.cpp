@@ -187,6 +187,7 @@ void Training::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setLayout(RailLayout::SingleColumn);
     iconRail->setVisibleIcons(
         { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll(); // Start fresh, no panel open.
@@ -382,6 +383,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             break;
 
         case IconId::TREE:
+        case IconId::MUSIC:
         case IconId::NETWORK:
         case IconId::PHYSICS:
         case IconId::PLAY:

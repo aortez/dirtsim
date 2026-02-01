@@ -23,10 +23,6 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
-namespace {
-constexpr int kNetworkPanelWidth = 640;
-}
-
 void StartMenu::onEnter(StateMachine& sm)
 {
     sm_ = &sm; // Store for callbacks.
@@ -69,12 +65,15 @@ void StartMenu::onEnter(StateMachine& sm)
     // Trigger layout creation and get content area (to the right of IconRail).
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
+    lv_obj_clean(container);
 
-    // Configure IconRail to show CORE, NETWORK, SCENARIO, and EVOLUTION icons.
+    // Configure IconRail to show StartMenu icons in two columns.
     if (IconRail* iconRail = uiManager->getIconRail()) {
         iconRail->setVisibleIcons(
-            { IconId::CORE, IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
-        LOG_INFO(State, "Configured IconRail with CORE, NETWORK, SCENARIO, and EVOLUTION icons");
+            { IconId::CORE, IconId::MUSIC, IconId::EVOLUTION, IconId::NETWORK, IconId::SCENARIO });
+        iconRail->setLayout(RailLayout::TwoColumn);
+        iconRail->deselectAll();
+        LOG_INFO(State, "Configured IconRail with CORE, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -150,7 +149,6 @@ void StartMenu::onExit(StateMachine& sm)
     LOG_INFO(State, "Exiting");
 
     // Clean up panels.
-    networkPanel_.reset();
     corePanel_.reset();
 
     // Clean up sparkle button.
@@ -307,28 +305,14 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         corePanel_.reset();
     }
 
-    // Handle NETWORK icon - opens network diagnostics panel.
-    if (evt.selectedId == IconId::NETWORK) {
-        LOG_INFO(State, "Network icon selected, showing diagnostics panel");
-
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->clearContent();
-            panel->setWidth(kNetworkPanelWidth);
-            networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
-            panel->show();
-        }
-        return std::move(*this); // Don't deselect - panel should stay open.
+    if (evt.selectedId == IconId::MUSIC) {
+        LOG_INFO(State, "Music icon clicked, transitioning to Synth");
+        return Synth{};
     }
 
-    // Handle deselection of NETWORK.
-    if (evt.previousId == IconId::NETWORK) {
-        LOG_INFO(State, "Network icon deselected, hiding panel");
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->hide();
-            panel->clearContent();
-            panel->resetWidth();
-        }
-        networkPanel_.reset();
+    if (evt.selectedId == IconId::NETWORK) {
+        LOG_INFO(State, "Network icon clicked, transitioning to Network");
+        return Network{};
     }
 
     // SCENARIO and EVOLUTION are action triggers - fire and deselect.

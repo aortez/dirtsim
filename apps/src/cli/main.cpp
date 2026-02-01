@@ -1397,6 +1397,20 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
+            if (state == "Network" || state == "Synth") {
+                UiApi::SimStop::Command cmd{};
+                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
+                    uiClient, cmd, timeoutMs);
+                if (stopResult.isError()) {
+                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
             if (state == "Training") {
                 auto serverClear = clearServerTrainingResultIfNeeded();
                 if (serverClear.isError()) {
@@ -1451,6 +1465,20 @@ int main(int argc, char** argv)
                     return Result<std::monostate, std::string>::error(clearModal.errorValue());
                 }
                 return ensureIconRailVisible();
+            }
+            if (state == "Network" || state == "Synth") {
+                UiApi::SimStop::Command cmd{};
+                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
+                    uiClient, cmd, timeoutMs);
+                if (stopResult.isError()) {
+                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                state = waitResult.value();
             }
             if (state == "StartMenu") {
                 auto showResult = ensureIconRailVisible();
@@ -1615,7 +1643,7 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("start-menu-network", [&]() {
+        result = runScreen("network", [&]() {
             auto nav = navigateToStartMenu();
             if (nav.isError()) {
                 return nav;
@@ -1630,7 +1658,41 @@ int main(int argc, char** argv)
                 return select;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("start-menu-network");
+            auto waitResult = waitForUiState({ "Network" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("network");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("synth", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::MUSIC);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto waitResult = waitForUiState({ "Synth" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("synth");
         });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;

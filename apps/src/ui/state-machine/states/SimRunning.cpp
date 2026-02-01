@@ -87,6 +87,7 @@ void SimRunning::onEnter(StateMachine& sm)
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+        iconRail->setLayout(RailLayout::SingleColumn);
         iconRail->setVisibleIcons({ IconId::CORE, IconId::SCENARIO, IconId::PHYSICS });
         iconRail->deselectAll(); // Start fresh, no panel open.
 

@@ -27,15 +27,16 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSin
     // Define our icon configuration with FontAwesome icons and per-icon colors.
     // Order determines display order in the rail.
     iconConfigs_ = {
-        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },         // Light green.
         { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },           // Light blue.
+        { IconId::MUSIC, IconFont::WAVE_SQUARE, "Synth", 0x00B4D8 },           // Sky blue.
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
         { IconId::GENOME_BROWSER, IconFont::DNA, "Genome Browser", 0x40E0D0 }, // Turquoise.
         { IconId::TRAINING_RESULTS, IconFont::FILE_CABINET, "Training Results", 0xFFD700 }, // Gold.
-        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 }, // Orange.
-        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },   // Dark turquoise.
-        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },    // Silver.
-        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 }, // Lime green.
+        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },      // Dark turquoise.
+        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },    // Orange.
+        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },       // Silver.
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 }, // Light green.
+        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },    // Lime green.
     };
 
     createIcons(parent);
@@ -81,8 +82,9 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
+    lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
     lv_obj_set_style_pad_row(container_, GAP, 0);
+    lv_obj_set_style_pad_column(container_, GAP, 0);
     lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
@@ -376,6 +378,9 @@ void IconRail::applyMode()
 
     // Animate width transition.
     int targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH;
+    if (layout_ == RailLayout::TwoColumn) {
+        targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH_TWO_COLUMN;
+    }
     int currentWidth = lv_obj_get_width(container_);
     if (currentWidth != targetWidth) {
         lv_anim_t a;
@@ -396,9 +401,18 @@ void IconRail::applyMode()
             container_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
     else {
-        lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
+        lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
         lv_obj_set_flex_align(
             container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    }
+
+    if (layout_ == RailLayout::TwoColumn) {
+        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW_WRAP);
+        lv_obj_set_style_pad_column(container_, GAP, 0);
+    }
+    else {
+        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_column(container_, 0, 0);
     }
 
     // Show/hide icon buttons.
@@ -505,6 +519,16 @@ void IconRail::setMode(RailMode mode)
 void IconRail::toggleMode()
 {
     setMode(mode_ == RailMode::Normal ? RailMode::Minimized : RailMode::Normal);
+}
+
+void IconRail::setLayout(RailLayout layout)
+{
+    if (layout_ == layout) {
+        return;
+    }
+
+    layout_ = layout;
+    applyMode();
 }
 
 void IconRail::onModeButtonClicked(lv_event_t* e)

@@ -51,6 +51,5 @@ Background is black. NetworkDiagnosticsPanel content spans the full screen (minu
 
 StartMenu --> Network : Network
 Network --> StartMenu : Stop
-Network --> Synth : Music
 @enduml
 ```
