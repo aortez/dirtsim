@@ -120,6 +120,16 @@ jobs:
       env:
         DIRTSIM_SSH_KEY: ${{ secrets.DIRTSIM_SSH_KEY }}
       run: |
+        if [ -f "$HOME/.ssh/dirtsim_key" ]; then
+          ssh_key="$HOME/.ssh/dirtsim_key"
+          ssh_pub="${ssh_key}.pub"
+          if [ ! -f "${ssh_pub}" ]; then
+            ssh-keygen -y -f "${ssh_key}" > "${ssh_pub}"
+          fi
+          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH=${ssh_key}" >> $GITHUB_ENV
+          echo "DIRTSIM_SSH_KEY_PATH=${ssh_pub}" >> $GITHUB_ENV
+          exit 0
+        fi
         if [ -n "${DIRTSIM_SSH_KEY:-}" ]; then
           key_dir="${RUNNER_TEMP}/dirtsim-ssh"
           mkdir -p "${key_dir}"
