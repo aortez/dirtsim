@@ -34,7 +34,14 @@ struct TrainingStateDetails {
     using serialize = zpp::bits::members<1>;
 };
 
-using StateDetails = std::variant<NoStateDetails, TrainingStateDetails>;
+struct SynthStateDetails {
+    int last_key_index = -1;
+    bool last_key_is_black = false;
+
+    using serialize = zpp::bits::members<2>;
+};
+
+using StateDetails = std::variant<NoStateDetails, TrainingStateDetails, SynthStateDetails>;
 
 struct Okay {
     std::string state; // UI state machine current state.
