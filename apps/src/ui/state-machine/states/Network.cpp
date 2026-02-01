@@ -160,6 +160,13 @@ State::Any Network::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/
     return StartMenu{};
 }
 
+State::Any Network::onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm)
+{
+    LOG_INFO(State, "StopButtonPress command received, returning to StartMenu");
+    cwc.sendResponse(UiApi::StopButtonPress::Response::okay(std::monostate{}));
+    return onEvent(StopButtonClickedEvent{}, sm);
+}
+
 State::Any Network::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
     if (sm.getRemoteInputDevice()) {

@@ -20,6 +20,7 @@
 #include "SimStop.h"
 #include "StateGet.h"
 #include "StatusGet.h"
+#include "StopButtonPress.h"
 #include "StreamStart.h"
 #include "SynthKeyPress.h"
 #include "TrainingConfigShowEvolution.h"
@@ -59,6 +60,7 @@ using UiApiCommand = std::variant<
     UiApi::SimStop::Command,
     UiApi::StateGet::Command,
     UiApi::StatusGet::Command,
+    UiApi::StopButtonPress::Command,
     UiApi::StreamStart::Command,
     UiApi::SynthKeyPress::Command,
     UiApi::TrainingConfigShowEvolution::Command,

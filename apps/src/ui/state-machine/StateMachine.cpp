@@ -5,6 +5,7 @@
 #include "api/IconRailExpand.h"
 #include "api/IconRailShowIcons.h"
 #include "api/IconSelect.h"
+#include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
 #include "api/SynthKeyPress.h"
 #include "api/TrainingConfigShowEvolution.h"
@@ -132,6 +133,8 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::StopButtonPress::Cwc>(
+        [this](UiApi::StopButtonPress::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::SynthKeyPress::Cwc>(
         [this](UiApi::SynthKeyPress::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
@@ -289,6 +292,7 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_EMPTY(UiApi::SimStop);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StateGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::StopButtonPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::SynthKeyPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingConfigShowEvolution);

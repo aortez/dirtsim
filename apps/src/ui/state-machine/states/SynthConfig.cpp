@@ -188,6 +188,13 @@ State::Any SynthConfig::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*
     return StartMenu{};
 }
 
+State::Any SynthConfig::onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm)
+{
+    LOG_INFO(State, "StopButtonPress command received, returning to StartMenu");
+    cwc.sendResponse(UiApi::StopButtonPress::Response::okay(std::monostate{}));
+    return onEvent(StopButtonClickedEvent{}, sm);
+}
+
 State::Any SynthConfig::onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachine& /*sm*/)
 {
     std::string error;

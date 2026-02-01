@@ -471,6 +471,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/SimStop.cpp
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
+    src/ui/state-machine/api/StopButtonPress.cpp
     src/ui/state-machine/api/StreamStart.cpp
     src/ui/state-machine/api/SynthKeyPress.cpp
     src/ui/state-machine/api/TrainingConfigShowEvolution.cpp

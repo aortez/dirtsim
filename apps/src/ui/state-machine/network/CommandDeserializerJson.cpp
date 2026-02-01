@@ -18,6 +18,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/StopButtonPress.h"
 #include "ui/state-machine/api/StreamStart.h"
 #include "ui/state-machine/api/SynthKeyPress.h"
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
@@ -124,6 +125,10 @@ Result<UiApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::s
         }
         else if (commandName == UiApi::StatusGet::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::StatusGet::Command::fromJson(cmd));
+        }
+        else if (commandName == UiApi::StopButtonPress::Command::name()) {
+            return Result<UiApiCommand, ApiError>::okay(
+                UiApi::StopButtonPress::Command::fromJson(cmd));
         }
         else if (commandName == UiApi::StreamStart::Command::name()) {
             return Result<UiApiCommand, ApiError>::okay(UiApi::StreamStart::Command::fromJson(cmd));

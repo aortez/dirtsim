@@ -28,6 +28,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/StopButtonPress.h"
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
@@ -1358,6 +1359,17 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
+        auto pressStopButton = [&]() -> Result<std::monostate, std::string> {
+            UiApi::StopButtonPress::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::StopButtonPress::Command,
+                UiApi::StopButtonPress::OkayType>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
         auto showTrainingConfigEvolution = [&]() -> Result<std::monostate, std::string> {
             UiApi::TrainingConfigShowEvolution::Command cmd{};
             auto result = sendBinaryCommand<
@@ -1402,12 +1414,35 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Network" || state == "Synth") {
-                UiApi::SimStop::Command cmd{};
-                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
-                    uiClient, cmd, timeoutMs);
-                if (stopResult.isError()) {
-                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+            if (state == "Network") {
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::CORE);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(300));
+                auto pressResult = pressStopButton();
+                if (pressResult.isError()) {
+                    return Result<std::monostate, std::string>::error(pressResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "Synth" || state == "SynthConfig") {
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::DUCK);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
                 }
                 auto waitResult = waitForUiState({ "StartMenu" }, 8000);
                 if (waitResult.isError()) {

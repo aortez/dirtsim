@@ -22,6 +22,7 @@
 #include "api/SimStop.h"
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
+#include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
 #include "api/SynthKeyPress.h"
 #include "api/TrainingConfigShowEvolution.h"
@@ -316,6 +317,7 @@ using Event = std::variant<
     DirtSim::UiApi::SimStop::Cwc,
     DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
+    DirtSim::UiApi::StopButtonPress::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
     DirtSim::UiApi::SynthKeyPress::Cwc,
     DirtSim::UiApi::TrainingConfigShowEvolution::Cwc,
