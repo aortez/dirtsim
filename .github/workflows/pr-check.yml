@@ -71,6 +71,10 @@ jobs:
         find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
 
+    - name: Install Yocto npm deps
+      working-directory: yocto
+      run: npm install --no-package-lock
+
     - name: Build Yocto runtime image
       working-directory: yocto
       env:
@@ -110,4 +114,112 @@ jobs:
         TEST_EXIT=${PIPESTATUS[0]}
         # Extract markdown table from output and add to step summary.
         sed -n '/^### Functional Tests/,/^os-manager functional tests/p' functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
+        exit $TEST_EXIT
+
+    - name: Resolve SSH key for Yocto update
+      env:
+        DIRTSIM_SSH_KEY: ${{ secrets.DIRTSIM_SSH_KEY }}
+      run: |
+        if [ -f "$HOME/.ssh/dirtsim_key" ]; then
+          ssh_key="$HOME/.ssh/dirtsim_key"
+          ssh_pub="${ssh_key}.pub"
+          if [ ! -f "${ssh_pub}" ]; then
+            ssh-keygen -y -f "${ssh_key}" > "${ssh_pub}"
+          fi
+          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH=${ssh_key}" >> $GITHUB_ENV
+          echo "DIRTSIM_SSH_KEY_PATH=${ssh_pub}" >> $GITHUB_ENV
+          exit 0
+        fi
+        if [ -n "${DIRTSIM_SSH_KEY:-}" ]; then
+          key_dir="${RUNNER_TEMP}/dirtsim-ssh"
+          mkdir -p "${key_dir}"
+          key_path="${key_dir}/dirtsim_key"
+          printf "%s" "${DIRTSIM_SSH_KEY}" > "${key_path}"
+          chmod 600 "${key_path}"
+          if head -c 4 "${key_path}" | grep -q "ssh-"; then
+            echo "DIRTSIM_SSH_KEY_PATH=${key_path}" >> $GITHUB_ENV
+            exit 0
+          fi
+          pub_path="${key_path}.pub"
+          if ssh-keygen -y -f "${key_path}" > "${pub_path}" 2>/dev/null; then
+            echo "DIRTSIM_SSH_KEY_PATH=${pub_path}" >> $GITHUB_ENV
+            echo "DIRTSIM_SSH_PRIVATE_KEY_PATH=${key_path}" >> $GITHUB_ENV
+            exit 0
+          fi
+          echo "DIRTSIM_SSH_KEY secret is not a valid SSH key." >&2
+          exit 1
+        fi
+        if [ -n "${DIRTSIM_SSH_KEY_PATH:-}" ] && [ -f "${DIRTSIM_SSH_KEY_PATH}" ]; then
+          echo "Using DIRTSIM_SSH_KEY_PATH=${DIRTSIM_SSH_KEY_PATH}"
+          echo "DIRTSIM_SSH_KEY_PATH=${DIRTSIM_SSH_KEY_PATH}" >> $GITHUB_ENV
+          exit 0
+        fi
+        if [ -f "$HOME/.ssh/id_ed25519.pub" ]; then
+          echo "DIRTSIM_SSH_KEY_PATH=$HOME/.ssh/id_ed25519.pub" >> $GITHUB_ENV
+          exit 0
+        fi
+        if [ -f "$HOME/.ssh/id_rsa.pub" ]; then
+          echo "DIRTSIM_SSH_KEY_PATH=$HOME/.ssh/id_rsa.pub" >> $GITHUB_ENV
+          exit 0
+        fi
+        fallback_key=$(ls -1 "$HOME/.ssh/"*.pub 2>/dev/null | head -n 1)
+        if [ -n "$fallback_key" ]; then
+          echo "DIRTSIM_SSH_KEY_PATH=$fallback_key" >> $GITHUB_ENV
+          exit 0
+        fi
+        echo "No SSH public key found for Yocto update." >&2
+        exit 1
+
+    - name: Configure SSH for remote deploy
+      run: |
+        if [ -n "${DIRTSIM_SSH_PRIVATE_KEY_PATH:-}" ]; then
+          eval "$(ssh-agent -s)"
+          ssh-add "${DIRTSIM_SSH_PRIVATE_KEY_PATH}"
+          echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> $GITHUB_ENV
+          echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> $GITHUB_ENV
+        else
+          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH not set; relying on existing SSH keys."
+        fi
+        mkdir -p "${HOME}/.ssh"
+        {
+          echo "Host dirtsim.local"
+          echo "  StrictHostKeyChecking no"
+          echo "  UserKnownHostsFile /dev/null"
+        } >> "${HOME}/.ssh/config"
+        chmod 600 "${HOME}/.ssh/config"
+
+    - name: SSH diagnostics
+      run: |
+        echo "HOME=${HOME}"
+        echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-}"
+        echo "SSH_AGENT_PID=${SSH_AGENT_PID:-}"
+        ls -la "${HOME}/.ssh" || true
+        echo "--- ssh -G dirtsim.local ---"
+        ssh -G dirtsim.local 2>/dev/null | rg -i "identityfile|user|hostname|port" || true
+        echo "--- ssh test (tail) ---"
+        set +e
+        ssh -v -o BatchMode=yes -o ConnectTimeout=5 dirtsim@dirtsim.local "echo ok" 2>&1 | tail -n 200
+        exit 0
+
+    - name: Deploy Yocto image to remote unit
+      working-directory: yocto
+      env:
+        DL_DIR: /home/data/linux1/yocto-cache/downloads
+        SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
+        CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
+        DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
+        DIRTSIM_SSH_KEY_PATH: ${{ env.DIRTSIM_SSH_KEY_PATH }}
+        DIRTSIM_SKIP_PING: "1"
+      run: npm run yolo -- --docker --target dirtsim.local --hold-my-mead
+
+    - name: Run functional tests on remote unit
+      working-directory: yocto
+      env:
+        DIRTSIM_REMOTE_HOST: dirtsim.local
+        DIRTSIM_FUNCTIONAL_TIMEOUT_MS: 20000
+        DIRTSIM_VERIFY_TRAINING_TIMEOUT_MS: 300000
+      run: |
+        npm run remote-functional-tests -- --target dirtsim.local --all 2>&1 | tee remote-functional-tests.log
+        TEST_EXIT=${PIPESTATUS[0]}
+        sed -n '/^### Remote Functional Tests/,/^remote functional tests/p' remote-functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
         exit $TEST_EXIT
