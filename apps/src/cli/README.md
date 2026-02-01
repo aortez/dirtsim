@@ -1,6 +1,6 @@
 # DirtSim CLI Client
 
-Command-line client for interacting with DirtSim server, UI, and os-manager via WebSocket.
+Command-line client for interacting with DirtSim server, UI, audio, and os-manager via WebSocket.
 
 ## Quick Start
 
@@ -29,7 +29,7 @@ That's it! Now read below for details...
 
 The CLI provides several operation modes:
 
-- **Command Mode**: Send individual commands to server, UI, or os-manager
+- **Command Mode**: Send individual commands to server, UI, audio, or os-manager
 - **Run-All Mode**: Launch both server and UI with one command
 - **Screenshot Mode**: Capture PNG screenshots from local or remote UI
 - **Benchmark Mode**: Automated performance testing with metrics collection
@@ -43,11 +43,11 @@ The CLI provides several operation modes:
 
 ### Command Mode
 
-Send commands to the server or UI:
+Send commands to the server, UI, audio, or os-manager:
 
 ```bash
 # New fluent syntax: cli [target] [command] [params]
-# Targets: 'server' (port 8080), 'ui' (port 7070), or 'os-manager' (port 9090)
+# Targets: 'server' (port 8080), 'ui' (port 7070), 'audio' (port 6060), or 'os-manager' (port 9090)
 
 # Basic commands (no parameters)
 ./build-debug/bin/cli server StateGet
@@ -81,12 +81,20 @@ Send commands to the server or UI:
 ./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
 ./build-debug/bin/cli os-manager WebSocketAccessSet '{"enabled": true}'
 ./build-debug/bin/cli os-manager StartServer
+./build-debug/bin/cli os-manager StartAudio
 ./build-debug/bin/cli os-manager StopServer
+./build-debug/bin/cli os-manager StopAudio
 ./build-debug/bin/cli os-manager RestartServer
+./build-debug/bin/cli os-manager RestartAudio
 ./build-debug/bin/cli os-manager StartUi
 ./build-debug/bin/cli os-manager StopUi
 ./build-debug/bin/cli os-manager RestartUi
 ./build-debug/bin/cli os-manager Reboot
+
+# Audio commands
+./build-debug/bin/cli audio StatusGet
+./build-debug/bin/cli audio NoteOn '{\"frequency_hz\": 440, \"amplitude\": 0.5, \"duration_ms\": 120}'
+./build-debug/bin/cli audio NoteOff
 
 # Remote connections (override default addresses)
 # Remote WebSockets require ?token=... when incoming WebSocket access is enabled.
@@ -97,6 +105,7 @@ Send commands to the server or UI:
 ./build-debug/bin/cli ui StatusGet --address ws://dirtsim.local:7070
 ./build-debug/bin/cli ui StatusGet --address ws://dirtsim.local:7070?token=TOKEN
 ./build-debug/bin/cli os-manager SystemStatus --address ws://dirtsim.local:9090
+./build-debug/bin/cli audio StatusGet --address ws://dirtsim.local:6060
 ```
 
 ### UI Navigation (State Machine)
@@ -129,19 +138,20 @@ TODO: Add explicit CLI navigation commands for these panels.
 
 ### Run-All Mode
 
-Launch both server and UI with a single command:
+Launch server, UI, and audio with a single command:
 
 ```bash
-# Auto-detects display backend and launches both processes
+# Auto-detects display backend and launches all processes
 ./build-debug/bin/cli run-all
 ```
 
 **What it does**:
 - Auto-detects display backend (Wayland/X11)
 - Launches server on port 8080
+- Launches audio on port 6060
 - Launches UI and auto-connects to server
 - Monitors UI process
-- Auto-shuts down server when UI exits
+- Auto-shuts down audio and server when UI exits
 
 **Use case**: Quickest way to launch everything for interactive testing.
 
@@ -490,7 +500,7 @@ Clean up any rogue processes:
 
 ### Cleanup seems slow or hangs
 
-If `run-all` is running in another terminal, it monitors the UI and won't let the server exit until the UI closes. Either:
+If `run-all` is running in another terminal, it monitors the UI and won't let the server or audio exit until the UI closes. Either:
 - Use Ctrl+C on the `run-all` terminal first
 - Or just use `cleanup` - it will force shutdown with SIGTERM/SIGKILL
 

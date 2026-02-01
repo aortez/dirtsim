@@ -32,6 +32,8 @@ public:
 
     struct BackendConfig {
         BackendType type = BackendType::Systemd;
+        std::string audioPath;
+        std::string audioArgs;
         std::string serverPath;
         std::string serverArgs;
         std::string uiPath;
@@ -92,6 +94,7 @@ private:
     void setupWebSocketService();
     OsApi::SystemStatus::Okay buildSystemStatusInternal();
     DiskStats getDiskStats(const std::string& path) const;
+    std::string getAudioHealth(int timeoutMs);
     std::string getServerHealth(int timeoutMs);
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(

@@ -10,6 +10,7 @@ namespace {
 
 constexpr const char* kServerService = "dirtsim-server.service";
 constexpr const char* kUiService = "dirtsim-ui.service";
+constexpr const char* kAudioService = "dirtsim-audio.service";
 
 } // namespace
 
@@ -30,6 +31,13 @@ Any Idle::onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& /*osm*/
     return Rebooting{};
 }
 
+Any Idle::onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "RestartAudio command received");
+    cwc.sendResponse(osm.restartService(kAudioService));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::RestartServer::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "RestartServer command received");
@@ -44,6 +52,13 @@ Any Idle::onEvent(const OsApi::RestartUi::Cwc& cwc, OperatingSystemManager& osm)
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::StartAudio::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "StartAudio command received");
+    cwc.sendResponse(osm.startService(kAudioService));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::StartServer::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "StartServer command received");
@@ -55,6 +70,13 @@ Any Idle::onEvent(const OsApi::StartUi::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "StartUi command received");
     cwc.sendResponse(osm.startService(kUiService));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::StopAudio::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "StopAudio command received");
+    cwc.sendResponse(osm.stopService(kAudioService));
     return Idle{};
 }
 

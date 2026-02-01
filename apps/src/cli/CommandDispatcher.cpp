@@ -1,9 +1,15 @@
 #include "CommandDispatcher.h"
+#include "audio/api/NoteOff.h"
+#include "audio/api/NoteOn.h"
+#include "audio/api/StatusGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/StartAudio.h"
 #include "os-manager/api/StartServer.h"
 #include "os-manager/api/StartUi.h"
+#include "os-manager/api/StopAudio.h"
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
@@ -16,6 +22,13 @@ namespace Client {
 
 CommandDispatcher::CommandDispatcher()
 {
+    spdlog::debug(
+        "CommandDispatcher: Registering audio API commands with response deserializers...");
+
+    registerCommand<AudioApi::NoteOff::Cwc>(audioHandlers_, audioExampleHandlers_);
+    registerCommand<AudioApi::NoteOn::Cwc>(audioHandlers_, audioExampleHandlers_);
+    registerCommand<AudioApi::StatusGet::Cwc>(audioHandlers_, audioExampleHandlers_);
+
     spdlog::debug(
         "CommandDispatcher: Registering server API commands with response deserializers...");
 
@@ -94,10 +107,13 @@ CommandDispatcher::CommandDispatcher()
     spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
 
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StartUi::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::StopAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StopServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StopUi::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::SystemStatus::Cwc>(osHandlers_, osExampleHandlers_);
@@ -105,7 +121,9 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 
     spdlog::info(
-        "CommandDispatcher: Registered {} server commands, {} UI commands, {} OS commands",
+        "CommandDispatcher: Registered {} audio commands, {} server commands, {} UI commands, {} "
+        "OS commands",
+        audioHandlers_.size(),
         serverHandlers_.size(),
         uiHandlers_.size(),
         osHandlers_.size());
@@ -113,6 +131,9 @@ CommandDispatcher::CommandDispatcher()
 
 const CommandDispatcher::HandlerMap& CommandDispatcher::getHandlers(Target target) const
 {
+    if (target == Target::Audio) {
+        return audioHandlers_;
+    }
     if (target == Target::Server) {
         return serverHandlers_;
     }
@@ -125,6 +146,9 @@ const CommandDispatcher::HandlerMap& CommandDispatcher::getHandlers(Target targe
 const CommandDispatcher::ExampleHandlerMap& CommandDispatcher::getExampleHandlers(
     Target target) const
 {
+    if (target == Target::Audio) {
+        return audioExampleHandlers_;
+    }
     if (target == Target::Server) {
         return serverExampleHandlers_;
     }
@@ -147,7 +171,10 @@ Result<std::string, ApiError> CommandDispatcher::dispatch(
     }
 
     const char* targetLabel = "os-manager";
-    if (target == Target::Server) {
+    if (target == Target::Audio) {
+        targetLabel = "audio";
+    }
+    else if (target == Target::Server) {
         targetLabel = "server";
     }
     else if (target == Target::Ui) {

@@ -242,6 +242,11 @@ set(DIRTSIM_CORE_SOURCES
     src/core/UUID.cpp
     # Vector2d.cpp and Vector2i.cpp removed - now fully inline template in Vector2.h
 
+    # Audio synthesis.
+    src/core/audio/Envelope.cpp
+    src/core/audio/Oscillator.cpp
+    src/core/audio/SynthVoice.cpp
+
     # Bitmap infrastructure.
     src/core/bitmaps/CellBitmap.cpp
     src/core/bitmaps/EmptyNeighborhood.cpp
@@ -576,10 +581,13 @@ add_executable(dirtsim-os-manager
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
     src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopAudio.cpp
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
@@ -595,6 +603,17 @@ target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread)
 target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
 target_compile_options(dirtsim-os-manager PRIVATE ${DIRTSIM_WARNINGS})
 
+# Audio synthesis executable.
+add_executable(dirtsim-audio
+    src/audio/main.cpp
+    src/audio/AudioEngine.cpp
+    src/audio/AudioManager.cpp
+    src/audio/network/CommandDeserializerJson.cpp
+)
+target_link_libraries(dirtsim-audio PRIVATE dirtsim-core pthread)
+target_include_directories(dirtsim-audio PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
+target_compile_options(dirtsim-audio PRIVATE ${DIRTSIM_WARNINGS})
+
 # CLI client executable.
 add_executable(cli
     src/cli/main.cpp
@@ -607,10 +626,13 @@ add_executable(cli
     src/cli/SubprocessManager.cpp
     src/cli/TrainRunner.cpp
     src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopAudio.cpp
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
@@ -642,10 +664,13 @@ add_executable(dirtsim-tests
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
     src/os-manager/api/Reboot.cpp
+    src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
     src/os-manager/api/RestartUi.cpp
+    src/os-manager/api/StartAudio.cpp
     src/os-manager/api/StartServer.cpp
     src/os-manager/api/StartUi.cpp
+    src/os-manager/api/StopAudio.cpp
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp

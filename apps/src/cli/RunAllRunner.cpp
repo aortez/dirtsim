@@ -11,7 +11,8 @@
 namespace DirtSim {
 namespace Client {
 
-Result<std::monostate, std::string> runAll(const std::string& serverPath, const std::string& uiPath)
+Result<std::monostate, std::string> runAll(
+    const std::string& serverPath, const std::string& uiPath, const std::string& audioPath)
 {
     SubprocessManager subprocessManager;
     Network::WebSocketService client;
@@ -27,6 +28,16 @@ Result<std::monostate, std::string> runAll(const std::string& serverPath, const 
         return Result<std::monostate, std::string>::error("Server failed to start");
     }
     std::cout << "Server is ready" << std::endl;
+
+    // Launch audio.
+    std::cout << "Launching audio on port 6060..." << std::endl;
+    if (!subprocessManager.launchAudio(audioPath, "-p 6060")) {
+        return Result<std::monostate, std::string>::error("Failed to launch audio");
+    }
+    if (!subprocessManager.waitForAudioReady("ws://localhost:6060", 5)) {
+        return Result<std::monostate, std::string>::error("Audio failed to start");
+    }
+    std::cout << "Audio is ready" << std::endl;
 
     // Auto-detect display backend.
     std::string backend = "x11"; // Default to X11 for better compatibility
@@ -56,11 +67,12 @@ Result<std::monostate, std::string> runAll(const std::string& serverPath, const 
     std::cout << "Giving UI time to start..." << std::endl;
     std::cout << "UI launched" << std::endl;
     std::cout << std::endl;
-    std::cout << "=== Both server and UI are running ===" << std::endl;
+    std::cout << "=== Server, UI, and audio are running ===" << std::endl;
     std::cout << "Server: ws://localhost:8080" << std::endl;
     std::cout << "UI:     ws://localhost:7070" << std::endl;
+    std::cout << "Audio:  ws://localhost:6060" << std::endl;
     std::cout << std::endl;
-    std::cout << "Monitoring UI... (will shutdown server when UI exits)" << std::endl;
+    std::cout << "Monitoring UI... (will shutdown audio and server when UI exits)" << std::endl;
 
     // Poll UI until it exits.
     while (subprocessManager.isUIRunning()) {
@@ -69,6 +81,10 @@ Result<std::monostate, std::string> runAll(const std::string& serverPath, const 
 
     std::cout << std::endl;
     std::cout << "UI has exited" << std::endl;
+
+    // Stop audio.
+    std::cout << "Shutting down audio..." << std::endl;
+    subprocessManager.killAudio();
 
     // Connect to server and send shutdown command.
     std::cout << "Shutting down server..." << std::endl;

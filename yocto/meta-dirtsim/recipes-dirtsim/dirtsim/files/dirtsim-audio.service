@@ -1,0 +1,14 @@
+[Unit]
+Description=DirtSim Audio Synth
+
+[Service]
+Type=simple
+User=dirtsim
+SupplementaryGroups=audio
+WorkingDirectory=/data/dirtsim
+ExecStart=/usr/bin/dirtsim-audio -p 6060
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
