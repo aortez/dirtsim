@@ -136,11 +136,11 @@ docs-screenshots: build-image
 		-e DIRTSIM_SSH_HOST=$(DIRTSIM_SSH_HOST) \
 		-e DIRTSIM_SSH_USER=$(DIRTSIM_SSH_USER) \
 		-e DIRTSIM_REMOTE_TMP=$(DIRTSIM_REMOTE_TMP) \
-		-e DIRTSIM_SSH_CONTROL_PATH=$(DIRTSIM_SSH_CONTROL_PATH) \
-		$(DOCS_SCREENSHOT_ENV) \
-		-w /workspace/apps/src/ui/docs \
-		$(IMAGE) \
-		node scripts/render_real_screenshots.mjs
+	-e DIRTSIM_SSH_CONTROL_PATH=$(DIRTSIM_SSH_CONTROL_PATH) \
+	$(DOCS_SCREENSHOT_ENV) \
+	-w /workspace/apps/src/ui/docs \
+	$(IMAGE) \
+	node scripts/render_cli_screenshots.mjs
 
 clean-image:
 	@echo "Removing Docker image $(IMAGE)..."

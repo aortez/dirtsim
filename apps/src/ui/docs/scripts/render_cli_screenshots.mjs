@@ -108,6 +108,13 @@ const run = async () => {
   await fs.mkdir(outputDir, { recursive: true });
   await fs.mkdir(path.dirname(sshControlPath), { recursive: true });
 
+  const existingFiles = await fs.readdir(outputDir).catch(() => []);
+  await Promise.all(
+    existingFiles
+      .filter((file) => file.endsWith(".png"))
+      .map((file) => fs.unlink(path.join(outputDir, file)).catch(() => undefined))
+  );
+
   const envParts = [];
   if (process.env.DOCS_SCREENSHOT_ONLY) {
     envParts.push(`DOCS_SCREENSHOT_ONLY=${quoteForShell(process.env.DOCS_SCREENSHOT_ONLY)}`);
@@ -124,6 +131,9 @@ const run = async () => {
     "docs-screenshots",
     quoteForShell(remoteTmpDir)
   ].join(" ");
+
+  const remoteTmpQuoted = quoteForShell(remoteTmpDir);
+  await runSsh(`mkdir -p ${remoteTmpQuoted} && rm -f ${remoteTmpQuoted}/*.png`);
 
   console.log(`Running remote CLI capture on ${sshTarget}...`);
   await runSsh(remoteCommand);
