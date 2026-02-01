@@ -162,14 +162,14 @@ jobs:
 
     - name: Configure SSH for remote deploy
       run: |
-        if [ -z "${DIRTSIM_SSH_PRIVATE_KEY_PATH:-}" ]; then
-          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH is not set; cannot configure ssh-agent." >&2
-          exit 1
+        if [ -n "${DIRTSIM_SSH_PRIVATE_KEY_PATH:-}" ]; then
+          eval "$(ssh-agent -s)"
+          ssh-add "${DIRTSIM_SSH_PRIVATE_KEY_PATH}"
+          echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> $GITHUB_ENV
+          echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> $GITHUB_ENV
+        else
+          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH not set; relying on existing SSH keys."
         fi
-        eval "$(ssh-agent -s)"
-        ssh-add "${DIRTSIM_SSH_PRIVATE_KEY_PATH}"
-        echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> $GITHUB_ENV
-        echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> $GITHUB_ENV
         mkdir -p "${HOME}/.ssh"
         {
           echo "Host dirtsim.local"
