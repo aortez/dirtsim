@@ -223,3 +223,8 @@ jobs:
         TEST_EXIT=${PIPESTATUS[0]}
         sed -n '/^### Remote Functional Tests/,/^remote functional tests/p' remote-functional-tests.log | head -n -1 >> $GITHUB_STEP_SUMMARY
         exit $TEST_EXIT
+
+  docker-cleanup:
+    uses: ./.github/workflows/docker-cleanup.yml
+    needs: build-and-test
+    if: always()

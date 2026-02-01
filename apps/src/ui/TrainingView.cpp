@@ -54,11 +54,13 @@ TrainingView::TrainingView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
-    int& streamIntervalMs)
+    int& streamIntervalMs,
+    FractalAnimator* fractalAnimator)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
-      streamIntervalMs_(streamIntervalMs)
+      streamIntervalMs_(streamIntervalMs),
+      fractalAnimator_(fractalAnimator)
 {
     alive_ = std::make_shared<std::atomic<bool>>(true);
     renderer_ = std::make_unique<CellRenderer>();
@@ -456,7 +458,7 @@ void TrainingView::createCorePanel()
     }
 
     evolutionControls_ = std::make_unique<EvolutionControls>(
-        container, eventSink_, evolutionStarted_, trainingSpec_);
+        container, eventSink_, evolutionStarted_, trainingSpec_, fractalAnimator_);
     LOG_INFO(Controls, "TrainingView: Created Training Home panel");
 }
 

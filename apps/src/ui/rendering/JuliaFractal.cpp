@@ -286,7 +286,7 @@ constexpr uint32_t PALETTE[PALETTE_SIZE] = {
     0xFF000000, // 255: RGB(0,0,0)
 };
 
-JuliaFractal::JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight)
+JuliaFractal::JuliaFractal(int windowWidth, int windowHeight)
 {
     // Initialize random number generator with random seed.
     std::random_device rd;
@@ -301,42 +301,23 @@ JuliaFractal::JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight)
     height_ = windowHeight / currentResolutionDivisor_;
 
     spdlog::info(
-        "JuliaFractal: Creating {}x{} fractal canvas (render), scaling to {}x{} (display)",
+        "JuliaFractal: Creating {}x{} fractal buffers (render), scaling to {}x{} (display)",
         width_,
         height_,
         windowWidth,
         windowHeight);
 
-    // Create LVGL canvas.
-    canvas_ = lv_canvas_create(parent);
-
-    // Allocate canvas buffer at reduced resolution (ARGB8888 format).
+    // Allocate front buffer at reduced resolution (ARGB8888 format).
     size_t bufferSize = LV_CANVAS_BUF_SIZE(width_, height_, 32, 64);
-    canvasBuffer_ = static_cast<lv_color_t*>(lv_malloc(bufferSize));
+    frontBuffer_ = static_cast<lv_color_t*>(lv_malloc(bufferSize));
 
-    if (!canvasBuffer_) {
-        LOG_ERROR(Render, "Failed to allocate canvas buffer");
+    if (!frontBuffer_) {
+        LOG_ERROR(Render, "Failed to allocate front buffer");
         return;
     }
 
-    // Set canvas buffer at render resolution.
-    lv_canvas_set_buffer(canvas_, canvasBuffer_, width_, height_, LV_COLOR_FORMAT_ARGB8888);
-
-    // Position in top-left corner.
-    lv_obj_set_pos(canvas_, 0, 0);
-
-    // Scale canvas to fill full window using LVGL transform.
-    int scaleX = (windowWidth * 256) / width_; // LVGL uses 256 = 1x scale.
-    int scaleY = (windowHeight * 256) / height_;
-    lv_obj_set_style_transform_scale_x(canvas_, scaleX, 0);
-    lv_obj_set_style_transform_scale_y(canvas_, scaleY, 0);
-
-    // Make canvas non-clickable so events pass through to widgets on top.
-    lv_obj_clear_flag(canvas_, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(canvas_, LV_OBJ_FLAG_EVENT_BUBBLE);
-
     // Allocate two additional buffers for triple buffering.
-    buffers_[0] = canvasBuffer_; // Front buffer (already allocated).
+    buffers_[0] = frontBuffer_; // Front buffer (already allocated).
     buffers_[1] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
     buffers_[2] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
 
@@ -379,12 +360,6 @@ JuliaFractal::~JuliaFractal()
         renderThread_.join();
     }
 
-    // Delete canvas object first (this detaches it from parent).
-    if (canvas_) {
-        lv_obj_del(canvas_);
-        canvas_ = nullptr;
-    }
-
     // Free all three buffers.
     for (int i = 0; i < 3; i++) {
         if (buffers_[i]) {
@@ -393,8 +368,8 @@ JuliaFractal::~JuliaFractal()
         }
     }
 
-    // canvasBuffer_ is just an alias to buffers_[0], already freed.
-    canvasBuffer_ = nullptr;
+    // frontBuffer_ is just an alias to buffers_[0], already freed.
+    frontBuffer_ = nullptr;
 }
 
 int JuliaFractal::calculateJuliaPoint(int x, int y, double cReal, double cImag, int maxIter) const
@@ -438,7 +413,7 @@ uint32_t JuliaFractal::getPaletteColor(int iteration) const
 
 void JuliaFractal::render()
 {
-    if (!canvasBuffer_) return;
+    if (!frontBuffer_) return;
 
     // Render to buffer 0 (front buffer during init/resize).
     // Use iteration cache 0 to match buffer 0.
@@ -451,7 +426,7 @@ void JuliaFractal::render()
     }
 
     // Direct buffer access for fast rendering (ARGB8888 = 32 bits per pixel).
-    uint32_t* buffer = reinterpret_cast<uint32_t*>(canvasBuffer_);
+    uint32_t* buffer = reinterpret_cast<uint32_t*>(frontBuffer_);
 
     // Calculate Julia set and cache iteration counts.
     // render() only called during init/resize when thread stopped, safe to use member vars.
@@ -465,17 +440,14 @@ void JuliaFractal::render()
             buffer[idx] = getPaletteColor(iteration);
         }
     }
-
-    // Mark canvas as dirty to trigger redraw.
-    lv_obj_invalidate(canvas_);
 }
 
 void JuliaFractal::updateColors()
 {
-    if (!canvasBuffer_ || iterationCache_.empty()) return;
+    if (!frontBuffer_ || iterationCache_.empty()) return;
 
     // Direct buffer access for fast color update (ARGB8888 = 32 bits per pixel).
-    uint32_t* buffer = reinterpret_cast<uint32_t*>(canvasBuffer_);
+    uint32_t* buffer = reinterpret_cast<uint32_t*>(frontBuffer_);
 
     // Fast update - only recolor pixels using cached iteration counts.
     size_t totalPixels = width_ * height_;
@@ -483,12 +455,9 @@ void JuliaFractal::updateColors()
         int iteration = iterationCache_[idx];
         buffer[idx] = getPaletteColor(iteration);
     }
-
-    // Mark canvas as dirty to trigger redraw.
-    lv_obj_invalidate(canvas_);
 }
 
-void JuliaFractal::update()
+bool JuliaFractal::update()
 {
     // Track calls vs actual swaps for debugging.
     static int totalCalls = 0;
@@ -497,7 +466,7 @@ void JuliaFractal::update()
 
     // Check if background thread has a new frame ready.
     if (!readyBufferAvailable_.load(std::memory_order_acquire)) {
-        return; // Nothing to do, wait for next frame.
+        return false; // Nothing to do, wait for next frame.
     }
 
     actualSwaps++;
@@ -519,18 +488,12 @@ void JuliaFractal::update()
     int oldFrontIdx = frontBufferIdx_.load(std::memory_order_relaxed);
     int newFrontIdx = readyBufferIdx_.load(std::memory_order_relaxed);
 
-    // Update canvas to use the ready buffer (just pointer assignment, no copy).
-    canvasBuffer_ = buffers_[newFrontIdx];
-    lv_canvas_set_buffer(canvas_, canvasBuffer_, width_, height_, LV_COLOR_FORMAT_ARGB8888);
+    // Update front buffer pointer to the ready buffer (just pointer assignment, no copy).
+    frontBuffer_ = buffers_[newFrontIdx];
 
     // Swap indices: old front becomes new ready (for render thread to use).
     frontBufferIdx_.store(newFrontIdx, std::memory_order_release);
     readyBufferIdx_.store(oldFrontIdx, std::memory_order_release);
-
-    // Mark canvas as dirty (let lv_wayland_timer_handler() do the actual repaint).
-    // Do NOT call lv_refr_now() - it blocks for 15-26ms, killing performance.
-    // The simulation uses the same approach (just invalidate, repaint in timer handler).
-    lv_obj_invalidate(canvas_);
 
     // Signal that we consumed the ready buffer.
     readyBufferAvailable_.store(false, std::memory_order_release);
@@ -554,6 +517,8 @@ void JuliaFractal::update()
         // Call resize to apply the new resolution.
         resize(baseWindowWidth_, baseWindowHeight_);
     }
+
+    return true;
 }
 
 void JuliaFractal::resize(int newWidth, int newHeight)
@@ -610,23 +575,11 @@ void JuliaFractal::resize(int newWidth, int newHeight)
     size_t bufferSize = LV_CANVAS_BUF_SIZE(width_, height_, 32, 64);
     for (int i = 0; i < 3; i++) {
         buffers_[i] = static_cast<lv_color_t*>(lv_malloc(bufferSize));
-        if (!buffers_[i]) {
-            LOG_ERROR(Render, "Failed to allocate buffer {} during resize", i);
-            return;
-        }
+        DIRTSIM_ASSERT(buffers_[i], "Failed to allocate render buffer during resize");
     }
 
-    // Update canvasBuffer to point to buffer 0.
-    canvasBuffer_ = buffers_[0];
-
-    // Update canvas buffer at render resolution.
-    lv_canvas_set_buffer(canvas_, canvasBuffer_, width_, height_, LV_COLOR_FORMAT_ARGB8888);
-
-    // Update transform scale to fill new display size.
-    int scaleX = (newWidth * 256) / width_; // LVGL uses 256 = 1x scale.
-    int scaleY = (newHeight * 256) / height_;
-    lv_obj_set_style_transform_scale_x(canvas_, scaleX, 0);
-    lv_obj_set_style_transform_scale_y(canvas_, scaleY, 0);
+    // Update front buffer to point to buffer 0.
+    frontBuffer_ = buffers_[0];
 
     // Re-render at new size (uses buffer 0).
     render();

@@ -1,0 +1,55 @@
+name: Docker Cleanup
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  cleanup:
+    runs-on: self-hosted
+
+    steps:
+    - name: Report disk usage before cleanup
+      run: |
+        echo "### Disk Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        docker system df >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Remove dangling images
+      run: |
+        echo "Removing dangling images..."
+        docker image prune -f
+        echo "Done."
+
+    - name: Remove dirtsim-builder images older than 2 days
+      run: |
+        echo "Removing old dirtsim-builder images..."
+        for id in $(docker images dirtsim-builder --format "{{.ID}}"); do
+          created=$(docker inspect --format='{{.Created}}' "$id")
+          if [ $(date -d "$created" +%s) -lt $(date -d '2 days ago' +%s) ]; then
+            echo "Removing old image $id (created $created)"
+            docker rmi -f "$id" || true
+          fi
+        done
+
+    - name: Prune build cache
+      run: |
+        echo "Pruning Docker build cache..."
+        docker builder prune -f --filter until=48h
+        echo "Done."
+
+    - name: Report disk usage after cleanup
+      run: |
+        echo "### Disk Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Docker Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        docker system df >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY

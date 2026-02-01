@@ -1,11 +1,14 @@
 #include "CoreControls.h"
+#include "core/Assert.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/Reset.h"
 #include "server/api/WorldResize.h"
 #include "ui/UiComponentManager.h"
+#include "ui/controls/DuckStopButton.h"
 #include "ui/controls/IconRail.h"
 #include "ui/rendering/CellRenderer.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/state-machine/api/DrawDebugToggle.h"
 #include "ui/state-machine/api/PixelRendererToggle.h"
@@ -24,12 +27,14 @@ CoreControls::CoreControls(
     Network::WebSocketServiceInterface* wsService,
     EventSink& eventSink,
     CoreControlsState& sharedState,
-    UiComponentManager* uiManager)
+    UiComponentManager* uiManager,
+    FractalAnimator* fractalAnimator)
     : container_(container),
       wsService_(wsService),
       eventSink_(eventSink),
       state_(sharedState),
-      uiManager_(uiManager)
+      uiManager_(uiManager),
+      fractalAnimator_(fractalAnimator)
 {
     // Create view controller.
     viewController_ = std::make_unique<PanelViewController>(container_);
@@ -78,15 +83,15 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .callback(onResetClicked, this)
                        .buildOrLog();
 
-    // Stop button - red with stop icon (push). Returns to start menu.
-    stopButton_ = LVGLBuilder::actionButton(topRow)
-                      .text("Stop")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onStopClicked, this)
-                      .buildOrLog();
+    // Stop button - fractal background with duck (push). Returns to start menu.
+    DIRTSIM_ASSERT(fractalAnimator_, "CoreControls requires FractalAnimator for Stop button");
+    stopButton_ = std::make_unique<DuckStopButton>(topRow, *fractalAnimator_, 108, 108, "Stop");
+    if (stopButton_ && stopButton_->getButton()) {
+        lv_obj_add_event_cb(stopButton_->getButton(), onStopClicked, LV_EVENT_CLICKED, this);
+    }
+    else {
+        spdlog::error("CoreControls: Failed to create Stop button");
+    }
 
     // Debug toggle.
     debugSwitch_ = LVGLBuilder::actionButton(view)

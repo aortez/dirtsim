@@ -1,4 +1,4 @@
-# Training Home
+# Training
 
 ```plantuml
 @startsalt
@@ -10,9 +10,7 @@ scale 1.6
     [Genome]
     [Results]
   } | {
-    "Training Home"
     .
-    [Quit]
   }
 }
 @endsalt

@@ -34,6 +34,7 @@ class CellRenderer;
 class NeuralGridRenderer;
 class EventSink;
 class ExpandablePanel;
+class FractalAnimator;
 
 /**
  * @brief Coordinates the simulation playground view.
@@ -55,7 +56,8 @@ public:
     SimPlayground(
         UiComponentManager* uiManager,
         Network::WebSocketServiceInterface* wsService,
-        EventSink& eventSink);
+        EventSink& eventSink,
+        FractalAnimator* fractalAnimator);
     ~SimPlayground();
 
     /**
@@ -105,6 +107,7 @@ private:
     UiComponentManager* uiManager_;
     Network::WebSocketServiceInterface* wsService_;
     EventSink& eventSink_;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     // State for CoreControls that persists across panel switches.
     CoreControlsState coreControlsState_;
@@ -119,7 +122,7 @@ private:
     std::unique_ptr<PhysicsPanel> physicsPanel_;
 
     // Currently active panel.
-    IconId activePanel_ = IconId::COUNT;
+    IconId activePanel_ = IconId::NONE;
 
     // Current scenario ID (to detect changes).
     Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;

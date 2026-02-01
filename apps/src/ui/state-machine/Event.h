@@ -22,7 +22,9 @@
 #include "api/SimStop.h"
 #include "api/StateGet.h"
 #include "api/StatusGet.h"
+#include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
+#include "api/SynthKeyPress.h"
 #include "api/TrainingConfigShowEvolution.h"
 #include "api/TrainingQuit.h"
 #include "api/TrainingResultDiscard.h"
@@ -131,6 +133,13 @@ struct TrainButtonClickedEvent {
  */
 struct NextFractalClickedEvent {
     static constexpr const char* name() { return "NextFractalClickedEvent"; }
+};
+
+/**
+ * @brief User clicked Stop button to return to StartMenu.
+ */
+struct StopButtonClickedEvent {
+    static constexpr const char* name() { return "StopButtonClickedEvent"; }
 };
 
 /**
@@ -265,6 +274,7 @@ using Event = std::variant<
     QuitTrainingClickedEvent,
     TrainButtonClickedEvent,
     NextFractalClickedEvent,
+    StopButtonClickedEvent,
     ViewBestButtonClickedEvent,
     TrainingResultSaveClickedEvent,
     TrainingResultDiscardClickedEvent,
@@ -307,7 +317,9 @@ using Event = std::variant<
     DirtSim::UiApi::SimStop::Cwc,
     DirtSim::UiApi::StateGet::Cwc,
     DirtSim::UiApi::StatusGet::Cwc,
+    DirtSim::UiApi::StopButtonPress::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
+    DirtSim::UiApi::SynthKeyPress::Cwc,
     DirtSim::UiApi::TrainingConfigShowEvolution::Cwc,
     DirtSim::UiApi::TrainingQuit::Cwc,
     DirtSim::UiApi::TrainingResultDiscard::Cwc,
