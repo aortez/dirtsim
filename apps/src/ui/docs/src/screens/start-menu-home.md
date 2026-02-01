@@ -5,11 +5,10 @@
 scale 1.6
 {
   {+
-    [Home]
-    [Graphs]
-    [Scenes]
-    [Wireless]
-    [Settings]
+    [Home] | [Music]
+    [Training] | .
+    [Scenarios] | .
+    [Minimize] | .
   } | {
     {+
       [Quit]
@@ -30,6 +29,8 @@ scale 1.6
 
 StartMenu --> SimRunning : Start
 StartMenu --> Training : Training
+StartMenu --> Network : Network
+StartMenu --> Synth : Music
 StartMenu --> Exit : Quit
 
 SimRunning --> Paused : Pause
