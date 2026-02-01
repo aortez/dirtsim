@@ -512,7 +512,8 @@ void StateMachine::handleEvent(const Event& event)
                         .trainingModalVisible = currentState.isTrainingResultModalVisible(),
                     };
                 }
-                else if constexpr (std::is_same_v<T, State::Synth>) {
+                else if constexpr (
+                    std::is_same_v<T, State::Synth> || std::is_same_v<T, State::SynthConfig>) {
                     stateDetails = UiApi::StatusGet::SynthStateDetails{
                         .last_key_index = currentState.getLastKeyIndex(),
                         .last_key_is_black = currentState.getLastKeyIsBlack(),

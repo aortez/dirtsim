@@ -5,7 +5,7 @@
 scale 1.6
 {
   {+
-    [Home]
+    [Duck]
     [Music]
     [Minimize]
   } | {
@@ -30,6 +30,7 @@ Black keys overlay the white keys in a piano layout. Keys should be at least Act
 [*] --> Synth
 
 StartMenu --> Synth : Music
-Synth --> StartMenu : Stop
+Synth --> SynthConfig : Music
+Synth --> StartMenu : Duck
 @enduml
 ```

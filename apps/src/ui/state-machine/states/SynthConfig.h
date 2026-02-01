@@ -9,13 +9,7 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
-struct Synth {
-    Synth() = default;
-    Synth(const Synth&) = delete;
-    Synth& operator=(const Synth&) = delete;
-    Synth(Synth&&) = default;
-    Synth& operator=(Synth&&) = default;
-    ~Synth();
+struct SynthConfig {
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
 
@@ -31,13 +25,20 @@ struct Synth {
     Any onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm);
 
-    static constexpr const char* name() { return "Synth"; }
+    static constexpr const char* name() { return "SynthConfig"; }
     int getLastKeyIndex() const { return keyboard_.getLastKeyIndex(); }
     bool getLastKeyIsBlack() const { return keyboard_.getLastKeyIsBlack(); }
 
 private:
+    static void onVolumeChanged(lv_event_t* e);
+
+    void updateVolumeFromStepper();
+
     lv_obj_t* contentRoot_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
+    lv_obj_t* volumeStepper_ = nullptr;
+    StateMachine* stateMachine_ = nullptr;
+    int volumePercent_ = 50;
     SynthKeyboard keyboard_;
 };
 

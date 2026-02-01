@@ -124,6 +124,7 @@ Start Menu variants:
 - `start-menu-home`: StartMenu with the Core/Home panel open.
 - `network`: Network screen with the full NetworkDiagnosticsPanel.
 - `synth`: Synth screen with the keyboard row.
+- `synth-config`: Synth screen with the expanded volume panel.
 
 ## Stack real and markdown screenshots
 
@@ -144,7 +145,7 @@ DIRTSIM_SSH_HOST=dirtsim2.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
 DIRTSIM_SSH_CONTROL_PATH=~/.ssh/cm-%r@%h:%p
-DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,network,synth,training
+DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,network,synth,synth-config,training
 DOCS_SCREENSHOT_MIN_BYTES=2048
 ```
 

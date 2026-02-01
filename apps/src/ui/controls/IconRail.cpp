@@ -3,9 +3,11 @@
 #include "core/ColorNames.h"
 #include "core/IconFont.h"
 #include "core/LoggingChannels.h"
+#include "ui/controls/duck_img.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -27,6 +29,7 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSin
     // Define our icon configuration with FontAwesome icons and per-icon colors.
     // Order determines display order in the rail.
     iconConfigs_ = {
+        { IconId::DUCK, "", "Start Menu", 0xFFD166 },                          // Duck yellow.
         { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },           // Light blue.
         { IconId::MUSIC, IconFont::WAVE_SQUARE, "Synth", 0x00B4D8 },           // Sky blue.
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
@@ -113,6 +116,9 @@ void IconRail::createIcons(lv_obj_t* parent)
         // Get the inner button for event callback.
         lv_obj_t* btn = lv_obj_get_child(btnContainer, 0);
         if (btn) {
+            if (config.id == IconId::DUCK) {
+                configureDuckIcon(btn);
+            }
             // Store index in user data for callback.
             lv_obj_set_user_data(btn, this);
             lv_obj_add_event_cb(btn, onIconClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(i));
@@ -179,6 +185,30 @@ void IconRail::updateButtonVisuals()
 
         lv_obj_set_style_opa(innerButton, targetOpa, 0);
     }
+}
+
+void IconRail::configureDuckIcon(lv_obj_t* button)
+{
+    if (!button) {
+        return;
+    }
+
+    lv_obj_clean(button);
+    lv_obj_set_style_pad_all(button, 0, 0);
+
+    lv_obj_t* duckImage = lv_image_create(button);
+    lv_image_set_src(duckImage, &duck_img);
+
+    const int maxWidth = std::max(0, lv_obj_get_width(button) - 12);
+    const int maxHeight = std::max(0, lv_obj_get_height(button) - 12);
+    const float scaleX = static_cast<float>(maxWidth) / static_cast<float>(DUCK_IMG_WIDTH);
+    const float scaleY = static_cast<float>(maxHeight) / static_cast<float>(DUCK_IMG_HEIGHT);
+    float scale = std::min(scaleX, scaleY);
+    scale = std::max(0.35f, std::min(scale, 1.0f));
+
+    const int32_t lvScale = static_cast<int32_t>(scale * 256.0f);
+    lv_image_set_scale(duckImage, lvScale);
+    lv_obj_center(duckImage);
 }
 
 void IconRail::setTreeIconVisible(bool visible)

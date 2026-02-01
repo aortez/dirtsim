@@ -10,6 +10,7 @@
 #include "states/State.h"
 #include "ui/UiConfig.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -93,6 +94,9 @@ public:
 
     double getUiFps() const;
 
+    int getSynthVolumePercent() const { return synthVolumePercent_; }
+    void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
+
     // UI configuration (loaded from ui.json).
     std::unique_ptr<UiConfig> uiConfig;
 
@@ -116,6 +120,7 @@ private:
     bool hasLastServerAddress_ = false;
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
+    int synthVolumePercent_ = 50;
 
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();

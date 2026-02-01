@@ -386,6 +386,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::TREE:
         case IconId::MUSIC:
         case IconId::NETWORK:
+        case IconId::DUCK:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:

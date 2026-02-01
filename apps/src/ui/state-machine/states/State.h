@@ -12,6 +12,7 @@
 #include "Startup.h"
 #include "StateForward.h"
 #include "Synth.h"
+#include "SynthConfig.h"
 #include "Training.h"
 
 namespace DirtSim {
@@ -35,6 +36,7 @@ public:
         StartMenu,
         Startup,
         Synth,
+        SynthConfig,
         Training>;
 
     template <typename T>

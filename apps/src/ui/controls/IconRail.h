@@ -26,7 +26,8 @@ enum class IconId {
     GENOME_BROWSER = 7,
     TRAINING_RESULTS = 8,
     COUNT = 9,
-    MUSIC = 10
+    MUSIC = 10,
+    DUCK = 11
 };
 
 enum class RailMode {
@@ -153,6 +154,7 @@ private:
     void resetAutoShrinkTimer();
     void applyMode();
     void updateButtonVisuals();
+    void configureDuckIcon(lv_obj_t* button);
 
     // Static LVGL callbacks.
     static void onIconClicked(lv_event_t* e);

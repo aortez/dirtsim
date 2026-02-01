@@ -1706,6 +1706,45 @@ int main(int argc, char** argv)
             return 1;
         }
 
+        result = runScreen("synth-config", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::MUSIC);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto waitResult = waitForUiState({ "Synth" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto openConfig = selectIcon(Ui::IconId::MUSIC);
+            if (openConfig.isError()) {
+                return openConfig;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            waitResult = waitForUiState({ "SynthConfig" }, 8000);
+            if (waitResult.isError()) {
+                return Result<std::monostate, std::string>::error(waitResult.errorValue().message);
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("synth-config");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
         result = runScreen("training", [&]() {
             auto nav = navigateToTraining();
             if (nav.isError()) {

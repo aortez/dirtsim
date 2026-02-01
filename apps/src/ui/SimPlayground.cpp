@@ -63,7 +63,7 @@ void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
     // We don't need to do anything extra here for tree.
 
     // For other icons, show the appropriate panel content.
-    if (selectedId != IconId::COUNT && selectedId != IconId::TREE) {
+    if (selectedId != IconId::COUNT && selectedId != IconId::TREE && selectedId != IconId::DUCK) {
         showPanelContent(selectedId);
     }
     else if (selectedId == IconId::COUNT) {
@@ -110,6 +110,7 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::EVOLUTION:
         case IconId::MUSIC:
         case IconId::NETWORK:
+        case IconId::DUCK:
         case IconId::PLAY:
         case IconId::TREE:
         case IconId::GENOME_BROWSER:
