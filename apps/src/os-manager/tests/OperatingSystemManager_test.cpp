@@ -43,8 +43,10 @@ TEST(OperatingSystemManagerTest, BuildSystemStatusInternalReportsMetricsAndHealt
     EXPECT_GT(status.disk_total_bytes_root, 0u);
     EXPECT_FALSE(status.server_status.empty());
     EXPECT_FALSE(status.ui_status.empty());
+    EXPECT_FALSE(status.audio_status.empty());
     EXPECT_TRUE(isOkOrError(status.server_status));
     EXPECT_TRUE(isOkOrError(status.ui_status));
+    EXPECT_TRUE(isOkOrError(status.audio_status));
 }
 
 TEST(OperatingSystemManagerTest, RunServiceCommandReturnsOkayOnZeroExit)

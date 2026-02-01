@@ -14,6 +14,7 @@
 #include "lib/simulator_settings.h"
 #include "lib/simulator_util.h"
 
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -60,8 +61,19 @@ static void print_lvgl_version()
 static void playStartupBeep()
 {
     std::thread([]() {
-        constexpr int maxAttempts = 20;
+        constexpr int maxAttempts = 50;
         constexpr int retryDelayMs = 200;
+        constexpr int gapMs = 50;
+        struct StartupNote {
+            double frequencyHz = 440.0;
+            double durationMs = 200.0;
+        };
+        const std::array<StartupNote, 4> notes = {
+            StartupNote{ .frequencyHz = 262.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 330.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 392.0, .durationMs = 200.0 },
+            StartupNote{ .frequencyHz = 523.0, .durationMs = 300.0 },
+        };
         for (int attempt = 0; attempt < maxAttempts; ++attempt) {
             DirtSim::Network::WebSocketService audioClient;
             const auto connectResult = audioClient.connect("ws://localhost:6060", 250);
@@ -70,28 +82,37 @@ static void playStartupBeep()
                 continue;
             }
 
-            DirtSim::AudioApi::NoteOn::Command cmd{};
-            cmd.frequency_hz = 440.0;
-            cmd.amplitude = 0.05;
-            cmd.attack_ms = 5.0;
-            cmd.release_ms = 120.0;
-            cmd.duration_ms = 120.0;
-            cmd.waveform = DirtSim::Audio::Waveform::Sine;
+            for (size_t i = 0; i < notes.size(); ++i) {
+                DirtSim::AudioApi::NoteOn::Command cmd{};
+                cmd.frequency_hz = notes[i].frequencyHz;
+                cmd.amplitude = 0.15;
+                cmd.attack_ms = 5.0;
+                cmd.release_ms = 120.0;
+                cmd.duration_ms = notes[i].durationMs;
+                cmd.waveform = DirtSim::Audio::Waveform::Sine;
 
-            const auto sendResult =
-                audioClient.sendCommandAndGetResponse<DirtSim::AudioApi::NoteOn::Okay>(cmd, 500);
-            if (sendResult.isError()) {
-                SLOG_WARN("Audio startup beep failed: {}", sendResult.errorValue());
-                return;
-            }
-            if (sendResult.value().isError()) {
-                SLOG_WARN(
-                    "Audio startup beep rejected: {}", sendResult.value().errorValue().message);
+                const auto sendResult =
+                    audioClient.sendCommandAndGetResponse<DirtSim::AudioApi::NoteOn::Okay>(
+                        cmd, 500);
+                if (sendResult.isError()) {
+                    SLOG_WARN("Audio startup song failed: {}", sendResult.errorValue());
+                    return;
+                }
+                if (sendResult.value().isError()) {
+                    SLOG_WARN(
+                        "Audio startup song rejected: {}", sendResult.value().errorValue().message);
+                    return;
+                }
+
+                if (i + 1 < notes.size()) {
+                    std::this_thread::sleep_for(
+                        std::chrono::milliseconds(static_cast<int>(notes[i].durationMs) + gapMs));
+                }
             }
             return;
         }
 
-        SLOG_WARN("Audio startup beep skipped: audio service not ready");
+        SLOG_WARN("Audio startup song skipped: audio service not ready");
     }).detach();
 }
 

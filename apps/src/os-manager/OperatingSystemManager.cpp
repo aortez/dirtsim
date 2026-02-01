@@ -1,4 +1,5 @@
 #include "OperatingSystemManager.h"
+#include "audio/api/StatusGet.h"
 #include "cli/SubprocessManager.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -795,6 +796,32 @@ OperatingSystemManager::DiskStats OperatingSystemManager::getDiskStats(
     return stats;
 }
 
+std::string OperatingSystemManager::getAudioHealth(int timeoutMs)
+{
+    Network::WebSocketService client;
+    const std::string address = "ws://localhost:6060";
+    auto connectResult = client.connect(address, timeoutMs);
+    if (connectResult.isError()) {
+        return "Error: " + connectResult.errorValue();
+    }
+
+    AudioApi::StatusGet::Command statusCmd{};
+    auto statusResult =
+        client.sendCommandAndGetResponse<AudioApi::StatusGet::Okay>(statusCmd, timeoutMs);
+    client.disconnect();
+
+    if (statusResult.isError()) {
+        return "Error: " + statusResult.errorValue();
+    }
+
+    const auto& response = statusResult.value();
+    if (response.isError()) {
+        return "Error: " + response.errorValue().message;
+    }
+
+    return "OK";
+}
+
 std::string OperatingSystemManager::getServerHealth(int timeoutMs)
 {
     Network::WebSocketService client;
@@ -1012,6 +1039,7 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()
     status.disk_free_bytes_data = dataStats.free_bytes;
     status.disk_total_bytes_data = dataStats.total_bytes;
 
+    status.audio_status = getAudioHealth(1500);
     status.server_status = getServerHealth(1500);
     status.ui_status = getUiHealth(1500);
     status.lan_web_ui_enabled = webUiEnabled_;

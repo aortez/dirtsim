@@ -4,9 +4,9 @@
 #include "core/audio/SynthVoice.h"
 #include "server/api/ApiError.h"
 #include <SDL2/SDL.h>
+#include <array>
 #include <atomic>
 #include <cstdint>
-#include <mutex>
 #include <string>
 #include <variant>
 #include <vector>
@@ -54,6 +54,8 @@ public:
     AudioStatus getStatus() const;
 
 private:
+    static constexpr size_t kCommandQueueCapacity = 128;
+
     struct NoteOnCommand {
         double frequencyHz = 440.0;
         double amplitude = 0.5;
@@ -78,8 +80,10 @@ private:
 
     static void audioCallback(void* userdata, Uint8* stream, int len);
     void render(float* out, int frames, int channels);
+    bool enqueueCommand(const AudioCommand& command);
+    void drainCommands();
     void applyCommand(const AudioCommand& command);
-    void renderToStream(Uint8* stream, int frames, int channels);
+    void renderToStream(Uint8* stream, int frames, int channels, int len);
     bool isFloatOutput() const;
 
     void updateStatus();
@@ -93,8 +97,10 @@ private:
     std::atomic<uint32_t> nextNoteId_{ 1 };
     std::atomic<uint32_t> activeNoteId_{ 0 };
 
-    mutable std::mutex queueMutex_;
-    std::vector<AudioCommand> commandQueue_;
+    // Single-producer/single-consumer ring buffer for audio commands.
+    std::array<AudioCommand, kCommandQueueCapacity> commandQueue_{};
+    std::atomic<size_t> commandReadIndex_{ 0 };
+    std::atomic<size_t> commandWriteIndex_{ 0 };
 
     std::atomic<bool> active_{ false };
     std::atomic<double> currentFrequencyHz_{ 0.0 };
