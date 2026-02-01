@@ -32,8 +32,6 @@ private:
 
     void createButton(lv_obj_t* parent, const char* labelText);
     void updateDuckScale();
-
-    static void onButtonDeleted(lv_event_t* e);
 };
 
 } // namespace Ui

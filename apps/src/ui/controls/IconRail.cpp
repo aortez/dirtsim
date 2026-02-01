@@ -4,6 +4,7 @@
 #include "core/IconFont.h"
 #include "core/LoggingChannels.h"
 #include "ui/controls/duck_img.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -22,7 +23,8 @@ constexpr lv_opa_t DIMMED_ICON_OPA = LV_OPA_60;
 namespace DirtSim {
 namespace Ui {
 
-IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSink)
+IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* fractalAnimator)
+    : eventSink_(eventSink), fractalAnimator_(fractalAnimator)
 {
     iconFont_ = std::make_unique<IconFont>(ICON_SIZE - 36);
 
@@ -59,6 +61,11 @@ IconRail::~IconRail()
     if (autoShrinkTimer_) {
         lv_timer_delete(autoShrinkTimer_);
         autoShrinkTimer_ = nullptr;
+    }
+
+    if (fractalAnimator_ && duckViewId_ != 0) {
+        fractalAnimator_->detachView(duckViewId_);
+        duckViewId_ = 0;
     }
 
     // Delete overlay objects (they're children of the screen, not the container).
@@ -195,6 +202,22 @@ void IconRail::configureDuckIcon(lv_obj_t* button)
 
     lv_obj_clean(button);
     lv_obj_set_style_pad_all(button, 0, 0);
+
+    const int buttonWidth = lv_obj_get_width(button);
+    const int buttonHeight = lv_obj_get_height(button);
+    const int viewWidth = buttonWidth > 0 ? buttonWidth : ICON_SIZE;
+    const int viewHeight = buttonHeight > 0 ? buttonHeight : ICON_SIZE;
+
+    if (fractalAnimator_) {
+        if (duckViewId_ != 0) {
+            if (!fractalAnimator_->reattachView(duckViewId_, button, viewWidth, viewHeight)) {
+                duckViewId_ = fractalAnimator_->attachView(button, viewWidth, viewHeight);
+            }
+        }
+        else {
+            duckViewId_ = fractalAnimator_->attachView(button, viewWidth, viewHeight);
+        }
+    }
 
     lv_obj_t* duckImage = lv_image_create(button);
     lv_image_set_src(duckImage, &duck_img);

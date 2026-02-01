@@ -11,6 +11,7 @@ namespace Ui {
 
 // Forward declaration to avoid circular dependency with Event.h.
 class EventSink;
+class FractalAnimator;
 
 /**
  * @brief Identifiers for icons in an IconRail.
@@ -66,7 +67,7 @@ public:
      * @param parent Parent LVGL object to attach to.
      * @param eventSink Event sink for queueing icon selection events.
      */
-    IconRail(lv_obj_t* parent, EventSink* eventSink);
+    IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* fractalAnimator);
     ~IconRail();
 
     // Prevent copying.
@@ -131,6 +132,8 @@ private:
     std::vector<IconId>
         allowedIcons_; // Icons that are allowed to be shown (set by setVisibleIcons).
     EventSink* eventSink_ = nullptr;
+    FractalAnimator* fractalAnimator_ = nullptr;
+    uint64_t duckViewId_ = 0;
 
     // Mode support.
     RailMode mode_ = RailMode::Normal;

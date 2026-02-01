@@ -25,9 +25,6 @@ DuckStopButton::DuckStopButton(
 
 DuckStopButton::~DuckStopButton()
 {
-    if (button_ && lv_obj_is_valid(button_)) {
-        lv_obj_remove_event_cb(button_, onButtonDeleted);
-    }
     fractalAnimator_.parkIfParent(button_);
 }
 
@@ -85,7 +82,7 @@ void DuckStopButton::createButton(lv_obj_t* parent, const char* labelText)
 
     updateDuckScale();
 
-    lv_obj_add_event_cb(button_, onButtonDeleted, LV_EVENT_DELETE, &fractalAnimator_);
+    // FractalAnimator registers a delete callback on the canvas itself.
 }
 
 void DuckStopButton::updateDuckScale()
@@ -105,17 +102,6 @@ void DuckStopButton::updateDuckScale()
 
     const int32_t lvScale = static_cast<int32_t>(scale * 256.0f);
     lv_image_set_scale(duckImage_, lvScale);
-}
-
-void DuckStopButton::onButtonDeleted(lv_event_t* e)
-{
-    auto* fractalAnimator = static_cast<FractalAnimator*>(lv_event_get_user_data(e));
-    if (!fractalAnimator) {
-        return;
-    }
-
-    auto* button = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    fractalAnimator->parkIfParent(button);
 }
 
 } // namespace Ui

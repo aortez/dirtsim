@@ -245,6 +245,9 @@ void StartMenu::onDisplayResized(lv_event_t* e)
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
     if (!sm) return;
 
+    auto* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (!container) return;
+
     // Get new display dimensions.
     lv_disp_t* disp = lv_disp_get_default();
     int newWidth = lv_disp_get_hor_res(disp);
@@ -252,8 +255,8 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
     LOG_INFO(State, "Display resized to {}x{}, updating fractal", newWidth, newHeight);
 
-    // Resize the fractal to match.
-    sm->getFractalAnimator().resize(newWidth, newHeight);
+    // Update the fractal view to match.
+    sm->getFractalAnimator().attachTo(container, newWidth, newHeight);
 }
 
 void StartMenu::updateInfoPanelVisibility(RailMode mode)
