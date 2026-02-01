@@ -1610,7 +1610,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1629,7 +1629,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1653,7 +1653,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1682,7 +1682,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1711,7 +1711,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
@@ -1750,7 +1750,7 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
+            auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }

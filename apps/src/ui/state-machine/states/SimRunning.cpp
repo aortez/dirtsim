@@ -136,10 +136,10 @@ State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     // Show/hide expandable panel based on selection.
     if (auto* panel = uiManager->getExpandablePanel()) {
-        if (evt.selectedId != IconId::COUNT && evt.selectedId != IconId::TREE) {
+        if (evt.selectedId != IconId::NONE && evt.selectedId != IconId::TREE) {
             panel->show();
         }
-        else if (evt.selectedId == IconId::COUNT) {
+        else if (evt.selectedId == IconId::NONE) {
             panel->hide();
         }
     }

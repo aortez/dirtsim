@@ -63,10 +63,10 @@ void SimPlayground::onIconSelected(IconId selectedId, IconId previousId)
     // We don't need to do anything extra here for tree.
 
     // For other icons, show the appropriate panel content.
-    if (selectedId != IconId::COUNT && selectedId != IconId::TREE && selectedId != IconId::DUCK) {
+    if (selectedId != IconId::NONE && selectedId != IconId::TREE && selectedId != IconId::DUCK) {
         showPanelContent(selectedId);
     }
-    else if (selectedId == IconId::COUNT) {
+    else if (selectedId == IconId::NONE) {
         // No icon selected - clear panel.
         clearPanelContent();
 
@@ -115,7 +115,7 @@ void SimPlayground::showPanelContent(IconId panelId)
         case IconId::TREE:
         case IconId::GENOME_BROWSER:
         case IconId::TRAINING_RESULTS:
-        case IconId::COUNT:
+        case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in SimRunning state");
             return;
     }
@@ -141,7 +141,7 @@ void SimPlayground::clearPanelContent()
         panel->clearContent();
     }
 
-    activePanel_ = IconId::COUNT;
+    activePanel_ = IconId::NONE;
 }
 
 void SimPlayground::createCorePanel(lv_obj_t* container)

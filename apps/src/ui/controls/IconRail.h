@@ -16,16 +16,16 @@ class EventSink;
  * @brief Identifiers for icons in an IconRail.
  */
 enum class IconId {
-    CORE = 0,
-    EVOLUTION = 1,
-    NETWORK = 2,
-    PHYSICS = 3,
-    PLAY = 4,
-    SCENARIO = 5,
-    TREE = 6,
-    GENOME_BROWSER = 7,
-    TRAINING_RESULTS = 8,
-    COUNT = 9,
+    NONE = 0,
+    CORE = 1,
+    EVOLUTION = 2,
+    NETWORK = 3,
+    PHYSICS = 4,
+    PLAY = 5,
+    SCENARIO = 6,
+    TREE = 7,
+    GENOME_BROWSER = 8,
+    TRAINING_RESULTS = 9,
     MUSIC = 10,
     DUCK = 11
 };
@@ -86,7 +86,7 @@ public:
 
     /**
      * @brief Get the currently selected icon.
-     * @return Selected IconId, or IconId::COUNT if none selected.
+     * @return Selected IconId, or IconId::NONE if none selected.
      */
     IconId getSelectedIcon() const { return selectedId_; }
 
@@ -126,7 +126,7 @@ private:
     std::vector<IconConfig> iconConfigs_;
     std::unique_ptr<IconFont> iconFont_; // FontAwesome loaded at runtime.
 
-    IconId selectedId_ = IconId::COUNT;
+    IconId selectedId_ = IconId::NONE;
     bool treeIconVisible_ = false;
     std::vector<IconId>
         allowedIcons_; // Icons that are allowed to be shown (set by setVisibleIcons).

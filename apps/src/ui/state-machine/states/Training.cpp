@@ -351,7 +351,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     // Closing panel (deselected icon).
-    if (evt.selectedId == IconId::COUNT) {
+    if (evt.selectedId == IconId::NONE) {
         view_->clearPanelContent();
         panel->clearContent();
         panel->hide();
@@ -390,7 +390,7 @@ State::Any Training::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
-        case IconId::COUNT:
+        case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in Training state");
             break;
     }

@@ -103,7 +103,7 @@ State::Any Synth::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
         return SynthConfig{};
     }
 
-    if (evt.selectedId == IconId::COUNT) {
+    if (evt.selectedId == IconId::NONE) {
         return std::move(*this);
     }
 

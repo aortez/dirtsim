@@ -491,7 +491,7 @@ void StateMachine::handleEvent(const Event& event)
         // Get system health metrics.
         auto metrics = systemMetrics_.get();
 
-        Ui::IconId selectedIcon = Ui::IconId::COUNT;
+        Ui::IconId selectedIcon = Ui::IconId::NONE;
         bool panelVisible = false;
         if (auto* uiManager = getUiComponentManager()) {
             if (auto* iconRail = uiManager->getIconRail()) {
@@ -559,7 +559,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         bool selected = false;
-        if (cwc.command.id == IconId::COUNT) {
+        if (cwc.command.id == IconId::NONE) {
             iconRail->deselectAll();
         }
         else if (iconRail->isIconSelectable(cwc.command.id)) {

@@ -122,7 +122,7 @@ private:
     std::unique_ptr<PhysicsPanel> physicsPanel_;
 
     // Currently active panel.
-    IconId activePanel_ = IconId::COUNT;
+    IconId activePanel_ = IconId::NONE;
 
     // Current scenario ID (to detect changes).
     Scenario::EnumType currentScenarioId_ = Scenario::EnumType::Empty;

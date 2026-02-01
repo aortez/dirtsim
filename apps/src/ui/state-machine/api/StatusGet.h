@@ -54,7 +54,7 @@ struct Okay {
     // System health metrics.
     double cpu_percent = 0.0;
     double memory_percent = 0.0;
-    Ui::IconId selected_icon = Ui::IconId::COUNT;
+    Ui::IconId selected_icon = Ui::IconId::NONE;
     bool panel_visible = false;
     StateDetails state_details = NoStateDetails{};
 

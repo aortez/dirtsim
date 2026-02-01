@@ -104,7 +104,7 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         }
     }
 
-    if (evt.selectedId == IconId::COUNT || evt.selectedId == IconId::NETWORK) {
+    if (evt.selectedId == IconId::NONE || evt.selectedId == IconId::NETWORK) {
         return std::move(*this);
     }
 

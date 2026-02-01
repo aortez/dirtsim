@@ -127,7 +127,7 @@ State::Any SynthConfig::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm
         return StartMenu{};
     }
 
-    if (evt.selectedId == IconId::COUNT) {
+    if (evt.selectedId == IconId::NONE) {
         LOG_INFO(State, "Music icon deselected, closing SynthConfig");
         return Synth{};
     }

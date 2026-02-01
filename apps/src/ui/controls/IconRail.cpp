@@ -149,7 +149,7 @@ void IconRail::onIconClicked(lv_event_t* e)
 
     // Toggle behavior: clicking selected icon deselects it.
     if (clickedId == self->selectedId_) {
-        self->selectedId_ = IconId::COUNT;
+        self->selectedId_ = IconId::NONE;
     }
     else {
         self->selectedId_ = clickedId;
@@ -166,7 +166,7 @@ void IconRail::onIconClicked(lv_event_t* e)
 
 void IconRail::updateButtonVisuals()
 {
-    const bool hasSelection = (selectedId_ != IconId::COUNT);
+    const bool hasSelection = (selectedId_ != IconId::NONE);
 
     for (size_t i = 0; i < buttons_.size() && i < iconConfigs_.size(); i++) {
         lv_obj_t* btnContainer = buttons_[i];
@@ -227,7 +227,7 @@ void IconRail::setTreeIconVisible(bool visible)
                 // If tree was selected, deselect it.
                 if (selectedId_ == IconId::TREE) {
                     IconId previousId = selectedId_;
-                    selectedId_ = IconId::COUNT;
+                    selectedId_ = IconId::NONE;
                     updateButtonVisuals();
 
                     if (eventSink_) {
@@ -262,7 +262,7 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
 
             if (selectedId_ == id) {
                 const IconId previousId = selectedId_;
-                selectedId_ = IconId::COUNT;
+                selectedId_ = IconId::NONE;
                 updateButtonVisuals();
                 if (eventSink_) {
                     eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -298,7 +298,7 @@ void IconRail::selectIcon(IconId id)
 
 bool IconRail::isIconSelectable(IconId id) const
 {
-    if (id == IconId::COUNT) {
+    if (id == IconId::NONE) {
         return false;
     }
 
@@ -320,10 +320,10 @@ bool IconRail::isIconSelectable(IconId id) const
 
 void IconRail::deselectAll()
 {
-    if (selectedId_ == IconId::COUNT) return;
+    if (selectedId_ == IconId::NONE) return;
 
     IconId previousId = selectedId_;
-    selectedId_ = IconId::COUNT;
+    selectedId_ = IconId::NONE;
     updateButtonVisuals();
     resetAutoShrinkTimer();
 
@@ -534,7 +534,7 @@ void IconRail::setMode(RailMode mode)
     mode_ = mode;
 
     // When minimizing, deselect any selected icon to close the expandable panel.
-    if (mode == RailMode::Minimized && selectedId_ != IconId::COUNT) {
+    if (mode == RailMode::Minimized && selectedId_ != IconId::NONE) {
         deselectAll();
     }
 
@@ -596,7 +596,7 @@ void IconRail::resetAutoShrinkTimer()
     if (!autoShrinkTimer_) return;
 
     // Only run timer when rail is expanded and no icon is selected.
-    if (mode_ == RailMode::Normal && selectedId_ == IconId::COUNT) {
+    if (mode_ == RailMode::Normal && selectedId_ == IconId::NONE) {
         lv_timer_reset(autoShrinkTimer_);
         lv_timer_resume(autoShrinkTimer_);
     }
@@ -611,7 +611,7 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     if (!self) return;
 
     // Only request shrink if no icon is selected and currently expanded.
-    if (self->selectedId_ == IconId::COUNT && self->mode_ == RailMode::Normal) {
+    if (self->selectedId_ == IconId::NONE && self->mode_ == RailMode::Normal) {
         LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
         // Queue event for state machine to handle (don't touch LVGL objects from timer).
         if (self->eventSink_) {
