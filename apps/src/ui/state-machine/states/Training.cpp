@@ -190,7 +190,7 @@ void Training::onEnter(StateMachine& sm)
     iconRail->setLayout(RailLayout::SingleColumn);
     iconRail->setVisibleIcons(
         { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
-    iconRail->deselectAll(); // Start fresh, no panel open.
+    iconRail->selectIcon(IconId::EVOLUTION);
 }
 
 void Training::onExit(StateMachine& sm)

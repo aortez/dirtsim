@@ -1706,9 +1706,9 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
-            auto select = selectIcon(Ui::IconId::CORE);
-            if (select.isError()) {
-                return select;
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             return captureScreen("training");
