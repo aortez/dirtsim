@@ -116,7 +116,7 @@ function runSsh(remoteTarget, command, timeoutSec, identityPath) {
   const stdout = result.stdout || '';
   const stderr = result.stderr || '';
   const status = typeof result.status === 'number' ? result.status : 1;
-  return { status, output: `${stdout}${stderr}` };
+  return { status, stdout, stderr, output: `${stdout}${stderr}` };
 }
 
 async function waitForSsh(remoteTarget, timeoutSec, waitSec, identityPath) {
@@ -124,7 +124,7 @@ async function waitForSsh(remoteTarget, timeoutSec, waitSec, identityPath) {
   const timeoutMs = waitSec * 1000;
   while (Date.now() - startTime < timeoutMs) {
     const result = runSsh(remoteTarget, 'echo ok', timeoutSec, identityPath);
-    if (result.status === 0 && result.output.trim() === 'ok') {
+    if (result.status === 0 && result.stdout.trim() === 'ok') {
       return true;
     }
     await new Promise(resolve => setTimeout(resolve, 2000));
