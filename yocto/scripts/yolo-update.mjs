@@ -145,6 +145,20 @@ function buildScpOptions() {
   return buildSshOptions();
 }
 
+function shouldSkipPing() {
+  return process.env.DIRTSIM_SKIP_PING === '1' || process.env.DIRTSIM_SKIP_PING === 'true';
+}
+
+function shouldSkipRemoteCheck() {
+  return process.env.DIRTSIM_SKIP_REMOTE_CHECK === '1'
+    || process.env.DIRTSIM_SKIP_REMOTE_CHECK === 'true';
+}
+
+function canSsh(remoteTarget) {
+  const output = runCapture(`ssh ${buildSshOptions()} ${remoteTarget} "echo ok"`);
+  return output === 'ok';
+}
+
 /**
  * Clean the image sstate to force a rebuild.
  */
@@ -778,12 +792,23 @@ async function main() {
   skull();
 
   // Pre-flight checks.
-  if (!checkRemoteReachable(remoteHost, remoteTarget)) {
+  if (shouldSkipRemoteCheck()) {
+    warn('Skipping remote reachability checks (DIRTSIM_SKIP_REMOTE_CHECK set).');
+  } else if (shouldSkipPing()) {
+    info('Skipping ping check; verifying SSH only...');
+    if (!canSsh(remoteTarget)) {
+      error(`Cannot reach ${remoteHost} via SSH`);
+      error('Make sure the Pi is running and accessible via SSH.');
+      process.exit(1);
+    }
+    success(`${remoteHost} is reachable via SSH`);
+  } else if (!checkRemoteReachable(remoteHost, remoteTarget)) {
     error(`Cannot reach ${remoteHost}`);
     error('Make sure the Pi is running and accessible via SSH.');
     process.exit(1);
+  } else {
+    success(`${remoteHost} is reachable`);
   }
-  success(`${remoteHost} is reachable`);
 
   // Detect boot device.
   const bootDevice = getRemoteBootDevice(remoteTarget, REMOTE_DEVICE);

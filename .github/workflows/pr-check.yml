@@ -186,6 +186,7 @@ jobs:
         CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
         DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
         DIRTSIM_SSH_KEY_PATH: ${{ env.DIRTSIM_SSH_KEY_PATH }}
+        DIRTSIM_SKIP_PING: "1"
       run: npm run yolo -- --docker --target dirtsim.local --hold-my-mead
 
     - name: Run functional tests on remote unit
