@@ -494,6 +494,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
     src/ui/rendering/FramebufferCapture.cpp
+    src/ui/rendering/FractalAnimator.cpp
     src/ui/rendering/JuliaFractal.cpp
     src/ui/rendering/NeuralGridRenderer.cpp
     src/ui/rendering/RenderMode.cpp
@@ -503,6 +504,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/BrowserPanel.cpp
     src/ui/controls/ControlPanel.cpp
     src/ui/controls/CoreControls.cpp
+    src/ui/controls/DuckStopButton.cpp
     src/ui/controls/EvolutionConfigPanel.cpp
     src/ui/controls/EvolutionControls.cpp
     src/ui/controls/ExpandablePanel.cpp

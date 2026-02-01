@@ -10,9 +10,6 @@
 namespace DirtSim {
 namespace Ui {
 
-// Forward declaration.
-class JuliaFractal;
-
 namespace State {
 
 /**
@@ -48,7 +45,6 @@ private:
     void updateInfoPanelVisibility(RailMode mode);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
-    JuliaFractal* fractal_ = nullptr;                  // Fractal background animation.
     std::unique_ptr<SparklingDuckButton> startButton_; // Animated start button.
     std::unique_ptr<StartMenuCorePanel> corePanel_;    // Core controls panel (quit, etc.).
     lv_obj_t* touchDebugLabel_ = nullptr;              // Touch coordinate debug display.

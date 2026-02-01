@@ -1,4 +1,7 @@
 #include "EvolutionControls.h"
+#include "core/Assert.h"
+#include "ui/controls/DuckStopButton.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -8,9 +11,14 @@ namespace DirtSim {
 namespace Ui {
 
 EvolutionControls::EvolutionControls(
-    lv_obj_t* container, EventSink& eventSink, bool evolutionStarted, TrainingSpec& trainingSpec)
+    lv_obj_t* container,
+    EventSink& eventSink,
+    bool evolutionStarted,
+    TrainingSpec& trainingSpec,
+    FractalAnimator* fractalAnimator)
     : container_(container),
       eventSink_(eventSink),
+      fractalAnimator_(fractalAnimator),
       evolutionStarted_(evolutionStarted),
       trainingSpec_(trainingSpec)
 {
@@ -39,14 +47,14 @@ void EvolutionControls::createMainView(lv_obj_t* view)
     lv_obj_set_style_pad_bottom(titleLabel, 12, 0);
 
     // Quit button - always visible, returns to start menu.
-    quitButton_ = LVGLBuilder::actionButton(view)
-                      .text("Quit")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onQuitClicked, this)
-                      .buildOrLog();
+    DIRTSIM_ASSERT(fractalAnimator_, "EvolutionControls requires FractalAnimator for Quit button");
+    quitButton_ = std::make_unique<DuckStopButton>(view, *fractalAnimator_, 108, 108, "Quit");
+    if (quitButton_ && quitButton_->getButton()) {
+        lv_obj_add_event_cb(quitButton_->getButton(), onQuitClicked, LV_EVENT_CLICKED, this);
+    }
+    else {
+        spdlog::error("EvolutionControls: Failed to create Quit button");
+    }
 
     // View Best button - only visible when evolution is complete.
     viewBestButton_ = LVGLBuilder::actionButton(view)

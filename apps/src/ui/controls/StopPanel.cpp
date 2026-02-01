@@ -1,14 +1,15 @@
 #include "StopPanel.h"
 #include "core/LoggingChannels.h"
+#include "ui/controls/DuckStopButton.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
-#include "ui/ui_builders/LVGLBuilder.h"
 
 namespace DirtSim {
 namespace Ui {
 
-StopPanel::StopPanel(lv_obj_t* container, EventSink& eventSink)
-    : container_(container), eventSink_(eventSink)
+StopPanel::StopPanel(lv_obj_t* container, EventSink& eventSink, FractalAnimator& fractalAnimator)
+    : container_(container), eventSink_(eventSink), fractalAnimator_(fractalAnimator)
 {
     createUI();
     LOG_INFO(Controls, "StopPanel created");
@@ -29,18 +30,13 @@ void StopPanel::createUI()
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
 
-    stopButton_ = LVGLBuilder::actionButton(row)
-                      .text("Stop")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xFF8800)
-                      .callback(onStopClicked, this)
-                      .buildOrLog();
-
-    if (!stopButton_) {
+    stopButton_ = std::make_unique<DuckStopButton>(row, fractalAnimator_, 108, 108, "Stop");
+    if (!stopButton_ || !stopButton_->getButton()) {
         LOG_ERROR(Controls, "Failed to create Stop button");
+        return;
     }
+
+    lv_obj_add_event_cb(stopButton_->getButton(), onStopClicked, LV_EVENT_CLICKED, this);
 }
 
 void StopPanel::onStopClicked(lv_event_t* e)

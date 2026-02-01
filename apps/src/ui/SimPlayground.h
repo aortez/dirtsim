@@ -34,6 +34,7 @@ class CellRenderer;
 class NeuralGridRenderer;
 class EventSink;
 class ExpandablePanel;
+class FractalAnimator;
 
 /**
  * @brief Coordinates the simulation playground view.
@@ -55,7 +56,8 @@ public:
     SimPlayground(
         UiComponentManager* uiManager,
         Network::WebSocketServiceInterface* wsService,
-        EventSink& eventSink);
+        EventSink& eventSink,
+        FractalAnimator* fractalAnimator);
     ~SimPlayground();
 
     /**
@@ -105,6 +107,7 @@ private:
     UiComponentManager* uiManager_;
     Network::WebSocketServiceInterface* wsService_;
     EventSink& eventSink_;
+    FractalAnimator* fractalAnimator_ = nullptr;
 
     // State for CoreControls that persists across panel switches.
     CoreControlsState coreControlsState_;

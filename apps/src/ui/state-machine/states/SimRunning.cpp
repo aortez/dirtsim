@@ -83,7 +83,8 @@ void SimRunning::onEnter(StateMachine& sm)
         auto* uiManager = sm.getUiComponentManager();
         uiManager->getSimulationContainer();
 
-        playground_ = std::make_unique<SimPlayground>(uiManager, &sm.getWebSocketService(), sm);
+        playground_ = std::make_unique<SimPlayground>(
+            uiManager, &sm.getWebSocketService(), sm, &sm.getFractalAnimator());
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -99,15 +100,15 @@ void SimRunning::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting SimRunning state");
 
-    // Clear panel content before playground is destroyed.
+    playground_.reset();
+
+    // Clear panel content after playground cleanup.
     if (auto* uiManager = sm.getUiComponentManager()) {
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
         }
     }
-
-    playground_.reset();
 }
 
 State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)

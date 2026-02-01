@@ -183,7 +183,8 @@ void Training::onEnter(StateMachine& sm)
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
-    view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, streamIntervalMs_);
+    view_ = std::make_unique<TrainingView>(
+        uiManager, sm, wsService, streamIntervalMs_, &sm.getFractalAnimator());
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -197,15 +198,15 @@ void Training::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting Training state");
 
-    // Clear panel content before view is destroyed.
+    view_.reset();
+
+    // Clear panel content after view cleanup.
     if (auto* uiManager = sm.getUiComponentManager()) {
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->hide();
         }
     }
-
-    view_.reset();
 }
 
 void Training::updateAnimations()

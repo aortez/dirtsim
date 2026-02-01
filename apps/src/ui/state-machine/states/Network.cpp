@@ -87,7 +87,8 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
             panel->resetWidth();
-            homePanel_ = std::make_unique<StopPanel>(panel->getContentArea(), sm);
+            homePanel_ =
+                std::make_unique<StopPanel>(panel->getContentArea(), sm, sm.getFractalAnimator());
             panel->show();
         }
         return std::move(*this);
@@ -95,12 +96,12 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     if (evt.previousId == IconId::CORE) {
         LOG_INFO(State, "Home icon deselected, hiding Stop panel");
+        homePanel_.reset();
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->hide();
             panel->clearContent();
             panel->resetWidth();
         }
-        homePanel_.reset();
     }
 
     if (evt.selectedId == IconId::COUNT || evt.selectedId == IconId::NETWORK) {

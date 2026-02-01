@@ -1,24 +1,28 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
+#include <memory>
 
 namespace DirtSim {
 namespace Ui {
 
 class EventSink;
+class FractalAnimator;
+class DuckStopButton;
 
 /**
  * @brief Simple home panel with a Stop button.
  */
 class StopPanel {
 public:
-    StopPanel(lv_obj_t* container, EventSink& eventSink);
+    StopPanel(lv_obj_t* container, EventSink& eventSink, FractalAnimator& fractalAnimator);
     ~StopPanel();
 
 private:
     lv_obj_t* container_;
     EventSink& eventSink_;
-    lv_obj_t* stopButton_ = nullptr;
+    FractalAnimator& fractalAnimator_;
+    std::unique_ptr<DuckStopButton> stopButton_;
 
     void createUI();
 

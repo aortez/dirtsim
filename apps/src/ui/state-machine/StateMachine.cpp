@@ -24,6 +24,7 @@
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
 #include <rtc/rtc.hpp>
@@ -36,6 +37,7 @@ StateMachine::StateMachine(TestMode) : display(nullptr)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
+    fractalAnimator_ = std::make_unique<FractalAnimator>();
     LOG_INFO(State, "StateMachine created in test mode");
 }
 
@@ -43,6 +45,7 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
+    fractalAnimator_ = std::make_unique<FractalAnimator>();
 
     // Create unified WebSocketService for both client (to server) and server (for CLI) roles.
     wsService_ = std::make_unique<Network::WebSocketService>();
@@ -79,6 +82,12 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     peerAd_->setServiceName(peerServiceName_);
     peerAd_->setPort(wsPort_);
     peerAd_->setRole(Server::PeerRole::Ui);
+}
+
+FractalAnimator& StateMachine::getFractalAnimator()
+{
+    DIRTSIM_ASSERT(fractalAnimator_, "FractalAnimator not initialized");
+    return *fractalAnimator_.get();
 }
 
 void StateMachine::setupWebSocketService()
@@ -341,6 +350,10 @@ void StateMachine::updateAnimations()
         LOG_INFO(State, "Main loop FPS = {:.1f}", loopFps);
         callCount = 0;
         lastLogTime = currentTime;
+    }
+
+    if (fractalAnimator_) {
+        fractalAnimator_->update();
     }
 
     // Delegate to current state (if it has animation updates).

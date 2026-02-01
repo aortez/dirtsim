@@ -26,8 +26,12 @@ namespace Ui {
 SimPlayground::SimPlayground(
     UiComponentManager* uiManager,
     Network::WebSocketServiceInterface* wsService,
-    EventSink& eventSink)
-    : uiManager_(uiManager), wsService_(wsService), eventSink_(eventSink)
+    EventSink& eventSink,
+    FractalAnimator* fractalAnimator)
+    : uiManager_(uiManager),
+      wsService_(wsService),
+      eventSink_(eventSink),
+      fractalAnimator_(fractalAnimator)
 {
     renderer_ = std::make_unique<CellRenderer>();
     neuralGridRenderer_ = std::make_unique<NeuralGridRenderer>();
@@ -144,7 +148,7 @@ void SimPlayground::createCorePanel(lv_obj_t* container)
     LOG_DEBUG(Controls, "Creating Core panel");
 
     coreControls_ = std::make_unique<CoreControls>(
-        container, wsService_, eventSink_, coreControlsState_, uiManager_);
+        container, wsService_, eventSink_, coreControlsState_, uiManager_, fractalAnimator_);
 }
 
 void SimPlayground::createScenarioPanel(lv_obj_t* container)

@@ -32,6 +32,7 @@ namespace Ui {
 class RemoteInputDevice;
 class UiComponentManager;
 class WebRtcStreamer;
+class FractalAnimator;
 } // namespace Ui
 } // namespace DirtSim
 
@@ -72,6 +73,7 @@ public:
     std::unique_ptr<RemoteInputDevice> remoteInputDevice_;
 
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
+    std::unique_ptr<FractalAnimator> fractalAnimator_;
 
     Network::WebSocketServiceInterface& getWebSocketService();
     Network::WebSocketService* getConcreteWebSocketService();
@@ -84,6 +86,8 @@ public:
     RemoteInputDevice* getRemoteInputDevice() { return remoteInputDevice_.get(); }
 
     WebRtcStreamer* getWebRtcStreamer() { return webRtcStreamer_.get(); }
+
+    FractalAnimator& getFractalAnimator();
 
     Timers& getTimers() { return timers_; }
 
