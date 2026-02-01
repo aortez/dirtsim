@@ -178,6 +178,19 @@ jobs:
         } >> "${HOME}/.ssh/config"
         chmod 600 "${HOME}/.ssh/config"
 
+    - name: SSH diagnostics
+      run: |
+        echo "HOME=${HOME}"
+        echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-}"
+        echo "SSH_AGENT_PID=${SSH_AGENT_PID:-}"
+        ls -la "${HOME}/.ssh" || true
+        echo "--- ssh -G dirtsim.local ---"
+        ssh -G dirtsim.local 2>/dev/null | rg -i "identityfile|user|hostname|port" || true
+        echo "--- ssh test (tail) ---"
+        set +e
+        ssh -v -o BatchMode=yes -o ConnectTimeout=5 dirtsim@dirtsim.local "echo ok" 2>&1 | tail -n 200
+        exit 0
+
     - name: Deploy Yocto image to remote unit
       working-directory: yocto
       env:
