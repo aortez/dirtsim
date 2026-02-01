@@ -1,4 +1,4 @@
-import { mkdirSync, realpathSync } from 'fs';
+import { existsSync, mkdirSync, realpathSync } from 'fs';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -11,6 +11,7 @@ const PROJECT_ROOT = realpathSync(dirname(YOCTO_DIR));
 const DOCKER_DIR = join(PROJECT_ROOT, 'docker');
 const DOCKER_HOME = join(YOCTO_DIR, '.docker-home');
 const DEFAULT_CACHE_ROOT = join(dirname(PROJECT_ROOT), 'yocto-cache');
+const LINUX1_CACHE_ROOT = '/home/data/linux1/yocto-cache';
 
 const IMAGE_NAME = 'dirtsim-builder';
 
@@ -77,7 +78,10 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
   if (process.env.SSTATE_DIR && !env.SSTATE_DIR) {
     env.SSTATE_DIR = process.env.SSTATE_DIR;
   }
-  const cacheRoot = options.cacheRoot || process.env.DIRTSIM_CACHE_ROOT || DEFAULT_CACHE_ROOT;
+  const cacheRoot =
+    options.cacheRoot
+    || process.env.DIRTSIM_CACHE_ROOT
+    || (existsSync('/home/data/linux1') ? LINUX1_CACHE_ROOT : DEFAULT_CACHE_ROOT);
   const extraArgs = options.extraArgs || [];
   const interactive = Boolean(options.interactive);
   const tty = Boolean(options.tty);
