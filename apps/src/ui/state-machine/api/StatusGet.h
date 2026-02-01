@@ -2,11 +2,14 @@
 
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
+#include "core/VariantSerializer.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
 #include "ui/controls/IconRail.h"
 #include <nlohmann/json.hpp>
 #include <string>
+#include <variant>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 namespace UiApi {
@@ -21,6 +24,18 @@ struct Command {
     static Command fromJson(const nlohmann::json& j);
 };
 
+struct NoStateDetails {
+    using serialize = zpp::bits::members<0>;
+};
+
+struct TrainingStateDetails {
+    bool trainingModalVisible = false;
+
+    using serialize = zpp::bits::members<1>;
+};
+
+using StateDetails = std::variant<NoStateDetails, TrainingStateDetails>;
+
 struct Okay {
     std::string state; // UI state machine current state.
     bool connected_to_server = false;
@@ -34,6 +49,7 @@ struct Okay {
     double memory_percent = 0.0;
     Ui::IconId selected_icon = Ui::IconId::COUNT;
     bool panel_visible = false;
+    StateDetails state_details = NoStateDetails{};
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

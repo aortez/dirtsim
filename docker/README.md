@@ -35,6 +35,7 @@ npm run docker-build
 - `make test` - Run unit tests inside Docker container
 - `make format` - Format code inside Docker container
 - `make format-check` - Check code formatting (CI-friendly)
+- `make docs-screenshots` - Capture UI docs screenshots inside Docker container
 - `make shell` - Start interactive bash shell in container
 - `make clean-image` - Remove Docker image
 

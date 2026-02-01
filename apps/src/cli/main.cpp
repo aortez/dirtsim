@@ -8,16 +8,29 @@
 #include "TrainRunner.h"
 #include "core/LoggingChannels.h"
 #include "core/ReflectSerializer.h"
+#include "core/Result.h"
 #include "core/input/GamepadManager.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/network/WifiManager.h"
+#include "server/api/ApiError.h"
 #include "server/api/EventSubscribe.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
+#include "server/api/TrainingResultDiscard.h"
+#include "ui/controls/IconRail.h"
+#include "ui/state-machine/api/IconRailShowIcons.h"
+#include "ui/state-machine/api/IconSelect.h"
+#include "ui/state-machine/api/MouseMove.h"
+#include "ui/state-machine/api/SimStop.h"
+#include "ui/state-machine/api/StateGet.h"
+#include "ui/state-machine/api/StatusGet.h"
+#include "ui/state-machine/api/TrainingConfigShowEvolution.h"
+#include "ui/state-machine/api/TrainingQuit.h"
+#include "ui/state-machine/api/TrainingResultDiscard.h"
 #include <algorithm>
 #include <args.hxx>
 #include <atomic>
@@ -27,16 +40,20 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <iostream>
+#include <limits>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
+#include <sstream>
 #include <string>
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include <variant>
 
 using namespace DirtSim;
 
@@ -74,6 +91,113 @@ std::vector<uint8_t> base64Decode(const std::string& encoded)
     }
 
     return decoded;
+}
+
+Result<std::vector<uint8_t>, std::string> grabScreenshotPng(
+    Network::WebSocketService& client, double scale, int timeoutMs, bool binaryPayload)
+{
+    UiApi::ScreenGrab::Command cmd{
+        .scale = scale,
+        .format = UiApi::ScreenGrab::Format::Png,
+        .quality = 23,
+        .binaryPayload = binaryPayload,
+    };
+
+    auto result = client.sendCommandAndGetResponse(cmd, timeoutMs);
+    if (result.isError()) {
+        return Result<std::vector<uint8_t>, std::string>::error(result.errorValue());
+    }
+
+    auto okay = result.value();
+    if (okay.format != UiApi::ScreenGrab::Format::Png) {
+        return Result<std::vector<uint8_t>, std::string>::error("Unexpected format in response");
+    }
+
+    std::vector<uint8_t> pngData;
+    if (binaryPayload) {
+        pngData.assign(okay.data.begin(), okay.data.end());
+    }
+    else {
+        pngData = base64Decode(okay.data);
+    }
+
+    if (pngData.empty()) {
+        return Result<std::vector<uint8_t>, std::string>::error("Failed to decode screenshot data");
+    }
+
+    return Result<std::vector<uint8_t>, std::string>::okay(std::move(pngData));
+}
+
+std::string getEnvOrDefault(const char* name, const std::string& fallback)
+{
+    const char* value = std::getenv(name);
+    if (!value || value[0] == '\0') {
+        return fallback;
+    }
+    return std::string(value);
+}
+
+int getEnvIntOrDefault(const char* name, int fallback)
+{
+    const char* value = std::getenv(name);
+    if (!value || value[0] == '\0') {
+        return fallback;
+    }
+    char* end = nullptr;
+    const long parsed = std::strtol(value, &end, 10);
+    if (end == value || parsed < std::numeric_limits<int>::min()
+        || parsed > std::numeric_limits<int>::max()) {
+        return fallback;
+    }
+    return static_cast<int>(parsed);
+}
+
+std::vector<std::string> splitCommaList(const std::string& value)
+{
+    std::vector<std::string> items;
+    std::stringstream stream(value);
+    std::string item;
+    while (std::getline(stream, item, ',')) {
+        const auto first = item.find_first_not_of(" \t");
+        if (first == std::string::npos) {
+            continue;
+        }
+        const auto last = item.find_last_not_of(" \t");
+        items.emplace_back(item.substr(first, last - first + 1));
+    }
+    return items;
+}
+
+template <typename CommandT, typename OkayT>
+Result<OkayT, std::string> sendBinaryCommand(
+    Network::WebSocketService& client, const CommandT& cmd, int timeoutMs)
+{
+    const uint64_t id = client.allocateRequestId();
+    auto envelope = Network::make_command_envelope(id, cmd);
+    auto response = client.sendBinaryAndReceive(envelope, timeoutMs);
+    if (response.isError()) {
+        return Result<OkayT, std::string>::error(response.errorValue());
+    }
+    try {
+        auto result = Network::extract_result<OkayT, ApiError>(response.value());
+        if (result.isError()) {
+            return Result<OkayT, std::string>::error(result.errorValue().message);
+        }
+        return Result<OkayT, std::string>::okay(result.value());
+    }
+    catch (const std::exception& e) {
+        return Result<OkayT, std::string>::error(
+            std::string("Failed to deserialize response: ") + e.what());
+    }
+}
+
+bool isTrainingModalVisible(const UiApi::StatusGet::Okay& status)
+{
+    if (auto* details =
+            std::get_if<UiApi::StatusGet::TrainingStateDetails>(&status.state_details)) {
+        return details->trainingModalVisible;
+    }
+    return false;
 }
 
 // Helper function to sort timer_stats by total_ms in descending order.
@@ -117,6 +241,7 @@ struct CliCommandInfo {
 static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "benchmark", "Run performance benchmark (launches server)" },
     { "cleanup", "Clean up rogue dirtsim processes" },
+    { "docs-screenshots", "Capture UI docs screenshots to a directory" },
     { "functional-test", "Run functional tests against a running UI/server" },
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
@@ -175,6 +300,7 @@ std::string getGlobalHelp()
     std::string help = "Available targets:\n";
     help += "  benchmark\n";
     help += "  cleanup\n";
+    help += "  docs-screenshots\n";
     help += "  functional-test\n";
     help += "  gamepad-test\n";
     help += "  genome-db-benchmark\n";
@@ -303,6 +429,7 @@ std::string getExamplesHelp()
     examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     examples += "  cli run-all\n";
     examples += "  cli network status\n";
+    examples += "  cli docs-screenshots /tmp/dirtsim-ui-docs\n";
 
     // Screenshot examples.
     examples += "\nScreenshot:\n";
@@ -973,6 +1100,7 @@ int main(int argc, char** argv)
 
         // Connect to UI.
         Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
         auto connectResult = client.connect(uiAddress, timeoutMs);
         if (connectResult.isError()) {
             std::cerr << "Failed to connect to UI at " << uiAddress << ": "
@@ -980,34 +1108,15 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        // Build typed ScreenGrab command.
-        UiApi::ScreenGrab::Command cmd{
-            .scale = 1.0,
-            .format = UiApi::ScreenGrab::Format::Png,
-            .quality = 23,
-        };
-
-        auto result = client.sendCommandAndGetResponse(cmd, timeoutMs);
-        if (result.isError()) {
-            std::cerr << "ScreenGrab command failed: " << result.errorValue() << std::endl;
+        auto pngResult = grabScreenshotPng(client, 1.0, timeoutMs, true);
+        if (pngResult.isError()) {
+            std::cerr << "ScreenGrab command failed: " << pngResult.errorValue() << std::endl;
             client.disconnect();
             return 1;
         }
-
-        // Extract typed response from Result.
-        auto okay = result.value();
-
-        // Verify format.
-        if (okay.format != UiApi::ScreenGrab::Format::Png) {
-            std::cerr << "Unexpected format in response" << std::endl;
-            client.disconnect();
-            return 1;
-        }
-
-        // Decode base64 to PNG bytes.
-        auto pngData = base64Decode(okay.data);
+        auto pngData = pngResult.value();
         if (pngData.empty()) {
-            std::cerr << "Failed to decode base64 data" << std::endl;
+            std::cerr << "Failed to decode screenshot data" << std::endl;
             client.disconnect();
             return 1;
         }
@@ -1023,10 +1132,550 @@ int main(int argc, char** argv)
         outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
         outFile.close();
 
-        std::cerr << "✓ Screenshot saved to " << outputFile << " (" << okay.width << "x"
-                  << okay.height << ", " << pngData.size() << " bytes)" << std::endl;
+        std::cerr << "✓ Screenshot saved to " << outputFile << " (" << pngData.size() << " bytes)"
+                  << std::endl;
 
         client.disconnect();
+        return 0;
+    }
+
+    if (targetName == "docs-screenshots") {
+        const std::string envUiAddress =
+            getEnvOrDefault("DIRTSIM_UI_ADDRESS", "ws://localhost:7070");
+        const std::string envServerAddress =
+            getEnvOrDefault("DIRTSIM_SERVER_ADDRESS", "ws://localhost:8080");
+        std::string uiAddress = uiAddressOverride
+            ? args::get(uiAddressOverride)
+            : (addressOverride ? args::get(addressOverride) : envUiAddress);
+        std::string serverAddress =
+            serverAddressOverride ? args::get(serverAddressOverride) : envServerAddress;
+        if (!serverAddressOverride && (uiAddressOverride || addressOverride)) {
+            const std::string derived = deriveServerAddressFromUi(uiAddress);
+            if (!derived.empty()) {
+                serverAddress = derived;
+            }
+        }
+
+        const int timeoutMs = timeout ? args::get(timeout) : 5000;
+        const std::string outputDir = command
+            ? args::get(command)
+            : getEnvOrDefault("DIRTSIM_DOCS_SCREENSHOT_DIR", "/tmp/dirtsim-ui-docs");
+        const std::vector<std::string> onlyScreens =
+            splitCommaList(getEnvOrDefault("DOCS_SCREENSHOT_ONLY", ""));
+        const int minBytes = getEnvIntOrDefault("DOCS_SCREENSHOT_MIN_BYTES", 2048);
+
+        std::filesystem::create_directories(outputDir);
+
+        Network::WebSocketService uiClient;
+        uiClient.setProtocol(Network::Protocol::BINARY);
+        auto uiConnectResult = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnectResult.isError()) {
+            std::cerr << "Failed to connect to UI at " << uiAddress << ": "
+                      << uiConnectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        Network::WebSocketService serverClient;
+        serverClient.setProtocol(Network::Protocol::BINARY);
+        auto serverConnectResult = serverClient.connect(serverAddress, timeoutMs);
+        if (serverConnectResult.isError()) {
+            std::cerr << "Failed to connect to server at " << serverAddress << ": "
+                      << serverConnectResult.errorValue() << std::endl;
+            uiClient.disconnect();
+            return 1;
+        }
+
+        auto getUiState = [&](std::string& outState) -> Result<std::monostate, std::string> {
+            UiApi::StateGet::Command cmd;
+            auto result = sendBinaryCommand<UiApi::StateGet::Command, UiApi::StateGet::Okay>(
+                uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            outState = result.value().state;
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto getUiStatus = [&]() -> Result<UiApi::StatusGet::Okay, std::string> {
+            UiApi::StatusGet::Command cmd;
+            return sendBinaryCommand<UiApi::StatusGet::Command, UiApi::StatusGet::Okay>(
+                uiClient, cmd, timeoutMs);
+        };
+
+        auto getServerState = [&](std::string& outState) -> Result<std::monostate, std::string> {
+            Api::StatusGet::Command cmd{};
+            auto result = sendBinaryCommand<Api::StatusGet::Command, Api::StatusGet::Okay>(
+                serverClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            outState = result.value().state;
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        struct DocsScreenshotsError {
+            std::string message;
+        };
+
+        auto waitForUiState = [&](const std::vector<std::string>& targets,
+                                  int waitMs) -> Result<std::string, DocsScreenshotsError> {
+            const auto start = std::chrono::steady_clock::now();
+            while (true) {
+                std::string state;
+                auto stateResult = getUiState(state);
+                if (stateResult.isError()) {
+                    return Result<std::string, DocsScreenshotsError>::error(
+                        DocsScreenshotsError{ .message = stateResult.errorValue() });
+                }
+                for (const auto& target : targets) {
+                    if (state == target) {
+                        return Result<std::string, DocsScreenshotsError>::okay(state);
+                    }
+                }
+                const auto elapsed = std::chrono::steady_clock::now() - start;
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()
+                    >= waitMs) {
+                    return Result<std::string, DocsScreenshotsError>::error(
+                        DocsScreenshotsError{ .message = "Timeout waiting for UI state" });
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+        };
+
+        auto waitForTrainingModalHidden = [&](int waitMs) -> Result<std::monostate, std::string> {
+            const auto start = std::chrono::steady_clock::now();
+            while (true) {
+                auto statusResult = getUiStatus();
+                if (statusResult.isError()) {
+                    return Result<std::monostate, std::string>::error(statusResult.errorValue());
+                }
+                if (!isTrainingModalVisible(statusResult.value())) {
+                    return Result<std::monostate, std::string>::okay(std::monostate{});
+                }
+                const auto elapsed = std::chrono::steady_clock::now() - start;
+                if (std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()
+                    >= waitMs) {
+                    return Result<std::monostate, std::string>::error(
+                        "Timeout waiting for training modal to close");
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            }
+        };
+
+        auto clearTrainingModalIfVisible = [&]() -> Result<std::monostate, std::string> {
+            auto statusResult = getUiStatus();
+            if (statusResult.isError()) {
+                return Result<std::monostate, std::string>::error(statusResult.errorValue());
+            }
+            if (!isTrainingModalVisible(statusResult.value())) {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+            UiApi::TrainingResultDiscard::Command cmd{};
+            auto discardResult = sendBinaryCommand<
+                UiApi::TrainingResultDiscard::Command,
+                UiApi::TrainingResultDiscard::Okay>(uiClient, cmd, timeoutMs);
+            if (discardResult.isError()) {
+                return Result<std::monostate, std::string>::error(discardResult.errorValue());
+            }
+            return waitForTrainingModalHidden(8000);
+        };
+
+        auto clearServerTrainingResultIfNeeded = [&]() -> Result<std::monostate, std::string> {
+            std::string serverState;
+            auto stateResult = getServerState(serverState);
+            if (stateResult.isError()) {
+                return Result<std::monostate, std::string>::error(stateResult.errorValue());
+            }
+            if (serverState != "UnsavedTrainingResult") {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+            Api::TrainingResultDiscard::Command cmd{};
+            auto discardResult = sendBinaryCommand<
+                Api::TrainingResultDiscard::Command,
+                Api::TrainingResultDiscard::Okay>(serverClient, cmd, timeoutMs);
+            if (discardResult.isError()) {
+                return Result<std::monostate, std::string>::error(discardResult.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto ensureIconRailVisible = [&]() -> Result<std::monostate, std::string> {
+            UiApi::IconRailShowIcons::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::IconRailShowIcons::Command,
+                UiApi::IconRailShowIcons::Okay>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto selectIcon = [&](Ui::IconId id) -> Result<std::monostate, std::string> {
+            UiApi::IconSelect::Command cmd{ .id = id };
+            auto result = sendBinaryCommand<UiApi::IconSelect::Command, UiApi::IconSelect::Okay>(
+                uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto showTrainingConfigEvolution = [&]() -> Result<std::monostate, std::string> {
+            UiApi::TrainingConfigShowEvolution::Command cmd{};
+            auto result = sendBinaryCommand<
+                UiApi::TrainingConfigShowEvolution::Command,
+                UiApi::TrainingConfigShowEvolution::Okay>(uiClient, cmd, timeoutMs);
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto navigateToStartMenu = [&]() -> Result<std::monostate, std::string> {
+            std::string state;
+            auto stateResult = getUiState(state);
+            if (stateResult.isError()) {
+                return Result<std::monostate, std::string>::error(stateResult.errorValue());
+            }
+
+            if (state == "Startup" || state == "Disconnected") {
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                state = waitResult.value();
+            }
+
+            if (state == "StartMenu") {
+                return ensureIconRailVisible();
+            }
+            if (state == "SimRunning" || state == "Paused") {
+                UiApi::SimStop::Command cmd{};
+                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
+                    uiClient, cmd, timeoutMs);
+                if (stopResult.isError()) {
+                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "Training") {
+                auto serverClear = clearServerTrainingResultIfNeeded();
+                if (serverClear.isError()) {
+                    return Result<std::monostate, std::string>::error(serverClear.errorValue());
+                }
+                auto clearModal = clearTrainingModalIfVisible();
+                if (clearModal.isError()) {
+                    return Result<std::monostate, std::string>::error(clearModal.errorValue());
+                }
+                UiApi::TrainingQuit::Command cmd{};
+                auto quitResult =
+                    sendBinaryCommand<UiApi::TrainingQuit::Command, UiApi::TrainingQuit::Okay>(
+                        uiClient, cmd, timeoutMs);
+                if (quitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(quitResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                return ensureIconRailVisible();
+            }
+
+            return Result<std::monostate, std::string>::error(
+                "NavigateToStartMenu unsupported from state: " + state);
+        };
+
+        auto navigateToTraining = [&]() -> Result<std::monostate, std::string> {
+            std::string state;
+            auto stateResult = getUiState(state);
+            if (stateResult.isError()) {
+                return Result<std::monostate, std::string>::error(stateResult.errorValue());
+            }
+
+            if (state == "Startup" || state == "Disconnected") {
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                state = waitResult.value();
+            }
+
+            if (state == "Training") {
+                auto serverClear = clearServerTrainingResultIfNeeded();
+                if (serverClear.isError()) {
+                    return Result<std::monostate, std::string>::error(serverClear.errorValue());
+                }
+                auto clearModal = clearTrainingModalIfVisible();
+                if (clearModal.isError()) {
+                    return Result<std::monostate, std::string>::error(clearModal.errorValue());
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "StartMenu") {
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::EVOLUTION);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "Training" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                auto serverClear = clearServerTrainingResultIfNeeded();
+                if (serverClear.isError()) {
+                    return Result<std::monostate, std::string>::error(serverClear.errorValue());
+                }
+                auto clearModal = clearTrainingModalIfVisible();
+                if (clearModal.isError()) {
+                    return Result<std::monostate, std::string>::error(clearModal.errorValue());
+                }
+                return ensureIconRailVisible();
+            }
+            if (state == "SimRunning" || state == "Paused") {
+                UiApi::SimStop::Command cmd{};
+                auto stopResult = sendBinaryCommand<UiApi::SimStop::Command, UiApi::SimStop::Okay>(
+                    uiClient, cmd, timeoutMs);
+                if (stopResult.isError()) {
+                    return Result<std::monostate, std::string>::error(stopResult.errorValue());
+                }
+                auto waitResult = waitForUiState({ "StartMenu" }, 8000);
+                if (waitResult.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitResult.errorValue().message);
+                }
+                auto showResult = ensureIconRailVisible();
+                if (showResult.isError()) {
+                    return Result<std::monostate, std::string>::error(showResult.errorValue());
+                }
+                auto selectResult = selectIcon(Ui::IconId::EVOLUTION);
+                if (selectResult.isError()) {
+                    return Result<std::monostate, std::string>::error(selectResult.errorValue());
+                }
+                auto waitTraining = waitForUiState({ "Training" }, 8000);
+                if (waitTraining.isError()) {
+                    return Result<std::monostate, std::string>::error(
+                        waitTraining.errorValue().message);
+                }
+                auto serverClear = clearServerTrainingResultIfNeeded();
+                if (serverClear.isError()) {
+                    return Result<std::monostate, std::string>::error(serverClear.errorValue());
+                }
+                auto clearModal = clearTrainingModalIfVisible();
+                if (clearModal.isError()) {
+                    return Result<std::monostate, std::string>::error(clearModal.errorValue());
+                }
+                return ensureIconRailVisible();
+            }
+
+            return Result<std::monostate, std::string>::error(
+                "NavigateToTraining unsupported from state: " + state);
+        };
+
+        auto captureScreen =
+            [&](const std::string& screenId) -> Result<std::monostate, std::string> {
+            auto railResult = ensureIconRailVisible();
+            if (railResult.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    "IconRailShowIcons failed: " + railResult.errorValue());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(200));
+            const std::filesystem::path outPath =
+                std::filesystem::path(outputDir) / (screenId + ".png");
+            auto pngResult = grabScreenshotPng(uiClient, 1.0, timeoutMs, true);
+            if (pngResult.isError()) {
+                return Result<std::monostate, std::string>::error(pngResult.errorValue());
+            }
+            const auto& pngData = pngResult.value();
+            if (pngData.empty()) {
+                return Result<std::monostate, std::string>::error("Empty screenshot data");
+            }
+            std::ofstream outFile(outPath, std::ios::binary);
+            if (!outFile) {
+                return Result<std::monostate, std::string>::error(
+                    "Failed to open output file: " + outPath.string());
+            }
+            outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+            outFile.close();
+            const auto fileSize = std::filesystem::file_size(outPath);
+            if (static_cast<int64_t>(fileSize) < minBytes) {
+                return Result<std::monostate, std::string>::error(
+                    "Screenshot too small (" + std::to_string(fileSize) + " bytes)");
+            }
+            std::cerr << "Captured " << screenId << " -> " << outPath << " (" << fileSize
+                      << " bytes)" << std::endl;
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto shouldRun = [&](const std::string& screenId) {
+            if (onlyScreens.empty()) {
+                return true;
+            }
+            return std::find(onlyScreens.begin(), onlyScreens.end(), screenId) != onlyScreens.end();
+        };
+
+        auto runScreen = [&](const std::string& screenId,
+                             const std::function<Result<std::monostate, std::string>()>& action)
+            -> Result<std::monostate, std::string> {
+            if (!shouldRun(screenId)) {
+                return Result<std::monostate, std::string>::okay(std::monostate{});
+            }
+            auto result = action();
+            if (result.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    screenId + ": " + result.errorValue());
+            }
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        };
+
+        auto result = runScreen("start-menu", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("start-menu");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("start-menu-home", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::CORE);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("start-menu-home");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("start-menu-network", [&]() {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::NETWORK);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("start-menu-network");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("training", [&]() {
+            auto nav = navigateToTraining();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto select = selectIcon(Ui::IconId::CORE);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("training");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("training-config", [&]() {
+            auto nav = navigateToTraining();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto select = selectIcon(Ui::IconId::EVOLUTION);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("training-config");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("training-config-evolution", [&]() {
+            auto nav = navigateToTraining();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto select = selectIcon(Ui::IconId::EVOLUTION);
+            if (select.isError()) {
+                return select;
+            }
+            auto showView = showTrainingConfigEvolution();
+            if (showView.isError()) {
+                return showView;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            UiApi::MouseMove::Command move{ .pixelX = 200, .pixelY = 170 };
+            auto moveResult = sendBinaryCommand<UiApi::MouseMove::Command, std::monostate>(
+                uiClient, move, timeoutMs);
+            if (moveResult.isError()) {
+                return Result<std::monostate, std::string>::error(moveResult.errorValue());
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen("training-config-evolution");
+        });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
         return 0;
     }
 
@@ -1425,8 +2074,8 @@ int main(int argc, char** argv)
     if (targetName != "server" && targetName != "ui" && targetName != "os-manager") {
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, benchmark, cleanup, gamepad-test, "
-                     "functional-test, genome-db-benchmark, network, os-manager, run-all, "
-                     "test_binary, train\n\n";
+                     "docs-screenshots, functional-test, genome-db-benchmark, "
+                     "network, os-manager, run-all, test_binary, train\n\n";
         std::cerr << parser;
         return 1;
     }
