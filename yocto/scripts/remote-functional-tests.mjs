@@ -79,10 +79,36 @@ function resolveTests({ tests, useAll }) {
   return selected;
 }
 
-function runSsh(remoteTarget, command, timeoutSec) {
+function shouldDisableStrictHostKeyChecking() {
+  if (process.env.DIRTSIM_SSH_STRICT === 'true') {
+    return false;
+  }
+  if (process.env.DIRTSIM_SSH_STRICT === 'false') {
+    return true;
+  }
+  if (process.env.DIRTSIM_SSH_NO_STRICT === '1') {
+    return true;
+  }
+  return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+}
+
+function buildSshArgs(timeoutSec, identityPath) {
   const args = [
     '-o', `ConnectTimeout=${timeoutSec}`,
     '-o', 'BatchMode=yes',
+  ];
+  if (identityPath) {
+    args.push('-i', identityPath);
+  }
+  if (shouldDisableStrictHostKeyChecking()) {
+    args.push('-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null');
+  }
+  return args;
+}
+
+function runSsh(remoteTarget, command, timeoutSec, identityPath) {
+  const args = [
+    ...buildSshArgs(timeoutSec, identityPath),
     remoteTarget,
     command,
   ];
@@ -93,11 +119,11 @@ function runSsh(remoteTarget, command, timeoutSec) {
   return { status, output: `${stdout}${stderr}` };
 }
 
-async function waitForSsh(remoteTarget, timeoutSec, waitSec) {
+async function waitForSsh(remoteTarget, timeoutSec, waitSec, identityPath) {
   const startTime = Date.now();
   const timeoutMs = waitSec * 1000;
   while (Date.now() - startTime < timeoutMs) {
-    const result = runSsh(remoteTarget, 'echo ok', timeoutSec);
+    const result = runSsh(remoteTarget, 'echo ok', timeoutSec, identityPath);
     if (result.status === 0 && result.output.trim() === 'ok') {
       return true;
     }
@@ -141,6 +167,13 @@ async function main() {
   let remoteUser = process.env.DIRTSIM_REMOTE_USER || DEFAULT_USER;
   let sshTimeoutSec = Number(process.env.DIRTSIM_SSH_TIMEOUT_SEC) || DEFAULT_SSH_TIMEOUT_SEC;
   let waitSec = Number(process.env.DIRTSIM_REMOTE_WAIT_SEC) || DEFAULT_WAIT_SEC;
+  const sshIdentityPath = process.env.DIRTSIM_SSH_IDENTITY
+    || process.env.DIRTSIM_SSH_PRIVATE_KEY_PATH
+    || null;
+
+  if (sshIdentityPath && !sshIdentityPath.trim()) {
+    fail('DIRTSIM_SSH_PRIVATE_KEY_PATH is set but empty');
+  }
 
   const uiAddress = process.env.DIRTSIM_UI_ADDRESS || 'ws://localhost:7070';
   const serverAddress = process.env.DIRTSIM_SERVER_ADDRESS || 'ws://localhost:8080';
@@ -209,7 +242,7 @@ async function main() {
     warn('Initial reachability check failed. Waiting for SSH...');
   }
 
-  const sshReady = await waitForSsh(remoteTarget, sshTimeoutSec, waitSec);
+  const sshReady = await waitForSsh(remoteTarget, sshTimeoutSec, waitSec, sshIdentityPath);
   if (!sshReady) {
     fail(`Timed out waiting for SSH on ${remoteTarget}`);
   }
@@ -229,7 +262,7 @@ async function main() {
       `--server-address ${serverAddress} ` +
       `--os-manager-address ${osManagerAddress} 2>&1`;
 
-    const { status, output } = runSsh(remoteTarget, remoteCommand, sshTimeoutSec);
+    const { status, output } = runSsh(remoteTarget, remoteCommand, sshTimeoutSec, sshIdentityPath);
     const parsed = extractJson(output);
     const durationMs = parsed?.duration_ms ?? 0;
     const durationSec = (durationMs / 1000).toFixed(1);

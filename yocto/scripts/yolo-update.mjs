@@ -110,6 +110,41 @@ function runCapture(command, options = {}) {
   }
 }
 
+function getSshIdentity() {
+  return process.env.DIRTSIM_SSH_IDENTITY
+    || process.env.DIRTSIM_SSH_PRIVATE_KEY_PATH
+    || null;
+}
+
+function shouldDisableStrictHostKeyChecking() {
+  if (process.env.DIRTSIM_SSH_STRICT === 'true') {
+    return false;
+  }
+  if (process.env.DIRTSIM_SSH_STRICT === 'false') {
+    return true;
+  }
+  if (process.env.DIRTSIM_SSH_NO_STRICT === '1') {
+    return true;
+  }
+  return process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+}
+
+function buildSshOptions() {
+  const options = ['-o BatchMode=yes', '-o ConnectTimeout=10'];
+  const identity = getSshIdentity();
+  if (identity) {
+    options.push(`-i ${identity}`);
+  }
+  if (shouldDisableStrictHostKeyChecking()) {
+    options.push('-o StrictHostKeyChecking=no', '-o UserKnownHostsFile=/dev/null');
+  }
+  return options.join(' ');
+}
+
+function buildScpOptions() {
+  return buildSshOptions();
+}
+
 /**
  * Clean the image sstate to force a rebuild.
  */
@@ -360,7 +395,7 @@ async function waitForSystemStatusOk(remoteTarget, remoteHost, timeoutSec = 120)
   let lastStatus = null;
 
   while (Date.now() - startTime < timeoutMs) {
-    const output = runCapture(`ssh -o BatchMode=yes ${remoteTarget} "dirtsim-cli os-manager SystemStatus"`);
+    const output = runCapture(`ssh ${buildSshOptions()} ${remoteTarget} "dirtsim-cli os-manager SystemStatus"`);
     if (output) {
       const status = parseSystemStatus(output);
       if (status) {
@@ -538,10 +573,10 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
           execSync(`cp "${bin.path}" "${strippedPath}" && "${STRIP_TOOL}" "${strippedPath}"`, { stdio: 'pipe' });
           const strippedStat = statSync(strippedPath);
           info(`${bin.name}: ${formatBytes(strippedStat.size)} (stripped)`);
-          execSync(`scp -o BatchMode=yes "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          execSync(`scp ${buildScpOptions()} "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
           unlinkSync(strippedPath);
         } else {
-          execSync(`scp -o BatchMode=yes "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          execSync(`scp ${buildScpOptions()} "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
         }
         success(`${bin.name} transferred`);
       } catch (err) {
@@ -576,9 +611,9 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       info(`  ${cfg.name}`);
       if (!dryRun) {
         try {
-          execSync(`scp -o BatchMode=yes "${cfg.path}" "${remoteTarget}:/tmp/${cfg.name}"`, { stdio: 'pipe' });
+          execSync(`scp ${buildScpOptions()} "${cfg.path}" "${remoteTarget}:/tmp/${cfg.name}"`, { stdio: 'pipe' });
           // Copy and set permissions so dirtsim user can read the config files.
-          execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo cp /tmp/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`, { stdio: 'pipe' });
+          execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo cp /tmp/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`, { stdio: 'pipe' });
           success(`${cfg.name} deployed`);
         } catch (err) {
           error(`Failed to deploy ${cfg.name}`);
@@ -593,7 +628,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     if (!dryRun) {
       try {
         info('Running config setup to fix permissions...');
-        execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl restart dirtsim-config-setup.service"`, { stdio: 'pipe' });
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl restart dirtsim-config-setup.service"`, { stdio: 'pipe' });
         success('Permissions fixed');
       } catch (err) {
         warn('Config setup service not available (needs full deployment)');
@@ -617,16 +652,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   if (!dryRun) {
     try {
       info('Stopping services...');
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl stop ${serviceNames}"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl stop ${serviceNames}"`, { stdio: 'pipe' });
 
       info('Removing old binaries...');
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${deleteCommands}"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${deleteCommands}"`, { stdio: 'pipe' });
 
       info('Copying new binaries...');
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "${copyCommands}"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${copyCommands}"`, { stdio: 'pipe' });
 
       info('Starting services...');
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "sudo systemctl start ${serviceNames}"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl start ${serviceNames}"`, { stdio: 'pipe' });
 
       success('Services restarted!');
     } catch (err) {
@@ -863,7 +898,7 @@ async function main() {
   if (sshKeyPath && !dryRun) {
     info('Transferring SSH key...');
     remoteKeyPath = `${REMOTE_TMP}/authorized_keys`;
-    execSync(`scp -o BatchMode=yes "${sshKeyPath}" "${remoteTarget}:${remoteKeyPath}"`, { stdio: 'pipe' });
+    execSync(`scp ${buildScpOptions()} "${sshKeyPath}" "${remoteTarget}:${remoteKeyPath}"`, { stdio: 'pipe' });
     success('SSH key transferred');
   }
 
@@ -872,13 +907,13 @@ async function main() {
   let remoteUpdateScript = 'ab-update-with-key';
   if (!dryRun) {
     try {
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "which ab-update-with-key"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "which ab-update-with-key"`, { stdio: 'pipe' });
     } catch {
       info('ab-update-with-key not found on Pi, transferring...');
       const localScript = join(YOCTO_DIR, 'pi-base/yocto/meta-pi-base/recipes-support/ab-boot/files/ab-update-with-key');
       const remoteScriptPath = `${REMOTE_TMP}/ab-update-with-key`;
-      execSync(`scp -o BatchMode=yes "${localScript}" "${remoteTarget}:${remoteScriptPath}"`, { stdio: 'pipe' });
-      execSync(`ssh -o BatchMode=yes ${remoteTarget} "chmod +x ${remoteScriptPath}"`, { stdio: 'pipe' });
+      execSync(`scp ${buildScpOptions()} "${localScript}" "${remoteTarget}:${remoteScriptPath}"`, { stdio: 'pipe' });
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "chmod +x ${remoteScriptPath}"`, { stdio: 'pipe' });
       remoteUpdateScript = remoteScriptPath;
       success('Update script transferred');
     }

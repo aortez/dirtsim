@@ -133,6 +133,7 @@ jobs:
           pub_path="${key_path}.pub"
           if ssh-keygen -y -f "${key_path}" > "${pub_path}" 2>/dev/null; then
             echo "DIRTSIM_SSH_KEY_PATH=${pub_path}" >> $GITHUB_ENV
+            echo "DIRTSIM_SSH_PRIVATE_KEY_PATH=${key_path}" >> $GITHUB_ENV
             exit 0
           fi
           echo "DIRTSIM_SSH_KEY secret is not a valid SSH key." >&2
@@ -158,6 +159,24 @@ jobs:
         fi
         echo "No SSH public key found for Yocto update." >&2
         exit 1
+
+    - name: Configure SSH for remote deploy
+      run: |
+        if [ -z "${DIRTSIM_SSH_PRIVATE_KEY_PATH:-}" ]; then
+          echo "DIRTSIM_SSH_PRIVATE_KEY_PATH is not set; cannot configure ssh-agent." >&2
+          exit 1
+        fi
+        eval "$(ssh-agent -s)"
+        ssh-add "${DIRTSIM_SSH_PRIVATE_KEY_PATH}"
+        echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> $GITHUB_ENV
+        echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> $GITHUB_ENV
+        mkdir -p "${HOME}/.ssh"
+        {
+          echo "Host dirtsim.local"
+          echo "  StrictHostKeyChecking no"
+          echo "  UserKnownHostsFile /dev/null"
+        } >> "${HOME}/.ssh/config"
+        chmod 600 "${HOME}/.ssh/config"
 
     - name: Deploy Yocto image to remote unit
       working-directory: yocto
