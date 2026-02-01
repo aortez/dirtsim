@@ -611,6 +611,33 @@ State::Any Training::onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateMachi
     return std::move(*this);
 }
 
+State::Any Training::onEvent(
+    const UiApi::TrainingConfigShowEvolution::Cwc& cwc, StateMachine& /*sm*/)
+{
+    using Response = UiApi::TrainingConfigShowEvolution::Response;
+
+    if (!view_) {
+        cwc.sendResponse(Response::error(ApiError("Training view not available")));
+        return std::move(*this);
+    }
+
+    auto result = view_->showTrainingConfigView(TrainingView::TrainingConfigView::Evolution);
+    if (result.isError()) {
+        cwc.sendResponse(Response::error(ApiError(result.errorValue())));
+        return std::move(*this);
+    }
+
+    cwc.sendResponse(Response::okay({ .opened = true }));
+    return std::move(*this);
+}
+
+State::Any Training::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachine& sm)
+{
+    auto nextState = onEvent(QuitTrainingClickedEvent{}, sm);
+    cwc.sendResponse(UiApi::TrainingQuit::Response::okay({ .queued = true }));
+    return nextState;
+}
+
 State::Any Training::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
 {
     if (!view_ || !view_->isTrainingResultModalVisible()) {

@@ -109,7 +109,7 @@ outside the repo (useful for CI or clean checkouts), set `DIRTSIM_CACHE_ROOT`
 before running `kas` or the Docker build:
 
 ```bash
-export DIRTSIM_CACHE_ROOT=/home/data/yocto-cache
+export DIRTSIM_CACHE_ROOT=/home/data/linux1/yocto-cache
 ```
 
 ### Building in Docker

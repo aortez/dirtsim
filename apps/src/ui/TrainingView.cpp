@@ -512,6 +512,29 @@ void TrainingView::createTrainingConfigPanel()
     LOG_INFO(Controls, "TrainingView: Created Training config panel");
 }
 
+Result<std::monostate, std::string> TrainingView::showTrainingConfigView(TrainingConfigView view)
+{
+    if (!trainingConfigPanel_) {
+        return Result<std::monostate, std::string>::error("Training config panel not available");
+    }
+
+    TrainingConfigPanel::View panelView = TrainingConfigPanel::View::None;
+    switch (view) {
+        case TrainingConfigView::None:
+            panelView = TrainingConfigPanel::View::None;
+            break;
+        case TrainingConfigView::Evolution:
+            panelView = TrainingConfigPanel::View::Evolution;
+            break;
+        case TrainingConfigView::Population:
+            panelView = TrainingConfigPanel::View::Population;
+            break;
+    }
+
+    trainingConfigPanel_->showView(panelView);
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
 void TrainingView::createTrainingResultBrowserPanel()
 {
     ExpandablePanel* panel = uiManager_->getExpandablePanel();

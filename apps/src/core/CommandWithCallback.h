@@ -25,6 +25,8 @@ struct CommandWithCallback {
 
     CommandT command;
     std::function<void(ResponseT)> callback;
+    // True when the command arrived over the binary protocol.
+    bool usesBinary = false;
 
     /**
      * @brief Send a response by invoking the callback.

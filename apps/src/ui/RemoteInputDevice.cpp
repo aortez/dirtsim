@@ -94,6 +94,8 @@ void RemoteInputDevice::updatePosition(int x, int y)
 
         mouseX_ = rawX;
         mouseY_ = rawY;
+        // Treat pointer movement as activity so auto-shrink does not trigger.
+        lv_display_trigger_activity(display_);
         spdlog::trace(
             "RemoteInputDevice: logical({}, {}) -> raw({}, {}) [rot={}]",
             x,

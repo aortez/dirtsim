@@ -1,4 +1,4 @@
-# Training Config
+# Training Config (Evolution)
 
 ```plantuml
 @startsalt
@@ -15,7 +15,15 @@ scale 1.6
     "Configs"
     [Evolution] [>]
     [Population] [>]
+  } | {
+    "Evolution Config"
     .
+    "Population" | "  10  "
+    "Generations" | "  1  "
+    "Mutation Rate" | "  0.015  "
+    "Tournament Size" | "  3  "
+    "Max Sim Time (s)" | "  10  "
+    "Stream Interval (ms)" | "  500  "
   }
 }
 @endsalt

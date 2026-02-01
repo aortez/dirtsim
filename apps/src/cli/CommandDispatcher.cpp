@@ -67,6 +67,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::GenomeBrowserOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::GenomeDetailLoad::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::GenomeDetailOpen::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::IconRailExpand::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::IconRailShowIcons::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::IconSelect::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseDown::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::MouseMove::Cwc>(uiHandlers_, uiExampleHandlers_);
@@ -80,6 +82,8 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::StateGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::TrainingConfigShowEvolution::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::TrainingQuit::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingResultDiscard::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingResultSave::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingStart::Cwc>(uiHandlers_, uiExampleHandlers_);

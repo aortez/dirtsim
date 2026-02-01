@@ -488,10 +488,6 @@ void CoreControls::onInteractionModeSelected(lv_event_t* e)
 
     self->state_.interactionMode = mode;
 
-    // Disable swipe zone when in draw/erase mode to prevent accidental panel open.
-    bool swipeEnabled = (mode == InteractionMode::NONE);
-    self->uiManager_->getIconRail()->setSwipeZoneEnabled(swipeEnabled);
-
     // Update button text and go back to main view.
     self->updateFromState();
     self->viewController_->showView("main");
@@ -526,9 +522,6 @@ void CoreControls::onDrawMaterialSelected(lv_event_t* e)
     // Set both the interaction mode and the draw material.
     self->state_.interactionMode = InteractionMode::DRAW;
     self->state_.drawMaterial = material;
-
-    // Disable swipe zone to prevent accidental panel open while drawing.
-    self->uiManager_->getIconRail()->setSwipeZoneEnabled(false);
 
     // Update button text and go back to main view.
     self->updateFromState();

@@ -447,6 +447,8 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/GenomeBrowserOpen.cpp
     src/ui/state-machine/api/GenomeDetailLoad.cpp
     src/ui/state-machine/api/GenomeDetailOpen.cpp
+    src/ui/state-machine/api/IconRailExpand.cpp
+    src/ui/state-machine/api/IconRailShowIcons.cpp
     src/ui/state-machine/api/IconSelect.cpp
     src/ui/state-machine/api/MouseDown.cpp
     src/ui/state-machine/api/MouseMove.cpp
@@ -461,6 +463,8 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StateGet.cpp
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StreamStart.cpp
+    src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
+    src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp
     src/ui/state-machine/api/TrainingResultSave.cpp
     src/ui/state-machine/api/TrainingStart.cpp

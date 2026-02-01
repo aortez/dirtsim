@@ -70,16 +70,17 @@ struct Command {
     double scale = 1.0;          // Resolution scale factor (0.25 = 4x smaller, 1.0 = full res).
     Format format = Format::Png; // Output format: Raw (ARGB8888), H264, or Png.
     int quality = 23;            // H.264 CRF quality (0-51, lower = better). Ignored for Raw/Png.
+    bool binaryPayload = false;  // Return raw bytes when using binary protocol.
 
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<3>;
+    using serialize = zpp::bits::members<4>;
 };
 
 struct Okay {
-    std::string data; // Base64-encoded image data (raw ARGB8888 or H.264 NAL units).
+    std::string data; // Base64 data for JSON; raw bytes for binary payloads.
     uint32_t width;
     uint32_t height;
     Format format;          // Format of data: Raw or H264.

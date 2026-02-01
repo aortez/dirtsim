@@ -1,4 +1,4 @@
-# Start Menu
+# Start Menu - Home
 
 ```plantuml
 @startsalt
@@ -11,11 +11,12 @@ scale 1.6
     [Wireless]
     [Settings]
   } | {
-    Fractal background
+    {+
+      [Quit]
+      [Next Fractal]
+    } | "Touch: ..."
     .
-  } | {
-    Touch: ...
-    .
+    "                               "
   }
 }
 @endsalt

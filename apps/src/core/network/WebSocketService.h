@@ -370,6 +370,11 @@ public:
             CwcT cwc;
             cwc.command = cmd;
 
+            auto protocolIt = clientProtocols_.find(ws);
+            Protocol clientProtocol =
+                (protocolIt != clientProtocols_.end()) ? protocolIt->second : Protocol::BINARY;
+            cwc.usesBinary = (clientProtocol == Protocol::BINARY);
+
             // Populate connectionId if the Command type has that field.
             if constexpr (requires { cwc.command.connectionId; }) {
                 cwc.command.connectionId = getConnectionId(ws);

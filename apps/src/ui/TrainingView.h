@@ -8,6 +8,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <variant>
 #include <vector>
 
 typedef struct _lv_obj_t lv_obj_t;
@@ -48,6 +49,12 @@ class UiComponentManager;
  */
 class TrainingView {
 public:
+    enum class TrainingConfigView {
+        None,
+        Evolution,
+        Population,
+    };
+
     explicit TrainingView(
         UiComponentManager* uiManager,
         EventSink& eventSink,
@@ -76,6 +83,7 @@ public:
     void createGenomeBrowserPanel();
     void createTrainingConfigPanel();
     void createTrainingResultBrowserPanel();
+    Result<std::monostate, std::string> showTrainingConfigView(TrainingConfigView view);
     void setStreamIntervalMs(int value);
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
