@@ -1639,7 +1639,7 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("training", [&]() {
+        result = runScreen("training-active", [&]() {
             auto nav = navigateToTraining();
             if (nav.isError()) {
                 return nav;
@@ -1649,7 +1649,7 @@ int main(int argc, char** argv)
                 return select;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("training");
+            return captureScreen("training-active");
         });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;

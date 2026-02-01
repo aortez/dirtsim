@@ -143,7 +143,7 @@ DIRTSIM_SSH_HOST=dirtsim2.local
 DIRTSIM_SSH_USER=dirtsim
 DIRTSIM_REMOTE_TMP=/tmp/dirtsim-ui-docs
 DIRTSIM_SSH_CONTROL_PATH=~/.ssh/cm-%r@%h:%p
-DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,start-menu-network,training
+DOCS_SCREENSHOT_ONLY=start-menu,start-menu-home,start-menu-network,training-active
 DOCS_SCREENSHOT_MIN_BYTES=2048
 ```
 

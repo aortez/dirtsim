@@ -457,7 +457,7 @@ void TrainingView::createCorePanel()
 
     evolutionControls_ = std::make_unique<EvolutionControls>(
         container, eventSink_, evolutionStarted_, trainingSpec_);
-    LOG_INFO(Controls, "TrainingView: Created Training Home panel");
+    LOG_INFO(Controls, "TrainingView: Created Training Active panel");
 }
 
 void TrainingView::createGenomeBrowserPanel()

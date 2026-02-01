@@ -32,7 +32,7 @@ void EvolutionControls::createMainView(lv_obj_t* view)
 {
     // Title.
     lv_obj_t* titleLabel = lv_label_create(view);
-    lv_label_set_text(titleLabel, "Training Home");
+    lv_label_set_text(titleLabel, "Training Active");
     lv_obj_set_style_text_color(titleLabel, lv_color_hex(0xDA70D6), 0); // Orchid.
     lv_obj_set_style_text_font(titleLabel, &lv_font_montserrat_16, 0);
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
