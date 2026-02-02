@@ -238,3 +238,8 @@ jobs:
     uses: ./.github/workflows/docker-cleanup.yml
     needs: build-and-test
     if: always()
+
+  yocto-cleanup:
+    uses: ./.github/workflows/yocto-cleanup.yml
+    needs: build-and-test
+    if: always()
