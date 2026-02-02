@@ -1,0 +1,65 @@
+name: Yocto Cleanup
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  cleanup:
+    runs-on: self-hosted
+    env:
+      YOCTO_CACHE_ROOT: /home/data/linux1/yocto-cache
+      YOCTO_CACHE_RETENTION_DAYS: 7
+      YOCTO_BUILD_RETENTION_DAYS: 7
+
+    steps:
+    - name: Report disk usage before cleanup
+      run: |
+        echo "### Disk Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Yocto Cache Usage (before)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        du -sh "${YOCTO_CACHE_ROOT}"/* 2>/dev/null | sort -h >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+
+    - name: Prune Yocto cache files
+      run: |
+        CACHE_ROOT="${YOCTO_CACHE_ROOT}"
+        DAYS="${YOCTO_CACHE_RETENTION_DAYS}"
+        echo "Pruning Yocto cache files older than ${DAYS} days..."
+        if [ -d "${CACHE_ROOT}/sstate-cache" ]; then
+          find "${CACHE_ROOT}/sstate-cache" -type f -mtime +"${DAYS}" -delete || true
+        fi
+        if [ -d "${CACHE_ROOT}/downloads" ]; then
+          find "${CACHE_ROOT}/downloads" -type f -mtime +"${DAYS}" -delete || true
+        fi
+        if [ -d "${CACHE_ROOT}/.ccache/dirtsim-yocto" ]; then
+          find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +"${DAYS}" -delete || true
+        fi
+        echo "Done."
+
+    - name: Remove old Yocto build directories
+      run: |
+        CACHE_ROOT="${YOCTO_CACHE_ROOT}"
+        DAYS="${YOCTO_BUILD_RETENTION_DAYS}"
+        echo "Removing Yocto build dirs older than ${DAYS} days..."
+        for dir in "${CACHE_ROOT}"/kas-build-*; do
+          if [ -d "${dir}" ] && [ "$(find "${dir}" -maxdepth 0 -mtime +"${DAYS}" -print)" ]; then
+            echo "Removing ${dir}"
+            rm -rf "${dir}"
+          fi
+        done
+        echo "Done."
+
+    - name: Report disk usage after cleanup
+      run: |
+        echo "### Disk Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        df -h /home/data/linux1 >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "### Yocto Cache Usage (after)" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        du -sh "${YOCTO_CACHE_ROOT}"/* 2>/dev/null | sort -h >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY

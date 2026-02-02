@@ -22,7 +22,7 @@
 
 import { execSync } from 'child_process';
 import { existsSync, statSync, readdirSync, readFileSync, writeFileSync, unlinkSync } from 'fs';
-import { join, dirname, basename } from 'path';
+import { join, dirname, basename, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { tmpdir } from 'os';
 import { createConsola } from 'consola';
@@ -58,7 +58,17 @@ import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
-const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
+
+function resolveKasBuildDir() {
+  const buildDir = process.env.KAS_BUILD_DIR;
+  if (!buildDir) {
+    return join(YOCTO_DIR, 'build');
+  }
+  return isAbsolute(buildDir) ? buildDir : join(YOCTO_DIR, buildDir);
+}
+
+const KAS_BUILD_DIR = resolveKasBuildDir();
+const IMAGE_DIR = join(KAS_BUILD_DIR, 'tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 
@@ -355,11 +365,14 @@ function applyProfileToRootfs(rootfsPath, profileName) {
 // ============================================================================
 
 // Build directory paths for ninja builds.
-const WORK_DIR = join(YOCTO_DIR, 'build/tmp/work');
+const WORK_DIR = join(KAS_BUILD_DIR, 'tmp/work');
 const ARCH_PATTERNS = ['cortexa72-poky-linux', 'cortexa76-poky-linux'];
 
 // Cross-toolchain strip for reducing binary size.
-const STRIP_TOOL = join(YOCTO_DIR, 'build/tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip');
+const STRIP_TOOL = join(
+  KAS_BUILD_DIR,
+  'tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip'
+);
 
 /**
  * Find the build directory for a recipe.

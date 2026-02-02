@@ -19,7 +19,7 @@
  *   npm run flash -- --reconfigure      # Re-select SSH key
  */
 
-import { join, dirname, basename } from 'path';
+import { join, dirname, basename, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
 import { execSync } from 'child_process';
 import { existsSync, mkdtempSync, rmdirSync, readdirSync, readFileSync } from 'fs';
@@ -57,7 +57,14 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const YOCTO_DIR = dirname(__dirname);
-const IMAGE_DIR = join(YOCTO_DIR, 'build/tmp/deploy/images/raspberrypi-dirtsim');
+const KAS_BUILD_DIR = (() => {
+  const buildDir = process.env.KAS_BUILD_DIR;
+  if (!buildDir) {
+    return join(YOCTO_DIR, 'build');
+  }
+  return isAbsolute(buildDir) ? buildDir : join(YOCTO_DIR, buildDir);
+})();
+const IMAGE_DIR = join(KAS_BUILD_DIR, 'tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const WIFI_CREDS_FILE = join(YOCTO_DIR, 'wifi-creds.local');
 const DEFAULT_HOSTNAME = 'dirtsim';

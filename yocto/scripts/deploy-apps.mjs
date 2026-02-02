@@ -18,6 +18,8 @@
 import { execSync } from 'child_process';
 import { existsSync } from 'fs';
 import { createRequire } from 'module';
+import { dirname, isAbsolute, join } from 'path';
+import { fileURLToPath } from 'url';
 
 import { ensureYoctoDockerImage, runInYoctoDocker } from './lib/docker-yocto.mjs';
 
@@ -29,8 +31,17 @@ const PI_USER = 'dirtsim';
 
 // Parsed from command line.
 let piHost = DEFAULT_HOST;
-const YOCTO_DIR = new URL('..', import.meta.url).pathname;
-const WORK_DIR = `${YOCTO_DIR}build/tmp/work`;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const YOCTO_DIR = dirname(__dirname);
+const KAS_BUILD_DIR = (() => {
+  const buildDir = process.env.KAS_BUILD_DIR;
+  if (!buildDir) {
+    return join(YOCTO_DIR, 'build');
+  }
+  return isAbsolute(buildDir) ? buildDir : join(YOCTO_DIR, buildDir);
+})();
+const WORK_DIR = join(KAS_BUILD_DIR, 'tmp/work');
 let useDocker = false;
 let dockerImageRef = null;
 
@@ -59,7 +70,7 @@ function findBinary(recipe, binaryName) {
 }
 
 // Path to apps source directory (for assets).
-const APPS_DIR = `${YOCTO_DIR}../apps`;
+const APPS_DIR = join(YOCTO_DIR, '..', 'apps');
 
 const APPS = {
     server: {

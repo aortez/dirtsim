@@ -18,6 +18,7 @@ jobs:
       SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
       CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
       DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
+      KAS_REPOS_DIR: /home/data/linux1/yocto-cache/kas-repos
 
     steps:
     - name: Checkout code
@@ -30,7 +31,13 @@ jobs:
     - name: Prepare Yocto cache
       run: |
         CACHE_ROOT="${DIRTSIM_CACHE_ROOT}"
-        mkdir -p "${CACHE_ROOT}/downloads" "${CACHE_ROOT}/sstate-cache" "${CACHE_ROOT}/.ccache/dirtsim-yocto"
+        mkdir -p \
+          "${CACHE_ROOT}/downloads" \
+          "${CACHE_ROOT}/sstate-cache" \
+          "${CACHE_ROOT}/.ccache/dirtsim-yocto" \
+          "${CACHE_ROOT}/kas-repos" \
+          "${CACHE_ROOT}/kas-build-x86" \
+          "${CACHE_ROOT}/kas-build-pi"
         find "${CACHE_ROOT}/sstate-cache" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
@@ -41,11 +48,14 @@ jobs:
 
     - name: Yocto build (docker)
       working-directory: yocto
+      env:
+        KAS_BUILD_DIR: /home/data/linux1/yocto-cache/kas-build-pi
       run: npm run docker-build
 
     - name: Build + publish x86 runtime container image
       working-directory: yocto
       env:
+        KAS_BUILD_DIR: /home/data/linux1/yocto-cache/kas-build-x86
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
       run: npm run runtime-image -- --build --publish
 
