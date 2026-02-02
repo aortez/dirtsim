@@ -1,5 +1,5 @@
 import { copyFileSync, existsSync, mkdirSync } from 'fs';
-import { dirname, join } from 'path';
+import { dirname, isAbsolute, join } from 'path';
 import { fileURLToPath } from 'url';
 
 import { info, run, runCapture, warn } from '../../pi-base/scripts/lib/index.mjs';
@@ -23,11 +23,20 @@ export function getRuntimeDefaults() {
   return { ...DEFAULTS };
 }
 
+function resolveKasBuildDir() {
+  const buildDir = process.env.KAS_BUILD_DIR;
+  if (!buildDir) {
+    return join(YOCTO_DIR, 'build');
+  }
+  return isAbsolute(buildDir) ? buildDir : join(YOCTO_DIR, buildDir);
+}
+
 export function getRuntimePaths({ imageTarget }) {
+  const buildDir = resolveKasBuildDir();
   return {
     rootfsPath: join(
-      YOCTO_DIR,
-      'build/tmp/deploy/images/genericx86-64',
+      buildDir,
+      'tmp/deploy/images/genericx86-64',
       `${imageTarget}-genericx86-64.rootfs.tar.gz`
     ),
     runtimeRootfs: join(RUNTIME_DIR, 'rootfs.tar.gz'),
@@ -152,4 +161,3 @@ export async function ensureLocalRuntimeImage(options) {
     }
   }
 }
-

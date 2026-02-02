@@ -5,7 +5,9 @@
 #include "api/IconRailExpand.h"
 #include "api/IconRailShowIcons.h"
 #include "api/IconSelect.h"
+#include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
+#include "api/SynthKeyPress.h"
 #include "api/TrainingConfigShowEvolution.h"
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
@@ -24,6 +26,7 @@
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
 #include <rtc/rtc.hpp>
@@ -36,6 +39,7 @@ StateMachine::StateMachine(TestMode) : display(nullptr)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
+    fractalAnimator_ = std::make_unique<FractalAnimator>();
     LOG_INFO(State, "StateMachine created in test mode");
 }
 
@@ -43,6 +47,7 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
+    fractalAnimator_ = std::make_unique<FractalAnimator>();
 
     // Create unified WebSocketService for both client (to server) and server (for CLI) roles.
     wsService_ = std::make_unique<Network::WebSocketService>();
@@ -60,6 +65,7 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     // Create UI manager for LVGL screen/container management.
     uiManager_ = std::make_unique<UiComponentManager>(disp);
     uiManager_->setEventSink(this); // StateMachine implements EventSink.
+    uiManager_->setFractalAnimator(fractalAnimator_.get());
     LOG_INFO(State, "UiComponentManager created");
 
     // Create remote input device for WebSocket mouse events.
@@ -79,6 +85,12 @@ StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
     peerAd_->setServiceName(peerServiceName_);
     peerAd_->setPort(wsPort_);
     peerAd_->setRole(Server::PeerRole::Ui);
+}
+
+FractalAnimator& StateMachine::getFractalAnimator()
+{
+    DIRTSIM_ASSERT(fractalAnimator_, "FractalAnimator not initialized");
+    return *fractalAnimator_.get();
 }
 
 void StateMachine::setupWebSocketService()
@@ -121,6 +133,10 @@ void StateMachine::setupWebSocketService()
         [this](UiApi::StateGet::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::StatusGet::Cwc>(
         [this](UiApi::StatusGet::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::StopButtonPress::Cwc>(
+        [this](UiApi::StopButtonPress::Cwc cwc) { queueEvent(cwc); });
+    ws->registerHandler<UiApi::SynthKeyPress::Cwc>(
+        [this](UiApi::SynthKeyPress::Cwc cwc) { queueEvent(cwc); });
     ws->registerHandler<UiApi::WebSocketAccessSet::Cwc>([this](UiApi::WebSocketAccessSet::Cwc cwc) {
         using Response = UiApi::WebSocketAccessSet::Response;
 
@@ -276,7 +292,9 @@ void StateMachine::setupWebSocketService()
             DISPATCH_UI_CMD_EMPTY(UiApi::SimStop);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StateGet);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StatusGet);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::StopButtonPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::StreamStart);
+            DISPATCH_UI_CMD_WITH_RESP(UiApi::SynthKeyPress);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingConfigShowEvolution);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::TrainingQuit);
             DISPATCH_UI_CMD_WITH_RESP(UiApi::WebRtcAnswer);
@@ -341,6 +359,10 @@ void StateMachine::updateAnimations()
         LOG_INFO(State, "Main loop FPS = {:.1f}", loopFps);
         callCount = 0;
         lastLogTime = currentTime;
+    }
+
+    if (fractalAnimator_) {
+        fractalAnimator_->update();
     }
 
     // Delegate to current state (if it has animation updates).
@@ -474,7 +496,7 @@ void StateMachine::handleEvent(const Event& event)
         // Get system health metrics.
         auto metrics = systemMetrics_.get();
 
-        Ui::IconId selectedIcon = Ui::IconId::COUNT;
+        Ui::IconId selectedIcon = Ui::IconId::NONE;
         bool panelVisible = false;
         if (auto* uiManager = getUiComponentManager()) {
             if (auto* iconRail = uiManager->getIconRail()) {
@@ -493,6 +515,13 @@ void StateMachine::handleEvent(const Event& event)
                 if constexpr (std::is_same_v<T, State::Training>) {
                     stateDetails = UiApi::StatusGet::TrainingStateDetails{
                         .trainingModalVisible = currentState.isTrainingResultModalVisible(),
+                    };
+                }
+                else if constexpr (
+                    std::is_same_v<T, State::Synth> || std::is_same_v<T, State::SynthConfig>) {
+                    stateDetails = UiApi::StatusGet::SynthStateDetails{
+                        .last_key_index = currentState.getLastKeyIndex(),
+                        .last_key_is_black = currentState.getLastKeyIsBlack(),
                     };
                 }
             },
@@ -535,7 +564,7 @@ void StateMachine::handleEvent(const Event& event)
         }
 
         bool selected = false;
-        if (cwc.command.id == IconId::COUNT) {
+        if (cwc.command.id == IconId::NONE) {
             iconRail->deselectAll();
         }
         else if (iconRail->isIconSelectable(cwc.command.id)) {

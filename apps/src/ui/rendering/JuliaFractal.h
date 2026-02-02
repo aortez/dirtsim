@@ -13,24 +13,24 @@ namespace Ui {
 
 /**
  * @brief Julia set fractal renderer with palette cycling animation.
- * Renders to an LVGL canvas filling the entire screen as a background.
+ * Renders to internal buffers for LVGL canvases.
  */
 class JuliaFractal {
 public:
     /**
      * @brief Create Julia fractal renderer.
-     * @param parent Parent LVGL object to attach the canvas to.
      * @param windowWidth Full window width.
      * @param windowHeight Full window height.
      */
-    JuliaFractal(lv_obj_t* parent, int windowWidth, int windowHeight);
+    JuliaFractal(int windowWidth, int windowHeight);
     ~JuliaFractal();
 
     /**
      * @brief Update animation (palette cycle).
      * Call this each frame to animate the colors.
+     * @return True when a new front buffer is ready.
      */
-    void update();
+    bool update();
 
     /**
      * @brief Resize the fractal to match new window dimensions.
@@ -40,9 +40,19 @@ public:
     void resize(int newWidth, int newHeight);
 
     /**
-     * @brief Get the canvas object.
+     * @brief Get the front render buffer.
      */
-    lv_obj_t* getCanvas() const { return canvas_; }
+    lv_color_t* getFrontBuffer() const { return frontBuffer_; }
+
+    /**
+     * @brief Get the current render width.
+     */
+    int getRenderWidth() const { return width_; }
+
+    /**
+     * @brief Get the current render height.
+     */
+    int getRenderHeight() const { return height_; }
 
     /**
      * @brief Advance to next fractal parameters immediately.
@@ -120,7 +130,7 @@ private:
     int calculateJuliaPoint(int x, int y, double cReal, double cImag, int maxIter) const;
 
     /**
-     * @brief Render the fractal to the canvas buffer.
+     * @brief Render the fractal to the front buffer.
      */
     void render();
 
@@ -136,8 +146,7 @@ private:
      */
     uint32_t getPaletteColor(int iteration) const;
 
-    lv_obj_t* canvas_ = nullptr;
-    lv_color_t* canvasBuffer_ = nullptr;
+    lv_color_t* frontBuffer_ = nullptr;
     int width_ = 0;
     int height_ = 0;
     double paletteOffset_ = 0.0; // Floating point for smooth sinusoidal speed.

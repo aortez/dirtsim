@@ -3,9 +3,12 @@
 #include "core/ColorNames.h"
 #include "core/IconFont.h"
 #include "core/LoggingChannels.h"
+#include "ui/controls/duck_img.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/EventSink.h"
 #include "ui/ui_builders/LVGLBuilder.h"
+#include <algorithm>
 #include <spdlog/spdlog.h>
 
 namespace {
@@ -20,22 +23,25 @@ constexpr lv_opa_t DIMMED_ICON_OPA = LV_OPA_60;
 namespace DirtSim {
 namespace Ui {
 
-IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink) : eventSink_(eventSink)
+IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* fractalAnimator)
+    : eventSink_(eventSink), fractalAnimator_(fractalAnimator)
 {
     iconFont_ = std::make_unique<IconFont>(ICON_SIZE - 36);
 
     // Define our icon configuration with FontAwesome icons and per-icon colors.
     // Order determines display order in the rail.
     iconConfigs_ = {
-        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 },         // Light green.
+        { IconId::DUCK, "", "Start Menu", 0xFFD166 },                          // Duck yellow.
         { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },           // Light blue.
+        { IconId::MUSIC, IconFont::WAVE_SQUARE, "Synth", 0x00B4D8 },           // Sky blue.
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
         { IconId::GENOME_BROWSER, IconFont::DNA, "Genome Browser", 0x40E0D0 }, // Turquoise.
         { IconId::TRAINING_RESULTS, IconFont::FILE_CABINET, "Training Results", 0xFFD700 }, // Gold.
-        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 }, // Orange.
-        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },   // Dark turquoise.
-        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },    // Silver.
-        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 }, // Lime green.
+        { IconId::NETWORK, IconFont::WIFI, "Network", 0x00CED1 },      // Dark turquoise.
+        { IconId::SCENARIO, IconFont::FILM, "Scenario", 0xFFA500 },    // Orange.
+        { IconId::PHYSICS, IconFont::COG, "Physics", 0xC0C0C0 },       // Silver.
+        { IconId::PLAY, IconFont::PLAY, "Play Simulation", 0x90EE90 }, // Light green.
+        { IconId::TREE, IconFont::BRAIN, "Tree Vision", 0x32CD32 },    // Lime green.
     };
 
     createIcons(parent);
@@ -55,6 +61,11 @@ IconRail::~IconRail()
     if (autoShrinkTimer_) {
         lv_timer_delete(autoShrinkTimer_);
         autoShrinkTimer_ = nullptr;
+    }
+
+    if (fractalAnimator_ && duckViewId_ != 0) {
+        fractalAnimator_->detachView(duckViewId_);
+        duckViewId_ = 0;
     }
 
     // Delete overlay objects (they're children of the screen, not the container).
@@ -81,8 +92,9 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(
         container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
+    lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
     lv_obj_set_style_pad_row(container_, GAP, 0);
+    lv_obj_set_style_pad_column(container_, GAP, 0);
     lv_obj_set_style_bg_color(container_, lv_color_hex(rgbaToRgb(ColorNames::uiGrayDark())), 0);
     lv_obj_set_style_bg_opa(container_, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(container_, 0, 0);
@@ -111,6 +123,9 @@ void IconRail::createIcons(lv_obj_t* parent)
         // Get the inner button for event callback.
         lv_obj_t* btn = lv_obj_get_child(btnContainer, 0);
         if (btn) {
+            if (config.id == IconId::DUCK) {
+                configureDuckIcon(btn);
+            }
             // Store index in user data for callback.
             lv_obj_set_user_data(btn, this);
             lv_obj_add_event_cb(btn, onIconClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(i));
@@ -141,7 +156,7 @@ void IconRail::onIconClicked(lv_event_t* e)
 
     // Toggle behavior: clicking selected icon deselects it.
     if (clickedId == self->selectedId_) {
-        self->selectedId_ = IconId::COUNT;
+        self->selectedId_ = IconId::NONE;
     }
     else {
         self->selectedId_ = clickedId;
@@ -158,7 +173,7 @@ void IconRail::onIconClicked(lv_event_t* e)
 
 void IconRail::updateButtonVisuals()
 {
-    const bool hasSelection = (selectedId_ != IconId::COUNT);
+    const bool hasSelection = (selectedId_ != IconId::NONE);
 
     for (size_t i = 0; i < buttons_.size() && i < iconConfigs_.size(); i++) {
         lv_obj_t* btnContainer = buttons_[i];
@@ -179,6 +194,46 @@ void IconRail::updateButtonVisuals()
     }
 }
 
+void IconRail::configureDuckIcon(lv_obj_t* button)
+{
+    if (!button) {
+        return;
+    }
+
+    lv_obj_clean(button);
+    lv_obj_set_style_pad_all(button, 0, 0);
+
+    const int buttonWidth = lv_obj_get_width(button);
+    const int buttonHeight = lv_obj_get_height(button);
+    const int viewWidth = buttonWidth > 0 ? buttonWidth : ICON_SIZE;
+    const int viewHeight = buttonHeight > 0 ? buttonHeight : ICON_SIZE;
+
+    if (fractalAnimator_) {
+        if (duckViewId_ != 0) {
+            if (!fractalAnimator_->reattachView(duckViewId_, button, viewWidth, viewHeight)) {
+                duckViewId_ = fractalAnimator_->attachView(button, viewWidth, viewHeight);
+            }
+        }
+        else {
+            duckViewId_ = fractalAnimator_->attachView(button, viewWidth, viewHeight);
+        }
+    }
+
+    lv_obj_t* duckImage = lv_image_create(button);
+    lv_image_set_src(duckImage, &duck_img);
+
+    const int maxWidth = std::max(0, lv_obj_get_width(button) - 12);
+    const int maxHeight = std::max(0, lv_obj_get_height(button) - 12);
+    const float scaleX = static_cast<float>(maxWidth) / static_cast<float>(DUCK_IMG_WIDTH);
+    const float scaleY = static_cast<float>(maxHeight) / static_cast<float>(DUCK_IMG_HEIGHT);
+    float scale = std::min(scaleX, scaleY);
+    scale = std::max(0.35f, std::min(scale, 1.0f));
+
+    const int32_t lvScale = static_cast<int32_t>(scale * 256.0f);
+    lv_image_set_scale(duckImage, lvScale);
+    lv_obj_center(duckImage);
+}
+
 void IconRail::setTreeIconVisible(bool visible)
 {
     treeIconVisible_ = visible;
@@ -195,7 +250,7 @@ void IconRail::setTreeIconVisible(bool visible)
                 // If tree was selected, deselect it.
                 if (selectedId_ == IconId::TREE) {
                     IconId previousId = selectedId_;
-                    selectedId_ = IconId::COUNT;
+                    selectedId_ = IconId::NONE;
                     updateButtonVisuals();
 
                     if (eventSink_) {
@@ -230,7 +285,7 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
 
             if (selectedId_ == id) {
                 const IconId previousId = selectedId_;
-                selectedId_ = IconId::COUNT;
+                selectedId_ = IconId::NONE;
                 updateButtonVisuals();
                 if (eventSink_) {
                     eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -266,7 +321,7 @@ void IconRail::selectIcon(IconId id)
 
 bool IconRail::isIconSelectable(IconId id) const
 {
-    if (id == IconId::COUNT) {
+    if (id == IconId::NONE) {
         return false;
     }
 
@@ -288,10 +343,10 @@ bool IconRail::isIconSelectable(IconId id) const
 
 void IconRail::deselectAll()
 {
-    if (selectedId_ == IconId::COUNT) return;
+    if (selectedId_ == IconId::NONE) return;
 
     IconId previousId = selectedId_;
-    selectedId_ = IconId::COUNT;
+    selectedId_ = IconId::NONE;
     updateButtonVisuals();
     resetAutoShrinkTimer();
 
@@ -376,6 +431,9 @@ void IconRail::applyMode()
 
     // Animate width transition.
     int targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH;
+    if (layout_ == RailLayout::TwoColumn) {
+        targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH_TWO_COLUMN;
+    }
     int currentWidth = lv_obj_get_width(container_);
     if (currentWidth != targetWidth) {
         lv_anim_t a;
@@ -396,9 +454,18 @@ void IconRail::applyMode()
             container_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
     else {
-        lv_obj_set_style_pad_all(container_, (RAIL_WIDTH - ICON_SIZE) / 2, 0);
+        lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
         lv_obj_set_flex_align(
             container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    }
+
+    if (layout_ == RailLayout::TwoColumn) {
+        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW_WRAP);
+        lv_obj_set_style_pad_column(container_, GAP, 0);
+    }
+    else {
+        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_column(container_, 0, 0);
     }
 
     // Show/hide icon buttons.
@@ -490,7 +557,7 @@ void IconRail::setMode(RailMode mode)
     mode_ = mode;
 
     // When minimizing, deselect any selected icon to close the expandable panel.
-    if (mode == RailMode::Minimized && selectedId_ != IconId::COUNT) {
+    if (mode == RailMode::Minimized && selectedId_ != IconId::NONE) {
         deselectAll();
     }
 
@@ -505,6 +572,16 @@ void IconRail::setMode(RailMode mode)
 void IconRail::toggleMode()
 {
     setMode(mode_ == RailMode::Normal ? RailMode::Minimized : RailMode::Normal);
+}
+
+void IconRail::setLayout(RailLayout layout)
+{
+    if (layout_ == layout) {
+        return;
+    }
+
+    layout_ = layout;
+    applyMode();
 }
 
 void IconRail::onModeButtonClicked(lv_event_t* e)
@@ -542,7 +619,7 @@ void IconRail::resetAutoShrinkTimer()
     if (!autoShrinkTimer_) return;
 
     // Only run timer when rail is expanded and no icon is selected.
-    if (mode_ == RailMode::Normal && selectedId_ == IconId::COUNT) {
+    if (mode_ == RailMode::Normal && selectedId_ == IconId::NONE) {
         lv_timer_reset(autoShrinkTimer_);
         lv_timer_resume(autoShrinkTimer_);
     }
@@ -557,7 +634,7 @@ void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
     if (!self) return;
 
     // Only request shrink if no icon is selected and currently expanded.
-    if (self->selectedId_ == IconId::COUNT && self->mode_ == RailMode::Normal) {
+    if (self->selectedId_ == IconId::NONE && self->mode_ == RailMode::Normal) {
         LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
         // Queue event for state machine to handle (don't touch LVGL objects from timer).
         if (self->eventSink_) {
