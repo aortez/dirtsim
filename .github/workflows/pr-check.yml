@@ -66,7 +66,13 @@ jobs:
     - name: Prepare Yocto cache
       run: |
         CACHE_ROOT="/home/data/linux1/yocto-cache"
-        mkdir -p "${CACHE_ROOT}/downloads" "${CACHE_ROOT}/sstate-cache" "${CACHE_ROOT}/.ccache/dirtsim-yocto"
+        mkdir -p \
+          "${CACHE_ROOT}/downloads" \
+          "${CACHE_ROOT}/sstate-cache" \
+          "${CACHE_ROOT}/.ccache/dirtsim-yocto" \
+          "${CACHE_ROOT}/kas-repos" \
+          "${CACHE_ROOT}/kas-build-x86" \
+          "${CACHE_ROOT}/kas-build-pi"
         find "${CACHE_ROOT}/sstate-cache" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/downloads" -type f -mtime +7 -delete || true
         find "${CACHE_ROOT}/.ccache/dirtsim-yocto" -type f -mtime +7 -delete || true
@@ -82,6 +88,8 @@ jobs:
         SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
         CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
         DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
+        KAS_REPOS_DIR: /home/data/linux1/yocto-cache/kas-repos
+        KAS_BUILD_DIR: /home/data/linux1/yocto-cache/kas-build-x86
         DIRTSIM_RUNTIME_REGISTRY: oldman-desktop.local:5000
       run: npm run runtime-image -- --build
 
@@ -208,6 +216,8 @@ jobs:
         SSTATE_DIR: /home/data/linux1/yocto-cache/sstate-cache
         CCACHE_DIR: /home/data/linux1/yocto-cache/.ccache/dirtsim-yocto
         DIRTSIM_CACHE_ROOT: /home/data/linux1/yocto-cache
+        KAS_REPOS_DIR: /home/data/linux1/yocto-cache/kas-repos
+        KAS_BUILD_DIR: /home/data/linux1/yocto-cache/kas-build-pi
         DIRTSIM_SSH_KEY_PATH: ${{ env.DIRTSIM_SSH_KEY_PATH }}
         DIRTSIM_SKIP_PING: "1"
       run: npm run yolo -- --docker --target dirtsim.local --hold-my-mead
@@ -226,5 +236,10 @@ jobs:
 
   docker-cleanup:
     uses: ./.github/workflows/docker-cleanup.yml
+    needs: build-and-test
+    if: always()
+
+  yocto-cleanup:
+    uses: ./.github/workflows/yocto-cleanup.yml
     needs: build-and-test
     if: always()

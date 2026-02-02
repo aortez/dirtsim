@@ -40,7 +40,7 @@ jobs:
     - name: Prune build cache
       run: |
         echo "Pruning Docker build cache..."
-        docker builder prune -f --filter until=48h
+        docker builder prune -f --filter until=24h
         echo "Done."
 
     - name: Report disk usage after cleanup

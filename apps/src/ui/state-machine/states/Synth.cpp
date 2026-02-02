@@ -43,13 +43,7 @@ void Synth::onEnter(StateMachine& sm)
 
     keyboard_.create(contentRoot_);
     keyboard_.setVolumePercent(sm.getSynthVolumePercent());
-
-    bottomRow_ = lv_obj_create(contentRoot_);
-    lv_obj_set_size(bottomRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(bottomRow_, 1);
-    lv_obj_set_style_bg_opa(bottomRow_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(bottomRow_, 0, 0);
-    lv_obj_clear_flag(bottomRow_, LV_OBJ_FLAG_SCROLLABLE);
+    bottomRow_ = nullptr;
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->hide();
