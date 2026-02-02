@@ -567,6 +567,10 @@ void ClockScenario::tick(World& world, double deltaTime)
             }
         }
 
+        for (const auto& door_pos : door_manager_.getOpenDoorPositions(glowData)) {
+            obstaclePositions.push_back(door_pos);
+        }
+
         GlowConfig glowConfig = config_.glowConfig;
         glowConfig.digitColor = getMaterialColor(getActiveDigitMaterial());
 
