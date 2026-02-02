@@ -38,16 +38,6 @@ void EvolutionControls::createMainView(lv_obj_t* view)
     lv_obj_set_style_pad_top(titleLabel, 8, 0);
     lv_obj_set_style_pad_bottom(titleLabel, 12, 0);
 
-    // Quit button - always visible, returns to start menu.
-    quitButton_ = LVGLBuilder::actionButton(view)
-                      .text("Quit")
-                      .icon(LV_SYMBOL_STOP)
-                      .mode(LVGLBuilder::ActionMode::Push)
-                      .size(80)
-                      .backgroundColor(0xCC0000)
-                      .callback(onQuitClicked, this)
-                      .buildOrLog();
-
     // View Best button - only visible when evolution is complete.
     viewBestButton_ = LVGLBuilder::actionButton(view)
                           .text("View Best")
@@ -96,16 +86,6 @@ void EvolutionControls::onViewBestClicked(lv_event_t* e)
     spdlog::info("EvolutionControls: View Best button clicked");
 
     self->eventSink_.queueEvent(ViewBestButtonClickedEvent{ self->bestGenomeId_ });
-}
-
-void EvolutionControls::onQuitClicked(lv_event_t* e)
-{
-    EvolutionControls* self = static_cast<EvolutionControls*>(lv_event_get_user_data(e));
-    if (!self) return;
-
-    spdlog::info("EvolutionControls: Quit button clicked");
-
-    self->eventSink_.queueEvent(QuitTrainingClickedEvent{});
 }
 
 } // namespace Ui

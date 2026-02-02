@@ -54,11 +54,11 @@ TrainingView::TrainingView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
-    int& streamIntervalMs)
+    UserSettings& userSettings)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
-      streamIntervalMs_(streamIntervalMs)
+      userSettings_(userSettings)
 {
     alive_ = std::make_shared<std::atomic<bool>>(true);
     renderer_ = std::make_unique<CellRenderer>();
@@ -96,18 +96,22 @@ void TrainingView::createUI()
     }
     starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
 
-    // Main layout: left stream panel + stats/world content.
+    // Main layout: panel column + stream panel + stats/world content.
     contentRow_ = lv_obj_create(container_);
     lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(contentRow_, 0, 0);
     lv_obj_set_style_pad_all(contentRow_, 0, 0);
-    lv_obj_set_style_pad_left(contentRow_, IconRail::RAIL_WIDTH + 10, 0);
     lv_obj_set_style_pad_gap(contentRow_, 10, 0);
     lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    panel_ = std::make_unique<ExpandablePanel>(contentRow_);
+    panel_->show();
+    panel_->setWidth(ExpandablePanel::DefaultWidth);
+    panelContent_ = panel_->getContentArea();
 
     createStreamPanel(contentRow_);
 
@@ -348,6 +352,7 @@ void TrainingView::destroyUI()
     }
 
     starfield_.reset();
+    panel_.reset();
 
     if (container_) {
         lv_obj_clean(container_);
@@ -370,11 +375,15 @@ void TrainingView::destroyUI()
     mainLayout_ = nullptr;
     streamPanel_ = nullptr;
     streamIntervalStepper_ = nullptr;
+    pauseResumeButton_ = nullptr;
+    pauseResumeLabel_ = nullptr;
+    stopTrainingButton_ = nullptr;
     simTimeLabel_ = nullptr;
     speedupLabel_ = nullptr;
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
+    panelContent_ = nullptr;
 }
 
 void TrainingView::renderWorld(const WorldData& worldData)
@@ -427,11 +436,15 @@ void TrainingView::clearPanelContent()
     genomeBrowserPanel_.reset();
     trainingConfigPanel_.reset();
     trainingResultBrowserPanel_.reset();
+    if (panel_) {
+        panel_->clearContent();
+        panel_->setWidth(ExpandablePanel::DefaultWidth);
+    }
 }
 
 void TrainingView::setStreamIntervalMs(int value)
 {
-    streamIntervalMs_ = value;
+    userSettings_.streamIntervalMs = value;
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
@@ -440,23 +453,72 @@ void TrainingView::setStreamIntervalMs(int value)
     }
 }
 
+void TrainingView::setTrainingModalActive(bool active)
+{
+    modalActive_ = active;
+
+    IconRail* iconRail = uiManager_ ? uiManager_->getIconRail() : nullptr;
+    if (iconRail) {
+        if (lv_obj_t* railContainer = iconRail->getContainer()) {
+            if (active) {
+                lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+            }
+            else {
+                lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+                lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+            }
+        }
+    }
+
+    if (uiManager_) {
+        if (auto* panel = uiManager_->getExpandablePanel()) {
+            panel->clearContent();
+            panel->hide();
+            panel->resetWidth();
+        }
+    }
+
+    if (contentRow_) {
+        int leftPadding = 0;
+        if (!active && iconRail) {
+            if (lv_obj_t* railContainer = iconRail->getContainer()) {
+                leftPadding = lv_obj_get_width(railContainer);
+            }
+            if (leftPadding <= 0 && !iconRail->isMinimized()) {
+                leftPadding = IconRail::RAIL_WIDTH;
+            }
+        }
+        lv_obj_set_style_pad_left(contentRow_, leftPadding, 0);
+    }
+}
+
+void TrainingView::setTrainingPaused(bool paused)
+{
+    if (pauseResumeLabel_) {
+        lv_label_set_text(pauseResumeLabel_, paused ? "Resume" : "Pause");
+    }
+    if (pauseResumeButton_) {
+        LVGLBuilder::ActionButtonBuilder::setIcon(
+            pauseResumeButton_, paused ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE);
+    }
+}
+
 void TrainingView::createCorePanel()
 {
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+    if (!panel_) {
+        LOG_ERROR(Controls, "TrainingView: No training panel available");
         return;
     }
-    panel->setWidth(ExpandablePanel::DefaultWidth);
+    panel_->setWidth(ExpandablePanel::DefaultWidth);
 
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
+    if (!panelContent_) {
         LOG_ERROR(Controls, "TrainingView: No panel content area available");
         return;
     }
 
     evolutionControls_ = std::make_unique<EvolutionControls>(
-        container, eventSink_, evolutionStarted_, trainingSpec_);
+        panelContent_, eventSink_, evolutionStarted_, userSettings_.trainingSpec);
     LOG_INFO(Controls, "TrainingView: Created Training Active panel");
 }
 
@@ -467,48 +529,45 @@ void TrainingView::createGenomeBrowserPanel()
 
 void TrainingView::createGenomeBrowserPanelInternal()
 {
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+    if (!panel_) {
+        LOG_ERROR(Controls, "TrainingView: No training panel available");
         return;
     }
-    panel->setWidth(computeBrowserPanelWidth());
+    panel_->setWidth(computeBrowserPanelWidth());
 
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
+    if (!panelContent_) {
         LOG_ERROR(Controls, "TrainingView: No panel content area available");
         return;
     }
 
-    genomeBrowserPanel_ = std::make_unique<GenomeBrowserPanel>(container, wsService_, &eventSink_);
+    genomeBrowserPanel_ =
+        std::make_unique<GenomeBrowserPanel>(panelContent_, wsService_, &eventSink_);
     LOG_INFO(Controls, "TrainingView: Created Genome browser panel");
 }
 
 void TrainingView::createTrainingConfigPanel()
 {
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+    if (!panel_) {
+        LOG_ERROR(Controls, "TrainingView: No training panel available");
         return;
     }
-    panel->setWidth(ExpandablePanel::DefaultWidth);
+    panel_->setWidth(ExpandablePanel::DefaultWidth);
 
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
+    if (!panelContent_) {
         LOG_ERROR(Controls, "TrainingView: No panel content area available");
         return;
     }
 
     trainingConfigPanel_ = std::make_unique<TrainingConfigPanel>(
-        container,
+        panelContent_,
         eventSink_,
-        panel,
+        panel_.get(),
         wsService_,
         evolutionStarted_,
-        evolutionConfig_,
-        mutationConfig_,
-        trainingSpec_,
-        streamIntervalMs_);
+        userSettings_.evolutionConfig,
+        userSettings_.mutationConfig,
+        userSettings_.trainingSpec,
+        userSettings_.streamIntervalMs);
     LOG_INFO(Controls, "TrainingView: Created Training config panel");
 }
 
@@ -537,21 +596,19 @@ Result<std::monostate, std::string> TrainingView::showTrainingConfigView(Trainin
 
 void TrainingView::createTrainingResultBrowserPanel()
 {
-    ExpandablePanel* panel = uiManager_->getExpandablePanel();
-    if (!panel) {
-        LOG_ERROR(Controls, "TrainingView: No expandable panel available");
+    if (!panel_) {
+        LOG_ERROR(Controls, "TrainingView: No training panel available");
         return;
     }
-    panel->setWidth(computeBrowserPanelWidth());
+    panel_->setWidth(computeBrowserPanelWidth());
 
-    lv_obj_t* container = panel->getContentArea();
-    if (!container) {
+    if (!panelContent_) {
         LOG_ERROR(Controls, "TrainingView: No panel content area available");
         return;
     }
 
     trainingResultBrowserPanel_ =
-        std::make_unique<TrainingResultBrowserPanel>(container, wsService_);
+        std::make_unique<TrainingResultBrowserPanel>(panelContent_, wsService_);
     LOG_INFO(Controls, "TrainingView: Created Training result browser panel");
 }
 
@@ -604,7 +661,7 @@ void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumT
     }
 
     PopulationSpec* targetSpec = nullptr;
-    for (auto& spec : trainingSpec_.population) {
+    for (auto& spec : userSettings_.trainingSpec.population) {
         if (spec.scenarioId == scenarioId) {
             targetSpec = &spec;
             break;
@@ -614,7 +671,7 @@ void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumT
     if (!targetSpec) {
         PopulationSpec spec;
         spec.scenarioId = scenarioId;
-        switch (trainingSpec_.organismType) {
+        switch (userSettings_.trainingSpec.organismType) {
             case OrganismType::TREE:
                 spec.brainKind = TrainingBrainKind::NeuralNet;
                 break;
@@ -626,15 +683,15 @@ void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumT
                 spec.brainKind = TrainingBrainKind::Random;
                 break;
         }
-        spec.count = std::max(1, evolutionConfig_.populationSize);
-        trainingSpec_.population.push_back(spec);
-        targetSpec = &trainingSpec_.population.back();
+        spec.count = std::max(1, userSettings_.evolutionConfig.populationSize);
+        userSettings_.trainingSpec.population.push_back(spec);
+        targetSpec = &userSettings_.trainingSpec.population.back();
     }
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const std::string variant = targetSpec->brainVariant.value_or("");
     const BrainRegistryEntry* entry =
-        registry.find(trainingSpec_.organismType, targetSpec->brainKind, variant);
+        registry.find(userSettings_.trainingSpec.organismType, targetSpec->brainKind, variant);
     if (!entry || !entry->requiresGenome) {
         LOG_WARN(Controls, "TrainingView: Genome add ignored for non-genome brain");
         return;
@@ -652,10 +709,10 @@ void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumT
     }
     targetSpec->randomCount = targetSpec->count - seedCount;
     int totalPopulation = 0;
-    for (const auto& spec : trainingSpec_.population) {
+    for (const auto& spec : userSettings_.trainingSpec.population) {
         const std::string specVariant = spec.brainVariant.value_or("");
         const BrainRegistryEntry* specEntry =
-            registry.find(trainingSpec_.organismType, spec.brainKind, specVariant);
+            registry.find(userSettings_.trainingSpec.organismType, spec.brainKind, specVariant);
         if (specEntry && specEntry->requiresGenome) {
             totalPopulation += static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
         }
@@ -663,9 +720,10 @@ void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumT
             totalPopulation += spec.count;
         }
     }
-    evolutionConfig_.populationSize = totalPopulation;
-    if (!trainingSpec_.population.empty()) {
-        trainingSpec_.scenarioId = trainingSpec_.population.front().scenarioId;
+    userSettings_.evolutionConfig.populationSize = totalPopulation;
+    if (!userSettings_.trainingSpec.population.empty()) {
+        userSettings_.trainingSpec.scenarioId =
+            userSettings_.trainingSpec.population.front().scenarioId;
     }
 }
 
@@ -837,6 +895,18 @@ void TrainingView::setEvolutionStarted(bool started)
         trainingConfigPanel_->setEvolutionStarted(started);
     }
 
+    if (pauseResumeButton_) {
+        if (started) {
+            lv_obj_clear_flag(pauseResumeButton_, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_state(pauseResumeButton_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(pauseResumeButton_, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_flag(pauseResumeButton_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    setTrainingPaused(false);
+
     updateEvolutionVisibility();
 }
 
@@ -858,13 +928,17 @@ void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
         trainingConfigPanel_->setEvolutionCompleted();
     }
 
+    if (pauseResumeButton_) {
+        lv_obj_add_flag(pauseResumeButton_, LV_OBJ_FLAG_HIDDEN);
+    }
+    setTrainingPaused(false);
+
     updateEvolutionVisibility();
 }
 
 void TrainingView::updateEvolutionVisibility()
 {
-    const bool hasStarfield = starfield_ && starfield_->getCanvas();
-    const bool showEvolution = evolutionStarted_ || !hasStarfield;
+    const bool showEvolution = true;
 
     if (contentRow_) {
         if (showEvolution) {
@@ -900,7 +974,7 @@ void TrainingView::updateEvolutionVisibility()
     }
 
     if (starfield_) {
-        starfield_->setVisible(!showEvolution);
+        starfield_->setVisible(false);
     }
 }
 
@@ -1011,12 +1085,37 @@ void TrainingView::createStreamPanel(lv_obj_t* parent)
                                  .label("Interval (ms)")
                                  .range(0, 5000)
                                  .step(100)
-                                 .value(streamIntervalMs_)
+                                 .value(userSettings_.streamIntervalMs)
                                  .valueFormat("%.0f")
                                  .valueScale(1.0)
                                  .width(LV_PCT(100))
                                  .callback(onStreamIntervalChanged, this)
                                  .buildOrLog();
+
+    LVGLBuilder::ActionButtonBuilder stopBuilder(streamPanel_);
+    stopBuilder.text("Stop Training")
+        .icon(LV_SYMBOL_STOP)
+        .mode(LVGLBuilder::ActionMode::Push)
+        .layoutRow()
+        .alignCenter()
+        .width(LV_PCT(100))
+        .height(56)
+        .backgroundColor(0xAA2222)
+        .callback(onStopTrainingClicked, this);
+    stopTrainingButton_ = stopBuilder.buildOrLog();
+
+    LVGLBuilder::ActionButtonBuilder pauseBuilder(streamPanel_);
+    pauseBuilder.text("Pause")
+        .icon(LV_SYMBOL_PAUSE)
+        .mode(LVGLBuilder::ActionMode::Push)
+        .layoutRow()
+        .alignCenter()
+        .width(LV_PCT(100))
+        .height(56)
+        .backgroundColor(0x0066CC)
+        .callback(onPauseResumeClicked, this);
+    pauseResumeButton_ = pauseBuilder.buildOrLog();
+    pauseResumeLabel_ = pauseBuilder.getLabel();
 }
 
 void TrainingView::showTrainingResultModal(
@@ -1195,6 +1294,26 @@ void TrainingView::onStreamIntervalChanged(lv_event_t* e)
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
     self->setStreamIntervalMs(value);
     self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
+}
+
+void TrainingView::onStopTrainingClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->eventSink_.queueEvent(StopTrainingClickedEvent{});
+}
+
+void TrainingView::onPauseResumeClicked(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->eventSink_.queueEvent(TrainingPauseResumeClickedEvent{});
 }
 
 void TrainingView::hideTrainingResultModal()

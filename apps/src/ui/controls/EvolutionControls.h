@@ -15,7 +15,7 @@ class EventSink;
 /**
  * @brief Home panel for Training state.
  *
- * Provides View Best and Quit buttons for the training view.
+ * Provides View Best controls for the training view.
  * This is the "home" panel for the Training state.
  */
 class EvolutionControls {
@@ -44,13 +44,11 @@ private:
     TrainingSpec& trainingSpec_;
 
     lv_obj_t* viewBestButton_ = nullptr;
-    lv_obj_t* quitButton_ = nullptr;
 
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();
 
     static void onViewBestClicked(lv_event_t* e);
-    static void onQuitClicked(lv_event_t* e);
 };
 
 } // namespace Ui

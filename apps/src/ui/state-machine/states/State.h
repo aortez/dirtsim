@@ -24,8 +24,16 @@ namespace State {
  */
 class Any {
 public:
-    using Variant =
-        std::variant<Disconnected, Paused, Shutdown, SimRunning, StartMenu, Startup, Training>;
+    using Variant = std::variant<
+        Disconnected,
+        Paused,
+        Shutdown,
+        SimRunning,
+        StartMenu,
+        Startup,
+        TrainingIdle,
+        TrainingActive,
+        TrainingUnsavedResult>;
 
     template <typename T>
     Any(T&& state) : variant_(std::forward<T>(state))

@@ -10,8 +10,8 @@ scale 1.6
   } | {
     "Stream"
     "Interval (ms)" | [ - ] [ 500 ] [ + ]
-    [Pause/Resume]
     [Stop Training]
+    [Pause/Resume]
   } | {
     "Training"
     "Status: Running"
@@ -21,6 +21,8 @@ scale 1.6
 }
 @endsalt
 ```
+
+Full-screen modal. Icon rail hidden. Only training actions are available.
 
 ## States
 

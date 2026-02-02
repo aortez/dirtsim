@@ -22,8 +22,10 @@ scale 1.6
       [x] | "Seed-02" | "1.98 / 15" | [ ]
       [ ] | "Seed-03" | "1.20 / 8" | [x]
     }
+    "Add to Training enabled when >=1 selected."
+    "Adds selected to training pool, clears selections."
     "Pool indicators are read-only."
-    "List scroll: clamp at ends."
+    "Selected count is of total list."
   }
 }
 @endsalt

@@ -9,6 +9,7 @@
 #include "core/Timers.h"
 #include "states/State.h"
 #include "ui/UiConfig.h"
+#include "ui/UserSettingsManager.h"
 
 #include <memory>
 #include <string>
@@ -42,12 +43,13 @@ class StateMachine : public StateMachineBase,
                      public StateMachineInterface<Event>,
                      public EventSink {
 public:
-    explicit StateMachine(_lv_display_t* display, uint16_t wsPort = 7070);
+    explicit StateMachine(
+        _lv_display_t* display, UserSettingsManager& userSettingsManager, uint16_t wsPort = 7070);
     ~StateMachine();
 
     // Test-only constructor: creates minimal StateMachine without display or networking.
     struct TestMode {};
-    explicit StateMachine(TestMode);
+    explicit StateMachine(TestMode, UserSettingsManager& userSettingsManager);
 
     void mainLoopRun();
 
@@ -89,6 +91,9 @@ public:
 
     double getUiFps() const;
 
+    UserSettings& getUserSettings() { return userSettingsManager_->get(); }
+    const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
+
     // UI configuration (loaded from ui.json).
     std::unique_ptr<UiConfig> uiConfig;
 
@@ -112,6 +117,7 @@ private:
     bool hasLastServerAddress_ = false;
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
+    UserSettingsManager* userSettingsManager_ = nullptr;
 
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();

@@ -31,6 +31,7 @@ struct FunctionalTestSummary {
     std::string name;
     int64_t duration_ms = 0;
     Result<std::monostate, std::string> result;
+    std::optional<std::string> failure_screenshot_path;
     std::optional<FunctionalTrainingSummary> training_summary;
 
     nlohmann::json toJson() const;

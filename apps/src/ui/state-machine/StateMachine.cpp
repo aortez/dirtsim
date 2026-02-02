@@ -32,14 +32,17 @@
 namespace DirtSim {
 namespace Ui {
 
-StateMachine::StateMachine(TestMode) : display(nullptr)
+StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
+    : display(nullptr), userSettingsManager_(&userSettingsManager)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
     LOG_INFO(State, "StateMachine created in test mode");
 }
 
-StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
+StateMachine::StateMachine(
+    _lv_display_t* disp, UserSettingsManager& userSettingsManager, uint16_t wsPort)
+    : display(disp), userSettingsManager_(&userSettingsManager)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
@@ -489,8 +492,7 @@ void StateMachine::handleEvent(const Event& event)
 
         std::visit(
             [&stateDetails](const auto& currentState) {
-                using T = std::decay_t<decltype(currentState)>;
-                if constexpr (std::is_same_v<T, State::Training>) {
+                if constexpr (requires { currentState.isTrainingResultModalVisible(); }) {
                     stateDetails = UiApi::StatusGet::TrainingStateDetails{
                         .trainingModalVisible = currentState.isTrainingResultModalVisible(),
                     };

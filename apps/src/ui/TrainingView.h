@@ -1,10 +1,9 @@
 #pragma once
 
 #include "core/Result.h"
-#include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
-#include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/TrainingResult.h"
+#include "ui/UserSettings.h"
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -36,6 +35,7 @@ class Starfield;
 class TrainingConfigPanel;
 class TrainingResultBrowserPanel;
 class UiComponentManager;
+class ExpandablePanel;
 
 /**
  * Coordinates the training view display.
@@ -59,7 +59,7 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
-        int& streamIntervalMs);
+        UserSettings& userSettings);
     ~TrainingView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
@@ -85,6 +85,8 @@ public:
     void createTrainingResultBrowserPanel();
     Result<std::monostate, std::string> showTrainingConfigView(TrainingConfigView view);
     void setStreamIntervalMs(int value);
+    void setTrainingModalActive(bool active);
+    void setTrainingPaused(bool paused);
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
@@ -96,11 +98,8 @@ private:
     EventSink& eventSink_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
 
-    // Shared evolution configuration (owned here, referenced by panels).
-    EvolutionConfig evolutionConfig_;
-    MutationConfig mutationConfig_;
-    TrainingSpec trainingSpec_;
-    int& streamIntervalMs_;
+    UserSettings& userSettings_;
+    bool modalActive_ = false;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
@@ -126,6 +125,11 @@ private:
     std::chrono::steady_clock::time_point lastProgressUiLog_{};
     std::chrono::steady_clock::time_point lastStatsInvalidate_{};
     lv_obj_t* streamIntervalStepper_ = nullptr;
+    lv_obj_t* pauseResumeButton_ = nullptr;
+    lv_obj_t* pauseResumeLabel_ = nullptr;
+    lv_obj_t* stopTrainingButton_ = nullptr;
+    std::unique_ptr<ExpandablePanel> panel_;
+    lv_obj_t* panelContent_ = nullptr;
 
     // Best snapshot display.
     lv_obj_t* bestWorldContainer_ = nullptr;
@@ -175,6 +179,8 @@ private:
     static void onTrainingResultDiscardClicked(lv_event_t* e);
     static void onTrainingResultCountChanged(lv_event_t* e);
     static void onStreamIntervalChanged(lv_event_t* e);
+    static void onStopTrainingClicked(lv_event_t* e);
+    static void onPauseResumeClicked(lv_event_t* e);
 };
 
 } // namespace Ui

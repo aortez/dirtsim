@@ -726,6 +726,9 @@ nlohmann::json FunctionalTestSummary::toJson() const
         resultJson["success"] = true;
     }
     output["result"] = std::move(resultJson);
+    if (failure_screenshot_path.has_value()) {
+        output["failure_screenshot_path"] = *failure_screenshot_path;
+    }
     if (training_summary.has_value()) {
         output["training_summary"] = training_summary->toJson();
     }
@@ -854,6 +857,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         .name = "canExit",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -899,6 +903,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         .name = "canTrain",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::move(trainingSummary),
     };
 }
@@ -959,6 +964,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
         .name = "canSetGenerationsAndTrain",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::move(trainingSummary),
     };
 }
@@ -1150,6 +1156,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlantTreeSeed(
         .name = "canPlantTreeSeed",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1349,6 +1356,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanLoadGenomeFromBrowser(
         .name = "canLoadGenomeFromBrowser",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1515,6 +1523,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
         .name = "canOpenTrainingConfigPanel",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1814,6 +1823,7 @@ FunctionalTestSummary FunctionalTestRunner::runVerifyTraining(
         .name = "verifyTraining",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
