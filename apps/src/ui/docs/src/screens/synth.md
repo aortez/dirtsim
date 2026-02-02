@@ -15,13 +15,18 @@ scale 1.6
     {#
       [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ]
     }
-    .
+    {#
+      [ ] | . | [ ] | . | . | [ ] | . | [ ] | . | [ ] | .
+    }
+    {#
+      [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ] | . | [ ]
+    }
   }
 }
 @endsalt
 ```
 
-Black keys overlay the white keys in a piano layout. Keys should be at least Action Size. Bottom row is empty.
+Black keys overlay the white keys in a piano layout. Keys should be at least Action Size. The keyboard fills the content area with two stacked octaves (lower octave beneath the original row).
 
 ## States
 

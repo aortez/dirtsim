@@ -40,17 +40,32 @@ private:
     static void onKeyboardResized(lv_event_t* e);
     static void onKeyPressed(lv_event_t* e);
 
-    void applyKeyPress(lv_obj_t* key, int keyIndex, bool isBlack, const char* source);
-    bool findKeyIndex(lv_obj_t* key, int& keyIndex, bool& isBlack) const;
+    void applyKeyPress(
+        lv_obj_t* key, int keyIndex, bool isBlack, int octaveIndex, const char* source);
+    bool findKeyAtPoint(
+        const lv_point_t& point,
+        lv_obj_t*& key,
+        int& keyIndex,
+        bool& isBlack,
+        int& octaveIndex) const;
+    bool findKeyIndex(lv_obj_t* key, int& keyIndex, bool& isBlack, int& octaveIndex) const;
     void layoutKeyboard();
     bool ensureAudioConnected();
+    int getGlobalKeyIndex(int keyIndex, bool isBlack, int octaveIndex) const;
     void resetLastKeyVisual();
+    void clearLastKey();
+
+    static constexpr size_t kOctaveCount = 2;
+    struct OctaveKeys {
+        lv_obj_t* container = nullptr;
+        lv_obj_t* whiteKeysContainer = nullptr;
+        std::array<lv_obj_t*, 7> whiteKeys{};
+        std::array<lv_obj_t*, 5> blackKeys{};
+    };
 
     lv_obj_t* keyboardRow_ = nullptr;
     lv_obj_t* keyboardContainer_ = nullptr;
-    lv_obj_t* whiteKeysContainer_ = nullptr;
-    std::array<lv_obj_t*, 7> whiteKeys_{};
-    std::array<lv_obj_t*, 5> blackKeys_{};
+    std::array<OctaveKeys, kOctaveCount> octaves_{};
     std::unique_ptr<DirtSim::Network::WebSocketService, WebSocketServiceDeleter> audioClient_;
     bool audioWarningLogged_ = false;
     int volumePercent_ = 50;
