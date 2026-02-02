@@ -1,4 +1,4 @@
-#include "PeerAdvertisement.h"
+#include "os-manager/network/PeerAdvertisement.h"
 
 #include <atomic>
 #include <mutex>
@@ -13,7 +13,7 @@
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 static constexpr const char* SERVICE_TYPE = "_dirtsim._tcp";
 
@@ -304,5 +304,5 @@ bool PeerAdvertisement::isRunning() const
     return pImpl_->running_;
 }
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

@@ -31,6 +31,15 @@ Any Idle::onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& /*osm*/
     return Rebooting{};
 }
 
+Any Idle::onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "PeersGet command received");
+    OsApi::PeersGet::Okay response;
+    response.peers = osm.getPeers();
+    cwc.sendResponse(OsApi::PeersGet::Response::okay(std::move(response)));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "RestartAudio command received");

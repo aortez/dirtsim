@@ -1,13 +1,13 @@
 #pragma once
 
-#include "PeerDiscovery.h" // For PeerRole enum.
 #include "core/Pimpl.h"
+#include "os-manager/network/PeerDiscovery.h"
 
 #include <cstdint>
 #include <string>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 // Advertises this service on the local network via mDNS/Avahi.
 // Complementary to PeerDiscovery which browses for services.
@@ -39,5 +39,5 @@ private:
     Pimpl<Impl> pImpl_;
 };
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

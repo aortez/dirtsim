@@ -1,6 +1,7 @@
-#include "PeerDiscovery.h"
+#include "os-manager/network/PeerDiscovery.h"
 #include "core/ReflectSerializer.h"
 
+#include <algorithm>
 #include <atomic>
 #include <mutex>
 #include <stdexcept>
@@ -14,7 +15,7 @@
 #include <spdlog/spdlog.h>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 struct PeerDiscovery::Impl {
     std::atomic<bool> running_{ false };
@@ -341,5 +342,5 @@ void PeerDiscovery::setOnPeersChanged(std::function<void(const std::vector<PeerI
     pImpl_->onPeersChanged_ = std::move(callback);
 }
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

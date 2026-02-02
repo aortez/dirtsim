@@ -8,7 +8,7 @@
 #include <vector>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 enum class PeerRole { Physics, Ui, Unknown };
 
@@ -62,5 +62,5 @@ private:
     Pimpl<Impl> pImpl_;
 };
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

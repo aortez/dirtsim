@@ -1,4 +1,5 @@
 #include "CommandDeserializerJson.h"
+#include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
@@ -45,7 +46,11 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
     spdlog::debug("OsManager: Deserializing command: {}", commandName);
 
     try {
-        if (commandName == OsApi::Reboot::Command::name()) {
+        if (commandName == OsApi::PeersGet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::PeersGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::Reboot::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::Reboot::Command::fromJson(cmd));
         }

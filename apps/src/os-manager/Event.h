@@ -1,5 +1,6 @@
 #pragma once
 
+#include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
@@ -28,6 +29,7 @@ concept HasEventName = requires {
 class Event {
 public:
     using Variant = std::variant<
+        OsApi::PeersGet::Cwc,
         OsApi::Reboot::Cwc,
         OsApi::RestartAudio::Cwc,
         OsApi::RestartServer::Cwc,

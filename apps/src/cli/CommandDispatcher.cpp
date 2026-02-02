@@ -2,6 +2,7 @@
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
+#include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
@@ -49,7 +50,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::GenomeList::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GenomeSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GravitySet::Cwc>(serverHandlers_, serverExampleHandlers_);
-    registerCommand<Api::PeersGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
@@ -109,6 +109,7 @@ CommandDispatcher::CommandDispatcher()
     spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
 
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::PeersGet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);

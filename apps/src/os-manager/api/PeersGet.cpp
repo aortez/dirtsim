@@ -1,8 +1,8 @@
-#include "PeersGet.h"
+#include "os-manager/api/PeersGet.h"
 #include "core/ReflectSerializer.h"
 
 namespace DirtSim {
-namespace Api {
+namespace OsApi {
 namespace PeersGet {
 
 nlohmann::json Command::toJson() const
@@ -21,5 +21,5 @@ nlohmann::json Okay::toJson() const
 }
 
 } // namespace PeersGet
-} // namespace Api
+} // namespace OsApi
 } // namespace DirtSim

@@ -17,11 +17,15 @@
 #include <memory>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace DirtSim {
 namespace OsManager {
 
 class LocalProcessBackend;
+class PeerAdvertisement;
+class PeerDiscoveryInterface;
+struct PeerInfo;
 
 class OperatingSystemManager : public StateMachineBase, public StateMachineInterface<Event> {
 public:
@@ -76,6 +80,7 @@ public:
     void processEvents() override;
 
     OsApi::SystemStatus::Okay buildSystemStatus();
+    std::vector<PeerInfo> getPeers() const;
     Result<OsApi::WebSocketAccessSet::Okay, ApiError> setWebSocketAccess(bool enabled);
     Result<OsApi::WebUiAccessSet::Okay, ApiError> setWebUiAccess(bool enabled);
     Result<std::monostate, ApiError> startService(const std::string& unitName);
@@ -99,9 +104,11 @@ private:
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(
         const std::string& action, const std::string& unitName);
+    void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);
     void initializeDefaultDependencies();
+    void initializePeerDiscovery();
 
     uint16_t port_ = 0;
     bool enableNetworking_ = true;
@@ -112,6 +119,11 @@ private:
     Dependencies dependencies_;
     BackendConfig backendConfig_;
     std::unique_ptr<LocalProcessBackend> localBackend_;
+    std::unique_ptr<PeerAdvertisement> serverPeerAdvertisement_;
+    std::unique_ptr<PeerAdvertisement> uiPeerAdvertisement_;
+    std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;
+    std::string peerServiceName_;
+    std::string peerUiServiceName_;
     bool webUiEnabled_ = false;
     bool webSocketEnabled_ = false;
     std::string webSocketToken_;

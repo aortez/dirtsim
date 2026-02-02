@@ -6,6 +6,8 @@
 #include "core/network/BinaryProtocol.h"
 #include "core/network/JsonProtocol.h"
 #include "os-manager/network/CommandDeserializerJson.h"
+#include "os-manager/network/PeerAdvertisement.h"
+#include "os-manager/network/PeerDiscovery.h"
 #include "server/api/StatusGet.h"
 #include "server/api/WebSocketAccessSet.h"
 #include "server/api/WebUiAccessSet.h"
@@ -366,6 +368,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port) : port_(port)
     initializeDefaultDependencies();
     setupWebSocketService();
     webSocketToken_ = generateWebSocketToken();
+    initializePeerDiscovery();
 }
 
 OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfig& backendConfig)
@@ -374,6 +377,7 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
     initializeDefaultDependencies();
     setupWebSocketService();
     webSocketToken_ = generateWebSocketToken();
+    initializePeerDiscovery();
 }
 
 OperatingSystemManager::OperatingSystemManager(TestMode mode)
@@ -442,6 +446,16 @@ void OperatingSystemManager::stop()
 {
     if (enableNetworking_) {
         wsService_.stopListening();
+    }
+
+    if (serverPeerAdvertisement_) {
+        serverPeerAdvertisement_->stop();
+    }
+    if (uiPeerAdvertisement_) {
+        uiPeerAdvertisement_->stop();
+    }
+    if (peerDiscovery_) {
+        peerDiscovery_->stop();
     }
 }
 
@@ -532,6 +546,8 @@ void OperatingSystemManager::setupWebSocketService()
         return;
     }
 
+    wsService_.registerHandler<OsApi::PeersGet::Cwc>(
+        [this](OsApi::PeersGet::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::SystemStatus::Cwc>(
         [this](OsApi::SystemStatus::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::StartServer::Cwc>(
@@ -610,6 +626,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::StopAudio);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopServer);
             DISPATCH_OS_CMD_EMPTY(OsApi::StopUi);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::PeersGet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::SystemStatus);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WebSocketAccessSet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::WebUiAccessSet);
@@ -623,6 +640,29 @@ void OperatingSystemManager::setupWebSocketService()
     LOG_INFO(Network, "os-manager WebSocket handlers registered");
 }
 
+void OperatingSystemManager::initializePeerDiscovery()
+{
+    if (!enableNetworking_) {
+        return;
+    }
+
+    char hostname[256] = "dirtsim";
+    gethostname(hostname, sizeof(hostname));
+    peerServiceName_ = hostname;
+    peerUiServiceName_ = std::string(hostname) + "-ui";
+
+    peerDiscovery_ = std::make_unique<PeerDiscovery>();
+    if (peerDiscovery_->start()) {
+        LOG_INFO(Network, "PeerDiscovery started successfully");
+    }
+    else {
+        LOG_WARN(Network, "PeerDiscovery failed to start (Avahi may not be available)");
+    }
+
+    serverPeerAdvertisement_ = std::make_unique<PeerAdvertisement>();
+    uiPeerAdvertisement_ = std::make_unique<PeerAdvertisement>();
+}
+
 OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatus()
 {
     if (dependencies_.systemStatus) {
@@ -634,6 +674,14 @@ OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatus()
     status.lan_websocket_enabled = webSocketEnabled_;
     status.lan_websocket_token = webSocketEnabled_ ? webSocketToken_ : "";
     return status;
+}
+
+std::vector<PeerInfo> OperatingSystemManager::getPeers() const
+{
+    if (!peerDiscovery_) {
+        return {};
+    }
+    return peerDiscovery_->getPeers();
 }
 
 Result<OsApi::WebSocketAccessSet::Okay, ApiError> OperatingSystemManager::setWebSocketAccess(
@@ -722,11 +770,43 @@ Result<OsApi::WebSocketAccessSet::Okay, ApiError> OperatingSystemManager::setWeb
     }
 
     webSocketEnabled_ = enabled;
+    setPeerAdvertisementEnabled(enabled);
 
     OsApi::WebSocketAccessSet::Okay okay;
     okay.enabled = enabled;
     okay.token = enabled ? webSocketToken_ : "";
     return Result<OsApi::WebSocketAccessSet::Okay, ApiError>::okay(std::move(okay));
+}
+
+void OperatingSystemManager::setPeerAdvertisementEnabled(bool enabled)
+{
+    if (!serverPeerAdvertisement_ || !uiPeerAdvertisement_) {
+        return;
+    }
+
+    if (enabled) {
+        const std::string serverServiceName =
+            peerServiceName_.empty() ? "dirtsim" : peerServiceName_;
+        serverPeerAdvertisement_->setServiceName(serverServiceName);
+        serverPeerAdvertisement_->setPort(8080);
+        serverPeerAdvertisement_->setRole(PeerRole::Physics);
+        if (!serverPeerAdvertisement_->start()) {
+            LOG_WARN(Network, "PeerAdvertisement failed to start for server");
+        }
+
+        const std::string uiServiceName =
+            peerUiServiceName_.empty() ? "dirtsim-ui" : peerUiServiceName_;
+        uiPeerAdvertisement_->setServiceName(uiServiceName);
+        uiPeerAdvertisement_->setPort(7070);
+        uiPeerAdvertisement_->setRole(PeerRole::Ui);
+        if (!uiPeerAdvertisement_->start()) {
+            LOG_WARN(Network, "PeerAdvertisement failed to start for UI");
+        }
+        return;
+    }
+
+    serverPeerAdvertisement_->stop();
+    uiPeerAdvertisement_->stop();
 }
 
 Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAccess(bool enabled)

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "PeersGet.h"
 #include "Reboot.h"
 #include "RestartAudio.h"
 #include "RestartServer.h"
@@ -19,6 +20,7 @@ namespace DirtSim {
 namespace OsApi {
 
 using OsApiCommand = std::variant<
+    PeersGet::Command,
     Reboot::Command,
     RestartAudio::Command,
     RestartServer::Command,
