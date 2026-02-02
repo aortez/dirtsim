@@ -1206,13 +1206,23 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
         Material::EnumType starting_material =
             ClockEvents::startColorShowcase(state, showcase_materials, rng_);
+        Material::EnumType display_material = getColorShowcaseMaterial(state);
         event.state = state;
-        spdlog::info(
-            "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at "
-            "index {})",
-            eventTiming.duration,
-            toString(starting_material),
-            state.current_index);
+        if (showcase_materials.empty()) {
+            spdlog::info(
+                "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, showcase list empty; "
+                "digits use {})",
+                eventTiming.duration,
+                toString(display_material));
+        }
+        else {
+            spdlog::info(
+                "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} "
+                "at index {})",
+                eventTiming.duration,
+                toString(starting_material),
+                state.current_index);
+        }
     }
     else if (type == ClockEventType::DIGIT_SLIDE) {
         DigitSlideEventState slide_event_state;
