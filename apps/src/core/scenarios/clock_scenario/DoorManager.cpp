@@ -257,6 +257,12 @@ void DoorManager::closeAllDoors(World& world)
     }
 }
 
+void DoorManager::clear()
+{
+    doors_.clear();
+    next_id_ = DoorId{ 1 };
+}
+
 Vector2i DoorManager::computeDoorPosition(const Door& def, const WorldData& world_data) const
 {
     // Door is on the wall edge, positioned relative to the floor.

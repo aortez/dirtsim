@@ -193,10 +193,17 @@ private:
     bool isMeltdownActive() const;
     void convertStrayDigitMaterialToWater(World& world, Material::EnumType digit_material);
 
+    Material::EnumType getActiveDigitMaterial() const;
+    void updateDigitMaterialOverride();
+    Material::EnumType getColorCycleMaterial(const ColorCycleEventState& state) const;
+    Material::EnumType getColorShowcaseMaterial(const ColorShowcaseEventState& state) const;
+
     // Centralized wall system.
     std::vector<WallSpec> generateWallSpecs(const WorldData& data) const;
     void applyWalls(World& world, const std::vector<WallSpec>& walls);
     void redrawWalls(World& world);
+
+    std::optional<Material::EnumType> digit_material_override_;
 };
 
 } // namespace DirtSim
