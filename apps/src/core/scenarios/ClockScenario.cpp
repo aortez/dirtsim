@@ -21,6 +21,7 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "spdlog/spdlog.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -116,6 +117,11 @@ bool ClockScenario::triggerEvent(World& world, ClockEventType type)
         spdlog::info(
             "ClockScenario: Ignoring manual {} trigger (already active)", eventTypeName(type));
         return false;
+    }
+
+    if (isEventBlockedByConflict(type)) {
+        queueEvent(type);
+        return true;
     }
 
     startEvent(world, type);
@@ -411,6 +417,13 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         stopEventIfDisabled(ClockEventType::MARQUEE, config_.marqueeEnabled, "Marquee");
         stopEventIfDisabled(ClockEventType::MELTDOWN, config_.meltdownEnabled, "Meltdown");
         stopEventIfDisabled(ClockEventType::RAIN, config_.rainEnabled, "Rain");
+
+        queued_events_.erase(
+            std::remove_if(
+                queued_events_.begin(),
+                queued_events_.end(),
+                [&](ClockEventType type) { return !isEventAllowed(type); }),
+            queued_events_.end());
 
         updateDigitMaterialOverride();
 
@@ -994,7 +1007,66 @@ void ClockScenario::updateEvents(
         }
     }
 
+    processQueuedEvents(world);
     updateDigitMaterialOverride();
+}
+
+bool ClockScenario::isEventBlockedByConflict(ClockEventType type) const
+{
+    if (type == ClockEventType::MELTDOWN) {
+        return event_manager_.isEventActive(ClockEventType::MARQUEE);
+    }
+
+    if (type == ClockEventType::MARQUEE) {
+        return event_manager_.isEventActive(ClockEventType::MELTDOWN);
+    }
+
+    return false;
+}
+
+void ClockScenario::queueEvent(ClockEventType type)
+{
+    if (!isEventAllowed(type)) {
+        return;
+    }
+
+    auto already_queued = std::find(queued_events_.begin(), queued_events_.end(), type);
+    if (already_queued != queued_events_.end()) {
+        return;
+    }
+
+    queued_events_.push_back(type);
+    spdlog::info(
+        "ClockScenario: Queued {} event (waiting for conflict to end)", eventTypeName(type));
+}
+
+void ClockScenario::processQueuedEvents(World& world)
+{
+    if (queued_events_.empty()) {
+        return;
+    }
+
+    std::vector<ClockEventType> remaining;
+    remaining.reserve(queued_events_.size());
+
+    for (ClockEventType type : queued_events_) {
+        if (!isEventAllowed(type)) {
+            continue;
+        }
+
+        if (event_manager_.isEventActive(type)) {
+            continue;
+        }
+
+        if (isEventBlockedByConflict(type)) {
+            remaining.push_back(type);
+            continue;
+        }
+
+        startEvent(world, type);
+    }
+
+    queued_events_ = std::move(remaining);
 }
 
 bool ClockScenario::isEventAllowed(ClockEventType type) const
@@ -1050,7 +1122,12 @@ void ClockScenario::tryTriggerPeriodicEvents(World& world)
 
         double effective_chance = timing.chance * config_.eventFrequency;
         if (uniform_dist_(rng_) < effective_chance) {
-            startEvent(world, type);
+            if (isEventBlockedByConflict(type)) {
+                queueEvent(type);
+            }
+            else {
+                startEvent(world, type);
+            }
         }
     }
 }
@@ -1087,7 +1164,12 @@ void ClockScenario::tryTriggerTimeChangeEvents(World& world)
 
         double effective_chance = timing.chance * config_.eventFrequency;
         if (effective_chance >= 1.0 || uniform_dist_(rng_) < effective_chance) {
-            startEvent(world, type);
+            if (isEventBlockedByConflict(type)) {
+                queueEvent(type);
+            }
+            else {
+                startEvent(world, type);
+            }
         }
     }
 }
@@ -1663,6 +1745,7 @@ void ClockScenario::cancelAllEvents(World& world)
 {
     spdlog::info("ClockScenario: Canceling all events");
     digit_material_override_.reset();
+    queued_events_.clear();
 
     for (auto& [type, event] : event_manager_.getActiveEvents()) {
         if (type == ClockEventType::DUCK) {

@@ -168,6 +168,9 @@ private:
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
     double countWaterInTopThird(const World& world) const;
+    void processQueuedEvents(World& world);
+    bool isEventBlockedByConflict(ClockEventType type) const;
+    void queueEvent(ClockEventType type);
 
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
@@ -204,6 +207,7 @@ private:
     void redrawWalls(World& world);
 
     std::optional<Material::EnumType> digit_material_override_;
+    std::vector<ClockEventType> queued_events_;
 };
 
 } // namespace DirtSim
