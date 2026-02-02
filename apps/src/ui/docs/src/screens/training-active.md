@@ -5,9 +5,6 @@
 scale 1.6
 {
   {
-    "Training Active"
-    [View Best]
-  } | {
     "Stream"
     "Interval (ms)" | [ - ] [ 500 ] [ + ]
     [Stop Training]
