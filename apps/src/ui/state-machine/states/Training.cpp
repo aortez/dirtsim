@@ -116,7 +116,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.lastProgressRateLog_ = std::chrono::steady_clock::now();
 
     if (state.view_) {
-        state.view_->setTrainingModalActive(true);
         state.view_->setEvolutionStarted(true);
         state.view_->setTrainingPaused(false);
         state.view_->hideTrainingResultModal();
@@ -216,11 +215,8 @@ void handleRemoteMouseUp(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
 // TrainingIdle
 // =============================
 
-TrainingIdle::TrainingIdle(
-    std::unique_ptr<TrainingView> view, TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
-    : view_(std::move(view)),
-      lastTrainingSpec_(std::move(lastTrainingSpec)),
-      hasTrainingSpec_(hasTrainingSpec)
+TrainingIdle::TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
+    : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
 {}
 
 void TrainingIdle::onEnter(StateMachine& sm)
@@ -238,9 +234,8 @@ void TrainingIdle::onEnter(StateMachine& sm)
         wsService = &sm.getWebSocketService();
     }
 
-    if (!view_) {
-        view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, sm.getUserSettings());
-    }
+    view_ = std::make_unique<TrainingView>(
+        TrainingView::Layout::Idle, uiManager, sm, wsService, sm.getUserSettings());
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
@@ -250,16 +245,20 @@ void TrainingIdle::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    if (lv_obj_t* railContainer = iconRail->getContainer()) {
+        lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
     iconRail->setVisibleIcons(
         { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll();
 
     if (view_) {
-        view_->setTrainingModalActive(false);
         view_->setTrainingPaused(false);
         view_->setEvolutionStarted(false);
         view_->hideTrainingResultModal();
         view_->clearPanelContent();
+        view_->updateIconRailOffset();
     }
 }
 
@@ -299,7 +298,7 @@ State::Any TrainingIdle::onEvent(
     return std::move(*this);
 }
 
-State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
+State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 {
     LOG_INFO(
         State,
@@ -311,6 +310,14 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& /*s
         return std::move(*this);
     }
 
+    if (evt.selectedId == IconId::CORE) {
+        LOG_INFO(State, "Home icon selected, returning to start menu");
+        if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
+            iconRail->deselectAll();
+        }
+        return StartMenu{};
+    }
+
     if (evt.selectedId == IconId::COUNT) {
         view_->clearPanelContent();
         return std::move(*this);
@@ -319,10 +326,6 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& /*s
     view_->clearPanelContent();
 
     switch (evt.selectedId) {
-        case IconId::CORE:
-            view_->createCorePanel();
-            break;
-
         case IconId::EVOLUTION:
             view_->createTrainingConfigPanel();
             break;
@@ -354,9 +357,6 @@ State::Any TrainingIdle::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, Stat
 
     if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
         iconRail->setMode(RailMode::Minimized);
-    }
-    if (view_) {
-        view_->setTrainingModalActive(false);
     }
 
     return std::move(*this);
@@ -417,7 +417,7 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
 
-    return TrainingActive{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+    return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
 }
 
 State::Any TrainingIdle::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)
@@ -783,11 +783,8 @@ State::Any TrainingIdle::onEvent(const ViewBestButtonClickedEvent& evt, StateMac
 // TrainingActive
 // =============================
 
-TrainingActive::TrainingActive(
-    std::unique_ptr<TrainingView> view, TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
-    : view_(std::move(view)),
-      lastTrainingSpec_(std::move(lastTrainingSpec)),
-      hasTrainingSpec_(hasTrainingSpec)
+TrainingActive::TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
+    : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
 {}
 
 void TrainingActive::onEnter(StateMachine& sm)
@@ -805,8 +802,19 @@ void TrainingActive::onEnter(StateMachine& sm)
         wsService = &sm.getWebSocketService();
     }
 
-    if (!view_) {
-        view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingView>(
+        TrainingView::Layout::Active, uiManager, sm, wsService, sm.getUserSettings());
+
+    if (auto* iconRail = uiManager->getIconRail()) {
+        if (lv_obj_t* railContainer = iconRail->getContainer()) {
+            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        panel->clearContent();
+        panel->hide();
+        panel->resetWidth();
     }
 
     beginEvolutionSession(*this, sm);
@@ -920,11 +928,9 @@ State::Any TrainingActive::onEvent(const Api::TrainingResult::Cwc& cwc, StateMac
 
     cwc.sendResponse(Api::TrainingResult::Response::okay(std::monostate{}));
 
-    return TrainingUnsavedResult{ std::move(view_),
-                                  lastTrainingSpec_,
-                                  hasTrainingSpec_,
-                                  cwc.command.summary,
-                                  cwc.command.candidates };
+    return TrainingUnsavedResult{
+        lastTrainingSpec_, hasTrainingSpec_, cwc.command.summary, cwc.command.candidates
+    };
 }
 
 State::Any TrainingActive::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
@@ -946,10 +952,6 @@ State::Any TrainingActive::onEvent(const ServerDisconnectedEvent& evt, StateMach
 {
     LOG_WARN(State, "Server disconnected during training (reason: {})", evt.reason);
     LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (view_) {
-        view_->setTrainingModalActive(false);
-    }
 
     if (!sm.queueReconnectToLastServer()) {
         LOG_WARN(State, "No previous server address available for reconnect");
@@ -985,10 +987,6 @@ State::Any TrainingActive::onEvent(const StopTrainingClickedEvent& /*evt*/, Stat
     }
     else {
         LOG_INFO(State, "Evolution stopped on server");
-    }
-
-    if (view_) {
-        view_->setTrainingModalActive(false);
     }
 
     return StartMenu{};
@@ -1094,13 +1092,11 @@ State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*
 // =============================
 
 TrainingUnsavedResult::TrainingUnsavedResult(
-    std::unique_ptr<TrainingView> view,
     TrainingSpec lastTrainingSpec,
     bool hasTrainingSpec,
     Api::TrainingResult::Summary summary,
     std::vector<Api::TrainingResult::Candidate> candidates)
-    : view_(std::move(view)),
-      lastTrainingSpec_(std::move(lastTrainingSpec)),
+    : lastTrainingSpec_(std::move(lastTrainingSpec)),
       hasTrainingSpec_(hasTrainingSpec),
       summary_(std::move(summary)),
       candidates_(std::move(candidates))
@@ -1121,13 +1117,23 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
         wsService = &sm.getWebSocketService();
     }
 
-    if (!view_) {
-        view_ = std::make_unique<TrainingView>(uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingView>(
+        TrainingView::Layout::UnsavedResult, uiManager, sm, wsService, sm.getUserSettings());
+
+    if (auto* iconRail = uiManager->getIconRail()) {
+        if (lv_obj_t* railContainer = iconRail->getContainer()) {
+            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+        }
+    }
+    if (auto* panel = uiManager->getExpandablePanel()) {
+        panel->clearContent();
+        panel->hide();
+        panel->resetWidth();
     }
 
     if (view_) {
         const GenomeId bestGenomeId = getBestGenomeId(candidates_);
-        view_->setTrainingModalActive(true);
         view_->setEvolutionCompleted(bestGenomeId);
         view_->setTrainingPaused(false);
         view_->showTrainingResultModal(summary_, candidates_);
@@ -1168,15 +1174,14 @@ State::Any TrainingUnsavedResult::onEvent(
     }
 
     if (evt.restart) {
-        return TrainingActive{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
     }
 
     if (view_) {
         view_->hideTrainingResultModal();
-        view_->setTrainingModalActive(false);
     }
 
-    return TrainingIdle{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -1208,10 +1213,9 @@ State::Any TrainingUnsavedResult::onEvent(
 
     if (view_) {
         view_->hideTrainingResultModal();
-        view_->setTrainingModalActive(false);
     }
 
-    return TrainingIdle{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -1255,15 +1259,14 @@ State::Any TrainingUnsavedResult::onEvent(
     cwc.sendResponse(UiApi::TrainingResultSave::Response::okay(std::move(response)));
 
     if (restartRequested) {
-        return TrainingActive{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
     }
 
     if (view_) {
         view_->hideTrainingResultModal();
-        view_->setTrainingModalActive(false);
     }
 
-    return TrainingIdle{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -1311,10 +1314,9 @@ State::Any TrainingUnsavedResult::onEvent(
 
     if (view_) {
         view_->hideTrainingResultModal();
-        view_->setTrainingModalActive(false);
     }
 
-    return TrainingIdle{ std::move(view_), lastTrainingSpec_, hasTrainingSpec_ };
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)

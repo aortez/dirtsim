@@ -49,6 +49,12 @@ class ExpandablePanel;
  */
 class TrainingView {
 public:
+    enum class Layout {
+        Idle,
+        Active,
+        UnsavedResult,
+    };
+
     enum class TrainingConfigView {
         None,
         Evolution,
@@ -56,6 +62,7 @@ public:
     };
 
     explicit TrainingView(
+        Layout layout,
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
@@ -85,21 +92,21 @@ public:
     void createTrainingResultBrowserPanel();
     Result<std::monostate, std::string> showTrainingConfigView(TrainingConfigView view);
     void setStreamIntervalMs(int value);
-    void setTrainingModalActive(bool active);
     void setTrainingPaused(bool paused);
+    void updateIconRailOffset();
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
     void addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId);
 
 private:
+    Layout layout_ = Layout::Idle;
     bool evolutionStarted_ = false;
     UiComponentManager* uiManager_;
     EventSink& eventSink_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
 
     UserSettings& userSettings_;
-    bool modalActive_ = false;
 
     lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
@@ -120,6 +127,7 @@ private:
     lv_obj_t* mainLayout_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
     lv_obj_t* streamPanel_ = nullptr;
+    lv_obj_t* idleSpacer_ = nullptr;
     int progressUiUpdateCount_ = 0;
     std::chrono::steady_clock::time_point lastLabelStateLog_{};
     std::chrono::steady_clock::time_point lastProgressUiLog_{};
@@ -166,10 +174,12 @@ private:
 
     void createUI();
     void destroyUI();
+    void createActiveUI(int displayWidth, int displayHeight);
+    void createIdleUI();
+    void createUnsavedResultUI();
     void renderBestWorld();
     void scheduleBestRender();
     static void renderBestWorldAsync(void* data);
-    void updateEvolutionVisibility();
     void updateTrainingResultSaveButton();
     void createGenomeBrowserPanelInternal();
     void createStreamPanel(lv_obj_t* parent);

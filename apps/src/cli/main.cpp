@@ -1639,6 +1639,25 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
+        auto captureStartMenuNetwork =
+            [&](const std::string& screenId) -> Result<std::monostate, std::string> {
+            auto nav = navigateToStartMenu();
+            if (nav.isError()) {
+                return nav;
+            }
+            auto deselect = selectIcon(Ui::IconId::COUNT);
+            if (deselect.isError()) {
+                return deselect;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            auto select = selectIcon(Ui::IconId::NETWORK);
+            if (select.isError()) {
+                return select;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            return captureScreen(screenId);
+        };
+
         auto result = runScreen("start-menu", [&]() {
             auto nav = navigateToStartMenu();
             if (nav.isError()) {
@@ -1682,23 +1701,16 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("start-menu-network", [&]() {
-            auto nav = navigateToStartMenu();
-            if (nav.isError()) {
-                return nav;
-            }
-            auto deselect = selectIcon(Ui::IconId::COUNT);
-            if (deselect.isError()) {
-                return deselect;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            auto select = selectIcon(Ui::IconId::NETWORK);
-            if (select.isError()) {
-                return select;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("start-menu-network");
-        });
+        result = runScreen(
+            "start-menu-network", [&]() { return captureStartMenuNetwork("start-menu-network"); });
+        if (result.isError()) {
+            std::cerr << result.errorValue() << std::endl;
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return 1;
+        }
+
+        result = runScreen("network", [&]() { return captureStartMenuNetwork("network"); });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;
             uiClient.disconnect();

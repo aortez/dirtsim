@@ -274,11 +274,9 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     candidate.brainVariant = std::nullopt;
     candidate.generation = 0;
 
-    TrainingUnsavedResult trainingState{ nullptr,
-                                         TrainingSpec{},
-                                         false,
-                                         summary,
-                                         std::vector<Api::TrainingResult::Candidate>{ candidate } };
+    TrainingUnsavedResult trainingState{
+        TrainingSpec{}, false, summary, std::vector<Api::TrainingResult::Candidate>{ candidate }
+    };
     trainingState.onEnter(*fixture.stateMachine);
 
     ASSERT_TRUE(trainingState.view_ != nullptr);

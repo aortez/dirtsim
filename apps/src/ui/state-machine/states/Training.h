@@ -22,8 +22,7 @@ namespace State {
  */
 struct TrainingIdle {
     TrainingIdle() = default;
-    TrainingIdle(
-        std::unique_ptr<TrainingView> view, TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
@@ -70,8 +69,7 @@ struct TrainingIdle {
  */
 struct TrainingActive {
     TrainingActive() = default;
-    TrainingActive(
-        std::unique_ptr<TrainingView> view, TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
@@ -117,7 +115,6 @@ struct TrainingActive {
 struct TrainingUnsavedResult {
     TrainingUnsavedResult() = default;
     TrainingUnsavedResult(
-        std::unique_ptr<TrainingView> view,
         TrainingSpec lastTrainingSpec,
         bool hasTrainingSpec,
         Api::TrainingResult::Summary summary,
