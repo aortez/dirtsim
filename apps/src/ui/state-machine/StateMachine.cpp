@@ -414,8 +414,19 @@ void StateMachine::autoShrinkIfIdle()
             "Auto-shrink activity detected, inactivity timer reset ({}ms -> {}ms)",
             lastInactiveMs_,
             inactiveMs);
+        startMenuIdleClockTriggered_ = false;
     }
     lastInactiveMs_ = inactiveMs;
+
+    if (!startMenuIdleClockTriggered_ && inactiveMs >= StartMenuIdleClockTimeoutMs
+        && std::holds_alternative<State::StartMenu>(fsmState.getVariant())) {
+        startMenuIdleClockTriggered_ = true;
+        LOG_INFO(
+            State,
+            "StartMenu idle timeout reached (inactive={}ms), launching clock scenario",
+            inactiveMs);
+        queueEvent(StartMenuIdleTimeoutEvent{});
+    }
 
     auto* iconRail = uiManager_->getIconRail();
     if (!iconRail || iconRail->isMinimized()) {
@@ -619,6 +630,7 @@ void StateMachine::handleEvent(const Event& event)
         if (display) {
             lv_display_trigger_activity(display);
             lastInactiveMs_ = 0;
+            startMenuIdleClockTriggered_ = false;
         }
         UiApi::IconRailShowIcons::Okay response{ .shown = !iconRail->isMinimized() };
         cwc.sendResponse(UiApi::IconRailShowIcons::Response::okay(std::move(response)));
