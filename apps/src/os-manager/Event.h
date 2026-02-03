@@ -1,5 +1,6 @@
 #pragma once
 
+#include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
 #include "os-manager/api/RestartAudio.h"
@@ -12,6 +13,9 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/TrustBundleGet.h"
+#include "os-manager/api/TrustPeer.h"
+#include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include <concepts>
@@ -29,6 +33,7 @@ concept HasEventName = requires {
 class Event {
 public:
     using Variant = std::variant<
+        OsApi::PeerClientKeyEnsure::Cwc,
         OsApi::PeersGet::Cwc,
         OsApi::Reboot::Cwc,
         OsApi::RestartAudio::Cwc,
@@ -41,6 +46,9 @@ public:
         OsApi::StopServer::Cwc,
         OsApi::StopUi::Cwc,
         OsApi::SystemStatus::Cwc,
+        OsApi::TrustBundleGet::Cwc,
+        OsApi::TrustPeer::Cwc,
+        OsApi::UntrustPeer::Cwc,
         OsApi::WebSocketAccessSet::Cwc,
         OsApi::WebUiAccessSet::Cwc>;
 

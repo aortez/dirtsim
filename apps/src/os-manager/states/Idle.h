@@ -11,6 +11,7 @@ struct Idle {
     void onEnter(OperatingSystemManager& osm);
     void onExit(OperatingSystemManager& osm);
 
+    Any onEvent(const OsApi::PeerClientKeyEnsure::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm);
@@ -23,6 +24,9 @@ struct Idle {
     Any onEvent(const OsApi::StopServer::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::StopUi::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::SystemStatus::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::TrustBundleGet::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::TrustPeer::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::UntrustPeer::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebSocketAccessSet::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::WebUiAccessSet::Cwc& cwc, OperatingSystemManager& osm);
 

@@ -7,12 +7,18 @@
 #include "core/network/WebSocketService.h"
 #include "os-manager/Event.h"
 #include "os-manager/EventProcessor.h"
+#include "os-manager/PeerTrust.h"
+#include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/TrustBundleGet.h"
+#include "os-manager/api/TrustPeer.h"
+#include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include "os-manager/states/State.h"
 #include "server/api/ApiError.h"
 #include <cstdint>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -81,6 +87,11 @@ public:
 
     OsApi::SystemStatus::Okay buildSystemStatus();
     std::vector<PeerInfo> getPeers() const;
+    Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
+    Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
+    Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
+    Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(
+        const OsApi::UntrustPeer::Command& command);
     Result<OsApi::WebSocketAccessSet::Okay, ApiError> setWebSocketAccess(bool enabled);
     Result<OsApi::WebUiAccessSet::Okay, ApiError> setWebUiAccess(bool enabled);
     Result<std::monostate, ApiError> startService(const std::string& unitName);
@@ -104,6 +115,15 @@ private:
     std::string getUiHealth(int timeoutMs);
     Result<std::monostate, ApiError> runServiceCommand(
         const std::string& action, const std::string& unitName);
+    std::filesystem::path getPeerAllowlistPath() const;
+    std::filesystem::path getPeerClientKeyPath() const;
+    Result<std::vector<PeerTrustBundle>, ApiError> loadPeerAllowlist() const;
+    Result<std::monostate, ApiError> savePeerAllowlist(
+        const std::vector<PeerTrustBundle>& allowlist) const;
+    Result<std::string, ApiError> getHostFingerprintSha256() const;
+    Result<std::string, ApiError> getClientKeyFingerprintSha256() const;
+    Result<std::string, ApiError> getPeerClientPublicKey(bool* created);
+    Result<PeerTrustBundle, ApiError> buildTrustBundle(bool* created);
     void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);

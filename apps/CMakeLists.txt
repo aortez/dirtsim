@@ -586,6 +586,8 @@ add_executable(dirtsim-os-manager
     src/os-manager/main.cpp
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
     src/os-manager/api/PeersGet.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
@@ -598,6 +600,9 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
@@ -634,6 +639,8 @@ add_executable(cli
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp
     src/cli/TrainRunner.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
     src/os-manager/api/PeersGet.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
@@ -646,6 +653,9 @@ add_executable(cli
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
 )
@@ -673,6 +683,8 @@ add_executable(dirtsim-tests
     # Os manager sources.
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
     src/os-manager/api/PeersGet.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
@@ -685,6 +697,9 @@ add_executable(dirtsim-tests
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
