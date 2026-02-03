@@ -359,65 +359,13 @@ State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*s
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Start button clicked, sending SimRun to server");
+    return startSimulation(sm, std::nullopt);
+}
 
-    auto& wsService = sm.getWebSocketService();
-    if (!wsService.isConnected()) {
-        LOG_ERROR(State, "Cannot start simulation, not connected to server");
-        return StartMenu{};
-    }
-
-    lv_disp_t* disp = lv_disp_get_default();
-    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
-    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
-    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
-                            dispHeight };
-    LOG_INFO(State, "Container size for SimRun: {}x{}", containerSize.x, containerSize.y);
-
-    const Api::SimRun::Command cmd{ .timestep = 0.016,
-                                    .max_steps = -1,
-                                    .max_frame_ms = 16,
-                                    .scenario_id = std::nullopt,
-                                    .start_paused = false,
-                                    .container_size = containerSize };
-
-    // Retry logic for autoRun to handle server startup race condition.
-    const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-        if (attempt > 1) {
-            LOG_INFO(State, "Retrying SimRun (attempt {}/{})", attempt, maxRetries);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
-        if (result.isError()) {
-            LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
-            continue; // Retry.
-        }
-
-        const auto& response = result.value();
-        if (response.isError()) {
-            const auto& errMsg = response.errorValue().message;
-            // Retry if server is still starting up.
-            if (errMsg.find("not supported in state") != std::string::npos
-                && attempt < maxRetries) {
-                LOG_WARN(State, "Server not ready ({}), retrying...", errMsg);
-                continue;
-            }
-            LOG_ERROR(State, "SimRun error: {}", errMsg);
-            return StartMenu{};
-        }
-
-        if (!response.value().running) {
-            LOG_WARN(State, "Server not running after SimRun");
-            return StartMenu{};
-        }
-
-        LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
-        return SimRunning{};
-    }
-
-    LOG_ERROR(State, "SimRun failed after {} attempts", maxRetries);
-    return StartMenu{};
+State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMachine& sm)
+{
+    LOG_INFO(State, "StartMenu idle timeout reached, launching clock scenario");
+    return startSimulation(sm, Scenario::EnumType::Clock);
 }
 
 State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)
@@ -515,6 +463,69 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 
     // Transition to SimRunning state.
     return SimRunning{};
+}
+
+State::Any StartMenu::startSimulation(
+    StateMachine& sm, std::optional<Scenario::EnumType> scenarioId)
+{
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_ERROR(State, "Cannot start simulation, not connected to server");
+        return StartMenu{};
+    }
+
+    lv_disp_t* disp = lv_disp_get_default();
+    int16_t dispWidth = static_cast<int16_t>(lv_disp_get_hor_res(disp));
+    int16_t dispHeight = static_cast<int16_t>(lv_disp_get_ver_res(disp));
+    Vector2s containerSize{ static_cast<int16_t>(dispWidth - IconRail::MINIMIZED_RAIL_WIDTH),
+                            dispHeight };
+    LOG_INFO(State, "Container size for SimRun: {}x{}", containerSize.x, containerSize.y);
+
+    const Api::SimRun::Command cmd{ .timestep = 0.016,
+                                    .max_steps = -1,
+                                    .max_frame_ms = 16,
+                                    .scenario_id = scenarioId,
+                                    .start_paused = false,
+                                    .container_size = containerSize };
+
+    // Retry logic for autoRun to handle server startup race condition.
+    const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        if (attempt > 1) {
+            LOG_INFO(State, "Retrying SimRun (attempt {}/{})", attempt, maxRetries);
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
+        if (result.isError()) {
+            LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
+            continue; // Retry.
+        }
+
+        const auto& response = result.value();
+        if (response.isError()) {
+            const auto& errMsg = response.errorValue().message;
+            // Retry if server is still starting up.
+            if (errMsg.find("not supported in state") != std::string::npos
+                && attempt < maxRetries) {
+                LOG_WARN(State, "Server not ready ({}), retrying...", errMsg);
+                continue;
+            }
+            LOG_ERROR(State, "SimRun error: {}", errMsg);
+            return StartMenu{};
+        }
+
+        if (!response.value().running) {
+            LOG_WARN(State, "Server not running after SimRun");
+            return StartMenu{};
+        }
+
+        LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
+        return SimRunning{};
+    }
+
+    LOG_ERROR(State, "SimRun failed after {} attempts", maxRetries);
+    return StartMenu{};
 }
 
 State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)
