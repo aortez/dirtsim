@@ -94,7 +94,9 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<UiApi::SimStop::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StateGet::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StatusGet::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::StopButtonPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::StreamStart::Cwc>(uiHandlers_, uiExampleHandlers_);
+    registerCommand<UiApi::SynthKeyPress::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingConfigShowEvolution::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingQuit::Cwc>(uiHandlers_, uiExampleHandlers_);
     registerCommand<UiApi::TrainingResultDiscard::Cwc>(uiHandlers_, uiExampleHandlers_);

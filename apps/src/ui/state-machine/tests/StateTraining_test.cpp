@@ -279,8 +279,7 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     };
     trainingState.onEnter(*fixture.stateMachine);
 
-    ASSERT_TRUE(trainingState.view_ != nullptr);
-    ASSERT_TRUE(trainingState.view_->isTrainingResultModalVisible());
+    ASSERT_TRUE(trainingState.isTrainingResultModalVisible());
 
     Api::TrainingResultSave::Okay saveOkay;
     saveOkay.savedCount = 1;
@@ -315,8 +314,7 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     EXPECT_TRUE(callbackInvoked);
 
     updatedState->onEnter(*fixture.stateMachine);
-    ASSERT_TRUE(updatedState->view_ != nullptr);
-    EXPECT_FALSE(updatedState->view_->isTrainingResultModalVisible());
+    EXPECT_FALSE(updatedState->isTrainingResultModalVisible());
 
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
     ASSERT_GE(sentCommands.size(), 3u);

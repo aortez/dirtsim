@@ -4,7 +4,9 @@
 #include "core/api/UiUpdateEvent.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/TrainingResult.h"
-#include "ui/TrainingView.h"
+#include "ui/TrainingActiveView.h"
+#include "ui/TrainingIdleView.h"
+#include "ui/TrainingUnsavedResultView.h"
 #include "ui/state-machine/Event.h"
 #include <chrono>
 #include <memory>
@@ -23,6 +25,11 @@ namespace State {
 struct TrainingIdle {
     TrainingIdle() = default;
     TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    ~TrainingIdle();
+    TrainingIdle(const TrainingIdle&) = delete;
+    TrainingIdle& operator=(const TrainingIdle&) = delete;
+    TrainingIdle(TrainingIdle&&) = default;
+    TrainingIdle& operator=(TrainingIdle&&) = default;
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
@@ -59,7 +66,7 @@ struct TrainingIdle {
 
     static constexpr const char* name() { return "Training"; }
 
-    std::unique_ptr<TrainingView> view_;
+    std::unique_ptr<TrainingIdleView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
 };
@@ -70,6 +77,11 @@ struct TrainingIdle {
 struct TrainingActive {
     TrainingActive() = default;
     TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    ~TrainingActive();
+    TrainingActive(const TrainingActive&) = delete;
+    TrainingActive& operator=(const TrainingActive&) = delete;
+    TrainingActive(TrainingActive&&) = default;
+    TrainingActive& operator=(TrainingActive&&) = default;
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
@@ -97,7 +109,7 @@ struct TrainingActive {
     static constexpr const char* name() { return "Training"; }
 
     Api::EvolutionProgress progress;
-    std::unique_ptr<TrainingView> view_;
+    std::unique_ptr<TrainingActiveView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
     bool trainingPaused_ = false;
@@ -119,6 +131,11 @@ struct TrainingUnsavedResult {
         bool hasTrainingSpec,
         Api::TrainingResult::Summary summary,
         std::vector<Api::TrainingResult::Candidate> candidates);
+    ~TrainingUnsavedResult();
+    TrainingUnsavedResult(const TrainingUnsavedResult&) = delete;
+    TrainingUnsavedResult& operator=(const TrainingUnsavedResult&) = delete;
+    TrainingUnsavedResult(TrainingUnsavedResult&&) = default;
+    TrainingUnsavedResult& operator=(TrainingUnsavedResult&&) = default;
 
     void onEnter(StateMachine& sm);
     void onExit(StateMachine& sm);
@@ -141,7 +158,7 @@ struct TrainingUnsavedResult {
 
     static constexpr const char* name() { return "Training"; }
 
-    std::unique_ptr<TrainingView> view_;
+    std::unique_ptr<TrainingUnsavedResultView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
     Api::TrainingResult::Summary summary_{};

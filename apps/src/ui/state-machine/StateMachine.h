@@ -11,6 +11,7 @@
 #include "ui/UiConfig.h"
 #include "ui/UserSettingsManager.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 
@@ -33,6 +34,7 @@ namespace Ui {
 class RemoteInputDevice;
 class UiComponentManager;
 class WebRtcStreamer;
+class FractalAnimator;
 } // namespace Ui
 } // namespace DirtSim
 
@@ -74,6 +76,7 @@ public:
     std::unique_ptr<RemoteInputDevice> remoteInputDevice_;
 
     std::unique_ptr<WebRtcStreamer> webRtcStreamer_;
+    std::unique_ptr<FractalAnimator> fractalAnimator_;
 
     Network::WebSocketServiceInterface& getWebSocketService();
     Network::WebSocketService* getConcreteWebSocketService();
@@ -87,12 +90,16 @@ public:
 
     WebRtcStreamer* getWebRtcStreamer() { return webRtcStreamer_.get(); }
 
+    FractalAnimator& getFractalAnimator();
+
     Timers& getTimers() { return timers_; }
 
     double getUiFps() const;
 
     UserSettings& getUserSettings() { return userSettingsManager_->get(); }
     const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
+    int getSynthVolumePercent() const { return synthVolumePercent_; }
+    void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
 
     // UI configuration (loaded from ui.json).
     std::unique_ptr<UiConfig> uiConfig;
@@ -118,6 +125,7 @@ private:
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
     UserSettingsManager* userSettingsManager_ = nullptr;
+    int synthVolumePercent_ = 50;
 
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();

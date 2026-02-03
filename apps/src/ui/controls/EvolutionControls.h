@@ -33,14 +33,13 @@ public:
 private:
     lv_obj_t* container_;
     EventSink& eventSink_;
-
     std::unique_ptr<PanelViewController> viewController_;
 
     bool evolutionStarted_ = false;
     bool evolutionCompleted_ = false;
     GenomeId bestGenomeId_;
 
-    // Shared configs (owned by TrainingView).
+    // Shared configs (owned by training views).
     TrainingSpec& trainingSpec_;
 
     lv_obj_t* viewBestButton_ = nullptr;

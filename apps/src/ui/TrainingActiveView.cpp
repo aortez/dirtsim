@@ -1,16 +1,10 @@
-#include "TrainingView.h"
+#include "TrainingActiveView.h"
 #include "UiComponentManager.h"
 #include "controls/EvolutionControls.h"
 #include "controls/ExpandablePanel.h"
-#include "controls/GenomeBrowserPanel.h"
-#include "controls/IconRail.h"
-#include "controls/TrainingConfigPanel.h"
-#include "controls/TrainingResultBrowserPanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
-#include "core/organisms/evolution/TrainingBrainRegistry.h"
-#include "core/reflect.h"
 #include "rendering/CellRenderer.h"
 #include "rendering/RenderMode.h"
 #include "rendering/Starfield.h"
@@ -20,44 +14,24 @@
 #include "ui_builders/LVGLBuilder.h"
 #include <algorithm>
 #include <lvgl/lvgl.h>
-#include <memory>
 
 namespace DirtSim {
 namespace Ui {
 
 namespace {
-constexpr int kBrowserRightGap = 60;
-
-int computeBrowserPanelWidth()
-{
-    const int displayWidth = lv_disp_get_hor_res(lv_disp_get_default());
-    const int maxWidth =
-        displayWidth > 0 ? displayWidth - IconRail::RAIL_WIDTH - kBrowserRightGap : 0;
-    int panelWidth = ExpandablePanel::DefaultWidth * 2;
-    if (maxWidth > 0) {
-        panelWidth = std::min(panelWidth, maxWidth);
-    }
-    if (panelWidth < ExpandablePanel::DefaultWidth) {
-        panelWidth = ExpandablePanel::DefaultWidth;
-    }
-    return panelWidth;
-}
-
 struct BestRenderRequest {
-    TrainingView* view = nullptr;
+    TrainingActiveView* view = nullptr;
     std::shared_ptr<std::atomic<bool>> alive;
 };
 
 } // namespace
 
-TrainingView::TrainingView(
-    Layout layout,
+TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
     UserSettings& userSettings)
-    : layout_(layout),
-      uiManager_(uiManager),
+    : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
       userSettings_(userSettings)
@@ -66,7 +40,7 @@ TrainingView::TrainingView(
     createUI();
 }
 
-TrainingView::~TrainingView()
+TrainingActiveView::~TrainingActiveView()
 {
     if (alive_) {
         alive_->store(false);
@@ -74,15 +48,14 @@ TrainingView::~TrainingView()
     destroyUI();
 }
 
-void TrainingView::createUI()
+void TrainingActiveView::createUI()
 {
-    DIRTSIM_ASSERT(uiManager_, "TrainingView requires valid UiComponentManager");
+    DIRTSIM_ASSERT(uiManager_, "TrainingActiveView requires valid UiComponentManager");
 
     container_ = uiManager_->getWorldDisplayArea();
     DIRTSIM_ASSERT(container_, "Failed to get world display area");
 
     lv_obj_clean(container_);
-
     lv_obj_update_layout(container_);
 
     int displayWidth = lv_obj_get_width(container_);
@@ -94,20 +67,11 @@ void TrainingView::createUI()
             displayHeight = lv_disp_get_ver_res(display);
         }
     }
-    if (layout_ == Layout::Active) {
-        createActiveUI(displayWidth, displayHeight);
-        return;
-    }
 
-    if (layout_ == Layout::Idle) {
-        createIdleUI();
-        return;
-    }
-
-    createUnsavedResultUI();
+    createActiveUI(displayWidth, displayHeight);
 }
 
-void TrainingView::createActiveUI(int displayWidth, int displayHeight)
+void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 {
     starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
     renderer_ = std::make_unique<CellRenderer>();
@@ -352,56 +316,11 @@ void TrainingView::createActiveUI(int displayWidth, int displayHeight)
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
 
-    LOG_INFO(Controls, "Training UI created with live feed and best snapshot views");
+    LOG_INFO(Controls, "Training active UI created with live feed and best snapshot views");
 }
 
-void TrainingView::createIdleUI()
+void TrainingActiveView::destroyUI()
 {
-    contentRow_ = lv_obj_create(container_);
-    lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(contentRow_, lv_color_hex(0x0B0B12), 0);
-    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(contentRow_, 0, 0);
-    lv_obj_set_style_pad_all(contentRow_, 0, 0);
-    lv_obj_set_style_pad_gap(contentRow_, 10, 0);
-    lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
-
-    panel_ = std::make_unique<ExpandablePanel>(contentRow_);
-    panel_->show();
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-    panelContent_ = panel_->getContentArea();
-
-    idleSpacer_ = lv_obj_create(contentRow_);
-    lv_obj_set_size(idleSpacer_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(idleSpacer_, 1);
-    lv_obj_set_style_bg_opa(idleSpacer_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(idleSpacer_, 0, 0);
-    lv_obj_clear_flag(idleSpacer_, LV_OBJ_FLAG_SCROLLABLE);
-
-    updateIconRailOffset();
-
-    LOG_INFO(Controls, "Training idle UI created with panel column only");
-}
-
-void TrainingView::createUnsavedResultUI()
-{
-    contentRow_ = lv_obj_create(container_);
-    lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(contentRow_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(contentRow_, 0, 0);
-    lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
-
-    LOG_INFO(Controls, "Training unsaved-result UI created");
-}
-
-void TrainingView::destroyUI()
-{
-    hideTrainingResultModal();
-
     if (renderer_) {
         renderer_->cleanup();
     }
@@ -430,7 +349,6 @@ void TrainingView::destroyUI()
     statsPanel_ = nullptr;
     bottomRow_ = nullptr;
     contentRow_ = nullptr;
-    idleSpacer_ = nullptr;
     mainLayout_ = nullptr;
     streamPanel_ = nullptr;
     streamIntervalStepper_ = nullptr;
@@ -445,7 +363,7 @@ void TrainingView::destroyUI()
     panelContent_ = nullptr;
 }
 
-void TrainingView::renderWorld(const WorldData& worldData)
+void TrainingActiveView::renderWorld(const WorldData& worldData)
 {
     if (!renderer_ || !worldContainer_) {
         return;
@@ -454,7 +372,8 @@ void TrainingView::renderWorld(const WorldData& worldData)
     renderer_->renderWorldData(worldData, worldContainer_, false, RenderMode::SHARP);
 }
 
-void TrainingView::updateBestSnapshot(const WorldData& worldData, double fitness, int generation)
+void TrainingActiveView::updateBestSnapshot(
+    const WorldData& worldData, double fitness, int generation)
 {
     bestWorldData_ = std::make_unique<WorldData>(worldData);
     bestFitness_ = fitness;
@@ -470,8 +389,8 @@ void TrainingView::updateBestSnapshot(const WorldData& worldData, double fitness
     }
     LOG_INFO(
         Controls,
-        "TrainingView: updateBestSnapshot fitness={:.4f} gen={} world={}x{} cells={} colors={} "
-        "organism_ids={} nonzero_colors={} max_brightness={:.3f}",
+        "TrainingActiveView: updateBestSnapshot fitness={:.4f} gen={} world={}x{} cells={} "
+        "colors={} organism_ids={} nonzero_colors={} max_brightness={:.3f}",
         fitness,
         generation,
         worldData.width,
@@ -489,49 +408,24 @@ void TrainingView::updateBestSnapshot(const WorldData& worldData, double fitness
     scheduleBestRender();
 }
 
-void TrainingView::clearPanelContent()
+void TrainingActiveView::clearPanelContent()
 {
     evolutionControls_.reset();
-    genomeBrowserPanel_.reset();
-    trainingConfigPanel_.reset();
-    trainingResultBrowserPanel_.reset();
     if (panel_) {
         panel_->clearContent();
         panel_->setWidth(ExpandablePanel::DefaultWidth);
     }
 }
 
-void TrainingView::setStreamIntervalMs(int value)
+void TrainingActiveView::setStreamIntervalMs(int value)
 {
     userSettings_.streamIntervalMs = value;
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
-    if (trainingConfigPanel_) {
-        trainingConfigPanel_->setStreamIntervalMs(value);
-    }
 }
 
-void TrainingView::updateIconRailOffset()
-{
-    if (layout_ != Layout::Idle || !contentRow_) {
-        return;
-    }
-
-    int leftPadding = 0;
-    IconRail* iconRail = uiManager_ ? uiManager_->getIconRail() : nullptr;
-    if (iconRail) {
-        if (lv_obj_t* railContainer = iconRail->getContainer()) {
-            leftPadding = lv_obj_get_width(railContainer);
-        }
-        if (leftPadding <= 0 && !iconRail->isMinimized()) {
-            leftPadding = IconRail::RAIL_WIDTH;
-        }
-    }
-    lv_obj_set_style_pad_left(contentRow_, leftPadding, 0);
-}
-
-void TrainingView::setTrainingPaused(bool paused)
+void TrainingActiveView::setTrainingPaused(bool paused)
 {
     if (pauseResumeLabel_) {
         lv_label_set_text(pauseResumeLabel_, paused ? "Resume" : "Pause");
@@ -542,232 +436,29 @@ void TrainingView::setTrainingPaused(bool paused)
     }
 }
 
-void TrainingView::createCorePanel()
+void TrainingActiveView::createCorePanel()
 {
     if (!panel_) {
-        LOG_ERROR(Controls, "TrainingView: No training panel available");
+        LOG_ERROR(Controls, "TrainingActiveView: No training panel available");
         return;
     }
     panel_->setWidth(ExpandablePanel::DefaultWidth);
 
     if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
+        LOG_ERROR(Controls, "TrainingActiveView: No panel content area available");
         return;
     }
 
     evolutionControls_ = std::make_unique<EvolutionControls>(
         panelContent_, eventSink_, evolutionStarted_, userSettings_.trainingSpec);
-    LOG_INFO(Controls, "TrainingView: Created Training Active panel");
+    LOG_INFO(Controls, "TrainingActiveView: Created Training Home panel");
 }
 
-void TrainingView::createGenomeBrowserPanel()
+void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 {
-    createGenomeBrowserPanelInternal();
-}
-
-void TrainingView::createGenomeBrowserPanelInternal()
-{
-    if (!panel_) {
-        LOG_ERROR(Controls, "TrainingView: No training panel available");
+    if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) {
         return;
     }
-    panel_->setWidth(computeBrowserPanelWidth());
-
-    if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
-        return;
-    }
-
-    genomeBrowserPanel_ =
-        std::make_unique<GenomeBrowserPanel>(panelContent_, wsService_, &eventSink_);
-    LOG_INFO(Controls, "TrainingView: Created Genome browser panel");
-}
-
-void TrainingView::createTrainingConfigPanel()
-{
-    if (!panel_) {
-        LOG_ERROR(Controls, "TrainingView: No training panel available");
-        return;
-    }
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-
-    if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
-        return;
-    }
-
-    trainingConfigPanel_ = std::make_unique<TrainingConfigPanel>(
-        panelContent_,
-        eventSink_,
-        panel_.get(),
-        wsService_,
-        evolutionStarted_,
-        userSettings_.evolutionConfig,
-        userSettings_.mutationConfig,
-        userSettings_.trainingSpec,
-        userSettings_.streamIntervalMs);
-    LOG_INFO(Controls, "TrainingView: Created Training config panel");
-}
-
-Result<std::monostate, std::string> TrainingView::showTrainingConfigView(TrainingConfigView view)
-{
-    if (!trainingConfigPanel_) {
-        return Result<std::monostate, std::string>::error("Training config panel not available");
-    }
-
-    TrainingConfigPanel::View panelView = TrainingConfigPanel::View::None;
-    switch (view) {
-        case TrainingConfigView::None:
-            panelView = TrainingConfigPanel::View::None;
-            break;
-        case TrainingConfigView::Evolution:
-            panelView = TrainingConfigPanel::View::Evolution;
-            break;
-        case TrainingConfigView::Population:
-            panelView = TrainingConfigPanel::View::Population;
-            break;
-    }
-
-    trainingConfigPanel_->showView(panelView);
-    return Result<std::monostate, std::string>::okay(std::monostate{});
-}
-
-void TrainingView::createTrainingResultBrowserPanel()
-{
-    if (!panel_) {
-        LOG_ERROR(Controls, "TrainingView: No training panel available");
-        return;
-    }
-    panel_->setWidth(computeBrowserPanelWidth());
-
-    if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingView: No panel content area available");
-        return;
-    }
-
-    trainingResultBrowserPanel_ =
-        std::make_unique<TrainingResultBrowserPanel>(panelContent_, wsService_);
-    LOG_INFO(Controls, "TrainingView: Created Training result browser panel");
-}
-
-Result<GenomeId, std::string> TrainingView::openGenomeDetailByIndex(int index)
-{
-    if (index < 0) {
-        return Result<GenomeId, std::string>::error("Genome detail index must be non-negative");
-    }
-
-    if (!genomeBrowserPanel_) {
-        createGenomeBrowserPanel();
-    }
-    if (!genomeBrowserPanel_) {
-        return Result<GenomeId, std::string>::error("Genome browser panel not available");
-    }
-
-    return genomeBrowserPanel_->openDetailByIndex(static_cast<size_t>(index));
-}
-
-Result<GenomeId, std::string> TrainingView::openGenomeDetailById(const GenomeId& genomeId)
-{
-    if (!genomeBrowserPanel_) {
-        createGenomeBrowserPanel();
-    }
-    if (!genomeBrowserPanel_) {
-        return Result<GenomeId, std::string>::error("Genome browser panel not available");
-    }
-
-    return genomeBrowserPanel_->openDetailById(genomeId);
-}
-
-Result<std::monostate, std::string> TrainingView::loadGenomeDetail(const GenomeId& genomeId)
-{
-    if (!genomeBrowserPanel_) {
-        return Result<std::monostate, std::string>::error("Genome browser panel not available");
-    }
-
-    return genomeBrowserPanel_->loadDetailForId(genomeId);
-}
-
-void TrainingView::addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId)
-{
-    if (genomeId.isNil()) {
-        return;
-    }
-
-    if (trainingConfigPanel_) {
-        trainingConfigPanel_->addSeedGenome(genomeId, scenarioId);
-        return;
-    }
-
-    PopulationSpec* targetSpec = nullptr;
-    for (auto& spec : userSettings_.trainingSpec.population) {
-        if (spec.scenarioId == scenarioId) {
-            targetSpec = &spec;
-            break;
-        }
-    }
-
-    if (!targetSpec) {
-        PopulationSpec spec;
-        spec.scenarioId = scenarioId;
-        switch (userSettings_.trainingSpec.organismType) {
-            case OrganismType::TREE:
-                spec.brainKind = TrainingBrainKind::NeuralNet;
-                break;
-            case OrganismType::DUCK:
-            case OrganismType::GOOSE:
-                spec.brainKind = TrainingBrainKind::Random;
-                break;
-            default:
-                spec.brainKind = TrainingBrainKind::Random;
-                break;
-        }
-        spec.count = std::max(1, userSettings_.evolutionConfig.populationSize);
-        userSettings_.trainingSpec.population.push_back(spec);
-        targetSpec = &userSettings_.trainingSpec.population.back();
-    }
-
-    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
-    const std::string variant = targetSpec->brainVariant.value_or("");
-    const BrainRegistryEntry* entry =
-        registry.find(userSettings_.trainingSpec.organismType, targetSpec->brainKind, variant);
-    if (!entry || !entry->requiresGenome) {
-        LOG_WARN(Controls, "TrainingView: Genome add ignored for non-genome brain");
-        return;
-    }
-
-    if (std::find(targetSpec->seedGenomes.begin(), targetSpec->seedGenomes.end(), genomeId)
-        != targetSpec->seedGenomes.end()) {
-        return;
-    }
-
-    targetSpec->seedGenomes.push_back(genomeId);
-    const int seedCount = static_cast<int>(targetSpec->seedGenomes.size());
-    if (targetSpec->count < seedCount) {
-        targetSpec->count = seedCount;
-    }
-    targetSpec->randomCount = targetSpec->count - seedCount;
-    int totalPopulation = 0;
-    for (const auto& spec : userSettings_.trainingSpec.population) {
-        const std::string specVariant = spec.brainVariant.value_or("");
-        const BrainRegistryEntry* specEntry =
-            registry.find(userSettings_.trainingSpec.organismType, spec.brainKind, specVariant);
-        if (specEntry && specEntry->requiresGenome) {
-            totalPopulation += static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
-        }
-        else {
-            totalPopulation += spec.count;
-        }
-    }
-    userSettings_.evolutionConfig.populationSize = totalPopulation;
-    if (!userSettings_.trainingSpec.population.empty()) {
-        userSettings_.trainingSpec.scenarioId =
-            userSettings_.trainingSpec.population.front().scenarioId;
-    }
-}
-
-void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
-{
-    if (!genLabel_ || !evalLabel_ || !generationBar_ || !evaluationBar_) return;
 
     const auto now = std::chrono::steady_clock::now();
     if (lastProgressUiLog_ == std::chrono::steady_clock::time_point{}) {
@@ -781,8 +472,8 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
         const double rate = elapsedSeconds > 0.0 ? (progressUiUpdateCount_ / elapsedSeconds) : 0.0;
         LOG_INFO(
             Controls,
-            "TrainingView progress UI: gen {}/{}, eval {}/{}, time {:.1f}s sim {:.1f}s speed "
-            "{:.1f}x eta {:.1f}s updates {:.1f}/s",
+            "TrainingActiveView progress UI: gen {}/{}, eval {}/{}, time {:.1f}s sim {:.1f}s "
+            "speed {:.1f}x eta {:.1f}s updates {:.1f}/s",
             progress.generation,
             progress.maxGenerations,
             progress.currentEval,
@@ -897,14 +588,14 @@ void TrainingView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
-void TrainingView::updateAnimations()
+void TrainingActiveView::updateAnimations()
 {
     if (starfield_ && starfield_->isVisible()) {
         starfield_->update();
     }
 }
 
-void TrainingView::setEvolutionStarted(bool started)
+void TrainingActiveView::setEvolutionStarted(bool started)
 {
     evolutionStarted_ = started;
     if (started) {
@@ -925,12 +616,8 @@ void TrainingView::setEvolutionStarted(bool started)
         }
     }
 
-    // Update panels if open.
     if (evolutionControls_) {
         evolutionControls_->setEvolutionStarted(started);
-    }
-    if (trainingConfigPanel_) {
-        trainingConfigPanel_->setEvolutionStarted(started);
     }
 
     if (pauseResumeButton_) {
@@ -946,22 +633,17 @@ void TrainingView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
 }
 
-void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
+void TrainingActiveView::setEvolutionCompleted(GenomeId bestGenomeId)
 {
     evolutionStarted_ = false;
 
-    // Show "Complete!" on main status.
     if (statusLabel_) {
         lv_label_set_text(statusLabel_, "Complete!");
         lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
     }
 
-    // Update panels to show completion and re-enable controls.
     if (evolutionControls_) {
         evolutionControls_->setEvolutionCompleted(bestGenomeId);
-    }
-    if (trainingConfigPanel_) {
-        trainingConfigPanel_->setEvolutionCompleted();
     }
 
     if (pauseResumeButton_) {
@@ -970,12 +652,12 @@ void TrainingView::setEvolutionCompleted(GenomeId bestGenomeId)
     setTrainingPaused(false);
 }
 
-void TrainingView::renderBestWorld()
+void TrainingActiveView::renderBestWorld()
 {
     if (!bestRenderer_ || !bestWorldContainer_ || !bestWorldData_) {
         LOG_WARN(
             Controls,
-            "TrainingView: renderBestWorld skipped (renderer={}, container={}, data={})",
+            "TrainingActiveView: renderBestWorld skipped (renderer={}, container={}, data={})",
             static_cast<const void*>(bestRenderer_.get()),
             static_cast<const void*>(bestWorldContainer_),
             static_cast<const void*>(bestWorldData_.get()));
@@ -986,7 +668,7 @@ void TrainingView::renderBestWorld()
         || bestWorldData_->cells.empty()) {
         LOG_WARN(
             Controls,
-            "TrainingView: renderBestWorld invalid data (world={}x{} cells={} colors={} "
+            "TrainingActiveView: renderBestWorld invalid data (world={}x{} cells={} colors={} "
             "organism_ids={})",
             bestWorldData_->width,
             bestWorldData_->height,
@@ -1000,20 +682,18 @@ void TrainingView::renderBestWorld()
     const int32_t containerHeight = lv_obj_get_height(bestWorldContainer_);
     LOG_INFO(
         Controls,
-        "TrainingView: renderBestWorld container={}x{} world={}x{}",
+        "TrainingActiveView: renderBestWorld container={}x{} world={}x{}",
         containerWidth,
         containerHeight,
         bestWorldData_->width,
         bestWorldData_->height);
 
-    // Render the best world snapshot.
     bestRenderer_->renderWorldData(*bestWorldData_, bestWorldContainer_, false, RenderMode::SHARP);
     if (!hasShownBestSnapshot_) {
         lv_refr_now(lv_display_get_default());
         hasShownBestSnapshot_ = true;
     }
 
-    // Update the label to show fitness info.
     if (bestFitnessLabel_) {
         char buf[64];
         snprintf(buf, sizeof(buf), "Best: %.2f (Gen %d)", bestFitness_, bestGeneration_);
@@ -1021,7 +701,7 @@ void TrainingView::renderBestWorld()
     }
 }
 
-void TrainingView::scheduleBestRender()
+void TrainingActiveView::scheduleBestRender()
 {
     if (!bestWorldContainer_ || !bestRenderer_ || !bestWorldData_) {
         return;
@@ -1031,10 +711,10 @@ void TrainingView::scheduleBestRender()
         .view = this,
         .alive = alive_,
     };
-    lv_async_call(TrainingView::renderBestWorldAsync, request);
+    lv_async_call(TrainingActiveView::renderBestWorldAsync, request);
 }
 
-void TrainingView::renderBestWorldAsync(void* data)
+void TrainingActiveView::renderBestWorldAsync(void* data)
 {
     auto* request = static_cast<BestRenderRequest*>(data);
     if (!request) {
@@ -1052,7 +732,7 @@ void TrainingView::renderBestWorldAsync(void* data)
     delete request;
 }
 
-void TrainingView::createStreamPanel(lv_obj_t* parent)
+void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
 {
     streamPanel_ = lv_obj_create(parent);
     lv_obj_set_size(streamPanel_, 220, LV_PCT(100));
@@ -1110,187 +790,21 @@ void TrainingView::createStreamPanel(lv_obj_t* parent)
     pauseResumeLabel_ = pauseBuilder.getLabel();
 }
 
-void TrainingView::showTrainingResultModal(
-    const Api::TrainingResult::Summary& summary,
-    const std::vector<Api::TrainingResult::Candidate>& candidates)
+void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
 {
-    hideTrainingResultModal();
-
-    trainingResultSummary_ = summary;
-    primaryCandidates_.clear();
-
-    for (const auto& candidate : candidates) {
-        if (!summary.primaryBrainKind.empty() && candidate.brainKind != summary.primaryBrainKind) {
-            continue;
-        }
-        if (summary.primaryBrainVariant.has_value()
-            && candidate.brainVariant != summary.primaryBrainVariant) {
-            continue;
-        }
-        primaryCandidates_.push_back(candidate);
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->streamIntervalStepper_) {
+        return;
     }
-
-    std::sort(
-        primaryCandidates_.begin(), primaryCandidates_.end(), [](const auto& a, const auto& b) {
-            return a.fitness > b.fitness;
-        });
-
-    lv_obj_t* overlayLayer = lv_layer_top();
-    trainingResultOverlay_ = lv_obj_create(overlayLayer);
-    lv_obj_set_size(trainingResultOverlay_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(trainingResultOverlay_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(trainingResultOverlay_, LV_OPA_60, 0);
-    lv_obj_clear_flag(trainingResultOverlay_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_move_foreground(trainingResultOverlay_);
-
-    lv_obj_t* modal = lv_obj_create(trainingResultOverlay_);
-    lv_obj_set_size(modal, 380, 420);
-    lv_obj_center(modal);
-    lv_obj_set_style_bg_color(modal, lv_color_hex(0x1E1E2E), 0);
-    lv_obj_set_style_bg_opa(modal, LV_OPA_90, 0);
-    lv_obj_set_style_radius(modal, 12, 0);
-    lv_obj_set_style_pad_all(modal, 12, 0);
-    lv_obj_set_style_pad_row(modal, 8, 0);
-    lv_obj_set_flex_flow(modal, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(modal, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(modal, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t* title = lv_label_create(modal);
-    lv_label_set_text(title, "Training Result");
-    lv_obj_set_style_text_color(title, lv_color_hex(0xFFDD66), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_18, 0);
-
-    char buf[128];
-    snprintf(buf, sizeof(buf), "Scenario: %s", Scenario::toString(summary.scenarioId).c_str());
-    lv_obj_t* scenarioLabel = lv_label_create(modal);
-    lv_label_set_text(scenarioLabel, buf);
-    lv_obj_set_style_text_color(scenarioLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(scenarioLabel, &lv_font_montserrat_12, 0);
-
-    const auto organismName = reflect::enum_name(summary.organismType);
-    snprintf(
-        buf,
-        sizeof(buf),
-        "Organism: %.*s",
-        static_cast<int>(organismName.size()),
-        organismName.data());
-    lv_obj_t* organismLabel = lv_label_create(modal);
-    lv_label_set_text(organismLabel, buf);
-    lv_obj_set_style_text_color(organismLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(organismLabel, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Generations: %d", summary.completedGenerations);
-    lv_obj_t* generationsLabel = lv_label_create(modal);
-    lv_label_set_text(generationsLabel, buf);
-    lv_obj_set_style_text_color(generationsLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(generationsLabel, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Population: %d", summary.populationSize);
-    lv_obj_t* populationLabel = lv_label_create(modal);
-    lv_label_set_text(populationLabel, buf);
-    lv_obj_set_style_text_color(populationLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(populationLabel, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Best Fitness: %.2f", summary.bestFitness);
-    lv_obj_t* bestLabel = lv_label_create(modal);
-    lv_label_set_text(bestLabel, buf);
-    lv_obj_set_style_text_color(bestLabel, lv_color_hex(0xFFDD66), 0);
-    lv_obj_set_style_text_font(bestLabel, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Avg Fitness: %.2f", summary.averageFitness);
-    lv_obj_t* avgLabel = lv_label_create(modal);
-    lv_label_set_text(avgLabel, buf);
-    lv_obj_set_style_text_color(avgLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(avgLabel, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Total Time: %.1fs", summary.totalTrainingSeconds);
-    lv_obj_t* timeLabel = lv_label_create(modal);
-    lv_label_set_text(timeLabel, buf);
-    lv_obj_set_style_text_color(timeLabel, lv_color_hex(0xCCCCCC), 0);
-    lv_obj_set_style_text_font(timeLabel, &lv_font_montserrat_12, 0);
-
-    std::string brainLabel =
-        summary.primaryBrainKind.empty() ? "Unknown" : summary.primaryBrainKind;
-    if (summary.primaryBrainVariant.has_value() && !summary.primaryBrainVariant->empty()) {
-        brainLabel += " (" + summary.primaryBrainVariant.value() + ")";
-    }
-    snprintf(buf, sizeof(buf), "Brain A: %s", brainLabel.c_str());
-    lv_obj_t* brainLabelObj = lv_label_create(modal);
-    lv_label_set_text(brainLabelObj, buf);
-    lv_obj_set_style_text_color(brainLabelObj, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(brainLabelObj, &lv_font_montserrat_12, 0);
-
-    snprintf(buf, sizeof(buf), "Saveable Genomes: %zu", primaryCandidates_.size());
-    trainingResultCountLabel_ = lv_label_create(modal);
-    lv_label_set_text(trainingResultCountLabel_, buf);
-    lv_obj_set_style_text_color(trainingResultCountLabel_, lv_color_hex(0x88AACC), 0);
-    lv_obj_set_style_text_font(trainingResultCountLabel_, &lv_font_montserrat_12, 0);
-
-    const int maxSaveCount = static_cast<int>(primaryCandidates_.size());
-    trainingResultSaveStepper_ = LVGLBuilder::actionStepper(modal)
-                                     .label("Save Top N")
-                                     .range(0, maxSaveCount)
-                                     .step(1)
-                                     .value(maxSaveCount)
-                                     .valueFormat("%.0f")
-                                     .valueScale(1.0)
-                                     .width(LV_PCT(95))
-                                     .callback(onTrainingResultCountChanged, this)
-                                     .buildOrLog();
-
-    lv_obj_t* buttonRow = lv_obj_create(modal);
-    lv_obj_set_size(buttonRow, LV_PCT(100), LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(buttonRow, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_pad_all(buttonRow, 0, 0);
-    lv_obj_set_style_pad_column(buttonRow, 10, 0);
-    lv_obj_set_flex_flow(buttonRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        buttonRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_clear_flag(buttonRow, LV_OBJ_FLAG_SCROLLABLE);
-
-    trainingResultSaveButton_ = LVGLBuilder::actionButton(buttonRow)
-                                    .text("Save")
-                                    .icon(LV_SYMBOL_OK)
-                                    .mode(LVGLBuilder::ActionMode::Push)
-                                    .size(80)
-                                    .backgroundColor(0x00AA66)
-                                    .callback(onTrainingResultSaveClicked, this)
-                                    .buildOrLog();
-
-    trainingResultSaveAndRestartButton_ = LVGLBuilder::actionButton(buttonRow)
-                                              .text("Save+Run")
-                                              .icon(LV_SYMBOL_PLAY)
-                                              .mode(LVGLBuilder::ActionMode::Push)
-                                              .size(80)
-                                              .backgroundColor(0x0077CC)
-                                              .callback(onTrainingResultSaveAndRestartClicked, this)
-                                              .buildOrLog();
-
-    LVGLBuilder::actionButton(buttonRow)
-        .text("Discard")
-        .icon(LV_SYMBOL_CLOSE)
-        .mode(LVGLBuilder::ActionMode::Push)
-        .size(80)
-        .backgroundColor(0xCC0000)
-        .callback(onTrainingResultDiscardClicked, this)
-        .buildOrLog();
-
-    updateTrainingResultSaveButton();
-}
-
-void TrainingView::onStreamIntervalChanged(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
-    if (!self || !self->streamIntervalStepper_) return;
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
     self->setStreamIntervalMs(value);
     self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
 }
 
-void TrainingView::onStopTrainingClicked(lv_event_t* e)
+void TrainingActiveView::onStopTrainingClicked(lv_event_t* e)
 {
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
     if (!self) {
         return;
     }
@@ -1298,9 +812,9 @@ void TrainingView::onStopTrainingClicked(lv_event_t* e)
     self->eventSink_.queueEvent(StopTrainingClickedEvent{});
 }
 
-void TrainingView::onPauseResumeClicked(lv_event_t* e)
+void TrainingActiveView::onPauseResumeClicked(lv_event_t* e)
 {
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
     if (!self) {
         return;
     }
@@ -1308,119 +822,9 @@ void TrainingView::onPauseResumeClicked(lv_event_t* e)
     self->eventSink_.queueEvent(TrainingPauseResumeClickedEvent{});
 }
 
-void TrainingView::hideTrainingResultModal()
+bool TrainingActiveView::isTrainingResultModalVisible() const
 {
-    if (trainingResultOverlay_) {
-        lv_obj_del(trainingResultOverlay_);
-        trainingResultOverlay_ = nullptr;
-    }
-
-    trainingResultCountLabel_ = nullptr;
-    trainingResultSaveStepper_ = nullptr;
-    trainingResultSaveButton_ = nullptr;
-    trainingResultSaveAndRestartButton_ = nullptr;
-    primaryCandidates_.clear();
-    trainingResultSummary_ = Api::TrainingResult::Summary{};
-}
-
-bool TrainingView::isTrainingResultModalVisible() const
-{
-    return trainingResultOverlay_ != nullptr;
-}
-
-void TrainingView::updateTrainingResultSaveButton()
-{
-    if (!trainingResultSaveButton_ && !trainingResultSaveAndRestartButton_) {
-        return;
-    }
-    int32_t value = 0;
-    if (trainingResultSaveStepper_) {
-        value = LVGLBuilder::ActionStepperBuilder::getValue(trainingResultSaveStepper_);
-    }
-
-    const bool enabled = (value > 0) && !primaryCandidates_.empty();
-    auto updateButton = [&](lv_obj_t* button) {
-        if (!button) {
-            return;
-        }
-        if (enabled) {
-            lv_obj_clear_state(button, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(button, LV_OPA_COVER, 0);
-        }
-        else {
-            lv_obj_add_state(button, LV_STATE_DISABLED);
-            lv_obj_set_style_opa(button, LV_OPA_50, 0);
-        }
-    };
-
-    updateButton(trainingResultSaveButton_);
-    updateButton(trainingResultSaveAndRestartButton_);
-}
-
-std::vector<GenomeId> TrainingView::getTrainingResultSaveIds() const
-{
-    if (!trainingResultSaveStepper_) {
-        return {};
-    }
-
-    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(trainingResultSaveStepper_);
-    return getTrainingResultSaveIdsForCount(value);
-}
-
-std::vector<GenomeId> TrainingView::getTrainingResultSaveIdsForCount(int count) const
-{
-    std::vector<GenomeId> ids;
-    const int clamped = std::max(0, count);
-    const int limit = std::min(clamped, static_cast<int>(primaryCandidates_.size()));
-    ids.reserve(limit);
-    for (int i = 0; i < limit; ++i) {
-        ids.push_back(primaryCandidates_[i].id);
-    }
-    return ids;
-}
-
-void TrainingView::onTrainingResultSaveClicked(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
-    if (!self) {
-        return;
-    }
-
-    TrainingResultSaveClickedEvent evt;
-    evt.ids = self->getTrainingResultSaveIds();
-    self->eventSink_.queueEvent(evt);
-}
-
-void TrainingView::onTrainingResultSaveAndRestartClicked(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
-    if (!self) {
-        return;
-    }
-
-    TrainingResultSaveClickedEvent evt;
-    evt.ids = self->getTrainingResultSaveIds();
-    evt.restart = true;
-    self->eventSink_.queueEvent(evt);
-}
-
-void TrainingView::onTrainingResultDiscardClicked(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
-    if (!self) {
-        return;
-    }
-
-    self->eventSink_.queueEvent(TrainingResultDiscardClickedEvent{});
-}
-
-void TrainingView::onTrainingResultCountChanged(lv_event_t* e)
-{
-    auto* self = static_cast<TrainingView*>(lv_event_get_user_data(e));
-    if (!self) {
-        return;
-    }
-    self->updateTrainingResultSaveButton();
+    return false;
 }
 
 } // namespace Ui

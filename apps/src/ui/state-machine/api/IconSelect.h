@@ -16,7 +16,7 @@ namespace IconSelect {
 DEFINE_API_NAME(IconSelect);
 
 struct Command {
-    Ui::IconId id = Ui::IconId::COUNT;
+    Ui::IconId id = Ui::IconId::NONE;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

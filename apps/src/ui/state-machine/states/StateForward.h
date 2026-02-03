@@ -9,11 +9,14 @@ namespace State {
 
 // Forward declarations.
 struct Disconnected;
+struct Network;
 struct Paused;
 struct Shutdown;
 struct SimRunning;
 struct StartMenu;
 struct Startup;
+struct Synth;
+struct SynthConfig;
 struct TrainingActive;
 struct TrainingIdle;
 struct TrainingUnsavedResult;

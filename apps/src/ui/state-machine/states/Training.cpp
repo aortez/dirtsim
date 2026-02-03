@@ -15,7 +15,9 @@
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
 #include "ui/RemoteInputDevice.h"
-#include "ui/TrainingView.h"
+#include "ui/TrainingActiveView.h"
+#include "ui/TrainingIdleView.h"
+#include "ui/TrainingUnsavedResultView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
@@ -118,7 +120,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     if (state.view_) {
         state.view_->setEvolutionStarted(true);
         state.view_->setTrainingPaused(false);
-        state.view_->hideTrainingResultModal();
         state.view_->clearPanelContent();
         state.view_->createCorePanel();
     }
@@ -150,7 +151,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
 
-    auto envelope = Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
+    auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
     auto renderResult = wsService.sendBinaryAndReceive(envelope);
     if (renderResult.isError()) {
         LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
@@ -219,6 +220,8 @@ TrainingIdle::TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
     : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
 {}
 
+TrainingIdle::~TrainingIdle() = default;
+
 void TrainingIdle::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training idle state (waiting for start command)");
@@ -229,13 +232,12 @@ void TrainingIdle::onEnter(StateMachine& sm)
         return;
     }
 
-    Network::WebSocketServiceInterface* wsService = nullptr;
+    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
 
-    view_ = std::make_unique<TrainingView>(
-        TrainingView::Layout::Idle, uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingIdleView>(uiManager, sm, wsService, sm.getUserSettings());
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
@@ -249,14 +251,13 @@ void TrainingIdle::onEnter(StateMachine& sm)
         lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
         lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
     }
+    iconRail->setLayout(RailLayout::SingleColumn);
     iconRail->setVisibleIcons(
-        { IconId::CORE, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
+        { IconId::DUCK, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll();
 
     if (view_) {
-        view_->setTrainingPaused(false);
         view_->setEvolutionStarted(false);
-        view_->hideTrainingResultModal();
         view_->clearPanelContent();
         view_->updateIconRailOffset();
     }
@@ -266,6 +267,9 @@ void TrainingIdle::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting Training idle state");
 
+    view_.reset();
+
+    // Clear panel content after view cleanup.
     if (auto* uiManager = sm.getUiComponentManager()) {
         if (auto* panel = uiManager->getExpandablePanel()) {
             panel->clearContent();
@@ -310,15 +314,16 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         return std::move(*this);
     }
 
-    if (evt.selectedId == IconId::CORE) {
-        LOG_INFO(State, "Home icon selected, returning to start menu");
+    if (evt.selectedId == IconId::DUCK) {
+        LOG_INFO(State, "Start menu icon selected, returning to start menu");
         if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
             iconRail->deselectAll();
         }
         return StartMenu{};
     }
 
-    if (evt.selectedId == IconId::COUNT) {
+    // Closing panel (deselected icon).
+    if (evt.selectedId == IconId::NONE) {
         view_->clearPanelContent();
         return std::move(*this);
     }
@@ -326,8 +331,6 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     view_->clearPanelContent();
 
     switch (evt.selectedId) {
-        case IconId::CORE:
-            break;
         case IconId::EVOLUTION:
             view_->createTrainingConfigPanel();
             break;
@@ -341,11 +344,14 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
             break;
 
         case IconId::TREE:
+        case IconId::MUSIC:
         case IconId::NETWORK:
+        case IconId::DUCK:
+        case IconId::CORE:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
-        case IconId::COUNT:
+        case IconId::NONE:
             DIRTSIM_ASSERT(false, "Unexpected icon selection in Training idle");
             break;
     }
@@ -525,7 +531,7 @@ State::Any TrainingIdle::onEvent(
         return std::move(*this);
     }
 
-    auto result = view_->showTrainingConfigView(TrainingView::TrainingConfigView::Evolution);
+    auto result = view_->showTrainingConfigView(TrainingIdleView::TrainingConfigView::Evolution);
     if (result.isError()) {
         cwc.sendResponse(Response::error(ApiError(result.errorValue())));
         return std::move(*this);
@@ -789,6 +795,8 @@ TrainingActive::TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSp
     : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
 {}
 
+TrainingActive::~TrainingActive() = default;
+
 void TrainingActive::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training active state");
@@ -799,13 +807,12 @@ void TrainingActive::onEnter(StateMachine& sm)
         return;
     }
 
-    Network::WebSocketServiceInterface* wsService = nullptr;
+    DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
         wsService = &sm.getWebSocketService();
     }
 
-    view_ = std::make_unique<TrainingView>(
-        TrainingView::Layout::Active, uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingActiveView>(uiManager, sm, wsService, sm.getUserSettings());
 
     if (auto* iconRail = uiManager->getIconRail()) {
         if (lv_obj_t* railContainer = iconRail->getContainer()) {
@@ -1104,6 +1111,8 @@ TrainingUnsavedResult::TrainingUnsavedResult(
       candidates_(std::move(candidates))
 {}
 
+TrainingUnsavedResult::~TrainingUnsavedResult() = default;
+
 void TrainingUnsavedResult::onEnter(StateMachine& sm)
 {
     LOG_INFO(State, "Entering Training unsaved-result state");
@@ -1114,13 +1123,7 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
         return;
     }
 
-    Network::WebSocketServiceInterface* wsService = nullptr;
-    if (sm.hasWebSocketService()) {
-        wsService = &sm.getWebSocketService();
-    }
-
-    view_ = std::make_unique<TrainingView>(
-        TrainingView::Layout::UnsavedResult, uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingUnsavedResultView>(uiManager, sm);
 
     if (auto* iconRail = uiManager->getIconRail()) {
         if (lv_obj_t* railContainer = iconRail->getContainer()) {
@@ -1135,9 +1138,6 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
     }
 
     if (view_) {
-        const GenomeId bestGenomeId = getBestGenomeId(candidates_);
-        view_->setEvolutionCompleted(bestGenomeId);
-        view_->setTrainingPaused(false);
         view_->showTrainingResultModal(summary_, candidates_);
     }
 }

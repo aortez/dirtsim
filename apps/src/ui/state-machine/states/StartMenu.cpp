@@ -10,7 +10,7 @@
 #include "ui/controls/ExpandablePanel.h"
 #include "ui/controls/IconRail.h"
 #include "ui/controls/SparklingDuckButton.h"
-#include "ui/rendering/JuliaFractal.h"
+#include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 #include <chrono>
@@ -22,10 +22,6 @@
 namespace DirtSim {
 namespace Ui {
 namespace State {
-
-namespace {
-constexpr int kNetworkPanelWidth = 640;
-}
 
 void StartMenu::onEnter(StateMachine& sm)
 {
@@ -69,12 +65,15 @@ void StartMenu::onEnter(StateMachine& sm)
     // Trigger layout creation and get content area (to the right of IconRail).
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
+    lv_obj_clean(container);
 
-    // Configure IconRail to show CORE, NETWORK, SCENARIO, and EVOLUTION icons.
+    // Configure IconRail to show StartMenu icons in two columns.
     if (IconRail* iconRail = uiManager->getIconRail()) {
         iconRail->setVisibleIcons(
-            { IconId::CORE, IconId::NETWORK, IconId::SCENARIO, IconId::EVOLUTION });
-        LOG_INFO(State, "Configured IconRail with CORE, NETWORK, SCENARIO, and EVOLUTION icons");
+            { IconId::CORE, IconId::MUSIC, IconId::EVOLUTION, IconId::NETWORK, IconId::SCENARIO });
+        iconRail->setLayout(RailLayout::TwoColumn);
+        iconRail->deselectAll();
+        LOG_INFO(State, "Configured IconRail with CORE, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -82,12 +81,12 @@ void StartMenu::onEnter(StateMachine& sm)
     int windowWidth = lv_disp_get_hor_res(disp);
     int windowHeight = lv_disp_get_ver_res(disp);
 
-    // Create Julia fractal background (allocated on heap, deleted in onExit).
-    fractal_ = new JuliaFractal(container, windowWidth, windowHeight);
-    LOG_INFO(State, "Created fractal background (event-driven rendering)");
+    // Attach shared fractal background.
+    sm.getFractalAnimator().attachTo(container, windowWidth, windowHeight);
+    LOG_INFO(State, "Attached fractal background (event-driven rendering)");
 
     // Add resize event handler to container (catches window resize events).
-    lv_obj_add_event_cb(container, onDisplayResized, LV_EVENT_SIZE_CHANGED, fractal_);
+    lv_obj_add_event_cb(container, onDisplayResized, LV_EVENT_SIZE_CHANGED, &sm);
     LOG_INFO(State, "Added resize event handler");
 
     // Create animated dirtsim start button.
@@ -150,31 +149,26 @@ void StartMenu::onExit(StateMachine& sm)
     LOG_INFO(State, "Exiting");
 
     // Clean up panels.
-    networkPanel_.reset();
     corePanel_.reset();
 
     // Clean up sparkle button.
     startButton_.reset();
 
-    // Clean up fractal.
-    if (fractal_) {
-        // IMPORTANT: Remove the resize event handler before deleting the fractal.
-        // This prevents use-after-free if a resize event occurs after exit.
-        auto* uiManager = sm.getUiComponentManager();
-        if (uiManager) {
-            lv_obj_t* container = uiManager->getMenuContentArea();
-            if (container) {
-                lv_obj_remove_event_cb(container, onDisplayResized);
-                LOG_INFO(State, "Removed resize event handler");
-            }
+    // IMPORTANT: Remove the resize event handler before detaching the fractal.
+    // This prevents use-after-free if a resize event occurs after exit.
+    auto* uiManager = sm.getUiComponentManager();
+    if (uiManager) {
+        lv_obj_t* container = uiManager->getMenuContentArea();
+        if (container) {
+            lv_obj_remove_event_cb(container, onDisplayResized);
+            lv_obj_remove_event_cb(container, onTouchEvent);
+            sm.getFractalAnimator().parkIfParent(container);
+            LOG_INFO(State, "Removed resize and touch event handlers");
         }
-
-        delete fractal_;
-        fractal_ = nullptr;
-        LOG_INFO(State, "Cleaned up fractal");
     }
 
     // Screen switch will clean up other widgets automatically.
+    touchDebugLabel_ = nullptr;
 }
 
 void StartMenu::updateAnimations()
@@ -184,8 +178,11 @@ void StartMenu::updateAnimations()
         startButton_->update();
     }
 
-    if (fractal_) {
-        fractal_->update();
+    if (!sm_) {
+        return;
+    }
+
+    if (auto* fractal = sm_->getFractalAnimator().getFractal()) {
 
         // Update info label with current fractal parameters (~1/sec to reduce overhead).
         if (infoLabel_) {
@@ -193,13 +190,13 @@ void StartMenu::updateAnimations()
             if (labelUpdateCounter_ >= 60) { // Update ~1/sec at 60fps.
                 labelUpdateCounter_ = 0;
 
-                const char* regionName = fractal_->getRegionName();
+                const char* regionName = fractal->getRegionName();
 
                 // Get all iteration values atomically to prevent race conditions.
                 int minIter, currentIter, maxIter;
-                fractal_->getIterationInfo(minIter, currentIter, maxIter);
+                fractal->getIterationInfo(minIter, currentIter, maxIter);
 
-                double fps = fractal_->getDisplayFps();
+                double fps = fractal->getDisplayFps();
 
                 // Periodic logging every 100 frames to track iteration values.
                 updateFrameCount_++;
@@ -247,8 +244,11 @@ void StartMenu::onTouchEvent(lv_event_t* e)
 
 void StartMenu::onDisplayResized(lv_event_t* e)
 {
-    auto* fractal = static_cast<JuliaFractal*>(lv_event_get_user_data(e));
-    if (!fractal) return;
+    auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
+    if (!sm) return;
+
+    auto* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (!container) return;
 
     // Get new display dimensions.
     lv_disp_t* disp = lv_disp_get_default();
@@ -257,8 +257,8 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
     LOG_INFO(State, "Display resized to {}x{}, updating fractal", newWidth, newHeight);
 
-    // Resize the fractal to match.
-    fractal->resize(newWidth, newHeight);
+    // Update the fractal view to match.
+    sm->getFractalAnimator().attachTo(container, newWidth, newHeight);
 }
 
 void StartMenu::updateInfoPanelVisibility(RailMode mode)
@@ -307,28 +307,14 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         corePanel_.reset();
     }
 
-    // Handle NETWORK icon - opens network diagnostics panel.
-    if (evt.selectedId == IconId::NETWORK) {
-        LOG_INFO(State, "Network icon selected, showing diagnostics panel");
-
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->clearContent();
-            panel->setWidth(kNetworkPanelWidth);
-            networkPanel_ = std::make_unique<NetworkDiagnosticsPanel>(panel->getContentArea());
-            panel->show();
-        }
-        return std::move(*this); // Don't deselect - panel should stay open.
+    if (evt.selectedId == IconId::MUSIC) {
+        LOG_INFO(State, "Music icon clicked, transitioning to Synth");
+        return Synth{};
     }
 
-    // Handle deselection of NETWORK.
-    if (evt.previousId == IconId::NETWORK) {
-        LOG_INFO(State, "Network icon deselected, hiding panel");
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->hide();
-            panel->clearContent();
-            panel->resetWidth();
-        }
-        networkPanel_.reset();
+    if (evt.selectedId == IconId::NETWORK) {
+        LOG_INFO(State, "Network icon clicked, transitioning to Network");
+        return Network{};
     }
 
     // SCENARIO and EVOLUTION are action triggers - fire and deselect.
@@ -443,13 +429,19 @@ State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachi
 
 State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachine& /*sm*/)
 {
-    if (!fractal_) {
+    if (!sm_) {
+        LOG_WARN(State, "Next fractal requested with no state machine reference");
+        return std::move(*this);
+    }
+
+    auto* fractal = sm_->getFractalAnimator().getFractal();
+    if (!fractal) {
         LOG_WARN(State, "Next fractal requested with no active fractal");
         return std::move(*this);
     }
 
     LOG_INFO(State, "Next fractal requested from core panel");
-    fractal_->advanceToNextFractal();
+    fractal->advanceToNextFractal();
     return std::move(*this);
 }
 

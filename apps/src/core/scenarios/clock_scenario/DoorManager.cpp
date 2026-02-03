@@ -257,6 +257,12 @@ void DoorManager::closeAllDoors(World& world)
     }
 }
 
+void DoorManager::clear()
+{
+    doors_.clear();
+    next_id_ = DoorId{ 1 };
+}
+
 Vector2i DoorManager::computeDoorPosition(const Door& def, const WorldData& world_data) const
 {
     // Door is on the wall edge, positioned relative to the floor.
@@ -280,12 +286,13 @@ Vector2i DoorManager::computeRoofPosition(const Door& def, const WorldData& worl
 
 Vector2f DoorManager::computeLightPosition(const Door& def, const WorldData& world_data) const
 {
-    // Light is one cell inward from the door, at the same Y as the door.
-    // This places it just inside the door opening.
-    const int door_x = (def.side == DoorSide::LEFT) ? 0 : static_cast<int>(world_data.width - 1);
-    const float x_offset = (def.side == DoorSide::LEFT) ? 1.0f : -1.0f;
-    const float door_y = static_cast<float>(world_data.height - def.cells_above_floor);
-    return Vector2f{ static_cast<float>(door_x) + x_offset, door_y - 1.0f };
+    // Light is centered on the door cell.
+    // When the door is closed, the light sits inside the wall cell.
+    const float door_x =
+        (def.side == DoorSide::LEFT) ? 0.0f : static_cast<float>(world_data.width - 1);
+    const float door_y =
+        static_cast<float>(world_data.height - 1 - static_cast<int>(def.cells_above_floor));
+    return Vector2f{ door_x, door_y };
 }
 
 } // namespace DirtSim

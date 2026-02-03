@@ -69,6 +69,11 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanPlaySynthKeys(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runVerifyTraining(
         const std::string& uiAddress,
         const std::string& serverAddress,

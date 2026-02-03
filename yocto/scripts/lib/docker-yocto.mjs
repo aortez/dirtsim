@@ -78,6 +78,12 @@ export async function runInYoctoDocker(commandArgs, options = {}) {
   if (process.env.SSTATE_DIR && !env.SSTATE_DIR) {
     env.SSTATE_DIR = process.env.SSTATE_DIR;
   }
+  if (process.env.KAS_BUILD_DIR && !env.KAS_BUILD_DIR) {
+    env.KAS_BUILD_DIR = process.env.KAS_BUILD_DIR;
+  }
+  if (process.env.KAS_REPOS_DIR && !env.KAS_REPOS_DIR) {
+    env.KAS_REPOS_DIR = process.env.KAS_REPOS_DIR;
+  }
   const cacheRoot =
     options.cacheRoot
     || process.env.DIRTSIM_CACHE_ROOT

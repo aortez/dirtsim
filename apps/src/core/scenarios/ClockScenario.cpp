@@ -21,6 +21,7 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "spdlog/spdlog.h"
 
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cmath>
@@ -116,6 +117,11 @@ bool ClockScenario::triggerEvent(World& world, ClockEventType type)
         spdlog::info(
             "ClockScenario: Ignoring manual {} trigger (already active)", eventTypeName(type));
         return false;
+    }
+
+    if (isEventBlockedByConflict(type)) {
+        queueEvent(type);
+        return true;
     }
 
     startEvent(world, type);
@@ -412,6 +418,15 @@ void ClockScenario::setConfig(const ScenarioConfig& newConfig, World& world)
         stopEventIfDisabled(ClockEventType::MELTDOWN, config_.meltdownEnabled, "Meltdown");
         stopEventIfDisabled(ClockEventType::RAIN, config_.rainEnabled, "Rain");
 
+        queued_events_.erase(
+            std::remove_if(
+                queued_events_.begin(),
+                queued_events_.end(),
+                [&](ClockEventType type) { return !isEventAllowed(type); }),
+            queued_events_.end());
+
+        updateDigitMaterialOverride();
+
         spdlog::info("ClockScenario: Config updated");
     }
     else {
@@ -552,8 +567,12 @@ void ClockScenario::tick(World& world, double deltaTime)
             }
         }
 
+        for (const auto& door_pos : door_manager_.getOpenDoorPositions(glowData)) {
+            obstaclePositions.push_back(door_pos);
+        }
+
         GlowConfig glowConfig = config_.glowConfig;
-        glowConfig.digitColor = getMaterialColor(config_.digitMaterial);
+        glowConfig.digitColor = getMaterialColor(getActiveDigitMaterial());
 
         GlowManager::apply(
             world, digitPositions, floorPositions, obstaclePositions, wallPositions, glowConfig);
@@ -673,7 +692,7 @@ void ClockScenario::drawCharacterBinary(
             }
 
             if (getCharacterPixel(utf8Char, row, col)) {
-                placeDigitPixel(world, x, y, config_.digitMaterial, outDigitPositions);
+                placeDigitPixel(world, x, y, getActiveDigitMaterial(), outDigitPositions);
             }
         }
     }
@@ -890,6 +909,64 @@ void ClockScenario::clearTimeOverride()
     time_override_.reset();
 }
 
+Material::EnumType ClockScenario::getActiveDigitMaterial() const
+{
+    if (digit_material_override_) {
+        return *digit_material_override_;
+    }
+
+    return config_.digitMaterial;
+}
+
+Material::EnumType ClockScenario::getColorCycleMaterial(const ColorCycleEventState& state) const
+{
+    const auto& materials = Material::getAllTypes();
+    if (materials.empty()) {
+        return config_.digitMaterial;
+    }
+
+    size_t index = state.current_index % materials.size();
+    return materials[index];
+}
+
+Material::EnumType ClockScenario::getColorShowcaseMaterial(
+    const ColorShowcaseEventState& state) const
+{
+    const auto& materials = event_configs_.color_showcase.showcase_materials;
+    if (materials.empty()) {
+        return config_.digitMaterial;
+    }
+
+    size_t index = state.current_index % materials.size();
+    return materials[index];
+}
+
+void ClockScenario::updateDigitMaterialOverride()
+{
+    digit_material_override_.reset();
+
+    for (const auto& [type, event] : event_manager_.getActiveEvents()) {
+        switch (type) {
+            case ClockEventType::COLOR_CYCLE: {
+                const auto& state = std::get<ColorCycleEventState>(event.state);
+                digit_material_override_ = getColorCycleMaterial(state);
+                break;
+            }
+            case ClockEventType::COLOR_SHOWCASE: {
+                const auto& state = std::get<ColorShowcaseEventState>(event.state);
+                digit_material_override_ = getColorShowcaseMaterial(state);
+                break;
+            }
+            case ClockEventType::DIGIT_SLIDE:
+            case ClockEventType::DUCK:
+            case ClockEventType::MARQUEE:
+            case ClockEventType::MELTDOWN:
+            case ClockEventType::RAIN:
+                break;
+        }
+    }
+}
+
 // ============================================================================
 // Event System
 // ============================================================================
@@ -933,6 +1010,67 @@ void ClockScenario::updateEvents(
             event_manager_.removeActiveEvent(type);
         }
     }
+
+    processQueuedEvents(world);
+    updateDigitMaterialOverride();
+}
+
+bool ClockScenario::isEventBlockedByConflict(ClockEventType type) const
+{
+    if (type == ClockEventType::MELTDOWN) {
+        return event_manager_.isEventActive(ClockEventType::MARQUEE);
+    }
+
+    if (type == ClockEventType::MARQUEE) {
+        return event_manager_.isEventActive(ClockEventType::MELTDOWN);
+    }
+
+    return false;
+}
+
+void ClockScenario::queueEvent(ClockEventType type)
+{
+    if (!isEventAllowed(type)) {
+        return;
+    }
+
+    auto already_queued = std::find(queued_events_.begin(), queued_events_.end(), type);
+    if (already_queued != queued_events_.end()) {
+        return;
+    }
+
+    queued_events_.push_back(type);
+    spdlog::info(
+        "ClockScenario: Queued {} event (waiting for conflict to end)", eventTypeName(type));
+}
+
+void ClockScenario::processQueuedEvents(World& world)
+{
+    if (queued_events_.empty()) {
+        return;
+    }
+
+    std::vector<ClockEventType> remaining;
+    remaining.reserve(queued_events_.size());
+
+    for (ClockEventType type : queued_events_) {
+        if (!isEventAllowed(type)) {
+            continue;
+        }
+
+        if (event_manager_.isEventActive(type)) {
+            continue;
+        }
+
+        if (isEventBlockedByConflict(type)) {
+            remaining.push_back(type);
+            continue;
+        }
+
+        startEvent(world, type);
+    }
+
+    queued_events_ = std::move(remaining);
 }
 
 bool ClockScenario::isEventAllowed(ClockEventType type) const
@@ -988,7 +1126,12 @@ void ClockScenario::tryTriggerPeriodicEvents(World& world)
 
         double effective_chance = timing.chance * config_.eventFrequency;
         if (uniform_dist_(rng_) < effective_chance) {
-            startEvent(world, type);
+            if (isEventBlockedByConflict(type)) {
+                queueEvent(type);
+            }
+            else {
+                startEvent(world, type);
+            }
         }
     }
 }
@@ -1025,7 +1168,12 @@ void ClockScenario::tryTriggerTimeChangeEvents(World& world)
 
         double effective_chance = timing.chance * config_.eventFrequency;
         if (effective_chance >= 1.0 || uniform_dist_(rng_) < effective_chance) {
-            startEvent(world, type);
+            if (isEventBlockedByConflict(type)) {
+                queueEvent(type);
+            }
+            else {
+                startEvent(world, type);
+            }
         }
     }
 }
@@ -1039,9 +1187,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
     if (type == ClockEventType::COLOR_CYCLE) {
         ColorCycleEventState state;
-        Material::EnumType starting_material =
-            ClockEvents::startColorCycle(state, config_.colorsPerSecond);
-        config_.digitMaterial = starting_material;
+        ClockEvents::startColorCycle(state, config_.colorsPerSecond);
         event.state = state;
         spdlog::info(
             "ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
@@ -1064,14 +1210,23 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
         Material::EnumType starting_material =
             ClockEvents::startColorShowcase(state, showcase_materials, rng_);
-        config_.digitMaterial = starting_material;
+        Material::EnumType display_material = getColorShowcaseMaterial(state);
         event.state = state;
-        spdlog::info(
-            "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} at "
-            "index {})",
-            eventTiming.duration,
-            toString(starting_material),
-            state.current_index);
+        if (showcase_materials.empty()) {
+            spdlog::info(
+                "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, showcase list empty; "
+                "digits use {})",
+                eventTiming.duration,
+                toString(display_material));
+        }
+        else {
+            spdlog::info(
+                "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} "
+                "at index {})",
+                eventTiming.duration,
+                toString(starting_material),
+                state.current_index);
+        }
     }
     else if (type == ClockEventType::DIGIT_SLIDE) {
         DigitSlideEventState slide_event_state;
@@ -1202,21 +1357,15 @@ void ClockScenario::updateEvent(
 void ClockScenario::updateColorCycleEvent(
     World& /*world*/, ColorCycleEventState& state, double deltaTime)
 {
-    auto new_material = ClockEvents::updateColorCycle(state, deltaTime);
-    if (new_material) {
-        config_.digitMaterial = *new_material;
-    }
+    ClockEvents::updateColorCycle(state, deltaTime);
 }
 
 void ClockScenario::updateColorShowcaseEvent(
     World& /*world*/, ColorShowcaseEventState& state, double /*deltaTime*/)
 {
     const auto& showcase_materials = event_configs_.color_showcase.showcase_materials;
-    auto new_material = ClockEvents::updateColorShowcase(
+    ClockEvents::updateColorShowcase(
         state, showcase_materials, event_manager_.hasTimeChangedThisFrame());
-    if (new_material) {
-        config_.digitMaterial = *new_material;
-    }
 }
 
 void ClockScenario::updateDigitSlideEvent(
@@ -1225,6 +1374,10 @@ void ClockScenario::updateDigitSlideEvent(
     double deltaTime,
     std::vector<Vector2i>& digitPositions)
 {
+    if (isEventActive(ClockEventType::MARQUEE)) {
+        return;
+    }
+
     std::string current_time = getCurrentTimeString();
 
     checkAndStartSlide(state.slide_state, last_drawn_time_, current_time);
@@ -1261,6 +1414,8 @@ void ClockScenario::updateDigitSlideEvent(
     if (!state.slide_state.active) {
         state.slide_state.new_time_str = current_time;
     }
+
+    last_drawn_time_ = current_time;
 }
 
 void ClockScenario::updateRainEvent(World& world, RainEventState& /*state*/, double deltaTime)
@@ -1280,6 +1435,19 @@ void ClockScenario::updateMarqueeEvent(
     auto getWidth = metrics.widthFunction();
     MarqueeFrame frame = updateHorizontalScroll(state.scroll_state, time_str, deltaTime, getWidth);
 
+    MarqueeFrame combined_frame = frame;
+    bool use_slide = false;
+    ActiveEvent* slide_event = event_manager_.getActiveEvent(ClockEventType::DIGIT_SLIDE);
+    if (slide_event) {
+        auto& slide_state = std::get<DigitSlideEventState>(slide_event->state);
+        checkAndStartSlide(slide_state.slide_state, last_drawn_time_, time_str);
+        if (!slide_state.slide_state.active) {
+            slide_state.slide_state.new_time_str = time_str;
+        }
+        combined_frame = updateVerticalSlide(slide_state.slide_state, deltaTime, getWidth);
+        use_slide = true;
+    }
+
     clearDigits(world);
 
     int dh = metrics.digitHeight;
@@ -1288,7 +1456,8 @@ void ClockScenario::updateMarqueeEvent(
     int start_x = (world.getData().width - content_width) / 2;
     int start_y = (world.getData().height - dh) / 2;
 
-    for (const auto& placement : frame.placements) {
+    const auto& placements = use_slide ? combined_frame.placements : frame.placements;
+    for (const auto& placement : placements) {
         double screen_x = start_x + placement.x - frame.viewportX;
         int charWidth = getWidth(placement.text);
 
@@ -1297,12 +1466,19 @@ void ClockScenario::updateMarqueeEvent(
         }
 
         int x = static_cast<int>(screen_x);
-        drawCharacter(world, placement.text, x, start_y, digitPositions);
+        int y = start_y + static_cast<int>(placement.y);
+        if (y + dh < 0 || y >= world.getData().height) {
+            continue;
+        }
+
+        drawCharacter(world, placement.text, x, y, digitPositions);
     }
 
     if (frame.finished) {
         remaining_time = 0.0;
     }
+
+    last_drawn_time_ = time_str;
 }
 
 void ClockScenario::spawnDuck(World& world, DuckEventState& state)
@@ -1544,12 +1720,7 @@ void ClockScenario::endEvent(
 {
     spdlog::info("ClockScenario: Ending {} event", eventTypeName(type));
 
-    if (type == ClockEventType::COLOR_CYCLE) {
-        // Restore default digit material.
-        config_.digitMaterial = Material::EnumType::Metal;
-        spdlog::info("ClockScenario: COLOR_CYCLE ended, restored digit material to METAL");
-    }
-    else if (type == ClockEventType::MELTDOWN) {
+    if (type == ClockEventType::MELTDOWN) {
         // Convert any stray digit material (fallen digits) to water.
         auto& melt_state = std::get<MeltdownEventState>(event.state);
         convertStrayDigitMaterialToWater(world, melt_state.digit_material);
@@ -1574,12 +1745,6 @@ void ClockScenario::endEvent(
         door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
         door_manager_.scheduleRemoval(state.exit_door_id, std::chrono::seconds(2));
     }
-    else if (type == ClockEventType::COLOR_SHOWCASE) {
-        // Restore default digit material (METAL).
-        config_.digitMaterial = Material::EnumType::Metal;
-        spdlog::info("ClockScenario: COLOR_SHOWCASE ended, restored digit material to METAL");
-    }
-
     if (setCooldown) {
         const auto& timing = getEventTiming(type);
         event_manager_.setCooldown(type, timing.cooldown);
@@ -1593,12 +1758,11 @@ void ClockScenario::endEvent(
 void ClockScenario::cancelAllEvents(World& world)
 {
     spdlog::info("ClockScenario: Canceling all events");
+    digit_material_override_.reset();
+    queued_events_.clear();
 
     for (auto& [type, event] : event_manager_.getActiveEvents()) {
-        if (type == ClockEventType::COLOR_CYCLE) {
-            config_.digitMaterial = Material::EnumType::Metal;
-        }
-        else if (type == ClockEventType::DUCK) {
+        if (type == ClockEventType::DUCK) {
             auto& state = std::get<DuckEventState>(event.state);
             if (state.organism_id != INVALID_ORGANISM_ID) {
                 world.getOrganismManager().removeOrganismFromWorld(world, state.organism_id);
@@ -1617,7 +1781,11 @@ void ClockScenario::cancelAllEvents(World& world)
 
     event_manager_.clear();
     door_manager_.closeAllDoors(world);
+    door_manager_.clear();
     obstacle_manager_.clearAll(world);
+    drain_manager_.reset();
+    storm_manager_.reset();
+    redrawWalls(world);
 }
 
 bool ClockScenario::isMeltdownActive() const
@@ -1640,7 +1808,7 @@ void ClockScenario::updateMeltdownEvent(
 
     // Make falling digit cells emissive so they glow while melting.
     const WorldData& data = world.getData();
-    uint32_t color = getMaterialColor(config_.digitMaterial);
+    uint32_t color = getMaterialColor(getActiveDigitMaterial());
     float intensity = config_.glowConfig.digitIntensity;
 
     for (int y = 1; y < data.height - 1; ++y) {
