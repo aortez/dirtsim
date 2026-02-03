@@ -108,6 +108,7 @@ public:
 
 private:
     static constexpr uint32_t AutoShrinkTimeoutMs = 10000;
+    static constexpr uint32_t StartMenuIdleClockTimeoutMs = 60000;
 
     SystemMetrics systemMetrics_;
     Timers timers_;
@@ -120,6 +121,7 @@ private:
     bool hasLastServerAddress_ = false;
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
+    bool startMenuIdleClockTriggered_ = false;
     int synthVolumePercent_ = 50;
 
     bool isAutoShrinkBlocked() const;

@@ -122,6 +122,13 @@ struct StartButtonClickedEvent {
 };
 
 /**
+ * @brief StartMenu idle timeout reached (auto-launch clock scenario).
+ */
+struct StartMenuIdleTimeoutEvent {
+    static constexpr const char* name() { return "StartMenuIdleTimeoutEvent"; }
+};
+
+/**
  * @brief User clicked Train button in StartMenu.
  */
 struct TrainButtonClickedEvent {
@@ -269,6 +276,7 @@ using Event = std::variant<
     ServerConnectedEvent,
     ServerDisconnectedEvent,
     StartButtonClickedEvent,
+    StartMenuIdleTimeoutEvent,
     StartEvolutionButtonClickedEvent,
     StopTrainingClickedEvent,
     QuitTrainingClickedEvent,
