@@ -326,6 +326,8 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     view_->clearPanelContent();
 
     switch (evt.selectedId) {
+        case IconId::CORE:
+            break;
         case IconId::EVOLUTION:
             view_->createTrainingConfigPanel();
             break;
