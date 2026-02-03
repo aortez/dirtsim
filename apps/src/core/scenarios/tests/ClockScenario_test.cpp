@@ -489,8 +489,7 @@ TEST_F(ClockScenarioTest, ColorCycleEvent_CyclesThroughMaterials)
     // Start color cycle on the next time change.
     scenario_->setTimeOverride("1 2 : 3 4");
     auto config = std::get<Config::Clock>(scenario_->getConfig());
-    config.colorCycleEnabled = true;
-    config.eventFrequency = 1.0;
+    setEventConfig(config, { ClockEventType::COLOR_CYCLE });
     scenario_->setConfig(config, *world_);
     scenario_->tick(*world_, 0.016);
     world_->advanceTime(0.016);
