@@ -168,6 +168,9 @@ private:
     void cancelAllEvents(World& world);
     double countWaterInBottomThird(const World& world) const;
     double countWaterInTopThird(const World& world) const;
+    void processQueuedEvents(World& world);
+    bool isEventBlockedByConflict(ClockEventType type) const;
+    void queueEvent(ClockEventType type);
 
     // Event-specific update handlers (called via visitor).
     void updateColorCycleEvent(World& world, ColorCycleEventState& state, double deltaTime);
@@ -193,10 +196,18 @@ private:
     bool isMeltdownActive() const;
     void convertStrayDigitMaterialToWater(World& world, Material::EnumType digit_material);
 
+    Material::EnumType getActiveDigitMaterial() const;
+    void updateDigitMaterialOverride();
+    Material::EnumType getColorCycleMaterial(const ColorCycleEventState& state) const;
+    Material::EnumType getColorShowcaseMaterial(const ColorShowcaseEventState& state) const;
+
     // Centralized wall system.
     std::vector<WallSpec> generateWallSpecs(const WorldData& data) const;
     void applyWalls(World& world, const std::vector<WallSpec>& walls);
     void redrawWalls(World& world);
+
+    std::optional<Material::EnumType> digit_material_override_;
+    std::vector<ClockEventType> queued_events_;
 };
 
 } // namespace DirtSim

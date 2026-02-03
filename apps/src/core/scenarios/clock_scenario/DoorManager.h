@@ -70,6 +70,7 @@ public:
 
     // Close and remove all doors.
     void closeAllDoors(World& world);
+    void clear();
 
 private:
     using TimePoint = std::chrono::steady_clock::time_point;
