@@ -44,7 +44,6 @@ struct SimRunning {
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const PhysicsSettingsReceivedEvent& evt, StateMachine& sm);
-    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);

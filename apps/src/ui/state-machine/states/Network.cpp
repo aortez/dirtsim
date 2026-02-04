@@ -111,17 +111,6 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any Network::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any Network::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     return std::move(*this);

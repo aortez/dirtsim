@@ -152,18 +152,6 @@ State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-
-    // Process auto-shrink in main thread (safe to modify LVGL objects).
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any SimRunning::onEvent(const RailModeChangedEvent& evt, StateMachine& /*sm*/)
 {
     LOG_INFO(

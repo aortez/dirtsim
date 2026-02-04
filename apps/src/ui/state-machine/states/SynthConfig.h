@@ -14,7 +14,6 @@ struct SynthConfig {
     void onExit(StateMachine& sm);
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
-    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);

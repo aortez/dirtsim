@@ -293,11 +293,6 @@ State::Any TrainingActive::onEvent(const IconSelectedEvent& evt, StateMachine& /
     return std::move(*this);
 }
 
-State::Any TrainingActive::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& /*sm*/)
-{
-    return std::move(*this);
-}
-
 State::Any TrainingActive::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Stop button clicked, stopping evolution");

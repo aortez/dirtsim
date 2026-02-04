@@ -337,18 +337,6 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any StartMenu::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing menu IconRail");
-
-    // Process auto-shrink in main thread (safe to modify LVGL objects).
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*sm*/)
 {
     updateInfoPanelVisibility(evt.newMode);

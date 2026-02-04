@@ -24,7 +24,6 @@ struct TrainingIdle {
     void updateAnimations();
 
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
-    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm);

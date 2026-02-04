@@ -28,7 +28,6 @@ struct TrainingActive {
     Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
-    Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const StopTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const QuitTrainingClickedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingPauseResumeClickedEvent& evt, StateMachine& sm);
