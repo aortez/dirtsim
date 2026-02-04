@@ -119,7 +119,11 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
 
 TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
 {
+    LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
     ServerDisconnectedEvent evt{ "Connection lost" };
 
