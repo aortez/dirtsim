@@ -255,17 +255,6 @@ State::Any SimRunning::onEvent(const UiApi::RenderModeSelect::Cwc& cwc, StateMac
     return std::move(*this);
 }
 
-State::Any SimRunning::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
-}
-
 State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
 {
     LOG_INFO(

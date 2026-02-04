@@ -4,7 +4,6 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/ScenarioListGet.h"
 #include "server/api/SimRun.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/ExpandablePanel.h"
@@ -406,17 +405,6 @@ State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& 
     return Disconnected{};
 }
 
-State::Any StartMenu::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
-}
-
 State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 {
     LOG_INFO(State, "SimRun command received");
@@ -541,41 +529,6 @@ State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine
 
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
     return TrainingIdle{};
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device state (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device position (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device state (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
-    return std::move(*this);
 }
 
 } // namespace State

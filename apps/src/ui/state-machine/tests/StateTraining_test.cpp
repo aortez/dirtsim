@@ -63,8 +63,6 @@ TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
 {
     TestStateMachineFixture fixture;
 
-    TrainingIdle trainingState;
-
     bool callbackInvoked = false;
     UiApi::Exit::Command cmd;
     UiApi::Exit::Cwc cwc(cmd, [&](UiApi::Exit::Response&& response) {
@@ -72,10 +70,10 @@ TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
+    fixture.stateMachine->handleEvent(cwc);
 
-    ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
-        << "Training + Exit should transition to Shutdown";
+    EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Shutdown");
+    EXPECT_TRUE(fixture.stateMachine->shouldExit());
     EXPECT_TRUE(callbackInvoked) << "Response callback should be invoked";
 }
 
@@ -85,9 +83,9 @@ TEST(StateTrainingTest, HasCorrectStateName)
     TrainingActive active;
     TrainingUnsavedResult unsaved;
 
-    EXPECT_STREQ(idle.name(), "Training");
-    EXPECT_STREQ(active.name(), "Training");
-    EXPECT_STREQ(unsaved.name(), "Training");
+    EXPECT_STREQ(idle.name(), "TrainingIdle");
+    EXPECT_STREQ(active.name(), "TrainingActive");
+    EXPECT_STREQ(unsaved.name(), "TrainingUnsavedResult");
 }
 
 TEST(StateTrainingTest, EvolutionProgressUpdatesState)

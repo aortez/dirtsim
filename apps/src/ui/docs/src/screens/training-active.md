@@ -19,14 +19,14 @@ scale 1.6
 @endsalt
 ```
 
-Full-screen modal. Icon rail hidden. Only training actions are available.
+Full-screen training view. Icon rail hidden. Only training actions are available.
 
 ## States
 
 ```plantuml
 @startuml
-[*] --> Training
+[*] --> TrainingActive
 
-Training --> StartMenu : Stop Training
+TrainingActive --> StartMenu : Stop Training
 @enduml
 ```

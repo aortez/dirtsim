@@ -1,7 +1,6 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -168,13 +167,6 @@ State::Any SynthConfig::onEvent(const ServerDisconnectedEvent& evt, StateMachine
     return Disconnected{};
 }
 
-State::Any SynthConfig::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-    return Shutdown{};
-}
-
 State::Any SynthConfig::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "SimStop command received, returning to StartMenu");
@@ -202,38 +194,6 @@ State::Any SynthConfig::onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachi
         .is_black = cwc.command.is_black,
     };
     cwc.sendResponse(UiApi::SynthKeyPress::Response::okay(response));
-    return std::move(*this);
-}
-
-State::Any SynthConfig::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any SynthConfig::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any SynthConfig::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
     return std::move(*this);
 }
 

@@ -70,20 +70,36 @@ Result<UiApi::StatusGet::Okay, std::string> requestUiStatus(
     return unwrapResponse(client.sendCommandAndGetResponse<UiApi::StatusGet::Okay>(cmd, timeoutMs));
 }
 
-Result<UiApi::StateGet::Okay, std::string> waitForUiState(
-    Network::WebSocketService& client, const std::string& expectedState, int timeoutMs)
+bool isTrainingStateName(const std::string& state)
+{
+    return state == "TrainingIdle" || state == "TrainingActive" || state == "TrainingUnsavedResult";
+}
+
+Result<UiApi::StateGet::Okay, std::string> waitForUiStateAny(
+    Network::WebSocketService& client,
+    const std::vector<std::string>& expectedStates,
+    int timeoutMs)
 {
     const auto start = std::chrono::steady_clock::now();
     const int pollDelayMs = 200;
     const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    std::string expectedList;
+    for (size_t i = 0; i < expectedStates.size(); ++i) {
+        if (i > 0) {
+            expectedList += ", ";
+        }
+        expectedList += expectedStates[i];
+    }
 
     while (true) {
         auto result = requestUiState(client, requestTimeoutMs);
         if (result.isError()) {
             return Result<UiApi::StateGet::Okay, std::string>::error(result.errorValue());
         }
-        if (result.value().state == expectedState) {
-            return result;
+        for (const auto& expectedState : expectedStates) {
+            if (result.value().state == expectedState) {
+                return result;
+            }
         }
 
         const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -91,11 +107,26 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
                                    .count();
         if (elapsedMs >= timeoutMs) {
             return Result<UiApi::StateGet::Okay, std::string>::error(
-                "Timeout waiting for UI state '" + expectedState + "'");
+                "Timeout waiting for UI state (" + expectedList + ")");
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
     }
+}
+
+Result<UiApi::StateGet::Okay, std::string> waitForUiState(
+    Network::WebSocketService& client, const std::string& expectedState, int timeoutMs)
+{
+    auto result = waitForUiStateAny(client, { expectedState }, timeoutMs);
+    if (result.isError()) {
+        const auto& error = result.errorValue();
+        if (error.rfind("Timeout waiting for UI state", 0) == 0) {
+            return Result<UiApi::StateGet::Okay, std::string>::error(
+                "Timeout waiting for UI state '" + expectedState + "'");
+        }
+        return Result<UiApi::StateGet::Okay, std::string>::error(error);
+    }
+    return result;
 }
 
 Result<Api::StatusGet::Okay, std::string> requestServerStatus(
@@ -482,7 +513,8 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
             "UI TrainingStart failed: " + trainResult.errorValue());
     }
 
-    auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+    auto trainingStateResult =
+        waitForUiStateAny(uiClient, { "TrainingActive", "TrainingUnsavedResult" }, timeoutMs);
     if (trainingStateResult.isError()) {
         uiClient.disconnect();
         serverClient.disconnect();
@@ -1224,7 +1256,8 @@ FunctionalTestSummary FunctionalTestRunner::runCanLoadGenomeFromBrowser(
                 "UI TrainingStart failed: " + trainResult.errorValue());
         }
 
-        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        auto trainingStateResult =
+            waitForUiStateAny(uiClient, { "TrainingActive", "TrainingUnsavedResult" }, timeoutMs);
         if (trainingStateResult.isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
@@ -1379,7 +1412,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
         }
 
         const std::string& uiState = uiStateResult.value().state;
-        if (uiState != "StartMenu" && uiState != "Training") {
+        if (uiState != "StartMenu" && !isTrainingStateName(uiState)) {
             if (uiState == "SimRunning" || uiState == "Paused") {
                 UiApi::SimStop::Command simStopCmd{};
                 auto simStopResult =
@@ -1426,7 +1459,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
                 "UI IconSelect (EVOLUTION) did not select");
         }
 
-        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        auto trainingStateResult = waitForUiStateAny(uiClient, { "TrainingIdle" }, timeoutMs);
         if (trainingStateResult.isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(trainingStateResult.errorValue());
@@ -1854,7 +1887,8 @@ FunctionalTestSummary FunctionalTestRunner::runVerifyTraining(
                 "UI TrainingStart failed: " + trainResult.errorValue());
         }
 
-        auto trainingStateResult = waitForUiState(uiClient, "Training", timeoutMs);
+        auto trainingStateResult =
+            waitForUiStateAny(uiClient, { "TrainingActive", "TrainingUnsavedResult" }, timeoutMs);
         if (trainingStateResult.isError()) {
             uiClient.disconnect();
             serverClient.disconnect();

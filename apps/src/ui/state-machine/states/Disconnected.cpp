@@ -419,17 +419,6 @@ State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachi
     return StartMenu{};
 }
 
-State::Any Disconnected::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
-}
-
 } // namespace State
 } // namespace Ui
 } // namespace DirtSim

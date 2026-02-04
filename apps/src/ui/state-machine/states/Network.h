@@ -23,12 +23,8 @@ struct Network {
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
-    Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm);
 
     static constexpr const char* name() { return "Network"; }
 
