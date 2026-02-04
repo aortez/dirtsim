@@ -2,6 +2,7 @@
 #include "State.h"
 #include "TrainingActive.h"
 #include "TrainingIdle.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/TrainingResultDiscard.h"
@@ -69,28 +70,25 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Training unsaved-result state");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     view_ = std::make_unique<TrainingUnsavedResultView>(uiManager, sm);
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView creation failed");
 
-    if (auto* iconRail = uiManager->getIconRail()) {
-        if (lv_obj_t* railContainer = iconRail->getContainer()) {
-            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        }
-    }
+    auto* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    lv_obj_t* railContainer = iconRail->getContainer();
+    DIRTSIM_ASSERT(railContainer, "IconRail container must exist");
+    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
         panel->hide();
         panel->resetWidth();
     }
 
-    if (view_) {
-        view_->showTrainingResultModal(summary_, candidates_);
-    }
+    view_->showTrainingResultModal(summary_, candidates_);
 }
 
 void TrainingUnsavedResult::onExit(StateMachine& /*sm*/)
@@ -100,14 +98,14 @@ void TrainingUnsavedResult::onExit(StateMachine& /*sm*/)
 
 void TrainingUnsavedResult::updateAnimations()
 {
-    if (view_) {
-        view_->updateAnimations();
-    }
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    view_->updateAnimations();
 }
 
 bool TrainingUnsavedResult::isTrainingResultModalVisible() const
 {
-    return view_ && view_->isTrainingResultModalVisible();
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    return view_->isTrainingResultModalVisible();
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -130,9 +128,8 @@ State::Any TrainingUnsavedResult::onEvent(
         return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
     }
 
-    if (view_) {
-        view_->hideTrainingResultModal();
-    }
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    view_->hideTrainingResultModal();
 
     return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
@@ -164,9 +161,8 @@ State::Any TrainingUnsavedResult::onEvent(
         return std::move(*this);
     }
 
-    if (view_) {
-        view_->hideTrainingResultModal();
-    }
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    view_->hideTrainingResultModal();
 
     return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
@@ -174,7 +170,8 @@ State::Any TrainingUnsavedResult::onEvent(
 State::Any TrainingUnsavedResult::onEvent(
     const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm)
 {
-    if (!view_ || !view_->isTrainingResultModalVisible()) {
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    if (!view_->isTrainingResultModalVisible()) {
         cwc.sendResponse(
             UiApi::TrainingResultSave::Response::error(
                 ApiError("Training result modal not visible")));
@@ -215,9 +212,7 @@ State::Any TrainingUnsavedResult::onEvent(
         return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
     }
 
-    if (view_) {
-        view_->hideTrainingResultModal();
-    }
+    view_->hideTrainingResultModal();
 
     return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
@@ -225,7 +220,8 @@ State::Any TrainingUnsavedResult::onEvent(
 State::Any TrainingUnsavedResult::onEvent(
     const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm)
 {
-    if (!view_ || !view_->isTrainingResultModalVisible()) {
+    DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
+    if (!view_->isTrainingResultModalVisible()) {
         cwc.sendResponse(
             UiApi::TrainingResultDiscard::Response::error(
                 ApiError("Training result modal not visible")));
@@ -265,9 +261,7 @@ State::Any TrainingUnsavedResult::onEvent(
 
     cwc.sendResponse(UiApi::TrainingResultDiscard::Response::okay({ .queued = true }));
 
-    if (view_) {
-        view_->hideTrainingResultModal();
-    }
+    view_->hideTrainingResultModal();
 
     return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
 }
