@@ -608,6 +608,7 @@ add_executable(dirtsim-os-manager
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
+    src/os-manager/network/PeerInfoJson.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp
@@ -640,6 +641,7 @@ add_executable(cli
     src/cli/SubprocessManager.cpp
     src/cli/TrainRunner.cpp
     src/os-manager/PeerTrust.cpp
+    src/os-manager/network/PeerInfoJson.cpp
     src/os-manager/api/PeerClientKeyEnsure.cpp
     src/os-manager/api/PeersGet.cpp
     src/os-manager/api/Reboot.cpp
@@ -706,6 +708,7 @@ add_executable(dirtsim-tests
     src/os-manager/network/CommandDeserializerJson.cpp
     src/os-manager/network/PeerAdvertisement.cpp
     src/os-manager/network/PeerDiscovery.cpp
+    src/os-manager/network/PeerInfoJson.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp

@@ -25,8 +25,6 @@ struct PeerInfo {
     }
 };
 
-void to_json(nlohmann::json& j, const PeerRole& role);
-void from_json(const nlohmann::json& j, PeerRole& role);
 void to_json(nlohmann::json& j, const PeerInfo& info);
 void from_json(const nlohmann::json& j, PeerInfo& info);
 

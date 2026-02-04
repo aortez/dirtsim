@@ -53,7 +53,12 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsOkayOnZeroExit)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return 0; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "start", "dirtsim-server.service");
@@ -65,7 +70,12 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsErrorOnNonZeroExit)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return 1 << 8; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "restart", "dirtsim-ui.service");
@@ -78,7 +88,12 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsErrorOnFailureToStart)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return -1; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "stop", "dirtsim-ui.service");
