@@ -33,10 +33,7 @@ void TrainingIdle::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Training idle state (waiting for start command)");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
@@ -44,6 +41,7 @@ void TrainingIdle::onEnter(StateMachine& sm)
     }
 
     view_ = std::make_unique<TrainingIdleView>(uiManager, sm, wsService, sm.getUserSettings());
+    DIRTSIM_ASSERT(view_, "TrainingIdleView creation failed");
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
@@ -62,11 +60,9 @@ void TrainingIdle::onEnter(StateMachine& sm)
         { IconId::DUCK, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll();
 
-    if (view_) {
-        view_->setEvolutionStarted(false);
-        view_->clearPanelContent();
-        view_->updateIconRailOffset();
-    }
+    view_->setEvolutionStarted(false);
+    view_->clearPanelContent();
+    view_->updateIconRailOffset();
 }
 
 void TrainingIdle::onExit(StateMachine& sm)
@@ -86,14 +82,14 @@ void TrainingIdle::onExit(StateMachine& sm)
 
 void TrainingIdle::updateAnimations()
 {
-    if (view_) {
-        view_->updateAnimations();
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
+    view_->updateAnimations();
 }
 
 bool TrainingIdle::isTrainingResultModalVisible() const
 {
-    return view_ && view_->isTrainingResultModalVisible();
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
+    return view_->isTrainingResultModalVisible();
 }
 
 State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
@@ -104,9 +100,7 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.previousId),
         static_cast<int>(evt.selectedId));
 
-    if (!view_) {
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     if (evt.selectedId == IconId::DUCK) {
         LOG_INFO(State, "Start menu icon selected, returning to start menu");
@@ -215,23 +209,17 @@ State::Any TrainingIdle::onEvent(const UiApi::GenomeBrowserOpen::Cwc& cwc, State
 {
     using Response = UiApi::GenomeBrowserOpen::Response;
 
-    if (!view_) {
-        cwc.sendResponse(Response::error(ApiError("Training view not available")));
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        cwc.sendResponse(Response::error(ApiError("UiComponentManager not available")));
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     view_->clearPanelContent();
     view_->createGenomeBrowserPanel();
 
-    if (auto* iconRail = uiManager->getIconRail()) {
-        iconRail->selectIcon(IconId::GENOME_BROWSER);
-    }
+    auto* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->selectIcon(IconId::GENOME_BROWSER);
 
     cwc.sendResponse(Response::okay({ .opened = true }));
     return std::move(*this);
@@ -241,10 +229,7 @@ State::Any TrainingIdle::onEvent(const UiApi::GenomeDetailOpen::Cwc& cwc, StateM
 {
     using Response = UiApi::GenomeDetailOpen::Response;
 
-    if (!view_) {
-        cwc.sendResponse(Response::error(ApiError("Training view not available")));
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     Result<GenomeId, std::string> result;
     if (cwc.command.id.has_value()) {
@@ -270,10 +255,7 @@ State::Any TrainingIdle::onEvent(const UiApi::GenomeDetailLoad::Cwc& cwc, StateM
 {
     using Response = UiApi::GenomeDetailLoad::Response;
 
-    if (!view_) {
-        cwc.sendResponse(Response::error(ApiError("Training view not available")));
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     auto result = view_->loadGenomeDetail(cwc.command.id);
     if (result.isError()) {
@@ -290,10 +272,7 @@ State::Any TrainingIdle::onEvent(
 {
     using Response = UiApi::TrainingConfigShowEvolution::Response;
 
-    if (!view_) {
-        cwc.sendResponse(Response::error(ApiError("Training view not available")));
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     auto result = view_->showTrainingConfigView(TrainingIdleView::TrainingConfigView::Evolution);
     if (result.isError()) {
@@ -317,9 +296,8 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
     auto& settings = sm.getUserSettings();
     settings.streamIntervalMs = std::max(0, evt.intervalMs);
 
-    if (view_) {
-        view_->setStreamIntervalMs(settings.streamIntervalMs);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
+    view_->setStreamIntervalMs(settings.streamIntervalMs);
 
     return std::move(*this);
 }
@@ -416,10 +394,7 @@ State::Any TrainingIdle::onEvent(const GenomeLoadClickedEvent& evt, StateMachine
 
 State::Any TrainingIdle::onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& /*sm*/)
 {
-    if (!view_) {
-        LOG_WARN(State, "Training view not available for genome add");
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
 
     view_->addGenomeToTraining(evt.genomeId, evt.scenarioId);
     return std::move(*this);
