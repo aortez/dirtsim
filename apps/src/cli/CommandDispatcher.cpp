@@ -5,6 +5,7 @@
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
@@ -115,6 +116,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::PeerClientKeyEnsure::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::PeersGet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::RemoteCliRun::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);

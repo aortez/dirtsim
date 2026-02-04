@@ -47,6 +47,13 @@ Any Idle::onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm)
     return Idle{};
 }
 
+Any Idle::onEvent(const OsApi::RemoteCliRun::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "RemoteCliRun command received");
+    cwc.sendResponse(osm.remoteCliRun(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "RestartAudio command received");

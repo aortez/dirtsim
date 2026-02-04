@@ -13,6 +13,7 @@ struct Idle {
 
     Any onEvent(const OsApi::PeerClientKeyEnsure::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm);
+    Any onEvent(const OsApi::RemoteCliRun::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm);
     Any onEvent(const OsApi::RestartServer::Cwc& cwc, OperatingSystemManager& osm);

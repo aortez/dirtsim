@@ -2,6 +2,7 @@
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
@@ -57,6 +58,10 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::PeersGet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::PeersGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::RemoteCliRun::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::RemoteCliRun::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::Reboot::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

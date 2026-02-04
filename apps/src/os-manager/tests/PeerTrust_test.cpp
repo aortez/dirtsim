@@ -92,9 +92,9 @@ TEST(PeerTrustTest, PeerClientKeyEnsureCreatesKeyAndReturnsFingerprint)
             writeFile(keyPath + ".pub", std::string(kClientPublicKey) + "\n");
             return Result<std::string, ApiError>::okay("");
         }
-        if (command.find("ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub")
+        if (command.find("ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ecdsa_key.pub")
             != std::string::npos) {
-            return Result<std::string, ApiError>::okay("256 SHA256:HOSTFP host (ED25519)\n");
+            return Result<std::string, ApiError>::okay("256 SHA256:HOSTFP host (ECDSA)\n");
         }
         if (command.find("ssh-keygen -l -E sha256 -f ") != std::string::npos) {
             return Result<std::string, ApiError>::okay("256 SHA256:CLIENTFP client (ED25519)\n");
@@ -128,9 +128,9 @@ TEST(PeerTrustTest, TrustBundleGetReturnsHostFingerprintAndClientKey)
 
     OperatingSystemManager::Dependencies dependencies;
     dependencies.commandRunner = [](const std::string& command) {
-        if (command.find("ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ed25519_key.pub")
+        if (command.find("ssh-keygen -l -E sha256 -f /etc/ssh/ssh_host_ecdsa_key.pub")
             != std::string::npos) {
-            return Result<std::string, ApiError>::okay("256 SHA256:HOSTFP host (ED25519)\n");
+            return Result<std::string, ApiError>::okay("256 SHA256:HOSTFP host (ECDSA)\n");
         }
         return Result<std::string, ApiError>::error(ApiError("Unexpected command"));
     };

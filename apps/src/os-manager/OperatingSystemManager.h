@@ -9,6 +9,7 @@
 #include "os-manager/EventProcessor.h"
 #include "os-manager/PeerTrust.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/SystemStatus.h"
 #include "os-manager/api/TrustBundleGet.h"
 #include "os-manager/api/TrustPeer.h"
@@ -66,6 +67,9 @@ public:
         std::function<Result<std::monostate, ApiError>(
             const std::filesystem::path&, const std::filesystem::path&, const std::string&)>
             sshPermissionsEnsurer;
+        std::function<Result<OsApi::RemoteCliRun::Okay, ApiError>(
+            const PeerTrustBundle&, const std::vector<std::string>&, int)>
+            remoteCliRunner;
     };
 
     struct TestMode {
@@ -95,6 +99,8 @@ public:
     OsApi::SystemStatus::Okay buildSystemStatus();
     std::vector<PeerInfo> getPeers() const;
     Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> ensurePeerClientKey();
+    Result<OsApi::RemoteCliRun::Okay, ApiError> remoteCliRun(
+        const OsApi::RemoteCliRun::Command& command);
     Result<OsApi::TrustBundleGet::Okay, ApiError> getTrustBundle();
     Result<OsApi::TrustPeer::Okay, ApiError> trustPeer(const OsApi::TrustPeer::Command& command);
     Result<OsApi::UntrustPeer::Okay, ApiError> untrustPeer(

@@ -8,6 +8,7 @@
 #include "os-manager/network/CommandDeserializerJson.h"
 #include "os-manager/network/PeerAdvertisement.h"
 #include "os-manager/network/PeerDiscovery.h"
+#include "os-manager/ssh/RemoteSshExecutor.h"
 #include "server/api/StatusGet.h"
 #include "server/api/WebSocketAccessSet.h"
 #include "server/api/WebUiAccessSet.h"
@@ -41,6 +42,8 @@ namespace DirtSim {
 namespace OsManager {
 
 namespace {
+constexpr int kDefaultRemoteCommandTimeoutMs = 30000;
+
 Result<std::monostate, ApiError> makeMissingDependencyError(const std::string& name)
 {
     return Result<std::monostate, ApiError>::error(ApiError("Missing dependency for " + name));
@@ -248,6 +251,25 @@ Result<std::string, ApiError> extractFingerprintSha256(const std::string& output
         return Result<std::string, ApiError>::okay(output.substr(pos));
     }
     return Result<std::string, ApiError>::okay(output.substr(pos, end - pos));
+}
+
+bool hasMissingCliMessage(const std::string& text)
+{
+    if (text.find("dirtsim-cli") == std::string::npos) {
+        return false;
+    }
+    if (text.find("not found") != std::string::npos) {
+        return true;
+    }
+    return text.find("No such file or directory") != std::string::npos;
+}
+
+bool isMissingCliResult(const OsApi::RemoteCliRun::Okay& result)
+{
+    if (result.exit_code == 126 || result.exit_code == 127) {
+        return true;
+    }
+    return hasMissingCliMessage(result.stderr) || hasMissingCliMessage(result.stdout);
 }
 
 Result<std::vector<std::string>, ApiError> readFileLines(const std::filesystem::path& path)
@@ -764,6 +786,8 @@ void OperatingSystemManager::setupWebSocketService()
         [this](OsApi::PeerClientKeyEnsure::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::PeersGet::Cwc>(
         [this](OsApi::PeersGet::Cwc cwc) { queueEvent(cwc); });
+    wsService_.registerHandler<OsApi::RemoteCliRun::Cwc>(
+        [this](OsApi::RemoteCliRun::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::SystemStatus::Cwc>(
         [this](OsApi::SystemStatus::Cwc cwc) { queueEvent(cwc); });
     wsService_.registerHandler<OsApi::StartServer::Cwc>(
@@ -850,6 +874,7 @@ void OperatingSystemManager::setupWebSocketService()
             DISPATCH_OS_CMD_EMPTY(OsApi::StopUi);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::PeerClientKeyEnsure);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::PeersGet);
+            DISPATCH_OS_CMD_WITH_RESP(OsApi::RemoteCliRun);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::SystemStatus);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::TrustBundleGet);
             DISPATCH_OS_CMD_WITH_RESP(OsApi::TrustPeer);
@@ -1008,7 +1033,7 @@ Result<std::monostate, ApiError> OperatingSystemManager::savePeerAllowlist(
 
 Result<std::string, ApiError> OperatingSystemManager::getHostFingerprintSha256() const
 {
-    const std::filesystem::path hostKeyPath("/etc/ssh/ssh_host_ed25519_key.pub");
+    const std::filesystem::path hostKeyPath("/etc/ssh/ssh_host_ecdsa_key.pub");
     std::error_code error;
     if (!std::filesystem::exists(hostKeyPath, error) || error) {
         return Result<std::string, ApiError>::error(
@@ -1178,6 +1203,71 @@ Result<OsApi::PeerClientKeyEnsure::Okay, ApiError> OperatingSystemManager::ensur
     okay.public_key = publicKeyResult.value();
     okay.fingerprint_sha256 = fingerprintResult.value();
     return Result<OsApi::PeerClientKeyEnsure::Okay, ApiError>::okay(std::move(okay));
+}
+
+Result<OsApi::RemoteCliRun::Okay, ApiError> OperatingSystemManager::remoteCliRun(
+    const OsApi::RemoteCliRun::Command& command)
+{
+    if (command.host.empty()) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(ApiError("Host is required"));
+    }
+
+    const auto allowlistPath = getPeerAllowlistPath();
+    std::error_code error;
+    if (!std::filesystem::exists(allowlistPath, error) || error) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(
+            ApiError("Peer allowlist not found"));
+    }
+
+    auto allowlistResult = loadPeerAllowlist();
+    if (allowlistResult.isError()) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(allowlistResult.errorValue());
+    }
+
+    const auto& allowlist = allowlistResult.value();
+    auto it =
+        std::find_if(allowlist.begin(), allowlist.end(), [&command](const PeerTrustBundle& entry) {
+            return entry.host == command.host;
+        });
+    if (it == allowlist.end()) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(
+            ApiError("Host not found in allowlist"));
+    }
+
+    if (!dependencies_.remoteCliRunner) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(
+            ApiError("Remote CLI runner not configured"));
+    }
+
+    int timeoutMs = kDefaultRemoteCommandTimeoutMs;
+    if (command.timeout_ms.has_value() && command.timeout_ms.value() > 0) {
+        timeoutMs = command.timeout_ms.value();
+    }
+
+    std::vector<std::string> argv;
+    argv.reserve(command.args.size() + 1);
+    argv.push_back("dirtsim-cli");
+    for (const auto& arg : command.args) {
+        argv.push_back(arg);
+    }
+
+    auto result = dependencies_.remoteCliRunner(*it, argv, timeoutMs);
+    if (result.isError()) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(result.errorValue());
+    }
+
+    if (isMissingCliResult(result.value())) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(
+            ApiError("dirtsim-cli not found on remote host"));
+    }
+
+    if (result.value().stdout.size() > RemoteSshExecutor::kMaxStdoutBytes
+        || result.value().stderr.size() > RemoteSshExecutor::kMaxStderrBytes) {
+        return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(
+            ApiError("Remote CLI output exceeded limit"));
+    }
+
+    return Result<OsApi::RemoteCliRun::Okay, ApiError>::okay(result.value());
 }
 
 Result<OsApi::TrustBundleGet::Okay, ApiError> OperatingSystemManager::getTrustBundle()
@@ -1818,6 +1908,12 @@ void OperatingSystemManager::initializeDefaultDependencies()
                                                  const std::string& user) {
             return ensureSshPermissions(dirPath, filePath, user);
         };
+        dependencies_.remoteCliRunner =
+            [this](
+                const PeerTrustBundle& peer, const std::vector<std::string>& argv, int timeoutMs) {
+                RemoteSshExecutor executor(getPeerClientKeyPath());
+                return executor.run(peer, argv, timeoutMs);
+            };
         return;
     }
 
@@ -1840,6 +1936,11 @@ void OperatingSystemManager::initializeDefaultDependencies()
                                              const std::string& user) {
         return ensureSshPermissions(dirPath, filePath, user);
     };
+    dependencies_.remoteCliRunner =
+        [this](const PeerTrustBundle& peer, const std::vector<std::string>& argv, int timeoutMs) {
+            RemoteSshExecutor executor(getPeerClientKeyPath());
+            return executor.run(peer, argv, timeoutMs);
+        };
 }
 
 OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()

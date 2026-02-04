@@ -3,6 +3,7 @@
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
@@ -35,6 +36,7 @@ public:
     using Variant = std::variant<
         OsApi::PeerClientKeyEnsure::Cwc,
         OsApi::PeersGet::Cwc,
+        OsApi::RemoteCliRun::Cwc,
         OsApi::Reboot::Cwc,
         OsApi::RestartAudio::Cwc,
         OsApi::RestartServer::Cwc,

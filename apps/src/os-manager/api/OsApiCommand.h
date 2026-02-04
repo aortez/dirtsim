@@ -3,6 +3,7 @@
 #include "PeerClientKeyEnsure.h"
 #include "PeersGet.h"
 #include "Reboot.h"
+#include "RemoteCliRun.h"
 #include "RestartAudio.h"
 #include "RestartServer.h"
 #include "RestartUi.h"
@@ -26,6 +27,7 @@ namespace OsApi {
 using OsApiCommand = std::variant<
     PeerClientKeyEnsure::Command,
     PeersGet::Command,
+    RemoteCliRun::Command,
     Reboot::Command,
     RestartAudio::Command,
     RestartServer::Command,
