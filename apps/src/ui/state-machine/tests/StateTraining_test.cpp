@@ -162,6 +162,7 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
 
     TrainingIdle trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
 
     StartEvolutionButtonClickedEvent evt;
     evt.evolution.populationSize = 10;
@@ -183,6 +184,7 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
     EXPECT_EQ(sentCommands[2], "RenderFormatSet");
 
+    trainingState.view_.reset();
     activeState->view_.reset();
     fixture.stateMachine->uiManager_.reset();
 }
@@ -310,6 +312,7 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     ASSERT_NE(updatedState, nullptr);
     EXPECT_TRUE(callbackInvoked);
 
+    trainingState.view_.reset();
     updatedState->onEnter(*fixture.stateMachine);
     EXPECT_FALSE(updatedState->isTrainingResultModalVisible());
 

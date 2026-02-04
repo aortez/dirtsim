@@ -132,8 +132,13 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 
 } // namespace
 
-TrainingActive::TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
-    : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
+TrainingActive::TrainingActive(
+    TrainingSpec lastTrainingSpec,
+    bool hasTrainingSpec,
+    std::optional<Starfield::Snapshot> starfieldSnapshot)
+    : lastTrainingSpec_(std::move(lastTrainingSpec)),
+      hasTrainingSpec_(hasTrainingSpec),
+      starfieldSnapshot_(std::move(starfieldSnapshot))
 {}
 
 TrainingActive::~TrainingActive() = default;
@@ -150,7 +155,12 @@ void TrainingActive::onEnter(StateMachine& sm)
         wsService = &sm.getWebSocketService();
     }
 
-    view_ = std::make_unique<TrainingActiveView>(uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingActiveView>(
+        uiManager,
+        sm,
+        wsService,
+        sm.getUserSettings(),
+        starfieldSnapshot_ ? &starfieldSnapshot_.value() : nullptr);
     DIRTSIM_ASSERT(view_, "TrainingActiveView creation failed");
 
     auto* iconRail = uiManager->getIconRail();
@@ -273,8 +283,10 @@ State::Any TrainingActive::onEvent(const Api::TrainingResult::Cwc& cwc, StateMac
 
     cwc.sendResponse(Api::TrainingResult::Response::okay(std::monostate{}));
 
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
     return TrainingUnsavedResult{
-        lastTrainingSpec_, hasTrainingSpec_, cwc.command.summary, cwc.command.candidates
+        lastTrainingSpec_,      hasTrainingSpec_,   cwc.command.summary,
+        cwc.command.candidates, starfieldSnapshot_,
     };
 }
 

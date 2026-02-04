@@ -4,6 +4,7 @@
 #include "ui/TrainingIdleView.h"
 #include "ui/state-machine/Event.h"
 #include <memory>
+#include <optional>
 
 namespace DirtSim {
 namespace Ui {
@@ -12,7 +13,10 @@ namespace State {
 
 struct TrainingIdle {
     TrainingIdle() = default;
-    TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    TrainingIdle(
+        TrainingSpec lastTrainingSpec,
+        bool hasTrainingSpec,
+        std::optional<Starfield::Snapshot> starfieldSnapshot = std::nullopt);
     ~TrainingIdle();
     TrainingIdle(const TrainingIdle&) = delete;
     TrainingIdle& operator=(const TrainingIdle&) = delete;
@@ -44,6 +48,7 @@ struct TrainingIdle {
     std::unique_ptr<TrainingIdleView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
+    std::optional<Starfield::Snapshot> starfieldSnapshot_;
 };
 
 } // namespace State

@@ -30,11 +30,13 @@ TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
-    UserSettings& userSettings)
+    UserSettings& userSettings,
+    const Starfield::Snapshot* starfieldSnapshot)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
-      userSettings_(userSettings)
+      userSettings_(userSettings),
+      starfieldSnapshot_(starfieldSnapshot)
 {
     alive_ = std::make_shared<std::atomic<bool>>(true);
     createUI();
@@ -73,7 +75,8 @@ void TrainingActiveView::createUI()
 
 void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 {
-    starfield_ = std::make_unique<Starfield>(container_, displayWidth, displayHeight);
+    starfield_ =
+        std::make_unique<Starfield>(container_, displayWidth, displayHeight, starfieldSnapshot_);
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
 
@@ -593,6 +596,12 @@ void TrainingActiveView::updateAnimations()
     if (starfield_ && starfield_->isVisible()) {
         starfield_->update();
     }
+}
+
+Starfield::Snapshot TrainingActiveView::captureStarfieldSnapshot() const
+{
+    DIRTSIM_ASSERT(starfield_, "TrainingActiveView requires Starfield");
+    return starfield_->capture();
 }
 
 void TrainingActiveView::setEvolutionStarted(bool started)

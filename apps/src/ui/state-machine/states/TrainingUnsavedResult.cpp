@@ -56,9 +56,11 @@ TrainingUnsavedResult::TrainingUnsavedResult(
     TrainingSpec lastTrainingSpec,
     bool hasTrainingSpec,
     Api::TrainingResult::Summary summary,
-    std::vector<Api::TrainingResult::Candidate> candidates)
+    std::vector<Api::TrainingResult::Candidate> candidates,
+    std::optional<Starfield::Snapshot> starfieldSnapshot)
     : lastTrainingSpec_(std::move(lastTrainingSpec)),
       hasTrainingSpec_(hasTrainingSpec),
+      starfieldSnapshot_(std::move(starfieldSnapshot)),
       summary_(std::move(summary)),
       candidates_(std::move(candidates))
 {}
@@ -72,7 +74,8 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
-    view_ = std::make_unique<TrainingUnsavedResultView>(uiManager, sm);
+    view_ = std::make_unique<TrainingUnsavedResultView>(
+        uiManager, sm, starfieldSnapshot_ ? &starfieldSnapshot_.value() : nullptr);
     DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView creation failed");
 
     auto* iconRail = uiManager->getIconRail();
@@ -125,13 +128,15 @@ State::Any TrainingUnsavedResult::onEvent(
     }
 
     if (evt.restart) {
-        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
+        starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
     }
 
     DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
     view_->hideTrainingResultModal();
 
-    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -164,7 +169,8 @@ State::Any TrainingUnsavedResult::onEvent(
     DIRTSIM_ASSERT(view_, "TrainingUnsavedResultView must exist");
     view_->hideTrainingResultModal();
 
-    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -209,12 +215,14 @@ State::Any TrainingUnsavedResult::onEvent(
     cwc.sendResponse(UiApi::TrainingResultSave::Response::okay(std::move(response)));
 
     if (restartRequested) {
-        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
+        starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+        return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
     }
 
     view_->hideTrainingResultModal();
 
-    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(
@@ -263,7 +271,8 @@ State::Any TrainingUnsavedResult::onEvent(
 
     view_->hideTrainingResultModal();
 
-    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+    return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
 }
 
 State::Any TrainingUnsavedResult::onEvent(const UiUpdateEvent& /*evt*/, StateMachine& /*sm*/)

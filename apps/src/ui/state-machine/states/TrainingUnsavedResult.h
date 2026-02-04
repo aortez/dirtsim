@@ -4,6 +4,7 @@
 #include "ui/TrainingUnsavedResultView.h"
 #include "ui/state-machine/Event.h"
 #include <memory>
+#include <optional>
 #include <vector>
 
 namespace DirtSim {
@@ -17,7 +18,8 @@ struct TrainingUnsavedResult {
         TrainingSpec lastTrainingSpec,
         bool hasTrainingSpec,
         Api::TrainingResult::Summary summary,
-        std::vector<Api::TrainingResult::Candidate> candidates);
+        std::vector<Api::TrainingResult::Candidate> candidates,
+        std::optional<Starfield::Snapshot> starfieldSnapshot = std::nullopt);
     ~TrainingUnsavedResult();
     TrainingUnsavedResult(const TrainingUnsavedResult&) = delete;
     TrainingUnsavedResult& operator=(const TrainingUnsavedResult&) = delete;
@@ -43,6 +45,7 @@ struct TrainingUnsavedResult {
     std::unique_ptr<TrainingUnsavedResultView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
+    std::optional<Starfield::Snapshot> starfieldSnapshot_;
     Api::TrainingResult::Summary summary_{};
     std::vector<Api::TrainingResult::Candidate> candidates_;
 };

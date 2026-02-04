@@ -39,11 +39,13 @@ TrainingIdleView::TrainingIdleView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
     Network::WebSocketServiceInterface* wsService,
-    UserSettings& userSettings)
+    UserSettings& userSettings,
+    const Starfield::Snapshot* starfieldSnapshot)
     : uiManager_(uiManager),
       eventSink_(eventSink),
       wsService_(wsService),
-      userSettings_(userSettings)
+      userSettings_(userSettings),
+      starfieldSnapshot_(starfieldSnapshot)
 {
     createUI();
 }
@@ -63,6 +65,19 @@ void TrainingIdleView::createUI()
     lv_obj_clean(container_);
     lv_obj_update_layout(container_);
 
+    int displayWidth = lv_obj_get_width(container_);
+    int displayHeight = lv_obj_get_height(container_);
+    if (displayWidth <= 0 || displayHeight <= 0) {
+        lv_disp_t* display = lv_disp_get_default();
+        if (display) {
+            displayWidth = lv_disp_get_hor_res(display);
+            displayHeight = lv_disp_get_ver_res(display);
+        }
+    }
+
+    starfield_ =
+        std::make_unique<Starfield>(container_, displayWidth, displayHeight, starfieldSnapshot_);
+
     createIdleUI();
 }
 
@@ -70,8 +85,7 @@ void TrainingIdleView::createIdleUI()
 {
     contentRow_ = lv_obj_create(container_);
     lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(contentRow_, lv_color_hex(0x0B0B12), 0);
-    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(contentRow_, 0, 0);
     lv_obj_set_style_pad_all(contentRow_, 0, 0);
     lv_obj_set_style_pad_gap(contentRow_, 10, 0);
@@ -81,7 +95,6 @@ void TrainingIdleView::createIdleUI()
     lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
 
     panel_ = std::make_unique<ExpandablePanel>(contentRow_);
-    panel_->show();
     panel_->setWidth(ExpandablePanel::DefaultWidth);
     panelContent_ = panel_->getContentArea();
 
@@ -100,6 +113,7 @@ void TrainingIdleView::createIdleUI()
 void TrainingIdleView::destroyUI()
 {
     clearPanelContent();
+    starfield_.reset();
     panel_.reset();
 
     if (container_) {
@@ -113,7 +127,25 @@ void TrainingIdleView::destroyUI()
 }
 
 void TrainingIdleView::updateAnimations()
-{}
+{
+    if (starfield_ && starfield_->isVisible()) {
+        starfield_->update();
+    }
+}
+
+void TrainingIdleView::hidePanel()
+{
+    if (panel_) {
+        panel_->hide();
+    }
+}
+
+void TrainingIdleView::showPanel()
+{
+    if (panel_) {
+        panel_->show();
+    }
+}
 
 void TrainingIdleView::clearPanelContent()
 {
@@ -125,6 +157,12 @@ void TrainingIdleView::clearPanelContent()
         panel_->clearContent();
         panel_->setWidth(ExpandablePanel::DefaultWidth);
     }
+}
+
+Starfield::Snapshot TrainingIdleView::captureStarfieldSnapshot() const
+{
+    DIRTSIM_ASSERT(starfield_, "TrainingIdleView requires Starfield");
+    return starfield_->capture();
 }
 
 void TrainingIdleView::createCorePanel()

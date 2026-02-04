@@ -5,6 +5,7 @@
 #include "ui/state-machine/Event.h"
 #include <chrono>
 #include <memory>
+#include <optional>
 
 namespace DirtSim {
 namespace Ui {
@@ -13,7 +14,10 @@ namespace State {
 
 struct TrainingActive {
     TrainingActive() = default;
-    TrainingActive(TrainingSpec lastTrainingSpec, bool hasTrainingSpec);
+    TrainingActive(
+        TrainingSpec lastTrainingSpec,
+        bool hasTrainingSpec,
+        std::optional<Starfield::Snapshot> starfieldSnapshot = std::nullopt);
     ~TrainingActive();
     TrainingActive(const TrainingActive&) = delete;
     TrainingActive& operator=(const TrainingActive&) = delete;
@@ -43,6 +47,7 @@ struct TrainingActive {
     std::unique_ptr<TrainingActiveView> view_;
     TrainingSpec lastTrainingSpec_;
     bool hasTrainingSpec_ = false;
+    std::optional<Starfield::Snapshot> starfieldSnapshot_;
     bool trainingPaused_ = false;
     uint64_t progressEventCount_ = 0;
     uint64_t renderMessageCount_ = 0;

@@ -22,8 +22,13 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 
-TrainingIdle::TrainingIdle(TrainingSpec lastTrainingSpec, bool hasTrainingSpec)
-    : lastTrainingSpec_(std::move(lastTrainingSpec)), hasTrainingSpec_(hasTrainingSpec)
+TrainingIdle::TrainingIdle(
+    TrainingSpec lastTrainingSpec,
+    bool hasTrainingSpec,
+    std::optional<Starfield::Snapshot> starfieldSnapshot)
+    : lastTrainingSpec_(std::move(lastTrainingSpec)),
+      hasTrainingSpec_(hasTrainingSpec),
+      starfieldSnapshot_(std::move(starfieldSnapshot))
 {}
 
 TrainingIdle::~TrainingIdle() = default;
@@ -40,7 +45,12 @@ void TrainingIdle::onEnter(StateMachine& sm)
         wsService = &sm.getWebSocketService();
     }
 
-    view_ = std::make_unique<TrainingIdleView>(uiManager, sm, wsService, sm.getUserSettings());
+    view_ = std::make_unique<TrainingIdleView>(
+        uiManager,
+        sm,
+        wsService,
+        sm.getUserSettings(),
+        starfieldSnapshot_ ? &starfieldSnapshot_.value() : nullptr);
     DIRTSIM_ASSERT(view_, "TrainingIdleView creation failed");
 
     if (auto* panel = uiManager->getExpandablePanel()) {
@@ -62,6 +72,7 @@ void TrainingIdle::onEnter(StateMachine& sm)
 
     view_->setEvolutionStarted(false);
     view_->clearPanelContent();
+    view_->hidePanel();
     view_->updateIconRailOffset();
 }
 
@@ -113,9 +124,11 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     // Closing panel (deselected icon).
     if (evt.selectedId == IconId::NONE) {
         view_->clearPanelContent();
+        view_->hidePanel();
         return std::move(*this);
     }
 
+    view_->showPanel();
     view_->clearPanelContent();
 
     switch (evt.selectedId) {
@@ -157,6 +170,8 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
         toString(evt.training.scenarioId),
         static_cast<int>(evt.training.organismType));
 
+    DIRTSIM_ASSERT(view_, "TrainingIdleView must exist");
+
     if (!sm.hasWebSocketService()) {
         LOG_ERROR(State, "No WebSocketService available");
         return std::move(*this);
@@ -190,7 +205,8 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
 
-    return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_ };
+    starfieldSnapshot_ = view_->captureStarfieldSnapshot();
+    return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };
 }
 
 State::Any TrainingIdle::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)

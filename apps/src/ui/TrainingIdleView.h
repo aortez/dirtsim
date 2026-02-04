@@ -4,6 +4,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/UserSettings.h"
+#include "ui/rendering/Starfield.h"
 #include <memory>
 #include <string>
 #include <vector>
@@ -40,12 +41,15 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
-        UserSettings& userSettings);
+        UserSettings& userSettings,
+        const Starfield::Snapshot* starfieldSnapshot = nullptr);
     ~TrainingIdleView();
 
     void updateAnimations();
 
     void clearPanelContent();
+    void hidePanel();
+    void showPanel();
     void createCorePanel();
     void createGenomeBrowserPanel();
     void createTrainingConfigPanel();
@@ -59,6 +63,7 @@ public:
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
     void addGenomeToTraining(const GenomeId& genomeId, Scenario::EnumType scenarioId);
     bool isTrainingResultModalVisible() const;
+    Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
     void createUI();
@@ -78,6 +83,8 @@ private:
 
     std::unique_ptr<ExpandablePanel> panel_;
     lv_obj_t* panelContent_ = nullptr;
+    std::unique_ptr<Starfield> starfield_;
+    const Starfield::Snapshot* starfieldSnapshot_ = nullptr;
 
     std::unique_ptr<EvolutionControls> evolutionControls_;
     std::unique_ptr<GenomeBrowserPanel> genomeBrowserPanel_;
