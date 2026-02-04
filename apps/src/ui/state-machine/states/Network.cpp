@@ -13,17 +13,11 @@ void Network::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Network state");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     uiManager->getMainMenuContainer();
     lv_obj_t* contentArea = uiManager->getMenuContentArea();
-    if (!contentArea) {
-        LOG_ERROR(State, "No menu content area available");
-        return;
-    }
+    DIRTSIM_ASSERT(contentArea, "Network state requires a menu content area");
 
     lv_obj_clean(contentArea);
 
@@ -80,6 +74,7 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.selectedId));
 
     auto* uiManager = sm.getUiComponentManager();
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     if (evt.selectedId == IconId::CORE) {
         LOG_INFO(State, "Home icon selected, showing Stop panel");
