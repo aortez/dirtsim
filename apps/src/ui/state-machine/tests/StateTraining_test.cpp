@@ -90,9 +90,21 @@ TEST(StateTrainingTest, HasCorrectStateName)
 
 TEST(StateTrainingTest, EvolutionProgressUpdatesState)
 {
+    LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
 
     TrainingActive trainingState;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    trainingState.onEnter(*fixture.stateMachine);
 
     EvolutionProgressReceivedEvent evt;
     evt.progress.generation = 5;
@@ -115,6 +127,8 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessThisGen, 2.5);
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessAllTime, 3.0);
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
+
+    trainingState.view_.reset();
 }
 
 TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)

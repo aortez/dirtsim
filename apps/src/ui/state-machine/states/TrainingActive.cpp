@@ -2,6 +2,7 @@
 #include "StartMenu.h"
 #include "State.h"
 #include "TrainingUnsavedResult.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
@@ -75,12 +76,11 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.lastUiLoopLog_ = std::chrono::steady_clock::now();
     state.lastProgressRateLog_ = std::chrono::steady_clock::now();
 
-    if (state.view_) {
-        state.view_->setEvolutionStarted(true);
-        state.view_->setTrainingPaused(false);
-        state.view_->clearPanelContent();
-        state.view_->createCorePanel();
-    }
+    DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
+    state.view_->setEvolutionStarted(true);
+    state.view_->setTrainingPaused(false);
+    state.view_->clearPanelContent();
+    state.view_->createCorePanel();
 
     if (!sm.hasWebSocketService()) {
         LOG_WARN(State, "No WebSocketService available for training stream setup");
@@ -143,10 +143,7 @@ void TrainingActive::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Training active state");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     DirtSim::Network::WebSocketServiceInterface* wsService = nullptr;
     if (sm.hasWebSocketService()) {
@@ -154,13 +151,15 @@ void TrainingActive::onEnter(StateMachine& sm)
     }
 
     view_ = std::make_unique<TrainingActiveView>(uiManager, sm, wsService, sm.getUserSettings());
+    DIRTSIM_ASSERT(view_, "TrainingActiveView creation failed");
 
-    if (auto* iconRail = uiManager->getIconRail()) {
-        if (lv_obj_t* railContainer = iconRail->getContainer()) {
-            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
-        }
-    }
+    auto* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    lv_obj_t* railContainer = iconRail->getContainer();
+    DIRTSIM_ASSERT(railContainer, "IconRail container must exist");
+    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
         panel->hide();
@@ -193,14 +192,14 @@ void TrainingActive::updateAnimations()
         lastUiLoopLog_ = now;
     }
 
-    if (view_) {
-        view_->updateAnimations();
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->updateAnimations();
 }
 
 bool TrainingActive::isTrainingResultModalVisible() const
 {
-    return view_ && view_->isTrainingResultModalVisible();
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    return view_->isTrainingResultModalVisible();
 }
 
 State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& /*sm*/)
@@ -232,9 +231,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
         progress.populationSize,
         progress.bestFitnessAllTime);
 
-    if (view_) {
-        view_->updateProgress(progress);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->updateProgress(progress);
 
     return std::move(*this);
 }
@@ -242,9 +240,7 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 State::Any TrainingActive::onEvent(
     const TrainingBestSnapshotReceivedEvent& evt, StateMachine& /*sm*/)
 {
-    if (!view_) {
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
 
     WorldData worldData = evt.snapshot.worldData;
     worldData.organism_ids = evt.snapshot.organismIds;
@@ -271,10 +267,9 @@ State::Any TrainingActive::onEvent(const Api::TrainingResult::Cwc& cwc, StateMac
     trainingPaused_ = false;
     const GenomeId bestGenomeId = getBestGenomeId(cwc.command.candidates);
 
-    if (view_) {
-        view_->setEvolutionCompleted(bestGenomeId);
-        view_->setTrainingPaused(false);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->setEvolutionCompleted(bestGenomeId);
+    view_->setTrainingPaused(false);
 
     cwc.sendResponse(Api::TrainingResult::Response::okay(std::monostate{}));
 
@@ -334,9 +329,8 @@ State::Any TrainingActive::onEvent(
     const TrainingPauseResumeClickedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     trainingPaused_ = !trainingPaused_;
-    if (view_) {
-        view_->setTrainingPaused(trainingPaused_);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->setTrainingPaused(trainingPaused_);
 
     LOG_INFO(State, "Training pause toggled: {}", trainingPaused_);
     return std::move(*this);
@@ -347,9 +341,8 @@ State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, 
     auto& settings = sm.getUserSettings();
     settings.streamIntervalMs = std::max(0, evt.intervalMs);
 
-    if (view_) {
-        view_->setStreamIntervalMs(settings.streamIntervalMs);
-    }
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    view_->setStreamIntervalMs(settings.streamIntervalMs);
 
     const auto result = sendTrainingStreamConfig(sm, settings.streamIntervalMs);
     if (result.isError()) {
@@ -374,26 +367,24 @@ State::Any TrainingActive::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMac
 
 State::Any TrainingActive::onEvent(const UiUpdateEvent& evt, StateMachine& /*sm*/)
 {
-    if (view_) {
-        const auto now = std::chrono::steady_clock::now();
-        if (lastRenderRateLog_ == std::chrono::steady_clock::time_point{}) {
-            lastRenderRateLog_ = now;
-            renderMessageCount_ = 0;
-        }
-
-        renderMessageCount_++;
-        const auto elapsed = now - lastRenderRateLog_;
-        if (elapsed >= std::chrono::seconds(1)) {
-            const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
-            const double rate = elapsedSeconds > 0.0 ? (renderMessageCount_ / elapsedSeconds) : 0.0;
-            LOG_INFO(State, "Training render msg rate: {:.1f} msgs/s", rate);
-            renderMessageCount_ = 0;
-            lastRenderRateLog_ = now;
-        }
-
-        view_->renderWorld(evt.worldData);
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+    const auto now = std::chrono::steady_clock::now();
+    if (lastRenderRateLog_ == std::chrono::steady_clock::time_point{}) {
+        lastRenderRateLog_ = now;
+        renderMessageCount_ = 0;
     }
 
+    renderMessageCount_++;
+    const auto elapsed = now - lastRenderRateLog_;
+    if (elapsed >= std::chrono::seconds(1)) {
+        const double elapsedSeconds = std::chrono::duration<double>(elapsed).count();
+        const double rate = elapsedSeconds > 0.0 ? (renderMessageCount_ / elapsedSeconds) : 0.0;
+        LOG_INFO(State, "Training render msg rate: {:.1f} msgs/s", rate);
+        renderMessageCount_ = 0;
+        lastRenderRateLog_ = now;
+    }
+
+    view_->renderWorld(evt.worldData);
     return std::move(*this);
 }
 
