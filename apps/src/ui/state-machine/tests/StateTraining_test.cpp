@@ -121,14 +121,11 @@ TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
 {
     TestStateMachineFixture fixture;
 
-    TrainingIdle trainingState;
-
     ServerDisconnectedEvent evt{ "Connection lost" };
 
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+    fixture.stateMachine->handleEvent(evt);
 
-    ASSERT_TRUE(std::holds_alternative<Disconnected>(newState.getVariant()))
-        << "TrainingIdle + ServerDisconnected should transition to Disconnected";
+    EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
 }
 
 TEST(StateTrainingTest, StartEvolutionSendsCommand)
