@@ -16,17 +16,11 @@ void Synth::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Synth state");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     uiManager->getMainMenuContainer();
     lv_obj_t* contentArea = uiManager->getMenuContentArea();
-    if (!contentArea) {
-        LOG_ERROR(State, "No menu content area available");
-        return;
-    }
+    DIRTSIM_ASSERT(contentArea, "Synth state requires a menu content area");
 
     lv_obj_clean(contentArea);
 
