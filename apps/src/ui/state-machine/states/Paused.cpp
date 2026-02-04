@@ -1,4 +1,5 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/SimStop.h"
@@ -92,7 +93,7 @@ void Paused::onExit(StateMachine& /*sm*/)
 void Paused::onResumeClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused resume handler requires StateMachine user_data");
 
     LOG_INFO(State, "Resume button clicked");
 
@@ -104,7 +105,7 @@ void Paused::onResumeClicked(lv_event_t* e)
 void Paused::onStopClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused stop handler requires StateMachine user_data");
 
     LOG_INFO(State, "Stop button clicked");
 
@@ -116,7 +117,7 @@ void Paused::onStopClicked(lv_event_t* e)
 void Paused::onQuitClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused quit handler requires StateMachine user_data");
 
     LOG_INFO(State, "Quit button clicked");
 
