@@ -1288,6 +1288,9 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
     const OsApi::TrustPeer::Command& command)
 {
     PeerTrustBundle bundle = command.bundle;
+    // We always manage local authorized_keys for the fixed local account.
+    // The bundle's ssh_user is only used as the *remote* SSH login user for outbound commands.
+    static constexpr const char* kLocalAuthorizedKeysUser = "dirtsim";
     if (bundle.host.empty()) {
         return Result<OsApi::TrustPeer::Okay, ApiError>::error(ApiError("Host is required"));
     }
@@ -1338,7 +1341,7 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
         }
     }
 
-    const std::string sshUser = bundle.ssh_user;
+    const std::string sshUser = kLocalAuthorizedKeysUser;
     const auto homeDir = getSshUserHomeDir(sshUser);
     if (homeDir.empty()) {
         return Result<OsApi::TrustPeer::Okay, ApiError>::error(
@@ -1414,6 +1417,10 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
 Result<OsApi::UntrustPeer::Okay, ApiError> OperatingSystemManager::untrustPeer(
     const OsApi::UntrustPeer::Command& command)
 {
+    // We always manage local authorized_keys for the fixed local account.
+    // The allowlist entry's ssh_user is only used as the *remote* SSH login user for outbound
+    // commands.
+    static constexpr const char* kLocalAuthorizedKeysUser = "dirtsim";
     if (command.host.empty()) {
         return Result<OsApi::UntrustPeer::Okay, ApiError>::error(ApiError("Host is required"));
     }
@@ -1442,7 +1449,7 @@ Result<OsApi::UntrustPeer::Okay, ApiError> OperatingSystemManager::untrustPeer(
         return Result<OsApi::UntrustPeer::Okay, ApiError>::error(saveResult.errorValue());
     }
 
-    const std::string sshUser = removed.ssh_user;
+    const std::string sshUser = kLocalAuthorizedKeysUser;
     const auto homeDir = getSshUserHomeDir(sshUser);
     if (homeDir.empty()) {
         return Result<OsApi::UntrustPeer::Okay, ApiError>::error(
@@ -1599,11 +1606,13 @@ void OperatingSystemManager::setPeerAdvertisementEnabled(bool enabled)
         return;
     }
 
+    const auto [serverPort, uiPort] = computePeerAdvertisementPorts();
+
     if (enabled) {
         const std::string serverServiceName =
             peerServiceName_.empty() ? "dirtsim" : peerServiceName_;
         serverPeerAdvertisement_->setServiceName(serverServiceName);
-        serverPeerAdvertisement_->setPort(8080);
+        serverPeerAdvertisement_->setPort(serverPort);
         serverPeerAdvertisement_->setRole(PeerRole::Physics);
         if (!serverPeerAdvertisement_->start()) {
             LOG_WARN(Network, "PeerAdvertisement failed to start for server");
@@ -1612,7 +1621,7 @@ void OperatingSystemManager::setPeerAdvertisementEnabled(bool enabled)
         const std::string uiServiceName =
             peerUiServiceName_.empty() ? "dirtsim-ui" : peerUiServiceName_;
         uiPeerAdvertisement_->setServiceName(uiServiceName);
-        uiPeerAdvertisement_->setPort(7070);
+        uiPeerAdvertisement_->setPort(uiPort);
         uiPeerAdvertisement_->setRole(PeerRole::Ui);
         if (!uiPeerAdvertisement_->start()) {
             LOG_WARN(Network, "PeerAdvertisement failed to start for UI");
@@ -1622,6 +1631,61 @@ void OperatingSystemManager::setPeerAdvertisementEnabled(bool enabled)
 
     serverPeerAdvertisement_->stop();
     uiPeerAdvertisement_->stop();
+}
+
+std::pair<uint16_t, uint16_t> OperatingSystemManager::computePeerAdvertisementPorts() const
+{
+    auto parsePortValue = [](const std::string& text, uint16_t defaultPort) -> uint16_t {
+        if (text.empty()) {
+            return defaultPort;
+        }
+        try {
+            const int value = std::stoi(text);
+            if (value <= 0 || value > 65535) {
+                return defaultPort;
+            }
+            return static_cast<uint16_t>(value);
+        }
+        catch (const std::exception&) {
+            return defaultPort;
+        }
+    };
+
+    auto findPortToken = [](const std::string& args) -> std::optional<std::string> {
+        if (args.empty()) {
+            return std::nullopt;
+        }
+
+        std::istringstream iss(args);
+        std::string token;
+        while (iss >> token) {
+            if (token == "-p" || token == "--port") {
+                std::string port;
+                if (iss >> port) {
+                    return port;
+                }
+            }
+            if (token.rfind("-p", 0) == 0 && token.size() > 2) {
+                return token.substr(2);
+            }
+            if (token.rfind("--port=", 0) == 0 && token.size() > 7) {
+                return token.substr(7);
+            }
+        }
+        return std::nullopt;
+    };
+
+    // Server websocket port is configurable via args/env (DIRTSIM_SERVER_ARGS). For local-backend,
+    // match the same defaulting behavior used when launching processes.
+    const std::string serverArgs =
+        backendConfig_.serverArgs.empty() ? "-p 8080" : backendConfig_.serverArgs;
+    const uint16_t serverPort = parsePortValue(resolveServerPort(serverArgs), 8080);
+
+    // UI websocket port defaults to 7070 (CLI->UI websocket). If the UI ever gains a port flag,
+    // honor it here.
+    const uint16_t uiPort = parsePortValue(findPortToken(backendConfig_.uiArgs).value_or(""), 7070);
+
+    return { serverPort, uiPort };
 }
 
 Result<OsApi::WebUiAccessSet::Okay, ApiError> OperatingSystemManager::setWebUiAccess(bool enabled)

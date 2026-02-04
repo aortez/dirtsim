@@ -23,6 +23,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -143,6 +144,7 @@ private:
         const std::filesystem::path& dirPath,
         const std::filesystem::path& filePath,
         const std::string& user) const;
+    std::pair<uint16_t, uint16_t> computePeerAdvertisementPorts() const;
     void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);

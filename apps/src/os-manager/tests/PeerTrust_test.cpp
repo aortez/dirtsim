@@ -215,6 +215,49 @@ TEST(PeerTrustTest, TrustPeerIsIdempotent)
     EXPECT_EQ(secondPos, std::string::npos);
 }
 
+TEST(PeerTrustTest, TrustPeerIgnoresBundleSshUserForLocalAuthorizedKeys)
+{
+    const auto rootDir = makeTempDir("ignore-user");
+    const auto workDir = rootDir / "work";
+    const auto dirtsimHomeDir = rootDir / "home-dirtsim";
+    const auto rootHomeDir = rootDir / "home-root";
+
+    OperatingSystemManager::Dependencies dependencies;
+    dependencies.homeDirResolver = [dirtsimHomeDir, rootHomeDir](const std::string& user) {
+        if (user == "root") {
+            return rootHomeDir;
+        }
+        return dirtsimHomeDir;
+    };
+    dependencies.sshPermissionsEnsurer =
+        [](const std::filesystem::path&, const std::filesystem::path&, const std::string& user) {
+            if (user != "dirtsim") {
+                return Result<std::monostate, ApiError>::error(
+                    ApiError("Unexpected local authorized_keys user: " + user));
+            }
+            return Result<std::monostate, ApiError>::okay(std::monostate{});
+        };
+
+    OperatingSystemManager manager(makeTestMode(workDir, dirtsimHomeDir, std::move(dependencies)));
+
+    OsApi::TrustPeer::Command command;
+    command.bundle.host = "peer1";
+    command.bundle.ssh_user = "root";
+    command.bundle.ssh_port = 22;
+    command.bundle.host_fingerprint_sha256 = "SHA256:HOSTFP";
+    command.bundle.client_pubkey = kClientPublicKey;
+
+    const auto result = manager.trustPeer(command);
+    ASSERT_TRUE(result.isValue());
+
+    const auto dirtsimAuthorizedKeys = dirtsimHomeDir / ".ssh" / "authorized_keys";
+    EXPECT_TRUE(std::filesystem::exists(dirtsimAuthorizedKeys));
+    EXPECT_NE(readFile(dirtsimAuthorizedKeys).find(kClientPublicKey), std::string::npos);
+
+    const auto rootAuthorizedKeys = rootHomeDir / ".ssh" / "authorized_keys";
+    EXPECT_FALSE(std::filesystem::exists(rootAuthorizedKeys));
+}
+
 TEST(PeerTrustTest, UntrustPeerRemovesAllowlistAndAuthorizedKey)
 {
     const auto rootDir = makeTempDir("untrust");

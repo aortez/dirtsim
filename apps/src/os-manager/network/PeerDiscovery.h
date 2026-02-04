@@ -2,6 +2,7 @@
 
 #include "core/Pimpl.h"
 
+#include <cstdint>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <string>

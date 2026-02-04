@@ -1,4 +1,5 @@
 #include "CommandDeserializerJson.h"
+#include "core/LoggingChannels.h"
 #include "os-manager/api/PeerClientKeyEnsure.h"
 #include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
@@ -19,7 +20,6 @@
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace OsManager {
@@ -48,7 +48,7 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
     }
 
     const std::string commandName = cmd["command"].get<std::string>();
-    spdlog::debug("OsManager: Deserializing command: {}", commandName);
+    LOG_DEBUG(Network, "OsManager: Deserializing command: {}", commandName);
 
     try {
         if (commandName == OsApi::PeerClientKeyEnsure::Command::name()) {
