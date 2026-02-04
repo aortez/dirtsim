@@ -162,18 +162,6 @@ State::Any Paused::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm)
     return StartMenu{};
 }
 
-State::Any Paused::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
 } // namespace State
 } // namespace Ui
 } // namespace DirtSim

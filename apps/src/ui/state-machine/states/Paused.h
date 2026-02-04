@@ -32,7 +32,6 @@ struct Paused {
 
     Any onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
 
     static constexpr const char* name() { return "Paused"; }
 

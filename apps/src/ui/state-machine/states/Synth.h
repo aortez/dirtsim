@@ -22,7 +22,6 @@ struct Synth {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
-    Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);

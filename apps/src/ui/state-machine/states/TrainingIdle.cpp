@@ -1,5 +1,4 @@
 #include "TrainingIdle.h"
-#include "Disconnected.h"
 #include "SimRunning.h"
 #include "StartMenu.h"
 #include "State.h"
@@ -97,18 +96,6 @@ bool TrainingIdle::isTrainingResultModalVisible() const
     return view_ && view_->isTrainingResultModalVisible();
 }
 
-State::Any TrainingIdle::onEvent(
-    const EvolutionProgressReceivedEvent& /*evt*/, StateMachine& /*sm*/)
-{
-    return std::move(*this);
-}
-
-State::Any TrainingIdle::onEvent(
-    const TrainingBestSnapshotReceivedEvent& /*evt*/, StateMachine& /*sm*/)
-{
-    return std::move(*this);
-}
-
 State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 {
     LOG_INFO(
@@ -177,18 +164,6 @@ State::Any TrainingIdle::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, Stat
     return std::move(*this);
 }
 
-State::Any TrainingIdle::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected during training (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
 State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, StateMachine& sm)
 {
     LOG_INFO(
@@ -245,13 +220,6 @@ State::Any TrainingIdle::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMach
     auto nextState = onEvent(evt, sm);
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
     return nextState;
-}
-
-State::Any TrainingIdle::onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& /*sm*/)
-{
-    cwc.sendResponse(
-        UiApi::TrainingResultSave::Response::error(ApiError("Training result modal not visible")));
-    return std::move(*this);
 }
 
 State::Any TrainingIdle::onEvent(const UiApi::GenomeBrowserOpen::Cwc& cwc, StateMachine& sm)
@@ -355,14 +323,6 @@ State::Any TrainingIdle::onEvent(const UiApi::TrainingQuit::Cwc& cwc, StateMachi
     return nextState;
 }
 
-State::Any TrainingIdle::onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& /*sm*/)
-{
-    cwc.sendResponse(
-        UiApi::TrainingResultDiscard::Response::error(
-            ApiError("Training result modal not visible")));
-    return std::move(*this);
-}
-
 State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, StateMachine& sm)
 {
     auto& settings = sm.getUserSettings();
@@ -373,12 +333,6 @@ State::Any TrainingIdle::onEvent(const TrainingStreamConfigChangedEvent& evt, St
     }
 
     return std::move(*this);
-}
-
-State::Any TrainingIdle::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Stop button clicked while idle, returning to start menu");
-    return StartMenu{};
 }
 
 State::Any TrainingIdle::onEvent(const QuitTrainingClickedEvent& /*evt*/, StateMachine& /*sm*/)
@@ -471,30 +425,6 @@ State::Any TrainingIdle::onEvent(const GenomeLoadClickedEvent& evt, StateMachine
     return SimRunning{};
 }
 
-State::Any TrainingIdle::onEvent(
-    const OpenTrainingGenomeBrowserClickedEvent& /*evt*/, StateMachine& sm)
-{
-    if (!view_) {
-        LOG_WARN(State, "Training view not available for genome browser");
-        return std::move(*this);
-    }
-
-    auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_WARN(State, "UiComponentManager not available for genome browser");
-        return std::move(*this);
-    }
-
-    view_->clearPanelContent();
-    view_->createGenomeBrowserPanel();
-
-    if (auto* iconRail = uiManager->getIconRail()) {
-        iconRail->selectIcon(IconId::GENOME_BROWSER);
-    }
-
-    return std::move(*this);
-}
-
 State::Any TrainingIdle::onEvent(const GenomeAddToTrainingClickedEvent& evt, StateMachine& /*sm*/)
 {
     if (!view_) {
@@ -503,11 +433,6 @@ State::Any TrainingIdle::onEvent(const GenomeAddToTrainingClickedEvent& evt, Sta
     }
 
     view_->addGenomeToTraining(evt.genomeId, evt.scenarioId);
-    return std::move(*this);
-}
-
-State::Any TrainingIdle::onEvent(const UiUpdateEvent& /*evt*/, StateMachine& /*sm*/)
-{
     return std::move(*this);
 }
 

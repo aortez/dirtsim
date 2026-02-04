@@ -192,22 +192,6 @@ TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
     EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
 }
 
-TEST(StateTrainingTest, StopButtonSkipsStopWhenIdle)
-{
-    TestStateMachineFixture fixture;
-
-    TrainingIdle trainingState;
-
-    StopTrainingClickedEvent evt;
-
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "TrainingIdle + StopTrainingClicked should transition to StartMenu";
-
-    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
-}
-
 TEST(StateTrainingTest, QuitButtonStopsWhenRunning)
 {
     TestStateMachineFixture fixture;

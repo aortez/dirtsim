@@ -155,18 +155,6 @@ State::Any SynthConfig::onEvent(const StopButtonClickedEvent& /*evt*/, StateMach
     return StartMenu{};
 }
 
-State::Any SynthConfig::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning back to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
 State::Any SynthConfig::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "SimStop command received, returning to StartMenu");

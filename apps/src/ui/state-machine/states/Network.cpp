@@ -133,18 +133,6 @@ State::Any Network::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine&
     return StartMenu{};
 }
 
-State::Any Network::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning back to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
 State::Any Network::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
 {
     LOG_INFO(State, "SimStop command received, returning to StartMenu");

@@ -1,5 +1,4 @@
 #include "TrainingActive.h"
-#include "Disconnected.h"
 #include "StartMenu.h"
 #include "State.h"
 #include "TrainingUnsavedResult.h"
@@ -297,18 +296,6 @@ State::Any TrainingActive::onEvent(const IconSelectedEvent& evt, StateMachine& /
 State::Any TrainingActive::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& /*sm*/)
 {
     return std::move(*this);
-}
-
-State::Any TrainingActive::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected during training (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
 }
 
 State::Any TrainingActive::onEvent(const StopTrainingClickedEvent& /*evt*/, StateMachine& sm)

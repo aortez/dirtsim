@@ -25,7 +25,6 @@ struct StartMenu {
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);
     Any onEvent(const RailAutoShrinkRequestEvent& evt, StateMachine& sm);
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
-    Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StartButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const StartMenuIdleTimeoutEvent& evt, StateMachine& sm);
     Any onEvent(const TrainButtonClickedEvent& evt, StateMachine& sm);

@@ -32,7 +32,6 @@ struct TrainingUnsavedResult {
     Any onEvent(const TrainingResultDiscardClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultSave::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::TrainingResultDiscard::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const UiUpdateEvent& evt, StateMachine& sm);
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);

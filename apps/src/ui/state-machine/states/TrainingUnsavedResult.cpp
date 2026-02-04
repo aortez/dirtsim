@@ -1,5 +1,4 @@
 #include "TrainingUnsavedResult.h"
-#include "Disconnected.h"
 #include "State.h"
 #include "TrainingActive.h"
 #include "TrainingIdle.h"
@@ -271,18 +270,6 @@ State::Any TrainingUnsavedResult::onEvent(
     }
 
     return TrainingIdle{ lastTrainingSpec_, hasTrainingSpec_ };
-}
-
-State::Any TrainingUnsavedResult::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected during training (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
 }
 
 State::Any TrainingUnsavedResult::onEvent(const UiUpdateEvent& /*evt*/, StateMachine& /*sm*/)

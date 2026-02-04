@@ -559,6 +559,29 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
+    if (std::holds_alternative<ServerDisconnectedEvent>(event)) {
+        auto& evt = std::get<ServerDisconnectedEvent>(event);
+        LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+
+        if (std::holds_alternative<State::Disconnected>(fsmState.getVariant())) {
+            LOG_INFO(State, "Already in Disconnected state");
+            return;
+        }
+
+        if (std::holds_alternative<State::Shutdown>(fsmState.getVariant())) {
+            LOG_INFO(State, "Ignoring disconnect while shutting down");
+            return;
+        }
+
+        LOG_INFO(State, "Transitioning back to Disconnected");
+        if (!queueReconnectToLastServer()) {
+            LOG_WARN(State, "No previous server address available for reconnect");
+        }
+
+        transitionTo(State::Disconnected{});
+        return;
+    }
+
     // Handle Exit universally (works in all states).
     if (std::holds_alternative<UiApi::Exit::Cwc>(event)) {
         auto& cwc = std::get<UiApi::Exit::Cwc>(event);
