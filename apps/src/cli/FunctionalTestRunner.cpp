@@ -98,35 +98,6 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiState(
     }
 }
 
-Result<UiApi::StatusGet::Okay, std::string> waitForUiPanel(
-    Network::WebSocketService& client, Ui::IconId expectedIcon, bool expectedVisible, int timeoutMs)
-{
-    const auto start = std::chrono::steady_clock::now();
-    const int pollDelayMs = 200;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
-
-    while (true) {
-        auto result = requestUiStatus(client, requestTimeoutMs);
-        if (result.isError()) {
-            return Result<UiApi::StatusGet::Okay, std::string>::error(result.errorValue());
-        }
-        const auto& status = result.value();
-        if (status.selected_icon == expectedIcon && status.panel_visible == expectedVisible) {
-            return result;
-        }
-
-        const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                                   std::chrono::steady_clock::now() - start)
-                                   .count();
-        if (elapsedMs >= timeoutMs) {
-            return Result<UiApi::StatusGet::Okay, std::string>::error(
-                "Timeout waiting for UI panel selection");
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
-    }
-}
-
 Result<Api::StatusGet::Okay, std::string> requestServerStatus(
     Network::WebSocketService& client, int timeoutMs)
 {
@@ -727,6 +698,9 @@ nlohmann::json FunctionalTestSummary::toJson() const
         resultJson["success"] = true;
     }
     output["result"] = std::move(resultJson);
+    if (failure_screenshot_path.has_value()) {
+        output["failure_screenshot_path"] = *failure_screenshot_path;
+    }
     if (training_summary.has_value()) {
         output["training_summary"] = training_summary->toJson();
     }
@@ -855,6 +829,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanExit(
         .name = "canExit",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -900,6 +875,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
         .name = "canTrain",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::move(trainingSummary),
     };
 }
@@ -960,6 +936,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanSetGenerationsAndTrain(
         .name = "canSetGenerationsAndTrain",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::move(trainingSummary),
     };
 }
@@ -1151,6 +1128,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlantTreeSeed(
         .name = "canPlantTreeSeed",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1350,6 +1328,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanLoadGenomeFromBrowser(
         .name = "canLoadGenomeFromBrowser",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1467,7 +1446,35 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
                 "UI IconSelect (EVOLUTION) not selectable in Training");
         }
 
-        auto panelResult = waitForUiPanel(uiClient, Ui::IconId::EVOLUTION, true, timeoutMs);
+        auto waitForTrainingIcon =
+            [&](Ui::IconId expectedIcon) -> Result<UiApi::StatusGet::Okay, std::string> {
+            const auto start = std::chrono::steady_clock::now();
+            const int pollDelayMs = 200;
+            const int requestTimeoutMs = std::min(timeoutMs, 1000);
+
+            while (true) {
+                auto statusResult = requestUiStatus(uiClient, requestTimeoutMs);
+                if (statusResult.isError()) {
+                    return Result<UiApi::StatusGet::Okay, std::string>::error(
+                        statusResult.errorValue());
+                }
+                if (statusResult.value().selected_icon == expectedIcon) {
+                    return statusResult;
+                }
+
+                const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                           std::chrono::steady_clock::now() - start)
+                                           .count();
+                if (elapsedMs >= timeoutMs) {
+                    return Result<UiApi::StatusGet::Okay, std::string>::error(
+                        "Timeout waiting for Training icon selection");
+                }
+
+                std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
+            }
+        };
+
+        auto panelResult = waitForTrainingIcon(Ui::IconId::EVOLUTION);
         if (panelResult.isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(panelResult.errorValue());
@@ -1516,6 +1523,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
         .name = "canOpenTrainingConfigPanel",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1686,6 +1694,7 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaySynthKeys(
         .name = "canPlaySynthKeys",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }
@@ -1985,6 +1994,7 @@ FunctionalTestSummary FunctionalTestRunner::runVerifyTraining(
         .name = "verifyTraining",
         .duration_ms = durationMs,
         .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
         .training_summary = std::nullopt,
     };
 }

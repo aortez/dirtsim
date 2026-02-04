@@ -255,7 +255,9 @@ int main(int argc, char** argv)
     SLOG_INFO("Starting with new UI state machine (UISM)");
 
     // Create the UI state machine with display.
-    auto stateMachine = std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default());
+    DirtSim::Ui::InMemoryUserSettingsManager userSettingsManager;
+    auto stateMachine =
+        std::make_unique<DirtSim::Ui::StateMachine>(lv_disp_get_default(), userSettingsManager);
 
     // Load UI configuration (optional - defaults apply if not found).
     auto uiConfigResult = DirtSim::ConfigLoader::load<DirtSim::UiConfig>("ui.json");

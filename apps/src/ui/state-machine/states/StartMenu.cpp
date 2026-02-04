@@ -372,7 +372,7 @@ State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachi
 {
     LOG_INFO(State, "Train button clicked, transitioning to Training");
 
-    return Training{};
+    return TrainingIdle{};
 }
 
 State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachine& /*sm*/)
@@ -540,7 +540,7 @@ State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine
     sm.queueEvent(evt);
 
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
-    return Training{};
+    return TrainingIdle{};
 }
 
 State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
