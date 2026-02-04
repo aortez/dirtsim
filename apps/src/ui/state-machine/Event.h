@@ -166,6 +166,10 @@ struct StopTrainingClickedEvent {
     static constexpr const char* name() { return "StopTrainingClickedEvent"; }
 };
 
+struct TrainingPauseResumeClickedEvent {
+    static constexpr const char* name() { return "TrainingPauseResumeClickedEvent"; }
+};
+
 /**
  * @brief User clicked Quit button in Training state.
  */
@@ -279,6 +283,7 @@ using Event = std::variant<
     StartMenuIdleTimeoutEvent,
     StartEvolutionButtonClickedEvent,
     StopTrainingClickedEvent,
+    TrainingPauseResumeClickedEvent,
     QuitTrainingClickedEvent,
     TrainButtonClickedEvent,
     NextFractalClickedEvent,

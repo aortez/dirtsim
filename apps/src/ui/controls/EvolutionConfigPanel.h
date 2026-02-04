@@ -42,7 +42,7 @@ private:
 
     bool evolutionStarted_ = false;
 
-    // Shared configs (owned by TrainingView).
+    // Shared configs (owned by TrainingIdleView).
     EvolutionConfig& evolutionConfig_;
     MutationConfig& mutationConfig_;
     TrainingSpec& trainingSpec_;

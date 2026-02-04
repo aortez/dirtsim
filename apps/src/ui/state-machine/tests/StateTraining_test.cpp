@@ -1,9 +1,6 @@
 /**
  * @file StateTraining_test.cpp
- * @brief Unit tests for UI StateTraining.
- *
- * Tests the Training state which displays evolution progress and controls.
- * Written TDD-style - tests first, then implementation.
+ * @brief Unit tests for UI Training states.
  */
 
 #include "core/UUID.h"
@@ -48,38 +45,26 @@ struct LvglTestDisplay {
 
 } // namespace
 
-/**
- * @brief Test that TrainButtonClicked transitions StartMenu to Training.
- */
 TEST(StateTrainingTest, TrainButtonClickedTransitionsStartMenuToTraining)
 {
     TestStateMachineFixture fixture;
 
-    // Setup: Create StartMenu state.
     StartMenu startMenuState;
 
-    // Setup: Create TrainButtonClicked event.
     TrainButtonClickedEvent evt;
 
-    // Execute: Send event to StartMenu state.
     State::Any newState = startMenuState.onEvent(evt, *fixture.stateMachine);
 
-    // Verify: State transitioned to Training.
-    ASSERT_TRUE(std::holds_alternative<Training>(newState.getVariant()))
-        << "StartMenu + TrainButtonClicked should transition to Training";
+    ASSERT_TRUE(std::holds_alternative<TrainingIdle>(newState.getVariant()))
+        << "StartMenu + TrainButtonClicked should transition to TrainingIdle";
 }
 
-/**
- * @brief Test that Exit command in Training transitions to Shutdown.
- */
 TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
 {
     TestStateMachineFixture fixture;
 
-    // Setup: Create Training state.
-    Training trainingState;
+    TrainingIdle trainingState;
 
-    // Setup: Create Exit command with callback.
     bool callbackInvoked = false;
     UiApi::Exit::Command cmd;
     UiApi::Exit::Cwc cwc(cmd, [&](UiApi::Exit::Response&& response) {
@@ -87,35 +72,30 @@ TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
         EXPECT_TRUE(response.isValue());
     });
 
-    // Execute: Send Exit command.
     State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
 
-    // Verify: State transitioned to Shutdown.
     ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
         << "Training + Exit should transition to Shutdown";
     EXPECT_TRUE(callbackInvoked) << "Response callback should be invoked";
 }
 
-/**
- * @brief Test that Training state has correct name.
- */
 TEST(StateTrainingTest, HasCorrectStateName)
 {
-    Training trainingState;
-    EXPECT_STREQ(trainingState.name(), "Training");
+    TrainingIdle idle;
+    TrainingActive active;
+    TrainingUnsavedResult unsaved;
+
+    EXPECT_STREQ(idle.name(), "Training");
+    EXPECT_STREQ(active.name(), "Training");
+    EXPECT_STREQ(unsaved.name(), "Training");
 }
 
-/**
- * @brief Test that EvolutionProgress event updates Training state.
- */
 TEST(StateTrainingTest, EvolutionProgressUpdatesState)
 {
     TestStateMachineFixture fixture;
 
-    // Setup: Create Training state.
-    Training trainingState;
+    TrainingActive trainingState;
 
-    // Setup: Create EvolutionProgress event.
     EvolutionProgressReceivedEvent evt;
     evt.progress.generation = 5;
     evt.progress.maxGenerations = 100;
@@ -125,14 +105,11 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.bestFitnessAllTime = 3.0;
     evt.progress.averageFitness = 1.5;
 
-    // Execute: Send event to Training state.
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
-    // Verify: State did not transition (stays in Training).
-    EXPECT_TRUE(std::holds_alternative<Training>(result.getVariant()))
-        << "Training + EvolutionProgress should not transition";
+    EXPECT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()))
+        << "TrainingActive + EvolutionProgress should not transition";
 
-    // Verify: Progress was captured.
     EXPECT_EQ(trainingState.progress.generation, 5);
     EXPECT_EQ(trainingState.progress.maxGenerations, 100);
     EXPECT_EQ(trainingState.progress.currentEval, 10);
@@ -142,168 +119,21 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
 }
 
-/**
- * @brief Test that ServerDisconnected transitions to Disconnected.
- */
 TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
 {
     TestStateMachineFixture fixture;
 
-    // Setup: Create Training state.
-    Training trainingState;
+    TrainingIdle trainingState;
 
-    // Setup: Create disconnect event.
     ServerDisconnectedEvent evt{ "Connection lost" };
 
-    // Execute: Send event to Training state.
     State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
 
-    // Verify: State transitioned to Disconnected.
     ASSERT_TRUE(std::holds_alternative<Disconnected>(newState.getVariant()))
-        << "Training + ServerDisconnected should transition to Disconnected";
+        << "TrainingIdle + ServerDisconnected should transition to Disconnected";
 }
 
-/**
- * @brief Test that StartEvolutionButtonClicked sends EvolutionStart command.
- */
 TEST(StateTrainingTest, StartEvolutionSendsCommand)
-{
-    TestStateMachineFixture fixture;
-
-    // Setup: Configure expected responses.
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = 0, .message = "OK" });
-    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
-        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
-
-    // Setup: Create Training state.
-    Training trainingState;
-
-    // Setup: Create StartEvolutionButtonClicked event with config.
-    StartEvolutionButtonClickedEvent evt;
-    evt.evolution.populationSize = 10;
-    evt.evolution.maxGenerations = 5;
-    evt.mutation.rate = 0.1;
-    evt.training.scenarioId = Scenario::EnumType::TreeGermination;
-    evt.training.organismType = OrganismType::TREE;
-
-    // Execute: Send event to Training state.
-    State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    // Verify: State did not transition (stays in Training).
-    EXPECT_TRUE(std::holds_alternative<Training>(result.getVariant()))
-        << "Training + StartEvolutionButtonClicked should stay in Training";
-
-    // Verify: EvolutionStart command was sent.
-    ASSERT_GE(fixture.mockWebSocketService->sentCommands().size(), 1)
-        << "Should send at least EvolutionStart command";
-    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStart");
-    ASSERT_GE(fixture.mockWebSocketService->sentCommands().size(), 2)
-        << "Should send TrainingStreamConfigSet command";
-    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[1], "TrainingStreamConfigSet");
-    ASSERT_GE(fixture.mockWebSocketService->sentCommands().size(), 3)
-        << "Should send RenderFormatSet command";
-    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[2], "RenderFormatSet");
-}
-
-/**
- * @brief Test that StopTrainingClicked sends EvolutionStop and transitions to StartMenu.
- */
-TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
-{
-    TestStateMachineFixture fixture;
-
-    // Setup: Configure expected response.
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
-
-    // Setup: Create Training state.
-    Training trainingState;
-
-    // Setup: Create StopTrainingClicked event.
-    StopTrainingClickedEvent evt;
-
-    // Execute: Send event to Training state.
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    // Verify: State transitioned to StartMenu.
-    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "Training + StopTrainingClicked should transition to StartMenu";
-
-    // Verify: EvolutionStop command was sent.
-    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1)
-        << "Should send EvolutionStop command";
-    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
-}
-
-/**
- * @brief Test that QuitTrainingClicked sends EvolutionStop when running and transitions.
- */
-TEST(StateTrainingTest, QuitButtonStopsWhenRunning)
-{
-    TestStateMachineFixture fixture;
-
-    // Setup: Configure expected response.
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
-    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = 0, .message = "OK" });
-    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
-        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
-
-    // Setup: Create Training state with running evolution.
-    Training trainingState;
-    trainingState.onEvent(
-        StartEvolutionButtonClickedEvent{ .evolution = EvolutionConfig{},
-                                          .mutation = MutationConfig{},
-                                          .training = TrainingSpec{} },
-        *fixture.stateMachine);
-    fixture.mockWebSocketService->clearSentCommands();
-
-    // Setup: Create QuitTrainingClicked event.
-    QuitTrainingClickedEvent evt;
-
-    // Execute: Send event to Training state.
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    // Verify: State transitioned to StartMenu.
-    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "Training + QuitTrainingClicked should transition to StartMenu";
-
-    // Verify: EvolutionStop command was sent.
-    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1)
-        << "Should send EvolutionStop command";
-    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
-}
-
-/**
- * @brief Test that QuitTrainingClicked does not send EvolutionStop when idle.
- */
-TEST(StateTrainingTest, QuitButtonSkipsStopWhenIdle)
-{
-    TestStateMachineFixture fixture;
-
-    // Setup: Create Training state (idle).
-    Training trainingState;
-
-    // Setup: Create QuitTrainingClicked event.
-    QuitTrainingClickedEvent evt;
-
-    // Execute: Send event to Training state.
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    // Verify: State transitioned to StartMenu.
-    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "Training + QuitTrainingClicked should transition to StartMenu";
-
-    // Verify: No EvolutionStop command was sent.
-    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
-}
-
-/**
- * @brief Test that TrainingResultSave with restart clears modal and restarts evolution session.
- */
-TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
 {
     LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
@@ -311,8 +141,118 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    Training trainingState;
-    trainingState.onEnter(*fixture.stateMachine);
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    TrainingIdle trainingState;
+
+    StartEvolutionButtonClickedEvent evt;
+    evt.evolution.populationSize = 10;
+    evt.evolution.maxGenerations = 5;
+    evt.mutation.rate = 0.1;
+    evt.training.scenarioId = Scenario::EnumType::TreeGermination;
+    evt.training.organismType = OrganismType::TREE;
+
+    State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    auto* activeState = std::get_if<TrainingActive>(&result.getVariant());
+    ASSERT_NE(activeState, nullptr);
+
+    activeState->onEnter(*fixture.stateMachine);
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_GE(sentCommands.size(), 3u);
+    EXPECT_EQ(sentCommands[0], "EvolutionStart");
+    EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
+
+    activeState->view_.reset();
+    fixture.stateMachine->uiManager_.reset();
+}
+
+TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
+
+    TrainingActive trainingState;
+
+    StopTrainingClickedEvent evt;
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "TrainingActive + StopTrainingClicked should transition to StartMenu";
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1)
+        << "Should send EvolutionStop command";
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
+}
+
+TEST(StateTrainingTest, StopButtonSkipsStopWhenIdle)
+{
+    TestStateMachineFixture fixture;
+
+    TrainingIdle trainingState;
+
+    StopTrainingClickedEvent evt;
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "TrainingIdle + StopTrainingClicked should transition to StartMenu";
+
+    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
+}
+
+TEST(StateTrainingTest, QuitButtonStopsWhenRunning)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStop::Command>(std::monostate{});
+
+    TrainingActive trainingState;
+
+    QuitTrainingClickedEvent evt;
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "TrainingActive + QuitTrainingClicked should transition to StartMenu";
+
+    ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1)
+        << "Should send EvolutionStop command";
+    EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
+}
+
+TEST(StateTrainingTest, QuitButtonSkipsStopWhenIdle)
+{
+    TestStateMachineFixture fixture;
+
+    TrainingIdle trainingState;
+
+    QuitTrainingClickedEvent evt;
+
+    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
+        << "TrainingIdle + QuitTrainingClicked should transition to StartMenu";
+
+    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
+}
+
+TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
     Api::TrainingResult::Summary summary;
     summary.scenarioId = Scenario::EnumType::TreeGermination;
@@ -334,8 +274,12 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     candidate.brainVariant = std::nullopt;
     candidate.generation = 0;
 
-    trainingState.view_->showTrainingResultModal(summary, { candidate });
-    ASSERT_TRUE(trainingState.view_->isTrainingResultModalVisible());
+    TrainingUnsavedResult trainingState{
+        TrainingSpec{}, false, summary, std::vector<Api::TrainingResult::Candidate>{ candidate }
+    };
+    trainingState.onEnter(*fixture.stateMachine);
+
+    ASSERT_TRUE(trainingState.isTrainingResultModalVisible());
 
     Api::TrainingResultSave::Okay saveOkay;
     saveOkay.savedCount = 1;
@@ -343,7 +287,8 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     saveOkay.savedIds = { candidate.id };
     fixture.mockWebSocketService->expectSuccess<Api::TrainingResultSave::Command>(saveOkay);
     fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
-        { .intervalMs = trainingState.streamIntervalMs_, .message = "OK" });
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
     fixture.mockWebSocketService->clearSentCommands();
@@ -364,12 +309,12 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
 
     State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
 
-    auto* updatedState = std::get_if<Training>(&newState.getVariant());
+    auto* updatedState = std::get_if<TrainingActive>(&newState.getVariant());
     ASSERT_NE(updatedState, nullptr);
     EXPECT_TRUE(callbackInvoked);
-    EXPECT_TRUE(updatedState->evolutionStarted_);
-    ASSERT_TRUE(updatedState->view_ != nullptr);
-    EXPECT_FALSE(updatedState->view_->isTrainingResultModalVisible());
+
+    updatedState->onEnter(*fixture.stateMachine);
+    EXPECT_FALSE(updatedState->isTrainingResultModalVisible());
 
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
     ASSERT_GE(sentCommands.size(), 3u);
@@ -377,6 +322,6 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
     EXPECT_EQ(sentCommands[2], "RenderFormatSet");
 
-    updatedState->onExit(*fixture.stateMachine);
+    updatedState->view_.reset();
     fixture.stateMachine->uiManager_.reset();
 }

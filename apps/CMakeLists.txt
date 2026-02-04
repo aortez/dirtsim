@@ -494,7 +494,9 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/RemoteInputDevice.cpp
     src/ui/UiComponentManager.cpp
     src/ui/SimPlayground.cpp
-    src/ui/TrainingView.cpp
+    src/ui/TrainingActiveView.cpp
+    src/ui/TrainingIdleView.cpp
+    src/ui/TrainingUnsavedResultView.cpp
     src/ui/rendering/CellRenderer.cpp
     src/ui/rendering/EntityRenderer.cpp
     src/ui/rendering/FramebufferCapture.cpp

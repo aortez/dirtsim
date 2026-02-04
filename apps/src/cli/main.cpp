@@ -129,6 +129,61 @@ Result<std::vector<uint8_t>, std::string> grabScreenshotPng(
     return Result<std::vector<uint8_t>, std::string>::okay(std::move(pngData));
 }
 
+struct ScreenshotFailure {
+    std::string message;
+};
+
+Result<std::string, ScreenshotFailure> captureFailureScreenshot(
+    const std::string& uiAddress, int timeoutMs, const std::string& testName)
+{
+    auto now = std::chrono::system_clock::now();
+    auto timestamp =
+        std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count();
+    std::filesystem::path outputPath = std::filesystem::path("/tmp")
+        / ("dirtsim-functional-test-" + testName + "-" + std::to_string(timestamp) + ".png");
+
+    Network::WebSocketService client;
+    client.setProtocol(Network::Protocol::BINARY);
+    auto connectResult = client.connect(uiAddress, timeoutMs);
+    if (connectResult.isError()) {
+        return Result<std::string, ScreenshotFailure>::error(
+            ScreenshotFailure{
+                .message =
+                    "Failed to connect to UI at " + uiAddress + ": " + connectResult.errorValue(),
+            });
+    }
+
+    auto pngResult = grabScreenshotPng(client, 1.0, timeoutMs, true);
+    if (pngResult.isError()) {
+        client.disconnect();
+        return Result<std::string, ScreenshotFailure>::error(
+            ScreenshotFailure{
+                .message = "ScreenGrab command failed: " + pngResult.errorValue(),
+            });
+    }
+
+    const auto& pngData = pngResult.value();
+    if (pngData.empty()) {
+        client.disconnect();
+        return Result<std::string, ScreenshotFailure>::error(
+            ScreenshotFailure{ .message = "Failed to decode screenshot data" });
+    }
+
+    std::ofstream outFile(outputPath, std::ios::binary);
+    if (!outFile) {
+        client.disconnect();
+        return Result<std::string, ScreenshotFailure>::error(
+            ScreenshotFailure{
+                .message = "Failed to open output file: " + outputPath.string(),
+            });
+    }
+    outFile.write(reinterpret_cast<const char*>(pngData.data()), pngData.size());
+    outFile.close();
+    client.disconnect();
+
+    return Result<std::string, ScreenshotFailure>::okay(outputPath.string());
+}
+
 std::string getEnvOrDefault(const char* name, const std::string& fallback)
 {
     const char* value = std::getenv(name);
@@ -1052,6 +1107,18 @@ int main(int argc, char** argv)
             summary =
                 runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
+        if (summary.result.isError()) {
+            auto screenshotResult = captureFailureScreenshot(uiAddress, timeoutMs, testName);
+            if (screenshotResult.isError()) {
+                std::cerr << "Failure screenshot failed: " << screenshotResult.errorValue().message
+                          << std::endl;
+            }
+            else {
+                summary.failure_screenshot_path = screenshotResult.value();
+                std::cerr << "Failure screenshot: " << *summary.failure_screenshot_path
+                          << std::endl;
+            }
+        }
         std::cout << summary.toJson().dump() << std::endl;
         int exitCode = summary.result.isError() ? 1 : 0;
         if (restartFunctionalTest) {
@@ -1780,7 +1847,7 @@ int main(int argc, char** argv)
             return 1;
         }
 
-        result = runScreen("training", [&]() {
+        result = runScreen("training-active", [&]() {
             auto nav = navigateToTraining();
             if (nav.isError()) {
                 return nav;
@@ -1790,7 +1857,7 @@ int main(int argc, char** argv)
                 return deselect;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("training");
+            return captureScreen("training-active");
         });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;

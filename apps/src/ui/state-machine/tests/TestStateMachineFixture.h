@@ -12,6 +12,7 @@ struct TestStateMachineFixture {
     TestStateMachineFixture();
 
     std::unique_ptr<StateMachine> stateMachine;
+    InMemoryUserSettingsManager userSettingsManager;
     MockWebSocketService* mockWebSocketService = nullptr;
 };
 

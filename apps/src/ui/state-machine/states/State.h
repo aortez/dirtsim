@@ -37,7 +37,9 @@ public:
         Startup,
         Synth,
         SynthConfig,
-        Training>;
+        TrainingIdle,
+        TrainingActive,
+        TrainingUnsavedResult>;
 
     template <typename T>
     Any(T&& state) : variant_(std::forward<T>(state))

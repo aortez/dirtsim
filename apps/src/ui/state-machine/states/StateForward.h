@@ -17,7 +17,9 @@ struct StartMenu;
 struct Startup;
 struct Synth;
 struct SynthConfig;
-struct Training;
+struct TrainingActive;
+struct TrainingIdle;
+struct TrainingUnsavedResult;
 
 // Forward declaration of wrapper (definition in State.h after state includes).
 class Any;
