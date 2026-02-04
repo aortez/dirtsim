@@ -1,11 +1,13 @@
 #pragma once
 
 #include "StateForward.h"
+#include "core/ScenarioId.h"
 #include "ui/controls/SparklingDuckButton.h"
 #include "ui/controls/StartMenuCorePanel.h"
 #include "ui/state-machine/Event.h"
 #include <lvgl/lvgl.h>
 #include <memory>
+#include <optional>
 
 namespace DirtSim {
 namespace Ui {
@@ -25,6 +27,7 @@ struct StartMenu {
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StartButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const StartMenuIdleTimeoutEvent& evt, StateMachine& sm);
     Any onEvent(const TrainButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const NextFractalClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
@@ -43,6 +46,7 @@ private:
     static void onDisplayResized(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
     void updateInfoPanelVisibility(RailMode mode);
+    Any startSimulation(StateMachine& sm, std::optional<Scenario::EnumType> scenarioId);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     std::unique_ptr<SparklingDuckButton> startButton_; // Animated start button.
