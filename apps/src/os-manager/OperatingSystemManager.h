@@ -61,10 +61,17 @@ public:
         std::function<int(const std::string&)> systemCommand;
         std::function<OsApi::SystemStatus::Okay()> systemStatus;
         std::function<void()> reboot;
+        std::function<Result<std::string, ApiError>(const std::string&)> commandRunner;
+        std::function<std::filesystem::path(const std::string&)> homeDirResolver;
+        std::function<Result<std::monostate, ApiError>(
+            const std::filesystem::path&, const std::filesystem::path&, const std::string&)>
+            sshPermissionsEnsurer;
     };
 
     struct TestMode {
         Dependencies dependencies;
+        BackendConfig backendConfig;
+        bool hasBackendConfig = false;
     };
 
     explicit OperatingSystemManager(uint16_t port);
@@ -124,6 +131,12 @@ private:
     Result<std::string, ApiError> getClientKeyFingerprintSha256() const;
     Result<std::string, ApiError> getPeerClientPublicKey(bool* created);
     Result<PeerTrustBundle, ApiError> buildTrustBundle(bool* created);
+    Result<std::string, ApiError> runCommandCapture(const std::string& command) const;
+    std::filesystem::path getSshUserHomeDir(const std::string& user) const;
+    Result<std::monostate, ApiError> applySshPermissions(
+        const std::filesystem::path& dirPath,
+        const std::filesystem::path& filePath,
+        const std::string& user) const;
     void setPeerAdvertisementEnabled(bool enabled);
     void scheduleRebootInternal();
     void transitionTo(State::Any newState);

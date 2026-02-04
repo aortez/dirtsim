@@ -676,6 +676,7 @@ add_executable(dirtsim-tests
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
+    src/os-manager/tests/PeerTrust_test.cpp
     src/os-manager/tests/StateError_test.cpp
     src/os-manager/tests/StateIdle_test.cpp
     src/os-manager/tests/StateRebooting_test.cpp

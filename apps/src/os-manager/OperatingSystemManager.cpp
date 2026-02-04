@@ -312,6 +312,15 @@ Result<std::pair<uid_t, gid_t>, ApiError> getUserIds(const std::string& user)
         std::make_pair(pwd->pw_uid, pwd->pw_gid));
 }
 
+std::filesystem::path resolveUserHomeDir(const std::string& user)
+{
+    struct passwd* pwd = getpwnam(user.c_str());
+    if (pwd && pwd->pw_dir) {
+        return pwd->pw_dir;
+    }
+    return std::filesystem::path("/home") / user;
+}
+
 Result<std::monostate, ApiError> ensureSshPermissions(
     const std::filesystem::path& dirPath,
     const std::filesystem::path& filePath,
@@ -563,7 +572,9 @@ OperatingSystemManager::OperatingSystemManager(uint16_t port, const BackendConfi
 }
 
 OperatingSystemManager::OperatingSystemManager(TestMode mode)
-    : enableNetworking_(false), dependencies_(std::move(mode.dependencies))
+    : enableNetworking_(false),
+      dependencies_(std::move(mode.dependencies)),
+      backendConfig_(mode.hasBackendConfig ? mode.backendConfig : BackendConfig{})
 {
     if (!dependencies_.serviceCommand) {
         dependencies_.serviceCommand = [](const std::string&, const std::string&) {
@@ -577,6 +588,27 @@ OperatingSystemManager::OperatingSystemManager(TestMode mode)
 
     if (!dependencies_.reboot) {
         dependencies_.reboot = [] {};
+    }
+
+    if (!dependencies_.commandRunner) {
+        dependencies_.commandRunner = [](const std::string&) {
+            return Result<std::string, ApiError>::error(
+                ApiError("Missing dependency for commandRunner"));
+        };
+    }
+
+    if (!dependencies_.homeDirResolver) {
+        dependencies_.homeDirResolver = [](const std::string& user) {
+            return resolveUserHomeDir(user);
+        };
+    }
+
+    if (!dependencies_.sshPermissionsEnsurer) {
+        dependencies_.sshPermissionsEnsurer = [](const std::filesystem::path& dirPath,
+                                                 const std::filesystem::path& filePath,
+                                                 const std::string& user) {
+            return ensureSshPermissions(dirPath, filePath, user);
+        };
     }
 
     webSocketToken_ = generateWebSocketToken();
@@ -878,6 +910,34 @@ std::vector<PeerInfo> OperatingSystemManager::getPeers() const
     return peerDiscovery_->getPeers();
 }
 
+Result<std::string, ApiError> OperatingSystemManager::runCommandCapture(
+    const std::string& command) const
+{
+    if (dependencies_.commandRunner) {
+        return dependencies_.commandRunner(command);
+    }
+    return runCommandCaptureOutput(command);
+}
+
+std::filesystem::path OperatingSystemManager::getSshUserHomeDir(const std::string& user) const
+{
+    if (dependencies_.homeDirResolver) {
+        return dependencies_.homeDirResolver(user);
+    }
+    return resolveUserHomeDir(user);
+}
+
+Result<std::monostate, ApiError> OperatingSystemManager::applySshPermissions(
+    const std::filesystem::path& dirPath,
+    const std::filesystem::path& filePath,
+    const std::string& user) const
+{
+    if (dependencies_.sshPermissionsEnsurer) {
+        return dependencies_.sshPermissionsEnsurer(dirPath, filePath, user);
+    }
+    return ensureSshPermissions(dirPath, filePath, user);
+}
+
 std::filesystem::path OperatingSystemManager::getPeerAllowlistPath() const
 {
     return std::filesystem::path(resolveWorkDir(backendConfig_.workDir)) / "peer-allowlist.json";
@@ -957,7 +1017,7 @@ Result<std::string, ApiError> OperatingSystemManager::getHostFingerprintSha256()
 
     const std::string command =
         "ssh-keygen -l -E sha256 -f " + hostKeyPath.string() + " 2>/dev/null";
-    auto outputResult = runCommandCaptureOutput(command);
+    auto outputResult = runCommandCapture(command);
     if (outputResult.isError()) {
         return Result<std::string, ApiError>::error(outputResult.errorValue());
     }
@@ -977,7 +1037,7 @@ Result<std::string, ApiError> OperatingSystemManager::getClientKeyFingerprintSha
     }
 
     const std::string command = "ssh-keygen -l -E sha256 -f " + keyPath.string() + " 2>/dev/null";
-    auto outputResult = runCommandCaptureOutput(command);
+    auto outputResult = runCommandCapture(command);
     if (outputResult.isError()) {
         return Result<std::string, ApiError>::error(outputResult.errorValue());
     }
@@ -1014,7 +1074,7 @@ Result<std::string, ApiError> OperatingSystemManager::getPeerClientPublicKey(boo
     if (!hasPrivate) {
         const std::string command =
             "ssh-keygen -t ed25519 -f " + keyPath.string() + " -N \"\" -C \"dirtsim\" 2>/dev/null";
-        auto result = runCommandCaptureOutput(command);
+        auto result = runCommandCapture(command);
         if (result.isError()) {
             return Result<std::string, ApiError>::error(result.errorValue());
         }
@@ -1022,7 +1082,7 @@ Result<std::string, ApiError> OperatingSystemManager::getPeerClientPublicKey(boo
     }
     else if (!hasPublic) {
         const std::string command = "ssh-keygen -y -f " + keyPath.string() + " 2>/dev/null";
-        auto result = runCommandCaptureOutput(command);
+        auto result = runCommandCapture(command);
         if (result.isError()) {
             return Result<std::string, ApiError>::error(result.errorValue());
         }
@@ -1189,7 +1249,13 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
     }
 
     const std::string sshUser = bundle.ssh_user;
-    const std::filesystem::path sshDir = "/home/" + sshUser + "/.ssh";
+    const auto homeDir = getSshUserHomeDir(sshUser);
+    if (homeDir.empty()) {
+        return Result<OsApi::TrustPeer::Okay, ApiError>::error(
+            ApiError("Failed to resolve home directory for " + sshUser));
+    }
+
+    const std::filesystem::path sshDir = homeDir / ".ssh";
     const std::filesystem::path authorizedKeys = sshDir / "authorized_keys";
 
     auto keyBodyResult = extractKeyBody(bundle.client_pubkey);
@@ -1244,7 +1310,7 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
             ApiError("authorized_keys is missing after update"));
     }
 
-    auto permsResult = ensureSshPermissions(sshDir, authorizedKeys, sshUser);
+    auto permsResult = applySshPermissions(sshDir, authorizedKeys, sshUser);
     if (permsResult.isError()) {
         return Result<OsApi::TrustPeer::Okay, ApiError>::error(permsResult.errorValue());
     }
@@ -1287,7 +1353,13 @@ Result<OsApi::UntrustPeer::Okay, ApiError> OperatingSystemManager::untrustPeer(
     }
 
     const std::string sshUser = removed.ssh_user;
-    const std::filesystem::path sshDir = "/home/" + sshUser + "/.ssh";
+    const auto homeDir = getSshUserHomeDir(sshUser);
+    if (homeDir.empty()) {
+        return Result<OsApi::UntrustPeer::Okay, ApiError>::error(
+            ApiError("Failed to resolve home directory for " + sshUser));
+    }
+
+    const std::filesystem::path sshDir = homeDir / ".ssh";
     const std::filesystem::path authorizedKeys = sshDir / "authorized_keys";
 
     bool keyRemoved = false;
@@ -1735,6 +1807,17 @@ void OperatingSystemManager::initializeDefaultDependencies()
             };
         dependencies_.systemStatus = [this]() { return buildSystemStatusInternal(); };
         dependencies_.reboot = [] { LOG_WARN(State, "Reboot requested in local backend"); };
+        dependencies_.commandRunner = [](const std::string& command) {
+            return runCommandCaptureOutput(command);
+        };
+        dependencies_.homeDirResolver = [](const std::string& user) {
+            return resolveUserHomeDir(user);
+        };
+        dependencies_.sshPermissionsEnsurer = [](const std::filesystem::path& dirPath,
+                                                 const std::filesystem::path& filePath,
+                                                 const std::string& user) {
+            return ensureSshPermissions(dirPath, filePath, user);
+        };
         return;
     }
 
@@ -1746,6 +1829,17 @@ void OperatingSystemManager::initializeDefaultDependencies()
     };
     dependencies_.systemStatus = [this]() { return buildSystemStatusInternal(); };
     dependencies_.reboot = [this]() { scheduleRebootInternal(); };
+    dependencies_.commandRunner = [](const std::string& command) {
+        return runCommandCaptureOutput(command);
+    };
+    dependencies_.homeDirResolver = [](const std::string& user) {
+        return resolveUserHomeDir(user);
+    };
+    dependencies_.sshPermissionsEnsurer = [](const std::filesystem::path& dirPath,
+                                             const std::filesystem::path& filePath,
+                                             const std::string& user) {
+        return ensureSshPermissions(dirPath, filePath, user);
+    };
 }
 
 OsApi::SystemStatus::Okay OperatingSystemManager::buildSystemStatusInternal()
