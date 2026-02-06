@@ -1,7 +1,6 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/ui_builders/LVGLBuilder.h"
@@ -20,17 +19,11 @@ void SynthConfig::onEnter(StateMachine& sm)
     volumePercent_ = sm.getSynthVolumePercent();
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     uiManager->getMainMenuContainer();
     lv_obj_t* contentArea = uiManager->getMenuContentArea();
-    if (!contentArea) {
-        LOG_ERROR(State, "No menu content area available");
-        return;
-    }
+    DIRTSIM_ASSERT(contentArea, "SynthConfig state requires a menu content area");
 
     lv_obj_clean(contentArea);
 
@@ -48,35 +41,36 @@ void SynthConfig::onEnter(StateMachine& sm)
     keyboard_.setVolumePercent(volumePercent_);
     bottomRow_ = nullptr;
 
-    if (auto* panel = uiManager->getExpandablePanel()) {
-        panel->clearContent();
-        panel->resetWidth();
-        panel->show();
+    auto* panel = uiManager->getExpandablePanel();
+    DIRTSIM_ASSERT(panel, "SynthConfig state requires an ExpandablePanel");
+    panel->clearContent();
+    panel->resetWidth();
+    panel->show();
 
-        if (lv_obj_t* panelContent = panel->getContentArea()) {
-            lv_obj_t* column = lv_obj_create(panelContent);
-            lv_obj_set_size(column, LV_PCT(100), LV_SIZE_CONTENT);
-            lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
-            lv_obj_set_flex_align(
-                column, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-            lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
-            lv_obj_set_style_border_width(column, 0, 0);
-            lv_obj_set_style_pad_all(column, 0, 0);
-            lv_obj_set_style_pad_row(column, 12, 0);
-            lv_obj_clear_flag(column, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t* panelContent = panel->getContentArea();
+    DIRTSIM_ASSERT(panelContent, "SynthConfig state requires ExpandablePanel content area");
 
-            volumeStepper_ = LVGLBuilder::actionStepper(column)
-                                 .label("Volume")
-                                 .range(0, 100)
-                                 .step(1)
-                                 .value(volumePercent_)
-                                 .valueFormat("%.0f")
-                                 .valueScale(1.0)
-                                 .width(LV_PCT(95))
-                                 .callback(onVolumeChanged, this)
-                                 .buildOrLog();
-        }
-    }
+    lv_obj_t* column = lv_obj_create(panelContent);
+    lv_obj_set_size(column, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(column, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(column, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(column, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(column, 0, 0);
+    lv_obj_set_style_pad_all(column, 0, 0);
+    lv_obj_set_style_pad_row(column, 12, 0);
+    lv_obj_clear_flag(column, LV_OBJ_FLAG_SCROLLABLE);
+
+    volumeStepper_ = LVGLBuilder::actionStepper(column)
+                         .label("Volume")
+                         .range(0, 100)
+                         .step(1)
+                         .value(volumePercent_)
+                         .valueFormat("%.0f")
+                         .valueScale(1.0)
+                         .width(LV_PCT(95))
+                         .callback(onVolumeChanged, this)
+                         .buildOrLog();
+    DIRTSIM_ASSERT(volumeStepper_, "SynthConfig volume stepper build failed");
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -134,17 +128,6 @@ State::Any SynthConfig::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm
     return std::move(*this);
 }
 
-State::Any SynthConfig::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any SynthConfig::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     return std::move(*this);
@@ -154,25 +137,6 @@ State::Any SynthConfig::onEvent(const StopButtonClickedEvent& /*evt*/, StateMach
 {
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
-}
-
-State::Any SynthConfig::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning back to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
-State::Any SynthConfig::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-    return Shutdown{};
 }
 
 State::Any SynthConfig::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
@@ -205,61 +169,24 @@ State::Any SynthConfig::onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachi
     return std::move(*this);
 }
 
-State::Any SynthConfig::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any SynthConfig::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any SynthConfig::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
-    return std::move(*this);
-}
-
 void SynthConfig::onVolumeChanged(lv_event_t* e)
 {
     auto* self = static_cast<SynthConfig*>(lv_event_get_user_data(e));
-    if (!self) {
-        return;
-    }
+    DIRTSIM_ASSERT(self, "SynthConfig volume change handler requires SynthConfig user_data");
 
     self->updateVolumeFromStepper();
 }
 
 void SynthConfig::updateVolumeFromStepper()
 {
-    if (!volumeStepper_) {
-        return;
-    }
+    DIRTSIM_ASSERT(volumeStepper_, "SynthConfig requires volumeStepper_");
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(volumeStepper_);
     volumePercent_ = std::clamp(static_cast<int>(value), 0, 100);
     keyboard_.setVolumePercent(volumePercent_);
 
-    if (stateMachine_) {
-        stateMachine_->setSynthVolumePercent(volumePercent_);
-    }
+    DIRTSIM_ASSERT(stateMachine_, "SynthConfig requires a valid StateMachine");
+    stateMachine_->setSynthVolumePercent(volumePercent_);
 
     LOG_INFO(State, "Synth volume set to {}", volumePercent_);
 }

@@ -249,11 +249,7 @@ Result<OkayT, std::string> sendBinaryCommand(
 
 bool isTrainingModalVisible(const UiApi::StatusGet::Okay& status)
 {
-    if (auto* details =
-            std::get_if<UiApi::StatusGet::TrainingStateDetails>(&status.state_details)) {
-        return details->trainingModalVisible;
-    }
-    return false;
+    return status.state == "TrainingUnsavedResult";
 }
 
 // Helper function to sort timer_stats by total_ms in descending order.
@@ -1518,7 +1514,8 @@ int main(int argc, char** argv)
                 }
                 return ensureIconRailVisible();
             }
-            if (state == "Training") {
+            if (state == "TrainingIdle" || state == "TrainingActive"
+                || state == "TrainingUnsavedResult") {
                 auto serverClear = clearServerTrainingResultIfNeeded();
                 if (serverClear.isError()) {
                     return Result<std::monostate, std::string>::error(serverClear.errorValue());
@@ -1562,7 +1559,8 @@ int main(int argc, char** argv)
                 state = waitResult.value();
             }
 
-            if (state == "Training") {
+            if (state == "TrainingIdle" || state == "TrainingActive"
+                || state == "TrainingUnsavedResult") {
                 auto serverClear = clearServerTrainingResultIfNeeded();
                 if (serverClear.isError()) {
                     return Result<std::monostate, std::string>::error(serverClear.errorValue());
@@ -1596,7 +1594,7 @@ int main(int argc, char** argv)
                 if (selectResult.isError()) {
                     return Result<std::monostate, std::string>::error(selectResult.errorValue());
                 }
-                auto waitResult = waitForUiState({ "Training" }, 8000);
+                auto waitResult = waitForUiState({ "TrainingIdle" }, 8000);
                 if (waitResult.isError()) {
                     return Result<std::monostate, std::string>::error(
                         waitResult.errorValue().message);
@@ -1631,7 +1629,7 @@ int main(int argc, char** argv)
                 if (selectResult.isError()) {
                     return Result<std::monostate, std::string>::error(selectResult.errorValue());
                 }
-                auto waitTraining = waitForUiState({ "Training" }, 8000);
+                auto waitTraining = waitForUiState({ "TrainingIdle" }, 8000);
                 if (waitTraining.isError()) {
                     return Result<std::monostate, std::string>::error(
                         waitTraining.errorValue().message);

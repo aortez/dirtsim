@@ -27,7 +27,7 @@ scale 1.6
 [*] --> StartMenu
 
 StartMenu --> SimRunning : Start
-StartMenu --> Training : Training
+StartMenu --> TrainingIdle : Training
 StartMenu --> Network : Network
 StartMenu --> Synth : Music
 StartMenu --> Exit : Quit
@@ -36,6 +36,6 @@ SimRunning --> Paused : Pause
 Paused --> SimRunning : Resume
 SimRunning --> StartMenu : Stop
 
-Training --> StartMenu : Complete
+TrainingIdle --> StartMenu : Complete
 @enduml
 ```

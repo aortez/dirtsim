@@ -477,7 +477,9 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/states/Synth.cpp
     src/ui/state-machine/states/SynthConfig.cpp
     src/ui/state-machine/states/SynthKeyboard.cpp
-    src/ui/state-machine/states/Training.cpp
+    src/ui/state-machine/states/TrainingActive.cpp
+    src/ui/state-machine/states/TrainingIdle.cpp
+    src/ui/state-machine/states/TrainingUnsavedResult.cpp
 
     # UI API commands.
     src/ui/state-machine/api/DrawDebugToggle.cpp

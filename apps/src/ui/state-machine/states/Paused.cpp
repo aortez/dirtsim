@@ -1,8 +1,8 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/SimStop.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/ui_builders/LVGLBuilder.h"
 
@@ -93,7 +93,7 @@ void Paused::onExit(StateMachine& /*sm*/)
 void Paused::onResumeClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused resume handler requires StateMachine user_data");
 
     LOG_INFO(State, "Resume button clicked");
 
@@ -105,7 +105,7 @@ void Paused::onResumeClicked(lv_event_t* e)
 void Paused::onStopClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused stop handler requires StateMachine user_data");
 
     LOG_INFO(State, "Stop button clicked");
 
@@ -117,63 +117,13 @@ void Paused::onStopClicked(lv_event_t* e)
 void Paused::onQuitClicked(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "Paused quit handler requires StateMachine user_data");
 
     LOG_INFO(State, "Quit button clicked");
 
     UiApi::Exit::Cwc cwc;
     cwc.callback = [](auto&&) {};
     sm->queueEvent(cwc);
-}
-
-State::Any Paused::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    return Shutdown{};
-}
-
-State::Any Paused::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    LOG_DEBUG(State, "Mouse down at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
-
-    // Update remote input device state (enables LVGL widget interaction even when paused).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
-    return Paused{ std::move(worldData) };
-}
-
-State::Any Paused::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    LOG_DEBUG(State, "Mouse move at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
-
-    // Update remote input device position (enables LVGL widget interaction even when paused).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
-    return Paused{ std::move(worldData) };
-}
-
-State::Any Paused::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    LOG_DEBUG(State, "Mouse up at ({}, {})", cwc.command.pixelX, cwc.command.pixelY);
-
-    // Update remote input device state (enables LVGL widget interaction even when paused).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
-    return Paused{ std::move(worldData) };
 }
 
 State::Any Paused::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& /*sm*/)
@@ -211,18 +161,6 @@ State::Any Paused::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm)
 
     // Discard world data and return to start menu.
     return StartMenu{};
-}
-
-State::Any Paused::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
 }
 
 } // namespace State

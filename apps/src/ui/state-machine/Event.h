@@ -202,10 +202,6 @@ struct GenomeLoadClickedEvent {
     static constexpr const char* name() { return "GenomeLoadClickedEvent"; }
 };
 
-struct OpenTrainingGenomeBrowserClickedEvent {
-    static constexpr const char* name() { return "OpenTrainingGenomeBrowserClickedEvent"; }
-};
-
 struct GenomeAddToTrainingClickedEvent {
     GenomeId genomeId;
     Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
@@ -293,7 +289,6 @@ using Event = std::variant<
     TrainingResultDiscardClickedEvent,
     TrainingStreamConfigChangedEvent,
     GenomeLoadClickedEvent,
-    OpenTrainingGenomeBrowserClickedEvent,
     GenomeAddToTrainingClickedEvent,
     RequestWorldUpdateCommand,
 
