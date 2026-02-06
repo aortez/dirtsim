@@ -127,6 +127,13 @@ State::Any Synth::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /
     return StartMenu{};
 }
 
+State::Any Synth::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm)
+{
+    keyboard_.setVolumePercent(evt.settings.volumePercent);
+    sm.setSynthVolumePercent(evt.settings.volumePercent);
+    return std::move(*this);
+}
+
 State::Any Synth::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
 {
     LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);

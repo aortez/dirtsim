@@ -277,6 +277,16 @@ void AudioEngine::enqueueNoteOff(uint32_t noteId)
     enqueueCommand(command);
 }
 
+void AudioEngine::setMasterVolumePercent(int volumePercent)
+{
+    masterVolumePercent_.store(std::clamp(volumePercent, 0, 100), std::memory_order_relaxed);
+}
+
+int AudioEngine::getMasterVolumePercent() const
+{
+    return masterVolumePercent_.load(std::memory_order_relaxed);
+}
+
 AudioStatus AudioEngine::getStatus() const
 {
     AudioStatus status;
@@ -312,10 +322,12 @@ void AudioEngine::audioCallback(void* userdata, Uint8* stream, int len)
 void AudioEngine::render(float* out, int frames, int channels)
 {
     drainCommands();
+    const float masterGain =
+        static_cast<float>(masterVolumePercent_.load(std::memory_order_relaxed)) / 100.0f;
 
     for (int i = 0; i < frames; ++i) {
         const double sample = voice_.renderSample();
-        const float outSample = static_cast<float>(std::clamp(sample, -1.0, 1.0));
+        const float outSample = static_cast<float>(std::clamp(sample, -1.0, 1.0)) * masterGain;
 
         const int base = i * channels;
         for (int ch = 0; ch < channels; ++ch) {

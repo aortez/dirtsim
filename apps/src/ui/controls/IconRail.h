@@ -28,7 +28,8 @@ enum class IconId {
     GENOME_BROWSER = 8,
     TRAINING_RESULTS = 9,
     MUSIC = 10,
-    DUCK = 11
+    DUCK = 11,
+    SETTINGS = 12
 };
 
 enum class RailMode {

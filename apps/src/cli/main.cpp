@@ -527,6 +527,11 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
     examples += "  cli functional-test canOpenTrainingConfigPanel\n";
+    examples += "  cli functional-test canUpdateUserSettings\n";
+    examples += "  cli functional-test canResetUserSettings\n";
+    examples += "  cli functional-test canPersistUserSettingsAcrossRestart\n";
+    examples += "  cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario\n";
+    examples += "  cli functional-test canApplyClockTimezoneFromUserSettings\n";
     examples += "  cli functional-test canPlaySynthKeys\n";
     examples += "  cli functional-test verifyTraining\n";
     examples += "  cli functional-test canExit --ui-address ws://dirtsim.local:7070 "
@@ -1046,11 +1051,19 @@ int main(int argc, char** argv)
         if (testName != "canExit" && testName != "canTrain"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
             && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
-            && testName != "canPlaySynthKeys" && testName != "verifyTraining") {
+            && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
+            && testName != "canPersistUserSettingsAcrossRestart"
+            && testName != "canUseDefaultScenarioWhenSimRunHasNoScenario"
+            && testName != "canApplyClockTimezoneFromUserSettings" && testName != "canPlaySynthKeys"
+            && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
             std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
-                         "canOpenTrainingConfigPanel, canPlaySynthKeys, verifyTraining\n";
+                         "canOpenTrainingConfigPanel, canUpdateUserSettings, "
+                         "canResetUserSettings, canPersistUserSettingsAcrossRestart, "
+                         "canUseDefaultScenarioWhenSimRunHasNoScenario, "
+                         "canApplyClockTimezoneFromUserSettings, canPlaySynthKeys, "
+                         "verifyTraining\n";
             return 1;
         }
 
@@ -1095,17 +1108,37 @@ int main(int argc, char** argv)
             summary = runner.runCanOpenTrainingConfigPanel(
                 uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
+        else if (testName == "canUpdateUserSettings") {
+            summary = runner.runCanUpdateUserSettings(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canResetUserSettings") {
+            summary = runner.runCanResetUserSettings(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canPersistUserSettingsAcrossRestart") {
+            summary = runner.runCanPersistUserSettingsAcrossRestart(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canUseDefaultScenarioWhenSimRunHasNoScenario") {
+            summary = runner.runCanUseDefaultScenarioWhenSimRunHasNoScenario(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canApplyClockTimezoneFromUserSettings") {
+            summary = runner.runCanApplyClockTimezoneFromUserSettings(
+                uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
         else if (testName == "canPlaySynthKeys") {
             summary =
                 runner.runCanPlaySynthKeys(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
-        else if (testName == "verifyTraining") {
+        else if (testName == "canPlantTreeSeed") {
             summary =
-                runner.runVerifyTraining(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+                runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else {
             summary =
-                runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+                runner.runVerifyTraining(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         if (summary.result.isError()) {
             auto screenshotResult = captureFailureScreenshot(uiAddress, timeoutMs, testName);

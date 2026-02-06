@@ -50,6 +50,8 @@ public:
         Audio::Waveform waveform,
         uint32_t noteId);
     void enqueueNoteOff(uint32_t noteId);
+    void setMasterVolumePercent(int volumePercent);
+    int getMasterVolumePercent() const;
 
     AudioStatus getStatus() const;
 
@@ -108,6 +110,7 @@ private:
     std::atomic<double> currentEnvelopeLevel_{ 0.0 };
     std::atomic<int> currentEnvelopeState_{ static_cast<int>(Audio::EnvelopeState::Idle) };
     std::atomic<int> currentWaveform_{ static_cast<int>(Audio::Waveform::Sine) };
+    std::atomic<int> masterVolumePercent_{ 100 };
 
     std::vector<float> mixBuffer_;
     std::vector<int16_t> s16Buffer_;

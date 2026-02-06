@@ -12,6 +12,7 @@
 #include "api/WebRtcAnswer.h"
 #include "api/WebRtcCandidate.h"
 #include "api/WebSocketAccessSet.h"
+#include "audio/api/MasterVolumeSet.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/StateLifecycle.h"
@@ -21,6 +22,7 @@
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
 #include "server/api/EventSubscribe.h"
+#include "server/api/UserSettingsGet.h"
 #include "server/network/PeerAdvertisement.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
@@ -501,6 +503,28 @@ void StateMachine::handleEvent(const Event& event)
             !result.value().isError(),
             "EventSubscribe rejected: " + result.value().errorValue().message);
         LOG_INFO(State, "Subscribed to server event stream");
+
+        Api::UserSettingsGet::Command settingsCmd{};
+        const auto settingsResult =
+            wsService_->sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(settingsCmd, 2000);
+        if (settingsResult.isError()) {
+            LOG_WARN(
+                State, "UserSettingsGet failed after connect: {}", settingsResult.errorValue());
+        }
+        else if (settingsResult.value().isError()) {
+            LOG_WARN(
+                State,
+                "UserSettingsGet returned error: {}",
+                settingsResult.value().errorValue().message);
+        }
+        else {
+            applyServerUserSettings(settingsResult.value().value().settings);
+        }
+    }
+
+    if (std::holds_alternative<UserSettingsUpdatedEvent>(event)) {
+        const auto& settingsEvent = std::get<UserSettingsUpdatedEvent>(event);
+        applyServerUserSettings(settingsEvent.settings);
     }
 
     // Handle StatusGet universally (works in all states).
@@ -928,13 +952,17 @@ void StateMachine::handleEvent(const Event& event)
                     }
                     else {
                         // Handle state-independent events generically.
-                        if constexpr (std::is_same_v<std::decay_t<decltype(evt)>, UiUpdateEvent>) {
+                        if constexpr (
+                            std::is_same_v<std::decay_t<decltype(evt)>, UiUpdateEvent>
+                            || std::
+                                is_same_v<std::decay_t<decltype(evt)>, UserSettingsUpdatedEvent>) {
                             // UiUpdateEvent can arrive in any state (server keeps sending updates).
                             // States that care (SimRunning) have specific handlers.
                             // Other states (Paused, etc.) gracefully ignore without warning.
                             LOG_INFO(
                                 State,
-                                "Ignoring UiUpdateEvent in state {}",
+                                "Ignoring {} in state {}",
+                                getEventName(Event{ evt }),
                                 State::getCurrentStateName(fsmState));
                             // Stay in current state - no transition.
                         }
@@ -963,6 +991,45 @@ void StateMachine::handleEvent(const Event& event)
                 fsmState.getVariant());
         },
         event);
+}
+
+void StateMachine::applyServerUserSettings(const DirtSim::UserSettings& settings)
+{
+    serverUserSettings_ = settings;
+    setSynthVolumePercent(settings.volumePercent);
+    syncAudioMasterVolume(settings.volumePercent);
+}
+
+void StateMachine::syncAudioMasterVolume(int volumePercent)
+{
+    const int clampedVolume = std::clamp(volumePercent, 0, 100);
+
+    Network::WebSocketService audioClient;
+    const auto connectResult = audioClient.connect("ws://localhost:6060", 200);
+    if (connectResult.isError()) {
+        if (!audioVolumeWarningLogged_) {
+            LOG_WARN(
+                State, "Audio service unavailable for volume sync: {}", connectResult.errorValue());
+            audioVolumeWarningLogged_ = true;
+        }
+        return;
+    }
+
+    AudioApi::MasterVolumeSet::Command cmd{ .volume_percent = clampedVolume };
+    const auto result =
+        audioClient.sendCommandAndGetResponse<AudioApi::MasterVolumeSet::Okay>(cmd, 500);
+    if (result.isError()) {
+        LOG_WARN(State, "MasterVolumeSet failed: {}", result.errorValue());
+        return;
+    }
+
+    if (result.value().isError()) {
+        LOG_WARN(State, "MasterVolumeSet rejected: {}", result.value().errorValue().message);
+        return;
+    }
+
+    audioClient.disconnect();
+    audioVolumeWarningLogged_ = false;
 }
 
 std::string StateMachine::getCurrentStateName() const

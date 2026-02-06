@@ -39,6 +39,9 @@
 #include "api/TrainingResultSave.h"
 #include "api/TrainingResultSet.h"
 #include "api/TrainingStreamConfigSet.h"
+#include "api/UserSettingsGet.h"
+#include "api/UserSettingsReset.h"
+#include "api/UserSettingsSet.h"
 #include "api/WorldResize.h"
 #include "core/MaterialType.h"
 #include "core/SimulationStats.h"
@@ -452,6 +455,9 @@ public:
         DirtSim::Api::StateGet::Cwc,
         DirtSim::Api::StatusGet::Cwc,
         DirtSim::Api::TimerStatsGet::Cwc,
+        DirtSim::Api::UserSettingsGet::Cwc,
+        DirtSim::Api::UserSettingsReset::Cwc,
+        DirtSim::Api::UserSettingsSet::Cwc,
         DirtSim::Api::TrainingResultDiscard::Cwc,
         DirtSim::Api::TrainingResultDelete::Cwc,
         DirtSim::Api::TrainingResultSave::Cwc,

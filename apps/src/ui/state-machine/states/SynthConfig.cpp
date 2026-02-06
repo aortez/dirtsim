@@ -156,6 +156,19 @@ State::Any SynthConfig::onEvent(const StopButtonClickedEvent& /*evt*/, StateMach
     return StartMenu{};
 }
 
+State::Any SynthConfig::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm)
+{
+    volumePercent_ = std::clamp(evt.settings.volumePercent, 0, 100);
+    keyboard_.setVolumePercent(volumePercent_);
+    sm.setSynthVolumePercent(volumePercent_);
+
+    if (volumeStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(volumeStepper_, volumePercent_);
+    }
+
+    return std::move(*this);
+}
+
 State::Any SynthConfig::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
 {
     LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);

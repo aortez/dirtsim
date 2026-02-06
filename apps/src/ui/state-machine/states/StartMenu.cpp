@@ -70,10 +70,17 @@ void StartMenu::onEnter(StateMachine& sm)
     // Configure IconRail to show StartMenu icons in two columns.
     if (IconRail* iconRail = uiManager->getIconRail()) {
         iconRail->setVisibleIcons(
-            { IconId::CORE, IconId::MUSIC, IconId::EVOLUTION, IconId::NETWORK, IconId::SCENARIO });
+            { IconId::CORE,
+              IconId::SETTINGS,
+              IconId::MUSIC,
+              IconId::EVOLUTION,
+              IconId::NETWORK,
+              IconId::SCENARIO });
         iconRail->setLayout(RailLayout::TwoColumn);
         iconRail->deselectAll();
-        LOG_INFO(State, "Configured IconRail with CORE, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
+        LOG_INFO(
+            State,
+            "Configured IconRail with CORE, SETTINGS, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
     }
 
     // Get display dimensions for full-screen fractal.
@@ -150,6 +157,7 @@ void StartMenu::onExit(StateMachine& sm)
 
     // Clean up panels.
     corePanel_.reset();
+    settingsPanel_.reset();
 
     // Clean up sparkle button.
     startButton_.reset();
@@ -283,6 +291,17 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
 
     auto* uiManager = sm.getUiComponentManager();
 
+    if (evt.previousId == IconId::CORE || evt.previousId == IconId::SETTINGS) {
+        LOG_INFO(State, "Panel icon deselected, hiding panel");
+        if (auto* panel = uiManager->getExpandablePanel()) {
+            panel->hide();
+            panel->clearContent();
+            panel->resetWidth();
+        }
+        corePanel_.reset();
+        settingsPanel_.reset();
+    }
+
     // Handle CORE icon - opens core panel with quit button.
     if (evt.selectedId == IconId::CORE) {
         LOG_INFO(State, "Core icon selected, showing core panel");
@@ -296,15 +315,18 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         return std::move(*this); // Don't deselect - panel should stay open.
     }
 
-    // Handle deselection of CORE.
-    if (evt.previousId == IconId::CORE) {
-        LOG_INFO(State, "Core icon deselected, hiding panel");
+    if (evt.selectedId == IconId::SETTINGS) {
+        LOG_INFO(State, "Settings icon selected, showing settings panel");
+
         if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->hide();
             panel->clearContent();
             panel->resetWidth();
+            settingsPanel_ = std::make_unique<StartMenuSettingsPanel>(
+                panel->getContentArea(), &sm.getWebSocketService(), sm);
+            settingsPanel_->refreshFromServer();
+            panel->show();
         }
-        corePanel_.reset();
+        return std::move(*this); // Don't deselect - panel should stay open.
     }
 
     if (evt.selectedId == IconId::MUSIC) {
@@ -373,6 +395,15 @@ State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachi
     LOG_INFO(State, "Train button clicked, transitioning to Training");
 
     return TrainingIdle{};
+}
+
+State::Any StartMenu::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& /*sm*/)
+{
+    if (settingsPanel_) {
+        settingsPanel_->applySettings(evt.settings);
+    }
+
+    return std::move(*this);
 }
 
 State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachine& /*sm*/)

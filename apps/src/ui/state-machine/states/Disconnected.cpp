@@ -12,6 +12,7 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/TrainingBestSnapshot.h"
+#include "server/api/UserSettingsUpdated.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/LogPanel.h"
 #include "ui/state-machine/StateMachine.h"
@@ -274,6 +275,17 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
                 }
                 catch (const std::exception& e) {
                     LOG_ERROR(Network, "Failed to deserialize TrainingBestSnapshot: {}", e.what());
+                }
+            }
+            else if (messageType == Api::UserSettingsUpdated::name()) {
+                try {
+                    auto settingsUpdate =
+                        DirtSim::Network::deserialize_payload<Api::UserSettingsUpdated>(payload);
+                    sm.queueEvent(
+                        UserSettingsUpdatedEvent{ .settings = std::move(settingsUpdate.settings) });
+                }
+                catch (const std::exception& e) {
+                    LOG_ERROR(Network, "Failed to deserialize UserSettingsUpdated: {}", e.what());
                 }
             }
             else {

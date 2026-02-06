@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioEngine.h"
+#include "audio/api/MasterVolumeSet.h"
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
@@ -25,6 +26,7 @@ public:
 
 private:
     void setupWebSocketService();
+    void handleMasterVolumeSet(AudioApi::MasterVolumeSet::Cwc cwc);
     void handleNoteOn(AudioApi::NoteOn::Cwc cwc);
     void handleNoteOff(AudioApi::NoteOff::Cwc cwc);
     void handleStatusGet(AudioApi::StatusGet::Cwc cwc);

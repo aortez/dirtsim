@@ -286,6 +286,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/ServerConfig.cpp
     src/server/StateMachine.cpp
     src/server/TrainingResultRepository.cpp
+    src/server/UserSettings.cpp
     src/server/EventProcessor.cpp
     src/server/states/Error.cpp
     src/server/states/Evolution.cpp
@@ -331,11 +332,13 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/UserSettingsSet.cpp
     src/server/api/TrainingResult.cpp
     src/server/api/TrainingResultDiscard.cpp
     src/server/api/TrainingResultList.cpp
     src/server/api/TrainingResultSave.cpp
     src/server/api/TrainingStreamConfigSet.cpp
+    src/server/api/UserSettingsUpdated.cpp
     src/server/api/WorldResize.cpp
 
     # Server network.
@@ -526,6 +529,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/ScenarioControlsFactory.cpp
     src/ui/controls/ScenarioPanel.cpp
     src/ui/controls/StartMenuCorePanel.cpp
+    src/ui/controls/StartMenuSettingsPanel.cpp
     src/ui/controls/StopPanel.cpp
     src/ui/controls/SparklingDuckButton.cpp
     src/ui/controls/ToggleSlider.cpp
@@ -662,6 +666,7 @@ add_executable(dirtsim-tests
     src/server/tests/StateSimRunning_test.cpp
     src/server/tests/StateUnsavedTrainingResult_test.cpp
     src/server/tests/TestStateMachineFixture.cpp
+    src/server/tests/UserSettings_test.cpp
     src/server/tests/TrainingResultRepository_test.cpp
     src/tests/MockWebSocketService.cpp
     src/ui/state-machine/tests/StateTraining_test.cpp

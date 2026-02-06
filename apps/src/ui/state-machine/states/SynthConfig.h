@@ -18,6 +18,7 @@ struct SynthConfig {
     Any onEvent(const RailModeChangedEvent& evt, StateMachine& sm);
     Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
+    Any onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
