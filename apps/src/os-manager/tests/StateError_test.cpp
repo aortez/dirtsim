@@ -19,8 +19,11 @@ protected:
         };
         dependencies.systemStatus = [this]() { return status; };
         dependencies.reboot = [] {};
-        manager = std::make_unique<OperatingSystemManager>(
-            OperatingSystemManager::TestMode{ dependencies });
+        manager = std::make_unique<OperatingSystemManager>(OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
     }
 
     OperatingSystemManager::Dependencies dependencies;

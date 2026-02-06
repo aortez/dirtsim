@@ -2,7 +2,10 @@
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
+#include "os-manager/api/PeerClientKeyEnsure.h"
+#include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
@@ -13,6 +16,9 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/TrustBundleGet.h"
+#include "os-manager/api/TrustPeer.h"
+#include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include <spdlog/spdlog.h>
@@ -49,7 +55,6 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::GenomeList::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GenomeSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::GravitySet::Cwc>(serverHandlers_, serverExampleHandlers_);
-    registerCommand<Api::PeersGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PerfStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::PhysicsSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
@@ -109,6 +114,9 @@ CommandDispatcher::CommandDispatcher()
     spdlog::debug("CommandDispatcher: Registering OS manager API commands...");
 
     registerCommand<OsApi::Reboot::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::PeerClientKeyEnsure::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::PeersGet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::RemoteCliRun::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartAudio::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::RestartUi::Cwc>(osHandlers_, osExampleHandlers_);
@@ -119,6 +127,9 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<OsApi::StopServer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::StopUi::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::SystemStatus::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::TrustBundleGet::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::TrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
+    registerCommand<OsApi::UntrustPeer::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebSocketAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
     registerCommand<OsApi::WebUiAccessSet::Cwc>(osHandlers_, osExampleHandlers_);
 

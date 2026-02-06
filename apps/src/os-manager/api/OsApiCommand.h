@@ -1,6 +1,9 @@
 #pragma once
 
+#include "PeerClientKeyEnsure.h"
+#include "PeersGet.h"
 #include "Reboot.h"
+#include "RemoteCliRun.h"
 #include "RestartAudio.h"
 #include "RestartServer.h"
 #include "RestartUi.h"
@@ -11,6 +14,9 @@
 #include "StopServer.h"
 #include "StopUi.h"
 #include "SystemStatus.h"
+#include "TrustBundleGet.h"
+#include "TrustPeer.h"
+#include "UntrustPeer.h"
 #include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
 #include <variant>
@@ -19,6 +25,9 @@ namespace DirtSim {
 namespace OsApi {
 
 using OsApiCommand = std::variant<
+    PeerClientKeyEnsure::Command,
+    PeersGet::Command,
+    RemoteCliRun::Command,
     Reboot::Command,
     RestartAudio::Command,
     RestartServer::Command,
@@ -30,6 +39,9 @@ using OsApiCommand = std::variant<
     StopServer::Command,
     StopUi::Command,
     SystemStatus::Command,
+    TrustBundleGet::Command,
+    TrustPeer::Command,
+    UntrustPeer::Command,
     WebSocketAccessSet::Command,
     WebUiAccessSet::Command>;
 

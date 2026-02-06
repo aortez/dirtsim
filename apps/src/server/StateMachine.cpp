@@ -3,7 +3,6 @@
 #include "EventProcessor.h"
 #include "ServerConfig.h"
 #include "TrainingResultRepository.h"
-#include "api/PeersGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
 #include "api/TrainingResultGet.h"
@@ -32,8 +31,6 @@
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
 #include "network/HttpServer.h"
-#include "network/PeerAdvertisement.h"
-#include "network/PeerDiscovery.h"
 #include "states/State.h"
 #include <algorithm>
 #include <cassert>
@@ -42,7 +39,6 @@
 #include <mutex>
 #include <spdlog/spdlog.h>
 #include <thread>
-#include <unistd.h>
 
 namespace DirtSim {
 namespace Server {
@@ -133,12 +129,9 @@ struct StateMachine::Impl {
     SystemMetrics systemMetrics_;
     Timers timers_;
     std::unique_ptr<HttpServer> httpServer_;
-    PeerAdvertisement peerAdvertisement_;
-    std::unique_ptr<PeerDiscoveryInterface> peerDiscovery_;
     State::Any fsmState_{ State::PreStartup{} };
     std::unique_ptr<Network::WebSocketServiceInterface> wsServiceOwned_;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
-    std::string peerServiceName_ = "dirtsim";
     uint16_t webSocketPort_ = 8080;
     uint16_t httpPort_ = 8081;
     std::shared_ptr<WorldData> cachedWorldData_;
@@ -178,24 +171,13 @@ private:
 
 StateMachine::StateMachine(
     std::unique_ptr<Network::WebSocketServiceInterface> webSocketService,
-    std::unique_ptr<PeerDiscoveryInterface> peerDiscovery,
     const std::optional<std::filesystem::path>& dataDir)
     : pImpl(dataDir)
 {
     serverConfig = std::make_unique<ServerConfig>();
     serverConfig->dataDir = dataDir;
 
-    char hostname[256] = "dirtsim";
-    gethostname(hostname, sizeof(hostname));
-    pImpl->peerServiceName_ = hostname;
     pImpl->httpServer_ = std::make_unique<HttpServer>(pImpl->httpPort_);
-
-    if (peerDiscovery) {
-        pImpl->peerDiscovery_ = std::move(peerDiscovery);
-    }
-    else {
-        pImpl->peerDiscovery_ = std::make_unique<PeerDiscovery>();
-    }
 
     if (webSocketService) {
         pImpl->wsServiceOwned_ = std::move(webSocketService);
@@ -209,47 +191,15 @@ StateMachine::StateMachine(
 }
 
 StateMachine::StateMachine(const std::optional<std::filesystem::path>& dataDir)
-    : StateMachine(nullptr, std::make_unique<PeerDiscovery>(), dataDir)
-{
-    if (pImpl->peerDiscovery_ && pImpl->peerDiscovery_->start()) {
-        spdlog::info("PeerDiscovery started successfully");
-    }
-    else {
-        spdlog::warn("PeerDiscovery failed to start (Avahi may not be available)");
-    }
-}
+    : StateMachine(nullptr, dataDir)
+{}
 
 StateMachine::~StateMachine()
 {
     if (pImpl->httpServer_) {
         pImpl->httpServer_->stop();
     }
-    pImpl->peerAdvertisement_.stop();
-    if (pImpl->peerDiscovery_) {
-        pImpl->peerDiscovery_->stop();
-    }
     LOG_INFO(State, "Server::StateMachine shutting down from state: {}", getCurrentStateName());
-}
-
-void StateMachine::startPeerAdvertisement(uint16_t port, const std::string& serviceName)
-{
-    pImpl->peerServiceName_ = serviceName;
-    pImpl->webSocketPort_ = port;
-
-    if (pImpl->peerAdvertisement_.isRunning()) {
-        pImpl->peerAdvertisement_.stop();
-    }
-
-    pImpl->peerAdvertisement_.setServiceName(serviceName);
-    pImpl->peerAdvertisement_.setPort(port);
-    pImpl->peerAdvertisement_.setRole(PeerRole::Physics);
-
-    if (pImpl->peerAdvertisement_.start()) {
-        spdlog::info("PeerAdvertisement started: {} on port {}", serviceName, port);
-    }
-    else {
-        spdlog::warn("PeerAdvertisement failed to start (Avahi may not be available)");
-    }
 }
 
 // =================================================================
@@ -370,7 +320,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::EventSubscribe);
         DISPATCH_JSON_CMD_EMPTY(Api::Exit);
         DISPATCH_JSON_CMD_EMPTY(Api::GravitySet);
-        DISPATCH_JSON_CMD_WITH_RESP(Api::PeersGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PerfStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::PhysicsSettingsGet);
         DISPATCH_JSON_CMD_EMPTY(Api::PhysicsSettingsSet);
@@ -486,13 +435,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
                 listenResult.errorValue());
             return;
         }
-
-        if (cwc.command.enabled) {
-            startPeerAdvertisement(pImpl->webSocketPort_, pImpl->peerServiceName_);
-        }
-        else {
-            pImpl->peerAdvertisement_.stop();
-        }
     });
 
     service.registerHandler<Api::WebUiAccessSet::Cwc>([this](Api::WebUiAccessSet::Cwc cwc) {
@@ -515,14 +457,6 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         }
 
         pImpl->httpServer_->stop();
-    });
-
-    // PeersGet - return discovered mDNS peers.
-    service.registerHandler<Api::PeersGet::Cwc>([this](Api::PeersGet::Cwc cwc) {
-        auto peers = pImpl->peerDiscovery_->getPeers();
-        Api::PeersGet::Okay response;
-        response.peers = std::move(peers);
-        cwc.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
     });
 
     // RenderFormatGet - return default format (TODO: track per-client).
@@ -682,16 +616,6 @@ Timers& StateMachine::getTimers()
 const Timers& StateMachine::getTimers() const
 {
     return pImpl->timers_;
-}
-
-PeerDiscoveryInterface& StateMachine::getPeerDiscovery()
-{
-    return *pImpl->peerDiscovery_;
-}
-
-const PeerDiscoveryInterface& StateMachine::getPeerDiscovery() const
-{
-    return *pImpl->peerDiscovery_;
 }
 
 GamepadManager& StateMachine::getGamepadManager()
@@ -1210,36 +1134,22 @@ void StateMachine::handleEvent(const Event& event)
                         }
                     }
                     else {
-                        // Handle state-independent read-only queries generically.
-                        if constexpr (std::is_same_v<
-                                          std::decay_t<decltype(evt)>,
-                                          Api::PeersGet::Cwc>) {
-                            spdlog::debug(
-                                "Server::StateMachine: Handling PeersGet generically (state: {})",
-                                State::getCurrentStateName(pImpl->fsmState_));
-                            auto peers = pImpl->peerDiscovery_->getPeers();
-                            Api::PeersGet::Okay response;
-                            response.peers = std::move(peers);
-                            evt.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
-                        }
-                        else {
-                            spdlog::warn(
-                                "Server::StateMachine: State {} does not handle event {}",
-                                State::getCurrentStateName(pImpl->fsmState_),
-                                getEventName(Event{ evt }));
+                        spdlog::warn(
+                            "Server::StateMachine: State {} does not handle event {}",
+                            State::getCurrentStateName(pImpl->fsmState_),
+                            getEventName(Event{ evt }));
 
-                            // If this is an API command with sendResponse, send error.
-                            if constexpr (requires {
-                                              evt.sendResponse(
-                                                  std::declval<typename std::decay_t<
-                                                      decltype(evt)>::Response>());
-                                          }) {
-                                auto errorMsg = std::string("Command not supported in state: ")
-                                    + State::getCurrentStateName(pImpl->fsmState_);
-                                using EventType = std::decay_t<decltype(evt)>;
-                                using ResponseType = typename EventType::Response;
-                                evt.sendResponse(ResponseType::error(ApiError(errorMsg)));
-                            }
+                        // If this is an API command with sendResponse, send error.
+                        if constexpr (requires {
+                                          evt.sendResponse(
+                                              std::declval<typename std::decay_t<
+                                                  decltype(evt)>::Response>());
+                                      }) {
+                            auto errorMsg = std::string("Command not supported in state: ")
+                                + State::getCurrentStateName(pImpl->fsmState_);
+                            using EventType = std::decay_t<decltype(evt)>;
+                            using ResponseType = typename EventType::Response;
+                            evt.sendResponse(ResponseType::error(ApiError(errorMsg)));
                         }
                     }
                 },

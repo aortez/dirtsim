@@ -1,34 +1,32 @@
-#include "PeerAdvertisement.h"
+#include "os-manager/network/PeerAdvertisement.h"
 
+#include "core/LoggingChannels.h"
 #include <atomic>
 #include <mutex>
-#include <thread>
 
 #include <avahi-client/client.h>
 #include <avahi-client/publish.h>
 #include <avahi-common/alternative.h>
 #include <avahi-common/error.h>
 #include <avahi-common/malloc.h>
-#include <avahi-common/simple-watch.h>
-#include <spdlog/spdlog.h>
+#include <avahi-common/thread-watch.h>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 static constexpr const char* SERVICE_TYPE = "_dirtsim._tcp";
 
 struct PeerAdvertisement::Impl {
-    std::atomic<bool> running_{ false };
-    std::thread thread_;
     mutable std::mutex mutex_;
 
     std::string serviceName_ = "dirtsim";
     uint16_t port_ = 8080;
     PeerRole role_ = PeerRole::Physics;
 
-    AvahiSimplePoll* poll_ = nullptr;
+    AvahiThreadedPoll* poll_ = nullptr;
     AvahiClient* client_ = nullptr;
     AvahiEntryGroup* group_ = nullptr;
+    std::atomic<bool> started_{ false };
 
     // Name collision handling - Avahi may suggest alternatives.
     char* actualName_ = nullptr;
@@ -40,7 +38,8 @@ struct PeerAdvertisement::Impl {
 
         switch (state) {
             case AVAHI_ENTRY_GROUP_ESTABLISHED:
-                spdlog::info(
+                LOG_INFO(
+                    Network,
                     "PeerAdvertisement: Service '{}' established on port {}",
                     self->actualName_ ? self->actualName_ : self->serviceName_,
                     self->port_);
@@ -48,14 +47,24 @@ struct PeerAdvertisement::Impl {
 
             case AVAHI_ENTRY_GROUP_COLLISION: {
                 // Name collision - pick an alternative name.
-                char* newName = avahi_alternative_service_name(
-                    self->actualName_ ? self->actualName_ : self->serviceName_.c_str());
-                spdlog::warn("PeerAdvertisement: Name collision, renaming to '{}'", newName);
-
-                if (self->actualName_) {
-                    avahi_free(self->actualName_);
+                std::string serviceName;
+                const char* actualName = nullptr;
+                {
+                    std::lock_guard<std::mutex> lock(self->mutex_);
+                    serviceName = self->serviceName_;
+                    actualName = self->actualName_;
                 }
-                self->actualName_ = newName;
+                char* newName =
+                    avahi_alternative_service_name(actualName ? actualName : serviceName.c_str());
+                LOG_WARN(Network, "PeerAdvertisement: Name collision, renaming to '{}'", newName);
+
+                {
+                    std::lock_guard<std::mutex> lock(self->mutex_);
+                    if (self->actualName_) {
+                        avahi_free(self->actualName_);
+                    }
+                    self->actualName_ = newName;
+                }
 
                 // Re-register with new name.
                 self->createServices();
@@ -63,10 +72,14 @@ struct PeerAdvertisement::Impl {
             }
 
             case AVAHI_ENTRY_GROUP_FAILURE:
-                spdlog::error(
+                LOG_ERROR(
+                    Network,
                     "PeerAdvertisement: Entry group failure: {}",
                     avahi_strerror(avahi_client_errno(self->client_)));
-                avahi_simple_poll_quit(self->poll_);
+                if (self->poll_) {
+                    avahi_threaded_poll_quit(self->poll_);
+                }
+                self->started_.store(false);
                 break;
 
             case AVAHI_ENTRY_GROUP_UNCOMMITED:
@@ -86,10 +99,14 @@ struct PeerAdvertisement::Impl {
                 break;
 
             case AVAHI_CLIENT_FAILURE:
-                spdlog::error(
+                LOG_ERROR(
+                    Network,
                     "PeerAdvertisement: Client failure: {}",
                     avahi_strerror(avahi_client_errno(client)));
-                avahi_simple_poll_quit(self->poll_);
+                if (self->poll_) {
+                    avahi_threaded_poll_quit(self->poll_);
+                }
+                self->started_.store(false);
                 break;
 
             case AVAHI_CLIENT_S_COLLISION:
@@ -111,28 +128,43 @@ struct PeerAdvertisement::Impl {
             return;
         }
 
+        std::string serviceName;
+        uint16_t port = 0;
+        PeerRole role = PeerRole::Unknown;
+        const char* actualName = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            serviceName = serviceName_;
+            port = port_;
+            role = role_;
+            actualName = actualName_;
+        }
+
         // Create entry group if needed.
         if (!group_) {
             group_ = avahi_entry_group_new(client_, entryGroupCallback, this);
             if (!group_) {
-                spdlog::error(
+                LOG_ERROR(
+                    Network,
                     "PeerAdvertisement: Failed to create entry group: {}",
                     avahi_strerror(avahi_client_errno(client_)));
-                avahi_simple_poll_quit(poll_);
+                if (poll_) {
+                    avahi_threaded_poll_quit(poll_);
+                }
                 return;
             }
         }
 
         // If group is empty, add our service.
         if (avahi_entry_group_is_empty(group_)) {
-            const char* name = actualName_ ? actualName_ : serviceName_.c_str();
+            const char* name = actualName ? actualName : serviceName.c_str();
 
             // Role as TXT record.
             const char* roleStr = "role=unknown";
-            if (role_ == PeerRole::Physics) {
+            if (role == PeerRole::Physics) {
                 roleStr = "role=physics";
             }
-            else if (role_ == PeerRole::Ui) {
+            else if (role == PeerRole::Ui) {
                 roleStr = "role=ui";
             }
 
@@ -145,7 +177,7 @@ struct PeerAdvertisement::Impl {
                 SERVICE_TYPE,
                 nullptr, // domain
                 nullptr, // host
-                port_,
+                port,
                 roleStr,
                 nullptr); // end of TXT records
 
@@ -153,67 +185,96 @@ struct PeerAdvertisement::Impl {
                 if (ret == AVAHI_ERR_COLLISION) {
                     // Name collision during add - handle it.
                     char* newName = avahi_alternative_service_name(name);
-                    spdlog::warn(
-                        "PeerAdvertisement: Name collision during add, renaming to '{}'", newName);
-                    if (actualName_) {
-                        avahi_free(actualName_);
+                    LOG_WARN(
+                        Network,
+                        "PeerAdvertisement: Name collision during add, renaming to '{}'",
+                        newName);
+                    {
+                        std::lock_guard<std::mutex> lock(mutex_);
+                        if (actualName_) {
+                            avahi_free(actualName_);
+                        }
+                        actualName_ = newName;
                     }
-                    actualName_ = newName;
                     avahi_entry_group_reset(group_);
                     createServices();
                     return;
                 }
 
-                spdlog::error("PeerAdvertisement: Failed to add service: {}", avahi_strerror(ret));
-                avahi_simple_poll_quit(poll_);
+                LOG_ERROR(
+                    Network, "PeerAdvertisement: Failed to add service: {}", avahi_strerror(ret));
+                if (poll_) {
+                    avahi_threaded_poll_quit(poll_);
+                }
                 return;
             }
 
             // Commit the entry group.
             ret = avahi_entry_group_commit(group_);
             if (ret < 0) {
-                spdlog::error(
-                    "PeerAdvertisement: Failed to commit entry group: {}", avahi_strerror(ret));
-                avahi_simple_poll_quit(poll_);
+                LOG_ERROR(
+                    Network,
+                    "PeerAdvertisement: Failed to commit entry group: {}",
+                    avahi_strerror(ret));
+                if (poll_) {
+                    avahi_threaded_poll_quit(poll_);
+                }
                 return;
             }
 
-            spdlog::debug(
-                "PeerAdvertisement: Registering '{}' as {} on port {}", name, SERVICE_TYPE, port_);
+            LOG_DEBUG(
+                Network,
+                "PeerAdvertisement: Registering '{}' as {} on port {}",
+                name,
+                SERVICE_TYPE,
+                port);
         }
     }
 
     bool startAvahi()
     {
-        poll_ = avahi_simple_poll_new();
+        poll_ = avahi_threaded_poll_new();
         if (!poll_) {
-            spdlog::error("PeerAdvertisement: Failed to create Avahi simple poll.");
+            LOG_ERROR(Network, "PeerAdvertisement: Failed to create Avahi threaded poll.");
             return false;
         }
 
         int error = 0;
         client_ = avahi_client_new(
-            avahi_simple_poll_get(poll_),
+            avahi_threaded_poll_get(poll_),
             static_cast<AvahiClientFlags>(0),
             clientCallback,
             this,
             &error);
 
         if (!client_) {
-            spdlog::error(
-                "PeerAdvertisement: Failed to create Avahi client: {}", avahi_strerror(error));
-            avahi_simple_poll_free(poll_);
+            LOG_ERROR(
+                Network,
+                "PeerAdvertisement: Failed to create Avahi client: {}",
+                avahi_strerror(error));
+            avahi_threaded_poll_free(poll_);
             poll_ = nullptr;
             return false;
         }
 
-        spdlog::info(
-            "PeerAdvertisement: Started advertising {} service on port {}", SERVICE_TYPE, port_);
+        if (avahi_threaded_poll_start(poll_) < 0) {
+            LOG_ERROR(Network, "PeerAdvertisement: Failed to start Avahi threaded poll.");
+            avahi_client_free(client_);
+            avahi_threaded_poll_free(poll_);
+            client_ = nullptr;
+            poll_ = nullptr;
+            return false;
+        }
+
+        LOG_INFO(Network, "PeerAdvertisement: Started advertising {} service", SERVICE_TYPE);
         return true;
     }
 
     void stopAvahi()
     {
+        if (poll_) {
+            avahi_threaded_poll_stop(poll_);
+        }
         if (group_) {
             avahi_entry_group_free(group_);
             group_ = nullptr;
@@ -223,31 +284,13 @@ struct PeerAdvertisement::Impl {
             client_ = nullptr;
         }
         if (poll_) {
-            avahi_simple_poll_free(poll_);
+            avahi_threaded_poll_free(poll_);
             poll_ = nullptr;
         }
         if (actualName_) {
             avahi_free(actualName_);
             actualName_ = nullptr;
         }
-    }
-
-    void runLoop()
-    {
-        if (!startAvahi()) {
-            running_ = false;
-            return;
-        }
-
-        while (running_) {
-            int result = avahi_simple_poll_iterate(poll_, 100);
-            if (result != 0) {
-                break;
-            }
-        }
-
-        stopAvahi();
-        spdlog::info("PeerAdvertisement: Stopped.");
     }
 };
 
@@ -279,30 +322,29 @@ void PeerAdvertisement::setRole(PeerRole role)
 
 bool PeerAdvertisement::start()
 {
-    if (pImpl_->running_) {
+    if (pImpl_->started_.load()) {
         return true;
     }
 
-    pImpl_->running_ = true;
-    pImpl_->thread_ = std::thread([this]() { pImpl_->runLoop(); });
-    return true;
+    pImpl_->started_.store(pImpl_->startAvahi());
+    return pImpl_->started_.load();
 }
 
 void PeerAdvertisement::stop()
 {
-    pImpl_->running_ = false;
-    if (pImpl_->poll_) {
-        avahi_simple_poll_quit(pImpl_->poll_);
+    if (!pImpl_->started_.load()) {
+        pImpl_->stopAvahi();
+        return;
     }
-    if (pImpl_->thread_.joinable()) {
-        pImpl_->thread_.join();
-    }
+
+    pImpl_->started_.store(false);
+    pImpl_->stopAvahi();
 }
 
 bool PeerAdvertisement::isRunning() const
 {
-    return pImpl_->running_;
+    return pImpl_->started_.load();
 }
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

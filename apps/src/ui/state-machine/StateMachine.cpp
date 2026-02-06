@@ -21,7 +21,6 @@
 #include "core/network/WebSocketService.h"
 #include "network/CommandDeserializerJson.h"
 #include "server/api/EventSubscribe.h"
-#include "server/network/PeerAdvertisement.h"
 #include "states/State.h"
 #include "ui/DisplayCapture.h"
 #include "ui/RemoteInputDevice.h"
@@ -31,7 +30,6 @@
 #include <chrono>
 #include <rtc/rtc.hpp>
 #include <type_traits>
-#include <unistd.h>
 
 namespace DirtSim {
 namespace Ui {
@@ -81,14 +79,6 @@ StateMachine::StateMachine(
     webRtcStreamer_ = std::make_unique<WebRtcStreamer>();
     webRtcStreamer_->setDisplay(disp);
     LOG_INFO(State, "WebRtcStreamer created");
-
-    char hostname[256] = "dirtsim-ui";
-    gethostname(hostname, sizeof(hostname));
-    peerServiceName_ = std::string(hostname) + "-ui";
-    peerAd_ = std::make_unique<Server::PeerAdvertisement>();
-    peerAd_->setServiceName(peerServiceName_);
-    peerAd_->setPort(wsPort_);
-    peerAd_->setRole(Server::PeerRole::Ui);
 }
 
 FractalAnimator& StateMachine::getFractalAnimator()
@@ -181,23 +171,6 @@ void StateMachine::setupWebSocketService()
                 wsPort_,
                 listenResult.errorValue());
             return;
-        }
-
-        if (peerAd_) {
-            if (cwc.command.enabled) {
-                peerAd_->setServiceName(peerServiceName_);
-                peerAd_->setPort(wsPort_);
-                peerAd_->setRole(Server::PeerRole::Ui);
-                if (peerAd_->start()) {
-                    LOG_INFO(Network, "PeerAdvertisement started on port {}", wsPort_);
-                }
-                else {
-                    LOG_WARN(Network, "PeerAdvertisement failed to start");
-                }
-            }
-            else {
-                peerAd_->stop();
-            }
         }
     });
     ws->registerHandler<UiApi::ScreenGrab::Cwc>(
@@ -318,10 +291,6 @@ void StateMachine::setupWebSocketService()
 StateMachine::~StateMachine()
 {
     LOG_INFO(State, "Shutting down from state: {}", getCurrentStateName());
-
-    if (peerAd_) {
-        peerAd_->stop();
-    }
 
     // WebSocketService cleanup handled by unique_ptr.
 }

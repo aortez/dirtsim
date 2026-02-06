@@ -80,6 +80,13 @@ RUN locale-gen en_US.UTF-8
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
+# Provide a non-sensitive host public key for tests that expect this path.
+# Generate and delete the private key in the same layer so only .pub remains.
+RUN mkdir -p /etc/ssh && \
+    ssh-keygen -q -t ecdsa -b 256 -N "" -f /tmp/ssh_host_ecdsa_key && \
+    cp /tmp/ssh_host_ecdsa_key.pub /etc/ssh/ssh_host_ecdsa_key.pub && \
+    rm -f /tmp/ssh_host_ecdsa_key /tmp/ssh_host_ecdsa_key.pub
+
 # Configure password-free sudo for all users.
 RUN echo 'ALL ALL=(ALL) NOPASSWD: ALL' >> /etc/sudoers
 
