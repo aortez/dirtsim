@@ -9,6 +9,7 @@
 #include "core/Timers.h"
 #include "states/State.h"
 #include "ui/UiConfig.h"
+#include "ui/UserSettingsManager.h"
 
 #include <algorithm>
 #include <memory>
@@ -40,12 +41,13 @@ class StateMachine : public StateMachineBase,
                      public StateMachineInterface<Event>,
                      public EventSink {
 public:
-    explicit StateMachine(_lv_display_t* display, uint16_t wsPort = 7070);
+    explicit StateMachine(
+        _lv_display_t* display, UserSettingsManager& userSettingsManager, uint16_t wsPort = 7070);
     ~StateMachine();
 
     // Test-only constructor: creates minimal StateMachine without display or networking.
     struct TestMode {};
-    explicit StateMachine(TestMode);
+    explicit StateMachine(TestMode, UserSettingsManager& userSettingsManager);
 
     void mainLoopRun();
 
@@ -90,6 +92,8 @@ public:
 
     double getUiFps() const;
 
+    UserSettings& getUserSettings() { return userSettingsManager_->get(); }
+    const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
 
@@ -104,6 +108,7 @@ public:
 
 private:
     static constexpr uint32_t AutoShrinkTimeoutMs = 10000;
+    static constexpr uint32_t StartMenuIdleClockTimeoutMs = 60000;
 
     SystemMetrics systemMetrics_;
     Timers timers_;
@@ -114,6 +119,8 @@ private:
     bool hasLastServerAddress_ = false;
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
+    UserSettingsManager* userSettingsManager_ = nullptr;
+    bool startMenuIdleClockTriggered_ = false;
     int synthVolumePercent_ = 50;
 
     bool isAutoShrinkBlocked() const;

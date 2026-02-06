@@ -11,13 +11,11 @@ namespace DirtSim {
 namespace Ui {
 
 class EventSink;
-class FractalAnimator;
-class DuckStopButton;
 
 /**
  * @brief Home panel for Training state.
  *
- * Provides View Best and Quit buttons for the training view.
+ * Provides View Best controls for the training view.
  * This is the "home" panel for the Training state.
  */
 class EvolutionControls {
@@ -26,8 +24,7 @@ public:
         lv_obj_t* container,
         EventSink& eventSink,
         bool evolutionStarted,
-        TrainingSpec& trainingSpec,
-        FractalAnimator* fractalAnimator);
+        TrainingSpec& trainingSpec);
     ~EvolutionControls();
 
     void setEvolutionStarted(bool started);
@@ -36,25 +33,21 @@ public:
 private:
     lv_obj_t* container_;
     EventSink& eventSink_;
-    FractalAnimator* fractalAnimator_ = nullptr;
-
     std::unique_ptr<PanelViewController> viewController_;
 
     bool evolutionStarted_ = false;
     bool evolutionCompleted_ = false;
     GenomeId bestGenomeId_;
 
-    // Shared configs (owned by TrainingView).
+    // Shared configs (owned by training views).
     TrainingSpec& trainingSpec_;
 
     lv_obj_t* viewBestButton_ = nullptr;
-    std::unique_ptr<DuckStopButton> quitButton_;
 
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();
 
     static void onViewBestClicked(lv_event_t* e);
-    static void onQuitClicked(lv_event_t* e);
 };
 
 } // namespace Ui

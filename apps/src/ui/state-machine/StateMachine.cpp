@@ -29,11 +29,13 @@
 #include "ui/rendering/WebRtcStreamer.h"
 #include <chrono>
 #include <rtc/rtc.hpp>
+#include <type_traits>
 
 namespace DirtSim {
 namespace Ui {
 
-StateMachine::StateMachine(TestMode) : display(nullptr)
+StateMachine::StateMachine(TestMode, UserSettingsManager& userSettingsManager)
+    : display(nullptr), userSettingsManager_(&userSettingsManager)
 {
     // Minimal initialization for unit testing.
     // No WebSocket, no UI components, no WebRTC - just the state machine core.
@@ -41,7 +43,9 @@ StateMachine::StateMachine(TestMode) : display(nullptr)
     LOG_INFO(State, "StateMachine created in test mode");
 }
 
-StateMachine::StateMachine(_lv_display_t* disp, uint16_t wsPort) : display(disp)
+StateMachine::StateMachine(
+    _lv_display_t* disp, UserSettingsManager& userSettingsManager, uint16_t wsPort)
+    : display(disp), userSettingsManager_(&userSettingsManager)
 {
     LOG_INFO(State, "Initialized in state: {}", getCurrentStateName());
     wsPort_ = wsPort;
@@ -383,8 +387,19 @@ void StateMachine::autoShrinkIfIdle()
             "Auto-shrink activity detected, inactivity timer reset ({}ms -> {}ms)",
             lastInactiveMs_,
             inactiveMs);
+        startMenuIdleClockTriggered_ = false;
     }
     lastInactiveMs_ = inactiveMs;
+
+    if (!startMenuIdleClockTriggered_ && inactiveMs >= StartMenuIdleClockTimeoutMs
+        && std::holds_alternative<State::StartMenu>(fsmState.getVariant())) {
+        startMenuIdleClockTriggered_ = true;
+        LOG_INFO(
+            State,
+            "StartMenu idle timeout reached (inactive={}ms), launching clock scenario",
+            inactiveMs);
+        queueEvent(StartMenuIdleTimeoutEvent{});
+    }
 
     auto* iconRail = uiManager_->getIconRail();
     if (!iconRail || iconRail->isMinimized()) {
@@ -480,14 +495,15 @@ void StateMachine::handleEvent(const Event& event)
 
         std::visit(
             [&stateDetails](const auto& currentState) {
-                using T = std::decay_t<decltype(currentState)>;
-                if constexpr (std::is_same_v<T, State::Training>) {
+                using StateType = std::decay_t<decltype(currentState)>;
+                if constexpr (requires { currentState.isTrainingResultModalVisible(); }) {
                     stateDetails = UiApi::StatusGet::TrainingStateDetails{
                         .trainingModalVisible = currentState.isTrainingResultModalVisible(),
                     };
                 }
                 else if constexpr (
-                    std::is_same_v<T, State::Synth> || std::is_same_v<T, State::SynthConfig>) {
+                    std::is_same_v<StateType, State::Synth>
+                    || std::is_same_v<StateType, State::SynthConfig>) {
                     stateDetails = UiApi::StatusGet::SynthStateDetails{
                         .last_key_index = currentState.getLastKeyIndex(),
                         .last_key_is_black = currentState.getLastKeyIsBlack(),
@@ -588,6 +604,7 @@ void StateMachine::handleEvent(const Event& event)
         if (display) {
             lv_display_trigger_activity(display);
             lastInactiveMs_ = 0;
+            startMenuIdleClockTriggered_ = false;
         }
         UiApi::IconRailShowIcons::Okay response{ .shown = !iconRail->isMinimized() };
         cwc.sendResponse(UiApi::IconRailShowIcons::Response::okay(std::move(response)));
