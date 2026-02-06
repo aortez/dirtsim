@@ -552,7 +552,7 @@ Add `connectionId` to commands that need follow-up messages:
 
 1. **libdatachannel buffering:** RenderMessages may arrive in bursts with ~2s initial delay. Investigate rtc::WebSocketConfiguration settings for tuning.
 
-2. **Complex response types:** Some responses (PeersGet, TimerStatsGet) have nested structures that ReflectSerializer can't auto-serialize. Require custom toJson() implementations.
+2. **Complex response types:** Some responses (OsApi PeersGet, TimerStatsGet) have nested structures that ReflectSerializer can't auto-serialize. Require custom toJson() implementations.
 
 ## Future Enhancements
 

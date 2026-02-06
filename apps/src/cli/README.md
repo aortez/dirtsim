@@ -80,6 +80,10 @@ Send commands to the server, UI, audio, or os-manager:
 ./build-debug/bin/cli os-manager SystemStatus
 ./build-debug/bin/cli os-manager WebUiAccessSet '{"enabled": true}'
 ./build-debug/bin/cli os-manager WebSocketAccessSet '{"enabled": true}'
+./build-debug/bin/cli os-manager PeerClientKeyEnsure
+./build-debug/bin/cli os-manager TrustBundleGet
+./build-debug/bin/cli os-manager TrustPeer '{"bundle":{"host":"dirtsim2","ssh_user":"dirtsim","ssh_port":22,"host_fingerprint_sha256":"SHA256:...","client_pubkey":"ssh-ed25519 AAAA..."}}'
+./build-debug/bin/cli os-manager UntrustPeer '{"host":"dirtsim2"}'
 ./build-debug/bin/cli os-manager StartServer
 ./build-debug/bin/cli os-manager StartAudio
 ./build-debug/bin/cli os-manager StopServer
@@ -90,6 +94,17 @@ Send commands to the server, UI, audio, or os-manager:
 ./build-debug/bin/cli os-manager StopUi
 ./build-debug/bin/cli os-manager RestartUi
 ./build-debug/bin/cli os-manager Reboot
+
+# Peer trust flow (bootstrap + trust)
+./build-debug/bin/cli os-manager TrustBundleGet
+./build-debug/bin/cli os-manager TrustPeer '{"bundle":{"host":"dirtsim2","ssh_user":"dirtsim","ssh_port":22,"host_fingerprint_sha256":"SHA256:...","client_pubkey":"ssh-ed25519 AAAA..."}}'
+
+# Remote CLI execution (after trust)
+./build-debug/bin/cli os-manager RemoteCliRun '{"host":"dirtsim2","args":["server","GenomeList"]}'
+
+# Genome push/pull flow (next step)
+# Pull: RemoteCliRun -> server GenomeGet on the target, then save JSON locally.
+# Push: RemoteCliRun -> server GenomeSet on the target with the JSON payload.
 
 # Audio commands
 ./build-debug/bin/cli audio StatusGet

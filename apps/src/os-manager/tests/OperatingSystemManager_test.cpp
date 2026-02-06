@@ -14,6 +14,12 @@ struct OperatingSystemManagerTestAccessor {
         return manager.buildSystemStatusInternal();
     }
 
+    static std::pair<uint16_t, uint16_t> computePeerAdvertisementPorts(
+        const OperatingSystemManager& manager)
+    {
+        return manager.computePeerAdvertisementPorts();
+    }
+
     static Result<std::monostate, ApiError> runServiceCommand(
         OperatingSystemManager& manager, const std::string& action, const std::string& unitName)
     {
@@ -53,7 +59,12 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsOkayOnZeroExit)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return 0; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "start", "dirtsim-server.service");
@@ -65,7 +76,12 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsErrorOnNonZeroExit)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return 1 << 8; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "restart", "dirtsim-ui.service");
@@ -78,11 +94,54 @@ TEST(OperatingSystemManagerTest, RunServiceCommandReturnsErrorOnFailureToStart)
 {
     OperatingSystemManager::Dependencies dependencies;
     dependencies.systemCommand = [](const std::string&) { return -1; };
-    OperatingSystemManager manager(OperatingSystemManager::TestMode{ dependencies });
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
 
     const auto result = OperatingSystemManagerTestAccessor::runServiceCommand(
         manager, "stop", "dirtsim-ui.service");
 
     ASSERT_TRUE(result.isError());
     EXPECT_EQ(result.errorValue().message, "systemctl failed to start");
+}
+
+TEST(OperatingSystemManagerTest, PeerAdvertisementPortsDeriveFromBackendArgs)
+{
+    OperatingSystemManager::BackendConfig config;
+    config.serverArgs = "-p 9001";
+    config.uiArgs = "--port=7001";
+
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = {},
+            .backendConfig = config,
+            .hasBackendConfig = true,
+        });
+
+    const auto [serverPort, uiPort] =
+        OperatingSystemManagerTestAccessor::computePeerAdvertisementPorts(manager);
+    EXPECT_EQ(serverPort, 9001);
+    EXPECT_EQ(uiPort, 7001);
+}
+
+TEST(OperatingSystemManagerTest, PeerAdvertisementPortsDefaultWhenArgsMissingOrInvalid)
+{
+    OperatingSystemManager::BackendConfig config;
+    config.serverArgs = "--port=99999";
+    config.uiArgs = "";
+
+    OperatingSystemManager manager(
+        OperatingSystemManager::TestMode{
+            .dependencies = {},
+            .backendConfig = config,
+            .hasBackendConfig = true,
+        });
+
+    const auto [serverPort, uiPort] =
+        OperatingSystemManagerTestAccessor::computePeerAdvertisementPorts(manager);
+    EXPECT_EQ(serverPort, 8080);
+    EXPECT_EQ(uiPort, 7070);
 }

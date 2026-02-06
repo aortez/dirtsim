@@ -2,13 +2,14 @@
 
 #include "core/Pimpl.h"
 
+#include <cstdint>
 #include <functional>
 #include <nlohmann/json.hpp>
 #include <string>
 #include <vector>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 enum class PeerRole { Physics, Ui, Unknown };
 
@@ -25,8 +26,6 @@ struct PeerInfo {
     }
 };
 
-void to_json(nlohmann::json& j, const PeerRole& role);
-void from_json(const nlohmann::json& j, PeerRole& role);
 void to_json(nlohmann::json& j, const PeerInfo& info);
 void from_json(const nlohmann::json& j, PeerInfo& info);
 
@@ -62,5 +61,5 @@ private:
     Pimpl<Impl> pImpl_;
 };
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

@@ -1,41 +1,42 @@
-#include "PeerDiscovery.h"
-#include "core/ReflectSerializer.h"
+#include "os-manager/network/PeerDiscovery.h"
 
+#include "core/LoggingChannels.h"
+#include <algorithm>
 #include <atomic>
 #include <mutex>
-#include <stdexcept>
-#include <thread>
 
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
 #include <avahi-common/error.h>
 #include <avahi-common/malloc.h>
-#include <avahi-common/simple-watch.h>
-#include <spdlog/spdlog.h>
+#include <avahi-common/thread-watch.h>
 
 namespace DirtSim {
-namespace Server {
+namespace OsManager {
 
 struct PeerDiscovery::Impl {
-    std::atomic<bool> running_{ false };
-    std::thread thread_;
     mutable std::mutex mutex_;
     std::vector<PeerInfo> peers_;
     std::function<void(const std::vector<PeerInfo>&)> onPeersChanged_;
 
-    AvahiSimplePoll* poll_ = nullptr;
+    AvahiThreadedPoll* poll_ = nullptr;
     AvahiClient* client_ = nullptr;
     AvahiServiceBrowser* browser_ = nullptr;
+    std::atomic<bool> started_{ false };
 
     static void clientCallback(AvahiClient* client, AvahiClientState state, void* userdata)
     {
         auto* self = static_cast<Impl*>(userdata);
 
         if (state == AVAHI_CLIENT_FAILURE) {
-            spdlog::error(
+            LOG_ERROR(
+                Network,
                 "PeerDiscovery: Avahi client failure: {}",
                 avahi_strerror(avahi_client_errno(client)));
-            avahi_simple_poll_quit(self->poll_);
+            if (self->poll_) {
+                avahi_threaded_poll_quit(self->poll_);
+            }
+            self->started_.store(false);
         }
     }
 
@@ -54,7 +55,7 @@ struct PeerDiscovery::Impl {
 
         switch (event) {
             case AVAHI_BROWSER_NEW:
-                spdlog::debug("PeerDiscovery: Found service '{}', resolving...", name);
+                LOG_DEBUG(Network, "PeerDiscovery: Found service '{}', resolving...", name);
                 avahi_service_resolver_new(
                     self->client_,
                     interface,
@@ -69,15 +70,19 @@ struct PeerDiscovery::Impl {
                 break;
 
             case AVAHI_BROWSER_REMOVE:
-                spdlog::debug("PeerDiscovery: Service '{}' removed", name);
+                LOG_DEBUG(Network, "PeerDiscovery: Service '{}' removed", name);
                 self->removePeer(name);
                 break;
 
             case AVAHI_BROWSER_FAILURE:
-                spdlog::error(
+                LOG_ERROR(
+                    Network,
                     "PeerDiscovery: Browser failure: {}",
                     avahi_strerror(avahi_client_errno(self->client_)));
-                avahi_simple_poll_quit(self->poll_);
+                if (self->poll_) {
+                    avahi_threaded_poll_quit(self->poll_);
+                }
+                self->started_.store(false);
                 break;
 
             case AVAHI_BROWSER_ALL_FOR_NOW:
@@ -132,11 +137,12 @@ struct PeerDiscovery::Impl {
                 }
             }
 
-            spdlog::info("PeerDiscovery: Resolved '{}' at {}:{}", name, peer.host, port);
+            LOG_INFO(Network, "PeerDiscovery: Resolved '{}' at {}:{}", name, peer.host, port);
             self->addPeer(peer);
         }
         else if (event == AVAHI_RESOLVER_FAILURE) {
-            spdlog::warn(
+            LOG_WARN(
+                Network,
                 "PeerDiscovery: Failed to resolve '{}': {}",
                 name,
                 avahi_strerror(avahi_client_errno(self->client_)));
@@ -147,48 +153,63 @@ struct PeerDiscovery::Impl {
 
     void addPeer(const PeerInfo& peer)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = std::find(peers_.begin(), peers_.end(), peer);
-        if (it == peers_.end()) {
-            peers_.push_back(peer);
-            if (onPeersChanged_) {
-                onPeersChanged_(peers_);
+        std::function<void(const std::vector<PeerInfo>&)> callback;
+        std::vector<PeerInfo> peersCopy;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = std::find(peers_.begin(), peers_.end(), peer);
+            if (it != peers_.end()) {
+                return;
             }
+            peers_.push_back(peer);
+            callback = onPeersChanged_;
+            peersCopy = peers_;
+        }
+        if (callback) {
+            callback(peersCopy);
         }
     }
 
     void removePeer(const std::string& name)
     {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = std::remove_if(
-            peers_.begin(), peers_.end(), [&name](const PeerInfo& p) { return p.name == name; });
-        if (it != peers_.end()) {
-            peers_.erase(it, peers_.end());
-            if (onPeersChanged_) {
-                onPeersChanged_(peers_);
+        std::function<void(const std::vector<PeerInfo>&)> callback;
+        std::vector<PeerInfo> peersCopy;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            auto it = std::remove_if(peers_.begin(), peers_.end(), [&name](const PeerInfo& p) {
+                return p.name == name;
+            });
+            if (it == peers_.end()) {
+                return;
             }
+            peers_.erase(it, peers_.end());
+            callback = onPeersChanged_;
+            peersCopy = peers_;
+        }
+        if (callback) {
+            callback(peersCopy);
         }
     }
 
     bool startAvahi()
     {
-        poll_ = avahi_simple_poll_new();
+        poll_ = avahi_threaded_poll_new();
         if (!poll_) {
-            spdlog::error("PeerDiscovery: Failed to create Avahi simple poll.");
+            LOG_ERROR(Network, "PeerDiscovery: Failed to create Avahi threaded poll.");
             return false;
         }
 
         int error = 0;
         client_ = avahi_client_new(
-            avahi_simple_poll_get(poll_),
+            avahi_threaded_poll_get(poll_),
             static_cast<AvahiClientFlags>(0),
             clientCallback,
             this,
             &error);
         if (!client_) {
-            spdlog::error(
-                "PeerDiscovery: Failed to create Avahi client: {}", avahi_strerror(error));
-            avahi_simple_poll_free(poll_);
+            LOG_ERROR(
+                Network, "PeerDiscovery: Failed to create Avahi client: {}", avahi_strerror(error));
+            avahi_threaded_poll_free(poll_);
             poll_ = nullptr;
             return false;
         }
@@ -203,22 +224,37 @@ struct PeerDiscovery::Impl {
             browseCallback,
             this);
         if (!browser_) {
-            spdlog::error(
+            LOG_ERROR(
+                Network,
                 "PeerDiscovery: Failed to create service browser: {}",
                 avahi_strerror(avahi_client_errno(client_)));
             avahi_client_free(client_);
-            avahi_simple_poll_free(poll_);
+            avahi_threaded_poll_free(poll_);
             client_ = nullptr;
             poll_ = nullptr;
             return false;
         }
 
-        spdlog::info("PeerDiscovery: Started browsing for _dirtsim._tcp services.");
+        if (avahi_threaded_poll_start(poll_) < 0) {
+            LOG_ERROR(Network, "PeerDiscovery: Failed to start Avahi threaded poll.");
+            avahi_service_browser_free(browser_);
+            avahi_client_free(client_);
+            avahi_threaded_poll_free(poll_);
+            browser_ = nullptr;
+            client_ = nullptr;
+            poll_ = nullptr;
+            return false;
+        }
+
+        LOG_INFO(Network, "PeerDiscovery: Started browsing for _dirtsim._tcp services (threaded).");
         return true;
     }
 
     void stopAvahi()
     {
+        if (poll_) {
+            avahi_threaded_poll_stop(poll_);
+        }
         if (browser_) {
             avahi_service_browser_free(browser_);
             browser_ = nullptr;
@@ -228,65 +264,11 @@ struct PeerDiscovery::Impl {
             client_ = nullptr;
         }
         if (poll_) {
-            avahi_simple_poll_free(poll_);
+            avahi_threaded_poll_free(poll_);
             poll_ = nullptr;
         }
     }
-
-    void runLoop()
-    {
-        if (!startAvahi()) {
-            running_ = false;
-            return;
-        }
-
-        while (running_) {
-            int result = avahi_simple_poll_iterate(poll_, 100);
-            if (result != 0) {
-                break;
-            }
-        }
-
-        stopAvahi();
-        spdlog::info("PeerDiscovery: Stopped.");
-    }
 };
-
-void to_json(nlohmann::json& j, const PeerRole& role)
-{
-    j = static_cast<int>(role);
-}
-
-void from_json(const nlohmann::json& j, PeerRole& role)
-{
-    if (!j.is_number_integer()) {
-        throw std::runtime_error("Peer role must be an integer.");
-    }
-
-    switch (j.get<int>()) {
-        case static_cast<int>(PeerRole::Physics):
-            role = PeerRole::Physics;
-            return;
-        case static_cast<int>(PeerRole::Ui):
-            role = PeerRole::Ui;
-            return;
-        case static_cast<int>(PeerRole::Unknown):
-            role = PeerRole::Unknown;
-            return;
-    }
-
-    throw std::runtime_error("Invalid peer role value.");
-}
-
-void to_json(nlohmann::json& j, const PeerInfo& info)
-{
-    j = ReflectSerializer::to_json(info);
-}
-
-void from_json(const nlohmann::json& j, PeerInfo& info)
-{
-    info = ReflectSerializer::from_json<PeerInfo>(j);
-}
 
 PeerDiscovery::PeerDiscovery() : pImpl_()
 {}
@@ -298,35 +280,28 @@ PeerDiscovery::~PeerDiscovery()
 
 bool PeerDiscovery::start()
 {
-    if (pImpl_->running_) {
+    if (pImpl_->started_.load()) {
         return true;
     }
 
-    pImpl_->running_ = true;
-    pImpl_->thread_ = std::thread([this]() { pImpl_->runLoop(); });
-    return true;
+    pImpl_->started_.store(pImpl_->startAvahi());
+    return pImpl_->started_.load();
 }
 
 void PeerDiscovery::stop()
 {
-    // Signal thread to stop.
-    pImpl_->running_ = false;
-
-    // Wake up the poll if it's running.
-    if (pImpl_->poll_) {
-        avahi_simple_poll_quit(pImpl_->poll_);
+    if (!pImpl_->started_.load()) {
+        pImpl_->stopAvahi();
+        return;
     }
 
-    // Always join the thread if it exists, even if running_ was set to false
-    // by the thread itself (e.g., when Avahi daemon is not available).
-    if (pImpl_->thread_.joinable()) {
-        pImpl_->thread_.join();
-    }
+    pImpl_->started_.store(false);
+    pImpl_->stopAvahi();
 }
 
 bool PeerDiscovery::isRunning() const
 {
-    return pImpl_->running_;
+    return pImpl_->started_.load();
 }
 
 std::vector<PeerInfo> PeerDiscovery::getPeers() const
@@ -341,5 +316,5 @@ void PeerDiscovery::setOnPeersChanged(std::function<void(const std::vector<PeerI
     pImpl_->onPeersChanged_ = std::move(callback);
 }
 
-} // namespace Server
+} // namespace OsManager
 } // namespace DirtSim

@@ -31,6 +31,29 @@ Any Idle::onEvent(const OsApi::Reboot::Cwc& cwc, OperatingSystemManager& /*osm*/
     return Rebooting{};
 }
 
+Any Idle::onEvent(const OsApi::PeerClientKeyEnsure::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "PeerClientKeyEnsure command received");
+    cwc.sendResponse(osm.ensurePeerClientKey());
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::PeersGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "PeersGet command received");
+    OsApi::PeersGet::Okay response;
+    response.peers = osm.getPeers();
+    cwc.sendResponse(OsApi::PeersGet::Response::okay(std::move(response)));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::RemoteCliRun::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "RemoteCliRun command received");
+    cwc.sendResponse(osm.remoteCliRun(cwc.command));
+    return Idle{};
+}
+
 Any Idle::onEvent(const OsApi::RestartAudio::Cwc& cwc, OperatingSystemManager& osm)
 {
     LOG_INFO(State, "RestartAudio command received");
@@ -98,6 +121,27 @@ Any Idle::onEvent(const OsApi::SystemStatus::Cwc& cwc, OperatingSystemManager& o
 {
     LOG_INFO(State, "SystemStatus command received");
     cwc.sendResponse(OsApi::SystemStatus::Response::okay(osm.buildSystemStatus()));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::TrustBundleGet::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "TrustBundleGet command received");
+    cwc.sendResponse(osm.getTrustBundle());
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::TrustPeer::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "TrustPeer command received");
+    cwc.sendResponse(osm.trustPeer(cwc.command));
+    return Idle{};
+}
+
+Any Idle::onEvent(const OsApi::UntrustPeer::Cwc& cwc, OperatingSystemManager& osm)
+{
+    LOG_INFO(State, "UntrustPeer command received");
+    cwc.sendResponse(osm.untrustPeer(cwc.command));
     return Idle{};
 }
 

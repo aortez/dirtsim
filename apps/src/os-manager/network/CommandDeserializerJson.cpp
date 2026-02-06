@@ -1,5 +1,9 @@
 #include "CommandDeserializerJson.h"
+#include "core/LoggingChannels.h"
+#include "os-manager/api/PeerClientKeyEnsure.h"
+#include "os-manager/api/PeersGet.h"
 #include "os-manager/api/Reboot.h"
+#include "os-manager/api/RemoteCliRun.h"
 #include "os-manager/api/RestartAudio.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
@@ -10,10 +14,12 @@
 #include "os-manager/api/StopServer.h"
 #include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
+#include "os-manager/api/TrustBundleGet.h"
+#include "os-manager/api/TrustPeer.h"
+#include "os-manager/api/UntrustPeer.h"
 #include "os-manager/api/WebSocketAccessSet.h"
 #include "os-manager/api/WebUiAccessSet.h"
 #include <nlohmann/json.hpp>
-#include <spdlog/spdlog.h>
 
 namespace DirtSim {
 namespace OsManager {
@@ -42,10 +48,22 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
     }
 
     const std::string commandName = cmd["command"].get<std::string>();
-    spdlog::debug("OsManager: Deserializing command: {}", commandName);
+    LOG_DEBUG(Network, "OsManager: Deserializing command: {}", commandName);
 
     try {
-        if (commandName == OsApi::Reboot::Command::name()) {
+        if (commandName == OsApi::PeerClientKeyEnsure::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::PeerClientKeyEnsure::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::PeersGet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::PeersGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::RemoteCliRun::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::RemoteCliRun::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::Reboot::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::Reboot::Command::fromJson(cmd));
         }
@@ -88,6 +106,18 @@ Result<OsApi::OsApiCommand, ApiError> CommandDeserializerJson::deserialize(
         else if (commandName == OsApi::SystemStatus::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(
                 OsApi::SystemStatus::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::TrustBundleGet::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::TrustBundleGet::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::TrustPeer::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::TrustPeer::Command::fromJson(cmd));
+        }
+        else if (commandName == OsApi::UntrustPeer::Command::name()) {
+            return Result<OsApi::OsApiCommand, ApiError>::okay(
+                OsApi::UntrustPeer::Command::fromJson(cmd));
         }
         else if (commandName == OsApi::WebSocketAccessSet::Command::name()) {
             return Result<OsApi::OsApiCommand, ApiError>::okay(

@@ -19,8 +19,11 @@ protected:
             return Result<std::monostate, ApiError>::okay(std::monostate{});
         };
         dependencies.systemStatus = [this]() { return status; };
-        manager = std::make_unique<OperatingSystemManager>(
-            OperatingSystemManager::TestMode{ dependencies });
+        manager = std::make_unique<OperatingSystemManager>(OperatingSystemManager::TestMode{
+            .dependencies = dependencies,
+            .backendConfig = {},
+            .hasBackendConfig = false,
+        });
     }
 
     OperatingSystemManager::Dependencies dependencies;
@@ -240,8 +243,11 @@ TEST_F(OsManagerStateIdleTest, ServiceCommandErrorPropagates)
     dependencies.serviceCommand = [](const std::string&, const std::string&) {
         return Result<std::monostate, ApiError>::error(ApiError("systemctl failed"));
     };
-    manager =
-        std::make_unique<OperatingSystemManager>(OperatingSystemManager::TestMode{ dependencies });
+    manager = std::make_unique<OperatingSystemManager>(OperatingSystemManager::TestMode{
+        .dependencies = dependencies,
+        .backendConfig = {},
+        .hasBackendConfig = false,
+    });
 
     Idle idleState;
     bool callbackInvoked = false;
