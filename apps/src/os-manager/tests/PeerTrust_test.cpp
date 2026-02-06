@@ -322,3 +322,28 @@ TEST(PeerTrustTest, TrustPeerRejectsMissingFields)
     missingKey.bundle.client_pubkey.clear();
     EXPECT_TRUE(manager.trustPeer(missingKey).isError());
 }
+
+TEST(PeerTrustTest, TrustPeerRejectsMultilineClientPublicKey)
+{
+    const auto rootDir = makeTempDir("multiline-key");
+    const auto workDir = rootDir / "work";
+    const auto homeDir = rootDir / "home";
+
+    OperatingSystemManager::Dependencies dependencies;
+    OperatingSystemManager manager(makeTestMode(workDir, homeDir, std::move(dependencies)));
+
+    OsApi::TrustPeer::Command command;
+    command.bundle.host = "peer1";
+    command.bundle.ssh_user = "dirtsim";
+    command.bundle.ssh_port = 22;
+    command.bundle.host_fingerprint_sha256 = "SHA256:HOSTFP";
+    command.bundle.client_pubkey =
+        "ssh-ed25519 AAAATESTKEY test@unit\nssh-ed25519 AAAAATTACK attack@unit";
+
+    const auto result = manager.trustPeer(command);
+    ASSERT_TRUE(result.isError());
+    EXPECT_NE(result.errorValue().message.find("invalid control characters"), std::string::npos);
+
+    EXPECT_FALSE(std::filesystem::exists(workDir / "peer-allowlist.json"));
+    EXPECT_FALSE(std::filesystem::exists(homeDir / ".ssh" / "authorized_keys"));
+}

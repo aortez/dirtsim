@@ -445,9 +445,19 @@ Result<OsApi::RemoteCliRun::Okay, ApiError> RemoteSshExecutor::run(
 
     char buffer[4096];
     while (true) {
+        if (remainingMs(commandDeadline) <= 0) {
+            timedOut = true;
+            break;
+        }
+
         bool readData = false;
 
         while (true) {
+            if (remainingMs(commandDeadline) <= 0) {
+                timedOut = true;
+                break;
+            }
+
             const ssize_t rc = libssh2_channel_read(channel, buffer, sizeof(buffer));
             if (rc > 0) {
                 if (stdoutText.size() + static_cast<size_t>(rc) > kMaxStdoutBytes) {
@@ -467,11 +477,20 @@ Result<OsApi::RemoteCliRun::Okay, ApiError> RemoteSshExecutor::run(
                 ApiError("SSH read failed: " + getLibssh2Error(session, static_cast<int>(rc))));
         }
 
+        if (timedOut) {
+            break;
+        }
+
         if (outputTooLarge) {
             break;
         }
 
         while (true) {
+            if (remainingMs(commandDeadline) <= 0) {
+                timedOut = true;
+                break;
+            }
+
             const ssize_t rc = libssh2_channel_read_stderr(channel, buffer, sizeof(buffer));
             if (rc > 0) {
                 if (stderrText.size() + static_cast<size_t>(rc) > kMaxStderrBytes) {
@@ -489,6 +508,10 @@ Result<OsApi::RemoteCliRun::Okay, ApiError> RemoteSshExecutor::run(
             libssh2_session_free(session);
             return Result<OsApi::RemoteCliRun::Okay, ApiError>::error(ApiError(
                 "SSH read stderr failed: " + getLibssh2Error(session, static_cast<int>(rc))));
+        }
+
+        if (timedOut) {
+            break;
         }
 
         if (outputTooLarge) {

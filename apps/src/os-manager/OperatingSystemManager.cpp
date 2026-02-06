@@ -15,6 +15,7 @@
 #include "ui/state-machine/api/StatusGet.h"
 #include "ui/state-machine/api/WebSocketAccessSet.h"
 #include <algorithm>
+#include <cctype>
 #include <cerrno>
 #include <chrono>
 #include <cstdio>
@@ -236,6 +237,27 @@ Result<std::string, ApiError> extractKeyBody(const std::string& publicKey)
         return Result<std::string, ApiError>::error(ApiError("Invalid public key format"));
     }
     return Result<std::string, ApiError>::okay(keyBody);
+}
+
+Result<std::string, ApiError> normalizeAuthorizedKeyLine(const std::string& publicKey)
+{
+    const std::string normalized = trimWhitespace(publicKey);
+    if (normalized.empty()) {
+        return Result<std::string, ApiError>::error(ApiError("Client public key is required"));
+    }
+
+    for (const unsigned char ch : normalized) {
+        if (ch == '\0' || ch == '\n' || ch == '\r') {
+            return Result<std::string, ApiError>::error(
+                ApiError("Client public key contains invalid control characters"));
+        }
+        if (std::iscntrl(ch) && ch != '\t') {
+            return Result<std::string, ApiError>::error(
+                ApiError("Client public key contains invalid control characters"));
+        }
+    }
+
+    return Result<std::string, ApiError>::okay(normalized);
 }
 
 Result<std::string, ApiError> extractFingerprintSha256(const std::string& output)
@@ -1302,6 +1324,11 @@ Result<OsApi::TrustPeer::Okay, ApiError> OperatingSystemManager::trustPeer(
         return Result<OsApi::TrustPeer::Okay, ApiError>::error(
             ApiError("Client public key is required"));
     }
+    auto normalizedPubKeyResult = normalizeAuthorizedKeyLine(bundle.client_pubkey);
+    if (normalizedPubKeyResult.isError()) {
+        return Result<OsApi::TrustPeer::Okay, ApiError>::error(normalizedPubKeyResult.errorValue());
+    }
+    bundle.client_pubkey = normalizedPubKeyResult.value();
     if (bundle.ssh_user.empty()) {
         bundle.ssh_user = "dirtsim";
     }
