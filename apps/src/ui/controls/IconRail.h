@@ -123,6 +123,8 @@ public:
 
 private:
     lv_obj_t* container_ = nullptr;
+    lv_obj_t* iconsViewport_ = nullptr;
+    lv_obj_t* iconsLayout_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
     std::vector<IconConfig> iconConfigs_;
     std::unique_ptr<IconFont> iconFont_; // FontAwesome loaded at runtime.

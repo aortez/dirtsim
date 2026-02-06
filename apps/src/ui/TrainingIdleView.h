@@ -57,7 +57,6 @@ public:
     Result<std::monostate, std::string> showTrainingConfigView(TrainingConfigView view);
     void setStreamIntervalMs(int value);
     void setEvolutionStarted(bool started);
-    void updateIconRailOffset();
     Result<GenomeId, std::string> openGenomeDetailByIndex(int index);
     Result<GenomeId, std::string> openGenomeDetailById(const GenomeId& genomeId);
     Result<std::monostate, std::string> loadGenomeDetail(const GenomeId& genomeId);
@@ -78,10 +77,7 @@ private:
     UserSettings& userSettings_;
 
     lv_obj_t* container_ = nullptr;
-    lv_obj_t* contentRow_ = nullptr;
-    lv_obj_t* idleSpacer_ = nullptr;
-
-    std::unique_ptr<ExpandablePanel> panel_;
+    ExpandablePanel* panel_ = nullptr;
     lv_obj_t* panelContent_ = nullptr;
     std::unique_ptr<Starfield> starfield_;
     const Starfield::Snapshot* starfieldSnapshot_ = nullptr;

@@ -83,46 +83,33 @@ void TrainingIdleView::createUI()
 
 void TrainingIdleView::createIdleUI()
 {
-    contentRow_ = lv_obj_create(container_);
-    lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(contentRow_, 0, 0);
-    lv_obj_set_style_pad_all(contentRow_, 0, 0);
-    lv_obj_set_style_pad_gap(contentRow_, 10, 0);
-    lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
-    lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
+    panel_ = uiManager_ ? uiManager_->getExpandablePanel() : nullptr;
+    if (!panel_) {
+        LOG_ERROR(Controls, "TrainingIdleView: No shared expandable panel available");
+        panelContent_ = nullptr;
+        return;
+    }
 
-    panel_ = std::make_unique<ExpandablePanel>(contentRow_);
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
+    panel_->clearContent();
+    panel_->resetWidth();
+    panel_->hide();
     panelContent_ = panel_->getContentArea();
 
-    idleSpacer_ = lv_obj_create(contentRow_);
-    lv_obj_set_size(idleSpacer_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_flex_grow(idleSpacer_, 1);
-    lv_obj_set_style_bg_opa(idleSpacer_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(idleSpacer_, 0, 0);
-    lv_obj_clear_flag(idleSpacer_, LV_OBJ_FLAG_SCROLLABLE);
-
-    updateIconRailOffset();
-
-    LOG_INFO(Controls, "Training idle UI created with panel column only");
+    LOG_INFO(Controls, "Training idle UI created with shared expandable panel");
 }
 
 void TrainingIdleView::destroyUI()
 {
     clearPanelContent();
+    hidePanel();
     starfield_.reset();
-    panel_.reset();
 
     if (container_) {
         lv_obj_clean(container_);
     }
 
     container_ = nullptr;
-    contentRow_ = nullptr;
-    idleSpacer_ = nullptr;
+    panel_ = nullptr;
     panelContent_ = nullptr;
 }
 
@@ -222,7 +209,7 @@ void TrainingIdleView::createTrainingConfigPanel()
     trainingConfigPanel_ = std::make_unique<TrainingConfigPanel>(
         panelContent_,
         eventSink_,
-        panel_.get(),
+        panel_,
         wsService_,
         evolutionStarted_,
         userSettings_.evolutionConfig,
@@ -292,25 +279,6 @@ void TrainingIdleView::setEvolutionStarted(bool started)
     if (trainingConfigPanel_) {
         trainingConfigPanel_->setEvolutionStarted(started);
     }
-}
-
-void TrainingIdleView::updateIconRailOffset()
-{
-    if (!contentRow_) {
-        return;
-    }
-
-    int leftPadding = 0;
-    IconRail* iconRail = uiManager_ ? uiManager_->getIconRail() : nullptr;
-    if (iconRail) {
-        if (lv_obj_t* railContainer = iconRail->getContainer()) {
-            leftPadding = lv_obj_get_width(railContainer);
-        }
-        if (leftPadding <= 0 && !iconRail->isMinimized()) {
-            leftPadding = IconRail::RAIL_WIDTH;
-        }
-    }
-    lv_obj_set_style_pad_left(contentRow_, leftPadding, 0);
 }
 
 Result<GenomeId, std::string> TrainingIdleView::openGenomeDetailByIndex(int index)

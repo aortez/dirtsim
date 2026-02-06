@@ -73,7 +73,6 @@ void TrainingIdle::onEnter(StateMachine& sm)
     view_->setEvolutionStarted(false);
     view_->clearPanelContent();
     view_->hidePanel();
-    view_->updateIconRailOffset();
 }
 
 void TrainingIdle::onExit(StateMachine& sm)
