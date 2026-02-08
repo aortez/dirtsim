@@ -582,16 +582,6 @@ void StateMachine::handleEvent(const Event& event)
         return;
     }
 
-    if (std::holds_alternative<RailAutoShrinkRequestEvent>(event)) {
-        LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-        if (auto* uiManager = getUiComponentManager()) {
-            if (auto* iconRail = uiManager->getIconRail()) {
-                iconRail->setMode(RailMode::Minimized);
-            }
-        }
-        return;
-    }
-
     // Handle Exit universally (works in all states).
     if (std::holds_alternative<UiApi::Exit::Cwc>(event)) {
         auto& cwc = std::get<UiApi::Exit::Cwc>(event);

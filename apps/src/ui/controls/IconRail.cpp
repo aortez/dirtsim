@@ -58,11 +58,6 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
 
 IconRail::~IconRail()
 {
-    if (autoShrinkTimer_) {
-        lv_timer_delete(autoShrinkTimer_);
-        autoShrinkTimer_ = nullptr;
-    }
-
     if (fractalAnimator_ && duckViewId_ != 0) {
         fractalAnimator_->detachView(duckViewId_);
         duckViewId_ = 0;
@@ -190,7 +185,6 @@ void IconRail::onIconClicked(lv_event_t* e)
     }
 
     self->updateButtonVisuals();
-    self->resetAutoShrinkTimer();
 
     // Queue event for state machine to process.
     if (self->eventSink_) {
@@ -320,8 +314,6 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
-
-    resetAutoShrinkTimer();
 }
 
 void IconRail::showIcons()
@@ -339,7 +331,6 @@ void IconRail::selectIcon(IconId id)
     IconId previousId = selectedId_;
     selectedId_ = id;
     updateButtonVisuals();
-    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -375,7 +366,6 @@ void IconRail::deselectAll()
     IconId previousId = selectedId_;
     selectedId_ = IconId::NONE;
     updateButtonVisuals();
-    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -601,8 +591,6 @@ void IconRail::applyMode()
     }
 
     LOG_INFO(Controls, "IconRail mode set to: {}", minimized ? "Minimized" : "Normal");
-
-    resetAutoShrinkTimer();
 }
 
 void IconRail::setMode(RailMode mode)
@@ -648,55 +636,12 @@ void IconRail::onModeButtonClicked(lv_event_t* e)
 
     if (!self) return;
 
-    self->resetAutoShrinkTimer();
-
     if (isExpand) {
         self->setMode(RailMode::Normal);
     }
     else {
         self->setMode(RailMode::Minimized);
     }
-}
-
-void IconRail::createAutoShrinkTimer()
-{
-    autoShrinkTimer_ = lv_timer_create(onAutoShrinkTimer, AUTO_SHRINK_TIMEOUT_MS, this);
-    if (autoShrinkTimer_) {
-        // Pause initially - only active when rail is expanded with no selection.
-        lv_timer_pause(autoShrinkTimer_);
-        LOG_DEBUG(Controls, "Auto-shrink timer created ({}ms)", AUTO_SHRINK_TIMEOUT_MS);
-    }
-}
-
-void IconRail::resetAutoShrinkTimer()
-{
-    if (!autoShrinkTimer_) return;
-
-    // Only run timer when rail is expanded and no icon is selected.
-    if (mode_ == RailMode::Normal && selectedId_ == IconId::NONE) {
-        lv_timer_reset(autoShrinkTimer_);
-        lv_timer_resume(autoShrinkTimer_);
-    }
-    else {
-        lv_timer_pause(autoShrinkTimer_);
-    }
-}
-
-void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
-{
-    IconRail* self = static_cast<IconRail*>(lv_timer_get_user_data(timer));
-    if (!self) return;
-
-    // Only request shrink if no icon is selected and currently expanded.
-    if (self->selectedId_ == IconId::NONE && self->mode_ == RailMode::Normal) {
-        LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
-        // Queue event for state machine to handle (don't touch LVGL objects from timer).
-        if (self->eventSink_) {
-            self->eventSink_->queueEvent(RailAutoShrinkRequestEvent{});
-        }
-    }
-
-    lv_timer_pause(timer);
 }
 
 } // namespace Ui
