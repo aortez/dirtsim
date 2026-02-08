@@ -87,6 +87,38 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(sqlite_modern_cpp)
 
+# Add libssh2 for SSH execution.
+option(DIRTSIM_USE_SYSTEM_LIBSSH2 "Use system libssh2 instead of FetchContent" OFF)
+set(DIRTSIM_LIBSSH2_INCLUDE_DIRS "")
+
+if (DIRTSIM_USE_SYSTEM_LIBSSH2)
+    set(PKG_CONFIG_USE_STATIC_LIBS ON)
+    pkg_check_modules(DIRTSIM_LIBSSH2 REQUIRED libssh2)
+    set(PKG_CONFIG_USE_STATIC_LIBS OFF)
+    set(LIBSSH2_TARGET ${DIRTSIM_LIBSSH2_LIBRARIES})
+else()
+    FetchContent_Declare(
+        libssh2
+        GIT_REPOSITORY https://github.com/libssh2/libssh2.git
+        GIT_TAG libssh2-1.11.1
+    )
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    set(LIBSSH2_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(LIBSSH2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(libssh2)
+
+    if (TARGET libssh2)
+        set(LIBSSH2_TARGET libssh2)
+    elseif (TARGET libssh2_static)
+        set(LIBSSH2_TARGET libssh2_static)
+    elseif (TARGET libssh2::libssh2)
+        set(LIBSSH2_TARGET libssh2::libssh2)
+    else()
+        message(FATAL_ERROR "libssh2 target not found")
+    endif()
+endif()
+
 # qlibs/reflect is header-only, downloaded to src/core/reflect
 
 # Embed web resources (HTML, CSS, JS) at build time.
@@ -315,7 +347,6 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/GenomeList.cpp
     src/server/api/GenomeSet.cpp
     src/server/api/GravitySet.cpp
-    src/server/api/PeersGet.cpp
     src/server/api/PerfStatsGet.cpp
     src/server/api/PhysicsSettingsGet.cpp
     src/server/api/PhysicsSettingsSet.cpp
@@ -344,8 +375,6 @@ add_library(dirtsim-server-lib STATIC
     # Server network.
     src/server/network/CommandDeserializerJson.cpp
     src/server/network/HttpServer.cpp
-    src/server/network/PeerAdvertisement.cpp
-    src/server/network/PeerDiscovery.cpp
 
     # Scenarios.
     src/core/scenarios/ScenarioRegistry.cpp
@@ -425,9 +454,9 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/components/RigidBodyComponent.cpp
     src/core/organisms/components/RigidBodyPhysicsComponent.cpp
 )
-target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${AVAHI_INCLUDE_DIRS} ${CMAKE_BINARY_DIR}/generated)
+target_include_directories(dirtsim-server-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_BINARY_DIR}/generated)
 target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR} ${sqlite_modern_cpp_SOURCE_DIR}/hdr ${SQLITE3_INCLUDE_DIRS})
-target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${AVAHI_LIBRARIES} ${SQLITE3_LIBRARIES})
+target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${SQLITE3_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
 target_compile_options(dirtsim-server-lib PRIVATE ${DIRTSIM_WARNINGS})
 
@@ -595,6 +624,10 @@ add_executable(dirtsim-os-manager
     src/os-manager/main.cpp
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
+    src/os-manager/api/PeersGet.cpp
+    src/os-manager/api/RemoteCliRun.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
@@ -606,16 +639,23 @@ add_executable(dirtsim-os-manager
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/PeerAdvertisement.cpp
+    src/os-manager/network/PeerDiscovery.cpp
+    src/os-manager/network/PeerInfoJson.cpp
+    src/os-manager/ssh/RemoteSshExecutor.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp
     src/os-manager/states/Startup.cpp
 )
-target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread)
-target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR})
+target_link_libraries(dirtsim-os-manager PRIVATE dirtsim-core pthread ${AVAHI_LIBRARIES} ${LIBSSH2_TARGET})
+target_include_directories(dirtsim-os-manager PRIVATE ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external/args ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-os-manager PRIVATE ${DIRTSIM_WARNINGS})
 
 # Audio synthesis executable.
@@ -640,6 +680,11 @@ add_executable(cli
     src/cli/RunAllRunner.cpp
     src/cli/SubprocessManager.cpp
     src/cli/TrainRunner.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/network/PeerInfoJson.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
+    src/os-manager/api/PeersGet.cpp
+    src/os-manager/api/RemoteCliRun.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
@@ -651,6 +696,9 @@ add_executable(cli
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
 )
@@ -672,6 +720,8 @@ add_executable(dirtsim-tests
     src/ui/state-machine/tests/StateTraining_test.cpp
     src/ui/state-machine/tests/TestStateMachineFixture.cpp
     src/os-manager/tests/OperatingSystemManager_test.cpp
+    src/os-manager/tests/PeerTrust_test.cpp
+    src/os-manager/tests/RemoteCliRun_test.cpp
     src/os-manager/tests/StateError_test.cpp
     src/os-manager/tests/StateIdle_test.cpp
     src/os-manager/tests/StateRebooting_test.cpp
@@ -679,6 +729,10 @@ add_executable(dirtsim-tests
     # Os manager sources.
     src/os-manager/OperatingSystemManager.cpp
     src/os-manager/EventProcessor.cpp
+    src/os-manager/PeerTrust.cpp
+    src/os-manager/api/PeerClientKeyEnsure.cpp
+    src/os-manager/api/PeersGet.cpp
+    src/os-manager/api/RemoteCliRun.cpp
     src/os-manager/api/Reboot.cpp
     src/os-manager/api/RestartAudio.cpp
     src/os-manager/api/RestartServer.cpp
@@ -690,9 +744,16 @@ add_executable(dirtsim-tests
     src/os-manager/api/StopServer.cpp
     src/os-manager/api/StopUi.cpp
     src/os-manager/api/SystemStatus.cpp
+    src/os-manager/api/TrustBundleGet.cpp
+    src/os-manager/api/TrustPeer.cpp
+    src/os-manager/api/UntrustPeer.cpp
     src/os-manager/api/WebSocketAccessSet.cpp
     src/os-manager/api/WebUiAccessSet.cpp
     src/os-manager/network/CommandDeserializerJson.cpp
+    src/os-manager/network/PeerAdvertisement.cpp
+    src/os-manager/network/PeerDiscovery.cpp
+    src/os-manager/network/PeerInfoJson.cpp
+    src/os-manager/ssh/RemoteSshExecutor.cpp
     src/os-manager/states/Error.cpp
     src/os-manager/states/Idle.cpp
     src/os-manager/states/Rebooting.cpp
@@ -773,10 +834,12 @@ target_link_libraries(dirtsim-tests
     dirtsim-ui-lib
     GTest::gtest_main
     GTest::gmock_main
+    ${AVAHI_LIBRARIES}
+    ${LIBSSH2_TARGET}
     m
     pthread
 )
-target_include_directories(dirtsim-tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR})
+target_include_directories(dirtsim-tests PRIVATE ${CMAKE_SOURCE_DIR}/src ${PKG_CONFIG_INC} ${zpp_bits_SOURCE_DIR} ${AVAHI_INCLUDE_DIRS} ${DIRTSIM_LIBSSH2_INCLUDE_DIRS})
 target_compile_options(dirtsim-tests PRIVATE ${DIRTSIM_WARNINGS})
 
 # Slow test executable (integration/stress tests that take a long time).

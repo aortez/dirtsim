@@ -12,7 +12,6 @@
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
-#include "server/network/PeerDiscovery.h"
 #include <algorithm>
 #include <thread>
 
@@ -329,18 +328,6 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
         return SimPaused{ std::move(newState) };
     }
     return newState;
-}
-
-State::Any Idle::onEvent(const Api::PeersGet::Cwc& cwc, StateMachine& dsm)
-{
-    auto peers = dsm.getPeerDiscovery().getPeers();
-    LOG_DEBUG(State, "PeersGet returning {} peers", peers.size());
-
-    Api::PeersGet::Okay response;
-    response.peers = std::move(peers);
-    cwc.sendResponse(Api::PeersGet::Response::okay(std::move(response)));
-
-    return Idle{};
 }
 
 } // namespace State

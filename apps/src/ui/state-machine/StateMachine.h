@@ -27,10 +27,6 @@ class WebSocketService;
 class WebSocketServiceInterface;
 } // namespace Network
 
-namespace Server {
-class PeerAdvertisement;
-} // namespace Server
-
 namespace Ui {
 class RemoteInputDevice;
 class UiComponentManager;
@@ -120,8 +116,6 @@ private:
     Timers timers_;
     State::Any fsmState{ State::Startup{} };
     std::unique_ptr<H264Encoder> h264Encoder_;
-    std::unique_ptr<Server::PeerAdvertisement> peerAd_;
-    std::string peerServiceName_;
     std::string lastServerHost_;
     uint16_t lastServerPort_ = 0;
     bool hasLastServerAddress_ = false;

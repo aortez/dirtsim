@@ -19,6 +19,7 @@ DEPENDS = " \
     boost \
     freetype \
     libsdl2 \
+    libssh2 \
     libyuv \
     networkmanager \
     openh264 \
@@ -30,6 +31,7 @@ DEPENDS = " \
 EXTRA_OECMAKE = " \
     -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     -DFETCHCONTENT_FULLY_DISCONNECTED=OFF \
+    -DDIRTSIM_USE_SYSTEM_LIBSSH2=ON \
 "
 
 INHIBIT_PACKAGE_STRIP = "1"

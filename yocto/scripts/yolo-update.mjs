@@ -78,6 +78,40 @@ const REMOTE_USER = 'dirtsim';
 const REMOTE_DEVICE = '/dev/sda';
 const REMOTE_TMP = '/tmp';
 
+function unique(items) {
+  const seen = new Set();
+  const out = [];
+  for (const item of items) {
+    if (!item) continue;
+    if (seen.has(item)) continue;
+    seen.add(item);
+    out.push(item);
+  }
+  return out;
+}
+
+function buildYoctoNinjaEnv(buildDir) {
+  // Yocto recipes set up PATH so CMake can find cross tools like *-gcc-ar.
+  // Fast deploy runs outside bitbake, so we recreate the minimal PATH additions.
+  const recipeRootDir = dirname(buildDir); // .../tmp/work/.../<recipe>/git
+  const sysrootNativeBin = join(recipeRootDir, 'recipe-sysroot-native', 'usr', 'bin');
+  const extraPaths = [];
+
+  if (existsSync(sysrootNativeBin)) {
+    extraPaths.push(sysrootNativeBin);
+    for (const entry of readdirSync(sysrootNativeBin, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      extraPaths.push(join(sysrootNativeBin, entry.name));
+    }
+  }
+
+  const currentPath = process.env.PATH || '';
+  return {
+    ...process.env,
+    PATH: unique([...extraPaths, currentPath]).join(':'),
+  };
+}
+
 // Set up consola with timestamp reporter.
 const timestampReporter = setupConsolaLogging();
 const consola = createConsola({ reporters: [timestampReporter] });
@@ -506,7 +540,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     if (!dryRun) {
       try {
         info(`Building ${t.name}...`);
-        execSync(`ninja ${t.target}`, { cwd: t.buildDir, stdio: 'inherit' });
+        execSync(`ninja ${t.target}`, {
+          cwd: t.buildDir,
+          stdio: 'inherit',
+          env: buildYoctoNinjaEnv(t.buildDir),
+        });
       } catch (err) {
         error(`Failed to build ${t.name}`);
         process.exit(1);

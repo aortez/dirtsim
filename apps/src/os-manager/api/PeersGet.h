@@ -1,18 +1,16 @@
 #pragma once
 
-#include "ApiError.h"
-#include "ApiMacros.h"
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
-#include "server/network/PeerDiscovery.h"
-
+#include "os-manager/network/PeerDiscovery.h"
+#include "server/api/ApiError.h"
+#include "server/api/ApiMacros.h"
 #include <nlohmann/json.hpp>
 #include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
-namespace Api {
-
+namespace OsApi {
 namespace PeersGet {
 
 DEFINE_API_NAME(PeersGet);
@@ -28,7 +26,7 @@ struct Command {
 };
 
 struct Okay {
-    std::vector<Server::PeerInfo> peers;
+    std::vector<OsManager::PeerInfo> peers;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;
@@ -41,5 +39,5 @@ using Response = Result<OkayType, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
 
 } // namespace PeersGet
-} // namespace Api
+} // namespace OsApi
 } // namespace DirtSim

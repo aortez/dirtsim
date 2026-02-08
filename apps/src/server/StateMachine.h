@@ -39,7 +39,6 @@ namespace Server {
 
 class Event;
 class EventProcessor;
-class PeerDiscoveryInterface;
 class WebSocketServer;
 struct QuitApplicationCommand;
 struct GetFPSCommand;
@@ -54,7 +53,6 @@ public:
     explicit StateMachine(const std::optional<std::filesystem::path>& dataDir = std::nullopt);
     StateMachine(
         std::unique_ptr<Network::WebSocketServiceInterface> webSocketService,
-        std::unique_ptr<PeerDiscoveryInterface> peerDiscovery,
         const std::optional<std::filesystem::path>& dataDir = std::nullopt);
     ~StateMachine();
 
@@ -89,9 +87,6 @@ public:
     Timers& getTimers();
     const Timers& getTimers() const;
 
-    PeerDiscoveryInterface& getPeerDiscovery();
-    const PeerDiscoveryInterface& getPeerDiscovery() const;
-
     GamepadManager& getGamepadManager();
     const GamepadManager& getGamepadManager() const;
 
@@ -101,13 +96,6 @@ public:
     const UserSettings& getUserSettings() const;
 
     void storeTrainingResult(const Api::TrainingResult& result);
-
-    /**
-     * @brief Start advertising this server via mDNS/Avahi.
-     * @param port The WebSocket port to advertise.
-     * @param serviceName Human-readable service name (e.g., hostname).
-     */
-    void startPeerAdvertisement(uint16_t port, const std::string& serviceName = "dirtsim");
 
     void broadcastRenderMessage(
         const WorldData& data,

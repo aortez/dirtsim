@@ -9,7 +9,6 @@
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
 #include "server/api/GravitySet.h"
-#include "server/api/PeersGet.h"
 #include "server/api/PerfStatsGet.h"
 #include "server/api/PhysicsSettingsGet.h"
 #include "server/api/PhysicsSettingsSet.h"
@@ -98,9 +97,6 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::GravitySet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::GravitySet::Command::fromJson(cmd));
-        }
-        else if (commandName == Api::PeersGet::Command::name()) {
-            return Result<ApiCommand, ApiError>::okay(Api::PeersGet::Command::fromJson(cmd));
         }
         else if (commandName == Api::PerfStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::PerfStatsGet::Command::fromJson(cmd));

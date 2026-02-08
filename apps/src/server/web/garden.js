@@ -785,22 +785,7 @@ function getHealthClass(percent) {
 }
 
 function discoverPeers() {
-    if (!wsManager.isReady()) {
-        return;
-    }
-    var sent = wsManager.sendServer('PeersGet', null, function(response) {
-        if (response.value && response.value.peers) {
-            displayPeers(response.value.peers);
-        } else {
-            // No peers discovered, just show local.
-            displayPeers([]);
-        }
-    });
-
-    // If send failed (server disconnected), still update display to show disconnected state.
-    if (!sent) {
-        displayPeers([]);
-    }
+    displayPeers([]);
 }
 
 //=============================================================================
