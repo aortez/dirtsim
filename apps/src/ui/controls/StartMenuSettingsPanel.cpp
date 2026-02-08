@@ -326,8 +326,6 @@ void StartMenuSettingsPanel::sendSettingsUpdate()
         LOG_WARN(Controls, "UserSettingsSet error: {}", result.value().errorValue().message);
         return;
     }
-
-    eventSink_.queueEvent(UserSettingsUpdatedEvent{ .settings = result.value().value().settings });
 }
 
 void StartMenuSettingsPanel::sendSettingsReset()
@@ -349,8 +347,6 @@ void StartMenuSettingsPanel::sendSettingsReset()
         LOG_WARN(Controls, "UserSettingsReset error: {}", result.value().errorValue().message);
         return;
     }
-
-    eventSink_.queueEvent(UserSettingsUpdatedEvent{ .settings = result.value().value().settings });
 }
 
 void StartMenuSettingsPanel::updateDefaultScenarioButtonText()

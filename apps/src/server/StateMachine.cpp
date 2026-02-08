@@ -43,7 +43,10 @@
 #include "states/State.h"
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <mutex>
@@ -87,19 +90,69 @@ std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
     return dataDir / "user_settings.json";
 }
 
+std::filesystem::path getUserSettingsTempPath(const std::filesystem::path& filePath)
+{
+    const auto pid = static_cast<long long>(::getpid());
+    const auto now =
+        static_cast<long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+
+    std::filesystem::path tempPath = filePath;
+    tempPath += ".tmp.";
+    tempPath += std::to_string(pid);
+    tempPath += ".";
+    tempPath += std::to_string(now);
+    return tempPath;
+}
+
 bool persistUserSettingsToDisk(
     const std::filesystem::path& filePath, const UserSettings& userSettings)
 {
-    std::ofstream file(filePath);
+    std::error_code dirErr;
+    std::filesystem::create_directories(filePath.parent_path(), dirErr);
+    if (dirErr) {
+        LOG_ERROR(
+            State,
+            "Failed to create user settings directory '{}': {}",
+            filePath.parent_path().string(),
+            dirErr.message());
+        return false;
+    }
+
+    const std::filesystem::path tempPath = getUserSettingsTempPath(filePath);
+    std::ofstream file(tempPath);
     if (!file.is_open()) {
-        LOG_ERROR(State, "Failed to open '{}' for writing user settings", filePath.string());
+        LOG_ERROR(State, "Failed to open '{}' for writing user settings", tempPath.string());
         return false;
     }
 
     nlohmann::json json = userSettings;
     file << json.dump(2) << "\n";
-    if (!file.good()) {
-        LOG_ERROR(State, "Failed to write user settings to '{}'", filePath.string());
+    file.flush();
+    if (!file.good() || file.fail()) {
+        LOG_ERROR(State, "Failed to write user settings to '{}'", tempPath.string());
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
+        return false;
+    }
+
+    file.close();
+    if (file.fail()) {
+        LOG_ERROR(State, "Failed to close user settings file '{}'", tempPath.string());
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
+        return false;
+    }
+
+    if (::rename(tempPath.c_str(), filePath.c_str()) != 0) {
+        const int err = errno;
+        LOG_ERROR(
+            State,
+            "Failed to replace user settings file '{}' via rename '{}': {}",
+            filePath.string(),
+            tempPath.string(),
+            std::strerror(err));
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
         return false;
     }
 

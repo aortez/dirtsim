@@ -1136,9 +1136,13 @@ int main(int argc, char** argv)
             summary =
                 runner.runCanPlantTreeSeed(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
-        else {
+        else if (testName == "verifyTraining") {
             summary =
                 runner.runVerifyTraining(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else {
+            std::cerr << "Error: unexpected functional test dispatch '" << testName << "'\n";
+            return 1;
         }
         if (summary.result.isError()) {
             auto screenshotResult = captureFailureScreenshot(uiAddress, timeoutMs, testName);
