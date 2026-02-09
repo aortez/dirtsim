@@ -47,6 +47,7 @@ import {
   getBlockDevices,
   findLatestImage,
   flashImage,
+  growDataPartition,
   getWifiCredentials,
   injectWifiCredentials,
   validateDeviceIdentity,
@@ -78,6 +79,7 @@ const PREFERRED_IMAGES = [
 // User configuration - matches what's created in dirtsim-image.bb.
 const SSH_USERNAME = 'dirtsim';
 const SSH_UID = 1000;
+const DATA_FREE_PERCENT = 10;
 
 /**
  * Get or create SSH key configuration.
@@ -490,6 +492,10 @@ async function main() {
       bmapPath: existsSync(bmapPath) ? bmapPath : null,
       skipConfirm: (!interactive && config.skip_confirmation) || false,
     });
+
+    // Expand /data partition to use the available disk space (leaving some unallocated).
+    // This ensures restores of large /data backups succeed before the first boot.
+    growDataPartition(targetDevice, DATA_FREE_PERCENT, dryRun);
 
     // Inject SSH key and apply profile after flashing.
     await injectRootfsConfig(targetDevice, config.ssh_key_path, profile, dryRun);
