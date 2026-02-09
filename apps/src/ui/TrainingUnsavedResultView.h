@@ -2,6 +2,7 @@
 
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "server/api/TrainingResult.h"
+#include "ui/rendering/Starfield.h"
 #include <memory>
 #include <vector>
 
@@ -18,7 +19,10 @@ class UiComponentManager;
 
 class TrainingUnsavedResultView {
 public:
-    TrainingUnsavedResultView(UiComponentManager* uiManager, EventSink& eventSink);
+    TrainingUnsavedResultView(
+        UiComponentManager* uiManager,
+        EventSink& eventSink,
+        const Starfield::Snapshot* starfieldSnapshot = nullptr);
     ~TrainingUnsavedResultView();
 
     void updateAnimations();
@@ -30,6 +34,7 @@ public:
     bool isTrainingResultModalVisible() const;
     std::vector<GenomeId> getTrainingResultSaveIds() const;
     std::vector<GenomeId> getTrainingResultSaveIdsForCount(int count) const;
+    Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
     void createUI();
@@ -44,6 +49,8 @@ private:
 
     UiComponentManager* uiManager_ = nullptr;
     EventSink& eventSink_;
+    const Starfield::Snapshot* starfieldSnapshot_ = nullptr;
+    std::unique_ptr<Starfield> starfield_;
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* contentRow_ = nullptr;

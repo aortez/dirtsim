@@ -26,8 +26,6 @@ struct Disconnected {
 
     Any onEvent(const ConnectToServerCommand& cmd, StateMachine& sm);
     Any onEvent(const ServerConnectedEvent& evt, StateMachine& sm);
-    Any onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& sm);
-
     void updateAnimations();
 
     static constexpr const char* name() { return "Disconnected"; }

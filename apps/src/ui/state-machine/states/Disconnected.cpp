@@ -55,9 +55,8 @@ void Disconnected::onExit(StateMachine& sm)
 
     // Clear the container.
     auto* uiManager = sm.getUiComponentManager();
-    if (uiManager) {
-        uiManager->clearCurrentContainer();
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+    uiManager->clearCurrentContainer();
 
     mainContainer_ = nullptr;
     iconRail_ = nullptr;
@@ -69,15 +68,11 @@ void Disconnected::onExit(StateMachine& sm)
 void Disconnected::createDiagnosticsScreen(StateMachine& sm)
 {
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     // Get the config container (dedicated screen for diagnostics).
     lv_obj_t* screen = uiManager->getDisconnectedDiagnosticsContainer();
-    if (!screen) {
-        return;
-    }
+    DIRTSIM_ASSERT(screen, "Disconnected state requires a diagnostics container");
 
     // Create main container with horizontal flex layout.
     mainContainer_ = lv_obj_create(screen);
@@ -148,9 +143,7 @@ void Disconnected::createDiagnosticsScreen(StateMachine& sm)
 
 void Disconnected::updateStatusLabel()
 {
-    if (!statusLabel_) {
-        return;
-    }
+    DIRTSIM_ASSERT(statusLabel_, "Disconnected state requires statusLabel_");
 
     std::string status;
     if (retry_pending_) {
@@ -181,9 +174,10 @@ void Disconnected::updateAnimations()
 {
     updateStatusLabel();
 
-    if (!retry_pending_ || !sm_) {
+    if (!retry_pending_) {
         return;
     }
+    DIRTSIM_ASSERT(sm_, "Disconnected state requires a valid StateMachine");
 
     // Check if enough time has passed since last attempt.
     auto now = std::chrono::steady_clock::now();
@@ -417,17 +411,6 @@ State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachi
     LOG_INFO(State, "Transitioning to StartMenu");
 
     return StartMenu{};
-}
-
-State::Any Disconnected::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
 }
 
 } // namespace State

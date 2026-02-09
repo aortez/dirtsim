@@ -1,10 +1,10 @@
 #include "State.h"
+#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/ScenarioListGet.h"
 #include "server/api/SimRun.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/ScenarioMetadataCache.h"
 #include "ui/UiComponentManager.h"
 #include "ui/controls/ExpandablePanel.h"
@@ -60,24 +60,26 @@ void StartMenu::onEnter(StateMachine& sm)
 
     // Get main menu container (switches to menu screen with IconRail).
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) return;
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     // Trigger layout creation and get content area (to the right of IconRail).
     uiManager->getMainMenuContainer();
     lv_obj_t* container = uiManager->getMenuContentArea();
+    DIRTSIM_ASSERT(container, "StartMenu requires a menu content area");
     lv_obj_clean(container);
 
     // Configure IconRail to show StartMenu icons in two columns.
-    if (IconRail* iconRail = uiManager->getIconRail()) {
-        iconRail->setVisibleIcons(
-            { IconId::CORE, IconId::MUSIC, IconId::EVOLUTION, IconId::NETWORK, IconId::SCENARIO });
-        iconRail->setLayout(RailLayout::TwoColumn);
-        iconRail->deselectAll();
-        LOG_INFO(State, "Configured IconRail with CORE, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
-    }
+    IconRail* iconRail = uiManager->getIconRail();
+    DIRTSIM_ASSERT(iconRail, "StartMenu requires an IconRail");
+    iconRail->setVisibleIcons(
+        { IconId::CORE, IconId::MUSIC, IconId::EVOLUTION, IconId::NETWORK, IconId::SCENARIO });
+    iconRail->setLayout(RailLayout::TwoColumn);
+    iconRail->deselectAll();
+    LOG_INFO(State, "Configured IconRail with CORE, MUSIC, EVOLUTION, NETWORK, SCENARIO icons");
 
     // Get display dimensions for full-screen fractal.
     lv_disp_t* disp = lv_disp_get_default();
+    DIRTSIM_ASSERT(disp, "StartMenu requires an LVGL display");
     int windowWidth = lv_disp_get_hor_res(disp);
     int windowHeight = lv_disp_get_ver_res(disp);
 
@@ -122,9 +124,7 @@ void StartMenu::onEnter(StateMachine& sm)
     lv_obj_set_style_text_font(infoLabel_, &lv_font_montserrat_14, 0);
 
     LOG_INFO(State, "Created fractal info panel");
-    if (IconRail* iconRail = uiManager->getIconRail()) {
-        updateInfoPanelVisibility(iconRail->getMode());
-    }
+    updateInfoPanelVisibility(iconRail->getMode());
 
     // Create touch debug label in top-right corner.
     touchDebugLabel_ = lv_label_create(container);
@@ -157,15 +157,13 @@ void StartMenu::onExit(StateMachine& sm)
     // IMPORTANT: Remove the resize event handler before detaching the fractal.
     // This prevents use-after-free if a resize event occurs after exit.
     auto* uiManager = sm.getUiComponentManager();
-    if (uiManager) {
-        lv_obj_t* container = uiManager->getMenuContentArea();
-        if (container) {
-            lv_obj_remove_event_cb(container, onDisplayResized);
-            lv_obj_remove_event_cb(container, onTouchEvent);
-            sm.getFractalAnimator().parkIfParent(container);
-            LOG_INFO(State, "Removed resize and touch event handlers");
-        }
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
+    lv_obj_t* container = uiManager->getMenuContentArea();
+    DIRTSIM_ASSERT(container, "StartMenu requires a menu content area");
+    lv_obj_remove_event_cb(container, onDisplayResized);
+    lv_obj_remove_event_cb(container, onTouchEvent);
+    sm.getFractalAnimator().parkIfParent(container);
+    LOG_INFO(State, "Removed resize and touch event handlers");
 
     // Screen switch will clean up other widgets automatically.
     touchDebugLabel_ = nullptr;
@@ -178,9 +176,7 @@ void StartMenu::updateAnimations()
         startButton_->update();
     }
 
-    if (!sm_) {
-        return;
-    }
+    DIRTSIM_ASSERT(sm_, "StartMenu requires a valid StateMachine");
 
     if (auto* fractal = sm_->getFractalAnimator().getFractal()) {
 
@@ -225,11 +221,11 @@ void StartMenu::updateAnimations()
 void StartMenu::onTouchEvent(lv_event_t* e)
 {
     auto* label = static_cast<lv_obj_t*>(lv_event_get_user_data(e));
-    if (!label) return;
+    DIRTSIM_ASSERT(label, "StartMenu touch handler requires label user_data");
 
     // Get touch point from input device.
     lv_indev_t* indev = lv_indev_active();
-    if (!indev) return;
+    DIRTSIM_ASSERT(indev, "StartMenu touch handler requires an active input device");
 
     lv_point_t point;
     lv_indev_get_point(indev, &point);
@@ -245,13 +241,14 @@ void StartMenu::onTouchEvent(lv_event_t* e)
 void StartMenu::onDisplayResized(lv_event_t* e)
 {
     auto* sm = static_cast<StateMachine*>(lv_event_get_user_data(e));
-    if (!sm) return;
+    DIRTSIM_ASSERT(sm, "StartMenu resize handler requires StateMachine user_data");
 
     auto* container = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    if (!container) return;
+    DIRTSIM_ASSERT(container, "StartMenu resize handler requires LVGL target");
 
     // Get new display dimensions.
     lv_disp_t* disp = lv_disp_get_default();
+    DIRTSIM_ASSERT(disp, "StartMenu requires an LVGL display");
     int newWidth = lv_disp_get_hor_res(disp);
     int newHeight = lv_disp_get_ver_res(disp);
 
@@ -263,7 +260,7 @@ void StartMenu::onDisplayResized(lv_event_t* e)
 
 void StartMenu::updateInfoPanelVisibility(RailMode mode)
 {
-    if (!infoPanel_) return;
+    DIRTSIM_ASSERT(infoPanel_, "StartMenu requires infoPanel_");
 
     if (mode == RailMode::Minimized) {
         lv_obj_clear_flag(infoPanel_, LV_OBJ_FLAG_HIDDEN);
@@ -338,18 +335,6 @@ State::Any StartMenu::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     return std::move(*this);
 }
 
-State::Any StartMenu::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing menu IconRail");
-
-    // Process auto-shrink in main thread (safe to modify LVGL objects).
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*sm*/)
 {
     updateInfoPanelVisibility(evt.newMode);
@@ -377,44 +362,14 @@ State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachi
 
 State::Any StartMenu::onEvent(const NextFractalClickedEvent& /*evt*/, StateMachine& /*sm*/)
 {
-    if (!sm_) {
-        LOG_WARN(State, "Next fractal requested with no state machine reference");
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(sm_, "StartMenu requires a valid StateMachine");
 
     auto* fractal = sm_->getFractalAnimator().getFractal();
-    if (!fractal) {
-        LOG_WARN(State, "Next fractal requested with no active fractal");
-        return std::move(*this);
-    }
+    DIRTSIM_ASSERT(fractal, "StartMenu requires an active fractal");
 
     LOG_INFO(State, "Next fractal requested from core panel");
     fractal->advanceToNextFractal();
     return std::move(*this);
-}
-
-State::Any StartMenu::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning back to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    // Lost connection - go back to Disconnected state.
-    return Disconnected{};
-}
-
-State::Any StartMenu::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
 }
 
 State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
@@ -541,41 +496,6 @@ State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine
 
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));
     return TrainingIdle{};
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device state (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device position (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any StartMenu::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    // Update remote input device state (enables LVGL widget interaction in StartMenu).
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
-    return std::move(*this);
 }
 
 } // namespace State

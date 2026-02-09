@@ -13,7 +13,9 @@ These are the common states you will see from `ui StateGet`:
 - `StartMenu`: idle menu before simulation or training.
 - `SimRunning`: simulation is running.
 - `Paused`: simulation paused (renderer still active).
-- `Training`: evolution/training workflow view.
+- `TrainingIdle`: training config + icon rail.
+- `TrainingActive`: live training progress (icon rail hidden).
+- `TrainingUnsavedResult`: save/discard modal for completed training.
 - `Shutdown`: exiting UI.
 
 ```mermaid
@@ -28,15 +30,20 @@ stateDiagram-v2
     SimRunning --> StartMenu: ui SimStop
     Paused --> StartMenu: ui SimStop
 
-    StartMenu --> Training: ui TrainingStart
-    Training --> SimRunning: ui GenomeDetailLoad
+    StartMenu --> TrainingIdle: ui TrainingStart
+    TrainingIdle --> TrainingActive: Start Evolution
+    TrainingActive --> TrainingUnsavedResult: TrainingResult
+    TrainingUnsavedResult --> TrainingIdle: Save/Discard
+    TrainingIdle --> SimRunning: ui GenomeDetailLoad
 
     Startup --> Shutdown: ui Exit
     Disconnected --> Shutdown: ui Exit
     StartMenu --> Shutdown: ui Exit
     SimRunning --> Shutdown: ui Exit
     Paused --> Shutdown: ui Exit
-    Training --> Shutdown: ui Exit
+    TrainingIdle --> Shutdown: ui Exit
+    TrainingActive --> Shutdown: ui Exit
+    TrainingUnsavedResult --> Shutdown: ui Exit
     Shutdown --> [*]
 ```
 
@@ -58,7 +65,7 @@ Use the CLI to move between UI states and open training views:
 ./build-debug/bin/cli ui TrainingStart '{"evolution": {...}, "mutation": {...}, "training": {...}}'
 ./build-debug/bin/cli ui GenomeBrowserOpen
 
-# Open/load a genome detail (from Training state).
+# Open/load a genome detail (from TrainingIdle).
 ./build-debug/bin/cli ui GenomeDetailOpen '{"id": "..."}'
 ./build-debug/bin/cli ui GenomeDetailLoad '{"id": "..."}'
 
