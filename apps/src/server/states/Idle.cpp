@@ -7,10 +7,12 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
+#include <algorithm>
 #include <thread>
 
 namespace DirtSim {
@@ -18,6 +20,23 @@ namespace Server {
 namespace State {
 
 namespace {
+
+ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
+{
+    ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
+    if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
+        scenarioConfig = dsm.serverConfig->startupConfig;
+    }
+
+    if (auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig)) {
+        clockConfig->timezoneIndex = static_cast<uint8_t>(std::clamp(
+            dsm.getUserSettings().timezoneIndex,
+            0,
+            static_cast<int>(ClockScenario::TIMEZONES.size()) - 1));
+    }
+
+    return scenarioConfig;
+}
 
 std::optional<ApiError> validateTrainingConfig(
     const Api::EvolutionStart::Command& command,
@@ -211,10 +230,10 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
 {
     assert(dsm.serverConfig && "serverConfig must be loaded");
 
-    // Use scenario_id from command if provided, otherwise fall back to server config.
+    // Use scenario_id from command if provided, otherwise fall back to user settings.
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
-        : getScenarioId(dsm.serverConfig->startupConfig);
+        : dsm.getUserSettings().defaultScenario;
     LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));
 
     // Validate max_frame_ms parameter.
@@ -274,8 +293,9 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     // Set scenario ID in state.
     newState.scenario_id = scenarioId;
 
-    // Apply config from server.json.
-    newState.scenario->setConfig(dsm.serverConfig->startupConfig, *newState.world);
+    // Apply config from server settings and user settings.
+    const ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
+    newState.scenario->setConfig(scenarioConfig, *newState.world);
 
     // Run scenario setup to initialize world.
     newState.scenario->setup(*newState.world);

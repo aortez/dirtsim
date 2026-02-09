@@ -30,6 +30,9 @@
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingResultSet.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsGet.h"
+#include "server/api/UserSettingsReset.h"
+#include "server/api/UserSettingsSet.h"
 #include "server/api/WebUiAccessSet.h"
 #include <cctype>
 #include <spdlog/spdlog.h>
@@ -143,6 +146,16 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::TimerStatsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::TimerStatsGet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::UserSettingsGet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::UserSettingsGet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::UserSettingsReset::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::UserSettingsReset::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::UserSettingsSet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(Api::UserSettingsSet::Command::fromJson(cmd));
         }
         else if (commandName == Api::TrainingResultDiscard::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(

@@ -1,17 +1,25 @@
 #include "FunctionalTestRunner.h"
+#include "core/RenderMessageFull.h"
 #include "core/ScenarioId.h"
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
+#include "core/scenarios/ClockConfig.h"
 #include "os-manager/api/RestartServer.h"
 #include "os-manager/api/RestartUi.h"
+#include "os-manager/api/StopUi.h"
 #include "os-manager/api/SystemStatus.h"
 #include "server/api/GenomeDelete.h"
+#include "server/api/RenderFormatSet.h"
+#include "server/api/SimRun.h"
 #include "server/api/SimStop.h"
 #include "server/api/StateGet.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultGet.h"
 #include "server/api/TrainingResultList.h"
+#include "server/api/UserSettingsGet.h"
+#include "server/api/UserSettingsReset.h"
+#include "server/api/UserSettingsSet.h"
 #include "ui/state-machine/api/Exit.h"
 #include "ui/state-machine/api/GenomeBrowserOpen.h"
 #include "ui/state-machine/api/GenomeDetailLoad.h"
@@ -27,13 +35,16 @@
 #include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
 #include <iostream>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <zpp_bits.h>
 
 namespace DirtSim {
 namespace Client {
@@ -192,6 +203,223 @@ Result<std::monostate, std::string> waitForServerScenario(
 
         std::this_thread::sleep_for(std::chrono::milliseconds(pollDelayMs));
     }
+}
+
+Result<std::monostate, std::string> connectServerBinary(
+    Network::WebSocketService& client,
+    const std::string& serverAddress,
+    int timeoutMs,
+    bool wantsRender)
+{
+    client.setProtocol(Network::Protocol::BINARY);
+    Network::ClientHello hello{
+        .protocolVersion = Network::kClientHelloProtocolVersion,
+        .wantsRender = wantsRender,
+        .wantsEvents = false,
+    };
+    client.setClientHello(hello);
+
+    auto connectResult = client.connect(serverAddress, timeoutMs);
+    if (connectResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Failed to connect to server: " + connectResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> ensureUiInStartMenu(
+    Network::WebSocketService& uiClient, int timeoutMs)
+{
+    auto uiStatusResult = requestUiStatus(uiClient, timeoutMs);
+    if (uiStatusResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "UI StatusGet failed: " + uiStatusResult.errorValue());
+    }
+
+    if (!uiStatusResult.value().connected_to_server) {
+        return Result<std::monostate, std::string>::error("UI not connected to server");
+    }
+
+    auto uiStateResult = requestUiState(uiClient, timeoutMs);
+    if (uiStateResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "UI StateGet failed: " + uiStateResult.errorValue());
+    }
+
+    const std::string& state = uiStateResult.value().state;
+    if (state == "StartMenu") {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    if (state == "SimRunning" || state == "Paused") {
+        UiApi::SimStop::Command simStopCmd{};
+        auto simStopResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+        if (simStopResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "UI SimStop failed: " + simStopResult.errorValue());
+        }
+
+        auto startMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+        if (startMenuResult.isError()) {
+            return Result<std::monostate, std::string>::error(startMenuResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    return Result<std::monostate, std::string>::error(
+        "Unsupported UI state for settings tests: " + state);
+}
+
+Result<std::monostate, std::string> ensureServerIdle(
+    Network::WebSocketService& serverClient, int timeoutMs)
+{
+    auto statusResult = requestServerStatus(serverClient, timeoutMs);
+    if (statusResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Server StatusGet failed: " + statusResult.errorValue());
+    }
+
+    const std::string& state = statusResult.value().state;
+    if (state == "Idle") {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    if (state == "SimRunning" || state == "SimPaused") {
+        Api::SimStop::Command simStopCmd{};
+        auto simStopResult = unwrapResponse(
+            serverClient.sendCommandAndGetResponse<Api::SimStop::OkayType>(simStopCmd, timeoutMs));
+        if (simStopResult.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Server SimStop failed: " + simStopResult.errorValue());
+        }
+
+        auto idleResult = waitForServerState(serverClient, "Idle", timeoutMs);
+        if (idleResult.isError()) {
+            return Result<std::monostate, std::string>::error(idleResult.errorValue());
+        }
+
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    return Result<std::monostate, std::string>::error(
+        "Unsupported server state for settings tests: " + state);
+}
+
+Result<UserSettings, std::string> fetchUserSettings(
+    Network::WebSocketService& serverClient, int timeoutMs)
+{
+    Api::UserSettingsGet::Command cmd{};
+    auto response = unwrapResponse(
+        serverClient.sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(cmd, timeoutMs));
+    if (response.isError()) {
+        return Result<UserSettings, std::string>::error(
+            "UserSettingsGet failed: " + response.errorValue());
+    }
+
+    return Result<UserSettings, std::string>::okay(response.value().settings);
+}
+
+Result<UserSettings, std::string> updateUserSettings(
+    Network::WebSocketService& serverClient, const UserSettings& settings, int timeoutMs)
+{
+    Api::UserSettingsSet::Command cmd{ .settings = settings };
+    auto response = unwrapResponse(
+        serverClient.sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(cmd, timeoutMs));
+    if (response.isError()) {
+        return Result<UserSettings, std::string>::error(
+            "UserSettingsSet failed: " + response.errorValue());
+    }
+
+    return Result<UserSettings, std::string>::okay(response.value().settings);
+}
+
+Result<UserSettings, std::string> resetUserSettings(
+    Network::WebSocketService& serverClient, int timeoutMs)
+{
+    Api::UserSettingsReset::Command cmd{};
+    auto response = unwrapResponse(
+        serverClient.sendCommandAndGetResponse<Api::UserSettingsReset::Okay>(cmd, timeoutMs));
+    if (response.isError()) {
+        return Result<UserSettings, std::string>::error(
+            "UserSettingsReset failed: " + response.errorValue());
+    }
+
+    return Result<UserSettings, std::string>::okay(response.value().settings);
+}
+
+Result<std::monostate, std::string> waitForClockRenderTimezone(
+    Network::WebSocketService& serverClient, int expectedTimezoneIndex, int timeoutMs)
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool matched = false;
+    std::optional<int> lastTimezoneIndex;
+    std::string parseError;
+
+    serverClient.onBinary([&](const std::vector<std::byte>& payload) {
+        try {
+            RenderMessageFull fullMessage;
+            zpp::bits::in in(payload);
+            in(fullMessage).or_throw();
+
+            if (fullMessage.scenario_id != Scenario::EnumType::Clock) {
+                return;
+            }
+
+            const auto* clockConfig = std::get_if<Config::Clock>(&fullMessage.scenario_config);
+            if (!clockConfig) {
+                return;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                lastTimezoneIndex = static_cast<int>(clockConfig->timezoneIndex);
+                matched = (lastTimezoneIndex.value() == expectedTimezoneIndex);
+            }
+
+            cv.notify_all();
+        }
+        catch (const std::exception& e) {
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                parseError = e.what();
+            }
+            cv.notify_all();
+        }
+    });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        while (!matched && parseError.empty()) {
+            if (cv.wait_until(lock, deadline) == std::cv_status::timeout) {
+                break;
+            }
+        }
+    }
+
+    serverClient.onBinary([](const std::vector<std::byte>& /*payload*/) {});
+
+    if (matched) {
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }
+
+    if (!parseError.empty()) {
+        return Result<std::monostate, std::string>::error(
+            "Failed to parse RenderMessage payload: " + parseError);
+    }
+
+    std::string detail = "did not receive Clock render config";
+    if (lastTimezoneIndex.has_value()) {
+        detail += ", last timezoneIndex=" + std::to_string(*lastTimezoneIndex);
+    }
+
+    return Result<std::monostate, std::string>::error(
+        "Timeout waiting for expected clock timezone (" + std::to_string(expectedTimezoneIndex)
+        + "): " + detail);
 }
 
 struct SeedTarget {
@@ -687,6 +915,28 @@ Result<std::monostate, std::string> restartServices(
     if (statusResult.isError()) {
         return Result<std::monostate, std::string>::error(
             "SystemStatus check failed: " + statusResult.errorValue());
+    }
+
+    return Result<std::monostate, std::string>::okay(std::monostate{});
+}
+
+Result<std::monostate, std::string> stopUiService(
+    const std::string& osManagerAddress, int timeoutMs)
+{
+    Network::WebSocketService client;
+    auto connectResult = client.connect(osManagerAddress, timeoutMs);
+    if (connectResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "Failed to connect to os-manager: " + connectResult.errorValue());
+    }
+
+    OsApi::StopUi::Command stopUiCmd{};
+    auto stopUiResult =
+        unwrapResponse(client.sendCommandAndGetResponse<std::monostate>(stopUiCmd, timeoutMs));
+    client.disconnect();
+    if (stopUiResult.isError()) {
+        return Result<std::monostate, std::string>::error(
+            "StopUi failed: " + stopUiResult.errorValue());
     }
 
     return Result<std::monostate, std::string>::okay(std::monostate{});
@@ -1554,6 +1804,646 @@ FunctionalTestSummary FunctionalTestRunner::runCanOpenTrainingConfigPanel(
 
     return FunctionalTestSummary{
         .name = "canOpenTrainingConfigPanel",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanUpdateUserSettings(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiReadyResult = ensureUiInStartMenu(uiClient, timeoutMs);
+        if (uiReadyResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiReadyResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (serverConnectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        auto currentSettingsResult = fetchUserSettings(serverClient, timeoutMs);
+        if (currentSettingsResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(currentSettingsResult.errorValue());
+        }
+
+        UserSettings expected = currentSettingsResult.value();
+        expected.timezoneIndex = 0;
+        expected.volumePercent = 67;
+        expected.defaultScenario = Scenario::EnumType::Clock;
+
+        auto setResult = updateUserSettings(serverClient, expected, timeoutMs);
+        if (setResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+
+        const UserSettings& updated = setResult.value();
+        if (updated.timezoneIndex != expected.timezoneIndex
+            || updated.volumePercent != expected.volumePercent
+            || updated.defaultScenario != expected.defaultScenario) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UserSettingsSet response does not match requested values");
+        }
+
+        auto verifyResult = fetchUserSettings(serverClient, timeoutMs);
+        if (verifyResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(verifyResult.errorValue());
+        }
+
+        const UserSettings& verified = verifyResult.value();
+        if (verified.timezoneIndex != expected.timezoneIndex
+            || verified.volumePercent != expected.volumePercent
+            || verified.defaultScenario != expected.defaultScenario) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UserSettingsGet did not reflect updated values");
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canUpdateUserSettings",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanResetUserSettings(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiReadyResult = ensureUiInStartMenu(uiClient, timeoutMs);
+        if (uiReadyResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiReadyResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (serverConnectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        UserSettings changedSettings{};
+        changedSettings.timezoneIndex = 0;
+        changedSettings.volumePercent = 73;
+        changedSettings.defaultScenario = Scenario::EnumType::Clock;
+
+        auto setResult = updateUserSettings(serverClient, changedSettings, timeoutMs);
+        if (setResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+
+        auto resetResult = resetUserSettings(serverClient, timeoutMs);
+        if (resetResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(resetResult.errorValue());
+        }
+
+        const UserSettings defaults{};
+        const UserSettings& reset = resetResult.value();
+        if (reset.timezoneIndex != defaults.timezoneIndex
+            || reset.volumePercent != defaults.volumePercent
+            || reset.defaultScenario != defaults.defaultScenario) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UserSettingsReset response did not return defaults");
+        }
+
+        auto verifyResult = fetchUserSettings(serverClient, timeoutMs);
+        if (verifyResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(verifyResult.errorValue());
+        }
+
+        const UserSettings& verified = verifyResult.value();
+        if (verified.timezoneIndex != defaults.timezoneIndex
+            || verified.volumePercent != defaults.volumePercent
+            || verified.defaultScenario != defaults.defaultScenario) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UserSettingsGet after reset did not return defaults");
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canResetUserSettings",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanPersistUserSettingsAcrossRestart(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiReadyResult = ensureUiInStartMenu(uiClient, timeoutMs);
+        if (uiReadyResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiReadyResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (serverConnectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        UserSettings expected{};
+        expected.timezoneIndex = 1;
+        expected.volumePercent = 33;
+        expected.defaultScenario = Scenario::EnumType::TreeGermination;
+
+        auto setResult = updateUserSettings(serverClient, expected, timeoutMs);
+        if (setResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+
+        auto verifyBeforeRestart = fetchUserSettings(serverClient, timeoutMs);
+        if (verifyBeforeRestart.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(verifyBeforeRestart.errorValue());
+        }
+
+        const UserSettings& beforeRestart = verifyBeforeRestart.value();
+        if (beforeRestart.timezoneIndex != expected.timezoneIndex
+            || beforeRestart.volumePercent != expected.volumePercent
+            || beforeRestart.defaultScenario != expected.defaultScenario) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UserSettings before restart do not match expected values");
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+
+        auto midRestart = restartServices(osManagerAddress, timeoutMs);
+        if (midRestart.isError()) {
+            return Result<std::monostate, std::string>::error(midRestart.errorValue());
+        }
+
+        auto reconnectServer = connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (reconnectServer.isError()) {
+            return Result<std::monostate, std::string>::error(reconnectServer.errorValue());
+        }
+
+        auto verifyAfterRestart = fetchUserSettings(serverClient, timeoutMs);
+        if (verifyAfterRestart.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(verifyAfterRestart.errorValue());
+        }
+
+        const UserSettings& afterRestart = verifyAfterRestart.value();
+        if (afterRestart.timezoneIndex != expected.timezoneIndex
+            || afterRestart.volumePercent != expected.volumePercent
+            || afterRestart.defaultScenario != expected.defaultScenario) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "User settings did not persist across restart");
+        }
+
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canPersistUserSettingsAcrossRestart",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanUseDefaultScenarioWhenSimRunHasNoScenario(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService uiClient;
+    Network::WebSocketService serverClient;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto uiConnect = uiClient.connect(uiAddress, timeoutMs);
+        if (uiConnect.isError()) {
+            return Result<std::monostate, std::string>::error(
+                "Failed to connect to UI: " + uiConnect.errorValue());
+        }
+
+        auto uiReadyResult = ensureUiInStartMenu(uiClient, timeoutMs);
+        if (uiReadyResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiReadyResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, false);
+        if (serverConnectResult.isError()) {
+            uiClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        auto currentSettingsResult = fetchUserSettings(serverClient, timeoutMs);
+        if (currentSettingsResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(currentSettingsResult.errorValue());
+        }
+
+        UserSettings desired = currentSettingsResult.value();
+        desired.defaultScenario = Scenario::EnumType::Clock;
+
+        auto setResult = updateUserSettings(serverClient, desired, timeoutMs);
+        if (setResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+
+        UiApi::SimRun::Command simRunCmd{};
+        auto simRunResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimRun::Okay>(simRunCmd, timeoutMs));
+        if (simRunResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SimRun (without scenario) failed: " + simRunResult.errorValue());
+        }
+
+        auto uiRunningResult = waitForUiState(uiClient, "SimRunning", timeoutMs);
+        if (uiRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiRunningResult.errorValue());
+        }
+
+        auto serverRunningResult = waitForServerState(serverClient, "SimRunning", timeoutMs);
+        if (serverRunningResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverRunningResult.errorValue());
+        }
+
+        auto statusResult = requestServerStatus(serverClient, timeoutMs);
+        if (statusResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server StatusGet failed: " + statusResult.errorValue());
+        }
+
+        if (!statusResult.value().scenario_id.has_value()
+            || statusResult.value().scenario_id.value() != Scenario::EnumType::Clock) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server did not run user default scenario for SimRun without scenario_id");
+        }
+
+        UiApi::SimStop::Command simStopCmd{};
+        auto stopResult = unwrapResponse(
+            uiClient.sendCommandAndGetResponse<UiApi::SimStop::Okay>(simStopCmd, timeoutMs));
+        if (stopResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "UI SimStop failed: " + stopResult.errorValue());
+        }
+
+        auto uiStartMenuResult = waitForUiState(uiClient, "StartMenu", timeoutMs);
+        if (uiStartMenuResult.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(uiStartMenuResult.errorValue());
+        }
+
+        auto serverIdleAfterStop = waitForServerState(serverClient, "Idle", timeoutMs);
+        if (serverIdleAfterStop.isError()) {
+            uiClient.disconnect();
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleAfterStop.errorValue());
+        }
+
+        uiClient.disconnect();
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canUseDefaultScenarioWhenSimRunHasNoScenario",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::nullopt,
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanApplyClockTimezoneFromUserSettings(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    Network::WebSocketService serverClient;
+    static_cast<void>(uiAddress);
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        constexpr int expectedTimezoneIndex = 0;
+
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        auto stopUiResult = stopUiService(osManagerAddress, timeoutMs);
+        if (stopUiResult.isError()) {
+            return Result<std::monostate, std::string>::error(stopUiResult.errorValue());
+        }
+
+        auto serverConnectResult =
+            connectServerBinary(serverClient, serverAddress, timeoutMs, true);
+        if (serverConnectResult.isError()) {
+            return Result<std::monostate, std::string>::error(serverConnectResult.errorValue());
+        }
+
+        auto serverIdleResult = ensureServerIdle(serverClient, timeoutMs);
+        if (serverIdleResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleResult.errorValue());
+        }
+
+        Api::RenderFormatSet::Command renderCmd{
+            .format = RenderFormat::EnumType::Basic,
+            .connectionId = "",
+        };
+        auto renderResult =
+            unwrapResponse(serverClient.sendCommandAndGetResponse<Api::RenderFormatSet::Okay>(
+                renderCmd, timeoutMs));
+        if (renderResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "RenderFormatSet failed: " + renderResult.errorValue());
+        }
+
+        auto currentSettingsResult = fetchUserSettings(serverClient, timeoutMs);
+        if (currentSettingsResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(currentSettingsResult.errorValue());
+        }
+
+        UserSettings desired = currentSettingsResult.value();
+        desired.timezoneIndex = expectedTimezoneIndex;
+
+        auto setResult = updateUserSettings(serverClient, desired, timeoutMs);
+        if (setResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(setResult.errorValue());
+        }
+
+        Api::SimRun::Command simRunCmd{
+            .scenario_id = Scenario::EnumType::Clock,
+            .container_size = Vector2s(800, 480),
+        };
+        auto simRunResult = unwrapResponse(
+            serverClient.sendCommandAndGetResponse<Api::SimRun::Okay>(simRunCmd, timeoutMs));
+        if (simRunResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server SimRun (Clock) failed: " + simRunResult.errorValue());
+        }
+
+        auto serverRunningResult = waitForServerState(serverClient, "SimRunning", timeoutMs);
+        if (serverRunningResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverRunningResult.errorValue());
+        }
+
+        auto timezoneResult = waitForClockRenderTimezone(
+            serverClient, expectedTimezoneIndex, std::max(timeoutMs, 10000));
+        if (timezoneResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(timezoneResult.errorValue());
+        }
+
+        Api::SimStop::Command simStopCmd{};
+        auto stopResult = unwrapResponse(
+            serverClient.sendCommandAndGetResponse<Api::SimStop::OkayType>(simStopCmd, timeoutMs));
+        if (stopResult.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(
+                "Server SimStop failed: " + stopResult.errorValue());
+        }
+
+        auto serverIdleAfterStop = waitForServerState(serverClient, "Idle", timeoutMs);
+        if (serverIdleAfterStop.isError()) {
+            serverClient.disconnect();
+            return Result<std::monostate, std::string>::error(serverIdleAfterStop.errorValue());
+        }
+
+        serverClient.disconnect();
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canApplyClockTimezoneFromUserSettings",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

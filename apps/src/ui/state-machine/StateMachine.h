@@ -7,6 +7,7 @@
 #include "core/StateMachineInterface.h"
 #include "core/SystemMetrics.h"
 #include "core/Timers.h"
+#include "server/UserSettings.h"
 #include "states/State.h"
 #include "ui/UiConfig.h"
 #include "ui/UserSettingsManager.h"
@@ -94,6 +95,7 @@ public:
 
     UserSettings& getUserSettings() { return userSettingsManager_->get(); }
     const UserSettings& getUserSettings() const { return userSettingsManager_->get(); }
+    const DirtSim::UserSettings& getServerUserSettings() const { return serverUserSettings_; }
     int getSynthVolumePercent() const { return synthVolumePercent_; }
     void setSynthVolumePercent(int value) { synthVolumePercent_ = std::clamp(value, 0, 100); }
 
@@ -120,11 +122,15 @@ private:
     uint16_t wsPort_ = 7070;
     uint32_t lastInactiveMs_ = 0;
     UserSettingsManager* userSettingsManager_ = nullptr;
+    DirtSim::UserSettings serverUserSettings_{};
     bool startMenuIdleClockTriggered_ = false;
-    int synthVolumePercent_ = 50;
+    int synthVolumePercent_ = 20;
+    bool audioVolumeWarningLogged_ = false;
 
     bool isAutoShrinkBlocked() const;
     void autoShrinkIfIdle();
+    void applyServerUserSettings(const DirtSim::UserSettings& settings);
+    void syncAudioMasterVolume(int volumePercent);
 
     void transitionTo(State::Any newState);
 };

@@ -23,6 +23,7 @@ namespace DirtSim {
 class GamepadManager;
 class GenomeRepository;
 struct ServerConfig;
+struct UserSettings;
 struct WorldData;
 
 namespace Api {
@@ -91,6 +92,8 @@ public:
 
     GenomeRepository& getGenomeRepository();
     const GenomeRepository& getGenomeRepository() const;
+    UserSettings& getUserSettings();
+    const UserSettings& getUserSettings() const;
 
     void storeTrainingResult(const Api::TrainingResult& result);
 

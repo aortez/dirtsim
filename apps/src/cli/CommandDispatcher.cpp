@@ -1,4 +1,5 @@
 #include "CommandDispatcher.h"
+#include "audio/api/MasterVolumeSet.h"
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
@@ -33,6 +34,7 @@ CommandDispatcher::CommandDispatcher()
 
     registerCommand<AudioApi::NoteOff::Cwc>(audioHandlers_, audioExampleHandlers_);
     registerCommand<AudioApi::NoteOn::Cwc>(audioHandlers_, audioExampleHandlers_);
+    registerCommand<AudioApi::MasterVolumeSet::Cwc>(audioHandlers_, audioExampleHandlers_);
     registerCommand<AudioApi::StatusGet::Cwc>(audioHandlers_, audioExampleHandlers_);
 
     spdlog::debug(
@@ -71,6 +73,9 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::StateGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::StatusGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::UserSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::UserSettingsReset::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::UserSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDelete::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);

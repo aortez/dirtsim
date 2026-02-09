@@ -236,6 +236,11 @@ Run a minimal UI/server workflow check against a running system:
 ./build-debug/bin/cli functional-test canSetGenerationsAndTrain
 ./build-debug/bin/cli functional-test canPlantTreeSeed
 ./build-debug/bin/cli functional-test canOpenTrainingConfigPanel
+./build-debug/bin/cli functional-test canUpdateUserSettings
+./build-debug/bin/cli functional-test canResetUserSettings
+./build-debug/bin/cli functional-test canPersistUserSettingsAcrossRestart
+./build-debug/bin/cli functional-test canUseDefaultScenarioWhenSimRunHasNoScenario
+./build-debug/bin/cli functional-test canApplyClockTimezoneFromUserSettings
 ./build-debug/bin/cli functional-test canPlaySynthKeys
 ./build-debug/bin/cli functional-test verifyTraining
 
@@ -263,6 +268,11 @@ Run a minimal UI/server workflow check against a running system:
 - For canSetGenerationsAndTrain: runs TrainingStart with max_generations=2, verifies the training result reports the expected completed/max generations.
 - For canPlantTreeSeed: starts Tree Germination, plants a seed via the UI API, and waits for tree_vision.
 - For canOpenTrainingConfigPanel: starts training, opens the Training config panel via UI API, and verifies UI still responds.
+- For canUpdateUserSettings: updates timezone/volume/default scenario via server UserSettings APIs and verifies with UserSettingsGet.
+- For canResetUserSettings: changes settings, runs UserSettingsReset, and verifies defaults are restored.
+- For canPersistUserSettingsAcrossRestart: updates settings, restarts services, and verifies settings persisted.
+- For canUseDefaultScenarioWhenSimRunHasNoScenario: sets default scenario and verifies UI SimRun (without scenario_id) uses it.
+- For canApplyClockTimezoneFromUserSettings: sets timezone, runs Clock scenario, and verifies pushed Clock config uses the setting.
 - For canPlaySynthKeys: opens the Synth screen and sends programmatic key presses via UI API, verifying state details.
 
 ### Network Mode

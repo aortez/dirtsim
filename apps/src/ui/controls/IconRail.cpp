@@ -33,6 +33,7 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
     iconConfigs_ = {
         { IconId::DUCK, "", "Start Menu", 0xFFD166 },                          // Duck yellow.
         { IconId::CORE, IconFont::HOME, "Core Controls", 0x87CEEB },           // Light blue.
+        { IconId::SETTINGS, IconFont::COG, "Settings", 0xA0A0A0 },             // Silver gray.
         { IconId::MUSIC, IconFont::WAVE_SQUARE, "Synth", 0x00B4D8 },           // Sky blue.
         { IconId::EVOLUTION, IconFont::CHART_LINE, "Evolution", 0xDA70D6 },    // Orchid/purple.
         { IconId::GENOME_BROWSER, IconFont::DNA, "Genome Browser", 0x40E0D0 }, // Turquoise.
