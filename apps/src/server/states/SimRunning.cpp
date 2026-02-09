@@ -26,6 +26,7 @@
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
+#include "server/UserSettings.h"
 #include "server/api/FingerDown.h"
 #include "server/api/FingerMove.h"
 #include "server/api/FingerUp.h"
@@ -43,6 +44,18 @@ namespace Server {
 namespace State {
 
 namespace {
+
+void applyUserClockTimezoneToConfig(ScenarioConfig& config, const UserSettings& userSettings)
+{
+    auto* clockConfig = std::get_if<Config::Clock>(&config);
+    if (!clockConfig) {
+        return;
+    }
+
+    clockConfig->timezoneIndex = static_cast<uint8_t>(std::clamp(
+        userSettings.timezoneIndex, 0, static_cast<int>(ClockScenario::TIMEZONES.size()) - 1));
+}
+
 Vector2i resolveSeedPlacement(World& world, Vector2i requested)
 {
     auto& data = world.getData();
@@ -173,16 +186,16 @@ void SimRunning::onEnter(StateMachine& dsm)
             world->getData().height);
     }
 
-    // Apply startup scenario if no scenario is set.
+    // Apply default scenario if no scenario is set.
     if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
-        Scenario::EnumType startupScenarioId = getScenarioId(dsm.serverConfig->startupConfig);
-        spdlog::info("SimRunning: Applying startup scenario '{}'", toString(startupScenarioId));
+        const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
+        spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
-        scenario = registry.createScenario(startupScenarioId);
+        scenario = registry.createScenario(defaultScenarioId);
 
         if (scenario) {
-            scenario_id = startupScenarioId;
+            scenario_id = defaultScenarioId;
 
             // Clear world before applying scenario.
             for (int y = 0; y < world->getData().height; ++y) {
@@ -191,8 +204,12 @@ void SimRunning::onEnter(StateMachine& dsm)
                 }
             }
 
-            // Apply config from server.json.
-            scenario->setConfig(dsm.serverConfig->startupConfig, *world);
+            ScenarioConfig scenarioConfig = makeDefaultConfig(defaultScenarioId);
+            if (getScenarioId(dsm.serverConfig->startupConfig) == defaultScenarioId) {
+                scenarioConfig = dsm.serverConfig->startupConfig;
+            }
+            applyUserClockTimezoneToConfig(scenarioConfig, dsm.getUserSettings());
+            scenario->setConfig(scenarioConfig, *world);
 
             // Run scenario setup to initialize world.
             scenario->setup(*world);
@@ -201,8 +218,8 @@ void SimRunning::onEnter(StateMachine& dsm)
             world->setScenario(scenario.get());
 
             spdlog::info(
-                "SimRunning: Startup scenario '{}' applied with config",
-                toString(startupScenarioId));
+                "SimRunning: Default scenario '{}' applied with config",
+                toString(defaultScenarioId));
         }
     }
 
@@ -850,6 +867,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     // Get scenario's default config and apply it.
     ScenarioConfig defaultConfig = newScenario->getConfig();
+    applyUserClockTimezoneToConfig(defaultConfig, dsm.getUserSettings());
     newScenario->setConfig(defaultConfig, *world);
 
     // Run scenario setup.

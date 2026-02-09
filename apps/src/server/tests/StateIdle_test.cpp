@@ -1,7 +1,10 @@
+#include "core/ScenarioConfig.h"
 #include "core/World.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
+#include "server/UserSettings.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
 #include "server/states/SimRunning.h"
@@ -133,4 +136,62 @@ TEST(StateIdleTest, SimRunContainerSizeOverridesScenarioRequiredDimensions)
     EXPECT_EQ(simRunning.world->getData().height, 480 / 16);
 
     ASSERT_TRUE(callbackInvoked);
+}
+
+TEST(StateIdleTest, SimRunWithoutScenarioUsesUserSettingsDefaultScenario)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->getUserSettings().defaultScenario = Scenario::EnumType::Clock;
+    fixture.stateMachine->getUserSettings().timezoneIndex = 5;
+
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::SimRun::Command cmd;
+    cmd.timestep = 0.016;
+    cmd.max_steps = -1;
+
+    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+
+    SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
+    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
+
+    const ScenarioConfig config = simRunning.scenario->getConfig();
+    const auto* clockConfig = std::get_if<Config::Clock>(&config);
+    ASSERT_NE(clockConfig, nullptr);
+    EXPECT_EQ(clockConfig->timezoneIndex, 5);
+}
+
+TEST(StateIdleTest, SimRunWithClockScenarioAppliesUserTimezone)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->getUserSettings().timezoneIndex = 8;
+
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::SimRun::Command cmd;
+    cmd.timestep = 0.016;
+    cmd.max_steps = -1;
+    cmd.scenario_id = Scenario::EnumType::Clock;
+
+    Api::SimRun::Cwc cwc(cmd, [&](Api::SimRun::Response&&) { callbackInvoked = true; });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+    ASSERT_TRUE(std::holds_alternative<SimRunning>(newState.getVariant()));
+    ASSERT_TRUE(callbackInvoked);
+
+    SimRunning& simRunning = std::get<SimRunning>(newState.getVariant());
+    EXPECT_EQ(simRunning.scenario_id, Scenario::EnumType::Clock);
+
+    const ScenarioConfig config = simRunning.scenario->getConfig();
+    const auto* clockConfig = std::get_if<Config::Clock>(&config);
+    ASSERT_NE(clockConfig, nullptr);
+    EXPECT_EQ(clockConfig->timezoneIndex, 8);
 }

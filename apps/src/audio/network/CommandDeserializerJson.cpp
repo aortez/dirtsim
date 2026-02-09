@@ -1,4 +1,5 @@
 #include "CommandDeserializerJson.h"
+#include "audio/api/MasterVolumeSet.h"
 #include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "audio/api/StatusGet.h"
@@ -38,6 +39,10 @@ Result<AudioApi::AudioApiCommand, ApiError> CommandDeserializerJson::deserialize
         if (commandName == AudioApi::NoteOn::Command::name()) {
             return Result<AudioApi::AudioApiCommand, ApiError>::okay(
                 AudioApi::NoteOn::Command::fromJson(cmd));
+        }
+        if (commandName == AudioApi::MasterVolumeSet::Command::name()) {
+            return Result<AudioApi::AudioApiCommand, ApiError>::okay(
+                AudioApi::MasterVolumeSet::Command::fromJson(cmd));
         }
         if (commandName == AudioApi::NoteOff::Command::name()) {
             return Result<AudioApi::AudioApiCommand, ApiError>::okay(

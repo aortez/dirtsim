@@ -2,6 +2,7 @@
 #include "audio/network/CommandDeserializerJson.h"
 #include "core/LoggingChannels.h"
 #include "core/network/BinaryProtocol.h"
+#include <algorithm>
 #include <chrono>
 #include <stdexcept>
 #include <thread>
@@ -54,6 +55,8 @@ void AudioManager::requestExit()
 
 void AudioManager::setupWebSocketService()
 {
+    wsService_.registerHandler<AudioApi::MasterVolumeSet::Cwc>(
+        [this](AudioApi::MasterVolumeSet::Cwc cwc) { handleMasterVolumeSet(cwc); });
     wsService_.registerHandler<AudioApi::NoteOn::Cwc>(
         [this](AudioApi::NoteOn::Cwc cwc) { handleNoteOn(cwc); });
     wsService_.registerHandler<AudioApi::NoteOff::Cwc>(
@@ -90,6 +93,7 @@ void AudioManager::setupWebSocketService()
         return;                                                                             \
     }
 
+            DISPATCH_AUDIO_CMD_WITH_RESP(AudioApi::MasterVolumeSet);
             DISPATCH_AUDIO_CMD_WITH_RESP(AudioApi::NoteOn);
             DISPATCH_AUDIO_CMD_WITH_RESP(AudioApi::NoteOff);
             DISPATCH_AUDIO_CMD_WITH_RESP(AudioApi::StatusGet);
@@ -100,6 +104,15 @@ void AudioManager::setupWebSocketService()
         });
 
     LOG_INFO(Network, "dirtsim-audio WebSocket handlers registered");
+}
+
+void AudioManager::handleMasterVolumeSet(AudioApi::MasterVolumeSet::Cwc cwc)
+{
+    const int volumePercent = std::clamp(cwc.command.volume_percent, 0, 100);
+    engine_.setMasterVolumePercent(volumePercent);
+
+    AudioApi::MasterVolumeSet::Okay response{ .volume_percent = volumePercent };
+    cwc.sendResponse(AudioApi::MasterVolumeSet::Response::okay(response));
 }
 
 void AudioManager::handleNoteOn(AudioApi::NoteOn::Cwc cwc)

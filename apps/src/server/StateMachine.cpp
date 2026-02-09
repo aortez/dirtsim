@@ -3,12 +3,17 @@
 #include "EventProcessor.h"
 #include "ServerConfig.h"
 #include "TrainingResultRepository.h"
+#include "UserSettings.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
 #include "api/TrainingResultGet.h"
 #include "api/TrainingResultList.h"
 #include "api/TrainingResultSet.h"
 #include "api/TrainingStreamConfigSet.h"
+#include "api/UserSettingsGet.h"
+#include "api/UserSettingsReset.h"
+#include "api/UserSettingsSet.h"
+#include "api/UserSettingsUpdated.h"
 #include "api/WebSocketAccessSet.h"
 #include "api/WebUiAccessSet.h"
 #include "core/LoggingChannels.h"
@@ -27,6 +32,7 @@
 #include "core/network/WebSocketService.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/GenomeRepository.h"
+#include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "network/CommandDeserializerJson.h"
@@ -34,11 +40,17 @@
 #include "states/State.h"
 #include <algorithm>
 #include <cassert>
+#include <cerrno>
 #include <chrono>
+#include <cstdio>
+#include <cstring>
 #include <ctime>
+#include <fstream>
 #include <mutex>
+#include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>
 #include <thread>
+#include <unistd.h>
 
 namespace DirtSim {
 namespace Server {
@@ -63,6 +75,184 @@ std::filesystem::path getDefaultDataDir()
         home = "/tmp";
     }
     return std::filesystem::path(home) / ".dirtsim";
+}
+
+int getMaxTimezoneIndex()
+{
+    return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
+}
+
+std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
+{
+    return dataDir / "user_settings.json";
+}
+
+std::filesystem::path getUserSettingsTempPath(const std::filesystem::path& filePath)
+{
+    const auto pid = static_cast<long long>(::getpid());
+    const auto now =
+        static_cast<long long>(std::chrono::steady_clock::now().time_since_epoch().count());
+
+    std::filesystem::path tempPath = filePath;
+    tempPath += ".tmp.";
+    tempPath += std::to_string(pid);
+    tempPath += ".";
+    tempPath += std::to_string(now);
+    return tempPath;
+}
+
+bool persistUserSettingsToDisk(
+    const std::filesystem::path& filePath, const UserSettings& userSettings)
+{
+    std::error_code dirErr;
+    std::filesystem::create_directories(filePath.parent_path(), dirErr);
+    if (dirErr) {
+        LOG_ERROR(
+            State,
+            "Failed to create user settings directory '{}': {}",
+            filePath.parent_path().string(),
+            dirErr.message());
+        return false;
+    }
+
+    const std::filesystem::path tempPath = getUserSettingsTempPath(filePath);
+    std::ofstream file(tempPath);
+    if (!file.is_open()) {
+        LOG_ERROR(State, "Failed to open '{}' for writing user settings", tempPath.string());
+        return false;
+    }
+
+    nlohmann::json json = userSettings;
+    file << json.dump(2) << "\n";
+    file.flush();
+    if (!file.good() || file.fail()) {
+        LOG_ERROR(State, "Failed to write user settings to '{}'", tempPath.string());
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
+        return false;
+    }
+
+    file.close();
+    if (file.fail()) {
+        LOG_ERROR(State, "Failed to close user settings file '{}'", tempPath.string());
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
+        return false;
+    }
+
+    if (::rename(tempPath.c_str(), filePath.c_str()) != 0) {
+        const int err = errno;
+        LOG_ERROR(
+            State,
+            "Failed to replace user settings file '{}' via rename '{}': {}",
+            filePath.string(),
+            tempPath.string(),
+            std::strerror(err));
+        std::error_code removeErr;
+        std::filesystem::remove(tempPath, removeErr);
+        return false;
+    }
+
+    return true;
+}
+
+UserSettings sanitizeUserSettings(
+    const UserSettings& input,
+    const ScenarioRegistry& registry,
+    bool& changed,
+    std::vector<std::string>& updates)
+{
+    UserSettings settings = input;
+    changed = false;
+
+    const auto recordUpdate = [&](const std::string& message) {
+        updates.push_back(message);
+        changed = true;
+    };
+
+    if (settings.timezoneIndex < 0) {
+        settings.timezoneIndex = 0;
+        recordUpdate("timezoneIndex clamped to 0");
+    }
+    else if (settings.timezoneIndex > getMaxTimezoneIndex()) {
+        settings.timezoneIndex = getMaxTimezoneIndex();
+        recordUpdate("timezoneIndex clamped to maximum timezone");
+    }
+
+    if (settings.volumePercent < 0) {
+        settings.volumePercent = 0;
+        recordUpdate("volumePercent clamped to 0");
+    }
+    else if (settings.volumePercent > 100) {
+        settings.volumePercent = 100;
+        recordUpdate("volumePercent clamped to 100");
+    }
+
+    if (!registry.getMetadata(settings.defaultScenario)) {
+        settings.defaultScenario = UserSettings{}.defaultScenario;
+        recordUpdate("defaultScenario reset to fallback scenario");
+    }
+
+    return settings;
+}
+
+UserSettings loadUserSettingsFromDisk(
+    const std::filesystem::path& filePath, const ScenarioRegistry& registry)
+{
+    const UserSettings defaults;
+
+    std::error_code createErr;
+    std::filesystem::create_directories(filePath.parent_path(), createErr);
+    if (createErr) {
+        LOG_WARN(
+            State,
+            "Failed to create user settings directory '{}': {}",
+            filePath.parent_path().string(),
+            createErr.message());
+    }
+
+    if (!std::filesystem::exists(filePath)) {
+        LOG_INFO(State, "User settings file missing, writing defaults to '{}'", filePath.string());
+        persistUserSettingsToDisk(filePath, defaults);
+        return defaults;
+    }
+
+    try {
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            LOG_WARN(
+                State,
+                "Failed to open user settings file '{}', restoring defaults",
+                filePath.string());
+            persistUserSettingsToDisk(filePath, defaults);
+            return defaults;
+        }
+
+        nlohmann::json json;
+        file >> json;
+        UserSettings parsed = json.get<UserSettings>();
+
+        bool changed = false;
+        std::vector<std::string> updates;
+        UserSettings sanitized = sanitizeUserSettings(parsed, registry, changed, updates);
+        if (changed) {
+            for (const auto& update : updates) {
+                LOG_WARN(State, "User settings validation: {}", update);
+            }
+            persistUserSettingsToDisk(filePath, sanitized);
+        }
+
+        return sanitized;
+    }
+    catch (const std::exception& e) {
+        LOG_WARN(
+            State,
+            "Failed to parse user settings '{}': {}. Restoring defaults.",
+            filePath.string(),
+            e.what());
+        persistUserSettingsToDisk(filePath, defaults);
+        return defaults;
+    }
 }
 
 bool isMissingTimestamp(uint64_t timestamp)
@@ -122,10 +312,13 @@ void sortGenomeListEntries(
 
 struct StateMachine::Impl {
     EventProcessor eventProcessor_;
+    std::filesystem::path dataDir_;
     std::unique_ptr<GamepadManager> gamepadManager_;
     GenomeRepository genomeRepository_;
     TrainingResultRepository trainingResultRepository_;
     ScenarioRegistry scenarioRegistry_;
+    std::filesystem::path userSettingsPath_;
+    UserSettings userSettings_;
     SystemMetrics systemMetrics_;
     Timers timers_;
     std::unique_ptr<HttpServer> httpServer_;
@@ -142,28 +335,30 @@ struct StateMachine::Impl {
     mutable std::mutex trainingResultsMutex_;
 
     explicit Impl(const std::optional<std::filesystem::path>& dataDir)
-        : genomeRepository_(initGenomeRepository(dataDir)),
-          trainingResultRepository_(initTrainingResultRepository(dataDir)),
-          scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_))
-    {}
+        : dataDir_(dataDir.value_or(getDefaultDataDir())),
+          genomeRepository_(initGenomeRepository(dataDir_)),
+          trainingResultRepository_(initTrainingResultRepository(dataDir_)),
+          scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_)),
+          userSettingsPath_(getUserSettingsPath(dataDir_)),
+          userSettings_(loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_))
+    {
+        LOG_INFO(State, "User settings file: {}", userSettingsPath_.string());
+    }
 
 private:
-    static GenomeRepository initGenomeRepository(
-        const std::optional<std::filesystem::path>& dataDir)
+    static GenomeRepository initGenomeRepository(const std::filesystem::path& dataDir)
     {
-        auto dir = dataDir.value_or(getDefaultDataDir());
-        std::filesystem::create_directories(dir);
-        auto dbPath = dir / "genomes.db";
+        std::filesystem::create_directories(dataDir);
+        auto dbPath = dataDir / "genomes.db";
         spdlog::info("GenomeRepository: Using database at {}", dbPath.string());
         return GenomeRepository(dbPath);
     }
 
     static TrainingResultRepository initTrainingResultRepository(
-        const std::optional<std::filesystem::path>& dataDir)
+        const std::filesystem::path& dataDir)
     {
-        auto dir = dataDir.value_or(getDefaultDataDir());
-        std::filesystem::create_directories(dir);
-        auto dbPath = dir / "training_results.db";
+        std::filesystem::create_directories(dataDir);
+        auto dbPath = dataDir / "training_results.db";
         spdlog::info("TrainingResultRepository: Using database at {}", dbPath.string());
         return TrainingResultRepository(dbPath);
     }
@@ -335,6 +530,9 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsReset);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::WebSocketAccessSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::WebUiAccessSet);
         DISPATCH_JSON_CMD_EMPTY(Api::WorldResize);
@@ -572,6 +770,12 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::SpawnDirtBall::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TimerStatsGet::Cwc>(
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::UserSettingsGet::Cwc>(
+        [this](Api::UserSettingsGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::UserSettingsReset::Cwc>(
+        [this](Api::UserSettingsReset::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::UserSettingsSet::Cwc>(
+        [this](Api::UserSettingsSet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultDiscard::Cwc>(
         [this](Api::TrainingResultDiscard::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::TrainingResultDelete::Cwc>(
@@ -642,6 +846,16 @@ GenomeRepository& StateMachine::getGenomeRepository()
 const GenomeRepository& StateMachine::getGenomeRepository() const
 {
     return pImpl->genomeRepository_;
+}
+
+UserSettings& StateMachine::getUserSettings()
+{
+    return pImpl->userSettings_;
+}
+
+const UserSettings& StateMachine::getUserSettings() const
+{
+    return pImpl->userSettings_;
 }
 
 void StateMachine::storeTrainingResult(const Api::TrainingResult& result)
@@ -1114,6 +1328,65 @@ void StateMachine::handleEvent(const Event& event)
         okay.renderEveryN = it->renderEveryN;
         okay.message = "Render stream config updated";
         cwc.sendResponse(Api::RenderStreamConfigSet::Response::okay(std::move(okay)));
+        return;
+    }
+
+    if (std::holds_alternative<Api::UserSettingsGet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::UserSettingsGet::Cwc>(event.getVariant());
+        Api::UserSettingsGet::Okay response{ .settings = pImpl->userSettings_ };
+        cwc.sendResponse(Api::UserSettingsGet::Response::okay(std::move(response)));
+        return;
+    }
+
+    if (std::holds_alternative<Api::UserSettingsSet::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::UserSettingsSet::Cwc>(event.getVariant());
+
+        bool changed = false;
+        std::vector<std::string> updates;
+        const UserSettings sanitized =
+            sanitizeUserSettings(cwc.command.settings, pImpl->scenarioRegistry_, changed, updates);
+
+        if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
+            cwc.sendResponse(
+                Api::UserSettingsSet::Response::error(ApiError("Failed to persist user settings")));
+            return;
+        }
+
+        if (changed) {
+            for (const auto& update : updates) {
+                LOG_WARN(State, "UserSettingsSet: {}", update);
+            }
+        }
+
+        pImpl->userSettings_ = sanitized;
+
+        Api::UserSettingsSet::Okay response{ .settings = pImpl->userSettings_ };
+        cwc.sendResponse(Api::UserSettingsSet::Response::okay(std::move(response)));
+
+        const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+        broadcastEventData(
+            Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
+        return;
+    }
+
+    if (std::holds_alternative<Api::UserSettingsReset::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::UserSettingsReset::Cwc>(event.getVariant());
+
+        const UserSettings defaults;
+        if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, defaults)) {
+            cwc.sendResponse(
+                Api::UserSettingsReset::Response::error(
+                    ApiError("Failed to persist user settings")));
+            return;
+        }
+
+        pImpl->userSettings_ = defaults;
+        Api::UserSettingsReset::Okay response{ .settings = pImpl->userSettings_ };
+        cwc.sendResponse(Api::UserSettingsReset::Response::okay(std::move(response)));
+
+        const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+        broadcastEventData(
+            Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
         return;
     }
 

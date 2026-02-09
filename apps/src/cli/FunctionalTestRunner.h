@@ -69,6 +69,31 @@ public:
         const std::string& serverAddress,
         const std::string& osManagerAddress,
         int timeoutMs);
+    FunctionalTestSummary runCanUpdateUserSettings(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanResetUserSettings(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanPersistUserSettingsAcrossRestart(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanUseDefaultScenarioWhenSimRunHasNoScenario(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
+    FunctionalTestSummary runCanApplyClockTimezoneFromUserSettings(
+        const std::string& uiAddress,
+        const std::string& serverAddress,
+        const std::string& osManagerAddress,
+        int timeoutMs);
     FunctionalTestSummary runCanPlaySynthKeys(
         const std::string& uiAddress,
         const std::string& serverAddress,

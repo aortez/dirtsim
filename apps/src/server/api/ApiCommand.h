@@ -40,6 +40,9 @@
 #include "TrainingResultSave.h"
 #include "TrainingResultSet.h"
 #include "TrainingStreamConfigSet.h"
+#include "UserSettingsGet.h"
+#include "UserSettingsReset.h"
+#include "UserSettingsSet.h"
 #include "WebSocketAccessSet.h"
 #include "WebUiAccessSet.h"
 #include "WorldResize.h"
@@ -102,6 +105,9 @@ using ApiCommand = std::variant<
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,
+    Api::UserSettingsGet::Command,
+    Api::UserSettingsReset::Command,
+    Api::UserSettingsSet::Command,
     Api::TrainingResultDiscard::Command,
     Api::TrainingResultDelete::Command,
     Api::TrainingResultGet::Command,

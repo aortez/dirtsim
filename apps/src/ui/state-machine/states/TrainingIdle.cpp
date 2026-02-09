@@ -148,6 +148,7 @@ State::Any TrainingIdle::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         case IconId::NETWORK:
         case IconId::DUCK:
         case IconId::CORE:
+        case IconId::SETTINGS:
         case IconId::PHYSICS:
         case IconId::PLAY:
         case IconId::SCENARIO:
