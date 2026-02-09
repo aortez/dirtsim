@@ -31,7 +31,7 @@ int randomInt(std::mt19937& rng, int minValue, int maxValue)
 }
 } // namespace
 
-Starfield::Starfield(lv_obj_t* parent, int width, int height)
+Starfield::Starfield(lv_obj_t* parent, int width, int height, const Snapshot* snapshot)
     : parent_(parent), width_(width), height_(height), rng_(std::random_device{}())
 {
     if (!parent_ || width_ <= 0 || height_ <= 0) {
@@ -63,7 +63,39 @@ Starfield::Starfield(lv_obj_t* parent, int width, int height)
 
     lv_canvas_set_buffer(canvas_, canvasBuffer_, width_, height_, LV_COLOR_FORMAT_ARGB8888);
     lv_canvas_fill_bg(canvas_, lv_color_hex(0x000000), LV_OPA_COVER);
-    initStars();
+
+    if (snapshot && !snapshot->stars.empty()) {
+        rng_ = snapshot->rng;
+
+        const float xScale =
+            (snapshot->width > 0) ? (static_cast<float>(width_) / snapshot->width) : 1.0f;
+        const float yScale =
+            (snapshot->height > 0) ? (static_cast<float>(height_) / snapshot->height) : 1.0f;
+
+        const size_t clampedCount = std::clamp(
+            snapshot->stars.size(), static_cast<size_t>(kMinStars), static_cast<size_t>(kMaxStars));
+        starCount_ = static_cast<int>(clampedCount);
+        stars_.clear();
+        stars_.reserve(starCount_);
+
+        for (size_t i = 0; i < clampedCount; ++i) {
+            const SnapshotStar& src = snapshot->stars[i];
+            Star star;
+            star.x =
+                std::clamp(src.x * xScale, 0.0f, std::max(0.0f, static_cast<float>(width_ - 1)));
+            star.y =
+                std::clamp(src.y * yScale, 0.0f, std::max(0.0f, static_cast<float>(height_ - 1)));
+            star.speed = src.speed;
+            star.twinklePhase = src.twinklePhase;
+            star.twinkleSpeed = src.twinkleSpeed;
+            star.brightness = src.brightness;
+            star.size = src.size;
+            stars_.push_back(star);
+        }
+    }
+    else {
+        initStars();
+    }
 }
 
 Starfield::~Starfield()
@@ -100,6 +132,27 @@ bool Starfield::isVisible() const
     }
 
     return !lv_obj_has_flag(canvas_, LV_OBJ_FLAG_HIDDEN);
+}
+
+Starfield::Snapshot Starfield::capture() const
+{
+    Snapshot snapshot;
+    snapshot.width = width_;
+    snapshot.height = height_;
+    snapshot.rng = rng_;
+    snapshot.stars.reserve(stars_.size());
+    for (const auto& star : stars_) {
+        SnapshotStar out;
+        out.x = star.x;
+        out.y = star.y;
+        out.speed = star.speed;
+        out.twinklePhase = star.twinklePhase;
+        out.twinkleSpeed = star.twinkleSpeed;
+        out.brightness = star.brightness;
+        out.size = star.size;
+        snapshot.stars.push_back(out);
+    }
+    return snapshot;
 }
 
 void Starfield::update()

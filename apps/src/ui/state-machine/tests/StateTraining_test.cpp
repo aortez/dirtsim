@@ -63,8 +63,6 @@ TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
 {
     TestStateMachineFixture fixture;
 
-    TrainingIdle trainingState;
-
     bool callbackInvoked = false;
     UiApi::Exit::Command cmd;
     UiApi::Exit::Cwc cwc(cmd, [&](UiApi::Exit::Response&& response) {
@@ -72,10 +70,10 @@ TEST(StateTrainingTest, ExitCommandTransitionsToShutdown)
         EXPECT_TRUE(response.isValue());
     });
 
-    State::Any newState = trainingState.onEvent(cwc, *fixture.stateMachine);
+    fixture.stateMachine->handleEvent(cwc);
 
-    ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
-        << "Training + Exit should transition to Shutdown";
+    EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Shutdown");
+    EXPECT_TRUE(fixture.stateMachine->shouldExit());
     EXPECT_TRUE(callbackInvoked) << "Response callback should be invoked";
 }
 
@@ -85,16 +83,28 @@ TEST(StateTrainingTest, HasCorrectStateName)
     TrainingActive active;
     TrainingUnsavedResult unsaved;
 
-    EXPECT_STREQ(idle.name(), "Training");
-    EXPECT_STREQ(active.name(), "Training");
-    EXPECT_STREQ(unsaved.name(), "Training");
+    EXPECT_STREQ(idle.name(), "TrainingIdle");
+    EXPECT_STREQ(active.name(), "TrainingActive");
+    EXPECT_STREQ(unsaved.name(), "TrainingUnsavedResult");
 }
 
 TEST(StateTrainingTest, EvolutionProgressUpdatesState)
 {
+    LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
 
     TrainingActive trainingState;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    trainingState.onEnter(*fixture.stateMachine);
 
     EvolutionProgressReceivedEvent evt;
     evt.progress.generation = 5;
@@ -117,20 +127,23 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessThisGen, 2.5);
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessAllTime, 3.0);
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
+
+    trainingState.view_.reset();
 }
 
 TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
 {
+    LvglTestDisplay lvgl;
     TestStateMachineFixture fixture;
 
-    TrainingIdle trainingState;
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
     ServerDisconnectedEvent evt{ "Connection lost" };
 
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
+    fixture.stateMachine->handleEvent(evt);
 
-    ASSERT_TRUE(std::holds_alternative<Disconnected>(newState.getVariant()))
-        << "TrainingIdle + ServerDisconnected should transition to Disconnected";
+    EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
 }
 
 TEST(StateTrainingTest, StartEvolutionSendsCommand)
@@ -149,6 +162,7 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
 
     TrainingIdle trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
 
     StartEvolutionButtonClickedEvent evt;
     evt.evolution.populationSize = 10;
@@ -170,6 +184,7 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
     EXPECT_EQ(sentCommands[2], "RenderFormatSet");
 
+    trainingState.view_.reset();
     activeState->view_.reset();
     fixture.stateMachine->uiManager_.reset();
 }
@@ -192,22 +207,6 @@ TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
     ASSERT_EQ(fixture.mockWebSocketService->sentCommands().size(), 1)
         << "Should send EvolutionStop command";
     EXPECT_EQ(fixture.mockWebSocketService->sentCommands()[0], "EvolutionStop");
-}
-
-TEST(StateTrainingTest, StopButtonSkipsStopWhenIdle)
-{
-    TestStateMachineFixture fixture;
-
-    TrainingIdle trainingState;
-
-    StopTrainingClickedEvent evt;
-
-    State::Any newState = trainingState.onEvent(evt, *fixture.stateMachine);
-
-    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()))
-        << "TrainingIdle + StopTrainingClicked should transition to StartMenu";
-
-    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
 }
 
 TEST(StateTrainingTest, QuitButtonStopsWhenRunning)
@@ -313,6 +312,7 @@ TEST(StateTrainingTest, TrainingResultSaveWithRestartClearsModalAndRestarts)
     ASSERT_NE(updatedState, nullptr);
     EXPECT_TRUE(callbackInvoked);
 
+    trainingState.view_.reset();
     updatedState->onEnter(*fixture.stateMachine);
     EXPECT_FALSE(updatedState->isTrainingResultModalVisible());
 

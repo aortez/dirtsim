@@ -58,11 +58,6 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
 
 IconRail::~IconRail()
 {
-    if (autoShrinkTimer_) {
-        lv_timer_delete(autoShrinkTimer_);
-        autoShrinkTimer_ = nullptr;
-    }
-
     if (fractalAnimator_ && duckViewId_ != 0) {
         fractalAnimator_->detachView(duckViewId_);
         duckViewId_ = 0;
@@ -89,9 +84,6 @@ void IconRail::createIcons(lv_obj_t* parent)
 
     // Style the container.
     lv_obj_set_size(container_, RAIL_WIDTH, LV_PCT(100));
-    lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_flex_align(
-        container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
     lv_obj_set_style_pad_row(container_, GAP, 0);
     lv_obj_set_style_pad_column(container_, GAP, 0);
@@ -101,11 +93,41 @@ void IconRail::createIcons(lv_obj_t* parent)
     lv_obj_set_style_radius(container_, 0, 0);
     lv_obj_clear_flag(container_, LV_OBJ_FLAG_SCROLLABLE);
 
+    iconsViewport_ = lv_obj_create(container_);
+    if (!iconsViewport_) {
+        LOG_ERROR(Controls, "Failed to create IconRail viewport");
+        return;
+    }
+
+    lv_obj_set_size(iconsViewport_, LV_PCT(100), LV_PCT(100));
+    lv_obj_set_style_bg_opa(iconsViewport_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(iconsViewport_, 0, 0);
+    lv_obj_set_style_pad_all(iconsViewport_, 0, 0);
+    lv_obj_clear_flag(iconsViewport_, LV_OBJ_FLAG_SCROLLABLE);
+
+    iconsLayout_ = lv_obj_create(iconsViewport_);
+    if (!iconsLayout_) {
+        LOG_ERROR(Controls, "Failed to create IconRail icon layout");
+        return;
+    }
+
+    lv_obj_set_size(iconsLayout_, ICON_SIZE, LV_SIZE_CONTENT);
+    lv_obj_set_pos(iconsLayout_, 0, 0);
+    lv_obj_set_style_bg_opa(iconsLayout_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(iconsLayout_, 0, 0);
+    lv_obj_set_style_pad_all(iconsLayout_, 0, 0);
+    lv_obj_set_style_pad_row(iconsLayout_, GAP, 0);
+    lv_obj_set_style_pad_column(iconsLayout_, 0, 0);
+    lv_obj_set_flex_flow(iconsLayout_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        iconsLayout_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(iconsLayout_, LV_OBJ_FLAG_SCROLLABLE);
+
     // Create buttons for each icon using ActionButton.
     for (size_t i = 0; i < iconConfigs_.size(); i++) {
         const auto& config = iconConfigs_[i];
 
-        lv_obj_t* btnContainer = LVGLBuilder::actionButton(container_)
+        lv_obj_t* btnContainer = LVGLBuilder::actionButton(iconsLayout_)
                                      .icon(config.symbol)
                                      .font(iconFont_->font())
                                      .mode(LVGLBuilder::ActionMode::Toggle)
@@ -163,7 +185,6 @@ void IconRail::onIconClicked(lv_event_t* e)
     }
 
     self->updateButtonVisuals();
-    self->resetAutoShrinkTimer();
 
     // Queue event for state machine to process.
     if (self->eventSink_) {
@@ -293,8 +314,6 @@ void IconRail::setVisibleIcons(const std::vector<IconId>& visibleIcons)
             }
         }
     }
-
-    resetAutoShrinkTimer();
 }
 
 void IconRail::showIcons()
@@ -312,7 +331,6 @@ void IconRail::selectIcon(IconId id)
     IconId previousId = selectedId_;
     selectedId_ = id;
     updateButtonVisuals();
-    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -348,7 +366,6 @@ void IconRail::deselectAll()
     IconId previousId = selectedId_;
     selectedId_ = IconId::NONE;
     updateButtonVisuals();
-    resetAutoShrinkTimer();
 
     if (eventSink_) {
         eventSink_->queueEvent(IconSelectedEvent{ selectedId_, previousId });
@@ -358,6 +375,10 @@ void IconRail::deselectAll()
 void IconRail::createModeButtons()
 {
     if (!container_) return;
+    if (!iconsLayout_) {
+        LOG_ERROR(Controls, "IconRail icons layout is not available");
+        return;
+    }
 
     // Get the screen (go up from container -> simMainRow -> screen).
     // This allows the expand button to float on top of everything.
@@ -403,7 +424,7 @@ void IconRail::createModeButtons()
     }
 
     // Create collapse button (shown in normal mode, at bottom).
-    collapseButton_ = LVGLBuilder::actionButton(container_)
+    collapseButton_ = LVGLBuilder::actionButton(iconsLayout_)
                           .icon(LV_SYMBOL_LEFT)
                           .mode(LVGLBuilder::ActionMode::Push)
                           .size(ICON_SIZE)
@@ -426,8 +447,12 @@ void IconRail::createModeButtons()
 void IconRail::applyMode()
 {
     if (!container_) return;
+    if (!iconsViewport_ || !iconsLayout_) {
+        LOG_ERROR(Controls, "IconRail layout objects are not initialized");
+        return;
+    }
 
-    bool minimized = (mode_ == RailMode::Minimized);
+    const bool minimized = (mode_ == RailMode::Minimized);
 
     // Animate width transition.
     int targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH;
@@ -447,26 +472,45 @@ void IconRail::applyMode()
         lv_anim_start(&a);
     }
 
+    int targetViewportWidth = 0;
+    if (!minimized) {
+        targetViewportWidth = (layout_ == RailLayout::TwoColumn)
+            ? (RAIL_WIDTH_TWO_COLUMN - ICON_PAD * 2)
+            : (RAIL_WIDTH - ICON_PAD * 2);
+    }
+
+    const int currentViewportWidth = lv_obj_get_width(iconsViewport_);
+    if (currentViewportWidth != targetViewportWidth) {
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, iconsViewport_);
+        lv_anim_set_values(&a, currentViewportWidth, targetViewportWidth);
+        lv_anim_set_time(&a, MODE_ANIM_DURATION_MS);
+        lv_anim_set_exec_cb(
+            &a, [](void* obj, int32_t v) { lv_obj_set_width(static_cast<lv_obj_t*>(obj), v); });
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+        lv_anim_start(&a);
+    }
+
     // Update styles immediately.
     if (minimized) {
         lv_obj_set_style_pad_all(container_, 2, 0);
-        lv_obj_set_flex_align(
-            container_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
     else {
         lv_obj_set_style_pad_all(container_, ICON_PAD, 0);
-        lv_obj_set_flex_align(
-            container_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     }
 
     if (layout_ == RailLayout::TwoColumn) {
-        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_ROW_WRAP);
-        lv_obj_set_style_pad_column(container_, GAP, 0);
+        lv_obj_set_size(iconsLayout_, RAIL_WIDTH_TWO_COLUMN - ICON_PAD * 2, LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(iconsLayout_, LV_FLEX_FLOW_ROW_WRAP);
+        lv_obj_set_style_pad_column(iconsLayout_, GAP, 0);
     }
     else {
-        lv_obj_set_flex_flow(container_, LV_FLEX_FLOW_COLUMN);
-        lv_obj_set_style_pad_column(container_, 0, 0);
+        lv_obj_set_size(iconsLayout_, RAIL_WIDTH - ICON_PAD * 2, LV_SIZE_CONTENT);
+        lv_obj_set_flex_flow(iconsLayout_, LV_FLEX_FLOW_COLUMN);
+        lv_obj_set_style_pad_column(iconsLayout_, 0, 0);
     }
+    lv_obj_set_pos(iconsLayout_, 0, 0);
 
     // Show/hide icon buttons.
     for (size_t i = 0; i < buttons_.size(); i++) {
@@ -547,8 +591,6 @@ void IconRail::applyMode()
     }
 
     LOG_INFO(Controls, "IconRail mode set to: {}", minimized ? "Minimized" : "Normal");
-
-    resetAutoShrinkTimer();
 }
 
 void IconRail::setMode(RailMode mode)
@@ -594,55 +636,12 @@ void IconRail::onModeButtonClicked(lv_event_t* e)
 
     if (!self) return;
 
-    self->resetAutoShrinkTimer();
-
     if (isExpand) {
         self->setMode(RailMode::Normal);
     }
     else {
         self->setMode(RailMode::Minimized);
     }
-}
-
-void IconRail::createAutoShrinkTimer()
-{
-    autoShrinkTimer_ = lv_timer_create(onAutoShrinkTimer, AUTO_SHRINK_TIMEOUT_MS, this);
-    if (autoShrinkTimer_) {
-        // Pause initially - only active when rail is expanded with no selection.
-        lv_timer_pause(autoShrinkTimer_);
-        LOG_DEBUG(Controls, "Auto-shrink timer created ({}ms)", AUTO_SHRINK_TIMEOUT_MS);
-    }
-}
-
-void IconRail::resetAutoShrinkTimer()
-{
-    if (!autoShrinkTimer_) return;
-
-    // Only run timer when rail is expanded and no icon is selected.
-    if (mode_ == RailMode::Normal && selectedId_ == IconId::NONE) {
-        lv_timer_reset(autoShrinkTimer_);
-        lv_timer_resume(autoShrinkTimer_);
-    }
-    else {
-        lv_timer_pause(autoShrinkTimer_);
-    }
-}
-
-void IconRail::onAutoShrinkTimer(lv_timer_t* timer)
-{
-    IconRail* self = static_cast<IconRail*>(lv_timer_get_user_data(timer));
-    if (!self) return;
-
-    // Only request shrink if no icon is selected and currently expanded.
-    if (self->selectedId_ == IconId::NONE && self->mode_ == RailMode::Normal) {
-        LOG_INFO(Controls, "Auto-shrink timer fired, queueing event");
-        // Queue event for state machine to handle (don't touch LVGL objects from timer).
-        if (self->eventSink_) {
-            self->eventSink_->queueEvent(RailAutoShrinkRequestEvent{});
-        }
-    }
-
-    lv_timer_pause(timer);
 }
 
 } // namespace Ui

@@ -93,17 +93,16 @@ dirtsim-cli ui StatusGet
 dirtsim-cli ui StateGet
 ```
 
-StatusGet includes state-specific details via `state_details`. For Training:
+StatusGet includes state-specific details via `state_details`. Training uses the `state` field:
 
 ```json
 {
   "value": {
-    "state": "Training",
+    "state": "TrainingIdle",
     "selected_icon": "CORE",
     "panel_visible": true,
     "state_details": {
-      "_variant_type": "DirtSim::UiApi::StatusGet::TrainingStateDetails",
-      "trainingModalVisible": false
+      "_variant_type": "DirtSim::UiApi::StatusGet::NoStateDetails"
     }
   }
 }
