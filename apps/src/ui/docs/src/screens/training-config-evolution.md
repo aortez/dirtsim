@@ -33,10 +33,10 @@ scale 1.6
 
 ```plantuml
 @startuml
-[*] --> Training
+[*] --> TrainingIdle
 
-Training --> TrainingConfigOpen : Select Evolution
-TrainingConfigOpen --> Training : Close
-TrainingConfigOpen --> Training : Start
+TrainingIdle --> TrainingConfigOpen : Select Evolution
+TrainingConfigOpen --> TrainingIdle : Close
+TrainingConfigOpen --> TrainingActive : Start
 @enduml
 ```

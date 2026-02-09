@@ -520,12 +520,7 @@ void StateMachine::handleEvent(const Event& event)
         std::visit(
             [&stateDetails](const auto& currentState) {
                 using StateType = std::decay_t<decltype(currentState)>;
-                if constexpr (requires { currentState.isTrainingResultModalVisible(); }) {
-                    stateDetails = UiApi::StatusGet::TrainingStateDetails{
-                        .trainingModalVisible = currentState.isTrainingResultModalVisible(),
-                    };
-                }
-                else if constexpr (
+                if constexpr (
                     std::is_same_v<StateType, State::Synth>
                     || std::is_same_v<StateType, State::SynthConfig>) {
                     stateDetails = UiApi::StatusGet::SynthStateDetails{
@@ -554,6 +549,122 @@ void StateMachine::handleEvent(const Event& event)
 
         LOG_DEBUG(State, "Sending StatusGet response (state={})", status.state);
         cwc.sendResponse(UiApi::StatusGet::Response::okay(std::move(status)));
+        return;
+    }
+
+    if (std::holds_alternative<ServerDisconnectedEvent>(event)) {
+        auto& evt = std::get<ServerDisconnectedEvent>(event);
+        LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
+
+        if (std::holds_alternative<State::Disconnected>(fsmState.getVariant())) {
+            LOG_INFO(State, "Already in Disconnected state");
+            return;
+        }
+
+        if (std::holds_alternative<State::Shutdown>(fsmState.getVariant())) {
+            LOG_INFO(State, "Ignoring disconnect while shutting down");
+            return;
+        }
+
+        LOG_INFO(State, "Transitioning back to Disconnected");
+        if (!queueReconnectToLastServer()) {
+            LOG_WARN(State, "No previous server address available for reconnect");
+        }
+
+        transitionTo(State::Disconnected{});
+        return;
+    }
+
+    // Handle Exit universally (works in all states).
+    if (std::holds_alternative<UiApi::Exit::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::Exit::Cwc>(event);
+        LOG_INFO(State, "Exit command received, shutting down");
+        cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
+        transitionTo(State::Shutdown{});
+        return;
+    }
+
+    // Handle mouse input with state-specific override (SimRunning) or fallback.
+    if (std::holds_alternative<UiApi::MouseDown::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::MouseDown::Cwc>(event);
+        bool handled = false;
+        std::visit(
+            [this, &cwc, &handled](auto&& state) {
+                using StateType = std::decay_t<decltype(state)>;
+                if constexpr (requires { state.onEvent(cwc, *this); }) {
+                    handled = true;
+                    auto newState = state.onEvent(cwc, *this);
+                    if (!std::holds_alternative<StateType>(newState.getVariant())) {
+                        transitionTo(std::move(newState));
+                    }
+                    else {
+                        fsmState = std::move(newState);
+                    }
+                }
+            },
+            fsmState.getVariant());
+        if (!handled) {
+            if (getRemoteInputDevice()) {
+                getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+                getRemoteInputDevice()->updatePressed(true);
+            }
+            cwc.sendResponse(UiApi::MouseDown::Response::okay(std::monostate{}));
+        }
+        return;
+    }
+
+    if (std::holds_alternative<UiApi::MouseMove::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::MouseMove::Cwc>(event);
+        bool handled = false;
+        std::visit(
+            [this, &cwc, &handled](auto&& state) {
+                using StateType = std::decay_t<decltype(state)>;
+                if constexpr (requires { state.onEvent(cwc, *this); }) {
+                    handled = true;
+                    auto newState = state.onEvent(cwc, *this);
+                    if (!std::holds_alternative<StateType>(newState.getVariant())) {
+                        transitionTo(std::move(newState));
+                    }
+                    else {
+                        fsmState = std::move(newState);
+                    }
+                }
+            },
+            fsmState.getVariant());
+        if (!handled) {
+            if (getRemoteInputDevice()) {
+                getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+            }
+            cwc.sendResponse(UiApi::MouseMove::Response::okay(std::monostate{}));
+        }
+        return;
+    }
+
+    if (std::holds_alternative<UiApi::MouseUp::Cwc>(event)) {
+        auto& cwc = std::get<UiApi::MouseUp::Cwc>(event);
+        bool handled = false;
+        std::visit(
+            [this, &cwc, &handled](auto&& state) {
+                using StateType = std::decay_t<decltype(state)>;
+                if constexpr (requires { state.onEvent(cwc, *this); }) {
+                    handled = true;
+                    auto newState = state.onEvent(cwc, *this);
+                    if (!std::holds_alternative<StateType>(newState.getVariant())) {
+                        transitionTo(std::move(newState));
+                    }
+                    else {
+                        fsmState = std::move(newState);
+                    }
+                }
+            },
+            fsmState.getVariant());
+        if (!handled) {
+            if (getRemoteInputDevice()) {
+                getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
+                getRemoteInputDevice()->updatePressed(false);
+            }
+            cwc.sendResponse(UiApi::MouseUp::Response::okay(std::monostate{}));
+        }
         return;
     }
 

@@ -1,7 +1,6 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
-#include "ui/RemoteInputDevice.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <string>
@@ -17,17 +16,11 @@ void Synth::onEnter(StateMachine& sm)
     LOG_INFO(State, "Entering Synth state");
 
     auto* uiManager = sm.getUiComponentManager();
-    if (!uiManager) {
-        LOG_ERROR(State, "No UiComponentManager available");
-        return;
-    }
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     uiManager->getMainMenuContainer();
     lv_obj_t* contentArea = uiManager->getMenuContentArea();
-    if (!contentArea) {
-        LOG_ERROR(State, "No menu content area available");
-        return;
-    }
+    DIRTSIM_ASSERT(contentArea, "Synth state requires a menu content area");
 
     lv_obj_clean(contentArea);
 
@@ -105,17 +98,6 @@ State::Any Synth::onEvent(const IconSelectedEvent& evt, StateMachine& /*sm*/)
     return std::move(*this);
 }
 
-State::Any Synth::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
-
-    return std::move(*this);
-}
-
 State::Any Synth::onEvent(const RailModeChangedEvent& /*evt*/, StateMachine& /*sm*/)
 {
     return std::move(*this);
@@ -125,32 +107,6 @@ State::Any Synth::onEvent(const StopButtonClickedEvent& /*evt*/, StateMachine& /
 {
     LOG_INFO(State, "Stop button clicked, returning to StartMenu");
     return StartMenu{};
-}
-
-State::Any Synth::onEvent(const UserSettingsUpdatedEvent& evt, StateMachine& sm)
-{
-    keyboard_.setVolumePercent(evt.settings.volumePercent);
-    sm.setSynthVolumePercent(evt.settings.volumePercent);
-    return std::move(*this);
-}
-
-State::Any Synth::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning back to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    return Disconnected{};
-}
-
-State::Any Synth::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-    return Shutdown{};
 }
 
 State::Any Synth::onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& /*sm*/)
@@ -180,38 +136,6 @@ State::Any Synth::onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachine& /*
         .is_black = cwc.command.is_black,
     };
     cwc.sendResponse(UiApi::SynthKeyPress::Response::okay(response));
-    return std::move(*this);
-}
-
-State::Any Synth::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(true);
-    }
-
-    cwc.sendResponse(UiApi::MouseDown::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any Synth::onEvent(const UiApi::MouseMove::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-    }
-
-    cwc.sendResponse(UiApi::MouseMove::Response::okay({}));
-    return std::move(*this);
-}
-
-State::Any Synth::onEvent(const UiApi::MouseUp::Cwc& cwc, StateMachine& sm)
-{
-    if (sm.getRemoteInputDevice()) {
-        sm.getRemoteInputDevice()->updatePosition(cwc.command.pixelX, cwc.command.pixelY);
-        sm.getRemoteInputDevice()->updatePressed(false);
-    }
-
-    cwc.sendResponse(UiApi::MouseUp::Response::okay({}));
     return std::move(*this);
 }
 

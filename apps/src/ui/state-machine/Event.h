@@ -203,10 +203,6 @@ struct GenomeLoadClickedEvent {
     static constexpr const char* name() { return "GenomeLoadClickedEvent"; }
 };
 
-struct OpenTrainingGenomeBrowserClickedEvent {
-    static constexpr const char* name() { return "OpenTrainingGenomeBrowserClickedEvent"; }
-};
-
 struct GenomeAddToTrainingClickedEvent {
     GenomeId genomeId;
     Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
@@ -263,13 +259,6 @@ struct RailModeChangedEvent {
     static constexpr const char* name() { return "RailModeChangedEvent"; }
 };
 
-/**
- * @brief IconRail auto-shrink timer fired (requests minimization after inactivity).
- */
-struct RailAutoShrinkRequestEvent {
-    static constexpr const char* name() { return "RailAutoShrinkRequestEvent"; }
-};
-
 // =================================================================
 // EVENT VARIANT
 // =================================================================
@@ -299,7 +288,6 @@ using Event = std::variant<
     TrainingResultDiscardClickedEvent,
     TrainingStreamConfigChangedEvent,
     GenomeLoadClickedEvent,
-    OpenTrainingGenomeBrowserClickedEvent,
     GenomeAddToTrainingClickedEvent,
     RequestWorldUpdateCommand,
 
@@ -312,7 +300,6 @@ using Event = std::variant<
 
     // UI control events
     IconSelectedEvent,
-    RailAutoShrinkRequestEvent,
     RailModeChangedEvent,
 
     // API commands (local from LVGL or remote from WebSocket)

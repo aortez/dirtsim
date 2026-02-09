@@ -15,7 +15,9 @@ check the current state before driving screenshots or automation.
 - `StartMenu`: main hub with the icon rail and panels.
 - `SimRunning`: simulation running.
 - `Paused`: simulation paused.
-- `Training`: evolution/training UI.
+- `TrainingIdle`: training config + icon rail.
+- `TrainingActive`: live training progress (icon rail hidden).
+- `TrainingUnsavedResult`: save/discard modal for completed training.
 - `Shutdown`: app shutting down.
 
 ## Common transitions (basic)
@@ -26,6 +28,9 @@ check the current state before driving screenshots or automation.
 - `SimRunning` -> `Paused` (`SimPause`).
 - `Paused` -> `SimRunning` (`SimRun`).
 - `SimRunning`/`Paused` -> `StartMenu` (`SimStop`).
-- `StartMenu` -> `Training` (`TrainingStart`).
-- `Training` -> `StartMenu` (stop/exit training).
+- `StartMenu` -> `TrainingIdle` (`TrainingStart`).
+- `TrainingIdle` -> `TrainingActive` (start evolution).
+- `TrainingActive` -> `TrainingUnsavedResult` (training complete).
+- `TrainingUnsavedResult` -> `TrainingIdle` (save/discard).
+- `TrainingIdle`/`TrainingActive`/`TrainingUnsavedResult` -> `StartMenu` (stop/exit training).
 - Any -> `Shutdown` (`Exit`).

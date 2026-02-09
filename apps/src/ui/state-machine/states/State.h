@@ -13,7 +13,9 @@
 #include "StateForward.h"
 #include "Synth.h"
 #include "SynthConfig.h"
-#include "Training.h"
+#include "TrainingActive.h"
+#include "TrainingIdle.h"
+#include "TrainingUnsavedResult.h"
 
 namespace DirtSim {
 namespace Ui {

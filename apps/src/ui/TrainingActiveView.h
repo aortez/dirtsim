@@ -3,6 +3,7 @@
 #include "core/Result.h"
 #include "core/organisms/evolution/GenomeMetadata.h"
 #include "ui/UserSettings.h"
+#include "ui/rendering/Starfield.h"
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -39,7 +40,8 @@ public:
         UiComponentManager* uiManager,
         EventSink& eventSink,
         Network::WebSocketServiceInterface* wsService,
-        UserSettings& userSettings);
+        UserSettings& userSettings,
+        const Starfield::Snapshot* starfieldSnapshot = nullptr);
     ~TrainingActiveView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
@@ -56,6 +58,7 @@ public:
     void clearPanelContent();
     void createCorePanel();
     bool isTrainingResultModalVisible() const;
+    Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
     void createUI();
@@ -112,6 +115,7 @@ private:
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
     std::unique_ptr<Starfield> starfield_;
+    const Starfield::Snapshot* starfieldSnapshot_ = nullptr;
 
     std::unique_ptr<WorldData> bestWorldData_;
     double bestFitness_ = 0.0;

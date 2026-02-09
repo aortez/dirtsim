@@ -81,10 +81,12 @@ void SimRunning::onEnter(StateMachine& sm)
 
     if (!playground_) {
         auto* uiManager = sm.getUiComponentManager();
+        DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
         uiManager->getSimulationContainer();
 
         playground_ = std::make_unique<SimPlayground>(
             uiManager, &sm.getWebSocketService(), sm, &sm.getFractalAnimator());
+        DIRTSIM_ASSERT(playground_, "SimPlayground creation failed");
 
         IconRail* iconRail = uiManager->getIconRail();
         DIRTSIM_ASSERT(iconRail, "IconRail must exist");
@@ -120,6 +122,7 @@ State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
         static_cast<int>(evt.selectedId));
 
     auto* uiManager = sm.getUiComponentManager();
+    DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
     // Tree icon has special behavior - toggles neural grid.
     if (evt.selectedId == IconId::TREE) {
@@ -145,21 +148,8 @@ State::Any SimRunning::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     }
 
     // Notify playground about the selection change for panel content updates.
-    if (playground_) {
-        playground_->onIconSelected(evt.selectedId, evt.previousId);
-    }
-
-    return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const RailAutoShrinkRequestEvent& /*evt*/, StateMachine& sm)
-{
-    LOG_INFO(State, "Auto-shrink requested, minimizing IconRail");
-
-    // Process auto-shrink in main thread (safe to modify LVGL objects).
-    if (auto* iconRail = sm.getUiComponentManager()->getIconRail()) {
-        iconRail->setMode(RailMode::Minimized);
-    }
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->onIconSelected(evt.selectedId, evt.previousId);
 
     return std::move(*this);
 }
@@ -172,24 +162,10 @@ State::Any SimRunning::onEvent(const RailModeChangedEvent& evt, StateMachine& /*
         evt.newMode == RailMode::Minimized ? "Minimized" : "Normal");
 
     // Trigger display resize for auto-scaling scenarios.
-    if (playground_) {
-        playground_->sendDisplayResizeUpdate();
-    }
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->sendDisplayResizeUpdate();
 
     return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm)
-{
-    LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
-    LOG_INFO(State, "Transitioning to Disconnected");
-
-    if (!sm.queueReconnectToLastServer()) {
-        LOG_WARN(State, "No previous server address available for reconnect");
-    }
-
-    // Lost connection - go back to Disconnected state (world is lost).
-    return Disconnected{};
 }
 
 State::Any SimRunning::onEvent(const UiApi::DrawDebugToggle::Cwc& cwc, StateMachine& sm)
@@ -235,9 +211,8 @@ State::Any SimRunning::onEvent(const UiApi::PixelRendererToggle::Cwc& cwc, State
 
     // DEPRECATED: Convert old boolean API to new RenderMode for backward compatibility.
     RenderMode mode = cwc.command.enabled ? RenderMode::SHARP : RenderMode::LVGL_DEBUG;
-    if (playground_) {
-        playground_->setRenderMode(mode);
-    }
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->setRenderMode(mode);
 
     cwc.sendResponse(Response::okay(UiApi::PixelRendererToggle::Okay{ cwc.command.enabled }));
     return std::move(*this);
@@ -247,23 +222,11 @@ State::Any SimRunning::onEvent(const UiApi::RenderModeSelect::Cwc& cwc, StateMac
 {
     using Response = UiApi::RenderModeSelect::Response;
 
-    if (playground_) {
-        playground_->setRenderMode(cwc.command.mode);
-    }
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->setRenderMode(cwc.command.mode);
 
     cwc.sendResponse(Response::okay(UiApi::RenderModeSelect::Okay{ cwc.command.mode }));
     return std::move(*this);
-}
-
-State::Any SimRunning::onEvent(const UiApi::Exit::Cwc& cwc, StateMachine& /*sm*/)
-{
-    LOG_INFO(State, "Exit command received, shutting down");
-
-    // Send success response.
-    cwc.sendResponse(UiApi::Exit::Response::okay(std::monostate{}));
-
-    // Transition to Shutdown state.
-    return Shutdown{};
 }
 
 State::Any SimRunning::onEvent(const UiApi::MouseDown::Cwc& cwc, StateMachine& sm)
@@ -448,12 +411,8 @@ State::Any SimRunning::onEvent(const PhysicsSettingsReceivedEvent& evt, StateMac
     LOG_INFO(State, "Received PhysicsSettings from server (gravity={:.2f})", evt.settings.gravity);
 
     // Update UI controls with server settings.
-    if (playground_) {
-        playground_->updatePhysicsPanels(evt.settings);
-    }
-    else {
-        LOG_WARN(State, "Playground not available");
-    }
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    playground_->updatePhysicsPanels(evt.settings);
 
     return std::move(*this);
 }
@@ -565,30 +524,31 @@ State::Any SimRunning::onEvent(const UiUpdateEvent& evt, StateMachine& sm)
     scenarioId = evt.scenario_id;
 
     // Update and render via playground.
-    if (playground_ && worldData) {
-        // Update controls with new world state.
-        sm.getTimers().startTimer("update_controls");
-        playground_->updateFromWorldData(
-            *worldData, evt.scenario_id, evt.scenario_config, smoothedUiFps);
-        sm.getTimers().stopTimer("update_controls");
+    DIRTSIM_ASSERT(playground_, "playground_ must be set in SimRunning");
+    DIRTSIM_ASSERT(worldData, "worldData must be set in SimRunning after UiUpdate");
 
-        // Render world.
-        sm.getTimers().startTimer("render_world");
-        playground_->render(*worldData, debugDrawEnabled);
-        sm.getTimers().stopTimer("render_world");
+    // Update controls with new world state.
+    sm.getTimers().startTimer("update_controls");
+    playground_->updateFromWorldData(
+        *worldData, evt.scenario_id, evt.scenario_config, smoothedUiFps);
+    sm.getTimers().stopTimer("update_controls");
 
-        // Render neural grid (tree vision).
-        sm.getTimers().startTimer("render_neural_grid");
-        playground_->renderNeuralGrid(*worldData);
-        sm.getTimers().stopTimer("render_neural_grid");
+    // Render world.
+    sm.getTimers().startTimer("render_world");
+    playground_->render(*worldData, debugDrawEnabled);
+    sm.getTimers().stopTimer("render_world");
 
-        LOG_DEBUG(
-            State,
-            "Rendered world ({}x{}, step {})",
-            worldData->width,
-            worldData->height,
-            worldData->timestep);
-    }
+    // Render neural grid (tree vision).
+    sm.getTimers().startTimer("render_neural_grid");
+    playground_->renderNeuralGrid(*worldData);
+    sm.getTimers().stopTimer("render_neural_grid");
+
+    LOG_DEBUG(
+        State,
+        "Rendered world ({}x{}, step {})",
+        worldData->width,
+        worldData->height,
+        worldData->timestep);
 
     return std::move(*this);
 }

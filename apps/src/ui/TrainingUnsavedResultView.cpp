@@ -14,8 +14,10 @@ namespace DirtSim {
 namespace Ui {
 
 TrainingUnsavedResultView::TrainingUnsavedResultView(
-    UiComponentManager* uiManager, EventSink& eventSink)
-    : uiManager_(uiManager), eventSink_(eventSink)
+    UiComponentManager* uiManager,
+    EventSink& eventSink,
+    const Starfield::Snapshot* starfieldSnapshot)
+    : uiManager_(uiManager), eventSink_(eventSink), starfieldSnapshot_(starfieldSnapshot)
 {
     createUI();
 }
@@ -35,6 +37,19 @@ void TrainingUnsavedResultView::createUI()
     lv_obj_clean(container_);
     lv_obj_update_layout(container_);
 
+    int displayWidth = lv_obj_get_width(container_);
+    int displayHeight = lv_obj_get_height(container_);
+    if (displayWidth <= 0 || displayHeight <= 0) {
+        lv_disp_t* display = lv_disp_get_default();
+        if (display) {
+            displayWidth = lv_disp_get_hor_res(display);
+            displayHeight = lv_disp_get_ver_res(display);
+        }
+    }
+
+    starfield_ =
+        std::make_unique<Starfield>(container_, displayWidth, displayHeight, starfieldSnapshot_);
+
     createUnsavedResultUI();
 }
 
@@ -42,8 +57,7 @@ void TrainingUnsavedResultView::createUnsavedResultUI()
 {
     contentRow_ = lv_obj_create(container_);
     lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
-    lv_obj_set_style_bg_color(contentRow_, lv_color_hex(0x000000), 0);
-    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(contentRow_, 0, 0);
     lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
 
@@ -53,6 +67,7 @@ void TrainingUnsavedResultView::createUnsavedResultUI()
 void TrainingUnsavedResultView::destroyUI()
 {
     hideTrainingResultModal();
+    starfield_.reset();
 
     if (container_) {
         lv_obj_clean(container_);
@@ -63,7 +78,17 @@ void TrainingUnsavedResultView::destroyUI()
 }
 
 void TrainingUnsavedResultView::updateAnimations()
-{}
+{
+    if (starfield_ && starfield_->isVisible()) {
+        starfield_->update();
+    }
+}
+
+Starfield::Snapshot TrainingUnsavedResultView::captureStarfieldSnapshot() const
+{
+    DIRTSIM_ASSERT(starfield_, "TrainingUnsavedResultView requires Starfield");
+    return starfield_->capture();
+}
 
 void TrainingUnsavedResultView::showTrainingResultModal(
     const Api::TrainingResult::Summary& summary,

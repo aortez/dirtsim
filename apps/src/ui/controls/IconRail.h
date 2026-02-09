@@ -124,6 +124,8 @@ public:
 
 private:
     lv_obj_t* container_ = nullptr;
+    lv_obj_t* iconsViewport_ = nullptr;
+    lv_obj_t* iconsLayout_ = nullptr;
     std::vector<lv_obj_t*> buttons_;
     std::vector<IconConfig> iconConfigs_;
     std::unique_ptr<IconFont> iconFont_; // FontAwesome loaded at runtime.
@@ -142,9 +144,6 @@ private:
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
 
-    // Auto-shrink timer (minimizes rail after inactivity).
-    lv_timer_t* autoShrinkTimer_ = nullptr;
-    static constexpr uint32_t AUTO_SHRINK_TIMEOUT_MS = 10000;
     static constexpr uint32_t MODE_ANIM_DURATION_MS = 250;
 
     // Dimensions optimized for HyperPixel 4.0 (480px height).
@@ -154,8 +153,6 @@ private:
 
     void createIcons(lv_obj_t* parent);
     void createModeButtons();
-    void createAutoShrinkTimer();
-    void resetAutoShrinkTimer();
     void applyMode();
     void updateButtonVisuals();
     void configureDuckIcon(lv_obj_t* button);
@@ -163,7 +160,6 @@ private:
     // Static LVGL callbacks.
     static void onIconClicked(lv_event_t* e);
     static void onModeButtonClicked(lv_event_t* e);
-    static void onAutoShrinkTimer(lv_timer_t* timer);
 };
 
 } // namespace Ui
