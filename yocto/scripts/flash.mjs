@@ -47,6 +47,8 @@ import {
   getBlockDevices,
   findLatestImage,
   flashImage,
+  ensureGrowDataPartitionDependencies,
+  growDataPartition,
   getWifiCredentials,
   injectWifiCredentials,
   validateDeviceIdentity,
@@ -78,6 +80,7 @@ const PREFERRED_IMAGES = [
 // User configuration - matches what's created in dirtsim-image.bb.
 const SSH_USERNAME = 'dirtsim';
 const SSH_UID = 1000;
+const DATA_FREE_PERCENT = 10;
 
 /**
  * Get or create SSH key configuration.
@@ -411,6 +414,12 @@ async function main() {
     }
   }
 
+  if (!dryRun) {
+    log('');
+    info('Checking host tools required for data partition resize...');
+    ensureGrowDataPartitionDependencies();
+  }
+
   // Get hostname (priority: config file > prompt > default).
   let hostname = (!interactive && config.hostname) ? config.hostname : DEFAULT_HOSTNAME;
 
@@ -437,6 +446,7 @@ async function main() {
   // Check if we can backup /data from the disk before flashing.
   let backupDir = null;
   let willRestoreBackup = false;
+  let dataRestoreCompleted = false;
   if (!dryRun && hasDataPartition(targetDevice)) {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
@@ -491,6 +501,10 @@ async function main() {
       skipConfirm: (!interactive && config.skip_confirmation) || false,
     });
 
+    // Expand /data partition to use the available disk space (leaving some unallocated).
+    // This ensures restores of large /data backups succeed before the first boot.
+    growDataPartition(targetDevice, DATA_FREE_PERCENT, dryRun);
+
     // Inject SSH key and apply profile after flashing.
     await injectRootfsConfig(targetDevice, config.ssh_key_path, profile, dryRun);
 
@@ -509,8 +523,14 @@ async function main() {
 
     // Restore /data if we have a backup.
     if (backupDir) {
-      restoreDataPartition(targetDevice, backupDir, dryRun);
+      const restoreOkay = restoreDataPartition(targetDevice, backupDir, dryRun);
+      if (!restoreOkay) {
+        throw new Error(`Failed to restore /data backup. Backup retained at: ${backupDir}`);
+      }
+
+      dataRestoreCompleted = true;
       cleanupBackup(backupDir);
+      backupDir = null;
     }
 
     log('');
@@ -536,7 +556,7 @@ async function main() {
       if (profile) {
         success(`Profile: ${profile}`);
       }
-      if (backupDir) {
+      if (dataRestoreCompleted) {
         success('/data restored - WiFi credentials preserved!');
       } else if (wifiCredentials) {
         success(`WiFi "${wifiCredentials.ssid}" configured!`);
@@ -551,8 +571,10 @@ async function main() {
       }
     }
   } catch (err) {
-    // Clean up backup on failure.
-    cleanupBackup(backupDir);
+    if (backupDir) {
+      warn(`Backup retained for recovery: ${backupDir}`);
+    }
+
     log('');
     error(`Flash failed: ${err.message}`);
     process.exit(1);

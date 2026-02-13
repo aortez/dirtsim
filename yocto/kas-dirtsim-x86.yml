@@ -59,6 +59,13 @@ local_conf_header:
 
     IMAGE_FSTYPES = "tar.gz"
 
+    # Persistent /data project directory (required by pi-base-image parsing).
+    # This x86 build doesn't use the /data partition, but meta-dirtsim includes
+    # Raspberry Pi image recipes that inherit pi-base-image, so these must be set.
+    PERSISTENT_DATA_APP_DIR = "dirtsim"
+    PERSISTENT_DATA_APP_USER = "dirtsim"
+    PERSISTENT_DATA_APP_GROUP = "dirtsim"
+
     # Use conservative parallelism for containers; override with env vars.
     BB_NUMBER_THREADS = "${@os.getenv('DIRTSIM_BB_NUMBER_THREADS', '4')}"
     PARALLEL_MAKE = "-j ${@os.getenv('DIRTSIM_PARALLEL_MAKE', '4')}"
