@@ -88,6 +88,11 @@ Install the KAS build tool:
 pip3 install kas
 ```
 
+If you plan to run `npm run flash`, install host partition tools:
+```bash
+sudo apt-get install cloud-utils-growpart e2fsprogs
+```
+
 On Ubuntu 24.04, you'll also need to allow unprivileged user namespaces for bitbake:
 ```bash
 # Permanent fix - create this file:
@@ -189,6 +194,13 @@ npm run flash -- --list             # Just list available devices
 npm run flash -- --dry-run          # Show what would happen
 npm run flash -- --reconfigure      # Re-select SSH key
 ```
+
+Host requirements for flashing:
+- `sudo` access for mount/partition operations
+- `cloud-utils-growpart` (`growpart` command)
+- `e2fsprogs` (`e2fsck` and `resize2fs` commands)
+
+If these are missing, the script exits before writing to disk.
 
 **Configuration File:**
 

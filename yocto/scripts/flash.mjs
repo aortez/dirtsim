@@ -47,6 +47,7 @@ import {
   getBlockDevices,
   findLatestImage,
   flashImage,
+  ensureGrowDataPartitionDependencies,
   growDataPartition,
   getWifiCredentials,
   injectWifiCredentials,
@@ -413,6 +414,12 @@ async function main() {
     }
   }
 
+  if (!dryRun) {
+    log('');
+    info('Checking host tools required for data partition resize...');
+    ensureGrowDataPartitionDependencies();
+  }
+
   // Get hostname (priority: config file > prompt > default).
   let hostname = (!interactive && config.hostname) ? config.hostname : DEFAULT_HOSTNAME;
 
@@ -439,6 +446,7 @@ async function main() {
   // Check if we can backup /data from the disk before flashing.
   let backupDir = null;
   let willRestoreBackup = false;
+  let dataRestoreCompleted = false;
   if (!dryRun && hasDataPartition(targetDevice)) {
     log('');
     info(`Found existing data partition on ${targetDevice}4`);
@@ -515,8 +523,14 @@ async function main() {
 
     // Restore /data if we have a backup.
     if (backupDir) {
-      restoreDataPartition(targetDevice, backupDir, dryRun);
+      const restoreOkay = restoreDataPartition(targetDevice, backupDir, dryRun);
+      if (!restoreOkay) {
+        throw new Error(`Failed to restore /data backup. Backup retained at: ${backupDir}`);
+      }
+
+      dataRestoreCompleted = true;
       cleanupBackup(backupDir);
+      backupDir = null;
     }
 
     log('');
@@ -542,7 +556,7 @@ async function main() {
       if (profile) {
         success(`Profile: ${profile}`);
       }
-      if (backupDir) {
+      if (dataRestoreCompleted) {
         success('/data restored - WiFi credentials preserved!');
       } else if (wifiCredentials) {
         success(`WiFi "${wifiCredentials.ssid}" configured!`);
@@ -557,8 +571,10 @@ async function main() {
       }
     }
   } catch (err) {
-    // Clean up backup on failure.
-    cleanupBackup(backupDir);
+    if (backupDir) {
+      warn(`Backup retained for recovery: ${backupDir}`);
+    }
+
     log('');
     error(`Flash failed: ${err.message}`);
     process.exit(1);
