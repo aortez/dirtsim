@@ -531,6 +531,13 @@ void World::advanceTime(double deltaTimeSeconds)
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
 
+    // Rebuild grid cache after transfers so lighting uses current occupancy.
+    {
+        ScopeTimer timer(pImpl->timers_, "grid_cache_rebuild_post_moves");
+        pImpl->grid_.emplace(
+            pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
+    }
+
     // Prune disconnected organism fragments AFTER transfers complete.
     // This ensures connectivity checks use current positions, not stale pre-transfer positions.
     pruneDisconnectedFragments();
