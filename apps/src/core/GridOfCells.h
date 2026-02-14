@@ -22,7 +22,7 @@ namespace DirtSim {
  * - Computes emptyCell bitmap for fast lookups.
  * - Precomputes material neighborhoods for zero-lookup material queries.
  * - Provides direct cell access to eliminate World indirection.
- * - Valid from start of advanceTime() until processMaterialMoves().
+ * - Rebuild after any cell mutation step (for example processMaterialMoves()).
  * - Compile-time toggle to switch between old/new lookup approach.
  *
  * Usage:
