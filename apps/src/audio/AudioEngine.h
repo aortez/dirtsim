@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cstdint>
 #include <string>
-#include <variant>
 #include <vector>
 
 namespace DirtSim {
@@ -21,14 +20,22 @@ struct AudioEngineConfig {
     int channels = 2;
 };
 
-struct AudioStatus {
-    bool active = false;
+enum class AudioNoteHoldState : uint8_t {
+    Held = 0,
+    Releasing = 1,
+};
+
+struct ActiveAudioNoteStatus {
     uint32_t noteId = 0;
     double frequencyHz = 0.0;
     double amplitude = 0.0;
-    double envelopeLevel = 0.0;
-    Audio::EnvelopeState envelopeState = Audio::EnvelopeState::Idle;
     Audio::Waveform waveform = Audio::Waveform::Sine;
+    Audio::EnvelopeState envelopeState = Audio::EnvelopeState::Idle;
+    AudioNoteHoldState holdState = AudioNoteHoldState::Held;
+};
+
+struct AudioStatus {
+    std::vector<ActiveAudioNoteStatus> activeNotes;
     double sampleRate = 0.0;
     std::string deviceName;
 };
@@ -57,6 +64,7 @@ public:
 
 private:
     static constexpr size_t kCommandQueueCapacity = 128;
+    static constexpr size_t kVoiceCount = 16;
 
     struct NoteOnCommand {
         double frequencyHz = 440.0;
@@ -85,36 +93,42 @@ private:
     bool enqueueCommand(const AudioCommand& command);
     void drainCommands();
     void applyCommand(const AudioCommand& command);
+    size_t selectVoiceIndexToSteal() const;
+    size_t selectVoiceIndexForNoteOn(uint32_t noteId) const;
+    void startVoice(size_t voiceIndex, const NoteOnCommand& noteOn);
+    void releaseVoice(size_t voiceIndex);
     void renderToStream(Uint8* stream, int frames, int channels, int len);
     bool isFloatOutput() const;
 
-    void updateStatus();
+    AudioStatus buildStatusSnapshotUnlocked() const;
+    void clearVoiceRuntimeState();
+
+    struct VoiceSlot {
+        Audio::SynthVoice voice{};
+        uint32_t noteId = 0;
+        int64_t autoNoteOffFramesRemaining = -1;
+        uint64_t startOrder = 0;
+        AudioNoteHoldState holdState = AudioNoteHoldState::Held;
+        size_t voiceIndex = 0;
+    };
 
     AudioEngineConfig config_{};
     SDL_AudioDeviceID deviceId_ = 0;
     SDL_AudioFormat deviceFormat_ = AUDIO_F32SYS;
     bool sdlInitialized_ = false;
 
-    Audio::SynthVoice voice_;
+    std::array<VoiceSlot, kVoiceCount> voices_{};
+    uint64_t nextVoiceStartOrder_ = 1;
     std::atomic<uint32_t> nextNoteId_{ 1 };
-    std::atomic<uint32_t> activeNoteId_{ 0 };
 
     // Single-producer/single-consumer ring buffer for audio commands.
     std::array<AudioCommand, kCommandQueueCapacity> commandQueue_{};
     std::atomic<size_t> commandReadIndex_{ 0 };
     std::atomic<size_t> commandWriteIndex_{ 0 };
-
-    std::atomic<bool> active_{ false };
-    std::atomic<double> currentFrequencyHz_{ 0.0 };
-    std::atomic<double> currentAmplitude_{ 0.0 };
-    std::atomic<double> currentEnvelopeLevel_{ 0.0 };
-    std::atomic<int> currentEnvelopeState_{ static_cast<int>(Audio::EnvelopeState::Idle) };
-    std::atomic<int> currentWaveform_{ static_cast<int>(Audio::Waveform::Sine) };
     std::atomic<int> masterVolumePercent_{ 100 };
 
     std::vector<float> mixBuffer_;
     std::vector<int16_t> s16Buffer_;
-    int64_t autoNoteOffFramesRemaining_ = -1;
 };
 
 } // namespace AudioProcess

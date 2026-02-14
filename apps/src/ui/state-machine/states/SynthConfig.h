@@ -18,7 +18,7 @@ struct SynthConfig {
     Any onEvent(const StopButtonClickedEvent& evt, StateMachine& sm);
     Any onEvent(const UiApi::SimStop::Cwc& cwc, StateMachine& sm);
     Any onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& sm);
-    Any onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachine& sm);
+    Any onEvent(const UiApi::SynthKeyEvent::Cwc& cwc, StateMachine& sm);
 
     static constexpr const char* name() { return "SynthConfig"; }
     int getLastKeyIndex() const { return keyboard_.getLastKeyIndex(); }

@@ -507,7 +507,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/api/StatusGet.cpp
     src/ui/state-machine/api/StopButtonPress.cpp
     src/ui/state-machine/api/StreamStart.cpp
-    src/ui/state-machine/api/SynthKeyPress.cpp
+    src/ui/state-machine/api/SynthKeyEvent.cpp
     src/ui/state-machine/api/TrainingConfigShowEvolution.cpp
     src/ui/state-machine/api/TrainingQuit.cpp
     src/ui/state-machine/api/TrainingResultDiscard.cpp
@@ -711,6 +711,7 @@ target_compile_options(cli PRIVATE ${DIRTSIM_WARNINGS})
 
 # Test executable (fast unit tests).
 add_executable(dirtsim-tests
+    src/audio/AudioEngine.cpp
     src/server/tests/StateEvolution_test.cpp
     src/server/tests/StateIdle_test.cpp
     src/server/tests/StateSimRunning_test.cpp
@@ -762,6 +763,7 @@ add_executable(dirtsim-tests
     src/os-manager/states/Startup.cpp
     src/cli/SubprocessManager.cpp
     src/tests/BinaryProtocol_test.cpp
+    src/tests/AudioEngine_test.cpp
     src/tests/BresenhamLine_test.cpp
     src/tests/Buoyancy_test.cpp
     src/tests/CacheCorrectness_test.cpp

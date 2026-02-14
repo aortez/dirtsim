@@ -123,19 +123,21 @@ State::Any Synth::onEvent(const UiApi::StopButtonPress::Cwc& cwc, StateMachine& 
     return onEvent(StopButtonClickedEvent{}, sm);
 }
 
-State::Any Synth::onEvent(const UiApi::SynthKeyPress::Cwc& cwc, StateMachine& /*sm*/)
+State::Any Synth::onEvent(const UiApi::SynthKeyEvent::Cwc& cwc, StateMachine& /*sm*/)
 {
     std::string error;
-    if (!keyboard_.handleKeyPress(cwc.command.key_index, cwc.command.is_black, "api", error)) {
-        cwc.sendResponse(UiApi::SynthKeyPress::Response::error(ApiError(error)));
+    if (!keyboard_.handleKeyEvent(
+            cwc.command.key_index, cwc.command.is_black, cwc.command.is_pressed, "api", error)) {
+        cwc.sendResponse(UiApi::SynthKeyEvent::Response::error(ApiError(error)));
         return std::move(*this);
     }
 
-    UiApi::SynthKeyPress::Okay response{
+    UiApi::SynthKeyEvent::Okay response{
         .key_index = cwc.command.key_index,
         .is_black = cwc.command.is_black,
+        .is_pressed = cwc.command.is_pressed,
     };
-    cwc.sendResponse(UiApi::SynthKeyPress::Response::okay(response));
+    cwc.sendResponse(UiApi::SynthKeyEvent::Response::okay(response));
     return std::move(*this);
 }
 
