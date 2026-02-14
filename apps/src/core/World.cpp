@@ -63,6 +63,7 @@ struct World::Impl {
 
     // Persistent grid cache (initialized after data_ in constructor).
     std::optional<GridOfCells> grid_;
+    bool is_grid_cache_dirty_ = false;
 
     // Calculators. WorldFrictionCalculator is constructed locally with GridOfCells reference.
     WorldAdhesionCalculator adhesion_calculator_;
@@ -134,6 +135,8 @@ World::World(int width, int height)
     // Initialize persistent GridOfCells for debug info and caching.
     pImpl->grid_.emplace(
         pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
+    // Force refresh on first simulation step after scenario setup mutates world data.
+    pImpl->is_grid_cache_dirty_ = true;
 
     SLOG_INFO("World initialization complete");
 }
@@ -239,12 +242,36 @@ const WorldData& World::getData() const
 
 GridOfCells& World::getGrid()
 {
+    ensureGridCacheFresh("grid_cache_rebuild_on_access");
     return *pImpl->grid_;
 }
 
 const GridOfCells& World::getGrid() const
 {
+    const_cast<World*>(this)->ensureGridCacheFresh("grid_cache_rebuild_on_access");
     return *pImpl->grid_;
+}
+
+void World::ensureGridCacheFresh(const char* timerName)
+{
+    if (!pImpl->is_grid_cache_dirty_) {
+        return;
+    }
+
+    rebuildGridCache(timerName);
+}
+
+void World::rebuildGridCache(const char* timerName)
+{
+    ScopeTimer timer(pImpl->timers_, timerName);
+    pImpl->grid_.emplace(
+        pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
+    pImpl->is_grid_cache_dirty_ = false;
+}
+
+void World::markGridCacheDirty()
+{
+    pImpl->is_grid_cache_dirty_ = true;
 }
 
 PhysicsSettings& World::getPhysicsSettings()
@@ -465,12 +492,8 @@ void World::advanceTime(double deltaTimeSeconds)
 
     pImpl->light_calculator_.clearAllEmissive();
 
-    // Rebuild grid cache for current frame (maps may have changed from previous step).
-    {
-        ScopeTimer timer(pImpl->timers_, "grid_cache_rebuild");
-        pImpl->grid_.emplace(
-            pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
-    }
+    // Rebuild grid cache only when external or prior-frame mutations invalidated it.
+    ensureGridCacheFresh("grid_cache_rebuild");
     GridOfCells& grid = *pImpl->grid_;
 
     // Inject hydrostatic pressure from gravity.
@@ -531,12 +554,8 @@ void World::advanceTime(double deltaTimeSeconds)
     // Process material moves - detects collisions for next frame's dynamic pressure.
     processMaterialMoves();
 
-    // Rebuild grid cache after transfers so lighting uses current occupancy.
-    {
-        ScopeTimer timer(pImpl->timers_, "grid_cache_rebuild_post_moves");
-        pImpl->grid_.emplace(
-            pImpl->data_.cells, pImpl->data_.debug_info, pImpl->data_.width, pImpl->data_.height);
-    }
+    // Refresh cache after transfers only when moves actually invalidated occupancy maps.
+    ensureGridCacheFresh("grid_cache_rebuild_post_moves");
 
     // Prune disconnected organism fragments AFTER transfers complete.
     // This ensures connectivity checks use current positions, not stale pre-transfer positions.
@@ -578,6 +597,7 @@ void World::addMaterialAtCell(Vector2s pos, Material::EnumType type, float amoun
     const float added = cell.addMaterial(type, amount);
 
     if (added > 0.0f) {
+        markGridCacheDirty();
         spdlog::trace("Added {:.3f} {} at cell ({},{})", added, toString(type), pos.x, pos.y);
     }
 }
@@ -610,6 +630,7 @@ void World::swapCells(Vector2s pos1, Vector2s pos2)
 
     // Perform the swap.
     std::swap(cell1, cell2);
+    markGridCacheDirty();
 
     // Update organism tracking.
     if (org1 != INVALID_ORGANISM_ID || org2 != INVALID_ORGANISM_ID) {
@@ -670,6 +691,7 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
             DIRTSIM_ASSERT(false, "replaceMaterialAtCell: Empty cell should not have organism");
         }
         cell.replaceMaterial(material, 1.0);
+        markGridCacheDirty();
         return;
     }
 
@@ -770,6 +792,7 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
             organism_manager_->removeOrganismFromWorld(*this, org_id);
         }
         cell.replaceMaterial(material, 1.0);
+        markGridCacheDirty();
         return;
     }
 
@@ -796,6 +819,7 @@ void World::replaceMaterialAtCell(Vector2s pos, Material::EnumType material)
 
     // Now target is empty (displaced material moved to empty_pos). Place new material.
     pImpl->data_.at(pos.x, pos.y) = Cell{ material, 1.0 };
+    markGridCacheDirty();
 }
 
 void World::clearCellAtPosition(Vector2s pos)
@@ -809,7 +833,13 @@ void World::clearCellAtPosition(Vector2s pos)
         return;
     }
 
-    pImpl->data_.at(pos.x, pos.y).clear();
+    Cell& cell = pImpl->data_.at(pos.x, pos.y);
+    if (cell.isEmpty()) {
+        return;
+    }
+
+    cell.clear();
+    markGridCacheDirty();
 }
 
 // =================================================================.
@@ -887,6 +917,7 @@ void World::resizeGrid(int16_t newWidth, int16_t newHeight)
         });
     }
 
+    markGridCacheDirty();
     spdlog::info("World bilinear resize complete");
 }
 
@@ -1984,6 +2015,10 @@ void World::processMaterialMoves()
         num_elastic,
         num_inelastic);
 
+    if (num_moves > 0) {
+        markGridCacheDirty();
+    }
+
     pImpl->pending_moves_.clear();
 }
 
@@ -2003,6 +2038,7 @@ void World::setupBoundaryWalls()
         pImpl->data_.at(pImpl->data_.width - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
+    markGridCacheDirty();
     spdlog::info("Boundary walls setup complete");
 }
 
@@ -2054,6 +2090,7 @@ void World::setWallsEnabled(bool enabled)
             pImpl->data_.at(0, y).clear();                      // Left wall.
             pImpl->data_.at(pImpl->data_.width - 1, y).clear(); // Right wall.
         }
+        markGridCacheDirty();
     }
 }
 
@@ -2100,6 +2137,7 @@ void World::fromJSON(const nlohmann::json& doc)
 {
     // Automatic deserialization via ReflectSerializer!
     pImpl->data_ = ReflectSerializer::from_json<WorldData>(doc);
+    markGridCacheDirty();
     spdlog::info("World deserialized: {}x{} grid", pImpl->data_.width, pImpl->data_.height);
 }
 
