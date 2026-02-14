@@ -691,6 +691,7 @@ TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
 
     ASSERT_NE(evolutionState.workerState_, nullptr);
     EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 2);
+    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 2);
     EXPECT_EQ(evolutionState.workerState_->workers.size(), 2u);
     EXPECT_GT(evolutionState.visibleQueue_.size(), 0u);
     EXPECT_LT(evolutionState.visibleQueue_.size(), evolutionState.population.size());
@@ -769,4 +770,32 @@ TEST(StateEvolutionTest, ExitCommandTransitionsToShutdown)
     ASSERT_TRUE(std::holds_alternative<Shutdown>(newState.getVariant()))
         << "Evolution + Exit should transition to Shutdown";
     EXPECT_TRUE(callbackInvoked);
+}
+
+TEST(StateEvolutionTest, TargetCpuPercentDefaultDisabled)
+{
+    EvolutionConfig config;
+    EXPECT_EQ(config.targetCpuPercent, 0) << "Auto-tune should be disabled by default";
+}
+
+TEST(StateEvolutionTest, ConcurrencyThrottleInitializedToBackgroundWorkerCount)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    EvolutionWorkerGuard guard{ &evolutionState, fixture.stateMachine.get() };
+    evolutionState.evolutionConfig.populationSize = 4;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 4;
+    evolutionState.evolutionConfig.targetCpuPercent = 0; // Disabled.
+    evolutionState.trainingSpec = makeTrainingSpec(4);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    ASSERT_NE(evolutionState.workerState_, nullptr);
+    // 4 parallel - 1 main thread = 3 background workers.
+    EXPECT_EQ(evolutionState.workerState_->backgroundWorkerCount, 3);
+    EXPECT_EQ(evolutionState.workerState_->allowedConcurrency.load(), 3);
+    EXPECT_EQ(evolutionState.workerState_->activeEvaluations.load(), 0);
 }

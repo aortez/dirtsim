@@ -13,6 +13,7 @@ struct EvolutionConfig {
     int tournamentSize = 3;
     int maxGenerations = 1;
     int maxParallelEvaluations = 0; // 0 = auto (use detected core count).
+    int targetCpuPercent = 0;       // 0 = disabled. Typical: 50. Auto-tunes parallelism.
 
     // Evaluation settings.
     double maxSimulationTime = 1000.0; // Seconds of sim time per organism.

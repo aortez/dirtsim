@@ -1,6 +1,7 @@
 #include "State.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
+#include "core/SystemMetrics.h"
 #include "core/Timers.h"
 #include "core/UUID.h"
 #include "core/World.h"
@@ -203,6 +204,14 @@ void Evolution::onEnter(StateMachine& dsm)
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
 
+    // Initialize CPU auto-tuning.
+    if (evolutionConfig.targetCpuPercent > 0) {
+        cpuMetrics_ = std::make_unique<SystemMetrics>();
+        cpuSamples_.clear();
+        lastCpuSampleTime_ = {};
+        cpuMetrics_->get(); // Prime the delta with an initial reading.
+    }
+
     startWorkers(dsm);
     queueGenerationTasks();
 }
@@ -211,6 +220,8 @@ void Evolution::onExit(StateMachine& dsm)
 {
     LOG_INFO(State, "Evolution: Exiting at generation {}, eval {}", generation, currentEval);
     stopWorkers();
+    cpuMetrics_.reset();
+    cpuSamples_.clear();
     storeBestGenome(dsm);
 }
 
@@ -222,6 +233,17 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
             return nextState;
         }
         return std::nullopt;
+    }
+
+    // Sample CPU periodically for auto-tuning.
+    if (cpuMetrics_) {
+        constexpr auto kCpuSampleInterval = std::chrono::seconds(2);
+        const auto now = std::chrono::steady_clock::now();
+        if (lastCpuSampleTime_ == std::chrono::steady_clock::time_point{}
+            || now - lastCpuSampleTime_ >= kCpuSampleInterval) {
+            lastCpuSampleTime_ = now;
+            cpuSamples_.push_back(cpuMetrics_->get().cpu_percent);
+        }
     }
 
     drainResults(dsm);
@@ -384,6 +406,8 @@ void Evolution::startWorkers(StateMachine& dsm)
     workerState_->genomeRepository = &dsm.getGenomeRepository();
 
     workerState_->backgroundWorkerCount = std::max(0, evolutionConfig.maxParallelEvaluations - 1);
+    workerState_->allowedConcurrency.store(workerState_->backgroundWorkerCount);
+    workerState_->activeEvaluations.store(0);
     if (workerState_->backgroundWorkerCount <= 0) {
         return;
     }
@@ -397,16 +421,24 @@ void Evolution::startWorkers(StateMachine& dsm)
                 {
                     std::unique_lock<std::mutex> lock(state->taskMutex);
                     state->taskCv.wait(lock, [state]() {
-                        return state->stopRequested || !state->taskQueue.empty();
+                        return state->stopRequested
+                            || (!state->taskQueue.empty()
+                                && state->activeEvaluations.load()
+                                    < state->allowedConcurrency.load());
                     });
                     if (state->stopRequested) {
                         return;
                     }
                     task = std::move(state->taskQueue.front());
                     state->taskQueue.pop_front();
+                    state->activeEvaluations.fetch_add(1);
                 }
 
                 WorkerResult result = runEvaluationTask(task, *state);
+
+                state->activeEvaluations.fetch_sub(1);
+                state->taskCv.notify_one(); // Wake a worker waiting for a concurrency slot.
+
                 if (state->stopRequested) {
                     return;
                 }
@@ -723,7 +755,7 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
         return;
     }
 
-    if (generation + 1 >= evolutionConfig.maxGenerations) {
+    if (evolutionConfig.maxGenerations > 0 && generation + 1 >= evolutionConfig.maxGenerations) {
         finalAverageFitness_ = evolutionConfig.populationSize > 0
             ? (sumFitnessThisGen_ / evolutionConfig.populationSize)
             : 0.0;
@@ -824,11 +856,52 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     // Only reset for next generation if we're not at the end.
     // This preserves currentEval = populationSize in the final broadcast,
     // giving the UI a clean "all evals complete" signal.
-    if (generation < evolutionConfig.maxGenerations) {
+    if (evolutionConfig.maxGenerations <= 0 || generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
         bestFitnessThisGen = 0.0;
         sumFitnessThisGen_ = 0.0;
         std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
+    }
+
+    adjustConcurrency();
+}
+
+void Evolution::adjustConcurrency()
+{
+    if (evolutionConfig.targetCpuPercent <= 0 || !workerState_ || cpuSamples_.empty()) {
+        return;
+    }
+
+    double sum = 0.0;
+    for (const double sample : cpuSamples_) {
+        sum += sample;
+    }
+    const double avgCpu = sum / static_cast<double>(cpuSamples_.size());
+    cpuSamples_.clear();
+
+    const double target = static_cast<double>(evolutionConfig.targetCpuPercent);
+    constexpr double kTolerance = 5.0;
+
+    const int current = workerState_->allowedConcurrency.load();
+    int adjusted = current;
+
+    if (avgCpu > target + kTolerance && current > 1) {
+        adjusted = current - 1;
+    }
+    else if (avgCpu < target - kTolerance && current < workerState_->backgroundWorkerCount) {
+        adjusted = current + 1;
+    }
+
+    if (adjusted != current) {
+        LOG_INFO(
+            State,
+            "Evolution: CPU auto-tune avg={:.1f}% target={}% concurrency {} -> {}",
+            avgCpu,
+            evolutionConfig.targetCpuPercent,
+            current,
+            adjusted);
+        workerState_->allowedConcurrency.store(adjusted);
+        workerState_->taskCv.notify_all(); // Wake workers to re-evaluate concurrency predicate.
     }
 }
 
@@ -872,6 +945,16 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         bestAllTime = 0.0;
     }
 
+    // Compute CPU auto-tune fields.
+    int activeParallelism = evolutionConfig.maxParallelEvaluations;
+    double latestCpu = 0.0;
+    if (workerState_) {
+        activeParallelism = workerState_->allowedConcurrency.load() + 1; // +1 for main thread.
+    }
+    if (!cpuSamples_.empty()) {
+        latestCpu = cpuSamples_.back();
+    }
+
     const Api::EvolutionProgress progress{
         .generation = generation,
         .maxGenerations = evolutionConfig.maxGenerations,
@@ -886,6 +969,8 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .cumulativeSimTime = cumulative,
         .speedupFactor = speedup,
         .etaSeconds = eta,
+        .activeParallelism = activeParallelism,
+        .cpuPercent = latestCpu,
     };
 
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));

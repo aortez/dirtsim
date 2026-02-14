@@ -11,6 +11,7 @@
 #include "server/api/GenomeGet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/UserSettingsSet.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -204,6 +205,24 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     LOG_INFO(State, "Evolution started on server");
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
+
+    // Persist training config to server UserSettings for auto-start and restart survival.
+    auto serverSettings = sm.getServerUserSettings();
+    serverSettings.trainingSpec = evt.training;
+    serverSettings.evolutionConfig = evt.evolution;
+    serverSettings.mutationConfig = evt.mutation;
+    Api::UserSettingsSet::Command settingsCmd{ .settings = serverSettings };
+    auto settingsResult =
+        wsService.sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(settingsCmd, 2000);
+    if (settingsResult.isError()) {
+        LOG_WARN(State, "Failed to persist training config: {}", settingsResult.errorValue());
+    }
+    else if (settingsResult.value().isError()) {
+        LOG_WARN(
+            State,
+            "Server rejected training config: {}",
+            settingsResult.value().errorValue().message);
+    }
 
     starfieldSnapshot_ = view_->captureStarfieldSnapshot();
     return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };

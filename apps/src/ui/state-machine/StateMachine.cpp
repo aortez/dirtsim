@@ -1078,6 +1078,12 @@ void StateMachine::applyServerUserSettings(const DirtSim::UserSettings& settings
     serverUserSettings_ = settings;
     setSynthVolumePercent(settings.volumePercent);
     syncAudioMasterVolume(settings.volumePercent);
+
+    // Sync persistent training config into UI-local settings.
+    auto& uiSettings = getUserSettings();
+    uiSettings.trainingSpec = settings.trainingSpec;
+    uiSettings.evolutionConfig = settings.evolutionConfig;
+    uiSettings.mutationConfig = settings.mutationConfig;
 }
 
 void StateMachine::syncAudioMasterVolume(int volumePercent)

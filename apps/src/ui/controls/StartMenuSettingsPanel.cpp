@@ -153,6 +153,14 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                          .callback(onVolumeChanged, this)
                          .buildOrLog();
 
+    idleActionDropdown_ = LVGLBuilder::actionDropdown(view)
+                              .label("Idle Action:")
+                              .options("Clock Scenario\nTraining Session\nNone")
+                              .selected(0)
+                              .width(LV_PCT(95))
+                              .callback(onIdleActionChanged, this)
+                              .buildOrLog();
+
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
                                  .icon(LV_SYMBOL_RIGHT)
@@ -301,6 +309,7 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
+    updateIdleActionDropdown();
     updateResetButtonEnabled();
 
     updatingUi_ = false;
@@ -373,6 +382,62 @@ void StartMenuSettingsPanel::updateTimezoneButtonText()
     const int clampedIndex = std::clamp(settings_.timezoneIndex, 0, maxIndex);
     const char* label = ClockScenario::TIMEZONES[clampedIndex].label;
     setActionButtonText(timezoneButton_, std::string("Timezone: ") + label);
+}
+
+void StartMenuSettingsPanel::updateIdleActionDropdown()
+{
+    if (!idleActionDropdown_) {
+        return;
+    }
+
+    // Enum order: ClockScenario=0, None=1, TrainingSession=2.
+    // Dropdown order: "Clock Scenario"=0, "Training Session"=1, "None"=2.
+    uint16_t index = 0;
+    switch (settings_.startMenuIdleAction) {
+        case StartMenuIdleAction::ClockScenario:
+            index = 0;
+            break;
+        case StartMenuIdleAction::TrainingSession:
+            index = 1;
+            break;
+        case StartMenuIdleAction::None:
+            index = 2;
+            break;
+    }
+    LVGLBuilder::ActionDropdownBuilder::setSelected(idleActionDropdown_, index);
+}
+
+void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
+{
+    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->idleActionDropdown_) {
+        return;
+    }
+
+    if (self->updatingUi_) {
+        return;
+    }
+
+    const uint16_t index =
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->idleActionDropdown_);
+
+    // Dropdown order: "Clock Scenario"=0, "Training Session"=1, "None"=2.
+    switch (index) {
+        case 0:
+            self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+            break;
+        case 1:
+            self->settings_.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
+            break;
+        case 2:
+            self->settings_.startMenuIdleAction = StartMenuIdleAction::None;
+            break;
+        default:
+            self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+            break;
+    }
+
+    self->sendSettingsUpdate();
 }
 
 void StartMenuSettingsPanel::onBackToMainClicked(lv_event_t* e)

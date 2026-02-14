@@ -371,8 +371,24 @@ State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachi
 
 State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMachine& sm)
 {
-    LOG_INFO(State, "StartMenu idle timeout reached, launching clock scenario");
-    return startSimulation(sm, Scenario::EnumType::Clock);
+    const auto action = sm.getServerUserSettings().startMenuIdleAction;
+    if (action == StartMenuIdleAction::ClockScenario) {
+        LOG_INFO(State, "StartMenu idle: launching clock scenario");
+        return startSimulation(sm, Scenario::EnumType::Clock);
+    }
+    if (action == StartMenuIdleAction::TrainingSession) {
+        LOG_INFO(State, "StartMenu idle: auto-starting training session");
+        const auto& settings = sm.getServerUserSettings();
+        sm.queueEvent(
+            StartEvolutionButtonClickedEvent{
+                .evolution = settings.evolutionConfig,
+                .mutation = settings.mutationConfig,
+                .training = settings.trainingSpec,
+            });
+        return TrainingIdle{};
+    }
+    LOG_INFO(State, "StartMenu idle: no action configured");
+    return std::move(*this);
 }
 
 State::Any StartMenu::onEvent(const TrainButtonClickedEvent& /*evt*/, StateMachine& /*sm*/)

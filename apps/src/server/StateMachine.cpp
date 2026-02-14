@@ -193,6 +193,11 @@ UserSettings sanitizeUserSettings(
         recordUpdate("defaultScenario reset to fallback scenario");
     }
 
+    if (settings.startMenuIdleAction > StartMenuIdleAction::TrainingSession) {
+        settings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+        recordUpdate("startMenuIdleAction reset to ClockScenario");
+    }
+
     return settings;
 }
 
