@@ -159,14 +159,14 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
-    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
-        { .settings = fixture.stateMachine->getServerUserSettings() });
     fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
         { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
           .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
+        { .settings = fixture.stateMachine->getServerUserSettings() });
 
     TrainingIdle trainingState;
     trainingState.onEnter(*fixture.stateMachine);
@@ -185,12 +185,16 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
 
     activeState->onEnter(*fixture.stateMachine);
 
+    // Stream setup happens in TrainingIdle (before EvolutionStart) to prevent a deadlock, then
+    // again in TrainingActive::onEnter for the restart-from-unsaved-result path.
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
-    ASSERT_GE(sentCommands.size(), 4u);
-    EXPECT_EQ(sentCommands[0], "EvolutionStart");
-    EXPECT_EQ(sentCommands[1], "UserSettingsSet");
-    EXPECT_EQ(sentCommands[2], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[3], "RenderFormatSet");
+    ASSERT_GE(sentCommands.size(), 6u);
+    EXPECT_EQ(sentCommands[0], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[2], "EvolutionStart");
+    EXPECT_EQ(sentCommands[3], "UserSettingsSet");
+    EXPECT_EQ(sentCommands[4], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[5], "RenderFormatSet");
 
     trainingState.view_.reset();
     activeState->view_.reset();

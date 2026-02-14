@@ -13,7 +13,6 @@
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
-#include <atomic>
 #include <utility>
 
 namespace DirtSim {
@@ -22,7 +21,7 @@ namespace State {
 namespace {
 
 Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
-    StateMachine& sm, int intervalMs)
+    StateMachine& sm, int intervalMs, int timeoutMs = 2000)
 {
     if (!sm.hasWebSocketService()) {
         return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
@@ -39,7 +38,7 @@ Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamCo
         .intervalMs = intervalMs,
     };
     const auto result =
-        wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, 2000);
+        wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, timeoutMs);
     if (result.isError()) {
         return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
             result.errorValue());
@@ -82,6 +81,9 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.view_->clearPanelContent();
     state.view_->createCorePanel();
 
+    // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
+    // when training completes quickly. This second call handles the restart-from-unsaved-result
+    // path where TrainingIdle is skipped.
     if (!sm.hasWebSocketService()) {
         LOG_WARN(State, "No WebSocketService available for training stream setup");
         return;
@@ -93,7 +95,9 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
         return;
     }
 
-    const auto streamResult = sendTrainingStreamConfig(sm, sm.getUserSettings().streamIntervalMs);
+    constexpr int startupStreamSetupTimeoutMs = 250;
+    const auto streamResult = sendTrainingStreamConfig(
+        sm, sm.getUserSettings().streamIntervalMs, startupStreamSetupTimeoutMs);
     if (streamResult.isError()) {
         LOG_WARN(
             State,
@@ -105,14 +109,13 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
         LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
     }
 
-    static std::atomic<uint64_t> nextId{ 1 };
     Api::RenderFormatSet::Command renderCmd;
     renderCmd.format = RenderFormat::EnumType::Basic;
-
-    auto envelope = DirtSim::Network::make_command_envelope(nextId.fetch_add(1), renderCmd);
-    auto renderResult = wsService.sendBinaryAndReceive(envelope);
+    auto envelope =
+        DirtSim::Network::make_command_envelope(wsService.allocateRequestId(), renderCmd);
+    auto renderResult = wsService.sendBinaryAndReceive(envelope, startupStreamSetupTimeoutMs);
     if (renderResult.isError()) {
-        LOG_ERROR(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
+        LOG_WARN(State, "Failed to subscribe to render stream: {}", renderResult.errorValue());
     }
     else {
         LOG_INFO(State, "Subscribed to render stream for live training view");

@@ -9,8 +9,10 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/GenomeGet.h"
+#include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsSet.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
@@ -182,6 +184,27 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     if (!wsService.isConnected()) {
         LOG_WARN(State, "Not connected to server, cannot start evolution");
         return std::move(*this);
+    }
+
+    // Set up training streams BEFORE starting evolution. If evolution starts first, fast training
+    // (e.g. 1 generation) can complete before stream setup finishes, deadlocking the server's
+    // broadcastTrainingResult against the UI's pending RenderFormatSet request.
+    Api::TrainingStreamConfigSet::Command streamCmd{
+        .intervalMs = sm.getUserSettings().streamIntervalMs,
+    };
+    auto streamResult = wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(
+        streamCmd, 2000);
+    if (streamResult.isError()) {
+        LOG_WARN(State, "Pre-start TrainingStreamConfigSet failed: {}", streamResult.errorValue());
+    }
+
+    Api::RenderFormatSet::Command renderCmd;
+    renderCmd.format = RenderFormat::EnumType::Basic;
+    auto renderEnvelope =
+        DirtSim::Network::make_command_envelope(wsService.allocateRequestId(), renderCmd);
+    auto renderResult = wsService.sendBinaryAndReceive(renderEnvelope);
+    if (renderResult.isError()) {
+        LOG_WARN(State, "Pre-start RenderFormatSet failed: {}", renderResult.errorValue());
     }
 
     Api::EvolutionStart::Command cmd;

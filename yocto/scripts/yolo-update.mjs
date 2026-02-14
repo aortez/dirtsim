@@ -12,7 +12,7 @@
  *   npm run yolo                              # Build + push + flash + reboot
  *   npm run yolo -- --target 192.168.1.50    # Target a specific host
  *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
- *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + audio + image)
+ *   npm run yolo -- --clean-all               # Force full rebuild (cleans app + image + mesa/wayland-protocols)
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
  *   npm run yolo -- --docker                  # Build with Docker image
  *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
@@ -222,15 +222,15 @@ async function cleanImage() {
 }
 
 /**
- * Clean both server and image sstate for a full rebuild.
+ * Clean key app and graphics/protocol sstate for a full rebuild.
  */
 async function cleanAll() {
-  info('Cleaning dirtsim-server, dirtsim-audio, and dirtsim-image sstate...');
+  info('Cleaning app, image, and graphics/protocol sstate...');
   await runKas([
     'shell',
     'kas-dirtsim.yml',
     '-c',
-    'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image',
+    'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image mesa wayland-protocols wayland-protocols-native',
   ]);
   success('Clean complete!');
 }
@@ -558,8 +558,18 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const osManagerResult = findBuildDir('dirtsim-os-manager');
   const audioResult = findBuildDir('dirtsim-audio');
 
-  if (!uiResult && !serverResult && !osManagerResult && !audioResult) {
-    error('No build directories found.');
+  const requiredBuilds = [
+    { name: 'dirtsim-ui', result: uiResult },
+    { name: 'dirtsim-server', result: serverResult },
+    { name: 'dirtsim-os-manager', result: osManagerResult },
+    { name: 'dirtsim-audio', result: audioResult },
+  ];
+  const missingBuilds = requiredBuilds.filter(entry => !entry.result).map(entry => entry.name);
+  if (missingBuilds.length > 0) {
+    const searchedPatterns = unique(activeArchConfigs.flatMap(config => config.patterns));
+    error('Fast deploy requires all target binaries to avoid mixed-version protocol mismatches.');
+    error(`Missing build directories: ${missingBuilds.join(', ')}`);
+    error(`Searched architecture patterns: ${searchedPatterns.join(', ')}`);
     error('Run a full build first: ./update.sh --target <host>');
     process.exit(1);
   }
@@ -884,7 +894,7 @@ async function main() {
     log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
     log('                     Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean            Force rebuild by cleaning image sstate first');
-    log('  --clean-all        Force full rebuild (cleans server + audio + image sstate)');
+    log('  --clean-all        Force full rebuild (cleans app + image + mesa/wayland-protocols sstate)');
     log('  --dry-run          Show what would happen without doing it');
     log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
     log('  -h, --help         Show this help');
