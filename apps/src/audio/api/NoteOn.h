@@ -7,7 +7,6 @@
 #include "server/api/ApiMacros.h"
 #include <cstdint>
 #include <nlohmann/json.hpp>
-#include <stdexcept>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -23,13 +22,12 @@ struct Command {
     double amplitude = 0.5;
     double attack_ms = 10.0;
     double release_ms = 120.0;
-    double duration_ms = 120.0;
+    double duration_ms = 0.0;
     Audio::Waveform waveform = Audio::Waveform::Sine;
     uint32_t note_id = 0;
 
     API_COMMAND();
-    nlohmann::json toJson() const;
-    static Command fromJson(const nlohmann::json& j);
+    API_JSON_SERIALIZABLE(Command);
 
     using serialize = zpp::bits::members<7>;
 };
@@ -46,23 +44,6 @@ struct Okay {
 
 using Response = Result<Okay, ApiError>;
 using Cwc = CommandWithCallback<Command, Response>;
-
-inline nlohmann::json Command::toJson() const
-{
-    return ReflectSerializer::to_json(*this);
-}
-
-inline Command Command::fromJson(const nlohmann::json& j)
-{
-    if (!j.contains("duration_ms")) {
-        throw std::runtime_error("duration_ms is required");
-    }
-    Command cmd = ReflectSerializer::from_json<Command>(j);
-    if (cmd.duration_ms <= 0.0) {
-        throw std::runtime_error("duration_ms must be > 0");
-    }
-    return cmd;
-}
 
 } // namespace NoteOn
 } // namespace AudioApi

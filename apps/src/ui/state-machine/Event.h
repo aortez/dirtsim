@@ -24,7 +24,7 @@
 #include "api/StatusGet.h"
 #include "api/StopButtonPress.h"
 #include "api/StreamStart.h"
-#include "api/SynthKeyPress.h"
+#include "api/SynthKeyEvent.h"
 #include "api/TrainingConfigShowEvolution.h"
 #include "api/TrainingQuit.h"
 #include "api/TrainingResultDiscard.h"
@@ -326,7 +326,7 @@ using Event = std::variant<
     DirtSim::UiApi::StatusGet::Cwc,
     DirtSim::UiApi::StopButtonPress::Cwc,
     DirtSim::UiApi::StreamStart::Cwc,
-    DirtSim::UiApi::SynthKeyPress::Cwc,
+    DirtSim::UiApi::SynthKeyEvent::Cwc,
     DirtSim::UiApi::TrainingConfigShowEvolution::Cwc,
     DirtSim::UiApi::TrainingQuit::Cwc,
     DirtSim::UiApi::TrainingResultDiscard::Cwc,

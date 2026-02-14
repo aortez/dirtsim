@@ -9,6 +9,17 @@
 
 namespace DirtSim {
 namespace AudioProcess {
+namespace {
+
+AudioApi::StatusGet::HoldState toApiHoldState(AudioNoteHoldState holdState)
+{
+    if (holdState == AudioNoteHoldState::Releasing) {
+        return AudioApi::StatusGet::HoldState::Releasing;
+    }
+    return AudioApi::StatusGet::HoldState::Held;
+}
+
+} // namespace
 
 AudioManager::AudioManager(uint16_t port, const AudioEngineConfig& config)
     : port_(port), engineConfig_(config)
@@ -122,11 +133,6 @@ void AudioManager::handleNoteOn(AudioApi::NoteOn::Cwc cwc)
     const double durationSeconds = cmd.duration_ms / 1000.0;
     const double releaseSeconds = cmd.release_ms / 1000.0;
 
-    if (cmd.duration_ms <= 0.0) {
-        cwc.sendResponse(AudioApi::NoteOn::Response::error(ApiError("duration_ms must be > 0")));
-        return;
-    }
-
     const uint32_t noteId = engine_.enqueueNoteOn(
         cmd.frequency_hz,
         cmd.amplitude,
@@ -150,17 +156,21 @@ void AudioManager::handleNoteOff(AudioApi::NoteOff::Cwc cwc)
 void AudioManager::handleStatusGet(AudioApi::StatusGet::Cwc cwc)
 {
     const AudioStatus status = engine_.getStatus();
-    AudioApi::StatusGet::Okay response{
-        .active = status.active,
-        .note_id = status.noteId,
-        .frequency_hz = status.frequencyHz,
-        .amplitude = status.amplitude,
-        .envelope_level = status.envelopeLevel,
-        .envelope_state = status.envelopeState,
-        .waveform = status.waveform,
-        .sample_rate = status.sampleRate,
-        .device_name = status.deviceName,
-    };
+    AudioApi::StatusGet::Okay response;
+    response.active_notes.reserve(status.activeNotes.size());
+    for (const auto& activeNote : status.activeNotes) {
+        response.active_notes.push_back(
+            AudioApi::StatusGet::ActiveNote{
+                .note_id = activeNote.noteId,
+                .frequency_hz = activeNote.frequencyHz,
+                .amplitude = activeNote.amplitude,
+                .waveform = activeNote.waveform,
+                .envelope_state = activeNote.envelopeState,
+                .hold_state = toApiHoldState(activeNote.holdState),
+            });
+    }
+    response.sample_rate = status.sampleRate;
+    response.device_name = status.deviceName;
     cwc.sendResponse(AudioApi::StatusGet::Response::okay(response));
 }
 

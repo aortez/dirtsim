@@ -273,7 +273,7 @@ Run a minimal UI/server workflow check against a running system:
 - For canPersistUserSettingsAcrossRestart: updates settings, restarts services, and verifies settings persisted.
 - For canUseDefaultScenarioWhenSimRunHasNoScenario: sets default scenario and verifies UI SimRun (without scenario_id) uses it.
 - For canApplyClockTimezoneFromUserSettings: sets timezone, runs Clock scenario, and verifies pushed Clock config uses the setting.
-- For canPlaySynthKeys: opens the Synth screen and sends programmatic key presses via UI API, verifying state details.
+- For canPlaySynthKeys: opens the Synth screen and sends programmatic key press/release events via UI API, verifying state details.
 
 ### Network Mode
 

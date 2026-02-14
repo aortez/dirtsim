@@ -509,7 +509,7 @@
 
 /* Enable the multi-touch gesture recognition feature */
 /* Gesture recognition requires the use of floats */
-#define LV_USE_GESTURE_RECOGNITION 0
+#define LV_USE_GESTURE_RECOGNITION 1
 
 /*=====================
  *  COMPILER SETTINGS
