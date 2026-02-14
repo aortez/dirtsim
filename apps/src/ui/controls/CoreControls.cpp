@@ -22,6 +22,26 @@
 namespace DirtSim {
 namespace Ui {
 
+namespace {
+
+void setControlEnabled(lv_obj_t* control, bool enabled)
+{
+    if (!control) {
+        return;
+    }
+
+    if (enabled) {
+        lv_obj_clear_state(control, LV_STATE_DISABLED);
+        lv_obj_set_style_opa(control, LV_OPA_COVER, 0);
+        return;
+    }
+
+    lv_obj_add_state(control, LV_STATE_DISABLED);
+    lv_obj_set_style_opa(control, LV_OPA_50, 0);
+}
+
+} // namespace
+
 CoreControls::CoreControls(
     lv_obj_t* container,
     Network::WebSocketServiceInterface* wsService,
@@ -63,25 +83,14 @@ CoreControls::CoreControls(
 
 void CoreControls::createMainView(lv_obj_t* view)
 {
-    // Top row: Reset and Quit buttons (evenly spaced).
+    // Top row: Stop button.
     lv_obj_t* topRow = lv_obj_create(view);
     lv_obj_set_size(topRow, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_flex_flow(topRow, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(
-        topRow, LV_FLEX_ALIGN_SPACE_EVENLY, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_flex_align(topRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_all(topRow, 4, 0);
     lv_obj_set_style_bg_opa(topRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(topRow, 0, 0);
-
-    // Reset button - orange with refresh icon (push).
-    resetButton_ = LVGLBuilder::actionButton(topRow)
-                       .text("Reset")
-                       .icon(LV_SYMBOL_REFRESH)
-                       .mode(LVGLBuilder::ActionMode::Push)
-                       .size(80)
-                       .backgroundColor(0xFF8800)
-                       .callback(onResetClicked, this)
-                       .buildOrLog();
 
     // Stop button - fractal background with duck (push). Returns to start menu.
     DIRTSIM_ASSERT(fractalAnimator_, "CoreControls requires FractalAnimator for Stop button");
@@ -93,8 +102,45 @@ void CoreControls::createMainView(lv_obj_t* view)
         spdlog::error("CoreControls: Failed to create Stop button");
     }
 
+    // Reset + confirm checkbox + debug row.
+    lv_obj_t* resetRow = lv_obj_create(view);
+    lv_obj_set_size(resetRow, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(resetRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        resetRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_all(resetRow, 4, 0);
+    lv_obj_set_style_pad_column(resetRow, 8, 0);
+    lv_obj_set_style_bg_opa(resetRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(resetRow, 0, 0);
+    lv_obj_clear_flag(resetRow, LV_OBJ_FLAG_SCROLLABLE);
+
+    // Reset button - orange with refresh icon (push).
+    resetButton_ = LVGLBuilder::actionButton(resetRow)
+                       .text("Reset")
+                       .icon(LV_SYMBOL_REFRESH)
+                       .mode(LVGLBuilder::ActionMode::Push)
+                       .size(80)
+                       .backgroundColor(0xFF8800)
+                       .callback(onResetClicked, this)
+                       .buildOrLog();
+
+    // Medium reset confirmation checkbox.
+    resetConfirmCheckbox_ = lv_checkbox_create(resetRow);
+    lv_checkbox_set_text(resetConfirmCheckbox_, "");
+    lv_obj_set_size(resetConfirmCheckbox_, 30, 30);
+    lv_obj_set_style_bg_opa(resetConfirmCheckbox_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(resetConfirmCheckbox_, 0, 0);
+    lv_obj_set_style_pad_all(resetConfirmCheckbox_, 0, 0);
+    lv_obj_set_style_pad_column(resetConfirmCheckbox_, 0, 0);
+    lv_obj_set_style_pad_left(resetConfirmCheckbox_, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_right(resetConfirmCheckbox_, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_top(resetConfirmCheckbox_, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_pad_bottom(resetConfirmCheckbox_, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(resetConfirmCheckbox_, LVGLBuilder::Style::RADIUS, LV_PART_INDICATOR);
+    lv_obj_add_event_cb(resetConfirmCheckbox_, onResetConfirmToggled, LV_EVENT_VALUE_CHANGED, this);
+
     // Debug toggle.
-    debugSwitch_ = LVGLBuilder::actionButton(view)
+    debugSwitch_ = LVGLBuilder::actionButton(resetRow)
                        .text("Debug Draw")
                        .mode(LVGLBuilder::ActionMode::Toggle)
                        .size(80)
@@ -102,6 +148,8 @@ void CoreControls::createMainView(lv_obj_t* view)
                        .glowColor(0x00CC00)
                        .callback(onDebugToggled, this)
                        .buildOrLog();
+
+    updateResetButtonEnabled();
 
     // Interaction mode button - navigates to modal for selection.
     std::string interactionModeText =
@@ -413,6 +461,15 @@ void CoreControls::onResetClicked(lv_event_t* e)
     CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
     if (!self) return;
 
+    if (!self->resetConfirmCheckbox_
+        || !lv_obj_has_state(self->resetConfirmCheckbox_, LV_STATE_CHECKED)) {
+        spdlog::debug("CoreControls: Reset ignored because confirmation checkbox is unchecked");
+        return;
+    }
+
+    lv_obj_clear_state(self->resetConfirmCheckbox_, LV_STATE_CHECKED);
+    self->updateResetButtonEnabled();
+
     spdlog::info("CoreControls: Reset button clicked");
 
     // Send binary reset command to server.
@@ -423,6 +480,16 @@ void CoreControls::onResetClicked(lv_event_t* e)
     if (result.isError()) {
         spdlog::error("CoreControls: Failed to send Reset: {}", result.errorValue());
     }
+}
+
+void CoreControls::onResetConfirmToggled(lv_event_t* e)
+{
+    CoreControls* self = static_cast<CoreControls*>(lv_event_get_user_data(e));
+    if (!self) {
+        return;
+    }
+
+    self->updateResetButtonEnabled();
 }
 
 void CoreControls::onDebugToggled(lv_event_t* e)
@@ -675,6 +742,13 @@ void CoreControls::onScaleFactorChanged(lv_event_t* e)
     cwc.command.mode = self->state_.renderMode;
     cwc.callback = [](auto&&) {};
     self->eventSink_.queueEvent(cwc);
+}
+
+void CoreControls::updateResetButtonEnabled()
+{
+    const bool confirmed =
+        resetConfirmCheckbox_ && lv_obj_has_state(resetConfirmCheckbox_, LV_STATE_CHECKED);
+    setControlEnabled(resetButton_, confirmed);
 }
 
 } // namespace Ui

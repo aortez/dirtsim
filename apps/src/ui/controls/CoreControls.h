@@ -65,6 +65,7 @@ private:
     // Widgets.
     std::unique_ptr<DuckStopButton> stopButton_;
     lv_obj_t* resetButton_ = nullptr;
+    lv_obj_t* resetConfirmCheckbox_ = nullptr;
     lv_obj_t* statsLabel_ = nullptr;
     lv_obj_t* statsLabelUI_ = nullptr;
     lv_obj_t* debugSwitch_ = nullptr;
@@ -87,6 +88,7 @@ private:
     // Event handlers.
     static void onStopClicked(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
+    static void onResetConfirmToggled(lv_event_t* e);
     static void onDebugToggled(lv_event_t* e);
     static void onInteractionModeButtonClicked(lv_event_t* e);
     static void onInteractionModeSelected(lv_event_t* e);
@@ -98,6 +100,8 @@ private:
     static void onRenderModeBackClicked(lv_event_t* e);
     static void onWorldSizeChanged(lv_event_t* e);
     static void onScaleFactorChanged(lv_event_t* e);
+
+    void updateResetButtonEnabled();
 };
 
 } // namespace Ui

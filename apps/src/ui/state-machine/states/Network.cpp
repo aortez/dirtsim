@@ -39,7 +39,9 @@ void Network::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setVisible(true);
     iconRail->setLayout(RailLayout::SingleColumn);
+    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftCenter());
     iconRail->setVisibleIcons({ IconId::CORE, IconId::NETWORK });
     iconRail->selectIcon(IconId::NETWORK);
 }

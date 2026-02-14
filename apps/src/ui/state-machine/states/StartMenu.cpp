@@ -71,6 +71,7 @@ void StartMenu::onEnter(StateMachine& sm)
     // Configure IconRail to show StartMenu icons in two columns.
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "StartMenu requires an IconRail");
+    iconRail->setVisible(true);
     iconRail->setVisibleIcons(
         { IconId::CORE,
           IconId::SETTINGS,
@@ -79,6 +80,7 @@ void StartMenu::onEnter(StateMachine& sm)
           IconId::NETWORK,
           IconId::SCENARIO });
     iconRail->setLayout(RailLayout::TwoColumn);
+    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftTopSquare());
     iconRail->deselectAll();
     LOG_INFO(
         State,
