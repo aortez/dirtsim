@@ -84,6 +84,22 @@ struct PongOkay {
 using PongResponse = Result<PongOkay, ApiError>;
 using PongCwc = CommandWithCallback<PongCommand, PongResponse>;
 
+struct MismatchCommand {
+    int value = 0;
+
+    static constexpr const char* name() { return "MismatchCommand"; }
+    using serialize = zpp::bits::members<1>;
+};
+
+struct EmptyOkay {
+    nlohmann::json toJson() const { return nlohmann::json::object(); }
+
+    using serialize = zpp::bits::members<0>;
+};
+
+using MismatchResponse = Result<EmptyOkay, ApiError>;
+using MismatchCwc = CommandWithCallback<MismatchCommand, MismatchResponse>;
+
 struct PushPayload {
     int value = 0;
 
@@ -157,6 +173,29 @@ TEST(WebSocketServiceIntegrationTest, ServerToClientRequestResponse)
     ASSERT_TRUE(response.isValue());
     ASSERT_TRUE(response.value().isValue());
     EXPECT_EQ(response.value().value().value, 6);
+
+    client.disconnect();
+    server.stopListening();
+}
+
+TEST(WebSocketServiceIntegrationTest, DeserializationMismatchReturnsErrorInsteadOfThrowing)
+{
+    const uint16_t port = allocateFreePort();
+    ASSERT_NE(port, 0);
+
+    WebSocketService server;
+    ASSERT_TRUE(server.listen(port).isValue());
+    server.registerHandler<MismatchCwc>(
+        [](MismatchCwc cwc) { cwc.sendResponse(MismatchResponse::okay(EmptyOkay{})); });
+
+    WebSocketService client;
+    auto connectResult = client.connect("ws://localhost:" + std::to_string(port), 2000);
+    ASSERT_TRUE(connectResult.isValue());
+
+    MismatchCommand cmd{ .value = 7 };
+    const auto response = client.sendCommandAndGetResponse<PingOkay>(cmd, 2000);
+    ASSERT_TRUE(response.isError());
+    EXPECT_NE(response.errorValue().find("Failed to deserialize response"), std::string::npos);
 
     client.disconnect();
     server.stopListening();

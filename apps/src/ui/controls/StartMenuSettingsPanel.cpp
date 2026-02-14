@@ -153,6 +153,14 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                          .callback(onVolumeChanged, this)
                          .buildOrLog();
 
+    idleActionDropdown_ = LVGLBuilder::actionDropdown(view)
+                              .label("Idle Action:")
+                              .options("Clock Scenario\nNone\nTraining Session")
+                              .selected(0)
+                              .width(LV_PCT(95))
+                              .callback(onIdleActionChanged, this)
+                              .buildOrLog();
+
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
                                  .icon(LV_SYMBOL_RIGHT)
@@ -301,6 +309,7 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
+    updateIdleActionDropdown();
     updateResetButtonEnabled();
 
     updatingUi_ = false;
@@ -373,6 +382,40 @@ void StartMenuSettingsPanel::updateTimezoneButtonText()
     const int clampedIndex = std::clamp(settings_.timezoneIndex, 0, maxIndex);
     const char* label = ClockScenario::TIMEZONES[clampedIndex].label;
     setActionButtonText(timezoneButton_, std::string("Timezone: ") + label);
+}
+
+void StartMenuSettingsPanel::updateIdleActionDropdown()
+{
+    if (!idleActionDropdown_) {
+        return;
+    }
+
+    const auto index = static_cast<uint16_t>(settings_.startMenuIdleAction);
+    LVGLBuilder::ActionDropdownBuilder::setSelected(idleActionDropdown_, index);
+}
+
+void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
+{
+    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->idleActionDropdown_) {
+        return;
+    }
+
+    if (self->updatingUi_) {
+        return;
+    }
+
+    const uint16_t index =
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->idleActionDropdown_);
+
+    if (index > static_cast<uint16_t>(StartMenuIdleAction::TrainingSession)) {
+        self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+    }
+    else {
+        self->settings_.startMenuIdleAction = static_cast<StartMenuIdleAction>(index);
+    }
+
+    self->sendSettingsUpdate();
 }
 
 void StartMenuSettingsPanel::onBackToMainClicked(lv_event_t* e)

@@ -56,6 +56,10 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .timezoneIndex = -50,
                 .volumePercent = 999,
                 .defaultScenario = Scenario::EnumType::Clock,
+                .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
+                .trainingSpec = {},
+                .evolutionConfig = {},
+                .mutationConfig = {},
             },
     };
     Api::UserSettingsSet::Cwc cwc(command, [&](Api::UserSettingsSet::Response&& result) {
@@ -88,6 +92,10 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
                 .timezoneIndex = 7,
                 .volumePercent = 65,
                 .defaultScenario = Scenario::EnumType::Clock,
+                .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
+                .trainingSpec = {},
+                .evolutionConfig = {},
+                .mutationConfig = {},
             },
     };
     Api::UserSettingsSet::Cwc setCwc(setCommand, [](Api::UserSettingsSet::Response&&) {});

@@ -1,0 +1,21 @@
+[Unit]
+Description=DirtSim Simulation UI
+Wants=dirtsim-audio.service dirtsim-server.service
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+User=dirtsim
+WorkingDirectory=/data/dirtsim
+Environment=HOME=/home/dirtsim
+
+# Start X server and dirtsim-ui directly — no display manager needed.
+# X runs on vt7, leaving vt1-6 free for interactive login.
+ExecStart=/usr/bin/xinit /usr/bin/dirtsim-ui --connect localhost:8080 -- :0 vt7 -keeptty -noreset -nolisten tcp
+Restart=no
+
+# Hardware access for X server, GPU, and input devices.
+SupplementaryGroups=video input tty
+
+[Install]
+WantedBy=multi-user.target

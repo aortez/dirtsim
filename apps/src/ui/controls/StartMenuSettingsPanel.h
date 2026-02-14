@@ -45,8 +45,12 @@ private:
     static void onTimezoneSelected(lv_event_t* e);
     static void onVolumeChanged(lv_event_t* e);
 
+    static void onIdleActionChanged(lv_event_t* e);
+    void updateIdleActionDropdown();
+
     lv_obj_t* container_ = nullptr;
     lv_obj_t* defaultScenarioButton_ = nullptr;
+    lv_obj_t* idleActionDropdown_ = nullptr;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* resetConfirmCheckbox_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
