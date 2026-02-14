@@ -4,6 +4,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <limits>
 #include <sstream>
 #include <thread>
 
@@ -203,10 +204,14 @@ Result<std::monostate, ApiError> AudioEngine::start(const AudioEngineConfig& con
     mixBuffer_.assign(maxSamples, 0.0f);
     s16Buffer_.assign(maxSamples, 0);
 
-    voice_.setSampleRate(static_cast<double>(config_.sampleRate));
+    clearVoiceRuntimeState();
+    for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        voices_[voiceIndex].voice.setSampleRate(static_cast<double>(config_.sampleRate));
+        voices_[voiceIndex].voiceIndex = voiceIndex;
+    }
+    nextVoiceStartOrder_ = 1;
     commandReadIndex_.store(0, std::memory_order_relaxed);
     commandWriteIndex_.store(0, std::memory_order_relaxed);
-    autoNoteOffFramesRemaining_ = -1;
 
     SDL_PauseAudioDevice(deviceId_, 0);
 
@@ -233,11 +238,10 @@ void AudioEngine::stop()
         sdlInitialized_ = false;
     }
 
-    active_.store(false);
-    activeNoteId_.store(0);
+    clearVoiceRuntimeState();
     commandReadIndex_.store(0, std::memory_order_relaxed);
     commandWriteIndex_.store(0, std::memory_order_relaxed);
-    autoNoteOffFramesRemaining_ = -1;
+    nextVoiceStartOrder_ = 1;
 }
 
 uint32_t AudioEngine::enqueueNoteOn(
@@ -289,16 +293,13 @@ int AudioEngine::getMasterVolumePercent() const
 
 AudioStatus AudioEngine::getStatus() const
 {
-    AudioStatus status;
-    status.active = active_.load();
-    status.noteId = activeNoteId_.load();
-    status.frequencyHz = currentFrequencyHz_.load();
-    status.amplitude = currentAmplitude_.load();
-    status.envelopeLevel = currentEnvelopeLevel_.load();
-    status.envelopeState = static_cast<Audio::EnvelopeState>(currentEnvelopeState_.load());
-    status.waveform = static_cast<Audio::Waveform>(currentWaveform_.load());
-    status.sampleRate = static_cast<double>(config_.sampleRate);
-    status.deviceName = config_.deviceName;
+    if (deviceId_ == 0) {
+        return buildStatusSnapshotUnlocked();
+    }
+
+    SDL_LockAudioDevice(deviceId_);
+    AudioStatus status = buildStatusSnapshotUnlocked();
+    SDL_UnlockAudioDevice(deviceId_);
     return status;
 }
 
@@ -326,24 +327,39 @@ void AudioEngine::render(float* out, int frames, int channels)
         static_cast<float>(masterVolumePercent_.load(std::memory_order_relaxed)) / 100.0f;
 
     for (int i = 0; i < frames; ++i) {
-        const double sample = voice_.renderSample();
-        const float outSample = static_cast<float>(std::clamp(sample, -1.0, 1.0)) * masterGain;
+        double mixedSample = 0.0;
+        for (auto& voice : voices_) {
+            mixedSample += voice.voice.renderSample();
+        }
+        const float outSample = static_cast<float>(std::clamp(mixedSample, -1.0, 1.0)) * masterGain;
 
         const int base = i * channels;
         for (int ch = 0; ch < channels; ++ch) {
             out[base + ch] = outSample;
         }
 
-        if (autoNoteOffFramesRemaining_ > 0) {
-            --autoNoteOffFramesRemaining_;
-            if (autoNoteOffFramesRemaining_ == 0) {
-                voice_.noteOff();
-                autoNoteOffFramesRemaining_ = -1;
+        for (auto& voice : voices_) {
+            if (voice.noteId == 0) {
+                continue;
+            }
+
+            if (voice.autoNoteOffFramesRemaining > 0) {
+                --voice.autoNoteOffFramesRemaining;
+                if (voice.autoNoteOffFramesRemaining == 0) {
+                    voice.voice.noteOff();
+                    voice.autoNoteOffFramesRemaining = -1;
+                    voice.holdState = AudioNoteHoldState::Releasing;
+                }
+            }
+
+            if (!voice.voice.isActive()) {
+                voice.noteId = 0;
+                voice.autoNoteOffFramesRemaining = -1;
+                voice.startOrder = 0;
+                voice.holdState = AudioNoteHoldState::Held;
             }
         }
     }
-
-    updateStatus();
 }
 
 void AudioEngine::renderToStream(Uint8* stream, int frames, int channels, int len)
@@ -427,46 +443,181 @@ void AudioEngine::drainCommands()
 void AudioEngine::applyCommand(const AudioCommand& command)
 {
     if (command.type == CommandType::NoteOn) {
-        voice_.noteOn(
-            command.noteOn.frequencyHz,
-            command.noteOn.amplitude,
-            command.noteOn.attackSeconds,
-            command.noteOn.releaseSeconds,
-            command.noteOn.waveform);
-        if (command.noteOn.durationSeconds > 0.0) {
-            const double frames =
-                command.noteOn.durationSeconds * static_cast<double>(config_.sampleRate);
-            autoNoteOffFramesRemaining_ =
-                std::max<int64_t>(1, static_cast<int64_t>(std::llround(frames)));
-        }
-        else {
-            autoNoteOffFramesRemaining_ = -1;
-        }
-        activeNoteId_.store(command.noteOn.noteId);
+        const size_t voiceIndex = selectVoiceIndexForNoteOn(command.noteOn.noteId);
+        startVoice(voiceIndex, command.noteOn);
         return;
     }
 
-    const uint32_t currentId = activeNoteId_.load();
-    if (command.noteOff.noteId == 0 || command.noteOff.noteId == currentId) {
-        voice_.noteOff();
-        autoNoteOffFramesRemaining_ = -1;
+    if (command.noteOff.noteId == 0) {
+        for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+            releaseVoice(voiceIndex);
+        }
+        return;
+    }
+
+    for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        if (voices_[voiceIndex].noteId == command.noteOff.noteId) {
+            releaseVoice(voiceIndex);
+            return;
+        }
     }
 }
 
-void AudioEngine::updateStatus()
+size_t AudioEngine::selectVoiceIndexToSteal() const
 {
-    const bool active = voice_.isActive();
-    active_.store(active);
+    struct Candidate {
+        bool releasing = false;
+        double envelopeLevel = std::numeric_limits<double>::infinity();
+        uint64_t startOrder = 0;
+        size_t voiceIndex = 0;
+    };
 
-    if (!active) {
-        activeNoteId_.store(0);
+    bool hasCandidate = false;
+    Candidate best{};
+    for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        const auto& voice = voices_[voiceIndex];
+        if (voice.noteId == 0 || !voice.voice.isActive()) {
+            continue;
+        }
+
+        Candidate current{
+            .releasing = voice.holdState == AudioNoteHoldState::Releasing,
+            .envelopeLevel = voice.voice.getEnvelopeLevel(),
+            .startOrder = voice.startOrder,
+            .voiceIndex = voiceIndex,
+        };
+
+        if (!hasCandidate) {
+            best = current;
+            hasCandidate = true;
+            continue;
+        }
+
+        if (current.releasing != best.releasing) {
+            if (current.releasing) {
+                best = current;
+            }
+            continue;
+        }
+
+        if (current.envelopeLevel < best.envelopeLevel) {
+            best = current;
+            continue;
+        }
+
+        if (current.envelopeLevel > best.envelopeLevel) {
+            continue;
+        }
+
+        if (current.startOrder < best.startOrder) {
+            best = current;
+            continue;
+        }
+
+        if (current.startOrder > best.startOrder) {
+            continue;
+        }
+
+        if (current.voiceIndex < best.voiceIndex) {
+            best = current;
+        }
     }
 
-    currentFrequencyHz_.store(voice_.getFrequency());
-    currentAmplitude_.store(voice_.getAmplitude());
-    currentEnvelopeLevel_.store(voice_.getEnvelopeLevel());
-    currentEnvelopeState_.store(static_cast<int>(voice_.getEnvelopeState()));
-    currentWaveform_.store(static_cast<int>(voice_.getWaveform()));
+    if (!hasCandidate) {
+        return 0;
+    }
+    return best.voiceIndex;
+}
+
+size_t AudioEngine::selectVoiceIndexForNoteOn(uint32_t noteId) const
+{
+    for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        const auto& voice = voices_[voiceIndex];
+        if (voice.noteId == noteId && voice.voice.isActive()) {
+            return voiceIndex;
+        }
+    }
+
+    for (size_t voiceIndex = 0; voiceIndex < voices_.size(); ++voiceIndex) {
+        const auto& voice = voices_[voiceIndex];
+        if (voice.noteId == 0 || !voice.voice.isActive()) {
+            return voiceIndex;
+        }
+    }
+
+    return selectVoiceIndexToSteal();
+}
+
+void AudioEngine::startVoice(size_t voiceIndex, const NoteOnCommand& noteOn)
+{
+    auto& voice = voices_[voiceIndex];
+    voice.voice.noteOn(
+        noteOn.frequencyHz,
+        noteOn.amplitude,
+        noteOn.attackSeconds,
+        noteOn.releaseSeconds,
+        noteOn.waveform);
+
+    voice.noteId = noteOn.noteId;
+    voice.startOrder = nextVoiceStartOrder_++;
+    voice.holdState = AudioNoteHoldState::Held;
+
+    if (noteOn.durationSeconds > 0.0) {
+        const double frames = noteOn.durationSeconds * static_cast<double>(config_.sampleRate);
+        voice.autoNoteOffFramesRemaining =
+            std::max<int64_t>(1, static_cast<int64_t>(std::llround(frames)));
+    }
+    else {
+        voice.autoNoteOffFramesRemaining = -1;
+    }
+}
+
+void AudioEngine::releaseVoice(size_t voiceIndex)
+{
+    auto& voice = voices_[voiceIndex];
+    if (voice.noteId == 0 || !voice.voice.isActive()) {
+        return;
+    }
+
+    voice.voice.noteOff();
+    voice.autoNoteOffFramesRemaining = -1;
+    voice.holdState = AudioNoteHoldState::Releasing;
+}
+
+AudioStatus AudioEngine::buildStatusSnapshotUnlocked() const
+{
+    AudioStatus status;
+    status.activeNotes.reserve(voices_.size());
+    status.sampleRate = static_cast<double>(config_.sampleRate);
+    status.deviceName = config_.deviceName;
+
+    for (const auto& voice : voices_) {
+        if (voice.noteId == 0 || !voice.voice.isActive()) {
+            continue;
+        }
+
+        status.activeNotes.push_back(
+            ActiveAudioNoteStatus{
+                .noteId = voice.noteId,
+                .frequencyHz = voice.voice.getFrequency(),
+                .amplitude = voice.voice.getAmplitude(),
+                .waveform = voice.voice.getWaveform(),
+                .envelopeState = voice.voice.getEnvelopeState(),
+                .holdState = voice.holdState,
+            });
+    }
+
+    return status;
+}
+
+void AudioEngine::clearVoiceRuntimeState()
+{
+    for (auto& voice : voices_) {
+        voice.noteId = 0;
+        voice.autoNoteOffFramesRemaining = -1;
+        voice.startOrder = 0;
+        voice.holdState = AudioNoteHoldState::Held;
+    }
 }
 
 } // namespace AudioProcess

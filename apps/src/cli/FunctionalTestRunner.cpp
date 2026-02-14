@@ -30,7 +30,7 @@
 #include "ui/state-machine/api/SimStop.h"
 #include "ui/state-machine/api/StateGet.h"
 #include "ui/state-machine/api/StatusGet.h"
-#include "ui/state-machine/api/SynthKeyPress.h"
+#include "ui/state-machine/api/SynthKeyEvent.h"
 #include "ui/state-machine/api/TrainingResultSave.h"
 #include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
@@ -2539,23 +2539,26 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaySynthKeys(
         };
 
         for (const auto& press : presses) {
-            UiApi::SynthKeyPress::Command cmd{
+            UiApi::SynthKeyEvent::Command pressCmd{
                 .key_index = press.index,
                 .is_black = press.isBlack,
+                .is_pressed = true,
             };
-            auto pressResult = unwrapResponse(
-                uiClient.sendCommandAndGetResponse<UiApi::SynthKeyPress::Okay>(cmd, timeoutMs));
+            auto pressResult =
+                unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::SynthKeyEvent::Okay>(
+                    pressCmd, timeoutMs));
             if (pressResult.isError()) {
                 uiClient.disconnect();
                 return Result<std::monostate, std::string>::error(
-                    "UI SynthKeyPress failed: " + pressResult.errorValue());
+                    "UI SynthKeyEvent failed: " + pressResult.errorValue());
             }
 
             const auto& response = pressResult.value();
-            if (response.key_index != press.index || response.is_black != press.isBlack) {
+            if (response.key_index != press.index || response.is_black != press.isBlack
+                || !response.is_pressed) {
                 uiClient.disconnect();
                 return Result<std::monostate, std::string>::error(
-                    "SynthKeyPress response mismatch");
+                    "SynthKeyEvent response mismatch");
             }
 
             auto statusResult = requestUiStatus(uiClient, timeoutMs);
@@ -2579,20 +2582,68 @@ FunctionalTestSummary FunctionalTestRunner::runCanPlaySynthKeys(
                 return Result<std::monostate, std::string>::error(
                     "SynthStateDetails did not update after key press");
             }
+
+            UiApi::SynthKeyEvent::Command releaseCmd{
+                .key_index = press.index,
+                .is_black = press.isBlack,
+                .is_pressed = false,
+            };
+            auto releaseResult =
+                unwrapResponse(uiClient.sendCommandAndGetResponse<UiApi::SynthKeyEvent::Okay>(
+                    releaseCmd, timeoutMs));
+            if (releaseResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI SynthKeyEvent release failed: " + releaseResult.errorValue());
+            }
+
+            const auto& releaseResponse = releaseResult.value();
+            if (releaseResponse.key_index != press.index
+                || releaseResponse.is_black != press.isBlack || releaseResponse.is_pressed) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "SynthKeyEvent release response mismatch");
+            }
+
+            auto statusAfterReleaseResult = requestUiStatus(uiClient, timeoutMs);
+            if (statusAfterReleaseResult.isError()) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "UI StatusGet failed after release: " + statusAfterReleaseResult.errorValue());
+            }
+
+            const auto& releasedStatus = statusAfterReleaseResult.value();
+            const auto* releasedSynthDetails =
+                std::get_if<UiApi::StatusGet::SynthStateDetails>(&releasedStatus.state_details);
+            if (!releasedSynthDetails) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "Expected SynthStateDetails in StatusGet after release");
+            }
+            if (releasedSynthDetails->last_key_index != -1
+                || releasedSynthDetails->last_key_is_black) {
+                uiClient.disconnect();
+                return Result<std::monostate, std::string>::error(
+                    "SynthStateDetails did not clear after key release");
+            }
         }
 
-        UiApi::SynthKeyPress::Command invalidCmd{ .key_index = 99, .is_black = false };
+        UiApi::SynthKeyEvent::Command invalidCmd{
+            .key_index = 99,
+            .is_black = false,
+            .is_pressed = true,
+        };
         auto invalidResult =
-            uiClient.sendCommandAndGetResponse<UiApi::SynthKeyPress::Okay>(invalidCmd, timeoutMs);
+            uiClient.sendCommandAndGetResponse<UiApi::SynthKeyEvent::Okay>(invalidCmd, timeoutMs);
         if (invalidResult.isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(
-                "UI SynthKeyPress request failed: " + invalidResult.errorValue());
+                "UI SynthKeyEvent request failed: " + invalidResult.errorValue());
         }
         if (!invalidResult.value().isError()) {
             uiClient.disconnect();
             return Result<std::monostate, std::string>::error(
-                "Expected SynthKeyPress error for invalid key index");
+                "Expected SynthKeyEvent error for invalid key index");
         }
 
         uiClient.disconnect();

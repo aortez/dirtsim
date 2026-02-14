@@ -1,9 +1,9 @@
-#include "SynthKeyPress.h"
+#include "SynthKeyEvent.h"
 #include "core/ReflectSerializer.h"
 
 namespace DirtSim {
 namespace UiApi {
-namespace SynthKeyPress {
+namespace SynthKeyEvent {
 
 nlohmann::json Command::toJson() const
 {
@@ -20,6 +20,6 @@ nlohmann::json Okay::toJson() const
     return ReflectSerializer::to_json(*this);
 }
 
-} // namespace SynthKeyPress
+} // namespace SynthKeyEvent
 } // namespace UiApi
 } // namespace DirtSim

@@ -1,4 +1,5 @@
 #include "SynthKeyboard.h"
+#include "audio/api/NoteOff.h"
 #include "audio/api/NoteOn.h"
 #include "core/LoggingChannels.h"
 #include "core/network/WebSocketService.h"
@@ -17,14 +18,11 @@ constexpr uint32_t kWhiteKeyColor = 0xF2F2F2;
 constexpr uint32_t kWhiteKeyPressedColor = 0xD0D0D0;
 constexpr uint32_t kBlackKeyColor = 0x111111;
 constexpr uint32_t kBlackKeyPressedColor = 0x3A3A3A;
-constexpr size_t kWhiteKeysPerOctave = 7;
-constexpr size_t kBlackKeysPerOctave = 5;
 constexpr int kAudioConnectTimeoutMs = 200;
 constexpr double kKeyAmplitude = 0.2;
 constexpr double kKeyAttackMs = 5.0;
 constexpr double kKeyReleaseMs = 90.0;
-constexpr double kKeyDurationMs = 140.0;
-constexpr std::array<double, kWhiteKeysPerOctave> kWhiteKeyFrequencies = {
+constexpr std::array<double, 7> kWhiteKeyFrequencies = {
     261.63, // C4.
     293.66, // D4.
     329.63, // E4.
@@ -33,7 +31,7 @@ constexpr std::array<double, kWhiteKeysPerOctave> kWhiteKeyFrequencies = {
     440.00, // A4.
     493.88, // B4.
 };
-constexpr std::array<double, kBlackKeysPerOctave> kBlackKeyFrequencies = {
+constexpr std::array<double, 5> kBlackKeyFrequencies = {
     277.18, // C#4.
     311.13, // D#4.
     369.99, // F#4.
@@ -148,15 +146,27 @@ void SynthKeyboard::create(lv_obj_t* parent)
     lv_obj_add_event_cb(keyboardContainer_, onKeyboardResized, LV_EVENT_SIZE_CHANGED, this);
     layoutKeyboard();
 
-    lastKey_ = nullptr;
+    keyNoteIds_.fill(0);
+    touchKeyPressed_.fill(false);
+    evdevTouchKeyPressed_.fill(false);
     lastKeyIndex_ = -1;
     lastKeyIsBlack_ = false;
     audioWarningLogged_ = false;
+
+    touchPollTimer_ = lv_timer_create(onTouchPollTimer, 16, this);
+    if (!touchPollTimer_) {
+        LOG_WARN(State, "Failed to create synth touch poll timer");
+    }
 }
 
 void SynthKeyboard::destroy()
 {
-    resetLastKeyVisual();
+    if (touchPollTimer_) {
+        lv_timer_delete(touchPollTimer_);
+        touchPollTimer_ = nullptr;
+    }
+
+    releaseAllActiveKeys("destroy");
 
     if (audioClient_ && audioClient_->isConnected()) {
         audioClient_->disconnect();
@@ -175,24 +185,19 @@ void SynthKeyboard::destroy()
         octave.whiteKeys.fill(nullptr);
         octave.blackKeys.fill(nullptr);
     }
-    lastKey_ = nullptr;
+    keyNoteIds_.fill(0);
+    touchKeyPressed_.fill(false);
+    evdevTouchKeyPressed_.fill(false);
     lastKeyIndex_ = -1;
     lastKeyIsBlack_ = false;
 }
 
-bool SynthKeyboard::handleKeyPress(
-    int keyIndex, bool isBlack, const char* source, std::string& error)
+bool SynthKeyboard::handleKeyEvent(
+    int keyIndex, bool isBlack, bool isPressed, const char* source, std::string& error)
 {
-    const size_t keysPerOctave = isBlack ? kBlackKeysPerOctave : kWhiteKeysPerOctave;
-    const size_t maxKeys = keysPerOctave * octaves_.size();
-    if (keyIndex < 0 || static_cast<size_t>(keyIndex) >= maxKeys) {
-        error = "Invalid key index";
-        return false;
-    }
-
-    const size_t octaveIndex = static_cast<size_t>(keyIndex) / keysPerOctave;
-    const size_t localIndex = static_cast<size_t>(keyIndex) % keysPerOctave;
-    if (octaveIndex >= octaves_.size()) {
+    size_t localIndex = 0;
+    size_t octaveIndex = 0;
+    if (!decodeCommandKeyIndex(keyIndex, isBlack, localIndex, octaveIndex)) {
         error = "Invalid key index";
         return false;
     }
@@ -204,8 +209,14 @@ bool SynthKeyboard::handleKeyPress(
         return false;
     }
 
-    applyKeyPress(
-        key, static_cast<int>(localIndex), isBlack, static_cast<int>(octaveIndex), source);
+    if (isPressed) {
+        pressKey(key, static_cast<int>(localIndex), isBlack, static_cast<int>(octaveIndex), source);
+    }
+    else {
+        releaseKey(
+            key, static_cast<int>(localIndex), isBlack, static_cast<int>(octaveIndex), source);
+    }
+
     return true;
 }
 
@@ -229,9 +240,28 @@ void SynthKeyboard::onKeyPressed(lv_event_t* e)
         return;
     }
 
+#if LV_USE_EVDEV
+    lv_indev_t* indev = lv_indev_get_act();
+    if (indev && lv_evdev_is_indev(indev)) {
+        return;
+    }
+#endif
+
     const lv_event_code_t code = lv_event_get_code(e);
+    lv_obj_t* key = static_cast<lv_obj_t*>(lv_event_get_target(e));
+    if (!key || !lv_obj_is_valid(key)) {
+        return;
+    }
+
+    int keyIndex = -1;
+    bool isBlack = false;
+    int octaveIndex = -1;
+    if (!self->findKeyIndex(key, keyIndex, isBlack, octaveIndex)) {
+        return;
+    }
+
     if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
-        self->clearLastKey();
+        self->releaseTouchKey(key, keyIndex, isBlack, octaveIndex, "touch-lvgl");
         return;
     }
 
@@ -239,30 +269,59 @@ void SynthKeyboard::onKeyPressed(lv_event_t* e)
         return;
     }
 
-    lv_indev_t* indev = lv_indev_get_act();
-    if (!indev) {
-        return;
-    }
-
-    lv_point_t point{};
-    lv_indev_get_point(indev, &point);
-
-    lv_obj_t* key = nullptr;
-    int keyIndex = -1;
-    bool isBlack = false;
-    int octaveIndex = -1;
-    if (!self->findKeyAtPoint(point, key, keyIndex, isBlack, octaveIndex)) {
-        return;
-    }
-
-    if (key == self->lastKey_) {
-        return;
-    }
-
-    self->applyKeyPress(key, keyIndex, isBlack, octaveIndex, "touch");
+    self->pressTouchKey(key, keyIndex, isBlack, octaveIndex, "touch-lvgl");
 }
 
-void SynthKeyboard::applyKeyPress(
+void SynthKeyboard::onTouchPollTimer(lv_timer_t* timer)
+{
+    auto* self = static_cast<SynthKeyboard*>(lv_timer_get_user_data(timer));
+    if (!self) {
+        return;
+    }
+
+    self->syncEvdevTouchState();
+}
+
+bool SynthKeyboard::decodeCommandKeyIndex(
+    int keyIndex, bool isBlack, size_t& localIndex, size_t& octaveIndex) const
+{
+    const size_t keysPerOctave = isBlack ? kBlackKeysPerOctave : kWhiteKeysPerOctave;
+    const size_t maxKeys = keysPerOctave * octaves_.size();
+    if (keyIndex < 0 || static_cast<size_t>(keyIndex) >= maxKeys) {
+        return false;
+    }
+
+    octaveIndex = static_cast<size_t>(keyIndex) / keysPerOctave;
+    localIndex = static_cast<size_t>(keyIndex) % keysPerOctave;
+    if (octaveIndex >= octaves_.size()) {
+        return false;
+    }
+
+    return true;
+}
+
+bool SynthKeyboard::decodeUniqueKeyIndex(
+    size_t uniqueKeyIndex, int& keyIndex, bool& isBlack, int& octaveIndex) const
+{
+    if (uniqueKeyIndex < kWhiteKeyCount) {
+        isBlack = false;
+        octaveIndex = static_cast<int>(uniqueKeyIndex / kWhiteKeysPerOctave);
+        keyIndex = static_cast<int>(uniqueKeyIndex % kWhiteKeysPerOctave);
+        return octaveIndex >= 0 && static_cast<size_t>(octaveIndex) < kOctaveCount;
+    }
+
+    if (uniqueKeyIndex >= kTotalKeyCount) {
+        return false;
+    }
+
+    isBlack = true;
+    const size_t blackOffset = uniqueKeyIndex - kWhiteKeyCount;
+    octaveIndex = static_cast<int>(blackOffset / kBlackKeysPerOctave);
+    keyIndex = static_cast<int>(blackOffset % kBlackKeysPerOctave);
+    return octaveIndex >= 0 && static_cast<size_t>(octaveIndex) < kOctaveCount;
+}
+
+void SynthKeyboard::pressKey(
     lv_obj_t* key, int keyIndex, bool isBlack, int octaveIndex, const char* source)
 {
     if (!key || !lv_obj_is_valid(key)) {
@@ -273,13 +332,9 @@ void SynthKeyboard::applyKeyPress(
         return;
     }
 
-    resetLastKeyVisual();
+    setKeyVisual(key, isBlack, true);
 
-    const uint32_t pressedColor = isBlack ? kBlackKeyPressedColor : kWhiteKeyPressedColor;
-    lv_obj_set_style_bg_color(key, lv_color_hex(pressedColor), 0);
-
-    lastKey_ = key;
-    lastKeyIndex_ = getGlobalKeyIndex(keyIndex, isBlack, octaveIndex);
+    lastKeyIndex_ = getCommandKeyIndex(keyIndex, isBlack, octaveIndex);
     lastKeyIsBlack_ = isBlack;
 
     const size_t localIndex = static_cast<size_t>(keyIndex);
@@ -287,33 +342,107 @@ void SynthKeyboard::applyKeyPress(
         isBlack ? kBlackKeyFrequencies[localIndex] : kWhiteKeyFrequencies[localIndex];
     const double frequency =
         baseFrequency * kOctaveFrequencyMultipliers[static_cast<size_t>(octaveIndex)];
+
+    AudioApi::NoteOn::Command note{};
+    note.frequency_hz = frequency;
+    note.amplitude = kKeyAmplitude * (static_cast<double>(volumePercent_) / 100.0);
+    note.attack_ms = kKeyAttackMs;
+    note.release_ms = kKeyReleaseMs;
+    note.duration_ms = 0.0;
+    note.waveform = Audio::Waveform::Square;
+    note.note_id = getKeyNoteId(keyIndex, isBlack, octaveIndex);
+
     LOG_INFO(
         State,
-        "Synth key pressed (index={}, black={}, freq={:.2f}Hz, source={})",
+        "Synth key pressed (index={}, black={}, freq={:.2f}Hz, note_id={}, source={})",
         lastKeyIndex_,
         isBlack,
         frequency,
+        note.note_id,
         source);
 
-    if (ensureAudioConnected()) {
-        AudioApi::NoteOn::Command note{};
-        note.frequency_hz = frequency;
-        note.amplitude = kKeyAmplitude * (static_cast<double>(volumePercent_) / 100.0);
-        note.attack_ms = kKeyAttackMs;
-        note.release_ms = kKeyReleaseMs;
-        note.duration_ms = kKeyDurationMs;
-        note.waveform = Audio::Waveform::Square;
+    if (!ensureAudioConnected()) {
+        return;
+    }
 
+    const auto sendResult =
+        audioClient_->sendCommandAndGetResponse<AudioApi::NoteOn::Okay>(note, 500);
+    if (sendResult.isError()) {
+        LOG_WARN(State, "Synth audio NoteOn failed: {}", sendResult.errorValue());
+        return;
+    }
+
+    if (sendResult.value().isError()) {
+        LOG_WARN(State, "Synth audio NoteOn rejected: {}", sendResult.value().errorValue().message);
+        return;
+    }
+
+    const uint32_t acceptedNoteId = sendResult.value().value().note_id;
+    keyNoteIds_[static_cast<size_t>(getUniqueKeyIndex(keyIndex, isBlack, octaveIndex))] =
+        acceptedNoteId;
+}
+
+void SynthKeyboard::pressTouchKey(
+    lv_obj_t* key, int keyIndex, bool isBlack, int octaveIndex, const char* source)
+{
+    if (isTouchKeyPressed(keyIndex, isBlack, octaveIndex)) {
+        return;
+    }
+
+    pressKey(key, keyIndex, isBlack, octaveIndex, source);
+    setTouchKeyPressed(keyIndex, isBlack, octaveIndex, true);
+}
+
+void SynthKeyboard::releaseKey(
+    lv_obj_t* key, int keyIndex, bool isBlack, int octaveIndex, const char* source)
+{
+    if (!key || !lv_obj_is_valid(key)) {
+        return;
+    }
+
+    setKeyVisual(key, isBlack, false);
+
+    const int commandKeyIndex = getCommandKeyIndex(keyIndex, isBlack, octaveIndex);
+    const uint32_t noteId = getKeyNoteId(keyIndex, isBlack, octaveIndex);
+
+    LOG_INFO(
+        State,
+        "Synth key released (index={}, black={}, note_id={}, source={})",
+        commandKeyIndex,
+        isBlack,
+        noteId,
+        source);
+
+    if (noteId != 0 && ensureAudioConnected()) {
+        AudioApi::NoteOff::Command noteOff{ .note_id = noteId };
         const auto sendResult =
-            audioClient_->sendCommandAndGetResponse<AudioApi::NoteOn::Okay>(note, 500);
+            audioClient_->sendCommandAndGetResponse<AudioApi::NoteOff::Okay>(noteOff, 500);
         if (sendResult.isError()) {
-            LOG_WARN(State, "Synth audio NoteOn failed: {}", sendResult.errorValue());
+            LOG_WARN(State, "Synth audio NoteOff failed: {}", sendResult.errorValue());
         }
         else if (sendResult.value().isError()) {
             LOG_WARN(
-                State, "Synth audio NoteOn rejected: {}", sendResult.value().errorValue().message);
+                State, "Synth audio NoteOff rejected: {}", sendResult.value().errorValue().message);
         }
     }
+
+    clearKeyNoteId(keyIndex, isBlack, octaveIndex);
+
+    if (lastKeyIndex_ == commandKeyIndex && lastKeyIsBlack_ == isBlack) {
+        lastKeyIndex_ = -1;
+        lastKeyIsBlack_ = false;
+    }
+}
+
+void SynthKeyboard::releaseTouchKey(
+    lv_obj_t* key, int keyIndex, bool isBlack, int octaveIndex, const char* source)
+{
+    if (!isTouchKeyPressed(keyIndex, isBlack, octaveIndex)) {
+        return;
+    }
+
+    releaseKey(key, keyIndex, isBlack, octaveIndex, source);
+    setTouchKeyPressed(keyIndex, isBlack, octaveIndex, false);
 }
 
 bool SynthKeyboard::findKeyAtPoint(
@@ -376,6 +505,215 @@ bool SynthKeyboard::findKeyIndex(
     return false;
 }
 
+int SynthKeyboard::getCommandKeyIndex(int keyIndex, bool isBlack, int octaveIndex) const
+{
+    const int keysPerOctave =
+        isBlack ? static_cast<int>(kBlackKeysPerOctave) : static_cast<int>(kWhiteKeysPerOctave);
+    return (octaveIndex * keysPerOctave) + keyIndex;
+}
+
+int SynthKeyboard::getUniqueKeyIndex(int keyIndex, bool isBlack, int octaveIndex) const
+{
+    const int offset = isBlack ? static_cast<int>(kWhiteKeyCount) : 0;
+    return offset + getCommandKeyIndex(keyIndex, isBlack, octaveIndex);
+}
+
+uint32_t SynthKeyboard::getKeyNoteId(int keyIndex, bool isBlack, int octaveIndex) const
+{
+    const int uniqueKeyIndex = getUniqueKeyIndex(keyIndex, isBlack, octaveIndex);
+    if (uniqueKeyIndex < 0 || static_cast<size_t>(uniqueKeyIndex) >= keyNoteIds_.size()) {
+        return 0;
+    }
+    return keyNoteIds_[static_cast<size_t>(uniqueKeyIndex)];
+}
+
+void SynthKeyboard::clearKeyNoteId(int keyIndex, bool isBlack, int octaveIndex)
+{
+    const int uniqueKeyIndex = getUniqueKeyIndex(keyIndex, isBlack, octaveIndex);
+    if (uniqueKeyIndex < 0 || static_cast<size_t>(uniqueKeyIndex) >= keyNoteIds_.size()) {
+        return;
+    }
+    keyNoteIds_[static_cast<size_t>(uniqueKeyIndex)] = 0;
+}
+
+bool SynthKeyboard::isTouchKeyPressed(int keyIndex, bool isBlack, int octaveIndex) const
+{
+    const int uniqueKeyIndex = getUniqueKeyIndex(keyIndex, isBlack, octaveIndex);
+    if (uniqueKeyIndex < 0 || static_cast<size_t>(uniqueKeyIndex) >= touchKeyPressed_.size()) {
+        return false;
+    }
+
+    return touchKeyPressed_[static_cast<size_t>(uniqueKeyIndex)];
+}
+
+void SynthKeyboard::setTouchKeyPressed(int keyIndex, bool isBlack, int octaveIndex, bool isPressed)
+{
+    const int uniqueKeyIndex = getUniqueKeyIndex(keyIndex, isBlack, octaveIndex);
+    if (uniqueKeyIndex < 0 || static_cast<size_t>(uniqueKeyIndex) >= touchKeyPressed_.size()) {
+        return;
+    }
+
+    touchKeyPressed_[static_cast<size_t>(uniqueKeyIndex)] = isPressed;
+}
+
+void SynthKeyboard::setKeyVisual(lv_obj_t* key, bool isBlack, bool isPressed)
+{
+    if (!key || !lv_obj_is_valid(key)) {
+        return;
+    }
+
+    const uint32_t color = isPressed ? (isBlack ? kBlackKeyPressedColor : kWhiteKeyPressedColor)
+                                     : (isBlack ? kBlackKeyColor : kWhiteKeyColor);
+    lv_obj_set_style_bg_color(key, lv_color_hex(color), 0);
+}
+
+void SynthKeyboard::releaseAllActiveKeys(const char* source)
+{
+    for (size_t uniqueKeyIndex = 0; uniqueKeyIndex < keyNoteIds_.size(); ++uniqueKeyIndex) {
+        const bool wasTouchPressed =
+            touchKeyPressed_[uniqueKeyIndex] || evdevTouchKeyPressed_[uniqueKeyIndex];
+        const uint32_t noteId = keyNoteIds_[uniqueKeyIndex];
+        if (!wasTouchPressed && noteId == 0) {
+            continue;
+        }
+
+        int keyIndex = -1;
+        bool isBlack = false;
+        int octaveIndex = -1;
+        if (!decodeUniqueKeyIndex(uniqueKeyIndex, keyIndex, isBlack, octaveIndex)) {
+            keyNoteIds_[uniqueKeyIndex] = 0;
+            touchKeyPressed_[uniqueKeyIndex] = false;
+            evdevTouchKeyPressed_[uniqueKeyIndex] = false;
+            continue;
+        }
+
+        lv_obj_t* key = isBlack
+            ? octaves_[static_cast<size_t>(octaveIndex)].blackKeys[static_cast<size_t>(keyIndex)]
+            : octaves_[static_cast<size_t>(octaveIndex)].whiteKeys[static_cast<size_t>(keyIndex)];
+        if (key && lv_obj_is_valid(key)) {
+            setKeyVisual(key, isBlack, false);
+        }
+
+        const int commandKeyIndex = getCommandKeyIndex(keyIndex, isBlack, octaveIndex);
+        LOG_INFO(
+            State,
+            "Synth key released (index={}, black={}, note_id={}, source={})",
+            commandKeyIndex,
+            isBlack,
+            noteId,
+            source);
+
+        if (noteId != 0 && audioClient_ && audioClient_->isConnected()) {
+            AudioApi::NoteOff::Command noteOff{ .note_id = noteId };
+            const auto sendResult =
+                audioClient_->sendCommandAndGetResponse<AudioApi::NoteOff::Okay>(noteOff, 500);
+            if (sendResult.isError()) {
+                LOG_WARN(State, "Synth audio NoteOff failed: {}", sendResult.errorValue());
+            }
+            else if (sendResult.value().isError()) {
+                LOG_WARN(
+                    State,
+                    "Synth audio NoteOff rejected: {}",
+                    sendResult.value().errorValue().message);
+            }
+        }
+
+        keyNoteIds_[uniqueKeyIndex] = 0;
+        touchKeyPressed_[uniqueKeyIndex] = false;
+        evdevTouchKeyPressed_[uniqueKeyIndex] = false;
+
+        if (lastKeyIndex_ == commandKeyIndex && lastKeyIsBlack_ == isBlack) {
+            lastKeyIndex_ = -1;
+            lastKeyIsBlack_ = false;
+        }
+    }
+}
+
+void SynthKeyboard::syncEvdevTouchState()
+{
+#if !LV_USE_EVDEV
+    return;
+#else
+    if (!keyboardContainer_ || !lv_obj_is_valid(keyboardContainer_)) {
+        return;
+    }
+
+    std::array<bool, kTotalKeyCount> touchedNow{};
+    const lv_display_t* display = lv_obj_get_display(keyboardContainer_);
+
+    for (lv_indev_t* indev = lv_indev_get_next(nullptr); indev; indev = lv_indev_get_next(indev)) {
+        if (lv_indev_get_type(indev) != LV_INDEV_TYPE_POINTER) {
+            continue;
+        }
+        if (display && lv_indev_get_display(indev) != display) {
+            continue;
+        }
+        if (!lv_evdev_is_indev(indev)) {
+            continue;
+        }
+
+        std::array<lv_evdev_touch_point_t, 8> touchPoints{};
+        const uint8_t touchCount =
+            lv_evdev_get_active_touches(indev, touchPoints.data(), touchPoints.size());
+        for (size_t i = 0; i < touchCount; ++i) {
+            lv_obj_t* key = nullptr;
+            int keyIndex = -1;
+            bool isBlack = false;
+            int octaveIndex = -1;
+            if (!findKeyAtPoint(touchPoints[i].point, key, keyIndex, isBlack, octaveIndex)) {
+                continue;
+            }
+
+            const int uniqueKeyIndex = getUniqueKeyIndex(keyIndex, isBlack, octaveIndex);
+            if (uniqueKeyIndex < 0 || static_cast<size_t>(uniqueKeyIndex) >= touchedNow.size()) {
+                continue;
+            }
+            touchedNow[static_cast<size_t>(uniqueKeyIndex)] = true;
+        }
+    }
+
+    for (size_t uniqueKeyIndex = 0; uniqueKeyIndex < evdevTouchKeyPressed_.size();
+         ++uniqueKeyIndex) {
+        const bool wasPressedByEvdev = evdevTouchKeyPressed_[uniqueKeyIndex];
+        const bool isPressedByEvdev = touchedNow[uniqueKeyIndex];
+        if (wasPressedByEvdev == isPressedByEvdev) {
+            continue;
+        }
+
+        int keyIndex = -1;
+        bool isBlack = false;
+        int octaveIndex = -1;
+        if (!decodeUniqueKeyIndex(uniqueKeyIndex, keyIndex, isBlack, octaveIndex)) {
+            evdevTouchKeyPressed_[uniqueKeyIndex] = isPressedByEvdev;
+            continue;
+        }
+
+        lv_obj_t* key = isBlack
+            ? octaves_[static_cast<size_t>(octaveIndex)].blackKeys[static_cast<size_t>(keyIndex)]
+            : octaves_[static_cast<size_t>(octaveIndex)].whiteKeys[static_cast<size_t>(keyIndex)];
+        if (!key || !lv_obj_is_valid(key)) {
+            evdevTouchKeyPressed_[uniqueKeyIndex] = isPressedByEvdev;
+            continue;
+        }
+
+        if (isPressedByEvdev) {
+            if (!isTouchKeyPressed(keyIndex, isBlack, octaveIndex)) {
+                pressKey(key, keyIndex, isBlack, octaveIndex, "touch-evdev");
+                setTouchKeyPressed(keyIndex, isBlack, octaveIndex, true);
+            }
+        }
+        else {
+            if (isTouchKeyPressed(keyIndex, isBlack, octaveIndex)) {
+                releaseKey(key, keyIndex, isBlack, octaveIndex, "touch-evdev");
+                setTouchKeyPressed(keyIndex, isBlack, octaveIndex, false);
+            }
+        }
+
+        evdevTouchKeyPressed_[uniqueKeyIndex] = isPressedByEvdev;
+    }
+#endif
+}
+
 void SynthKeyboard::layoutKeyboard()
 {
     if (!keyboardContainer_) {
@@ -413,13 +751,6 @@ void SynthKeyboard::layoutKeyboard()
     }
 }
 
-int SynthKeyboard::getGlobalKeyIndex(int keyIndex, bool isBlack, int octaveIndex) const
-{
-    const int keysPerOctave =
-        isBlack ? static_cast<int>(kBlackKeysPerOctave) : static_cast<int>(kWhiteKeysPerOctave);
-    return (octaveIndex * keysPerOctave) + keyIndex;
-}
-
 bool SynthKeyboard::ensureAudioConnected()
 {
     if (!audioClient_) {
@@ -442,24 +773,6 @@ bool SynthKeyboard::ensureAudioConnected()
 
     audioWarningLogged_ = false;
     return true;
-}
-
-void SynthKeyboard::resetLastKeyVisual()
-{
-    if (!lastKey_ || !lv_obj_is_valid(lastKey_)) {
-        return;
-    }
-
-    const uint32_t resetColor = lastKeyIsBlack_ ? kBlackKeyColor : kWhiteKeyColor;
-    lv_obj_set_style_bg_color(lastKey_, lv_color_hex(resetColor), 0);
-}
-
-void SynthKeyboard::clearLastKey()
-{
-    resetLastKeyVisual();
-    lastKey_ = nullptr;
-    lastKeyIndex_ = -1;
-    lastKeyIsBlack_ = false;
 }
 
 } // namespace State
