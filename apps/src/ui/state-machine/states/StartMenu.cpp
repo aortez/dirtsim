@@ -379,9 +379,12 @@ State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMac
     if (action == StartMenuIdleAction::TrainingSession) {
         LOG_INFO(State, "StartMenu idle: auto-starting training session");
         const auto& settings = sm.getServerUserSettings();
+        auto evolution = settings.evolutionConfig;
+        // Training sessions run indefinitely by definition.
+        evolution.maxGenerations = 0;
         sm.queueEvent(
             StartEvolutionButtonClickedEvent{
-                .evolution = settings.evolutionConfig,
+                .evolution = evolution,
                 .mutation = settings.mutationConfig,
                 .training = settings.trainingSpec,
             });

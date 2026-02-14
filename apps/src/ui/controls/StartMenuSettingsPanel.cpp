@@ -155,7 +155,7 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
 
     idleActionDropdown_ = LVGLBuilder::actionDropdown(view)
                               .label("Idle Action:")
-                              .options("Clock Scenario\nTraining Session\nNone")
+                              .options("Clock Scenario\nNone\nTraining Session")
                               .selected(0)
                               .width(LV_PCT(95))
                               .callback(onIdleActionChanged, this)
@@ -390,20 +390,7 @@ void StartMenuSettingsPanel::updateIdleActionDropdown()
         return;
     }
 
-    // Enum order: ClockScenario=0, None=1, TrainingSession=2.
-    // Dropdown order: "Clock Scenario"=0, "Training Session"=1, "None"=2.
-    uint16_t index = 0;
-    switch (settings_.startMenuIdleAction) {
-        case StartMenuIdleAction::ClockScenario:
-            index = 0;
-            break;
-        case StartMenuIdleAction::TrainingSession:
-            index = 1;
-            break;
-        case StartMenuIdleAction::None:
-            index = 2;
-            break;
-    }
+    const auto index = static_cast<uint16_t>(settings_.startMenuIdleAction);
     LVGLBuilder::ActionDropdownBuilder::setSelected(idleActionDropdown_, index);
 }
 
@@ -421,20 +408,11 @@ void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
     const uint16_t index =
         LVGLBuilder::ActionDropdownBuilder::getSelected(self->idleActionDropdown_);
 
-    // Dropdown order: "Clock Scenario"=0, "Training Session"=1, "None"=2.
-    switch (index) {
-        case 0:
-            self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
-            break;
-        case 1:
-            self->settings_.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
-            break;
-        case 2:
-            self->settings_.startMenuIdleAction = StartMenuIdleAction::None;
-            break;
-        default:
-            self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
-            break;
+    if (index > static_cast<uint16_t>(StartMenuIdleAction::TrainingSession)) {
+        self->settings_.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+    }
+    else {
+        self->settings_.startMenuIdleAction = static_cast<StartMenuIdleAction>(index);
     }
 
     self->sendSettingsUpdate();
