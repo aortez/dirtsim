@@ -58,6 +58,7 @@ private:
     lv_obj_t* mutationRateStepper_ = nullptr;
     lv_obj_t* tournamentSizeStepper_ = nullptr;
     lv_obj_t* maxSimTimeStepper_ = nullptr;
+    lv_obj_t* targetCpuStepper_ = nullptr;
 
     void createMainView(lv_obj_t* view);
     void updateButtonVisibility();
@@ -65,11 +66,12 @@ private:
 
     static void onPopulationChanged(lv_event_t* e);
     static void onGenerationsChanged(lv_event_t* e);
-    static void onMutationRateChanged(lv_event_t* e);
-    static void onTournamentSizeChanged(lv_event_t* e);
     static void onMaxSimTimeChanged(lv_event_t* e);
+    static void onMutationRateChanged(lv_event_t* e);
     static void onStartClicked(lv_event_t* e);
     static void onStopClicked(lv_event_t* e);
+    static void onTargetCpuChanged(lv_event_t* e);
+    static void onTournamentSizeChanged(lv_event_t* e);
 };
 
 } // namespace Ui

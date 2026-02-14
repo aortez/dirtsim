@@ -1785,27 +1785,43 @@ OperatingSystemManager::DiskStats OperatingSystemManager::getDiskStats(
 std::string OperatingSystemManager::getAudioHealth(int timeoutMs)
 {
     Network::WebSocketService client;
-    const std::string address = "ws://localhost:6060";
-    auto connectResult = client.connect(address, timeoutMs);
-    if (connectResult.isError()) {
-        return "Error: " + connectResult.errorValue();
+    const auto disconnectIfConnected = [&client]() {
+        if (client.isConnected()) {
+            client.disconnect();
+        }
+    };
+
+    try {
+        const std::string address = "ws://localhost:6060";
+        auto connectResult = client.connect(address, timeoutMs);
+        if (connectResult.isError()) {
+            return "Error: " + connectResult.errorValue();
+        }
+
+        AudioApi::StatusGet::Command statusCmd{};
+        auto statusResult =
+            client.sendCommandAndGetResponse<AudioApi::StatusGet::Okay>(statusCmd, timeoutMs);
+        disconnectIfConnected();
+
+        if (statusResult.isError()) {
+            return "Error: " + statusResult.errorValue();
+        }
+
+        const auto& response = statusResult.value();
+        if (response.isError()) {
+            return "Error: " + response.errorValue().message;
+        }
+
+        return "OK";
     }
-
-    AudioApi::StatusGet::Command statusCmd{};
-    auto statusResult =
-        client.sendCommandAndGetResponse<AudioApi::StatusGet::Okay>(statusCmd, timeoutMs);
-    client.disconnect();
-
-    if (statusResult.isError()) {
-        return "Error: " + statusResult.errorValue();
+    catch (const std::exception& e) {
+        disconnectIfConnected();
+        return "Error: " + std::string(e.what());
     }
-
-    const auto& response = statusResult.value();
-    if (response.isError()) {
-        return "Error: " + response.errorValue().message;
+    catch (...) {
+        disconnectIfConnected();
+        return "Error: unknown audio health exception";
     }
-
-    return "OK";
 }
 
 std::string OperatingSystemManager::getServerHealth(int timeoutMs)

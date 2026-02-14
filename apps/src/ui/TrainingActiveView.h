@@ -84,6 +84,7 @@ private:
     lv_obj_t* bestThisGenLabel_ = nullptr;
     lv_obj_t* container_ = nullptr;
     lv_obj_t* contentRow_ = nullptr;
+    lv_obj_t* cpuLabel_ = nullptr;
     lv_obj_t* evalLabel_ = nullptr;
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
@@ -96,6 +97,7 @@ private:
     lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
     lv_obj_t* mainLayout_ = nullptr;
+    lv_obj_t* parallelismLabel_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
     lv_obj_t* streamPanel_ = nullptr;
     int progressUiUpdateCount_ = 0;

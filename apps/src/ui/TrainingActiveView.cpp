@@ -180,6 +180,16 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_color(etaLabel_, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(etaLabel_, &lv_font_montserrat_12, 0);
 
+    cpuLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(cpuLabel_, "CPU: --");
+    lv_obj_set_style_text_color(cpuLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(cpuLabel_, &lv_font_montserrat_12, 0);
+
+    parallelismLabel_ = lv_label_create(timeRow);
+    lv_label_set_text(parallelismLabel_, "Par: --");
+    lv_obj_set_style_text_color(parallelismLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(parallelismLabel_, &lv_font_montserrat_12, 0);
+
     // Progress bars row.
     lv_obj_t* progressRow = lv_obj_create(statsPanel_);
     lv_obj_set_size(progressRow, LV_PCT(100), LV_SIZE_CONTENT);
@@ -344,6 +354,7 @@ void TrainingActiveView::destroyUI()
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
+    cpuLabel_ = nullptr;
     etaLabel_ = nullptr;
     evalLabel_ = nullptr;
     evaluationBar_ = nullptr;
@@ -353,6 +364,7 @@ void TrainingActiveView::destroyUI()
     bottomRow_ = nullptr;
     contentRow_ = nullptr;
     mainLayout_ = nullptr;
+    parallelismLabel_ = nullptr;
     streamPanel_ = nullptr;
     streamIntervalStepper_ = nullptr;
     pauseResumeButton_ = nullptr;
@@ -539,8 +551,33 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
         }
     }
 
+    if (cpuLabel_) {
+        if (progress.cpuPercent > 0.0) {
+            snprintf(buf, sizeof(buf), "CPU: %.0f%%", progress.cpuPercent);
+            lv_label_set_text(cpuLabel_, buf);
+        }
+        else {
+            lv_label_set_text(cpuLabel_, "CPU: --");
+        }
+    }
+
+    if (parallelismLabel_) {
+        if (progress.activeParallelism > 0) {
+            snprintf(buf, sizeof(buf), "Par: %d", progress.activeParallelism);
+            lv_label_set_text(parallelismLabel_, buf);
+        }
+        else {
+            lv_label_set_text(parallelismLabel_, "Par: --");
+        }
+    }
+
     // Update generation progress.
-    snprintf(buf, sizeof(buf), "Gen: %d/%d", progress.generation, progress.maxGenerations);
+    if (progress.maxGenerations > 0) {
+        snprintf(buf, sizeof(buf), "Gen: %d/%d", progress.generation, progress.maxGenerations);
+    }
+    else {
+        snprintf(buf, sizeof(buf), "Gen: %d", progress.generation);
+    }
     lv_label_set_text(genLabel_, buf);
 
     const int genPercent =

@@ -3,6 +3,7 @@
 #include "StateForward.h"
 #include "UnsavedTrainingResult.h"
 #include "core/ScenarioConfig.h"
+#include "core/SystemMetrics.h"
 #include "core/Vector2.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismType.h"
@@ -103,6 +104,8 @@ struct Evolution {
         std::deque<WorkerResult> resultQueue;
         std::mutex resultMutex;
         std::atomic<bool> stopRequested{ false };
+        std::atomic<int> allowedConcurrency{ 0 }; // Max concurrent background evaluations.
+        std::atomic<int> activeEvaluations{ 0 };  // Currently running evaluations.
         TrainingSpec trainingSpec;
         EvolutionConfig evolutionConfig;
         TrainingBrainRegistry brainRegistry;
@@ -133,6 +136,11 @@ struct Evolution {
 
     TrainingBrainRegistry brainRegistry_;
 
+    // CPU auto-tuning.
+    std::unique_ptr<SystemMetrics> cpuMetrics_;
+    std::vector<double> cpuSamples_;
+    std::chrono::steady_clock::time_point lastCpuSampleTime_{};
+
     void onEnter(StateMachine& dsm);
     void onExit(StateMachine& dsm);
 
@@ -159,6 +167,7 @@ private:
     void processResult(StateMachine& dsm, WorkerResult result);
     static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);
+    void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);
     std::optional<Any> broadcastTrainingResult(StateMachine& dsm);

@@ -9,8 +9,11 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/GenomeGet.h"
+#include "server/api/RenderFormatSet.h"
 #include "server/api/SeedAdd.h"
 #include "server/api/SimRun.h"
+#include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsSet.h"
 #include "ui/TrainingIdleView.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
@@ -181,6 +184,27 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
         return std::move(*this);
     }
 
+    // Set up training streams BEFORE starting evolution. If evolution starts first, fast training
+    // (e.g. 1 generation) can complete before stream setup finishes, deadlocking the server's
+    // broadcastTrainingResult against the UI's pending RenderFormatSet request.
+    Api::TrainingStreamConfigSet::Command streamCmd{
+        .intervalMs = sm.getUserSettings().streamIntervalMs,
+    };
+    auto streamResult = wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(
+        streamCmd, 2000);
+    if (streamResult.isError()) {
+        LOG_WARN(State, "Pre-start TrainingStreamConfigSet failed: {}", streamResult.errorValue());
+    }
+
+    Api::RenderFormatSet::Command renderCmd;
+    renderCmd.format = RenderFormat::EnumType::Basic;
+    auto renderEnvelope =
+        DirtSim::Network::make_command_envelope(wsService.allocateRequestId(), renderCmd);
+    auto renderResult = wsService.sendBinaryAndReceive(renderEnvelope);
+    if (renderResult.isError()) {
+        LOG_WARN(State, "Pre-start RenderFormatSet failed: {}", renderResult.errorValue());
+    }
+
     Api::EvolutionStart::Command cmd;
     cmd.evolution = evt.evolution;
     cmd.mutation = evt.mutation;
@@ -202,6 +226,24 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     LOG_INFO(State, "Evolution started on server");
     lastTrainingSpec_ = evt.training;
     hasTrainingSpec_ = true;
+
+    // Persist training config to server UserSettings for auto-start and restart survival.
+    auto serverSettings = sm.getServerUserSettings();
+    serverSettings.trainingSpec = evt.training;
+    serverSettings.evolutionConfig = evt.evolution;
+    serverSettings.mutationConfig = evt.mutation;
+    Api::UserSettingsSet::Command settingsCmd{ .settings = serverSettings };
+    auto settingsResult =
+        wsService.sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(settingsCmd, 2000);
+    if (settingsResult.isError()) {
+        LOG_WARN(State, "Failed to persist training config: {}", settingsResult.errorValue());
+    }
+    else if (settingsResult.value().isError()) {
+        LOG_WARN(
+            State,
+            "Server rejected training config: {}",
+            settingsResult.value().errorValue().message);
+    }
 
     starfieldSnapshot_ = view_->captureStarfieldSnapshot();
     return TrainingActive{ lastTrainingSpec_, hasTrainingSpec_, starfieldSnapshot_ };

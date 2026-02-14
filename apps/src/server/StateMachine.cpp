@@ -193,6 +193,20 @@ UserSettings sanitizeUserSettings(
         recordUpdate("defaultScenario reset to fallback scenario");
     }
 
+    if (settings.startMenuIdleAction > StartMenuIdleAction::TrainingSession) {
+        settings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+        recordUpdate("startMenuIdleAction reset to ClockScenario");
+    }
+
+    if (settings.evolutionConfig.targetCpuPercent < 0) {
+        settings.evolutionConfig.targetCpuPercent = 0;
+        recordUpdate("targetCpuPercent clamped to 0");
+    }
+    else if (settings.evolutionConfig.targetCpuPercent > 100) {
+        settings.evolutionConfig.targetCpuPercent = 100;
+        recordUpdate("targetCpuPercent clamped to 100");
+    }
+
     return settings;
 }
 

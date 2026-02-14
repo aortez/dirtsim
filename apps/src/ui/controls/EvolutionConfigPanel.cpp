@@ -114,10 +114,10 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                              .callback(onPopulationChanged, this)
                              .buildOrLog();
 
-    // Max Generations stepper (1-1000, step 10).
+    // Max Generations stepper (0-1000, step 10). 0 means infinite.
     generationsStepper_ = LVGLBuilder::actionStepper(rightColumn)
                               .label("Generations")
-                              .range(1, 1000)
+                              .range(0, 1000)
                               .step(10)
                               .value(evolutionConfig_.maxGenerations)
                               .valueFormat("%.0f")
@@ -164,6 +164,18 @@ void EvolutionConfigPanel::createMainView(lv_obj_t* view)
                              .callback(onMaxSimTimeChanged, this)
                              .buildOrLog();
 
+    // Target CPU % stepper (0-100, step 5). 0 means disabled.
+    targetCpuStepper_ = LVGLBuilder::actionStepper(rightColumn)
+                            .label("Target CPU %")
+                            .range(0, 100)
+                            .step(5)
+                            .value(evolutionConfig_.targetCpuPercent)
+                            .valueFormat("%.0f")
+                            .valueScale(1.0)
+                            .width(LV_PCT(95))
+                            .callback(onTargetCpuChanged, this)
+                            .buildOrLog();
+
     // Status label (shows "Training in progress" when started).
     statusLabel_ = lv_label_create(rightColumn);
     lv_label_set_text(statusLabel_, "");
@@ -195,6 +207,7 @@ void EvolutionConfigPanel::updateControlsEnabled()
     setStepperEnabled(mutationRateStepper_, enabled);
     setStepperEnabled(tournamentSizeStepper_, enabled);
     setStepperEnabled(maxSimTimeStepper_, enabled);
+    setStepperEnabled(targetCpuStepper_, enabled);
 
     updateButtonVisibility();
 
@@ -392,6 +405,16 @@ void EvolutionConfigPanel::onStartClicked(lv_event_t* e)
     evt.mutation = self->mutationConfig_;
     evt.training = self->trainingSpec_;
     self->eventSink_.queueEvent(evt);
+}
+
+void EvolutionConfigPanel::onTargetCpuChanged(lv_event_t* e)
+{
+    EvolutionConfigPanel* self = static_cast<EvolutionConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->targetCpuStepper_) return;
+
+    int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->targetCpuStepper_);
+    self->evolutionConfig_.targetCpuPercent = value;
+    spdlog::debug("EvolutionConfigPanel: Target CPU changed to {}%", value);
 }
 
 void EvolutionConfigPanel::onStopClicked(lv_event_t* e)

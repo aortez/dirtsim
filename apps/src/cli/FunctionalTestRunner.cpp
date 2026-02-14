@@ -86,6 +86,16 @@ bool isTrainingStateName(const std::string& state)
     return state == "TrainingIdle" || state == "TrainingActive" || state == "TrainingUnsavedResult";
 }
 
+int getPollingRequestTimeoutMs(int timeoutMs)
+{
+    return std::clamp(timeoutMs, 1000, 5000);
+}
+
+bool isRetryablePollingError(const std::string& error)
+{
+    return error == "Response timeout";
+}
+
 Result<UiApi::StateGet::Okay, std::string> waitForUiStateAny(
     Network::WebSocketService& client,
     const std::vector<std::string>& expectedStates,
@@ -93,8 +103,9 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiStateAny(
 {
     const auto start = std::chrono::steady_clock::now();
     const int pollDelayMs = 200;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
     std::string expectedList;
+    std::string lastError;
     for (size_t i = 0; i < expectedStates.size(); ++i) {
         if (i > 0) {
             expectedList += ", ";
@@ -105,11 +116,16 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiStateAny(
     while (true) {
         auto result = requestUiState(client, requestTimeoutMs);
         if (result.isError()) {
-            return Result<UiApi::StateGet::Okay, std::string>::error(result.errorValue());
+            lastError = result.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<UiApi::StateGet::Okay, std::string>::error(lastError);
+            }
         }
-        for (const auto& expectedState : expectedStates) {
-            if (result.value().state == expectedState) {
-                return result;
+        else {
+            for (const auto& expectedState : expectedStates) {
+                if (result.value().state == expectedState) {
+                    return result;
+                }
             }
         }
 
@@ -117,6 +133,9 @@ Result<UiApi::StateGet::Okay, std::string> waitForUiStateAny(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         if (elapsedMs >= timeoutMs) {
+            if (!lastError.empty()) {
+                return Result<UiApi::StateGet::Okay, std::string>::error(lastError);
+            }
             return Result<UiApi::StateGet::Okay, std::string>::error(
                 "Timeout waiting for UI state (" + expectedList + ")");
         }
@@ -152,14 +171,18 @@ Result<Api::StatusGet::Okay, std::string> waitForServerState(
 {
     const auto start = std::chrono::steady_clock::now();
     const int pollDelayMs = 200;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
+    std::string lastError;
 
     while (true) {
         auto result = requestServerStatus(client, requestTimeoutMs);
         if (result.isError()) {
-            return Result<Api::StatusGet::Okay, std::string>::error(result.errorValue());
+            lastError = result.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<Api::StatusGet::Okay, std::string>::error(lastError);
+            }
         }
-        if (result.value().state == expectedState) {
+        else if (result.value().state == expectedState) {
             return result;
         }
 
@@ -167,6 +190,9 @@ Result<Api::StatusGet::Okay, std::string> waitForServerState(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         if (elapsedMs >= timeoutMs) {
+            if (!lastError.empty()) {
+                return Result<Api::StatusGet::Okay, std::string>::error(lastError);
+            }
             return Result<Api::StatusGet::Okay, std::string>::error(
                 "Timeout waiting for server state '" + expectedState + "'");
         }
@@ -478,17 +504,20 @@ Result<Api::TrainingResultList::Okay, std::string> waitForTrainingResultList(
 {
     const auto start = std::chrono::steady_clock::now();
     const int pollDelayMs = 500;
-    const int requestTimeoutMs = std::min(timeoutMs, 1000);
+    const int requestTimeoutMs = getPollingRequestTimeoutMs(timeoutMs);
+    std::string lastError;
 
     while (true) {
         Api::TrainingResultList::Command cmd{};
         auto response = unwrapResponse(
             client.sendCommandAndGetResponse<Api::TrainingResultList::Okay>(cmd, requestTimeoutMs));
         if (response.isError()) {
-            return Result<Api::TrainingResultList::Okay, std::string>::error(response.errorValue());
+            lastError = response.errorValue();
+            if (!isRetryablePollingError(lastError)) {
+                return Result<Api::TrainingResultList::Okay, std::string>::error(lastError);
+            }
         }
-
-        if (response.value().results.size() > minCount) {
+        else if (response.value().results.size() > minCount) {
             return response;
         }
 
@@ -496,6 +525,9 @@ Result<Api::TrainingResultList::Okay, std::string> waitForTrainingResultList(
                                    std::chrono::steady_clock::now() - start)
                                    .count();
         if (elapsedMs >= timeoutMs) {
+            if (!lastError.empty()) {
+                return Result<Api::TrainingResultList::Okay, std::string>::error(lastError);
+            }
             return Result<Api::TrainingResultList::Okay, std::string>::error(
                 "Timeout waiting for TrainingResultList");
         }
@@ -751,11 +783,13 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     }
 
     const int trainingTimeoutMs = std::max(timeoutMs, 120000);
-    auto waitResult = waitForServerState(serverClient, "UnsavedTrainingResult", trainingTimeoutMs);
-    if (waitResult.isError()) {
+    auto unsavedUiStateResult =
+        waitForUiState(uiClient, "TrainingUnsavedResult", trainingTimeoutMs);
+    if (unsavedUiStateResult.isError()) {
         uiClient.disconnect();
         serverClient.disconnect();
-        return Result<FunctionalTrainingSummary, std::string>::error(waitResult.errorValue());
+        return Result<FunctionalTrainingSummary, std::string>::error(
+            unsavedUiStateResult.errorValue());
     }
 
     const int saveTimeoutMs = std::max(timeoutMs, 10000);

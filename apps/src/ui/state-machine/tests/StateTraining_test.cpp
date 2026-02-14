@@ -10,6 +10,7 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
+#include "server/api/UserSettingsSet.h"
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
@@ -114,6 +115,8 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     evt.progress.bestFitnessThisGen = 2.5;
     evt.progress.bestFitnessAllTime = 3.0;
     evt.progress.averageFitness = 1.5;
+    evt.progress.activeParallelism = 4;
+    evt.progress.cpuPercent = 48.5;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 
@@ -127,6 +130,8 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessThisGen, 2.5);
     EXPECT_DOUBLE_EQ(trainingState.progress.bestFitnessAllTime, 3.0);
     EXPECT_DOUBLE_EQ(trainingState.progress.averageFitness, 1.5);
+    EXPECT_EQ(trainingState.progress.activeParallelism, 4);
+    EXPECT_DOUBLE_EQ(trainingState.progress.cpuPercent, 48.5);
 
     trainingState.view_.reset();
 }
@@ -154,12 +159,14 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
     fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
 
-    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
     fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
         { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
           .message = "OK" });
     fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
         { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
+        { .settings = fixture.stateMachine->getServerUserSettings() });
 
     TrainingIdle trainingState;
     trainingState.onEnter(*fixture.stateMachine);
@@ -178,11 +185,16 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
 
     activeState->onEnter(*fixture.stateMachine);
 
+    // Stream setup happens in TrainingIdle (before EvolutionStart) to prevent a deadlock, then
+    // again in TrainingActive::onEnter for the restart-from-unsaved-result path.
     const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
-    ASSERT_GE(sentCommands.size(), 3u);
-    EXPECT_EQ(sentCommands[0], "EvolutionStart");
-    EXPECT_EQ(sentCommands[1], "TrainingStreamConfigSet");
-    EXPECT_EQ(sentCommands[2], "RenderFormatSet");
+    ASSERT_GE(sentCommands.size(), 6u);
+    EXPECT_EQ(sentCommands[0], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[2], "EvolutionStart");
+    EXPECT_EQ(sentCommands[3], "UserSettingsSet");
+    EXPECT_EQ(sentCommands[4], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[5], "RenderFormatSet");
 
     trainingState.view_.reset();
     activeState->view_.reset();

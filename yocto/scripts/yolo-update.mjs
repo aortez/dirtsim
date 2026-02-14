@@ -12,7 +12,7 @@
  *   npm run yolo                              # Build + push + flash + reboot
  *   npm run yolo -- --target 192.168.1.50    # Target a specific host
  *   npm run yolo -- --clean                   # Force rebuild (cleans image sstate)
- *   npm run yolo -- --clean-all               # Force full rebuild (cleans server + audio + image)
+ *   npm run yolo -- --clean-all               # Force full rebuild (cleans app + image + mesa/wayland-protocols)
  *   npm run yolo -- --skip-build              # Push existing image (skip kas build)
  *   npm run yolo -- --docker                  # Build with Docker image
  *   npm run yolo -- --fast                    # Fast dev deploy (ninja + scp + restart)
@@ -71,6 +71,15 @@ const KAS_BUILD_DIR = resolveKasBuildDir();
 const IMAGE_DIR = join(KAS_BUILD_DIR, 'tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
+const APPS_DIR = join(YOCTO_DIR, '..', 'apps');
+
+// Assets to deploy alongside binaries (fonts, etc.).
+const DEPLOY_ASSETS = [
+  {
+    local: join(APPS_DIR, 'assets/fonts/fa-solid-900.ttf'),
+    remote: '/usr/share/fonts/fontawesome/fa-solid-900.ttf',
+  },
+];
 
 // Remote target configuration (defaults).
 const DEFAULT_HOST = 'dirtsim.local';
@@ -213,15 +222,15 @@ async function cleanImage() {
 }
 
 /**
- * Clean both server and image sstate for a full rebuild.
+ * Clean key app and graphics/protocol sstate for a full rebuild.
  */
 async function cleanAll() {
-  info('Cleaning dirtsim-server, dirtsim-audio, and dirtsim-image sstate...');
+  info('Cleaning app, image, and graphics/protocol sstate...');
   await runKas([
     'shell',
     'kas-dirtsim.yml',
     '-c',
-    'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image',
+    'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image mesa wayland-protocols wayland-protocols-native',
   ]);
   success('Clean complete!');
 }
@@ -400,23 +409,59 @@ function applyProfileToRootfs(rootfsPath, profileName) {
 
 // Build directory paths for ninja builds.
 const WORK_DIR = join(KAS_BUILD_DIR, 'tmp/work');
-const ARCH_PATTERNS = ['cortexa72-poky-linux', 'cortexa76-poky-linux'];
+// Architecture configurations for cross-compilation.
+// targetArch matches `uname -m` output on the remote host.
+const ARCH_CONFIGS = [
+  {
+    name: 'arm',
+    targetArch: 'aarch64',
+    patterns: ['cortexa72-poky-linux', 'cortexa76-poky-linux'],
+    stripTool: join(KAS_BUILD_DIR,
+      'tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip'),
+  },
+  {
+    name: 'x86',
+    targetArch: 'x86_64',
+    patterns: ['core2-64-poky-linux'],
+    stripTool: join(KAS_BUILD_DIR,
+      'tmp/sysroots-components/x86_64/binutils-cross-x86_64/usr/bin/x86_64-poky-linux/x86_64-poky-linux-strip'),
+  },
+];
 
-// Cross-toolchain strip for reducing binary size.
-const STRIP_TOOL = join(
-  KAS_BUILD_DIR,
-  'tmp/sysroots-components/x86_64/binutils-cross-aarch64/usr/bin/aarch64-poky-linux/aarch64-poky-linux-strip'
-);
+// Active arch configs, narrowed by detectTargetArch() during fast deploy.
+let activeArchConfigs = ARCH_CONFIGS;
+
+/**
+ * Detect the target's CPU architecture via SSH and narrow the active arch configs.
+ * Falls back to all configs if detection fails.
+ */
+function detectTargetArch(remoteTarget) {
+  const arch = runCapture(`ssh ${buildSshOptions()} ${remoteTarget} "uname -m"`);
+  if (!arch) {
+    warn('Could not detect target architecture, trying all configs.');
+    return;
+  }
+  info(`Target architecture: ${arch}`);
+  const matched = ARCH_CONFIGS.filter(c => c.targetArch === arch);
+  if (matched.length === 0) {
+    warn(`No arch config matches target "${arch}", trying all configs.`);
+    return;
+  }
+  activeArchConfigs = matched;
+}
 
 /**
  * Find the build directory for a recipe.
- * Returns the most recently modified build directory across architectures.
+ * Searches active architecture patterns and returns the build dir with its strip tool.
+ * @returns {{ buildDir: string, stripTool: string } | null}
  */
 function findBuildDir(recipe) {
-  for (const arch of ARCH_PATTERNS) {
-    const buildDir = join(WORK_DIR, arch, recipe, 'git/build');
-    if (existsSync(buildDir)) {
-      return buildDir;
+  for (const config of activeArchConfigs) {
+    for (const pattern of config.patterns) {
+      const buildDir = join(WORK_DIR, pattern, recipe, 'git/build');
+      if (existsSync(buildDir)) {
+        return { buildDir, stripTool: config.stripTool };
+      }
     }
   }
   return null;
@@ -424,13 +469,15 @@ function findBuildDir(recipe) {
 
 /**
  * Find the binary path for a recipe.
+ * @returns {{ path: string, stripTool: string } | null}
  */
 function findBinary(recipe, binaryName) {
-  const buildDir = findBuildDir(recipe);
-  if (!buildDir) return null;
+  const result = findBuildDir(recipe);
+  if (!result) return null;
 
-  const binaryPath = join(buildDir, 'bin', binaryName);
-  return existsSync(binaryPath) ? binaryPath : null;
+  const binaryPath = join(result.buildDir, 'bin', binaryName);
+  if (!existsSync(binaryPath)) return null;
+  return { path: binaryPath, stripTool: result.stripTool };
 }
 
 function parseSystemStatus(output) {
@@ -494,22 +541,35 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   }
   log('');
 
-  // Check Pi is reachable.
+  // Check target is reachable.
   if (!checkRemoteReachable(remoteHost, remoteTarget)) {
     error(`Cannot reach ${remoteHost}`);
-    error('Make sure the Pi is running and accessible via SSH.');
+    error('Make sure the target is running and accessible via SSH.');
     process.exit(1);
   }
   success(`${remoteHost} is reachable`);
 
-  // Find build directories.
-  const uiBuildDir = findBuildDir('dirtsim-ui');
-  const serverBuildDir = findBuildDir('dirtsim-server');
-  const osManagerBuildDir = findBuildDir('dirtsim-os-manager');
-  const audioBuildDir = findBuildDir('dirtsim-audio');
+  // Detect target architecture to pick correct build dirs.
+  detectTargetArch(remoteTarget);
 
-  if (!uiBuildDir && !serverBuildDir && !osManagerBuildDir && !audioBuildDir) {
-    error('No build directories found.');
+  // Find build directories.
+  const uiResult = findBuildDir('dirtsim-ui');
+  const serverResult = findBuildDir('dirtsim-server');
+  const osManagerResult = findBuildDir('dirtsim-os-manager');
+  const audioResult = findBuildDir('dirtsim-audio');
+
+  const requiredBuilds = [
+    { name: 'dirtsim-ui', result: uiResult },
+    { name: 'dirtsim-server', result: serverResult },
+    { name: 'dirtsim-os-manager', result: osManagerResult },
+    { name: 'dirtsim-audio', result: audioResult },
+  ];
+  const missingBuilds = requiredBuilds.filter(entry => !entry.result).map(entry => entry.name);
+  if (missingBuilds.length > 0) {
+    const searchedPatterns = unique(activeArchConfigs.flatMap(config => config.patterns));
+    error('Fast deploy requires all target binaries to avoid mixed-version protocol mismatches.');
+    error(`Missing build directories: ${missingBuilds.join(', ')}`);
+    error(`Searched architecture patterns: ${searchedPatterns.join(', ')}`);
     error('Run a full build first: ./update.sh --target <host>');
     process.exit(1);
   }
@@ -518,22 +578,22 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   banner('Building with ninja...', consola);
 
   const targets = [];
-  if (uiBuildDir) {
-    info(`UI build dir: ${uiBuildDir}`);
-    targets.push({ name: 'dirtsim-ui', buildDir: uiBuildDir, target: 'dirtsim-ui' });
-    targets.push({ name: 'dirtsim-cli', buildDir: uiBuildDir, target: 'cli' });
+  if (uiResult) {
+    info(`UI build dir: ${uiResult.buildDir}`);
+    targets.push({ name: 'dirtsim-ui', buildDir: uiResult.buildDir, target: 'dirtsim-ui' });
+    targets.push({ name: 'dirtsim-cli', buildDir: uiResult.buildDir, target: 'cli' });
   }
-  if (serverBuildDir) {
-    info(`Server build dir: ${serverBuildDir}`);
-    targets.push({ name: 'dirtsim-server', buildDir: serverBuildDir, target: 'dirtsim-server' });
+  if (serverResult) {
+    info(`Server build dir: ${serverResult.buildDir}`);
+    targets.push({ name: 'dirtsim-server', buildDir: serverResult.buildDir, target: 'dirtsim-server' });
   }
-  if (osManagerBuildDir) {
-    info(`OS manager build dir: ${osManagerBuildDir}`);
-    targets.push({ name: 'dirtsim-os-manager', buildDir: osManagerBuildDir, target: 'dirtsim-os-manager' });
+  if (osManagerResult) {
+    info(`OS manager build dir: ${osManagerResult.buildDir}`);
+    targets.push({ name: 'dirtsim-os-manager', buildDir: osManagerResult.buildDir, target: 'dirtsim-os-manager' });
   }
-  if (audioBuildDir) {
-    info(`Audio build dir: ${audioBuildDir}`);
-    targets.push({ name: 'dirtsim-audio', buildDir: audioBuildDir, target: 'dirtsim-audio' });
+  if (audioResult) {
+    info(`Audio build dir: ${audioResult.buildDir}`);
+    targets.push({ name: 'dirtsim-audio', buildDir: audioResult.buildDir, target: 'dirtsim-audio' });
   }
 
   for (const t of targets) {
@@ -564,50 +624,55 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   const cliBinary = findBinary('dirtsim-ui', 'cli');  // CLI is built with UI.
 
   if (uiBinary) {
-    const stat = statSync(uiBinary);
+    const stat = statSync(uiBinary.path);
     binaries.push({
       name: 'dirtsim-ui',
-      path: uiBinary,
+      path: uiBinary.path,
+      stripTool: uiBinary.stripTool,
       size: stat.size,
       service: 'dirtsim-ui',
       remotePath: '/usr/bin/dirtsim-ui',
     });
   }
   if (serverBinary) {
-    const stat = statSync(serverBinary);
+    const stat = statSync(serverBinary.path);
     binaries.push({
       name: 'dirtsim-server',
-      path: serverBinary,
+      path: serverBinary.path,
+      stripTool: serverBinary.stripTool,
       size: stat.size,
       service: 'dirtsim-server',
       remotePath: '/usr/bin/dirtsim-server',
     });
   }
   if (osManagerBinary) {
-    const stat = statSync(osManagerBinary);
+    const stat = statSync(osManagerBinary.path);
     binaries.push({
       name: 'dirtsim-os-manager',
-      path: osManagerBinary,
+      path: osManagerBinary.path,
+      stripTool: osManagerBinary.stripTool,
       size: stat.size,
       service: 'dirtsim-os-manager',
       remotePath: '/usr/bin/dirtsim-os-manager',
     });
   }
   if (audioBinary) {
-    const stat = statSync(audioBinary);
+    const stat = statSync(audioBinary.path);
     binaries.push({
       name: 'dirtsim-audio',
-      path: audioBinary,
+      path: audioBinary.path,
+      stripTool: audioBinary.stripTool,
       size: stat.size,
       service: 'dirtsim-audio',
       remotePath: '/usr/bin/dirtsim-audio',
     });
   }
   if (cliBinary) {
-    const stat = statSync(cliBinary);
+    const stat = statSync(cliBinary.path);
     binaries.push({
       name: 'dirtsim-cli',
-      path: cliBinary,
+      path: cliBinary.path,
+      stripTool: cliBinary.stripTool,
       size: stat.size,
       service: null,  // No service for CLI.
       remotePath: '/usr/bin/dirtsim-cli',
@@ -622,11 +687,6 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   // Strip and transfer binaries.
   banner('Stripping and transferring binaries...', consola);
 
-  const hasStrip = existsSync(STRIP_TOOL);
-  if (!hasStrip) {
-    warn('Cross-strip tool not found, transferring unstripped binaries (slower).');
-  }
-
   for (const bin of binaries) {
     info(`${bin.name}: ${formatBytes(bin.size)} (unstripped)`);
 
@@ -634,13 +694,15 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       try {
         // Strip to temp file to avoid modifying build output.
         const strippedPath = `/tmp/${bin.name}.stripped`;
+        const hasStrip = bin.stripTool && existsSync(bin.stripTool);
         if (hasStrip) {
-          execSync(`cp "${bin.path}" "${strippedPath}" && "${STRIP_TOOL}" "${strippedPath}"`, { stdio: 'pipe' });
+          execSync(`cp "${bin.path}" "${strippedPath}" && "${bin.stripTool}" "${strippedPath}"`, { stdio: 'pipe' });
           const strippedStat = statSync(strippedPath);
           info(`${bin.name}: ${formatBytes(strippedStat.size)} (stripped)`);
           execSync(`scp ${buildScpOptions()} "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
           unlinkSync(strippedPath);
         } else {
+          warn(`Strip tool not found for ${bin.name}, transferring unstripped.`);
           execSync(`scp ${buildScpOptions()} "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
         }
         success(`${bin.name} transferred`);
@@ -703,6 +765,33 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     info('No .local config overrides found');
   }
 
+  // Deploy assets (fonts, etc.).
+  banner('Deploying assets...', consola);
+
+  const assetInstallCmds = [];
+  for (const asset of DEPLOY_ASSETS) {
+    if (!existsSync(asset.local)) {
+      warn(`Asset not found: ${asset.local}`);
+      continue;
+    }
+    const fileName = basename(asset.local);
+    const remoteDir = dirname(asset.remote);
+    info(`${fileName} → ${asset.remote}`);
+    if (!dryRun) {
+      try {
+        execSync(`scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:/tmp/${fileName}"`, { stdio: 'pipe' });
+        assetInstallCmds.push(`sudo mkdir -p ${remoteDir}`);
+        assetInstallCmds.push(`sudo cp /tmp/${fileName} ${asset.remote}`);
+        success(`${fileName} transferred`);
+      } catch (err) {
+        error(`Failed to transfer ${fileName}`);
+        process.exit(1);
+      }
+    } else {
+      info(`Would scp ${asset.local} to ${remoteTarget}:/tmp/${fileName}`);
+    }
+  }
+
   // Stop services, copy binaries, start services.
   banner('Restarting services...', consola);
 
@@ -724,6 +813,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
 
       info('Copying new binaries...');
       execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${copyCommands}"`, { stdio: 'pipe' });
+
+      if (assetInstallCmds.length > 0) {
+        info('Installing assets...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${assetInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
+      }
 
       info('Starting services...');
       execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo systemctl start ${serviceNames}"`, { stdio: 'pipe' });
@@ -800,7 +894,7 @@ async function main() {
     log('  --fast             Fast dev deploy: ninja build + scp binaries + restart');
     log('                     Skips rootfs/image creation (~10s vs ~2min)');
     log('  --clean            Force rebuild by cleaning image sstate first');
-    log('  --clean-all        Force full rebuild (cleans server + audio + image sstate)');
+    log('  --clean-all        Force full rebuild (cleans app + image + mesa/wayland-protocols sstate)');
     log('  --dry-run          Show what would happen without doing it');
     log('  --hold-my-mead     Skip confirmation prompt (for scripts)');
     log('  -h, --help         Show this help');

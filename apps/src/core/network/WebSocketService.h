@@ -12,6 +12,7 @@
 #include "server/api/ApiError.h"
 #include <atomic>
 #include <condition_variable>
+#include <exception>
 #include <functional>
 #include <map>
 #include <memory>
@@ -161,15 +162,21 @@ public:
         }
 
         // Extract typed response.
-        auto response = extract_result<Okay, ApiError>(envResult.value());
-        if (response.isError()) {
-            return Result<Result<Okay, ApiError>, std::string>::okay(
-                Result<Okay, ApiError>::error(response.errorValue()));
-        }
+        try {
+            auto response = extract_result<Okay, ApiError>(envResult.value());
+            if (response.isError()) {
+                return Result<Result<Okay, ApiError>, std::string>::okay(
+                    Result<Okay, ApiError>::error(response.errorValue()));
+            }
 
-        // Return success response.
-        return Result<Result<Okay, ApiError>, std::string>::okay(
-            Result<Okay, ApiError>::okay(response.value()));
+            // Return success response.
+            return Result<Result<Okay, ApiError>, std::string>::okay(
+                Result<Okay, ApiError>::okay(response.value()));
+        }
+        catch (const std::exception& e) {
+            return Result<Result<Okay, ApiError>, std::string>::error(
+                std::string("Failed to deserialize response: ") + e.what());
+        }
     }
 
     /**
