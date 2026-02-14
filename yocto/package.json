@@ -8,6 +8,7 @@
     "build": "kas build kas-dirtsim.yml",
     "docker-build": "node scripts/docker-build.mjs",
     "deploy": "node scripts/deploy-apps.mjs",
+    "provision-x86": "node scripts/provision-x86.mjs",
     "flash": "node scripts/flash.mjs",
     "runtime-image": "node scripts/runtime-image.mjs",
     "runtime-functional-tests": "node scripts/runtime-functional-tests.mjs",
