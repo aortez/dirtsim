@@ -331,7 +331,8 @@ void AudioEngine::render(float* out, int frames, int channels)
         for (auto& voice : voices_) {
             mixedSample += voice.voice.renderSample();
         }
-        const float outSample = static_cast<float>(std::clamp(mixedSample, -1.0, 1.0)) * masterGain;
+        const double gainedSample = mixedSample * static_cast<double>(masterGain);
+        const float outSample = static_cast<float>(std::clamp(gainedSample, -1.0, 1.0));
 
         const int base = i * channels;
         for (int ch = 0; ch < channels; ++ch) {
@@ -613,6 +614,7 @@ AudioStatus AudioEngine::buildStatusSnapshotUnlocked() const
 void AudioEngine::clearVoiceRuntimeState()
 {
     for (auto& voice : voices_) {
+        voice.voice = Audio::SynthVoice(static_cast<double>(config_.sampleRate));
         voice.noteId = 0;
         voice.autoNoteOffFramesRemaining = -1;
         voice.startOrder = 0;
