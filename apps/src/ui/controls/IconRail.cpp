@@ -57,6 +57,39 @@ IconRail::IconRail(lv_obj_t* parent, EventSink* eventSink, FractalAnimator* frac
     LOG_INFO(Controls, "IconRail created with {} icons", iconConfigs_.size());
 }
 
+MinimizedAffordanceStyle IconRail::minimizedAffordanceLeftCenter()
+{
+    return MinimizedAffordanceStyle{
+        .anchor = MinimizedAffordanceAnchor::LeftCenter,
+        .width = MINIMIZED_AFFORDANCE_DEFAULT_WIDTH,
+        .height = MINIMIZED_AFFORDANCE_DEFAULT_HEIGHT,
+        .offsetX = 0,
+        .offsetY = 0,
+    };
+}
+
+MinimizedAffordanceStyle IconRail::minimizedAffordanceLeftTopSquare()
+{
+    return MinimizedAffordanceStyle{
+        .anchor = MinimizedAffordanceAnchor::LeftTop,
+        .width = MINIMIZED_AFFORDANCE_SQUARE_SIZE,
+        .height = MINIMIZED_AFFORDANCE_SQUARE_SIZE,
+        .offsetX = 0,
+        .offsetY = 0,
+    };
+}
+
+MinimizedAffordanceStyle IconRail::minimizedAffordanceLeftBottomSquare()
+{
+    return MinimizedAffordanceStyle{
+        .anchor = MinimizedAffordanceAnchor::LeftBottom,
+        .width = MINIMIZED_AFFORDANCE_SQUARE_SIZE,
+        .height = MINIMIZED_AFFORDANCE_SQUARE_SIZE,
+        .offsetX = 0,
+        .offsetY = -12,
+    };
+}
+
 IconRail::~IconRail()
 {
     if (fractalAnimator_ && duckViewId_ != 0) {
@@ -400,25 +433,18 @@ void IconRail::createModeButtons()
                         .buildOrLog();
 
     if (expandButton_) {
-        const int expandWidth = LVGLBuilder::Style::ACTION_SIZE;
-        const int expandHeight = LVGLBuilder::Style::ACTION_SIZE * 2;
-        lv_obj_set_size(expandButton_, expandWidth, expandHeight);
-
         // Remove from any layout - position absolutely.
         lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_FLOATING);
-
-        // Position: left edge, vertically centered.
-        lv_obj_align(expandButton_, LV_ALIGN_LEFT_MID, 0, 0);
 
         // Inner button fills the trough.
         lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
         if (innerBtn) {
-            const int padding = LVGLBuilder::Style::TROUGH_PADDING;
-            lv_obj_set_size(innerBtn, expandWidth - padding * 2, expandHeight - padding * 2);
             lv_obj_set_user_data(innerBtn, this);
             lv_obj_add_event_cb(
                 innerBtn, onModeButtonClicked, LV_EVENT_CLICKED, reinterpret_cast<void*>(1));
         }
+
+        applyExpandButtonGeometry();
 
         // Start hidden (normal mode is default).
         lv_obj_add_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
@@ -454,6 +480,15 @@ void IconRail::applyMode()
     }
 
     const bool minimized = (mode_ == RailMode::Minimized);
+
+    if (visible_) {
+        lv_obj_clear_flag(container_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
+    else {
+        lv_obj_add_flag(container_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(container_, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    }
 
     // Animate width transition.
     int targetWidth = minimized ? MINIMIZED_RAIL_WIDTH : RAIL_WIDTH;
@@ -542,7 +577,9 @@ void IconRail::applyMode()
 
     // Show/hide mode buttons.
     if (expandButton_) {
-        if (minimized) {
+        applyExpandButtonGeometry();
+
+        if (minimized && visible_) {
             lv_obj_clear_flag(expandButton_, LV_OBJ_FLAG_HIDDEN);
 
             lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
@@ -583,7 +620,7 @@ void IconRail::applyMode()
     }
 
     if (collapseButton_) {
-        if (minimized) {
+        if (minimized || !visible_) {
             lv_obj_add_flag(collapseButton_, LV_OBJ_FLAG_HIDDEN);
         }
         else {
@@ -625,6 +662,65 @@ void IconRail::setLayout(RailLayout layout)
 
     layout_ = layout;
     applyMode();
+}
+
+void IconRail::setMinimizedAffordanceStyle(const MinimizedAffordanceStyle& style)
+{
+    const bool noChange = minimizedAffordanceStyle_.anchor == style.anchor
+        && minimizedAffordanceStyle_.width == style.width
+        && minimizedAffordanceStyle_.height == style.height
+        && minimizedAffordanceStyle_.offsetX == style.offsetX
+        && minimizedAffordanceStyle_.offsetY == style.offsetY;
+    if (noChange) {
+        return;
+    }
+
+    minimizedAffordanceStyle_ = style;
+    applyExpandButtonGeometry();
+}
+
+void IconRail::setVisible(bool visible)
+{
+    if (visible_ == visible) {
+        return;
+    }
+
+    visible_ = visible;
+    applyMode();
+}
+
+void IconRail::applyExpandButtonGeometry()
+{
+    if (!expandButton_) {
+        return;
+    }
+
+    const int width = minimizedAffordanceStyle_.width > 0 ? minimizedAffordanceStyle_.width
+                                                          : MINIMIZED_AFFORDANCE_DEFAULT_WIDTH;
+    const int height = minimizedAffordanceStyle_.height > 0 ? minimizedAffordanceStyle_.height
+                                                            : MINIMIZED_AFFORDANCE_DEFAULT_HEIGHT;
+    lv_obj_set_size(expandButton_, width, height);
+
+    lv_align_t align = LV_ALIGN_LEFT_MID;
+    if (minimizedAffordanceStyle_.anchor == MinimizedAffordanceAnchor::LeftTop) {
+        align = LV_ALIGN_TOP_LEFT;
+    }
+    else if (minimizedAffordanceStyle_.anchor == MinimizedAffordanceAnchor::LeftBottom) {
+        align = LV_ALIGN_BOTTOM_LEFT;
+    }
+
+    lv_obj_align(
+        expandButton_, align, minimizedAffordanceStyle_.offsetX, minimizedAffordanceStyle_.offsetY);
+
+    lv_obj_t* innerBtn = lv_obj_get_child(expandButton_, 0);
+    if (!innerBtn) {
+        return;
+    }
+
+    const int padding = LVGLBuilder::Style::TROUGH_PADDING;
+    const int innerWidth = std::max(1, width - padding * 2);
+    const int innerHeight = std::max(1, height - padding * 2);
+    lv_obj_set_size(innerBtn, innerWidth, innerHeight);
 }
 
 void IconRail::onModeButtonClicked(lv_event_t* e)

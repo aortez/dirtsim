@@ -80,10 +80,7 @@ void TrainingUnsavedResult::onEnter(StateMachine& sm)
 
     auto* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    lv_obj_t* railContainer = iconRail->getContainer();
-    DIRTSIM_ASSERT(railContainer, "IconRail container must exist");
-    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
+    iconRail->setVisible(false);
 
     if (auto* panel = uiManager->getExpandablePanel()) {
         panel->clearContent();
