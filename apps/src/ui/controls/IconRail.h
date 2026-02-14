@@ -39,6 +39,20 @@ enum class RailMode {
 
 enum class RailLayout { SingleColumn, TwoColumn };
 
+enum class MinimizedAffordanceAnchor {
+    LeftCenter,
+    LeftTop,
+    LeftBottom,
+};
+
+struct MinimizedAffordanceStyle {
+    MinimizedAffordanceAnchor anchor = MinimizedAffordanceAnchor::LeftCenter;
+    int width = 0;  // Use default width when <= 0.
+    int height = 0; // Use default height when <= 0.
+    int offsetX = 0;
+    int offsetY = 0;
+};
+
 /**
  * @brief Configuration for a single icon in an IconRail.
  */
@@ -62,6 +76,9 @@ public:
     static constexpr int RAIL_WIDTH = 108;
     static constexpr int RAIL_WIDTH_TWO_COLUMN = 216;
     static constexpr int MINIMIZED_RAIL_WIDTH = 0;
+    static constexpr int MINIMIZED_AFFORDANCE_DEFAULT_WIDTH = 80;
+    static constexpr int MINIMIZED_AFFORDANCE_DEFAULT_HEIGHT = 160;
+    static constexpr int MINIMIZED_AFFORDANCE_SQUARE_SIZE = 120;
 
     /**
      * @brief Construct the icon rail.
@@ -122,6 +139,19 @@ public:
     RailLayout getLayout() const { return layout_; }
     void setLayout(RailLayout layout);
 
+    static MinimizedAffordanceStyle minimizedAffordanceLeftCenter();
+    static MinimizedAffordanceStyle minimizedAffordanceLeftTopSquare();
+    static MinimizedAffordanceStyle minimizedAffordanceLeftBottomSquare();
+
+    MinimizedAffordanceStyle getMinimizedAffordanceStyle() const
+    {
+        return minimizedAffordanceStyle_;
+    }
+    void setMinimizedAffordanceStyle(const MinimizedAffordanceStyle& style);
+
+    void setVisible(bool visible);
+    bool isVisible() const { return visible_; }
+
 private:
     lv_obj_t* container_ = nullptr;
     lv_obj_t* iconsViewport_ = nullptr;
@@ -141,6 +171,8 @@ private:
     // Mode support.
     RailMode mode_ = RailMode::Normal;
     RailLayout layout_ = RailLayout::SingleColumn;
+    bool visible_ = true;
+    MinimizedAffordanceStyle minimizedAffordanceStyle_{};
     lv_obj_t* expandButton_ = nullptr;   // Shown in minimized mode (overlay on screen).
     lv_obj_t* collapseButton_ = nullptr; // Shown in normal mode.
 
@@ -154,6 +186,7 @@ private:
     void createIcons(lv_obj_t* parent);
     void createModeButtons();
     void applyMode();
+    void applyExpandButtonGeometry();
     void updateButtonVisuals();
     void configureDuckIcon(lv_obj_t* button);
 

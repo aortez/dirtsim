@@ -46,7 +46,9 @@ void Synth::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
+    iconRail->setVisible(true);
     iconRail->setLayout(RailLayout::SingleColumn);
+    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftBottomSquare());
     iconRail->setVisibleIcons({ IconId::DUCK, IconId::MUSIC });
     iconRail->deselectAll();
 }

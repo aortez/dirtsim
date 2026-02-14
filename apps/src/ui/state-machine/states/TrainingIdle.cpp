@@ -61,11 +61,9 @@ void TrainingIdle::onEnter(StateMachine& sm)
 
     IconRail* iconRail = uiManager->getIconRail();
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
-    if (lv_obj_t* railContainer = iconRail->getContainer()) {
-        lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_HIDDEN);
-        lv_obj_clear_flag(railContainer, LV_OBJ_FLAG_IGNORE_LAYOUT);
-    }
+    iconRail->setVisible(true);
     iconRail->setLayout(RailLayout::SingleColumn);
+    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftCenter());
     iconRail->setVisibleIcons(
         { IconId::DUCK, IconId::EVOLUTION, IconId::GENOME_BROWSER, IconId::TRAINING_RESULTS });
     iconRail->deselectAll();
