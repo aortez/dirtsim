@@ -283,6 +283,9 @@ private:
     void processVelocityLimiting(double deltaTime);
     void processMaterialMoves();
     void setupBoundaryWalls();
+    void ensureGridCacheFresh(const char* timerName);
+    void rebuildGridCache(const char* timerName);
+    void markGridCacheDirty();
 
     // Coordinate conversion helpers (can be public if needed).
     void pixelToCell(int pixelX, int pixelY, int& cellX, int& cellY) const;
