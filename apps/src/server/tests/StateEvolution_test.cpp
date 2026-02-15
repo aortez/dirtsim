@@ -400,7 +400,7 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     }
 }
 
-TEST(StateEvolutionTest, TiedFitnessUpdatesBestGenomeIdOnLaterEvaluation)
+TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
 {
     TestStateMachineFixture fixture;
 
@@ -451,7 +451,7 @@ TEST(StateEvolutionTest, TiedFitnessUpdatesBestGenomeIdOnLaterEvaluation)
 
     ASSERT_EQ(evolutionState.fitnessScores.size(), 2u);
     EXPECT_DOUBLE_EQ(evolutionState.fitnessScores[0], evolutionState.fitnessScores[1]);
-    EXPECT_NE(evolutionState.bestGenomeId, firstBestId);
+    EXPECT_EQ(evolutionState.bestGenomeId, firstBestId);
 }
 
 TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
