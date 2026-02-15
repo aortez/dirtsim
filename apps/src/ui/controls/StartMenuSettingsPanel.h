@@ -36,6 +36,7 @@ private:
     void updateResetButtonEnabled();
     void updateTimezoneButtonText();
 
+    static void onAutoRunChanged(lv_event_t* e);
     static void onBackToMainClicked(lv_event_t* e);
     static void onDefaultScenarioButtonClicked(lv_event_t* e);
     static void onDefaultScenarioSelected(lv_event_t* e);
@@ -46,8 +47,10 @@ private:
     static void onVolumeChanged(lv_event_t* e);
 
     static void onIdleActionChanged(lv_event_t* e);
+    void updateAutoRunToggle();
     void updateIdleActionDropdown();
 
+    lv_obj_t* autoRunToggle_ = nullptr;
     lv_obj_t* container_ = nullptr;
     lv_obj_t* defaultScenarioButton_ = nullptr;
     lv_obj_t* idleActionDropdown_ = nullptr;

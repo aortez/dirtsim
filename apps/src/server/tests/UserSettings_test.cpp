@@ -36,12 +36,14 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.timezoneIndex, 2);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_FALSE(inMemory.startMenuAutoRun);
     EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_FALSE(fromDisk.startMenuAutoRun);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
@@ -59,6 +61,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .volumePercent = 999,
                 .defaultScenario = Scenario::EnumType::Clock,
                 .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
+                .startMenuAutoRun = true,
                 .trainingSpec = {},
                 .evolutionConfig = {},
                 .mutationConfig = {},
@@ -77,6 +80,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 0);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_TRUE(response.value().settings.startMenuAutoRun);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
@@ -84,6 +88,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.timezoneIndex, 0);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_TRUE(fromDisk.startMenuAutoRun);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
@@ -98,6 +103,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
                 .volumePercent = 65,
                 .defaultScenario = Scenario::EnumType::Clock,
                 .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
+                .startMenuAutoRun = true,
                 .trainingSpec = {},
                 .evolutionConfig = {},
                 .mutationConfig = {},
@@ -122,6 +128,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 2);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_FALSE(response.value().settings.startMenuAutoRun);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
@@ -129,5 +136,6 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_FALSE(fromDisk.startMenuAutoRun);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }

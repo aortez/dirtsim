@@ -28,7 +28,7 @@ void StartMenu::onEnter(StateMachine& sm)
     sm_ = &sm; // Store for callbacks.
     LOG_INFO(State, "Connected to server, ready to start simulation");
 
-    // Request scenario list from server and cache it (needed even for autoRun).
+    // Request scenario list from server and cache it (needed even for startup auto-run).
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
         const Api::ScenarioListGet::Command cmd{};
@@ -50,10 +50,10 @@ void StartMenu::onEnter(StateMachine& sm)
         }
     }
 
-    // Auto-run is a one-shot feature for startup.
-    if (sm.uiConfig && sm.uiConfig->autoRun) {
-        LOG_INFO(State, "autoRun enabled, starting simulation immediately");
-        sm.uiConfig->autoRun = false;
+    // Startup auto-run is a one-shot feature for this UI process.
+    if (sm.consumeStartupAutoRun()) {
+        LOG_INFO(State, "startMenuAutoRun enabled, starting simulation immediately");
+        startupAutoRunPending_ = true;
         sm.queueEvent(StartButtonClickedEvent{});
         return;
     }
@@ -156,6 +156,7 @@ void StartMenu::onEnter(StateMachine& sm)
 void StartMenu::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting");
+    startupAutoRunPending_ = false;
 
     // Clean up panels.
     corePanel_.reset();
@@ -368,7 +369,9 @@ State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*s
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Start button clicked, sending SimRun to server");
-    return startSimulation(sm, std::nullopt);
+    const bool startupAutoRun = startupAutoRunPending_;
+    startupAutoRunPending_ = false;
+    return startSimulation(sm, std::nullopt, startupAutoRun);
 }
 
 State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMachine& sm)
@@ -376,7 +379,7 @@ State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMac
     const auto action = sm.getServerUserSettings().startMenuIdleAction;
     if (action == StartMenuIdleAction::ClockScenario) {
         LOG_INFO(State, "StartMenu idle: launching clock scenario");
-        return startSimulation(sm, Scenario::EnumType::Clock);
+        return startSimulation(sm, Scenario::EnumType::Clock, false);
     }
     if (action == StartMenuIdleAction::TrainingSession) {
         LOG_INFO(State, "StartMenu idle: auto-starting training session");
@@ -474,7 +477,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 }
 
 State::Any StartMenu::startSimulation(
-    StateMachine& sm, std::optional<Scenario::EnumType> scenarioId)
+    StateMachine& sm, std::optional<Scenario::EnumType> scenarioId, bool startupAutoRun)
 {
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
@@ -496,8 +499,8 @@ State::Any StartMenu::startSimulation(
                                     .start_paused = false,
                                     .container_size = containerSize };
 
-    // Retry logic for autoRun to handle server startup race condition.
-    const int maxRetries = sm.getUiConfig().autoRun ? 3 : 1;
+    // Startup auto-run gets a few retries to handle server startup race conditions.
+    const int maxRetries = startupAutoRun ? 3 : 1;
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
         if (attempt > 1) {
             LOG_INFO(State, "Retrying SimRun (attempt {}/{})", attempt, maxRetries);

@@ -161,6 +161,17 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                               .callback(onIdleActionChanged, this)
                               .buildOrLog();
 
+    autoRunToggle_ = LVGLBuilder::actionButton(view)
+                         .text("Auto-Run on Startup")
+                         .mode(LVGLBuilder::ActionMode::Toggle)
+                         .checked(settings_.startMenuAutoRun)
+                         .width(LV_PCT(95))
+                         .height(LVGLBuilder::Style::ACTION_SIZE)
+                         .layoutRow()
+                         .alignLeft()
+                         .callback(onAutoRunChanged, this)
+                         .buildOrLog();
+
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
                                  .icon(LV_SYMBOL_RIGHT)
@@ -309,6 +320,7 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
+    updateAutoRunToggle();
     updateIdleActionDropdown();
     updateResetButtonEnabled();
 
@@ -392,6 +404,31 @@ void StartMenuSettingsPanel::updateIdleActionDropdown()
 
     const auto index = static_cast<uint16_t>(settings_.startMenuIdleAction);
     LVGLBuilder::ActionDropdownBuilder::setSelected(idleActionDropdown_, index);
+}
+
+void StartMenuSettingsPanel::updateAutoRunToggle()
+{
+    if (!autoRunToggle_) {
+        return;
+    }
+
+    LVGLBuilder::ActionButtonBuilder::setChecked(autoRunToggle_, settings_.startMenuAutoRun);
+}
+
+void StartMenuSettingsPanel::onAutoRunChanged(lv_event_t* e)
+{
+    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->autoRunToggle_) {
+        return;
+    }
+
+    if (self->updatingUi_) {
+        return;
+    }
+
+    self->settings_.startMenuAutoRun =
+        LVGLBuilder::ActionButtonBuilder::isChecked(self->autoRunToggle_);
+    self->sendSettingsUpdate();
 }
 
 void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
