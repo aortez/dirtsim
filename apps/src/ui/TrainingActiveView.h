@@ -28,9 +28,7 @@ class WebSocketServiceInterface;
 namespace Ui {
 
 class CellRenderer;
-class EvolutionControls;
 class EventSink;
-class ExpandablePanel;
 class Starfield;
 class UiComponentManager;
 
@@ -55,8 +53,6 @@ public:
     void setTrainingPaused(bool paused);
     void setStreamIntervalMs(int value);
 
-    void clearPanelContent();
-    void createCorePanel();
     bool isTrainingResultModalVisible() const;
     Starfield::Snapshot captureStarfieldSnapshot() const;
 
@@ -108,8 +104,6 @@ private:
     lv_obj_t* pauseResumeButton_ = nullptr;
     lv_obj_t* pauseResumeLabel_ = nullptr;
     lv_obj_t* stopTrainingButton_ = nullptr;
-    std::unique_ptr<ExpandablePanel> panel_;
-    lv_obj_t* panelContent_ = nullptr;
 
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
@@ -124,8 +118,6 @@ private:
     int bestGeneration_ = 0;
     bool hasShownBestSnapshot_ = false;
     std::shared_ptr<std::atomic<bool>> alive_;
-
-    std::unique_ptr<EvolutionControls> evolutionControls_;
 };
 
 } // namespace Ui

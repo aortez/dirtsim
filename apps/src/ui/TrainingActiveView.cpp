@@ -1,7 +1,5 @@
 #include "TrainingActiveView.h"
 #include "UiComponentManager.h"
-#include "controls/EvolutionControls.h"
-#include "controls/ExpandablePanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
@@ -80,7 +78,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
 
-    // Main layout: panel column + stream panel + stats/world content.
+    // Main layout: stream panel + stats/world content.
     contentRow_ = lv_obj_create(container_);
     lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
@@ -91,11 +89,6 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_flex_align(
         contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
-
-    panel_ = std::make_unique<ExpandablePanel>(contentRow_);
-    panel_->show();
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-    panelContent_ = panel_->getContentArea();
 
     createStreamPanel(contentRow_);
 
@@ -342,8 +335,6 @@ void TrainingActiveView::destroyUI()
     }
 
     starfield_.reset();
-    panel_.reset();
-
     if (container_) {
         lv_obj_clean(container_);
     }
@@ -375,7 +366,6 @@ void TrainingActiveView::destroyUI()
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
-    panelContent_ = nullptr;
 }
 
 void TrainingActiveView::renderWorld(const WorldData& worldData)
@@ -423,15 +413,6 @@ void TrainingActiveView::updateBestSnapshot(
     scheduleBestRender();
 }
 
-void TrainingActiveView::clearPanelContent()
-{
-    evolutionControls_.reset();
-    if (panel_) {
-        panel_->clearContent();
-        panel_->setWidth(ExpandablePanel::DefaultWidth);
-    }
-}
-
 void TrainingActiveView::setStreamIntervalMs(int value)
 {
     userSettings_.streamIntervalMs = value;
@@ -449,24 +430,6 @@ void TrainingActiveView::setTrainingPaused(bool paused)
         LVGLBuilder::ActionButtonBuilder::setIcon(
             pauseResumeButton_, paused ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE);
     }
-}
-
-void TrainingActiveView::createCorePanel()
-{
-    if (!panel_) {
-        LOG_ERROR(Controls, "TrainingActiveView: No training panel available");
-        return;
-    }
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-
-    if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingActiveView: No panel content area available");
-        return;
-    }
-
-    evolutionControls_ = std::make_unique<EvolutionControls>(
-        panelContent_, eventSink_, evolutionStarted_, userSettings_.trainingSpec);
-    LOG_INFO(Controls, "TrainingActiveView: Created Training Home panel");
 }
 
 void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
@@ -662,10 +625,6 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
     }
 
-    if (evolutionControls_) {
-        evolutionControls_->setEvolutionStarted(started);
-    }
-
     if (pauseResumeButton_) {
         if (started) {
             lv_obj_clear_flag(pauseResumeButton_, LV_OBJ_FLAG_HIDDEN);
@@ -679,17 +638,13 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
 }
 
-void TrainingActiveView::setEvolutionCompleted(GenomeId bestGenomeId)
+void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
 {
     evolutionStarted_ = false;
 
     if (statusLabel_) {
         lv_label_set_text(statusLabel_, "Complete!");
         lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
-    }
-
-    if (evolutionControls_) {
-        evolutionControls_->setEvolutionCompleted(bestGenomeId);
     }
 
     if (pauseResumeButton_) {
