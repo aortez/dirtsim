@@ -222,6 +222,36 @@ const std::optional<TreeResourceTotals>& TrainingRunner::getTreeResourceTotals()
     return treeEvaluator_.getResourceTotals();
 }
 
+std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandSignatures(
+    size_t maxEntries) const
+{
+    if (!world_ || trainingSpec_.organismType != OrganismType::TREE) {
+        return {};
+    }
+
+    const Tree* tree = world_->getOrganismManager().getTree(organismId_);
+    if (!tree) {
+        return {};
+    }
+
+    return tree->getTopCommandSignatures(maxEntries);
+}
+
+std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandOutcomeSignatures(
+    size_t maxEntries) const
+{
+    if (!world_ || trainingSpec_.organismType != OrganismType::TREE) {
+        return {};
+    }
+
+    const Tree* tree = world_->getOrganismManager().getTree(organismId_);
+    if (!tree) {
+        return {};
+    }
+
+    return tree->getTopCommandOutcomeSignatures(maxEntries);
+}
+
 double TrainingRunner::getCurrentMaxEnergy() const
 {
     return treeEvaluator_.getMaxEnergy();

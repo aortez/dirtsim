@@ -4,6 +4,7 @@
 #include "ServerConfig.h"
 #include "TrainingResultRepository.h"
 #include "UserSettings.h"
+#include "api/TrainingBestSnapshotGet.h"
 #include "api/TrainingResult.h"
 #include "api/TrainingResultDelete.h"
 #include "api/TrainingResultGet.h"
@@ -353,6 +354,8 @@ struct StateMachine::Impl {
     uint16_t httpPort_ = 8081;
     std::shared_ptr<WorldData> cachedWorldData_;
     mutable std::mutex cachedWorldDataMutex_;
+    std::optional<Api::TrainingBestSnapshot> cachedTrainingBestSnapshot_;
+    mutable std::mutex cachedTrainingBestSnapshotMutex_;
 
     std::vector<SubscribedClient> subscribedClients_;
     std::vector<std::string> eventSubscribers_;
@@ -564,6 +567,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_EMPTY(Api::SpawnDirtBall);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StateGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::StatusGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::TrainingBestSnapshotGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsReset);
@@ -630,6 +634,17 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
 
         cwc.sendResponse(Api::StatusGet::Response::okay(std::move(status)));
     });
+
+    service.registerHandler<Api::TrainingBestSnapshotGet::Cwc>(
+        [this](Api::TrainingBestSnapshotGet::Cwc cwc) {
+            Api::TrainingBestSnapshotGet::Okay response;
+            const auto snapshot = getCachedTrainingBestSnapshot();
+            if (snapshot.has_value()) {
+                response.hasSnapshot = true;
+                response.snapshot = *snapshot;
+            }
+            cwc.sendResponse(Api::TrainingBestSnapshotGet::Response::okay(std::move(response)));
+        });
 
     service.registerHandler<Api::WebSocketAccessSet::Cwc>([this](Api::WebSocketAccessSet::Cwc cwc) {
         using Response = Api::WebSocketAccessSet::Response;
@@ -835,6 +850,24 @@ std::shared_ptr<WorldData> StateMachine::getCachedWorldData() const
 {
     std::lock_guard<std::mutex> lock(pImpl->cachedWorldDataMutex_);
     return pImpl->cachedWorldData_; // Returns shared_ptr (may be nullptr).
+}
+
+void StateMachine::updateCachedTrainingBestSnapshot(const Api::TrainingBestSnapshot& snapshot)
+{
+    std::lock_guard<std::mutex> lock(pImpl->cachedTrainingBestSnapshotMutex_);
+    pImpl->cachedTrainingBestSnapshot_ = snapshot;
+}
+
+std::optional<Api::TrainingBestSnapshot> StateMachine::getCachedTrainingBestSnapshot() const
+{
+    std::lock_guard<std::mutex> lock(pImpl->cachedTrainingBestSnapshotMutex_);
+    return pImpl->cachedTrainingBestSnapshot_;
+}
+
+void StateMachine::clearCachedTrainingBestSnapshot()
+{
+    std::lock_guard<std::mutex> lock(pImpl->cachedTrainingBestSnapshotMutex_);
+    pImpl->cachedTrainingBestSnapshot_.reset();
 }
 
 ScenarioRegistry& StateMachine::getScenarioRegistry()

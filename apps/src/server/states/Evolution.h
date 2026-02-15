@@ -28,6 +28,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace DirtSim {
@@ -85,6 +86,10 @@ struct Evolution {
         int index = -1;
         double fitness = 0.0;
         double simTime = 0.0;
+        int commandsAccepted = 0;
+        int commandsRejected = 0;
+        std::vector<std::pair<std::string, int>> topCommandSignatures;
+        std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
         std::optional<EvaluationSnapshot> snapshot;
         std::unordered_map<std::string, TimerAggregate> timerStats;
         std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;

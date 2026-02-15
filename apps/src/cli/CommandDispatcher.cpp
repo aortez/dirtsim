@@ -80,6 +80,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::TrainingResultDelete::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingBestSnapshotGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::WorldResize::Cwc>(serverHandlers_, serverExampleHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");

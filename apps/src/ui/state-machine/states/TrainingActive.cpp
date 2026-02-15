@@ -14,6 +14,7 @@
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
 #include <utility>
+#include <vector>
 
 namespace DirtSim {
 namespace Ui {
@@ -255,15 +256,37 @@ State::Any TrainingActive::onEvent(
     LOG_INFO(
         State,
         "Training best snapshot received: fitness={:.4f} gen={} world={}x{} cells={} colors={} "
-        "organism_ids={}",
+        "organism_ids={} accepted={} rejected={} signatures={} outcome_signatures={}",
         evt.snapshot.fitness,
         evt.snapshot.generation,
         worldData.width,
         worldData.height,
         worldData.cells.size(),
         worldData.colors.size(),
-        worldData.organism_ids.size());
-    view_->updateBestSnapshot(worldData, evt.snapshot.fitness, evt.snapshot.generation);
+        worldData.organism_ids.size(),
+        evt.snapshot.commandsAccepted,
+        evt.snapshot.commandsRejected,
+        evt.snapshot.topCommandSignatures.size(),
+        evt.snapshot.topCommandOutcomeSignatures.size());
+
+    std::vector<std::pair<std::string, int>> topCommandSignatures;
+    topCommandSignatures.reserve(evt.snapshot.topCommandSignatures.size());
+    for (const auto& entry : evt.snapshot.topCommandSignatures) {
+        topCommandSignatures.emplace_back(entry.signature, entry.count);
+    }
+    std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
+    topCommandOutcomeSignatures.reserve(evt.snapshot.topCommandOutcomeSignatures.size());
+    for (const auto& entry : evt.snapshot.topCommandOutcomeSignatures) {
+        topCommandOutcomeSignatures.emplace_back(entry.signature, entry.count);
+    }
+    view_->updateBestSnapshot(
+        worldData,
+        evt.snapshot.fitness,
+        evt.snapshot.generation,
+        evt.snapshot.commandsAccepted,
+        evt.snapshot.commandsRejected,
+        topCommandSignatures,
+        topCommandOutcomeSignatures);
 
     return std::move(*this);
 }

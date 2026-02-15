@@ -4,6 +4,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
+#include "server/api/TrainingBestSnapshot.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -92,6 +93,48 @@ TEST(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     ASSERT_TRUE(callbackInvoked) << "Response callback should be invoked";
     ASSERT_TRUE(capturedResponse.isValue()) << "Response should be success";
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
+}
+
+TEST(StateEvolutionTest, TrainingBestSnapshotCacheRoundTrips)
+{
+    TestStateMachineFixture fixture;
+
+    EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());
+
+    Api::TrainingBestSnapshot snapshot;
+    snapshot.fitness = 2.5;
+    snapshot.generation = 3;
+    snapshot.commandsAccepted = 4;
+    snapshot.commandsRejected = 5;
+    snapshot.topCommandSignatures.push_back(
+        Api::TrainingBestSnapshot::CommandSignatureCount{
+            .signature = "GrowRoot(+0,+1)",
+            .count = 7,
+        });
+    snapshot.topCommandOutcomeSignatures.push_back(
+        Api::TrainingBestSnapshot::CommandSignatureCount{
+            .signature = "GrowRoot(+0,+1) -> INVALID_TARGET",
+            .count = 6,
+        });
+
+    fixture.stateMachine->updateCachedTrainingBestSnapshot(snapshot);
+
+    const auto cached = fixture.stateMachine->getCachedTrainingBestSnapshot();
+    ASSERT_TRUE(cached.has_value());
+    EXPECT_DOUBLE_EQ(cached->fitness, 2.5);
+    EXPECT_EQ(cached->generation, 3);
+    EXPECT_EQ(cached->commandsAccepted, 4);
+    EXPECT_EQ(cached->commandsRejected, 5);
+    ASSERT_EQ(cached->topCommandSignatures.size(), 1u);
+    EXPECT_EQ(cached->topCommandSignatures[0].signature, "GrowRoot(+0,+1)");
+    EXPECT_EQ(cached->topCommandSignatures[0].count, 7);
+    ASSERT_EQ(cached->topCommandOutcomeSignatures.size(), 1u);
+    EXPECT_EQ(
+        cached->topCommandOutcomeSignatures[0].signature, "GrowRoot(+0,+1) -> INVALID_TARGET");
+    EXPECT_EQ(cached->topCommandOutcomeSignatures[0].count, 6);
+
+    fixture.stateMachine->clearCachedTrainingBestSnapshot();
+    EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());
 }
 
 TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)

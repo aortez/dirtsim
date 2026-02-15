@@ -32,6 +32,7 @@ namespace State {
 
 namespace {
 constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
+constexpr size_t kTopCommandSignatureLimit = 20;
 
 int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
 {
@@ -226,6 +227,7 @@ void Evolution::onEnter(StateMachine& dsm)
     cumulativeSimTime_ = 0.0;
     sumFitnessThisGen_ = 0.0;
     timerStatsAggregate_.clear();
+    dsm.clearCachedTrainingBestSnapshot();
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
@@ -630,6 +632,12 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
         WorkerResult result;
         result.index = visibleEvalIndex_;
         result.simTime = status.simTime;
+        result.commandsAccepted = status.commandsAccepted;
+        result.commandsRejected = status.commandsRejected;
+        result.topCommandSignatures =
+            visibleRunner_->getTopCommandSignatures(kTopCommandSignatureLimit);
+        result.topCommandOutcomeSignatures =
+            visibleRunner_->getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
         std::optional<TreeFitnessBreakdown> breakdown;
         result.fitness = computeFitnessForRunner(
             *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
@@ -669,6 +677,11 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     WorkerResult result;
     result.index = task.index;
     result.simTime = status.simTime;
+    result.commandsAccepted = status.commandsAccepted;
+    result.commandsRejected = status.commandsRejected;
+    result.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
+    result.topCommandOutcomeSignatures =
+        runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
     std::optional<TreeFitnessBreakdown> breakdown;
     result.fitness = computeFitnessForRunner(
         runner, status, state.trainingSpec.organismType, state.evolutionConfig, &breakdown);
@@ -713,6 +726,26 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             bestSnapshot.organismIds = std::move(result.snapshot->organismIds);
             bestSnapshot.fitness = result.fitness;
             bestSnapshot.generation = generation;
+            bestSnapshot.commandsAccepted = result.commandsAccepted;
+            bestSnapshot.commandsRejected = result.commandsRejected;
+            bestSnapshot.topCommandSignatures.reserve(result.topCommandSignatures.size());
+            for (const auto& [signature, count] : result.topCommandSignatures) {
+                bestSnapshot.topCommandSignatures.push_back(
+                    Api::TrainingBestSnapshot::CommandSignatureCount{
+                        .signature = signature,
+                        .count = count,
+                    });
+            }
+            bestSnapshot.topCommandOutcomeSignatures.reserve(
+                result.topCommandOutcomeSignatures.size());
+            for (const auto& [signature, count] : result.topCommandOutcomeSignatures) {
+                bestSnapshot.topCommandOutcomeSignatures.push_back(
+                    Api::TrainingBestSnapshot::CommandSignatureCount{
+                        .signature = signature,
+                        .count = count,
+                    });
+            }
+            dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
             dsm.broadcastEventData(
                 Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
         }
