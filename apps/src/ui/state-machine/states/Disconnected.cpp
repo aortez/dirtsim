@@ -220,7 +220,7 @@ void Disconnected::updateAnimations()
 {
     updateStatusLabel();
 
-    if (!retry_pending_) {
+    if (connectInProgress_ || !retry_pending_) {
         return;
     }
     DIRTSIM_ASSERT(sm_, "Disconnected state requires a valid StateMachine");
@@ -254,6 +254,14 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 {
     LOG_INFO(State, "Connect command received (host={}, port={})", cmd.host, cmd.port);
     sm.setLastServerAddress(cmd.host, cmd.port);
+
+    if (connectInProgress_) {
+        LOG_INFO(State, "Connect already in progress, ignoring duplicate command");
+        return std::move(*this);
+    }
+
+    pending_host_ = cmd.host;
+    pending_port_ = cmd.port;
 
     auto& wsService = sm.getWebSocketService();
 
@@ -428,14 +436,13 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
 
     // NOW connect (after callbacks are registered).
     std::string url = "ws://" + cmd.host + ":" + std::to_string(cmd.port);
-    auto connectResult = wsService.connect(url);
+    auto connectResult = wsService.connect(url, 0);
     if (connectResult.isError()) {
         LOG_ERROR(State, "WebSocketService connection failed: {}", connectResult.errorValue());
 
         // Track retry state - preserve current state but enable retries.
+        connectInProgress_ = false;
         retry_count_++;
-        pending_host_ = cmd.host;
-        pending_port_ = cmd.port;
         last_attempt_time_ = std::chrono::steady_clock::now();
         retry_pending_ = true;
 
@@ -452,28 +459,62 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         return std::move(*this);
     }
 
-    // Connection initiated successfully - clear retry state.
+    // Connection initiated successfully; transition on ServerConnectedEvent.
+    connectInProgress_ = true;
     retry_pending_ = false;
-    retry_count_ = 0;
+    LOG_INFO(
+        State, "WebSocketService connect initiated to {}, waiting for ServerConnectedEvent", url);
 
-    if (!wsService.isConnected()) {
-        LOG_INFO(
-            State,
-            "WebSocketService connect initiated to {}, waiting for ServerConnectedEvent",
-            url);
-        return std::move(*this);
-    }
-
-    LOG_INFO(State, "WebSocketService connected to {}", url);
-
-    return selectPostConnectState(sm);
+    return std::move(*this);
 }
 
 State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Server connection established");
 
+    if (!sm.hasWebSocketService()) {
+        LOG_WARN(State, "No WebSocketService available on ServerConnectedEvent");
+        return std::move(*this);
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "Ignoring stale ServerConnectedEvent without active connection");
+        return std::move(*this);
+    }
+
+    connectInProgress_ = false;
+    retry_pending_ = false;
+    retry_count_ = 0;
+
     return selectPostConnectState(sm);
+}
+
+State::Any Disconnected::onEvent(const ServerDisconnectedEvent& evt, StateMachine& /*sm*/)
+{
+    LOG_WARN(State, "Connect failed while disconnected: {}", evt.reason);
+
+    if (!connectInProgress_) {
+        LOG_INFO(State, "Ignoring disconnect event while no connect attempt is in progress");
+        return std::move(*this);
+    }
+
+    connectInProgress_ = false;
+    retry_count_++;
+    last_attempt_time_ = std::chrono::steady_clock::now();
+    retry_pending_ = true;
+
+    if (retry_count_ < MAX_RETRY_ATTEMPTS) {
+        LOG_INFO(
+            State,
+            "Will retry connection in {:.0f}s (attempt {}/{})",
+            RETRY_INTERVAL_SECONDS,
+            retry_count_,
+            MAX_RETRY_ATTEMPTS);
+    }
+
+    updateStatusLabel();
+    return std::move(*this);
 }
 
 } // namespace State

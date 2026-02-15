@@ -458,36 +458,39 @@ void StateMachine::handleEvent(const Event& event)
     }
 
     if (std::holds_alternative<ServerConnectedEvent>(event)) {
-        DIRTSIM_ASSERT(wsService_, "WebSocketService must exist for ServerConnectedEvent");
-        DIRTSIM_ASSERT(wsService_->isConnected(), "WebSocketService must be connected");
-
-        Api::EventSubscribe::Command eventCmd{
-            .enabled = true,
-            .connectionId = "",
-        };
-        auto result =
-            wsService_->sendCommandAndGetResponse<Api::EventSubscribe::OkayType>(eventCmd, 2000);
-        DIRTSIM_ASSERT(!result.isError(), "EventSubscribe failed: " + result.errorValue());
-        DIRTSIM_ASSERT(
-            !result.value().isError(),
-            "EventSubscribe rejected: " + result.value().errorValue().message);
-        LOG_INFO(State, "Subscribed to server event stream");
-
-        Api::UserSettingsGet::Command settingsCmd{};
-        const auto settingsResult =
-            wsService_->sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(settingsCmd, 2000);
-        if (settingsResult.isError()) {
-            LOG_WARN(
-                State, "UserSettingsGet failed after connect: {}", settingsResult.errorValue());
-        }
-        else if (settingsResult.value().isError()) {
-            LOG_WARN(
-                State,
-                "UserSettingsGet returned error: {}",
-                settingsResult.value().errorValue().message);
+        if (!wsService_ || !wsService_->isConnected()) {
+            LOG_WARN(State, "Ignoring ServerConnectedEvent without active WebSocket connection");
         }
         else {
-            applyServerUserSettings(settingsResult.value().value().settings);
+            Api::EventSubscribe::Command eventCmd{
+                .enabled = true,
+                .connectionId = "",
+            };
+            auto result = wsService_->sendCommandAndGetResponse<Api::EventSubscribe::OkayType>(
+                eventCmd, 2000);
+            DIRTSIM_ASSERT(!result.isError(), "EventSubscribe failed: " + result.errorValue());
+            DIRTSIM_ASSERT(
+                !result.value().isError(),
+                "EventSubscribe rejected: " + result.value().errorValue().message);
+            LOG_INFO(State, "Subscribed to server event stream");
+
+            Api::UserSettingsGet::Command settingsCmd{};
+            const auto settingsResult =
+                wsService_->sendCommandAndGetResponse<Api::UserSettingsGet::Okay>(
+                    settingsCmd, 2000);
+            if (settingsResult.isError()) {
+                LOG_WARN(
+                    State, "UserSettingsGet failed after connect: {}", settingsResult.errorValue());
+            }
+            else if (settingsResult.value().isError()) {
+                LOG_WARN(
+                    State,
+                    "UserSettingsGet returned error: {}",
+                    settingsResult.value().errorValue().message);
+            }
+            else {
+                applyServerUserSettings(settingsResult.value().value().settings);
+            }
         }
     }
 
@@ -556,23 +559,23 @@ void StateMachine::handleEvent(const Event& event)
         auto& evt = std::get<ServerDisconnectedEvent>(event);
         LOG_WARN(State, "Server disconnected (reason: {})", evt.reason);
 
-        if (std::holds_alternative<State::Disconnected>(fsmState.getVariant())) {
-            LOG_INFO(State, "Already in Disconnected state");
-            return;
-        }
-
         if (std::holds_alternative<State::Shutdown>(fsmState.getVariant())) {
             LOG_INFO(State, "Ignoring disconnect while shutting down");
             return;
         }
 
-        LOG_INFO(State, "Transitioning back to Disconnected");
-        if (!queueReconnectToLastServer()) {
-            LOG_WARN(State, "No previous server address available for reconnect");
+        if (std::holds_alternative<State::Disconnected>(fsmState.getVariant())) {
+            LOG_INFO(State, "Already in Disconnected state");
         }
+        else {
+            LOG_INFO(State, "Transitioning back to Disconnected");
+            if (!queueReconnectToLastServer()) {
+                LOG_WARN(State, "No previous server address available for reconnect");
+            }
 
-        transitionTo(State::Disconnected{});
-        return;
+            transitionTo(State::Disconnected{});
+            return;
+        }
     }
 
     // Handle Exit universally (works in all states).

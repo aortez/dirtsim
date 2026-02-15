@@ -152,7 +152,22 @@ TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
     EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
 }
 
-TEST(StateTrainingTest, ConnectTransitionsToTrainingActiveWhenServerIsEvolving)
+TEST(StateTrainingTest, ServerDisconnectedWhileAlreadyDisconnectedStaysDisconnected)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.stateMachine->handleEvent(ServerDisconnectedEvent{ "Connection lost" });
+    ASSERT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
+
+    fixture.stateMachine->handleEvent(ServerDisconnectedEvent{ "Connect failed" });
+    EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
+}
+
+TEST(StateTrainingTest, ConnectWaitsForServerConnectedEventBeforeTrainingActiveTransition)
 {
     TestStateMachineFixture fixture;
 
@@ -167,8 +182,15 @@ TEST(StateTrainingTest, ConnectTransitionsToTrainingActiveWhenServerIsEvolving)
           .memory_percent = 0.0 });
 
     Disconnected disconnectedState;
-    State::Any newState = disconnectedState.onEvent(
+    State::Any pendingState = disconnectedState.onEvent(
         ConnectToServerCommand{ .host = "localhost", .port = 8080 }, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Disconnected>(pendingState.getVariant()));
+    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
+
+    auto& pendingDisconnected = std::get<Disconnected>(pendingState.getVariant());
+    State::Any newState =
+        pendingDisconnected.onEvent(ServerConnectedEvent{}, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<TrainingActive>(newState.getVariant()));
 
@@ -177,7 +199,7 @@ TEST(StateTrainingTest, ConnectTransitionsToTrainingActiveWhenServerIsEvolving)
     EXPECT_EQ(sentCommands[0], "StatusGet");
 }
 
-TEST(StateTrainingTest, ConnectTransitionsToStartMenuWhenServerIsNotEvolving)
+TEST(StateTrainingTest, ConnectWaitsForServerConnectedEventBeforeStartMenuTransition)
 {
     TestStateMachineFixture fixture;
 
@@ -192,8 +214,15 @@ TEST(StateTrainingTest, ConnectTransitionsToStartMenuWhenServerIsNotEvolving)
           .memory_percent = 0.0 });
 
     Disconnected disconnectedState;
-    State::Any newState = disconnectedState.onEvent(
+    State::Any pendingState = disconnectedState.onEvent(
         ConnectToServerCommand{ .host = "localhost", .port = 8080 }, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Disconnected>(pendingState.getVariant()));
+    EXPECT_TRUE(fixture.mockWebSocketService->sentCommands().empty());
+
+    auto& pendingDisconnected = std::get<Disconnected>(pendingState.getVariant());
+    State::Any newState =
+        pendingDisconnected.onEvent(ServerConnectedEvent{}, *fixture.stateMachine);
 
     ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()));
 
