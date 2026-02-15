@@ -1,7 +1,5 @@
 #include "TrainingActiveView.h"
 #include "UiComponentManager.h"
-#include "controls/EvolutionControls.h"
-#include "controls/ExpandablePanel.h"
 #include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/WorldData.h"
@@ -75,45 +73,84 @@ void TrainingActiveView::createUI()
 
 void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 {
+    constexpr int contentRowGapPx = 10;
+    constexpr int mainLayoutPaddingPx = 5;
+    constexpr int mainLayoutGapPx = 8;
+    constexpr int streamPanelWidthPx = 220;
+    constexpr int longTermMinWidthPx = 160;
+    constexpr int longTermPreferredWidthPx = 280;
+    constexpr int centerMinWidthPx = 360;
+
     starfield_ =
         std::make_unique<Starfield>(container_, displayWidth, displayHeight, starfieldSnapshot_);
     renderer_ = std::make_unique<CellRenderer>();
     bestRenderer_ = std::make_unique<CellRenderer>();
 
-    // Main layout: panel column + stream panel + stats/world content.
+    // Main layout: stream panel + stats/world content.
     contentRow_ = lv_obj_create(container_);
     lv_obj_set_size(contentRow_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_style_bg_opa(contentRow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(contentRow_, 0, 0);
     lv_obj_set_style_pad_all(contentRow_, 0, 0);
-    lv_obj_set_style_pad_gap(contentRow_, 10, 0);
+    lv_obj_set_style_pad_gap(contentRow_, contentRowGapPx, 0);
     lv_obj_set_flex_flow(contentRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         contentRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(contentRow_, LV_OBJ_FLAG_SCROLLABLE);
 
-    panel_ = std::make_unique<ExpandablePanel>(contentRow_);
-    panel_->show();
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-    panelContent_ = panel_->getContentArea();
-
     createStreamPanel(contentRow_);
+
+    const int estimatedMainWidth =
+        std::max(centerMinWidthPx + longTermMinWidthPx, displayWidth - streamPanelWidthPx - 20);
+    int longTermMinWidth =
+        std::clamp(estimatedMainWidth / 4, longTermMinWidthPx, longTermPreferredWidthPx);
+    int centerColumnWidth =
+        estimatedMainWidth - longTermMinWidth - mainLayoutGapPx - (mainLayoutPaddingPx * 2);
+    if (centerColumnWidth < centerMinWidthPx) {
+        centerColumnWidth = centerMinWidthPx;
+        longTermMinWidth = std::max(
+            longTermMinWidthPx,
+            estimatedMainWidth - centerColumnWidth - mainLayoutGapPx - (mainLayoutPaddingPx * 2));
+    }
 
     mainLayout_ = lv_obj_create(contentRow_);
     lv_obj_set_size(mainLayout_, LV_PCT(100), LV_PCT(100));
     lv_obj_set_flex_grow(mainLayout_, 1);
     lv_obj_set_style_bg_opa(mainLayout_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(mainLayout_, 0, 0);
-    lv_obj_set_style_pad_all(mainLayout_, 5, 0);
-    lv_obj_set_style_pad_gap(mainLayout_, 5, 0);
-    lv_obj_set_flex_flow(mainLayout_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_all(mainLayout_, mainLayoutPaddingPx, 0);
+    lv_obj_set_style_pad_gap(mainLayout_, mainLayoutGapPx, 0);
+    lv_obj_set_flex_flow(mainLayout_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        mainLayout_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        mainLayout_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(mainLayout_, LV_OBJ_FLAG_SCROLLABLE);
 
+    lv_obj_t* centerLayout = lv_obj_create(mainLayout_);
+    lv_obj_set_size(centerLayout, centerColumnWidth, LV_PCT(100));
+    lv_obj_set_style_bg_opa(centerLayout, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(centerLayout, 0, 0);
+    lv_obj_set_style_pad_all(centerLayout, 0, 0);
+    lv_obj_set_style_pad_gap(centerLayout, 5, 0);
+    lv_obj_set_flex_flow(centerLayout, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        centerLayout, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(centerLayout, LV_OBJ_FLAG_SCROLLABLE);
+
+    longTermPanel_ = lv_obj_create(mainLayout_);
+    lv_obj_set_size(longTermPanel_, LV_SIZE_CONTENT, LV_PCT(100));
+    lv_obj_set_flex_grow(longTermPanel_, 1);
+    lv_obj_set_style_min_width(longTermPanel_, longTermMinWidth, 0);
+    lv_obj_set_style_bg_color(longTermPanel_, lv_color_hex(0x141420), 0);
+    lv_obj_set_style_bg_opa(longTermPanel_, LV_OPA_90, 0);
+    lv_obj_set_style_radius(longTermPanel_, 8, 0);
+    lv_obj_set_style_border_width(longTermPanel_, 1, 0);
+    lv_obj_set_style_border_color(longTermPanel_, lv_color_hex(0x2A2A44), 0);
+    lv_obj_set_style_pad_all(longTermPanel_, 10, 0);
+    lv_obj_clear_flag(longTermPanel_, LV_OBJ_FLAG_SCROLLABLE);
+
     // ========== TOP: Stats panel (condensed) ==========
-    statsPanel_ = lv_obj_create(mainLayout_);
-    lv_obj_set_size(statsPanel_, 580, LV_SIZE_CONTENT);
+    statsPanel_ = lv_obj_create(centerLayout);
+    lv_obj_set_size(statsPanel_, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_color(statsPanel_, lv_color_hex(0x1A1A2E), 0);
     lv_obj_set_style_bg_opa(statsPanel_, LV_OPA_90, 0);
     lv_obj_set_style_radius(statsPanel_, 8, 0);
@@ -259,21 +296,25 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_color(averageLabel_, lv_color_hex(0xAAAACC), 0);
     lv_obj_set_style_text_font(averageLabel_, &lv_font_montserrat_12, 0);
 
+    constexpr int worldColumnGapPx = 10;
+    const int worldColumnWidth = std::max(160, (centerColumnWidth - worldColumnGapPx) / 2);
+    const int worldContainerSize = std::max(145, worldColumnWidth - 10);
+
     // ========== BOTTOM: Two world views side by side ==========
-    bottomRow_ = lv_obj_create(mainLayout_);
+    bottomRow_ = lv_obj_create(centerLayout);
     lv_obj_set_size(bottomRow_, LV_PCT(100), LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(bottomRow_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(bottomRow_, 0, 0);
     lv_obj_set_style_pad_all(bottomRow_, 0, 0);
-    lv_obj_set_style_pad_gap(bottomRow_, 10, 0);
+    lv_obj_set_style_pad_gap(bottomRow_, worldColumnGapPx, 0);
     lv_obj_set_flex_flow(bottomRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
-        bottomRow_, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER);
+        bottomRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
     lv_obj_clear_flag(bottomRow_, LV_OBJ_FLAG_SCROLLABLE);
 
     // Left panel: Live feed.
     lv_obj_t* leftPanel = lv_obj_create(bottomRow_);
-    lv_obj_set_size(leftPanel, 280, LV_SIZE_CONTENT);
+    lv_obj_set_size(leftPanel, worldColumnWidth, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(leftPanel, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(leftPanel, 0, 0);
     lv_obj_set_style_pad_all(leftPanel, 0, 0);
@@ -289,7 +330,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_font(liveLabel, &lv_font_montserrat_12, 0);
 
     worldContainer_ = lv_obj_create(leftPanel);
-    lv_obj_set_size(worldContainer_, 270, 270);
+    lv_obj_set_size(worldContainer_, worldContainerSize, worldContainerSize);
     lv_obj_set_style_bg_color(worldContainer_, lv_color_hex(0x1A1A2E), 0);
     lv_obj_set_style_bg_opa(worldContainer_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(worldContainer_, 8, 0);
@@ -302,7 +343,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 
     // Right panel: Best snapshot.
     lv_obj_t* rightPanel = lv_obj_create(bottomRow_);
-    lv_obj_set_size(rightPanel, 280, LV_SIZE_CONTENT);
+    lv_obj_set_size(rightPanel, worldColumnWidth, LV_SIZE_CONTENT);
     lv_obj_set_style_bg_opa(rightPanel, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(rightPanel, 0, 0);
     lv_obj_set_style_pad_all(rightPanel, 0, 0);
@@ -318,7 +359,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_text_font(bestFitnessLabel_, &lv_font_montserrat_12, 0);
 
     bestWorldContainer_ = lv_obj_create(rightPanel);
-    lv_obj_set_size(bestWorldContainer_, 270, 270);
+    lv_obj_set_size(bestWorldContainer_, worldContainerSize, worldContainerSize);
     lv_obj_set_style_bg_color(bestWorldContainer_, lv_color_hex(0x1A1A2E), 0);
     lv_obj_set_style_bg_opa(bestWorldContainer_, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(bestWorldContainer_, 8, 0);
@@ -329,7 +370,10 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
 
-    LOG_INFO(Controls, "Training active UI created with live feed and best snapshot views");
+    LOG_INFO(
+        Controls,
+        "Training active UI created with live feed, best snapshot, and long-term panel "
+        "placeholder");
 }
 
 void TrainingActiveView::destroyUI()
@@ -342,8 +386,6 @@ void TrainingActiveView::destroyUI()
     }
 
     starfield_.reset();
-    panel_.reset();
-
     if (container_) {
         lv_obj_clean(container_);
     }
@@ -364,6 +406,7 @@ void TrainingActiveView::destroyUI()
     bottomRow_ = nullptr;
     contentRow_ = nullptr;
     mainLayout_ = nullptr;
+    longTermPanel_ = nullptr;
     parallelismLabel_ = nullptr;
     streamPanel_ = nullptr;
     streamIntervalStepper_ = nullptr;
@@ -375,7 +418,6 @@ void TrainingActiveView::destroyUI()
     statusLabel_ = nullptr;
     totalTimeLabel_ = nullptr;
     worldContainer_ = nullptr;
-    panelContent_ = nullptr;
 }
 
 void TrainingActiveView::renderWorld(const WorldData& worldData)
@@ -423,15 +465,6 @@ void TrainingActiveView::updateBestSnapshot(
     scheduleBestRender();
 }
 
-void TrainingActiveView::clearPanelContent()
-{
-    evolutionControls_.reset();
-    if (panel_) {
-        panel_->clearContent();
-        panel_->setWidth(ExpandablePanel::DefaultWidth);
-    }
-}
-
 void TrainingActiveView::setStreamIntervalMs(int value)
 {
     userSettings_.streamIntervalMs = value;
@@ -449,24 +482,6 @@ void TrainingActiveView::setTrainingPaused(bool paused)
         LVGLBuilder::ActionButtonBuilder::setIcon(
             pauseResumeButton_, paused ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE);
     }
-}
-
-void TrainingActiveView::createCorePanel()
-{
-    if (!panel_) {
-        LOG_ERROR(Controls, "TrainingActiveView: No training panel available");
-        return;
-    }
-    panel_->setWidth(ExpandablePanel::DefaultWidth);
-
-    if (!panelContent_) {
-        LOG_ERROR(Controls, "TrainingActiveView: No panel content area available");
-        return;
-    }
-
-    evolutionControls_ = std::make_unique<EvolutionControls>(
-        panelContent_, eventSink_, evolutionStarted_, userSettings_.trainingSpec);
-    LOG_INFO(Controls, "TrainingActiveView: Created Training Home panel");
 }
 
 void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
@@ -662,10 +677,6 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
     }
 
-    if (evolutionControls_) {
-        evolutionControls_->setEvolutionStarted(started);
-    }
-
     if (pauseResumeButton_) {
         if (started) {
             lv_obj_clear_flag(pauseResumeButton_, LV_OBJ_FLAG_HIDDEN);
@@ -679,17 +690,13 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     setTrainingPaused(false);
 }
 
-void TrainingActiveView::setEvolutionCompleted(GenomeId bestGenomeId)
+void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
 {
     evolutionStarted_ = false;
 
     if (statusLabel_) {
         lv_label_set_text(statusLabel_, "Complete!");
         lv_obj_set_style_text_color(statusLabel_, lv_color_hex(0xFFDD66), 0);
-    }
-
-    if (evolutionControls_) {
-        evolutionControls_->setEvolutionCompleted(bestGenomeId);
     }
 
     if (pauseResumeButton_) {

@@ -78,8 +78,6 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
-    state.view_->clearPanelContent();
-    state.view_->createCorePanel();
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result

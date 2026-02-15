@@ -3,6 +3,7 @@
 #include "core/CommandWithCallback.h"
 #include "core/Result.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/TrainingResumePolicy.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/api/ApiError.h"
 #include "server/api/ApiMacros.h"
@@ -19,6 +20,7 @@ struct Command {
     EvolutionConfig evolution;
     MutationConfig mutation;
     TrainingSpec training;
+    TrainingResumePolicy resumePolicy = TrainingResumePolicy::WarmFromBest;
 
     API_COMMAND_NAME();
     nlohmann::json toJson() const;

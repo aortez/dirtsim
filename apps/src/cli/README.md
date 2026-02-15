@@ -382,6 +382,7 @@ Run evolution training with JSON configuration:
   },
   "scenarioId": "TreeGermination",
   "organismType": "TREE",
+  "resumePolicy": "WarmFromBest",
   "population": [
     {
       "brainKind": "NeuralNet",

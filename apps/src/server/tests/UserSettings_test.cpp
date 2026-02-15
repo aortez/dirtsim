@@ -36,11 +36,13 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.timezoneIndex, 2);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
 TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
@@ -60,6 +62,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .trainingSpec = {},
                 .evolutionConfig = {},
                 .mutationConfig = {},
+                .trainingResumePolicy = static_cast<TrainingResumePolicy>(99),
             },
     };
     Api::UserSettingsSet::Cwc cwc(command, [&](Api::UserSettingsSet::Response&& result) {
@@ -74,12 +77,14 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 0);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 0);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
 TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
@@ -117,10 +122,12 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 2);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
+    EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }

@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -29,6 +30,12 @@ namespace DirtSim {
  */
 class GenomeRepository {
 public:
+    struct StoreByHashResult {
+        GenomeId id = INVALID_GENOME_ID;
+        bool inserted = false;
+        bool deduplicated = false;
+    };
+
     // Default constructor - in-memory only, no persistence.
     GenomeRepository();
 
@@ -47,6 +54,16 @@ public:
 
     // Store a genome with metadata at the given ID. Overwrites if ID exists.
     void store(GenomeId id, const Genome& genome, const GenomeMetadata& meta);
+
+    // Store a genome keyed by content hash. Reuses existing ID when content matches.
+    StoreByHashResult storeOrUpdateByHash(
+        const Genome& genome,
+        const GenomeMetadata& meta,
+        std::optional<GenomeId> preferredId = std::nullopt);
+
+    // Keep only the highest-fitness managed genomes (trainingSessionId set).
+    // Returns number of genomes removed.
+    size_t pruneManagedByFitness(size_t maxManagedGenomes);
 
     // Check if a genome exists.
     bool exists(GenomeId id) const;
@@ -79,6 +96,8 @@ public:
 private:
     // In-memory storage (always present for fast access).
     std::unordered_map<GenomeId, Genome> genomes_;
+    std::unordered_map<std::string, GenomeId> hashToId_;
+    std::unordered_map<GenomeId, std::string> idToHash_;
     std::unordered_map<GenomeId, GenomeMetadata> metadata_;
     std::optional<GenomeId> bestId_;
 
@@ -91,10 +110,18 @@ private:
     // Database operations.
     void initSchema();
     void loadFromDb();
-    void persistGenome(GenomeId id, const Genome& genome, const GenomeMetadata& meta);
+    void persistGenome(
+        GenomeId id,
+        const Genome& genome,
+        const GenomeMetadata& meta,
+        const std::string& contentHash);
+    void persistGenomeHash(GenomeId id, const std::string& contentHash);
     void deleteGenome(GenomeId id);
     void persistBestId();
     void clearDb();
+
+    static std::string computeContentHash(const Genome& genome, const GenomeMetadata& meta);
+    void removeNoLock(GenomeId id);
 };
 
 } // namespace DirtSim

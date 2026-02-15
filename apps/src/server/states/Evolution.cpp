@@ -149,6 +149,44 @@ std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(con
     }
     return stats;
 }
+
+GenomeId storeManagedGenome(
+    StateMachine& dsm,
+    const Genome& genome,
+    const GenomeMetadata& metadata,
+    int archiveMaxSize,
+    const char* reason)
+{
+    auto& repo = dsm.getGenomeRepository();
+    const auto storeResult = repo.storeOrUpdateByHash(genome, metadata);
+    if (storeResult.deduplicated) {
+        LOG_INFO(
+            State,
+            "Evolution: Reused existing genome {} for {}",
+            storeResult.id.toShortString(),
+            reason);
+    }
+    else {
+        LOG_INFO(
+            State,
+            "Evolution: Stored new genome {} for {}",
+            storeResult.id.toShortString(),
+            reason);
+    }
+
+    if (archiveMaxSize > 0) {
+        const size_t pruned = repo.pruneManagedByFitness(static_cast<size_t>(archiveMaxSize));
+        if (pruned > 0) {
+            LOG_INFO(
+                State,
+                "Evolution: Pruned {} managed genomes (max_archive={})",
+                pruned,
+                archiveMaxSize);
+        }
+    }
+
+    return storeResult.id;
+}
 } // namespace
 
 std::optional<Evolution::EvaluationSnapshot> Evolution::buildEvaluationSnapshot(
@@ -688,7 +726,6 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
         const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
-            auto& repo = dsm.getGenomeRepository();
             const GenomeMetadata meta{
                 .name =
                     "gen_" + std::to_string(generation) + "_eval_" + std::to_string(result.index),
@@ -702,8 +739,13 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
                 .brainVariant = individual.brainVariant,
                 .trainingSessionId = trainingSessionId_,
             };
-            bestGenomeId = UUID::generate();
-            repo.store(bestGenomeId, individual.genome.value(), meta);
+            bestGenomeId = storeManagedGenome(
+                dsm,
+                individual.genome.value(),
+                meta,
+                evolutionConfig.genomeArchiveMaxSize,
+                "all-time best");
+            auto& repo = dsm.getGenomeRepository();
             repo.markAsBest(bestGenomeId);
         }
         else {
@@ -712,7 +754,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
         LOG_INFO(
             State,
-            "Evolution: New best fitness {:.4f} at gen {} eval {}",
+            "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
             result.fitness,
             generation,
             result.index);
@@ -1039,7 +1081,6 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         return;
     }
 
-    auto& repo = dsm.getGenomeRepository();
     const GenomeMetadata meta{
         .name = "checkpoint_gen_" + std::to_string(generation),
         .fitness = bestFit,
@@ -1052,10 +1093,15 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .brainVariant = population[bestIdx].brainVariant,
         .trainingSessionId = trainingSessionId_,
     };
-    const GenomeId id = UUID::generate();
-    repo.store(id, population[bestIdx].genome.value(), meta);
+    const GenomeId id = storeManagedGenome(
+        dsm,
+        population[bestIdx].genome.value(),
+        meta,
+        evolutionConfig.genomeArchiveMaxSize,
+        "checkpoint");
 
     if (bestFit >= bestFitnessAllTime) {
+        auto& repo = dsm.getGenomeRepository();
         repo.markAsBest(id);
         bestGenomeId = id;
     }

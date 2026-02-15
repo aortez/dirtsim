@@ -41,8 +41,8 @@ void Network::onEnter(StateMachine& sm)
     DIRTSIM_ASSERT(iconRail, "IconRail must exist");
     iconRail->setVisible(true);
     iconRail->setLayout(RailLayout::SingleColumn);
-    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftCenter());
-    iconRail->setVisibleIcons({ IconId::CORE, IconId::NETWORK });
+    iconRail->setMinimizedAffordanceStyle(IconRail::minimizedAffordanceLeftBottomSquare());
+    iconRail->setVisibleIcons({ IconId::DUCK, IconId::NETWORK });
     iconRail->selectIcon(IconId::NETWORK);
 }
 
@@ -50,7 +50,6 @@ void Network::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting Network state");
 
-    homePanel_.reset();
     networkPanel_.reset();
 
     if (auto* uiManager = sm.getUiComponentManager()) {
@@ -78,29 +77,16 @@ State::Any Network::onEvent(const IconSelectedEvent& evt, StateMachine& sm)
     auto* uiManager = sm.getUiComponentManager();
     DIRTSIM_ASSERT(uiManager, "UiComponentManager must exist");
 
-    if (evt.selectedId == IconId::CORE) {
-        LOG_INFO(State, "Home icon selected, showing Stop panel");
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->clearContent();
-            panel->resetWidth();
-            homePanel_ =
-                std::make_unique<StopPanel>(panel->getContentArea(), sm, sm.getFractalAnimator());
-            panel->show();
-        }
+    if (evt.selectedId == IconId::DUCK) {
+        LOG_INFO(State, "Duck icon selected, returning to StartMenu");
+        return StartMenu{};
+    }
+
+    if (evt.selectedId == IconId::NETWORK) {
         return std::move(*this);
     }
 
-    if (evt.previousId == IconId::CORE) {
-        LOG_INFO(State, "Home icon deselected, hiding Stop panel");
-        homePanel_.reset();
-        if (auto* panel = uiManager->getExpandablePanel()) {
-            panel->hide();
-            panel->clearContent();
-            panel->resetWidth();
-        }
-    }
-
-    if (evt.selectedId == IconId::NONE || evt.selectedId == IconId::NETWORK) {
+    if (evt.selectedId == IconId::NONE) {
         return std::move(*this);
     }
 

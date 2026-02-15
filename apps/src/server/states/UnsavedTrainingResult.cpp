@@ -67,22 +67,26 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
     }
 
     auto& repo = dsm.getGenomeRepository();
-    for (const auto& id : uniqueIds) {
-        if (repo.exists(id)) {
-            cwc.sendResponse(
-                Api::TrainingResultSave::Response::error(
-                    ApiError("TrainingResultSave id already exists: " + id.toShortString())));
-            return std::move(*this);
-        }
-    }
-
     Api::TrainingResultSave::Okay response;
     response.savedIds.reserve(uniqueIds.size());
 
     for (const auto& id : uniqueIds) {
         const Candidate* candidate = candidateLookup.at(id);
-        repo.store(candidate->id, candidate->genome, candidate->metadata);
-        response.savedIds.push_back(candidate->id);
+        const auto storeResult =
+            repo.storeOrUpdateByHash(candidate->genome, candidate->metadata, candidate->id);
+        response.savedIds.push_back(storeResult.id);
+    }
+
+    if (evolutionConfig.genomeArchiveMaxSize > 0) {
+        const size_t pruned =
+            repo.pruneManagedByFitness(static_cast<size_t>(evolutionConfig.genomeArchiveMaxSize));
+        if (pruned > 0) {
+            LOG_INFO(
+                State,
+                "UnsavedTrainingResult: Pruned {} managed genomes (max_archive={})",
+                pruned,
+                evolutionConfig.genomeArchiveMaxSize);
+        }
     }
 
     response.savedCount = static_cast<int>(response.savedIds.size());

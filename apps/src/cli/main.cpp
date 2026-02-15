@@ -21,6 +21,7 @@
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
 #include "server/api/TrainingResultDiscard.h"
+#include "server/api/UserSettingsGet.h"
 #include "ui/controls/IconRail.h"
 #include "ui/state-machine/api/IconRailShowIcons.h"
 #include "ui/state-machine/api/IconSelect.h"
@@ -32,6 +33,7 @@
 #include "ui/state-machine/api/TrainingConfigShowEvolution.h"
 #include "ui/state-machine/api/TrainingQuit.h"
 #include "ui/state-machine/api/TrainingResultDiscard.h"
+#include "ui/state-machine/api/TrainingStart.h"
 #include <algorithm>
 #include <args.hxx>
 #include <atomic>
@@ -1459,17 +1461,6 @@ int main(int argc, char** argv)
             return Result<std::monostate, std::string>::okay(std::monostate{});
         };
 
-        auto pressStopButton = [&]() -> Result<std::monostate, std::string> {
-            UiApi::StopButtonPress::Command cmd{};
-            auto result = sendBinaryCommand<
-                UiApi::StopButtonPress::Command,
-                UiApi::StopButtonPress::OkayType>(uiClient, cmd, timeoutMs);
-            if (result.isError()) {
-                return Result<std::monostate, std::string>::error(result.errorValue());
-            }
-            return Result<std::monostate, std::string>::okay(std::monostate{});
-        };
-
         auto showTrainingConfigEvolution = [&]() -> Result<std::monostate, std::string> {
             UiApi::TrainingConfigShowEvolution::Command cmd{};
             auto result = sendBinaryCommand<
@@ -1519,14 +1510,9 @@ int main(int argc, char** argv)
                 if (showResult.isError()) {
                     return Result<std::monostate, std::string>::error(showResult.errorValue());
                 }
-                auto selectResult = selectIcon(Ui::IconId::CORE);
+                auto selectResult = selectIcon(Ui::IconId::DUCK);
                 if (selectResult.isError()) {
                     return Result<std::monostate, std::string>::error(selectResult.errorValue());
-                }
-                std::this_thread::sleep_for(std::chrono::milliseconds(300));
-                auto pressResult = pressStopButton();
-                if (pressResult.isError()) {
-                    return Result<std::monostate, std::string>::error(pressResult.errorValue());
                 }
                 auto waitResult = waitForUiState({ "StartMenu" }, 8000);
                 if (waitResult.isError()) {
@@ -1887,12 +1873,65 @@ int main(int argc, char** argv)
             if (nav.isError()) {
                 return nav;
             }
+
+            Api::UserSettingsGet::Command settingsCmd{};
+            auto settingsResult =
+                sendBinaryCommand<Api::UserSettingsGet::Command, Api::UserSettingsGet::Okay>(
+                    serverClient, settingsCmd, timeoutMs);
+            if (settingsResult.isError()) {
+                return Result<std::monostate, std::string>::error(settingsResult.errorValue());
+            }
+
+            UiApi::TrainingStart::Command trainCmd{};
+            trainCmd.evolution = settingsResult.value().settings.evolutionConfig;
+            trainCmd.mutation = settingsResult.value().settings.mutationConfig;
+            trainCmd.training = settingsResult.value().settings.trainingSpec;
+            trainCmd.resumePolicy = settingsResult.value().settings.trainingResumePolicy;
+
+            auto trainResult =
+                sendBinaryCommand<UiApi::TrainingStart::Command, UiApi::TrainingStart::Okay>(
+                    uiClient, trainCmd, timeoutMs);
+            if (trainResult.isError()) {
+                return Result<std::monostate, std::string>::error(trainResult.errorValue());
+            }
+
+            auto waitTraining =
+                waitForUiState({ "TrainingActive", "TrainingUnsavedResult" }, 12000);
+            if (waitTraining.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    waitTraining.errorValue().message);
+            }
+            if (waitTraining.value() != "TrainingActive") {
+                return Result<std::monostate, std::string>::error(
+                    "Training did not remain active long enough for screenshot");
+            }
+
             auto deselect = selectIcon(Ui::IconId::NONE);
             if (deselect.isError()) {
                 return deselect;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-            return captureScreen("training-active");
+            std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+
+            auto captureResult = captureScreen("training-active");
+            if (captureResult.isError()) {
+                return captureResult;
+            }
+
+            UiApi::TrainingQuit::Command quitCmd{};
+            auto quitResult =
+                sendBinaryCommand<UiApi::TrainingQuit::Command, UiApi::TrainingQuit::Okay>(
+                    uiClient, quitCmd, timeoutMs);
+            if (quitResult.isError()) {
+                return Result<std::monostate, std::string>::error(quitResult.errorValue());
+            }
+
+            auto waitStartMenu = waitForUiState({ "StartMenu" }, 8000);
+            if (waitStartMenu.isError()) {
+                return Result<std::monostate, std::string>::error(
+                    waitStartMenu.errorValue().message);
+            }
+
+            return ensureIconRailVisible();
         });
         if (result.isError()) {
             std::cerr << result.errorValue() << std::endl;
@@ -2174,6 +2213,7 @@ int main(int argc, char** argv)
   },
   "scenarioId": "TreeGermination",
   "organismType": "TREE",
+  "resumePolicy": "WarmFromBest",
   "population": [
     {
       "brainKind": "NeuralNet",

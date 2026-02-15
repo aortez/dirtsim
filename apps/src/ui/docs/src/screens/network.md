@@ -5,14 +5,10 @@
 scale 1.6
 {
   {+
-    [Home]
+    [Duck]
     [Network]
     [Minimize]
   } | {
-    {+
-      [Stop]
-    }
-    .
     "Network"
     "WiFi: onionchan"
     .
@@ -50,6 +46,6 @@ Background is black. NetworkDiagnosticsPanel content spans the full screen (minu
 [*] --> StartMenu
 
 StartMenu --> Network : Network
-Network --> StartMenu : Stop
+Network --> StartMenu : Duck
 @enduml
 ```
