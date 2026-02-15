@@ -11,6 +11,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace DirtSim {
 
@@ -91,6 +93,9 @@ public:
 
     const Organism::Body* getOrganism() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
+    std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
+    std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
+        size_t maxEntries) const;
 
     double getSimTime() const { return simTime_; }
     double getMaxTime() const { return maxTime_; }

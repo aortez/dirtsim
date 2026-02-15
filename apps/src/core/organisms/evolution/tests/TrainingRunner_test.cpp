@@ -53,6 +53,24 @@ private:
     bool* decided_ = nullptr;
 };
 
+class ScriptedTreeBrain : public TreeBrain {
+public:
+    explicit ScriptedTreeBrain(std::vector<TreeCommand> commands) : commands_(std::move(commands))
+    {}
+
+    TreeCommand decide(const TreeSensoryData& /*sensory*/) override
+    {
+        if (nextCommandIndex_ < commands_.size()) {
+            return commands_[nextCommandIndex_++];
+        }
+        return CancelCommand{};
+    }
+
+private:
+    std::vector<TreeCommand> commands_;
+    size_t nextCommandIndex_ = 0;
+};
+
 class RecordingTreeBrain : public TreeBrain {
 public:
     RecordingTreeBrain(std::unique_ptr<TreeBrain> inner, std::vector<TreeCommand>* issued)
@@ -630,6 +648,166 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
         printCommandResultsRolledUp("Validated commands", validated);
         printCommandResultsRolledUp("Executed commands", executed);
     }
+}
+
+TEST_F(TrainingRunnerTest, TopCommandSignaturesAreTop20AndTieBreakBySignature)
+{
+    config_.maxSimulationTime = 600.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    std::vector<TreeCommand> scriptedCommands;
+    for (int i = 0; i < 7; ++i) {
+        scriptedCommands.push_back(CancelCommand{});
+    }
+    for (int i = 0; i < 7; ++i) {
+        scriptedCommands.push_back(WaitCommand{});
+    }
+    for (int i = 0; i < 25; ++i) {
+        scriptedCommands.push_back(GrowLeafCommand{
+            .target_pos = {
+                static_cast<int16_t>(1000 + (i * 37)),
+                static_cast<int16_t>(2000 + (i * 29)),
+            },
+            .execution_time_seconds = 0.5,
+        });
+    }
+
+    std::vector<TreeCommand> issued;
+    const std::string brainKind = "ScriptedTop20";
+    TrainingBrainRegistry registry;
+    registry.registerBrain(
+        OrganismType::TREE,
+        brainKind,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [&issued, &scriptedCommands](
+                    World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    auto baseBrain = std::make_unique<ScriptedTreeBrain>(scriptedCommands);
+                    auto brain =
+                        std::make_unique<RecordingTreeBrain>(std::move(baseBrain), &issued);
+                    return world.getOrganismManager().createTree(world, x, y, std::move(brain));
+                },
+        });
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = brainKind;
+
+    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    int steps = 0;
+    while (issued.size() < scriptedCommands.size()) {
+        const TrainingRunner::Status status = runner.step(1);
+        ++steps;
+        ASSERT_LT(steps, 200000) << "Scripted commands should be issued promptly";
+        ASSERT_EQ(status.state, TrainingRunner::State::Running)
+            << "Runner ended before all scripted commands were issued";
+    }
+
+    const auto top20 = runner.getTopCommandSignatures(20);
+    const auto top5 = runner.getTopCommandSignatures(5);
+    const auto top1000 = runner.getTopCommandSignatures(1000);
+
+    ASSERT_EQ(top20.size(), 20u);
+    ASSERT_EQ(top5.size(), 5u);
+    ASSERT_GT(top1000.size(), 20u);
+
+    EXPECT_EQ(top20[0].first, "Cancel");
+    EXPECT_EQ(top20[0].second, 7);
+    EXPECT_EQ(top20[1].first, "Wait");
+    EXPECT_EQ(top20[1].second, 7);
+
+    for (size_t i = 0; i < top5.size(); ++i) {
+        EXPECT_EQ(top5[i], top20[i]);
+    }
+
+    for (size_t i = 1; i < top20.size(); ++i) {
+        const auto& previous = top20[i - 1];
+        const auto& current = top20[i];
+        EXPECT_TRUE(
+            previous.second > current.second
+            || (previous.second == current.second && previous.first <= current.first));
+    }
+}
+
+TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMoves)
+{
+    config_.maxSimulationTime = 600.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::TreeGermination;
+    spec.organismType = OrganismType::TREE;
+
+    const std::string brainKind = "WaitOnlyForShiftedAnchorOutcome";
+    TrainingBrainRegistry registry;
+    registry.registerBrain(
+        OrganismType::TREE,
+        brainKind,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    auto brain = std::make_unique<TestTreeBrain>(nullptr);
+                    return world.getOrganismManager().createTree(world, x, y, std::move(brain));
+                },
+        });
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = brainKind;
+
+    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    const TrainingRunner::Status firstStatus = runner.step(1);
+    ASSERT_EQ(firstStatus.state, TrainingRunner::State::Running);
+
+    World* world = runner.getWorld();
+    ASSERT_NE(world, nullptr);
+    const Organism::Body* organism = runner.getOrganism();
+    ASSERT_NE(organism, nullptr);
+    ASSERT_EQ(organism->getType(), OrganismType::TREE);
+    Tree* tree = world->getOrganismManager().getTree(organism->getId());
+    ASSERT_NE(tree, nullptr);
+
+    const Vector2i initialAnchor = tree->getAnchorCell();
+    tree->setCurrentCommand(GrowLeafCommand{
+        .target_pos = {
+            static_cast<int16_t>(initialAnchor.x + 1),
+            static_cast<int16_t>(initialAnchor.y),
+        },
+        .execution_time_seconds = 0.0,
+    });
+    tree->setTimeRemaining(0.0);
+
+    tree->setAnchorCell(Vector2i{ initialAnchor.x + 2, initialAnchor.y });
+
+    const TrainingRunner::Status secondStatus = runner.step(1);
+    ASSERT_EQ(secondStatus.state, TrainingRunner::State::Running);
+
+    const auto outcomes = runner.getTopCommandOutcomeSignatures(20);
+    ASSERT_FALSE(outcomes.empty());
+
+    bool foundExpectedPrefix = false;
+    bool foundExecutionAnchorPrefix = false;
+    for (const auto& [signature, count] : outcomes) {
+        if (signature.rfind("GrowLeaf(+1,+0) -> ", 0) == 0 && count == 1) {
+            foundExpectedPrefix = true;
+        }
+        if (signature.rfind("GrowLeaf(-1,+0) -> ", 0) == 0 && count == 1) {
+            foundExecutionAnchorPrefix = true;
+        }
+    }
+
+    EXPECT_TRUE(foundExpectedPrefix);
+    EXPECT_FALSE(foundExecutionAnchorPrefix);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)

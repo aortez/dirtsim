@@ -7,6 +7,8 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <string>
+#include <utility>
 #include <vector>
 
 typedef struct _lv_obj_t lv_obj_t;
@@ -46,7 +48,14 @@ public:
     void updateAnimations();
 
     void renderWorld(const WorldData& worldData);
-    void updateBestSnapshot(const WorldData& worldData, double fitness, int generation);
+    void updateBestSnapshot(
+        const WorldData& worldData,
+        double fitness,
+        int generation,
+        int commandsAccepted,
+        int commandsRejected,
+        const std::vector<std::pair<std::string, int>>& topCommandSignatures,
+        const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
@@ -108,6 +117,7 @@ private:
 
     lv_obj_t* bestWorldContainer_ = nullptr;
     lv_obj_t* bestFitnessLabel_ = nullptr;
+    lv_obj_t* bestCommandSummaryLabel_ = nullptr;
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;

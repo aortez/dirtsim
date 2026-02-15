@@ -33,6 +33,7 @@
 #include "StateGet.h"
 #include "StatusGet.h"
 #include "TimerStatsGet.h"
+#include "TrainingBestSnapshotGet.h"
 #include "TrainingResultDelete.h"
 #include "TrainingResultDiscard.h"
 #include "TrainingResultGet.h"
@@ -105,6 +106,7 @@ using ApiCommand = std::variant<
     Api::StateGet::Command,
     Api::StatusGet::Command,
     Api::TimerStatsGet::Command,
+    Api::TrainingBestSnapshotGet::Command,
     Api::UserSettingsGet::Command,
     Api::UserSettingsReset::Command,
     Api::UserSettingsSet::Command,
