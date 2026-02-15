@@ -93,6 +93,7 @@ private:
     lv_obj_t* totalTimeLabel_ = nullptr;
     lv_obj_t* worldContainer_ = nullptr;
     lv_obj_t* mainLayout_ = nullptr;
+    lv_obj_t* longTermPanel_ = nullptr;
     lv_obj_t* parallelismLabel_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
     lv_obj_t* streamPanel_ = nullptr;
