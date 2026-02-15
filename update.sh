@@ -6,11 +6,12 @@
 # inactive partition on the Pi over the network.
 #
 # Usage:
-#   ./update.sh                     # Build + flash + reboot (no prompts)
+#   ./update.sh                     # Build in Docker + flash + reboot (no prompts)
 #   ./update.sh --skip-build        # Flash existing image (no rebuild)
 #   ./update.sh --clean             # Force rebuild (clean image sstate)
 #   ./update.sh --clean-all         # Full rebuild (clean server + image)
 #   ./update.sh --target 192.168.1.50  # Target specific host
+#   ./update.sh --fast              # Fast local deploy (skips Docker/image build)
 #   ./update.sh --dry-run           # Show what would happen
 #   ./update.sh --help              # Show all options
 #
@@ -19,7 +20,8 @@
 # Prerequisites:
 #   - Pi must be accessible via SSH at dirtsim.local (or --target host)
 #   - SSH key must be configured (run: cd yocto && npm run flash -- --reconfigure)
-#   - kas tool installed (pip3 install kas)
+#   - Docker running locally (default build path)
+#   - If Docker is disabled, kas tool installed (pip3 install kas)
 
 set -e
 
@@ -30,6 +32,7 @@ DRY_RUN=false
 
 # Parse CLI args for target host and dry-run flag.
 args=("$@")
+FAST_MODE=false
 for ((i=0; i<${#args[@]}; i++)); do
     arg="${args[$i]}"
     case "$arg" in
@@ -40,6 +43,9 @@ for ((i=0; i<${#args[@]}; i++)); do
             ;;
         --target=*)
             TARGET_HOST="${arg#--target=}"
+            ;;
+        --fast)
+            FAST_MODE=true
             ;;
         --dry-run)
             DRY_RUN=true
@@ -60,6 +66,13 @@ fi
 if [ ! -d "$YOCTO_DIR/node_modules" ]; then
     echo "Installing npm dependencies..."
     (cd "$YOCTO_DIR" && npm install)
+fi
+
+# Default to Docker-backed builds unless:
+#   - caller explicitly set DIRTSIM_YOCTO_DOCKER
+#   - fast mode is requested (fast mode runs locally by design)
+if [ -z "${DIRTSIM_YOCTO_DOCKER+x}" ] && [ "$FAST_MODE" != true ]; then
+    export DIRTSIM_YOCTO_DOCKER=1
 fi
 
 # Run yolo update with --hold-my-mead by default (skip "type yolo" prompt).
