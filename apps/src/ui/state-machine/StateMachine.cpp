@@ -89,6 +89,16 @@ FractalAnimator& StateMachine::getFractalAnimator()
     return *fractalAnimator_.get();
 }
 
+bool StateMachine::consumeStartupAutoRun()
+{
+    if (startupAutoRunConsumed_) {
+        return false;
+    }
+
+    startupAutoRunConsumed_ = true;
+    return serverUserSettings_.startMenuAutoRun;
+}
+
 void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");

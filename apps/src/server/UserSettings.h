@@ -20,12 +20,13 @@ struct UserSettings {
     int volumePercent = 20;
     Scenario::EnumType defaultScenario = Scenario::EnumType::Sandbox;
     StartMenuIdleAction startMenuIdleAction = StartMenuIdleAction::ClockScenario;
+    bool startMenuAutoRun = false;
     TrainingSpec trainingSpec;
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
     TrainingResumePolicy trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
 
-    using serialize = zpp::bits::members<8>;
+    using serialize = zpp::bits::members<9>;
 };
 
 void from_json(const nlohmann::json& j, UserSettings& settings);
