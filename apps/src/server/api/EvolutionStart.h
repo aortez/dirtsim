@@ -7,6 +7,7 @@
 #include "core/ScenarioId.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/TrainingResumePolicy.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 
 #include <nlohmann/json.hpp>
@@ -28,12 +29,13 @@ struct Command {
     Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
     OrganismType organismType = OrganismType::TREE;
     std::vector<PopulationSpec> population;
+    TrainingResumePolicy resumePolicy = TrainingResumePolicy::WarmFromBest;
 
     API_COMMAND();
     nlohmann::json toJson() const;
     static Command fromJson(const nlohmann::json& j);
 
-    using serialize = zpp::bits::members<5>;
+    using serialize = zpp::bits::members<6>;
 };
 
 struct Okay {

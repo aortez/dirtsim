@@ -211,6 +211,7 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     cmd.scenarioId = evt.training.scenarioId;
     cmd.organismType = evt.training.organismType;
     cmd.population = evt.training.population;
+    cmd.resumePolicy = evt.resumePolicy;
 
     const auto result =
         wsService.sendCommandAndGetResponse<Api::EvolutionStart::OkayType>(cmd, 5000);
@@ -232,6 +233,7 @@ State::Any TrainingIdle::onEvent(const StartEvolutionButtonClickedEvent& evt, St
     serverSettings.trainingSpec = evt.training;
     serverSettings.evolutionConfig = evt.evolution;
     serverSettings.mutationConfig = evt.mutation;
+    serverSettings.trainingResumePolicy = evt.resumePolicy;
     Api::UserSettingsSet::Command settingsCmd{ .settings = serverSettings };
     auto settingsResult =
         wsService.sendCommandAndGetResponse<Api::UserSettingsSet::Okay>(settingsCmd, 2000);
@@ -255,6 +257,7 @@ State::Any TrainingIdle::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMach
         .evolution = cwc.command.evolution,
         .mutation = cwc.command.mutation,
         .training = cwc.command.training,
+        .resumePolicy = cwc.command.resumePolicy,
     };
     auto nextState = onEvent(evt, sm);
     cwc.sendResponse(UiApi::TrainingStart::Response::okay({ .queued = true }));

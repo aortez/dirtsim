@@ -117,6 +117,117 @@ TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
     EXPECT_DEATH({ idleState.onEvent(cwc, *fixture.stateMachine); }, ".*");
 }
 
+TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const GenomeId bestId = UUID::generate();
+    const Genome bestGenome = Genome::constant(0.25);
+    const GenomeMetadata bestMetadata{
+        .name = "warm-best",
+        .fitness = 9.0,
+        .generation = 7,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+    };
+    repo.store(bestId, bestGenome, bestMetadata);
+    repo.markAsBest(bestId);
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 4;
+    cmd.evolution.maxGenerations = 1;
+    cmd.scenarioId = Scenario::EnumType::TreeGermination;
+    cmd.organismType = OrganismType::TREE;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 4;
+    population.randomCount = 4;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 1u);
+    EXPECT_EQ(spec.seedGenomes.front(), bestId);
+    EXPECT_EQ(spec.count, 4);
+    EXPECT_EQ(spec.randomCount, 3);
+}
+
+TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const GenomeId bestId = UUID::generate();
+    const Genome bestGenome = Genome::constant(0.5);
+    const GenomeMetadata bestMetadata{
+        .name = "fresh-best",
+        .fitness = 4.0,
+        .generation = 3,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+    };
+    repo.store(bestId, bestGenome, bestMetadata);
+    repo.markAsBest(bestId);
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::Fresh;
+    cmd.evolution.populationSize = 4;
+    cmd.evolution.maxGenerations = 1;
+    cmd.scenarioId = Scenario::EnumType::TreeGermination;
+    cmd.organismType = OrganismType::TREE;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 4;
+    population.randomCount = 4;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    EXPECT_TRUE(spec.seedGenomes.empty());
+    EXPECT_EQ(spec.count, 4);
+    EXPECT_EQ(spec.randomCount, 4);
+}
+
 TEST(StateEvolutionTest, MissingBrainKindTriggersDeath)
 {
     TestStateMachineFixture fixture;
@@ -287,6 +398,60 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
         }
         EXPECT_TRUE(matchesParent);
     }
+}
+
+TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
+{
+    TestStateMachineFixture fixture;
+
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const Genome seedGenome = Genome::constant(0.1);
+    const GenomeId seedId = UUID::generate();
+    const GenomeMetadata seedMeta{
+        .name = "seed",
+        .fitness = 1.0,
+        .generation = 0,
+        .createdTimestamp = 1234567890,
+        .scenarioId = Scenario::EnumType::TreeGermination,
+        .notes = "",
+        .organismType = OrganismType::TREE,
+        .brainKind = TrainingBrainKind::NeuralNet,
+        .brainVariant = std::nullopt,
+        .trainingSessionId = std::nullopt,
+    };
+    repo.store(seedId, seedGenome, seedMeta);
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 2;
+    population.seedGenomes = { seedId, seedId };
+    population.randomCount = 0;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    evolutionState.trainingSpec.organismType = OrganismType::TREE;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    auto result1 = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_FALSE(result1.has_value());
+    const GenomeId firstBestId = evolutionState.bestGenomeId;
+    ASSERT_FALSE(firstBestId.isNil());
+
+    auto result2 = evolutionState.tick(*fixture.stateMachine);
+    ASSERT_TRUE(result2.has_value());
+
+    ASSERT_EQ(evolutionState.fitnessScores.size(), 2u);
+    EXPECT_DOUBLE_EQ(evolutionState.fitnessScores[0], evolutionState.fitnessScores[1]);
+    EXPECT_EQ(evolutionState.bestGenomeId, firstBestId);
 }
 
 TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)

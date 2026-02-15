@@ -234,9 +234,9 @@ async function main() {
     dryRun);
   success('Xwrapper.config updated');
 
-  // Ensure xinit is installed.
-  sshExec(remoteTarget, 'sudo apt-get install -y xinit > /dev/null 2>&1', dryRun);
-  success('xinit available');
+  // Ensure xinit + xset are installed for direct X11 startup and idle timeout control.
+  sshExec(remoteTarget, 'sudo apt-get install -y xinit x11-xserver-utils > /dev/null 2>&1', dryRun);
+  success('xinit/xset available');
 
   // Disable and stop display manager — dirtsim-ui starts X directly via xinit.
   // Boot to multi-user (text mode); interactive login still works on tty1-6.

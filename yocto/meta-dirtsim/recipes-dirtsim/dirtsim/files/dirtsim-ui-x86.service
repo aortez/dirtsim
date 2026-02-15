@@ -8,10 +8,12 @@ Type=simple
 User=dirtsim
 WorkingDirectory=/data/dirtsim
 Environment=HOME=/home/dirtsim
+Environment=DIRTSIM_X11_IDLE_TIMEOUT_SECONDS=21600
 
 # Start X server and dirtsim-ui directly — no display manager needed.
 # X runs on vt7, leaving vt1-6 free for interactive login.
-ExecStart=/usr/bin/xinit /usr/bin/dirtsim-ui --connect localhost:8080 -- :0 vt7 -keeptty -noreset -nolisten tcp
+# Apply a long display sleep timeout before launching the UI.
+ExecStart=/usr/bin/xinit /bin/sh -lc 'if command -v xset >/dev/null 2>&1; then xset s "${DIRTSIM_X11_IDLE_TIMEOUT_SECONDS}" "${DIRTSIM_X11_IDLE_TIMEOUT_SECONDS}"; xset dpms "${DIRTSIM_X11_IDLE_TIMEOUT_SECONDS}" "${DIRTSIM_X11_IDLE_TIMEOUT_SECONDS}" "${DIRTSIM_X11_IDLE_TIMEOUT_SECONDS}"; fi; exec /usr/bin/dirtsim-ui --connect localhost:8080' -- :0 vt7 -keeptty -noreset -nolisten tcp
 Restart=no
 
 # Hardware access for X server, GPU, and input devices.

@@ -26,6 +26,7 @@ struct Disconnected {
 
     Any onEvent(const ConnectToServerCommand& cmd, StateMachine& sm);
     Any onEvent(const ServerConnectedEvent& evt, StateMachine& sm);
+    Any onEvent(const ServerDisconnectedEvent& evt, StateMachine& sm);
     void updateAnimations();
 
     static constexpr const char* name() { return "Disconnected"; }
@@ -42,6 +43,7 @@ private:
     uint16_t pending_port_ = 0;
     int retry_count_ = 0;
     std::chrono::steady_clock::time_point last_attempt_time_;
+    bool connectInProgress_ = false;
     bool retry_pending_ = false;
 
     // UI components.

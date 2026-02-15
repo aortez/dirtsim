@@ -1,25 +1,23 @@
 # Training Active
 
-```plantuml
-@startsalt
-scale 1.6
-{
-  {
-    "Stream"
-    "Interval (ms)" | [ - ] [ 500 ] [ + ]
-    [Stop Training]
-    [Pause/Resume]
-  } | {
-    "Training"
-    "Status: Running"
-    "Gen 12 / 100"
-    "Eval 23 / 50"
-  }
-}
-@endsalt
+```text
++------------------+  +--------------------------------------------------------------------+  +------------------------+
+| Stream           |  | Evolution                                                          |  | Long-Term Progress     |
+| Interval (ms)    |  | Training: Running                                                  |  | Mode: Long-Term        |
+| [ - ] [ 16 ] [+] |  | Gen 12 / 100    Eval 23 / 50                                      |  | Phase: Explore         |
+| [Stop Training]  |  | Time: 1055.5s  Sim: 0.0s  Speed: 1362.4x  ETA: --  CPU: 54%      |  | Episodes: 824 / 5000   |
+| [Pause]          |  | This Gen: 2.64  All Time: 2.64 (Gen 0)  Avg: 2.21                |  | Novelty: 0.48          |
+|                  |  |                                                                    |  | Plateau: 12 generations|
+|                  |  |   Current                          Best                            |  | ETA: 2h 14m            |
+|                  |  |  +----------------------+      +----------------------+          |  |                        |
+|                  |  |  |                      |      |                      |          |  |                        |
+|                  |  |  |                      |      |                      |          |  |                        |
+|                  |  |  +----------------------+      +----------------------+          |  |                        |
+|                  |  |                                                                    |  | Last update: 0.5s ago  |
++------------------+  +--------------------------------------------------------------------+  +------------------------+
 ```
 
-Full-screen training view. Icon rail hidden. Only training actions are available.
+Full-screen training view. Icon rail hidden. The center section mirrors current and best cards, while the right panel is reserved for long-term progress stats.
 
 ## States
 

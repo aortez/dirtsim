@@ -198,6 +198,11 @@ UserSettings sanitizeUserSettings(
         recordUpdate("startMenuIdleAction reset to ClockScenario");
     }
 
+    if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
+        settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
+        recordUpdate("trainingResumePolicy reset to WarmFromBest");
+    }
+
     if (settings.evolutionConfig.targetCpuPercent < 0) {
         settings.evolutionConfig.targetCpuPercent = 0;
         recordUpdate("targetCpuPercent clamped to 0");
@@ -205,6 +210,11 @@ UserSettings sanitizeUserSettings(
     else if (settings.evolutionConfig.targetCpuPercent > 100) {
         settings.evolutionConfig.targetCpuPercent = 100;
         recordUpdate("targetCpuPercent clamped to 100");
+    }
+
+    if (settings.evolutionConfig.genomeArchiveMaxSize < 0) {
+        settings.evolutionConfig.genomeArchiveMaxSize = 0;
+        recordUpdate("genomeArchiveMaxSize clamped to 0");
     }
 
     return settings;
@@ -356,6 +366,17 @@ struct StateMachine::Impl {
           userSettingsPath_(getUserSettingsPath(dataDir_)),
           userSettings_(loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_))
     {
+        if (userSettings_.evolutionConfig.genomeArchiveMaxSize > 0) {
+            const size_t pruned = genomeRepository_.pruneManagedByFitness(
+                static_cast<size_t>(userSettings_.evolutionConfig.genomeArchiveMaxSize));
+            if (pruned > 0) {
+                LOG_INFO(
+                    State,
+                    "Pruned {} managed genomes on startup (max_archive={})",
+                    pruned,
+                    userSettings_.evolutionConfig.genomeArchiveMaxSize);
+            }
+        }
         LOG_INFO(State, "User settings file: {}", userSettingsPath_.string());
     }
 

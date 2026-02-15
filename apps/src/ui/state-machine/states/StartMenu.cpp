@@ -389,6 +389,7 @@ State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMac
                 .evolution = evolution,
                 .mutation = settings.mutationConfig,
                 .training = settings.trainingSpec,
+                .resumePolicy = settings.trainingResumePolicy,
             });
         return TrainingIdle{};
     }
@@ -543,6 +544,7 @@ State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine
         .evolution = cwc.command.evolution,
         .mutation = cwc.command.mutation,
         .training = cwc.command.training,
+        .resumePolicy = cwc.command.resumePolicy,
     };
     sm.queueEvent(evt);
 

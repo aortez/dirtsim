@@ -72,6 +72,8 @@ const IMAGE_DIR = join(KAS_BUILD_DIR, 'tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 const APPS_DIR = join(YOCTO_DIR, '..', 'apps');
+const KAS_CONFIG_ARM = 'kas-dirtsim.yml';
+const KAS_CONFIG_X86 = 'kas-dirtsim-x86.yml';
 
 // Assets to deploy alongside binaries (fonts, etc.).
 const DEPLOY_ASSETS = [
@@ -217,7 +219,7 @@ function canSsh(remoteTarget) {
  */
 async function cleanImage() {
   info('Cleaning dirtsim-image sstate to force rebuild...');
-  await runKas(['shell', 'kas-dirtsim.yml', '-c', 'bitbake -c cleansstate dirtsim-image']);
+  await runKas(['shell', KAS_CONFIG_ARM, '-c', 'bitbake -c cleansstate dirtsim-image']);
   success('Clean complete!');
 }
 
@@ -228,7 +230,7 @@ async function cleanAll() {
   info('Cleaning app, image, and graphics/protocol sstate...');
   await runKas([
     'shell',
-    'kas-dirtsim.yml',
+    KAS_CONFIG_ARM,
     '-c',
     'bitbake -c cleansstate dirtsim-server dirtsim-audio dirtsim-image mesa wayland-protocols wayland-protocols-native',
   ]);
@@ -247,8 +249,22 @@ async function build(forceClean = false, forceCleanAll = false) {
     await cleanImage();
   }
 
-  await runKas(['build', 'kas-dirtsim.yml']);
+  await runKas(['build', KAS_CONFIG_ARM]);
   success('Build complete!');
+}
+
+/**
+ * Build x86 artifacts so fast deploy has x86 recipe build directories available.
+ */
+async function buildX86ForFastDeploy(forceClean = false, forceCleanAll = false) {
+  banner('Building x86 artifacts for fast deploy...', consola);
+
+  if (forceClean || forceCleanAll) {
+    warn('--clean/--clean-all are Pi image rebuild flags; ignoring them for x86 fast deploy.');
+  }
+
+  await runKas(['build', KAS_CONFIG_X86]);
+  success('x86 build complete!');
 }
 
 // ============================================================================
@@ -439,15 +455,16 @@ function detectTargetArch(remoteTarget) {
   const arch = runCapture(`ssh ${buildSshOptions()} ${remoteTarget} "uname -m"`);
   if (!arch) {
     warn('Could not detect target architecture, trying all configs.');
-    return;
+    return null;
   }
   info(`Target architecture: ${arch}`);
   const matched = ARCH_CONFIGS.filter(c => c.targetArch === arch);
   if (matched.length === 0) {
     warn(`No arch config matches target "${arch}", trying all configs.`);
-    return;
+    return arch;
   }
   activeArchConfigs = matched;
+  return arch;
 }
 
 /**
@@ -684,6 +701,20 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     process.exit(1);
   }
 
+  const remoteStageDir = `/tmp/dirtsim-fastdeploy-${Date.now()}-${process.pid}`;
+  if (!dryRun) {
+    info(`Preparing remote staging dir: ${remoteStageDir}`);
+    try {
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "mkdir -p ${remoteStageDir}"`, { stdio: 'pipe' });
+    } catch (err) {
+      error('Failed to prepare remote staging directory.');
+      error(err.message);
+      process.exit(1);
+    }
+  } else {
+    info(`Would stage files in ${remoteStageDir}`);
+  }
+
   // Strip and transfer binaries.
   banner('Stripping and transferring binaries...', consola);
 
@@ -699,19 +730,26 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
           execSync(`cp "${bin.path}" "${strippedPath}" && "${bin.stripTool}" "${strippedPath}"`, { stdio: 'pipe' });
           const strippedStat = statSync(strippedPath);
           info(`${bin.name}: ${formatBytes(strippedStat.size)} (stripped)`);
-          execSync(`scp ${buildScpOptions()} "${strippedPath}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          execSync(
+            `scp ${buildScpOptions()} "${strippedPath}" "${remoteTarget}:${remoteStageDir}/${bin.name}"`,
+            { stdio: 'pipe' },
+          );
           unlinkSync(strippedPath);
         } else {
           warn(`Strip tool not found for ${bin.name}, transferring unstripped.`);
-          execSync(`scp ${buildScpOptions()} "${bin.path}" "${remoteTarget}:/tmp/${bin.name}"`, { stdio: 'pipe' });
+          execSync(
+            `scp ${buildScpOptions()} "${bin.path}" "${remoteTarget}:${remoteStageDir}/${bin.name}"`,
+            { stdio: 'pipe' },
+          );
         }
         success(`${bin.name} transferred`);
       } catch (err) {
         error(`Failed to transfer ${bin.name}`);
+        error(err.message);
         process.exit(1);
       }
     } else {
-      info(`Would strip and scp ${bin.path} to ${remoteTarget}:/tmp/${bin.name}`);
+      info(`Would strip and scp ${bin.path} to ${remoteTarget}:${remoteStageDir}/${bin.name}`);
     }
   }
 
@@ -738,12 +776,19 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       info(`  ${cfg.name}`);
       if (!dryRun) {
         try {
-          execSync(`scp ${buildScpOptions()} "${cfg.path}" "${remoteTarget}:/tmp/${cfg.name}"`, { stdio: 'pipe' });
+          execSync(
+            `scp ${buildScpOptions()} "${cfg.path}" "${remoteTarget}:${remoteStageDir}/${cfg.name}"`,
+            { stdio: 'pipe' },
+          );
           // Copy and set permissions so dirtsim user can read the config files.
-          execSync(`ssh ${buildSshOptions()} ${remoteTarget} "sudo cp /tmp/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`, { stdio: 'pipe' });
+          execSync(
+            `ssh ${buildSshOptions()} ${remoteTarget} "sudo cp ${remoteStageDir}/${cfg.name} ${cfg.remotePath} && sudo chmod 644 ${cfg.remotePath}"`,
+            { stdio: 'pipe' },
+          );
           success(`${cfg.name} deployed`);
         } catch (err) {
           error(`Failed to deploy ${cfg.name}`);
+          error(err.message);
           process.exit(1);
         }
       } else {
@@ -779,16 +824,20 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     info(`${fileName} → ${asset.remote}`);
     if (!dryRun) {
       try {
-        execSync(`scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:/tmp/${fileName}"`, { stdio: 'pipe' });
+        execSync(
+          `scp ${buildScpOptions()} "${asset.local}" "${remoteTarget}:${remoteStageDir}/${fileName}"`,
+          { stdio: 'pipe' },
+        );
         assetInstallCmds.push(`sudo mkdir -p ${remoteDir}`);
-        assetInstallCmds.push(`sudo cp /tmp/${fileName} ${asset.remote}`);
+        assetInstallCmds.push(`sudo cp ${remoteStageDir}/${fileName} ${asset.remote}`);
         success(`${fileName} transferred`);
       } catch (err) {
         error(`Failed to transfer ${fileName}`);
+        error(err.message);
         process.exit(1);
       }
     } else {
-      info(`Would scp ${asset.local} to ${remoteTarget}:/tmp/${fileName}`);
+      info(`Would scp ${asset.local} to ${remoteTarget}:${remoteStageDir}/${fileName}`);
     }
   }
 
@@ -796,7 +845,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   banner('Restarting services...', consola);
 
   const serviceNames = binaries.map(b => b.service).filter(s => s).join(' ');
-  const copyCommands = binaries.map(b => `sudo cp /tmp/${b.name} ${b.remotePath}`).join(' && ');
+  const copyCommands = binaries.map(b => `sudo cp ${remoteStageDir}/${b.name} ${b.remotePath}`).join(' && ');
 
   const remoteCmd = `sudo systemctl stop ${serviceNames} && ${copyCommands} && sudo systemctl start ${serviceNames}`;
 
@@ -838,6 +887,12 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       error('SystemStatus check failed after fast deploy.');
       process.exit(1);
     }
+
+    try {
+      execSync(`ssh ${buildSshOptions()} ${remoteTarget} "rm -rf ${remoteStageDir}"`, { stdio: 'pipe' });
+    } catch {
+      warn(`Failed to clean remote staging dir: ${remoteStageDir}`);
+    }
   }
 
   // Done!
@@ -862,7 +917,8 @@ async function main() {
   const forceCleanAll = args.includes('--clean-all');
   const dryRun = args.includes('--dry-run');
   const holdMyMead = args.includes('--hold-my-mead');
-  const fastMode = args.includes('--fast');
+  let fastMode = args.includes('--fast');
+  const fastModeRequested = fastMode;
   const docker =
     args.some(arg => arg === '--docker' || arg.startsWith('--docker=')) ||
     process.env.DIRTSIM_YOCTO_DOCKER === '1' ||
@@ -876,6 +932,7 @@ async function main() {
   // Parse --profile <name> argument.
   const profileIdx = args.indexOf('--profile');
   const specifiedProfile = (profileIdx !== -1 && args[profileIdx + 1]) ? args[profileIdx + 1] : null;
+  let autoFastForX86 = false;
 
   if (args.includes('-h') || args.includes('--help')) {
     const profiles = getAvailableProfiles();
@@ -901,12 +958,14 @@ async function main() {
     log('');
     log(`Available profiles: ${profileList}`);
     log('');
+    log('x86 targets auto-switch from full update to fast deploy.');
+    log('');
     log('This is the YOLO approach - if it fails, the previous slot still works.');
     process.exit(0);
   }
 
   useDocker = docker;
-  if (fastMode && useDocker) {
+  if (fastModeRequested && useDocker) {
     warn('Ignoring --docker in --fast mode (fast deploy runs locally).');
     useDocker = false;
   }
@@ -953,6 +1012,31 @@ async function main() {
     process.exit(1);
   } else {
     success(`${remoteHost} is reachable`);
+  }
+
+  if (!fastMode) {
+    const targetArch = detectTargetArch(remoteTarget);
+    if (targetArch === 'x86_64') {
+      warn('Detected x86_64 target. Full A/B flashing is Raspberry Pi only.');
+      info('Switching to x86 build + fast deploy.');
+      fastMode = true;
+      autoFastForX86 = true;
+    }
+  }
+
+  if (fastMode) {
+    if (specifiedProfile) {
+      error('Cannot use --profile with x86 fast deploy.');
+      error('--profile requires rootfs overlay and flashing (Pi-only path).');
+      process.exit(1);
+    }
+
+    if (autoFastForX86 && !skipBuild) {
+      await buildX86ForFastDeploy(forceClean, forceCleanAll);
+    }
+
+    await fastDeploy(remoteHost, remoteTarget, dryRun);
+    return;
   }
 
   // Detect boot device.

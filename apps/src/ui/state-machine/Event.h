@@ -157,6 +157,7 @@ struct StartEvolutionButtonClickedEvent {
     EvolutionConfig evolution;
     MutationConfig mutation;
     TrainingSpec training;
+    TrainingResumePolicy resumePolicy = TrainingResumePolicy::WarmFromBest;
     static constexpr const char* name() { return "StartEvolutionButtonClickedEvent"; }
 };
 

@@ -2,7 +2,6 @@
 
 #include "StateForward.h"
 #include "ui/controls/NetworkDiagnosticsPanel.h"
-#include "ui/controls/StopPanel.h"
 #include "ui/state-machine/Event.h"
 #include <lvgl/lvgl.h>
 #include <memory>
@@ -29,7 +28,6 @@ struct Network {
 private:
     lv_obj_t* contentRoot_ = nullptr;
     std::unique_ptr<NetworkDiagnosticsPanel> networkPanel_;
-    std::unique_ptr<StopPanel> homePanel_;
 };
 
 } // namespace State

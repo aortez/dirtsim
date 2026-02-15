@@ -34,6 +34,13 @@ protected:
             .trainingSessionId = std::nullopt,
         };
     }
+
+    GenomeMetadata createManagedMetadata(const std::string& name, double fitness)
+    {
+        auto meta = createTestMetadata(name, fitness);
+        meta.trainingSessionId = UUID::generate();
+        return meta;
+    }
 };
 
 TEST_F(GenomeRepositoryTest, StoreAndRetrieveGenome)
@@ -170,6 +177,50 @@ TEST_F(GenomeRepositoryTest, StoreOverwritesExistingGenome)
     ASSERT_TRUE(meta.has_value());
     EXPECT_EQ(meta->name, "updated");
     EXPECT_DOUBLE_EQ(meta->fitness, 9.0);
+}
+
+TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashReusesExistingGenomeId)
+{
+    const auto genome = createTestGenome(0.42);
+    const auto initial = createManagedMetadata("initial", 1.0);
+    const auto updated = createManagedMetadata("updated", 9.0);
+
+    const auto first = repo.storeOrUpdateByHash(genome, initial);
+    const auto second = repo.storeOrUpdateByHash(genome, updated);
+
+    EXPECT_EQ(repo.count(), 1u);
+    EXPECT_TRUE(first.inserted);
+    EXPECT_FALSE(first.deduplicated);
+    EXPECT_FALSE(second.inserted);
+    EXPECT_TRUE(second.deduplicated);
+    EXPECT_EQ(first.id, second.id);
+
+    const auto metadata = repo.getMetadata(first.id);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->name, "updated");
+    EXPECT_DOUBLE_EQ(metadata->fitness, 9.0);
+}
+
+TEST_F(GenomeRepositoryTest, PruneManagedByFitnessKeepsBestId)
+{
+    const GenomeId idLow = UUID::generate();
+    const GenomeId idMidA = UUID::generate();
+    const GenomeId idMidB = UUID::generate();
+    const GenomeId idHigh = UUID::generate();
+
+    repo.store(idLow, createTestGenome(0.1), createManagedMetadata("low", 1.0));
+    repo.store(idMidA, createTestGenome(0.2), createManagedMetadata("mid_a", 2.0));
+    repo.store(idMidB, createTestGenome(0.3), createManagedMetadata("mid_b", 3.0));
+    repo.store(idHigh, createTestGenome(0.4), createManagedMetadata("high", 4.0));
+    repo.markAsBest(idLow);
+
+    const size_t removed = repo.pruneManagedByFitness(2);
+    EXPECT_EQ(removed, 2u);
+    EXPECT_EQ(repo.count(), 2u);
+    EXPECT_TRUE(repo.exists(idLow));
+    EXPECT_TRUE(repo.exists(idHigh));
+    EXPECT_FALSE(repo.exists(idMidA));
+    EXPECT_FALSE(repo.exists(idMidB));
 }
 
 TEST_F(GenomeRepositoryTest, ConcurrentStoreAndReadIsThreadSafe)

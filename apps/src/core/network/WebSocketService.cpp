@@ -262,6 +262,11 @@ Result<std::monostate, std::string> WebSocketService::connect(const std::string&
         // Open connection.
         ws_->open(url);
 
+        if (timeoutMs <= 0) {
+            LOG_INFO(Network, "Connection initiated to {} (async mode)", url);
+            return Result<std::monostate, std::string>::okay(std::monostate{});
+        }
+
         // Wait for connection with timeout.
         auto startTime = std::chrono::steady_clock::now();
         while (!ws_->isOpen() && !connectionFailed_) {

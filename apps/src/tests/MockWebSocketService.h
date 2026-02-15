@@ -5,6 +5,7 @@
 #include "server/api/ApiError.h"
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace DirtSim::Tests {
@@ -59,9 +60,15 @@ public:
     bool clientWantsEvents(const std::string& /*connectionId*/) const override;
     bool clientWantsRender(const std::string& /*connectionId*/) const override;
 
-    void onConnected(ConnectionCallback /*callback*/) override {}
-    void onDisconnected(ConnectionCallback /*callback*/) override {}
-    void onError(ErrorCallback /*callback*/) override {}
+    void onConnected(ConnectionCallback callback) override
+    {
+        connectedCallback_ = std::move(callback);
+    }
+    void onDisconnected(ConnectionCallback callback) override
+    {
+        disconnectedCallback_ = std::move(callback);
+    }
+    void onError(ErrorCallback callback) override { errorCallback_ = std::move(callback); }
     void onBinary(BinaryCallback /*callback*/) override {}
     void onServerCommand(ServerCommandCallback /*callback*/) override {}
     void setJsonDeserializer(JsonDeserializer /*deserializer*/) override {}
@@ -75,6 +82,9 @@ private:
     std::string accessToken_;
     std::map<std::string, Network::MessageEnvelope> responses_;
     std::vector<std::string> sentCommands_;
+    ConnectionCallback connectedCallback_;
+    ConnectionCallback disconnectedCallback_;
+    ErrorCallback errorCallback_;
 };
 
 } // namespace DirtSim::Tests

@@ -257,6 +257,7 @@ void IconRail::configureDuckIcon(lv_obj_t* button)
 
     lv_obj_clean(button);
     lv_obj_set_style_pad_all(button, 0, 0);
+    lv_obj_set_layout(button, LV_LAYOUT_NONE);
 
     const int buttonWidth = lv_obj_get_width(button);
     const int buttonHeight = lv_obj_get_height(button);
@@ -277,8 +278,8 @@ void IconRail::configureDuckIcon(lv_obj_t* button)
     lv_obj_t* duckImage = lv_image_create(button);
     lv_image_set_src(duckImage, &duck_img);
 
-    const int maxWidth = std::max(0, lv_obj_get_width(button) - 12);
-    const int maxHeight = std::max(0, lv_obj_get_height(button) - 12);
+    const int maxWidth = std::max(0, lv_obj_get_width(button));
+    const int maxHeight = std::max(0, lv_obj_get_height(button));
     const float scaleX = static_cast<float>(maxWidth) / static_cast<float>(DUCK_IMG_WIDTH);
     const float scaleY = static_cast<float>(maxHeight) / static_cast<float>(DUCK_IMG_HEIGHT);
     float scale = std::min(scaleX, scaleY);

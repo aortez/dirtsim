@@ -7,12 +7,19 @@ Result<std::monostate, std::string> MockWebSocketService::connect(
     const std::string& /*url*/, int /*timeoutMs*/)
 {
     connected_ = true;
+    if (connectedCallback_) {
+        connectedCallback_();
+    }
     return Result<std::monostate, std::string>::okay(std::monostate{});
 }
 
 void MockWebSocketService::disconnect()
 {
+    const bool wasConnected = connected_;
     connected_ = false;
+    if (wasConnected && disconnectedCallback_) {
+        disconnectedCallback_();
+    }
 }
 
 bool MockWebSocketService::isConnected() const
