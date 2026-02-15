@@ -79,6 +79,70 @@ const char* treeCommandName(TreeCommandType type)
     return "UNKNOWN";
 }
 
+const char* commandResultName(CommandResult result)
+{
+    switch (result) {
+        case CommandResult::SUCCESS:
+            return "SUCCESS";
+        case CommandResult::INSUFFICIENT_ENERGY:
+            return "INSUFFICIENT_ENERGY";
+        case CommandResult::INVALID_TARGET:
+            return "INVALID_TARGET";
+        case CommandResult::BLOCKED:
+            return "BLOCKED";
+    }
+
+    return "UNKNOWN";
+}
+
+std::string treeCommandSignature(const TreeCommand& command, Vector2i seedPosition)
+{
+    const auto formatDelta = [](int value) {
+        if (value >= 0) {
+            return "+" + std::to_string(value);
+        }
+        return std::to_string(value);
+    };
+
+    return std::visit(
+        [&](const auto& cmd) -> std::string {
+            using T = std::decay_t<decltype(cmd)>;
+            if constexpr (std::is_same_v<T, WaitCommand>) {
+                return "Wait";
+            }
+            else if constexpr (std::is_same_v<T, CancelCommand>) {
+                return "Cancel";
+            }
+            else if constexpr (std::is_same_v<T, GrowWoodCommand>) {
+                const int dx = cmd.target_pos.x - seedPosition.x;
+                const int dy = cmd.target_pos.y - seedPosition.y;
+                return "GrowWood(" + formatDelta(dx) + "," + formatDelta(dy) + ")";
+            }
+            else if constexpr (std::is_same_v<T, GrowLeafCommand>) {
+                const int dx = cmd.target_pos.x - seedPosition.x;
+                const int dy = cmd.target_pos.y - seedPosition.y;
+                return "GrowLeaf(" + formatDelta(dx) + "," + formatDelta(dy) + ")";
+            }
+            else if constexpr (std::is_same_v<T, GrowRootCommand>) {
+                const int dx = cmd.target_pos.x - seedPosition.x;
+                const int dy = cmd.target_pos.y - seedPosition.y;
+                return "GrowRoot(" + formatDelta(dx) + "," + formatDelta(dy) + ")";
+            }
+            else if constexpr (std::is_same_v<T, ProduceSeedCommand>) {
+                const int dx = cmd.position.x - seedPosition.x;
+                const int dy = cmd.position.y - seedPosition.y;
+                return "ProduceSeed(" + formatDelta(dx) + "," + formatDelta(dy) + ")";
+            }
+        },
+        command);
+}
+
+std::string treeCommandOutcomeSignature(
+    const TreeCommand& command, Vector2i seedPosition, CommandResult result)
+{
+    return treeCommandSignature(command, seedPosition) + " -> " + commandResultName(result);
+}
+
 TreeMaterialCounts countTreeMaterials(const Tree& tree)
 {
     TreeMaterialCounts counts;
@@ -151,6 +215,59 @@ Tree::Tree(
 
     recomputeMass();
     recomputeCenterOfMass();
+}
+
+std::vector<std::pair<std::string, int>> Tree::getTopCommandSignatures(size_t maxEntries) const
+{
+    if (maxEntries == 0 || commandSignatureCounts_.empty()) {
+        return {};
+    }
+
+    std::vector<std::pair<std::string, int>> entries;
+    entries.reserve(commandSignatureCounts_.size());
+    for (const auto& [signature, count] : commandSignatureCounts_) {
+        entries.emplace_back(signature, count);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+
+    if (entries.size() > maxEntries) {
+        entries.resize(maxEntries);
+    }
+
+    return entries;
+}
+
+std::vector<std::pair<std::string, int>> Tree::getTopCommandOutcomeSignatures(
+    size_t maxEntries) const
+{
+    if (maxEntries == 0 || commandOutcomeSignatureCounts_.empty()) {
+        return {};
+    }
+
+    std::vector<std::pair<std::string, int>> entries;
+    entries.reserve(commandOutcomeSignatureCounts_.size());
+    for (const auto& [signature, count] : commandOutcomeSignatureCounts_) {
+        entries.emplace_back(signature, count);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+
+    if (entries.size() > maxEntries) {
+        entries.resize(maxEntries);
+    }
+
+    return entries;
 }
 
 Tree::~Tree() = default;
@@ -263,7 +380,10 @@ void Tree::update(World& world, double deltaTime)
 
 void Tree::executeCommand(World& world)
 {
+    const Vector2i seedPosition = getAnchorCell();
     CommandExecutionResult result = processor->execute(*this, world, *current_command_);
+    ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
+        *current_command_, seedPosition, result.result)];
     const bool accepted = result.succeeded();
     hasLastCommandResult_ = true;
     lastCommandAccepted_ = accepted;
@@ -307,6 +427,7 @@ void Tree::processBrainDecision(World& world)
             command = brain_->decide(sensory);
         }
     }
+    ++commandSignatureCounts_[treeCommandSignature(command, sensory.seed_position)];
 
     // Handle the command.
     std::visit(
@@ -336,6 +457,8 @@ void Tree::processBrainDecision(World& world)
                 if (!current_command_.has_value()) {
                     CommandExecutionResult validation = processor->validate(*this, world, cmd);
                     if (!validation.succeeded()) {
+                        ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
+                            cmd, sensory.seed_position, validation.result)];
                         hasLastCommandResult_ = true;
                         lastCommandAccepted_ = false;
                         ++commandRejectedCount_;
@@ -351,6 +474,8 @@ void Tree::processBrainDecision(World& world)
                     const double energyCost = processor->getEnergyCost(cmd);
                     if (energyCost > 0.0) {
                         if (total_energy_ < energyCost) {
+                            ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
+                                cmd, sensory.seed_position, CommandResult::INSUFFICIENT_ENERGY)];
                             hasLastCommandResult_ = true;
                             lastCommandAccepted_ = false;
                             ++commandRejectedCount_;

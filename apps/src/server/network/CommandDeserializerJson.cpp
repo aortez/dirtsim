@@ -23,6 +23,7 @@
 #include "server/api/SpawnDirtBall.h"
 #include "server/api/StateGet.h"
 #include "server/api/TimerStatsGet.h"
+#include "server/api/TrainingBestSnapshotGet.h"
 #include "server/api/TrainingResultDelete.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/TrainingResultGet.h"
@@ -180,6 +181,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         else if (commandName == Api::TrainingResultSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(
                 Api::TrainingResultSet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::TrainingBestSnapshotGet::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::TrainingBestSnapshotGet::Command::fromJson(cmd));
         }
         else if (commandName == Api::TrainingStreamConfigSet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(

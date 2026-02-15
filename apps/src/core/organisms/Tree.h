@@ -7,6 +7,10 @@
 #include "TreeSensoryData.h"
 #include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace DirtSim {
 
@@ -48,6 +52,9 @@ public:
     const TreeResourceTotals& getResourceTotals() const { return resourceTotals_; }
     int getCommandAcceptedCount() const { return commandAcceptedCount_; }
     int getCommandRejectedCount() const { return commandRejectedCount_; }
+    std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
+    std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
+        size_t maxEntries) const;
     double getLastFitness() const { return lastFitness_; }
     bool hasLastFitness() const { return hasLastFitness_; }
     void setLastFitness(double fitness) const
@@ -96,6 +103,8 @@ private:
     std::unique_ptr<TreeBrain> brain_;
     std::unique_ptr<RigidBodyComponent> rigidBody_;
     TreeResourceTotals resourceTotals_;
+    std::unordered_map<std::string, int> commandSignatureCounts_;
+    std::unordered_map<std::string, int> commandOutcomeSignatureCounts_;
 
     void executeCommand(World& world);
     void processBrainDecision(World& world);

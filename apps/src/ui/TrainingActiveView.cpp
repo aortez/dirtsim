@@ -11,7 +11,9 @@
 #include "state-machine/EventSink.h"
 #include "ui_builders/LVGLBuilder.h"
 #include <algorithm>
+#include <iomanip>
 #include <lvgl/lvgl.h>
+#include <sstream>
 
 namespace DirtSim {
 namespace Ui {
@@ -146,7 +148,24 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_border_width(longTermPanel_, 1, 0);
     lv_obj_set_style_border_color(longTermPanel_, lv_color_hex(0x2A2A44), 0);
     lv_obj_set_style_pad_all(longTermPanel_, 10, 0);
-    lv_obj_clear_flag(longTermPanel_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_style_pad_gap(longTermPanel_, 6, 0);
+    lv_obj_set_flex_flow(longTermPanel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        longTermPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_set_scroll_dir(longTermPanel_, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(longTermPanel_, LV_SCROLLBAR_MODE_AUTO);
+
+    lv_obj_t* bestCommandsTitle = lv_label_create(longTermPanel_);
+    lv_label_set_text(bestCommandsTitle, "Best Command Histogram");
+    lv_obj_set_style_text_color(bestCommandsTitle, lv_color_hex(0xFFDD66), 0);
+    lv_obj_set_style_text_font(bestCommandsTitle, &lv_font_montserrat_14, 0);
+
+    bestCommandSummaryLabel_ = lv_label_create(longTermPanel_);
+    lv_obj_set_width(bestCommandSummaryLabel_, LV_PCT(100));
+    lv_label_set_long_mode(bestCommandSummaryLabel_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_style_text_font(bestCommandSummaryLabel_, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(bestCommandSummaryLabel_, lv_color_hex(0xCCCCCC), 0);
+    lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
 
     // ========== TOP: Stats panel (condensed) ==========
     statsPanel_ = lv_obj_create(centerLayout);
@@ -393,6 +412,7 @@ void TrainingActiveView::destroyUI()
     averageLabel_ = nullptr;
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
+    bestCommandSummaryLabel_ = nullptr;
     bestThisGenLabel_ = nullptr;
     bestWorldContainer_ = nullptr;
     container_ = nullptr;
@@ -430,7 +450,13 @@ void TrainingActiveView::renderWorld(const WorldData& worldData)
 }
 
 void TrainingActiveView::updateBestSnapshot(
-    const WorldData& worldData, double fitness, int generation)
+    const WorldData& worldData,
+    double fitness,
+    int generation,
+    int commandsAccepted,
+    int commandsRejected,
+    const std::vector<std::pair<std::string, int>>& topCommandSignatures,
+    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
 {
     bestWorldData_ = std::make_unique<WorldData>(worldData);
     bestFitness_ = fitness;
@@ -461,6 +487,47 @@ void TrainingActiveView::updateBestSnapshot(
         char buf[64];
         snprintf(buf, sizeof(buf), "All Time: %.2f", fitness);
         lv_label_set_text(bestAllTimeLabel_, buf);
+    }
+    if (bestCommandSummaryLabel_) {
+        std::ostringstream summary;
+        const int totalOutcomes = commandsAccepted + commandsRejected;
+        double acceptedRatio = 0.0;
+        if (totalOutcomes > 0) {
+            acceptedRatio = (100.0 * static_cast<double>(commandsAccepted))
+                / static_cast<double>(totalOutcomes);
+        }
+        summary << "Accepted: " << commandsAccepted << "\n";
+        summary << "Rejected: " << commandsRejected << "\n";
+        summary << "Acceptance: " << std::fixed << std::setprecision(1) << acceptedRatio << "%\n";
+        summary << "\nTop Command Signatures:\n";
+        if (topCommandSignatures.empty()) {
+            summary << "(none)";
+        }
+        else {
+            size_t rank = 1;
+            for (const auto& [signature, count] : topCommandSignatures) {
+                summary << rank << ". " << signature << " x" << count;
+                if (rank < topCommandSignatures.size()) {
+                    summary << "\n";
+                }
+                rank++;
+            }
+        }
+        summary << "\n\nTop Outcome Signatures:\n";
+        if (topCommandOutcomeSignatures.empty()) {
+            summary << "(none)";
+        }
+        else {
+            size_t rank = 1;
+            for (const auto& [signature, count] : topCommandOutcomeSignatures) {
+                summary << rank << ". " << signature << " x" << count;
+                if (rank < topCommandOutcomeSignatures.size()) {
+                    summary << "\n";
+                }
+                rank++;
+            }
+        }
+        lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
     scheduleBestRender();
 }
@@ -664,6 +731,9 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
         hasShownBestSnapshot_ = false;
+        if (bestCommandSummaryLabel_) {
+            lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
+        }
     }
 
     if (statusLabel_) {

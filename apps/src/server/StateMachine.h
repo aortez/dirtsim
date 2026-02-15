@@ -6,6 +6,7 @@
 #include "core/StateMachineBase.h"
 #include "core/StateMachineInterface.h"
 #include "core/organisms/OrganismType.h"
+#include "server/api/TrainingBestSnapshot.h"
 
 #include <filesystem>
 #include <functional>
@@ -28,7 +29,7 @@ struct WorldData;
 
 namespace Api {
 struct TrainingResult;
-}
+} // namespace Api
 
 namespace Network {
 class WebSocketService;
@@ -80,6 +81,9 @@ public:
 
     void updateCachedWorldData(const WorldData& data);
     std::shared_ptr<WorldData> getCachedWorldData() const;
+    void updateCachedTrainingBestSnapshot(const Api::TrainingBestSnapshot& snapshot);
+    std::optional<Api::TrainingBestSnapshot> getCachedTrainingBestSnapshot() const;
+    void clearCachedTrainingBestSnapshot();
 
     ScenarioRegistry& getScenarioRegistry();
     const ScenarioRegistry& getScenarioRegistry() const;
