@@ -45,6 +45,8 @@ protected:
             .diffusion_rate = 0.0f,
             .sky_access_enabled = false,
             .sky_access_falloff = 0.0f,
+            .sky_access_multi_directional = false,
+            .sky_probe_steps = 48,
             .sun_color = ColorNames::white(),
             .sun_enabled = true,
             .sun_intensity = 1.0f,
@@ -373,6 +375,83 @@ TEST_F(WorldLightCalculatorTest, SkyAccessVerticalShaft)
 
     EXPECT_GT(shaft, blocked) << "Cell in shaft should be brighter than blocked cell";
     EXPECT_GT(shaft, 0.2f) << "Cell in vertical shaft should have decent ambient";
+}
+
+TEST_F(WorldLightCalculatorTest, SkyAccessMultiDirectionalCreatesAtoBtoCFalloff)
+{
+    World world(21, 9);
+    WorldData& data = world.getData();
+
+    // Start with all AIR to isolate ambient sky behavior.
+    for (int y = 0; y < data.height; ++y) {
+        for (int x = 0; x < data.width; ++x) {
+            data.at(x, y).clear();
+        }
+    }
+
+    // Roof with center opening.
+    for (int x = 0; x <= 5; ++x) {
+        data.at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0f);
+    }
+    for (int x = 14; x < data.width; ++x) {
+        data.at(x, 4).replaceMaterial(Material::EnumType::Wall, 1.0f);
+    }
+
+    // Side walls.
+    for (int y = 5; y <= 7; ++y) {
+        data.at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0f);
+        data.at(data.width - 1, y).replaceMaterial(Material::EnumType::Wall, 1.0f);
+    }
+
+    // Floor.
+    for (int x = 0; x < data.width; ++x) {
+        data.at(x, 8).replaceMaterial(Material::EnumType::Wall, 1.0f);
+    }
+
+    // Advance to rebuild grid cache after placing materials.
+    world.advanceTime(0.0001);
+
+    config.sun_enabled = false;
+    config.ambient_color = ColorNames::white();
+    config.ambient_intensity = 1.0f;
+    config.sky_access_enabled = true;
+    config.sky_access_falloff = 1.0f;
+    config.sky_access_multi_directional = true;
+    config.sky_probe_steps = 64;
+    calc.calculate(world, world.getGrid(), config, timers);
+
+    // Print lightmap with sample points for debugging.
+    spdlog::info("=== SkyAccessMultiDirectionalCreatesAtoBtoCFalloff Lightmap ===");
+    spdlog::info("Legend: X=wall, shades dark->bright, a/b/c are sampled cells");
+    std::string lightmap = calc.lightMapString(world);
+    std::istringstream iss(lightmap);
+    std::string line;
+    int row = 0;
+    while (std::getline(iss, line)) {
+        if (row == 7 && line.size() > 10) {
+            line[5] = 'b';
+            line[10] = 'a';
+        }
+        if (row == 5 && line.size() > 18) {
+            line[18] = 'c';
+        }
+        spdlog::info("{:2d}: {}", row++, line);
+    }
+
+    // a: Directly under opening (vertical and diagonal sky access).
+    const float a = ColorNames::brightness(data.colors.at(10, 7));
+    // b: Under roof edge (blocked vertically, visible through one diagonal probe).
+    const float b = ColorNames::brightness(data.colors.at(5, 7));
+    // c: Deep side pocket (blocked vertically and by both diagonals).
+    const float c = ColorNames::brightness(data.colors.at(18, 5));
+    spdlog::info("a(10,7)={:.3f}, b(5,7)={:.3f}, c(18,5)={:.3f}", a, b, c);
+
+    EXPECT_GT(a, b) << "a should be brighter than b with direct sky access";
+    EXPECT_GT(b, c) << "b should be brighter than c with one diagonal path";
+    EXPECT_GT(a, 0.95f) << "a should be near full ambient";
+    EXPECT_GT(b, 0.20f) << "b should receive measurable diagonal ambient";
+    EXPECT_LT(b, 0.30f) << "b should be dimmer than direct-lit cells";
+    EXPECT_LT(c, 0.05f) << "c should be near dark with no probe path";
 }
 
 // =============================================================================
@@ -787,6 +866,8 @@ protected:
             .diffusion_rate = 0.0f,
             .sky_access_enabled = false,
             .sky_access_falloff = 0.0f,
+            .sky_access_multi_directional = false,
+            .sky_probe_steps = 48,
             .sun_color = ColorNames::white(),
             .sun_enabled = false,
             .sun_intensity = 0.0f,
