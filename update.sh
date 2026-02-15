@@ -1,9 +1,9 @@
 #!/bin/bash
-# Update script: Build yocto image and deploy to Pi via A/B update.
+# Update script: Build Yocto artifacts and deploy to a remote DirtSim target.
 #
 # This is a convenience wrapper around the yocto YOLO update process.
-# It builds the image (unless --skip-build) and flashes it to the
-# inactive partition on the Pi over the network.
+# On Raspberry Pi targets, it builds/flashes the inactive A/B slot.
+# On x86 targets, yolo-update auto-switches to x86 build + fast deploy.
 #
 # Usage:
 #   ./update.sh                     # Build in Docker + flash + reboot (no prompts)
@@ -11,7 +11,7 @@
 #   ./update.sh --clean             # Force rebuild (clean image sstate)
 #   ./update.sh --clean-all         # Full rebuild (clean server + image)
 #   ./update.sh --target 192.168.1.50  # Target specific host
-#   ./update.sh --fast              # Fast local deploy (skips Docker/image build)
+#   ./update.sh --fast              # Fast deploy (ninja + scp + restart services)
 #   ./update.sh --dry-run           # Show what would happen
 #   ./update.sh --help              # Show all options
 #
