@@ -11,6 +11,7 @@
 #include "core/network/ClientHello.h"
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/StatusGet.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/UserSettingsUpdated.h"
 #include "ui/UiComponentManager.h"
@@ -33,6 +34,50 @@ constexpr int ICON_RAIL_WIDTH = 80;
 constexpr int STATUS_HEIGHT = 60;
 constexpr uint32_t BG_COLOR = 0x202020;
 constexpr uint32_t RAIL_COLOR = 0x303030;
+
+State::Any selectPostConnectState(StateMachine& sm)
+{
+    if (!sm.hasWebSocketService()) {
+        LOG_WARN(State, "No WebSocketService available after connect, defaulting to StartMenu");
+        return StartMenu{};
+    }
+
+    auto& wsService = sm.getWebSocketService();
+    if (!wsService.isConnected()) {
+        LOG_WARN(State, "WebSocket not connected after connect, defaulting to StartMenu");
+        return StartMenu{};
+    }
+
+    Api::StatusGet::Command statusCmd{};
+    const auto statusResult =
+        wsService.sendCommandAndGetResponse<Api::StatusGet::Okay>(statusCmd, 2000);
+    if (statusResult.isError()) {
+        LOG_WARN(
+            State,
+            "StatusGet failed after connect: {}, defaulting to StartMenu",
+            statusResult.errorValue());
+        return StartMenu{};
+    }
+
+    if (statusResult.value().isError()) {
+        LOG_WARN(
+            State,
+            "StatusGet returned error after connect: {}, defaulting to StartMenu",
+            statusResult.value().errorValue().message);
+        return StartMenu{};
+    }
+
+    const auto& status = statusResult.value().value();
+    LOG_INFO(State, "Server status after connect: {}", status.state);
+
+    if (status.state == "Evolution") {
+        LOG_INFO(State, "Server is already evolving, transitioning to TrainingActive");
+        return TrainingActive{};
+    }
+
+    LOG_INFO(State, "Server not in evolution, transitioning to StartMenu");
+    return StartMenu{};
+}
 
 } // namespace
 
@@ -411,18 +456,24 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     retry_pending_ = false;
     retry_count_ = 0;
 
-    LOG_INFO(State, "WebSocketService connecting to {}", url);
+    if (!wsService.isConnected()) {
+        LOG_INFO(
+            State,
+            "WebSocketService connect initiated to {}, waiting for ServerConnectedEvent",
+            url);
+        return std::move(*this);
+    }
 
-    return StartMenu{};
+    LOG_INFO(State, "WebSocketService connected to {}", url);
+
+    return selectPostConnectState(sm);
 }
 
-State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& /*sm*/)
+State::Any Disconnected::onEvent(const ServerConnectedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Server connection established");
 
-    LOG_INFO(State, "Transitioning to StartMenu");
-
-    return StartMenu{};
+    return selectPostConnectState(sm);
 }
 
 } // namespace State

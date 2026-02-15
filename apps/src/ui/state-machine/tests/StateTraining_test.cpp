@@ -8,6 +8,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/RenderFormatSet.h"
+#include "server/api/StatusGet.h"
 #include "server/api/TrainingResultSave.h"
 #include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsSet.h"
@@ -149,6 +150,56 @@ TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
     fixture.stateMachine->handleEvent(evt);
 
     EXPECT_EQ(fixture.stateMachine->getCurrentStateName(), "Disconnected");
+}
+
+TEST(StateTrainingTest, ConnectTransitionsToTrainingActiveWhenServerIsEvolving)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.mockWebSocketService->expectSuccess<Api::StatusGet::Command>(
+        { .state = "Evolution",
+          .error_message = "",
+          .timestep = 0,
+          .scenario_id = std::nullopt,
+          .width = 0,
+          .height = 0,
+          .cpu_percent = 0.0,
+          .memory_percent = 0.0 });
+
+    Disconnected disconnectedState;
+    State::Any newState = disconnectedState.onEvent(
+        ConnectToServerCommand{ .host = "localhost", .port = 8080 }, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<TrainingActive>(newState.getVariant()));
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_EQ(sentCommands.size(), 1u);
+    EXPECT_EQ(sentCommands[0], "StatusGet");
+}
+
+TEST(StateTrainingTest, ConnectTransitionsToStartMenuWhenServerIsNotEvolving)
+{
+    TestStateMachineFixture fixture;
+
+    fixture.mockWebSocketService->expectSuccess<Api::StatusGet::Command>(
+        { .state = "Idle",
+          .error_message = "",
+          .timestep = 0,
+          .scenario_id = std::nullopt,
+          .width = 0,
+          .height = 0,
+          .cpu_percent = 0.0,
+          .memory_percent = 0.0 });
+
+    Disconnected disconnectedState;
+    State::Any newState = disconnectedState.onEvent(
+        ConnectToServerCommand{ .host = "localhost", .port = 8080 }, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<StartMenu>(newState.getVariant()));
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_EQ(sentCommands.size(), 1u);
+    EXPECT_EQ(sentCommands[0], "StatusGet");
 }
 
 TEST(StateTrainingTest, StartEvolutionSendsCommand)
