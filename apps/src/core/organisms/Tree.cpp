@@ -311,6 +311,7 @@ void Tree::update(World& world, double deltaTime)
         if (time_remaining_seconds_ <= 0.0) {
             executeCommand(world);
             current_command_.reset();
+            currentCommandSeedPosition_.reset();
         }
     }
 
@@ -380,7 +381,8 @@ void Tree::update(World& world, double deltaTime)
 
 void Tree::executeCommand(World& world)
 {
-    const Vector2i seedPosition = getAnchorCell();
+    const Vector2i seedPosition =
+        currentCommandSeedPosition_.has_value() ? *currentCommandSeedPosition_ : getAnchorCell();
     CommandExecutionResult result = processor->execute(*this, world, *current_command_);
     ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
         *current_command_, seedPosition, result.result)];
@@ -448,6 +450,7 @@ void Tree::processBrainDecision(World& world)
                         reservedCommandType_ = TreeCommandType::WaitCommand;
                     }
                     current_command_.reset();
+                    currentCommandSeedPosition_.reset();
                     time_remaining_seconds_ = 0.0;
                     total_command_time_seconds_ = 0.0;
                 }
@@ -494,6 +497,7 @@ void Tree::processBrainDecision(World& world)
                     }
 
                     current_command_ = cmd;
+                    currentCommandSeedPosition_ = sensory.seed_position;
                     time_remaining_seconds_ = cmd.execution_time_seconds;
                     total_command_time_seconds_ = time_remaining_seconds_;
                 }

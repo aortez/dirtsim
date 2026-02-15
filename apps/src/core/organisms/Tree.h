@@ -65,7 +65,16 @@ public:
 
     // Command state.
     const std::optional<TreeCommand>& getCurrentCommand() const { return current_command_; }
-    void setCurrentCommand(const std::optional<TreeCommand>& cmd) { current_command_ = cmd; }
+    void setCurrentCommand(const std::optional<TreeCommand>& cmd)
+    {
+        current_command_ = cmd;
+        if (!current_command_.has_value()) {
+            currentCommandSeedPosition_.reset();
+        }
+        else {
+            currentCommandSeedPosition_ = getAnchorCell();
+        }
+    }
     double getTimeRemaining() const { return time_remaining_seconds_; }
     void setTimeRemaining(double time) { time_remaining_seconds_ = time; }
     bool isEnergyReservedForCommand(const TreeCommand& cmd, double energyCost) const;
@@ -98,6 +107,7 @@ private:
     mutable double lastFitness_ = 0.0;
     mutable bool hasLastFitness_ = false;
     std::optional<TreeCommand> current_command_;
+    std::optional<Vector2i> currentCommandSeedPosition_;
     double time_remaining_seconds_ = 0.0;
     double total_command_time_seconds_ = 0.0; // Original duration for progress calculation.
     std::unique_ptr<TreeBrain> brain_;
