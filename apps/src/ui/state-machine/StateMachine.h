@@ -108,6 +108,8 @@ public:
         return uiConfig ? *uiConfig : defaultConfig;
     }
 
+    bool consumeStartupAutoRun();
+
 private:
     static constexpr uint32_t AutoShrinkTimeoutMs = 10000;
     static constexpr uint32_t StartMenuIdleClockTimeoutMs = 60000;
@@ -124,6 +126,7 @@ private:
     UserSettingsManager* userSettingsManager_ = nullptr;
     DirtSim::UserSettings serverUserSettings_{};
     bool startMenuIdleClockTriggered_ = false;
+    bool startupAutoRunConsumed_ = false;
     int synthVolumePercent_ = 20;
     bool audioVolumeWarningLogged_ = false;
 
