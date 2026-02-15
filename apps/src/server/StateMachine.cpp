@@ -198,6 +198,11 @@ UserSettings sanitizeUserSettings(
         recordUpdate("startMenuIdleAction reset to ClockScenario");
     }
 
+    if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
+        settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
+        recordUpdate("trainingResumePolicy reset to WarmFromBest");
+    }
+
     if (settings.evolutionConfig.targetCpuPercent < 0) {
         settings.evolutionConfig.targetCpuPercent = 0;
         recordUpdate("targetCpuPercent clamped to 0");

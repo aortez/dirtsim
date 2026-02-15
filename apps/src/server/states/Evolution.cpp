@@ -667,7 +667,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
     if (result.fitness > bestFitnessThisGen) {
         bestFitnessThisGen = result.fitness;
     }
-    if (result.fitness > bestFitnessAllTime) {
+    if (result.fitness >= bestFitnessAllTime) {
         bestFitnessAllTime = result.fitness;
         if (result.snapshot.has_value()) {
             Api::TrainingBestSnapshot bestSnapshot;
@@ -712,7 +712,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
         LOG_INFO(
             State,
-            "Evolution: New best fitness {:.4f} at gen {} eval {}",
+            "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
             result.fitness,
             generation,
             result.index);

@@ -2,6 +2,7 @@
 
 #include "core/ScenarioId.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/TrainingResumePolicy.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include <nlohmann/json_fwd.hpp>
 #include <zpp_bits.h>
@@ -22,8 +23,9 @@ struct UserSettings {
     TrainingSpec trainingSpec;
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
+    TrainingResumePolicy trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
 
-    using serialize = zpp::bits::members<7>;
+    using serialize = zpp::bits::members<8>;
 };
 
 void from_json(const nlohmann::json& j, UserSettings& settings);

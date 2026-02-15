@@ -38,13 +38,37 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
     return scenarioConfig;
 }
 
+bool isBestGenomeCompatibleForPopulation(
+    const GenomeMetadata& metadata, OrganismType organismType, const PopulationSpec& populationSpec)
+{
+    if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
+        return false;
+    }
+
+    if (metadata.scenarioId != populationSpec.scenarioId) {
+        return false;
+    }
+
+    if (!metadata.brainKind.has_value() || metadata.brainKind.value() != populationSpec.brainKind) {
+        return false;
+    }
+
+    if (metadata.brainVariant.value_or("") != populationSpec.brainVariant.value_or("")) {
+        return false;
+    }
+
+    return true;
+}
+
 std::optional<ApiError> validateTrainingConfig(
     const Api::EvolutionStart::Command& command,
     ScenarioRegistry& registry,
     GenomeRepository& repo,
     TrainingSpec& outSpec,
-    int& outPopulationSize)
+    int& outPopulationSize,
+    bool& outWarmSeedInjected)
 {
+    outWarmSeedInjected = false;
     outSpec.scenarioId = command.scenarioId;
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
@@ -77,9 +101,21 @@ std::optional<ApiError> validateTrainingConfig(
     }
 
     TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
+    std::optional<GenomeId> bestSeedId;
+    std::optional<GenomeMetadata> bestSeedMetadata;
+    if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
+        auto bestId = repo.getBestId();
+        if (bestId.has_value()) {
+            auto metadata = repo.getMetadata(bestId.value());
+            if (metadata.has_value()) {
+                bestSeedId = bestId;
+                bestSeedMetadata = metadata;
+            }
+        }
+    }
 
     outPopulationSize = 0;
-    for (const auto& spec : outSpec.population) {
+    for (auto& spec : outSpec.population) {
         const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
         if (!metadata) {
             return ApiError(
@@ -104,6 +140,17 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         if (entry->requiresGenome) {
+            if (!outWarmSeedInjected && bestSeedId.has_value() && bestSeedMetadata.has_value()
+                && spec.randomCount > 0 && spec.count > 0
+                && isBestGenomeCompatibleForPopulation(
+                    bestSeedMetadata.value(), outSpec.organismType, spec)
+                && std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), bestSeedId.value())
+                    == spec.seedGenomes.end()) {
+                spec.seedGenomes.push_back(bestSeedId.value());
+                spec.randomCount -= 1;
+                outWarmSeedInjected = true;
+            }
+
             if (spec.randomCount < 0) {
                 return ApiError("randomCount must be >= 0");
             }
@@ -180,12 +227,14 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
 
     TrainingSpec trainingSpec;
     int populationSize = 0;
+    bool warmSeedInjected = false;
     auto error = validateTrainingConfig(
         cwc.command,
         dsm.getScenarioRegistry(),
         dsm.getGenomeRepository(),
         trainingSpec,
-        populationSize);
+        populationSize,
+        warmSeedInjected);
     if (error.has_value()) {
         DIRTSIM_ASSERT(false, error->message);
         return Idle{};
@@ -210,6 +259,14 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
         State,
         "Evolution: max parallel evaluations = {}",
         newState.evolutionConfig.maxParallelEvaluations);
+    if (cwc.command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
+        if (warmSeedInjected) {
+            LOG_INFO(State, "Evolution: Warm resume injected repository best genome into seeds");
+        }
+        else {
+            LOG_INFO(State, "Evolution: Warm resume found no compatible repository best genome");
+        }
+    }
 
     cwc.sendResponse(Api::EvolutionStart::Response::okay({ .started = true }));
     return newState;
