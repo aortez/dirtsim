@@ -52,6 +52,7 @@ public:
     const TreeResourceTotals& getResourceTotals() const { return resourceTotals_; }
     int getCommandAcceptedCount() const { return commandAcceptedCount_; }
     int getCommandRejectedCount() const { return commandRejectedCount_; }
+    int getIdleCancelCount() const { return idleCancelCount_; }
     std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
     std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
         size_t maxEntries) const;
@@ -99,6 +100,7 @@ private:
     double total_water_ = 0.0;
     int commandAcceptedCount_ = 0;
     int commandRejectedCount_ = 0;
+    int idleCancelCount_ = 0;
     bool hasLastCommandResult_ = false;
     bool lastCommandAccepted_ = false;
     double reservedEnergy_ = 0.0;

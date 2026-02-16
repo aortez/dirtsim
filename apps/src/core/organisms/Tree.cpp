@@ -454,6 +454,9 @@ void Tree::processBrainDecision(World& world)
                     time_remaining_seconds_ = 0.0;
                     total_command_time_seconds_ = 0.0;
                 }
+                else {
+                    ++idleCancelCount_;
+                }
             }
             else {
                 // Action command - only start if idle.

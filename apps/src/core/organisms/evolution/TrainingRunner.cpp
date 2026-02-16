@@ -169,6 +169,7 @@ TrainingRunner::Status TrainingRunner::step(int frames)
                     .maxEnergy = treeEvaluator_.getMaxEnergy(),
                     .commandsAccepted = treeEvaluator_.getCommandAcceptedCount(),
                     .commandsRejected = treeEvaluator_.getCommandRejectedCount(),
+                    .idleCancels = treeEvaluator_.getIdleCancelCount(),
                 };
                 const WorldData& data = world_->getData();
                 const FitnessContext context{
@@ -206,6 +207,7 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     status.maxEnergy = treeEvaluator_.getMaxEnergy();
     status.commandsAccepted = treeEvaluator_.getCommandAcceptedCount();
     status.commandsRejected = treeEvaluator_.getCommandRejectedCount();
+    status.idleCancels = treeEvaluator_.getIdleCancelCount();
 
     if (const Organism::Body* organism = getOrganism()) {
         status.lifespan = organism->getAge();

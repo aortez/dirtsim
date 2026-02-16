@@ -16,9 +16,11 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingRunner.h"
 #include "core/organisms/evolution/TrainingSpec.h"
+#include "core/organisms/evolution/TreeEvaluator.h"
 #include <algorithm>
 #include <array>
 #include <gtest/gtest.h>
+#include <iomanip>
 #include <iostream>
 #include <random>
 #include <sstream>
@@ -373,6 +375,32 @@ void printCommandResultsRolledUp(const std::string& label, const std::vector<T>&
     }
 }
 
+void printTreeFitnessBreakdown(const TreeFitnessBreakdown& breakdown)
+{
+    const double coreTerm =
+        breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore);
+    const double bonusTerm = breakdown.stageBonus + breakdown.structureBonus
+        + breakdown.milestoneBonus + breakdown.commandScore;
+
+    const std::ios::fmtflags oldFlags = std::cout.flags();
+    const std::streamsize oldPrecision = std::cout.precision();
+    std::cout << std::fixed << std::setprecision(4);
+
+    std::cout << "Fitness breakdown\n";
+    std::cout << "  - survival: " << breakdown.survivalScore << "\n";
+    std::cout << "  - energy: " << breakdown.energyScore << "\n";
+    std::cout << "  - resource: " << breakdown.resourceScore << "\n";
+    std::cout << "  - stage bonus: " << breakdown.stageBonus << "\n";
+    std::cout << "  - structure bonus: " << breakdown.structureBonus << "\n";
+    std::cout << "  - milestone bonus: " << breakdown.milestoneBonus << "\n";
+    std::cout << "  - command score: " << breakdown.commandScore << "\n";
+    std::cout << "  - core term: " << coreTerm << "\n";
+    std::cout << "  - bonus term: " << bonusTerm << "\n";
+
+    std::cout.flags(oldFlags);
+    std::cout.precision(oldPrecision);
+}
+
 } // namespace
 
 // Proves the core design - that we can step incrementally without blocking.
@@ -608,6 +636,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .maxEnergy = status.maxEnergy,
             .commandsAccepted = status.commandsAccepted,
             .commandsRejected = status.commandsRejected,
+            .idleCancels = status.idleCancels,
         };
         const auto& treeResources = runner.getTreeResourceTotals();
         const TreeResourceTotals* treeResourcesPtr =
@@ -621,10 +650,16 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .finalOrganism = runner.getOrganism(),
             .treeResources = treeResourcesPtr,
         };
-        const double fitness = computeFitnessForOrganism(context);
+        const TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
+        const double fitness = breakdown.totalFitness;
 
         std::cout << "\n=== Brain Harness: " << brainCase.brainKind << " ===\n";
         std::cout << "Fitness: " << fitness << "\n";
+        printTreeFitnessBreakdown(breakdown);
+        std::cout << "Command counters\n";
+        std::cout << "  - accepted: " << status.commandsAccepted << "\n";
+        std::cout << "  - rejected: " << status.commandsRejected << "\n";
+        std::cout << "  - idle cancel: " << status.idleCancels << "\n";
         std::cout << "Final world:\n"
                   << WorldDiagramGeneratorEmoji::generateAnsiDiagram(*world, true, true) << "\n";
         printCommandSummary("Issued summary", countCommands(issued));

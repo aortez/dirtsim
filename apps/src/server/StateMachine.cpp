@@ -160,6 +160,7 @@ bool persistUserSettingsToDisk(
 UserSettings sanitizeUserSettings(
     const UserSettings& input,
     const ScenarioRegistry& registry,
+    const GenomeRepository& genomeRepository,
     bool& changed,
     std::vector<std::string>& updates)
 {
@@ -218,11 +219,37 @@ UserSettings sanitizeUserSettings(
         recordUpdate("genomeArchiveMaxSize clamped to 0");
     }
 
+    for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
+        auto& population = settings.trainingSpec.population[index];
+        const int originalSeedCount = static_cast<int>(population.seedGenomes.size());
+        population.seedGenomes.erase(
+            std::remove_if(
+                population.seedGenomes.begin(),
+                population.seedGenomes.end(),
+                [&](const GenomeId& genomeId) {
+                    return genomeId.isNil() || !genomeRepository.exists(genomeId);
+                }),
+            population.seedGenomes.end());
+
+        const int removedSeedCount =
+            originalSeedCount - static_cast<int>(population.seedGenomes.size());
+        if (removedSeedCount <= 0) {
+            continue;
+        }
+
+        population.randomCount += removedSeedCount;
+        recordUpdate(
+            "trainingSpec population[" + std::to_string(index) + "] removed "
+            + std::to_string(removedSeedCount) + " missing seed genome(s)");
+    }
+
     return settings;
 }
 
 UserSettings loadUserSettingsFromDisk(
-    const std::filesystem::path& filePath, const ScenarioRegistry& registry)
+    const std::filesystem::path& filePath,
+    const ScenarioRegistry& registry,
+    const GenomeRepository& genomeRepository)
 {
     const UserSettings defaults;
 
@@ -259,7 +286,8 @@ UserSettings loadUserSettingsFromDisk(
 
         bool changed = false;
         std::vector<std::string> updates;
-        UserSettings sanitized = sanitizeUserSettings(parsed, registry, changed, updates);
+        UserSettings sanitized =
+            sanitizeUserSettings(parsed, registry, genomeRepository, changed, updates);
         if (changed) {
             for (const auto& update : updates) {
                 LOG_WARN(State, "User settings validation: {}", update);
@@ -367,7 +395,8 @@ struct StateMachine::Impl {
           trainingResultRepository_(initTrainingResultRepository(dataDir_)),
           scenarioRegistry_(ScenarioRegistry::createDefault(genomeRepository_)),
           userSettingsPath_(getUserSettingsPath(dataDir_)),
-          userSettings_(loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_))
+          userSettings_(
+              loadUserSettingsFromDisk(userSettingsPath_, scenarioRegistry_, genomeRepository_))
     {
         if (userSettings_.evolutionConfig.genomeArchiveMaxSize > 0) {
             const size_t pruned = genomeRepository_.pruneManagedByFitness(
@@ -1411,8 +1440,12 @@ void StateMachine::handleEvent(const Event& event)
 
         bool changed = false;
         std::vector<std::string> updates;
-        const UserSettings sanitized =
-            sanitizeUserSettings(cwc.command.settings, pImpl->scenarioRegistry_, changed, updates);
+        const UserSettings sanitized = sanitizeUserSettings(
+            cwc.command.settings,
+            pImpl->scenarioRegistry_,
+            pImpl->genomeRepository_,
+            changed,
+            updates);
 
         if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
             cwc.sendResponse(
