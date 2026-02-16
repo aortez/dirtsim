@@ -21,7 +21,6 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 namespace {
-constexpr std::chrono::milliseconds plotRefreshInterval{ 200 };
 constexpr size_t plotRefreshPointCount = 120;
 
 Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
@@ -96,7 +95,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.fitnessHistory_.clear();
     state.plotDistributionSeries_.clear();
     state.plotBestSeries_.clear();
-    state.lastPlotUpdate_ = std::chrono::steady_clock::time_point{};
+    state.lastFitnessInsightsGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
     state.renderMessageCount_ = 0;
@@ -273,14 +272,17 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->updateProgress(progress);
 
-    fitnessHistory_.append(progress);
-    const bool shouldRefreshPlot = lastPlotUpdate_ == std::chrono::steady_clock::time_point{}
-        || (now - lastPlotUpdate_) >= plotRefreshInterval;
-    if (shouldRefreshPlot) {
-        fitnessHistory_.getSeries(plotRefreshPointCount, plotDistributionSeries_, plotBestSeries_);
+    if (progress.lastCompletedGeneration >= 0
+        && progress.lastCompletedGeneration != lastFitnessInsightsGeneration_) {
+        lastFitnessInsightsGeneration_ = progress.lastCompletedGeneration;
+        plotBestSeries_.push_back(static_cast<float>(progress.bestFitnessAllTime));
+        if (plotBestSeries_.size() > plotRefreshPointCount) {
+            const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
+            plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
+        }
+
         rebuildDistributionSeries(progress, plotDistributionSeries_);
         view_->updateFitnessPlots(plotDistributionSeries_, plotBestSeries_);
-        lastPlotUpdate_ = now;
     }
 
     return std::move(*this);
