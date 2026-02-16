@@ -211,14 +211,14 @@ TEST(FitnessCalculatorTest, TreeHeldEnergyScoreScalesAfterMinimalStructure)
     EXPECT_DOUBLE_EQ(breakdown.energyScore, 1.0);
 }
 
-TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtFiveAcceptedCommands)
+TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtOneAcceptedCommand)
 {
     const EvolutionConfig config = makeConfig();
-    const FitnessResult fiveAccepted{
+    const FitnessResult oneAccepted{
         .lifespan = config.maxSimulationTime,
         .distanceTraveled = 0.0,
         .maxEnergy = 0.0,
-        .commandsAccepted = 5,
+        .commandsAccepted = 1,
     };
     const FitnessResult manyAccepted{
         .lifespan = config.maxSimulationTime,
@@ -227,8 +227,8 @@ TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtFiveAcceptedCommands)
         .commandsAccepted = 42,
     };
 
-    const FitnessContext fiveContext{
-        .result = fiveAccepted,
+    const FitnessContext oneContext{
+        .result = oneAccepted,
         .organismType = OrganismType::TREE,
         .worldWidth = 10,
         .worldHeight = 10,
@@ -243,11 +243,11 @@ TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtFiveAcceptedCommands)
     };
 
     TreeEvaluator evaluator;
-    const TreeFitnessBreakdown fiveBreakdown = evaluator.evaluateWithBreakdown(fiveContext);
+    const TreeFitnessBreakdown oneBreakdown = evaluator.evaluateWithBreakdown(oneContext);
     const TreeFitnessBreakdown manyBreakdown = evaluator.evaluateWithBreakdown(manyContext);
 
-    EXPECT_DOUBLE_EQ(fiveBreakdown.commandScore, 0.5);
-    EXPECT_DOUBLE_EQ(manyBreakdown.commandScore, 0.5);
+    EXPECT_DOUBLE_EQ(oneBreakdown.commandScore, 0.1);
+    EXPECT_DOUBLE_EQ(manyBreakdown.commandScore, 0.1);
 }
 
 TEST(FitnessCalculatorTest, TreeCommandScorePenalizesIdleCancels)

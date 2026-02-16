@@ -1179,12 +1179,23 @@ bool StateMachine::queueReconnectToLastServer()
 
 void StateMachine::transitionTo(State::Any newState)
 {
+    const bool wasStartMenu = std::holds_alternative<State::StartMenu>(fsmState.getVariant());
     std::string oldStateName = State::getCurrentStateName(fsmState);
 
     invokeOnExit(fsmState, *this);
 
     auto expectedIndex = newState.getVariant().index();
     fsmState = std::move(newState);
+    const bool isStartMenu = std::holds_alternative<State::StartMenu>(fsmState.getVariant());
+
+    if (!wasStartMenu && isStartMenu) {
+        if (display) {
+            lv_display_trigger_activity(display);
+        }
+        lastInactiveMs_ = 0;
+        startMenuIdleClockTriggered_ = false;
+        LOG_INFO(State, "StartMenu entered, reset idle auto-start timer");
+    }
 
     std::string newStateName = State::getCurrentStateName(fsmState);
     LOG_INFO(State, "Ui::StateMachine: {} -> {}", oldStateName, newStateName);

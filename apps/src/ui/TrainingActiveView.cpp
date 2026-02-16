@@ -10,7 +10,9 @@
 #include "state-machine/Event.h"
 #include "state-machine/EventSink.h"
 #include "ui_builders/LVGLBuilder.h"
+#include "widgets/TimeSeriesPlotWidget.h"
 #include <algorithm>
+#include <cstdint>
 #include <iomanip>
 #include <lvgl/lvgl.h>
 #include <sstream>
@@ -25,6 +27,29 @@ struct BestRenderRequest {
 };
 
 } // namespace
+
+std::vector<float> TrainingActiveView::buildDistributionSeries(
+    const Api::EvolutionProgress& progress)
+{
+    std::vector<float> distribution;
+    if (progress.lastGenerationFitnessHistogram.empty()) {
+        return distribution;
+    }
+
+    uint64_t total = 0;
+    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
+        total += count;
+    }
+    if (total == 0) {
+        return distribution;
+    }
+
+    distribution.reserve(progress.lastGenerationFitnessHistogram.size());
+    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
+        distribution.push_back(static_cast<float>(count) / static_cast<float>(total));
+    }
+    return distribution;
+}
 
 TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
@@ -76,12 +101,17 @@ void TrainingActiveView::createUI()
 void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 {
     constexpr int contentRowGapPx = 10;
+    constexpr int fitnessPlotGapPx = 10;
+    constexpr int fitnessPlotPanelMaxHeightPx = 190;
+    constexpr int fitnessPlotPanelMinHeightPx = 130;
     constexpr int mainLayoutPaddingPx = 5;
     constexpr int mainLayoutGapPx = 8;
     constexpr int streamPanelWidthPx = 220;
     constexpr int longTermMinWidthPx = 160;
     constexpr int longTermPreferredWidthPx = 280;
     constexpr int centerMinWidthPx = 360;
+    const int fitnessPlotPanelHeightPx =
+        std::clamp(displayHeight / 3, fitnessPlotPanelMinHeightPx, fitnessPlotPanelMaxHeightPx);
 
     starfield_ =
         std::make_unique<Starfield>(container_, displayWidth, displayHeight, starfieldSnapshot_);
@@ -252,7 +282,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_bg_opa(progressRow, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(progressRow, 0, 0);
     lv_obj_set_style_pad_all(progressRow, 0, 0);
-    lv_obj_set_style_pad_gap(progressRow, 20, 0);
+    lv_obj_set_style_pad_gap(progressRow, 12, 0);
     lv_obj_set_flex_flow(progressRow, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         progressRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
@@ -275,7 +305,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 
     // Evaluation progress.
     evalLabel_ = lv_label_create(progressRow);
-    lv_label_set_text(evalLabel_, "Eval: 0/0");
+    lv_label_set_text(evalLabel_, "Eval: 0");
     lv_obj_set_style_text_color(evalLabel_, lv_color_hex(0xCCCCCC), 0);
     lv_obj_set_style_text_font(evalLabel_, &lv_font_montserrat_12, 0);
 
@@ -287,6 +317,11 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_set_style_bg_color(evaluationBar_, lv_color_hex(0x6688CC), LV_PART_INDICATOR);
     lv_obj_set_style_radius(evaluationBar_, 4, 0);
     lv_obj_set_style_radius(evaluationBar_, 4, LV_PART_INDICATOR);
+
+    genomeCountLabel_ = lv_label_create(progressRow);
+    lv_label_set_text(genomeCountLabel_, "Genomes: --");
+    lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
+    lv_obj_set_style_text_font(genomeCountLabel_, &lv_font_montserrat_12, 0);
 
     // Fitness stats row.
     lv_obj_t* fitnessRow = lv_obj_create(statsPanel_);
@@ -309,11 +344,6 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_label_set_text(bestAllTimeLabel_, "All Time: --");
     lv_obj_set_style_text_color(bestAllTimeLabel_, lv_color_hex(0xFFDD66), 0);
     lv_obj_set_style_text_font(bestAllTimeLabel_, &lv_font_montserrat_12, 0);
-
-    averageLabel_ = lv_label_create(fitnessRow);
-    lv_label_set_text(averageLabel_, "Avg: --");
-    lv_obj_set_style_text_color(averageLabel_, lv_color_hex(0xAAAACC), 0);
-    lv_obj_set_style_text_font(averageLabel_, &lv_font_montserrat_12, 0);
 
     constexpr int worldColumnGapPx = 10;
     const int worldColumnWidth = std::max(160, (centerColumnWidth - worldColumnGapPx) / 2);
@@ -389,10 +419,62 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
 
     bestRenderer_->initialize(bestWorldContainer_, 9, 9);
 
+    fitnessPlotsPanel_ = lv_obj_create(centerLayout);
+    lv_obj_set_size(fitnessPlotsPanel_, LV_PCT(100), fitnessPlotPanelHeightPx);
+    lv_obj_set_style_bg_opa(fitnessPlotsPanel_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(fitnessPlotsPanel_, 0, 0);
+    lv_obj_set_style_pad_all(fitnessPlotsPanel_, 0, 0);
+    lv_obj_set_style_pad_gap(fitnessPlotsPanel_, 6, 0);
+    lv_obj_set_flex_flow(fitnessPlotsPanel_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        fitnessPlotsPanel_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(fitnessPlotsPanel_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* fitnessTitle = lv_label_create(fitnessPlotsPanel_);
+    lv_label_set_text(fitnessTitle, "Fitness Insights");
+    lv_obj_set_style_text_color(fitnessTitle, lv_color_hex(0xCCCCCC), 0);
+    lv_obj_set_style_text_font(fitnessTitle, &lv_font_montserrat_12, 0);
+
+    fitnessPlotsRow_ = lv_obj_create(fitnessPlotsPanel_);
+    lv_obj_set_size(fitnessPlotsRow_, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_grow(fitnessPlotsRow_, 1);
+    lv_obj_set_style_bg_opa(fitnessPlotsRow_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(fitnessPlotsRow_, 0, 0);
+    lv_obj_set_style_pad_all(fitnessPlotsRow_, 0, 0);
+    lv_obj_set_style_pad_gap(fitnessPlotsRow_, fitnessPlotGapPx, 0);
+    lv_obj_set_flex_flow(fitnessPlotsRow_, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        fitnessPlotsRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+    lv_obj_clear_flag(fitnessPlotsRow_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lastGenerationDistributionPlot_ = std::make_unique<TimeSeriesPlotWidget>(
+        fitnessPlotsRow_,
+        TimeSeriesPlotWidget::Config{
+            .title = "Last Gen Distribution",
+            .lineColor = lv_color_hex(0x66BBFF),
+            .defaultMinY = 0.0f,
+            .defaultMaxY = 1.0f,
+            .valueScale = 100.0f,
+            .autoScaleY = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .minPointCount = 1,
+        });
+
+    bestFitnessPlot_ = std::make_unique<TimeSeriesPlotWidget>(
+        fitnessPlotsRow_,
+        TimeSeriesPlotWidget::Config{
+            .title = "Best",
+            .lineColor = lv_color_hex(0xFFDD66),
+            .defaultMinY = 0.0f,
+            .defaultMaxY = 1.0f,
+            .valueScale = 100.0f,
+            .autoScaleY = true,
+        });
+
+    clearFitnessPlots();
+
     LOG_INFO(
-        Controls,
-        "Training active UI created with live feed, best snapshot, and long-term panel "
-        "placeholder");
+        Controls, "Training active UI created with live feed, best snapshot, and long-term panel");
 }
 
 void TrainingActiveView::destroyUI()
@@ -403,13 +485,14 @@ void TrainingActiveView::destroyUI()
     if (bestRenderer_) {
         bestRenderer_->cleanup();
     }
+    bestFitnessPlot_.reset();
+    lastGenerationDistributionPlot_.reset();
 
     starfield_.reset();
     if (container_) {
         lv_obj_clean(container_);
     }
 
-    averageLabel_ = nullptr;
     bestAllTimeLabel_ = nullptr;
     bestFitnessLabel_ = nullptr;
     bestCommandSummaryLabel_ = nullptr;
@@ -420,7 +503,10 @@ void TrainingActiveView::destroyUI()
     etaLabel_ = nullptr;
     evalLabel_ = nullptr;
     evaluationBar_ = nullptr;
+    fitnessPlotsPanel_ = nullptr;
+    fitnessPlotsRow_ = nullptr;
     genLabel_ = nullptr;
+    genomeCountLabel_ = nullptr;
     generationBar_ = nullptr;
     statsPanel_ = nullptr;
     bottomRow_ = nullptr;
@@ -667,12 +753,32 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     lv_bar_set_value(generationBar_, genPercent, LV_ANIM_ON);
 
     // Update evaluation progress.
-    snprintf(buf, sizeof(buf), "Eval: %d/%d", progress.currentEval, progress.populationSize);
+    snprintf(buf, sizeof(buf), "Eval: %d", progress.currentEval);
     lv_label_set_text(evalLabel_, buf);
 
     const int evalPercent =
         progress.populationSize > 0 ? (progress.currentEval * 100) / progress.populationSize : 0;
     lv_bar_set_value(evaluationBar_, evalPercent, LV_ANIM_ON);
+
+    if (genomeCountLabel_) {
+        if (progress.genomeArchiveMaxSize > 0) {
+            snprintf(
+                buf,
+                sizeof(buf),
+                "Genomes: %d/%d",
+                progress.totalGenomeCount,
+                progress.genomeArchiveMaxSize);
+            lv_label_set_text(genomeCountLabel_, buf);
+            const bool atCapacity = progress.totalGenomeCount >= progress.genomeArchiveMaxSize;
+            lv_obj_set_style_text_color(
+                genomeCountLabel_, atCapacity ? lv_color_hex(0xFF9966) : lv_color_hex(0x88AACC), 0);
+        }
+        else {
+            snprintf(buf, sizeof(buf), "Genomes: %d", progress.totalGenomeCount);
+            lv_label_set_text(genomeCountLabel_, buf);
+            lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
+        }
+    }
 
     // Update fitness labels (compact format).
     if (bestThisGenLabel_) {
@@ -685,9 +791,19 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
         lv_label_set_text(bestAllTimeLabel_, buf);
     }
 
-    if (averageLabel_) {
-        snprintf(buf, sizeof(buf), "Avg: %.2f", progress.averageFitness);
-        lv_label_set_text(averageLabel_, buf);
+    if (lastGenerationDistributionPlot_) {
+        lastGenerationDistributionPlot_->setTitle("Last Gen Distribution");
+        if (progress.lastGenerationFitnessHistogram.empty()) {
+            lastGenerationDistributionPlot_->clearBottomLabels();
+        }
+        else {
+            char minBuf[24];
+            char maxBuf[24];
+            snprintf(minBuf, sizeof(minBuf), "%.2f", progress.lastGenerationFitnessMin);
+            snprintf(maxBuf, sizeof(maxBuf), "%.2f", progress.lastGenerationFitnessMax);
+            lastGenerationDistributionPlot_->setBottomLabels(minBuf, maxBuf);
+        }
+        lastGenerationDistributionPlot_->setSamples(buildDistributionSeries(progress));
     }
 
     // LVGL doesn't always repaint this panel promptly under high-rate event load.
@@ -707,6 +823,32 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
     if (logNow - lastLabelStateLog_ >= std::chrono::seconds(1)) {
         lastLabelStateLog_ = logNow;
+    }
+}
+
+void TrainingActiveView::updateFitnessPlots(
+    const std::vector<float>& /*distributionSeries*/, const std::vector<float>& bestFitnessSeries)
+{
+    if (bestFitnessPlot_) {
+        bestFitnessPlot_->setSamples(bestFitnessSeries);
+    }
+    if (fitnessPlotsPanel_) {
+        lv_obj_invalidate(fitnessPlotsPanel_);
+    }
+}
+
+void TrainingActiveView::clearFitnessPlots()
+{
+    if (lastGenerationDistributionPlot_) {
+        lastGenerationDistributionPlot_->setTitle("Last Gen Distribution");
+        lastGenerationDistributionPlot_->clearBottomLabels();
+        lastGenerationDistributionPlot_->clear();
+    }
+    if (bestFitnessPlot_) {
+        bestFitnessPlot_->clear();
+    }
+    if (fitnessPlotsPanel_) {
+        lv_obj_invalidate(fitnessPlotsPanel_);
     }
 }
 
@@ -731,6 +873,7 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
         hasShownBestSnapshot_ = false;
+        clearFitnessPlots();
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }

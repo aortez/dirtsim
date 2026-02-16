@@ -5,6 +5,7 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/EvolutionStop.h"
 #include "server/api/TrainingBestSnapshot.h"
+#include "server/api/TrainingResult.h"
 #include "server/states/Evolution.h"
 #include "server/states/Idle.h"
 #include "server/states/Shutdown.h"
@@ -439,7 +440,7 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
     for (const auto& individual : evolutionState.population) {
         ASSERT_TRUE(individual.genome.has_value());
@@ -543,7 +544,7 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
     bool foundMutation = false;
     for (const auto& individual : evolutionState.population) {
@@ -565,7 +566,7 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     EXPECT_TRUE(foundMutation);
 }
 
-TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
+TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
 {
     TestStateMachineFixture fixture;
 
@@ -626,8 +627,9 @@ TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
+    bool foundMutation = false;
     for (const auto& individual : evolutionState.population) {
         ASSERT_TRUE(individual.genome.has_value());
         const auto& genome = individual.genome.value();
@@ -638,8 +640,11 @@ TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
                 break;
             }
         }
-        EXPECT_TRUE(matchesParent);
+        if (!matchesParent) {
+            foundMutation = true;
+        }
     }
+    EXPECT_TRUE(foundMutation);
 }
 
 /**
@@ -668,6 +673,32 @@ TEST(StateEvolutionTest, CompletesAllGenerationsAndTransitionsAfterTrainingResul
     }
 
     ASSERT_TRUE(result.has_value()) << "Should transition after training result delivery";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(result->getVariant()))
+        << "Should transition to UnsavedTrainingResult";
+    EXPECT_EQ(evolutionState.generation, 2);
+}
+
+TEST(StateEvolutionTest, CompletesAllGenerationsWhenTrainingResultDeliveryFails)
+{
+    TestStateMachineFixture fixture;
+    fixture.mockWebSocketService->expectError<Api::TrainingResult>("No UI peer available");
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 2;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(1);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    std::optional<Any> result;
+    constexpr int maxTicks = 10;
+    for (int i = 0; i < maxTicks && !result.has_value(); ++i) {
+        result = evolutionState.tick(*fixture.stateMachine);
+    }
+
+    ASSERT_TRUE(result.has_value()) << "Should still transition after training completion";
     ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(result->getVariant()))
         << "Should transition to UnsavedTrainingResult";
     EXPECT_EQ(evolutionState.generation, 2);

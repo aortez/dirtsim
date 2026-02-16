@@ -20,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -44,6 +45,14 @@ namespace State {
  * handling of EvolutionStop and other commands during long evaluations.
  */
 struct Evolution {
+    enum class IndividualOrigin : uint8_t {
+        Unknown = 0,
+        Seed = 1,
+        EliteCarryover = 2,
+        OffspringMutated = 3,
+        OffspringClone = 4,
+    };
+
     struct Individual {
         std::string brainKind;
         std::optional<std::string> brainVariant;
@@ -62,6 +71,19 @@ struct Evolution {
         uint32_t calls = 0;
     };
 
+    struct MutationOutcomeStats {
+        int totalOffspring = 0;
+        int mutated = 0;
+        int cloneNoGenome = 0;
+        int cloneMutationDisabled = 0;
+        int cloneNoMutationDelta = 0;
+
+        int cloneCount() const
+        {
+            return cloneNoGenome + cloneMutationDisabled + cloneNoMutationDelta;
+        }
+    };
+
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
@@ -69,6 +91,7 @@ struct Evolution {
 
     // Population.
     std::vector<Individual> population;
+    std::vector<IndividualOrigin> populationOrigins;
     std::vector<double> fitnessScores;
     int generation = 0;
     int currentEval = 0;
@@ -77,7 +100,14 @@ struct Evolution {
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     GenomeId bestGenomeId{};
+    IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    int lastCompletedGeneration_ = -1;
+    double lastGenerationFitnessMin_ = 0.0;
+    double lastGenerationFitnessMax_ = 0.0;
+    std::vector<uint32_t> lastGenerationFitnessHistogram_;
     int saveInterval = 10; // Store best every N generations.
+    bool pruneBeforeBreeding_ = false;
+    int completedEvaluations_ = 0;
 
     // RNG.
     std::mt19937 rng;
@@ -169,6 +199,7 @@ private:
     void startNextVisibleEvaluation(StateMachine& dsm);
     void stepVisibleEvaluation(StateMachine& dsm);
     static WorkerResult runEvaluationTask(const WorkerTask& task, WorkerState& state);
+    void captureLastGenerationFitnessDistribution();
     void processResult(StateMachine& dsm, WorkerResult result);
     static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);

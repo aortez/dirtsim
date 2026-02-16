@@ -13,6 +13,7 @@
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/StateMachine.h"
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -20,6 +21,8 @@ namespace DirtSim {
 namespace Ui {
 namespace State {
 namespace {
+constexpr std::chrono::milliseconds plotRefreshInterval{ 200 };
+constexpr size_t plotRefreshPointCount = 120;
 
 Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
     StateMachine& sm, int intervalMs, int timeoutMs = 2000)
@@ -66,8 +69,34 @@ GenomeId getBestGenomeId(const std::vector<Api::TrainingResult::Candidate>& cand
     return bestIt != candidates.end() ? bestIt->id : INVALID_GENOME_ID;
 }
 
+void rebuildDistributionSeries(
+    const Api::EvolutionProgress& progress, std::vector<float>& distributionSeries)
+{
+    distributionSeries.clear();
+    if (progress.lastGenerationFitnessHistogram.empty()) {
+        return;
+    }
+
+    uint64_t total = 0;
+    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
+        total += count;
+    }
+    if (total == 0) {
+        return;
+    }
+
+    distributionSeries.reserve(progress.lastGenerationFitnessHistogram.size());
+    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
+        distributionSeries.push_back(static_cast<float>(count) / static_cast<float>(total));
+    }
+}
+
 void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
+    state.fitnessHistory_.clear();
+    state.plotDistributionSeries_.clear();
+    state.plotBestSeries_.clear();
+    state.lastPlotUpdate_ = std::chrono::steady_clock::time_point{};
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
     state.renderMessageCount_ = 0;
@@ -79,6 +108,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
+    state.view_->clearFitnessPlots();
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -242,6 +272,16 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->updateProgress(progress);
+
+    fitnessHistory_.append(progress);
+    const bool shouldRefreshPlot = lastPlotUpdate_ == std::chrono::steady_clock::time_point{}
+        || (now - lastPlotUpdate_) >= plotRefreshInterval;
+    if (shouldRefreshPlot) {
+        fitnessHistory_.getSeries(plotRefreshPointCount, plotDistributionSeries_, plotBestSeries_);
+        rebuildDistributionSeries(progress, plotDistributionSeries_);
+        view_->updateFitnessPlots(plotDistributionSeries_, plotBestSeries_);
+        lastPlotUpdate_ = now;
+    }
 
     return std::move(*this);
 }
