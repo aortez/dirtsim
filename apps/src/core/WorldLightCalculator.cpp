@@ -121,6 +121,85 @@ void WorldLightCalculator::applyAmbient(
     const int height = data.height;
     const float falloff = config.sky_access_falloff;
 
+    if (config.sky_access_multi_directional) {
+        struct SkyProbe {
+            int dx;
+            int dy;
+            float weight;
+        };
+
+        // Multi-directional sky probes to capture side occlusion from overhangs and caves.
+        constexpr SkyProbe probes[] = {
+            { 0, -1, 0.50f },
+            { -1, -1, 0.25f },
+            { 1, -1, 0.25f },
+        };
+
+        const int max_steps = (config.sky_probe_steps > 0) ? config.sky_probe_steps : height;
+        auto traceSkyProbe =
+            [&data, width, height, falloff, max_steps](int x, int y, int dx, int dy) {
+                float transmittance = 1.0f;
+                int sample_x = x;
+                int sample_y = y;
+
+                for (int step = 0; step < max_steps; ++step) {
+                    sample_x += dx;
+                    sample_y += dy;
+
+                    if (sample_x < 0 || sample_x >= width || sample_y < 0 || sample_y >= height) {
+                        break;
+                    }
+
+                    const Cell& cell =
+                        data.cells
+                            [static_cast<size_t>(sample_y) * width + static_cast<size_t>(sample_x)];
+                    const float fill = cell.fill_ratio;
+                    const float base_opacity =
+                        Material::getProperties(cell.material_type).light.opacity;
+                    const float effective_opacity = base_opacity * fill;
+                    float step_transmittance = 1.0f - effective_opacity * falloff;
+
+                    if (step_transmittance < 0.0f) {
+                        step_transmittance = 0.0f;
+                    }
+                    if (step_transmittance > 1.0f) {
+                        step_transmittance = 1.0f;
+                    }
+
+                    transmittance *= step_transmittance;
+                    if (transmittance <= 0.001f) {
+                        return 0.0f;
+                    }
+                }
+
+                return transmittance;
+            };
+
+        // Cells are independent for probe-based ambient - parallelize over the whole grid.
+#ifdef _OPENMP
+#pragma omp parallel for collapse(2) \
+    schedule(static) if (GridOfCells::USE_OPENMP && width * height >= 2500)
+#endif
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                float sky_factor = 0.0f;
+                for (const SkyProbe& probe : probes) {
+                    sky_factor += probe.weight * traceSkyProbe(x, y, probe.dx, probe.dy);
+                }
+
+                if (sky_factor < 0.0f) {
+                    sky_factor = 0.0f;
+                }
+                if (sky_factor > 1.0f) {
+                    sky_factor = 1.0f;
+                }
+
+                data.colors.at(x, y) += base_ambient * sky_factor;
+            }
+        }
+        return;
+    }
+
     // Helper to apply ambient with sky attenuation for a single cell.
     // Opacity scales with fill ratio - partially filled cells are more transparent.
     auto processCell = [&data, &base_ambient, falloff, width](
