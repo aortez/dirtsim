@@ -300,6 +300,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
+    { "progress", "Watch evolution progress broadcasts in a concise text stream" },
     { "run-all", "Launch server + UI + audio and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
@@ -361,6 +362,7 @@ std::string getGlobalHelp()
     help += "  genome-db-benchmark\n";
     help += "  network\n";
     help += "  os-manager\n";
+    help += "  progress\n";
     help += "  run-all\n";
     help += "  screenshot\n";
     help += "  server\n";
@@ -509,6 +511,7 @@ std::string getExamplesHelp()
     examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     examples += "  cli run-all\n";
     examples += "  cli network status\n";
+    examples += "  cli --address ws://dirtsim.local:8080 progress\n";
     examples += "  cli docs-screenshots /tmp/dirtsim-ui-docs\n";
 
     // Screenshot examples.
@@ -1994,6 +1997,109 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    // Handle progress command - subscribe to evolution progress broadcasts only.
+    if (targetName == "progress") {
+        std::string serverAddress;
+        if (addressOverride) {
+            serverAddress = args::get(addressOverride);
+        }
+        else {
+            serverAddress = "ws://localhost:8080";
+        }
+
+        std::cerr << "Connecting to " << serverAddress << " to watch evolution progress..."
+                  << std::endl;
+        std::cerr << "Press Ctrl+C to exit.\n" << std::endl;
+
+        Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
+        Network::ClientHello hello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = false,
+            .wantsEvents = true,
+        };
+        client.setClientHello(hello);
+
+        std::atomic<bool> connected{ false };
+        int lastGeneration = -1;
+        int lastEval = -1;
+        client.onServerCommand([&lastGeneration, &lastEval](
+                                   const std::string& messageType,
+                                   const std::vector<std::byte>& payload) {
+            try {
+                if (messageType != "EvolutionProgress") {
+                    return;
+                }
+
+                auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                if (progress.generation == lastGeneration && progress.currentEval == lastEval) {
+                    return;
+                }
+                lastGeneration = progress.generation;
+                lastEval = progress.currentEval;
+
+                std::ostringstream line;
+                line << "gen=" << progress.generation << "/"
+                     << (progress.maxGenerations > 0 ? std::to_string(progress.maxGenerations)
+                                                     : std::string("inf"));
+                line << " eval=" << progress.currentEval << "/" << progress.populationSize;
+                line << " genBest=" << std::fixed << std::setprecision(4)
+                     << progress.bestFitnessThisGen;
+                line << " allBest=" << std::fixed << std::setprecision(4)
+                     << progress.bestFitnessAllTime;
+                line << " avg=" << std::fixed << std::setprecision(4) << progress.averageFitness;
+                if (!progress.bestGenomeId.isNil()) {
+                    const std::string genomeId = progress.bestGenomeId.toString();
+                    line << " bestGenome=" << genomeId.substr(0, 8);
+                }
+                std::cout << line.str() << std::endl;
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error parsing message: " << e.what() << std::endl;
+            }
+        });
+
+        client.onDisconnected([&connected]() {
+            std::cerr << "Disconnected from server." << std::endl;
+            connected = false;
+        });
+
+        auto connectResult = client.connect(serverAddress, 5000);
+        if (connectResult.isError()) {
+            std::cerr << "Failed to connect: " << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        Api::EventSubscribe::Command eventCmd{
+            .enabled = true,
+            .connectionId = "",
+        };
+        auto eventResult =
+            client.sendCommandAndGetResponse<Api::EventSubscribe::Okay>(eventCmd, 5000);
+        if (eventResult.isError()) {
+            std::cerr << "Failed to subscribe to event stream: " << eventResult.errorValue()
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+        if (eventResult.value().isError()) {
+            std::cerr << "EventSubscribe rejected: " << eventResult.value().errorValue().message
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        connected = true;
+        std::cerr << "Connected and subscribed. Streaming EvolutionProgress..." << std::endl;
+
+        while (connected) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        client.disconnect();
+        return 0;
+    }
+
     // Handle watch command - subscribe to server broadcasts and dump to stdout.
     if (targetName == "watch") {
         std::string serverAddress;
@@ -2016,25 +2122,30 @@ int main(int argc, char** argv)
         };
         client.setClientHello(hello);
 
-        // Set up binary message handler.
-        std::atomic<bool> connected{ false };
-        client.onBinary([](const std::vector<std::byte>& data) {
-            try {
-                auto envelope = Network::deserialize_envelope(data);
+        // Render payloads are routed through the binary callback.
+        client.onBinary([](const std::vector<std::byte>& payload) {
+            nlohmann::json output;
+            output["_type"] = "RenderMessage";
+            output["_payload_size"] = payload.size();
+            std::cout << output.dump() << std::endl;
+        });
 
-                // Check for EvolutionProgress messages.
-                if (envelope.message_type == "EvolutionProgress") {
-                    auto progress =
-                        Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+        // Event and command broadcasts are routed through serverCommandCallback.
+        std::atomic<bool> connected{ false };
+        client.onServerCommand([](const std::string& messageType,
+                                  const std::vector<std::byte>& payload) {
+            try {
+                if (messageType == "EvolutionProgress") {
+                    auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
                     nlohmann::json output = progress.toJson();
-                    output["_type"] = envelope.message_type;
+                    output["_type"] = messageType;
                     std::cout << output.dump() << std::endl;
                 }
                 else {
                     // Generic output for other message types.
                     nlohmann::json output;
-                    output["_type"] = envelope.message_type;
-                    output["_payload_size"] = envelope.payload.size();
+                    output["_type"] = messageType;
+                    output["_payload_size"] = payload.size();
                     std::cout << output.dump() << std::endl;
                 }
             }
@@ -2392,8 +2503,8 @@ int main(int argc, char** argv)
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, audio, benchmark, cleanup, "
                      "docs-screenshots, functional-test, gamepad-test, "
-                     "genome-db-benchmark, network, os-manager, run-all, "
-                     "test_binary, train\n\n";
+                     "genome-db-benchmark, network, os-manager, progress, run-all, "
+                     "screenshot, test_binary, train, watch\n\n";
         std::cerr << parser;
         return 1;
     }

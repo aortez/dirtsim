@@ -440,6 +440,29 @@ Run evolution training with JSON configuration:
 - Auto-launches server if no `--address` specified.
 - Clean JSON output for scripting.
 
+### Progress Mode
+
+Watch live training progress from a running server:
+
+```bash
+# Local server
+./build-debug/bin/cli progress
+
+# Remote server
+./build-debug/bin/cli progress --address ws://garden.local:8080
+
+# One-shot sample (10 seconds)
+timeout 10 ./build-debug/bin/cli progress --address ws://garden.local:8080
+```
+
+Sample output:
+
+```text
+gen=3/inf eval=42/100 genBest=2.7312 allBest=2.8120 avg=0.6649 bestGenome=1c515ca1
+```
+
+Use `watch` for a raw JSON stream of all server broadcasts.
+
 ### Cleanup Mode
 
 Find and gracefully shutdown rogue dirtsim processes:
