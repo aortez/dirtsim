@@ -49,6 +49,7 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <spdlog/sinks/stdout_color_sinks.h>
@@ -2102,14 +2103,23 @@ int main(int argc, char** argv)
         int lastGeneration = -1;
         int lastEval = -1;
         GenomeId lastBestGenomeId = INVALID_GENOME_ID;
+        std::mutex latestBestSnapshotMutex;
         std::optional<Api::TrainingBestSnapshot> latestBestSnapshot;
-        client.onServerCommand([&lastGeneration, &lastEval, &lastBestGenomeId, &latestBestSnapshot](
+        client.onServerCommand([&lastGeneration,
+                                &lastEval,
+                                &lastBestGenomeId,
+                                &latestBestSnapshotMutex,
+                                &latestBestSnapshot](
                                    const std::string& messageType,
                                    const std::vector<std::byte>& payload) {
             try {
                 if (messageType == Api::TrainingBestSnapshot::name()) {
-                    latestBestSnapshot =
+                    auto snapshot =
                         Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
+                    {
+                        std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
+                        latestBestSnapshot = std::move(snapshot);
+                    }
                     return;
                 }
 
@@ -2157,7 +2167,12 @@ int main(int argc, char** argv)
                 }
                 std::cout << line.str() << std::endl;
                 if (bestGenomeChanged) {
-                    printBestCommandHistogram(progress.bestGenomeId, latestBestSnapshot);
+                    std::optional<Api::TrainingBestSnapshot> snapshotCopy;
+                    {
+                        std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
+                        snapshotCopy = latestBestSnapshot;
+                    }
+                    printBestCommandHistogram(progress.bestGenomeId, snapshotCopy);
                 }
             }
             catch (const std::exception& e) {
@@ -2208,6 +2223,7 @@ int main(int argc, char** argv)
                       << snapshotGetResult.value().errorValue().message << std::endl;
         }
         else if (snapshotGetResult.value().value().hasSnapshot) {
+            std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
             latestBestSnapshot = snapshotGetResult.value().value().snapshot;
         }
 

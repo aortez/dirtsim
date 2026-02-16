@@ -1124,9 +1124,11 @@ void Evolution::adjustConcurrency()
 void Evolution::broadcastProgress(StateMachine& dsm)
 {
     const auto now = std::chrono::steady_clock::now();
-    if (lastProgressBroadcastTime_ != std::chrono::steady_clock::time_point{}
-        && now - lastProgressBroadcastTime_ < kProgressBroadcastInterval) {
-        return;
+    if (!trainingComplete_) {
+        if (lastProgressBroadcastTime_ != std::chrono::steady_clock::time_point{}
+            && now - lastProgressBroadcastTime_ < kProgressBroadcastInterval) {
+            return;
+        }
     }
     lastProgressBroadcastTime_ = now;
 
@@ -1232,12 +1234,13 @@ std::optional<Any> Evolution::broadcastTrainingResult(StateMachine& dsm)
     else {
         const auto response = wsService->sendCommandAndGetResponse<Api::TrainingResult::OkayType>(
             trainingResult, 5000);
-        DIRTSIM_ASSERT(
-            !response.isError(),
-            std::string("TrainingResult send failed: ") + response.errorValue());
-        DIRTSIM_ASSERT(
-            !response.value().isError(),
-            std::string("TrainingResult response error: ") + response.value().errorValue().message);
+        if (response.isError()) {
+            LOG_WARN(State, "TrainingResult send failed: {}", response.errorValue());
+        }
+        else if (response.value().isError()) {
+            LOG_WARN(
+                State, "TrainingResult response error: {}", response.value().errorValue().message);
+        }
     }
 
     UnsavedTrainingResult result = std::move(pendingTrainingResult_.value());
