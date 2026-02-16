@@ -47,6 +47,7 @@ public:
         double lifespan = 0.0;
         int commandsAccepted = 0;
         int commandsRejected = 0;
+        int idleCancels = 0;
     };
 
     struct BrainSpec {

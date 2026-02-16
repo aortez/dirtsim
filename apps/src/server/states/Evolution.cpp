@@ -98,6 +98,7 @@ double computeFitnessForRunner(
         .maxEnergy = status.maxEnergy,
         .commandsAccepted = status.commandsAccepted,
         .commandsRejected = status.commandsRejected,
+        .idleCancels = status.idleCancels,
     };
 
     const auto& treeResources = runner.getTreeResourceTotals();

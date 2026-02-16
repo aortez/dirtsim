@@ -22,8 +22,10 @@ constexpr double kTreeMatureAgeSeconds = 1000.0;
 constexpr int kTreeMatureLeafCount = 10;
 constexpr int kTreeMatureRootCount = 10;
 constexpr int kTreeMatureWoodCount = 10;
-constexpr double kTreeCommandAcceptedReward = 0.1;
+constexpr int kTreeCommandAcceptedSaturationCount = 5;
+constexpr double kTreeCommandAcceptedSaturationReward = 0.5;
 constexpr double kTreeCommandRejectedPenalty = 0.00001;
+constexpr double kTreeIdleCancelPenalty = 0.0000001;
 
 struct TreeStructureMetrics {
     bool hasLeaf = false;
@@ -35,6 +37,9 @@ struct TreeStructureMetrics {
     int rootCount = 0;
     int woodCount = 0;
 };
+
+TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree);
+double computeMinimalStructureBonus(const TreeStructureMetrics& metrics);
 
 double clamp01(double value)
 {
@@ -78,6 +83,9 @@ double computeFinalEnergyScore(const FitnessContext& context)
 
 const TreeResourceTotals* resolveTreeResources(const FitnessContext& context)
 {
+    if (context.treeResources) {
+        return context.treeResources;
+    }
     if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
         const auto* tree = static_cast<const Tree*>(context.finalOrganism);
         return &tree->getResourceTotals();
@@ -87,6 +95,16 @@ const TreeResourceTotals* resolveTreeResources(const FitnessContext& context)
 
 double computeTreeResourceScore(const FitnessContext& context)
 {
+    if (!context.finalOrganism || context.finalOrganism->getType() != OrganismType::TREE) {
+        return 0.0;
+    }
+
+    const auto* tree = static_cast<const Tree*>(context.finalOrganism);
+    const TreeStructureMetrics metrics = computeTreeStructureMetrics(*tree);
+    if (computeMinimalStructureBonus(metrics) <= 0.0) {
+        return 0.0;
+    }
+
     const TreeResourceTotals* resources = resolveTreeResources(context);
     if (!resources) {
         return 0.0;
@@ -102,19 +120,34 @@ double computeTreeResourceScore(const FitnessContext& context)
 
 double computeTreeEnergyScore(const FitnessContext& context)
 {
-    const double maxEnergyScore = computeMaxEnergyScore(context);
     if (!context.finalOrganism || context.finalOrganism->getType() != OrganismType::TREE) {
-        return maxEnergyScore;
+        return 0.0;
     }
+
+    const auto* tree = static_cast<const Tree*>(context.finalOrganism);
+    const TreeStructureMetrics metrics = computeTreeStructureMetrics(*tree);
+    if (computeMinimalStructureBonus(metrics) <= 0.0) {
+        return 0.0;
+    }
+
+    const double maxEnergyScore = computeMaxEnergyScore(context);
     const double finalEnergyScore = computeFinalEnergyScore(context);
     return (kTreeEnergyMaxWeight * maxEnergyScore) + (kTreeEnergyFinalWeight * finalEnergyScore);
 }
 
 double computeCommandOutcomeScore(const FitnessContext& context)
 {
-    const int accepted = context.result.commandsAccepted;
-    const int rejected = context.result.commandsRejected;
-    return (accepted * kTreeCommandAcceptedReward) - (rejected * kTreeCommandRejectedPenalty);
+    const int accepted = std::max(0, context.result.commandsAccepted);
+    const int rejected = std::max(0, context.result.commandsRejected);
+    const int idleCancels = std::max(0, context.result.idleCancels);
+
+    const int cappedAccepted = std::min(accepted, kTreeCommandAcceptedSaturationCount);
+    const double acceptedRatio = static_cast<double>(cappedAccepted)
+        / static_cast<double>(kTreeCommandAcceptedSaturationCount);
+    const double acceptedScore = acceptedRatio * kTreeCommandAcceptedSaturationReward;
+
+    return acceptedScore - (rejected * kTreeCommandRejectedPenalty)
+        - (idleCancels * kTreeIdleCancelPenalty);
 }
 
 TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree)
@@ -206,6 +239,7 @@ void TreeEvaluator::reset()
     maxEnergy_ = 0.0;
     commandAcceptedCount_ = 0;
     commandRejectedCount_ = 0;
+    idleCancelCount_ = 0;
     resourceTotals_.reset();
 }
 
@@ -214,6 +248,7 @@ void TreeEvaluator::start()
     maxEnergy_ = 0.0;
     commandAcceptedCount_ = 0;
     commandRejectedCount_ = 0;
+    idleCancelCount_ = 0;
     resourceTotals_ = TreeResourceTotals{};
 }
 
@@ -222,6 +257,7 @@ void TreeEvaluator::update(const Tree& tree)
     maxEnergy_ = std::max(maxEnergy_, tree.getEnergy());
     commandAcceptedCount_ = tree.getCommandAcceptedCount();
     commandRejectedCount_ = tree.getCommandRejectedCount();
+    idleCancelCount_ = tree.getIdleCancelCount();
     resourceTotals_ = tree.getResourceTotals();
 }
 
@@ -284,6 +320,11 @@ int TreeEvaluator::getCommandAcceptedCount() const
 int TreeEvaluator::getCommandRejectedCount() const
 {
     return commandRejectedCount_;
+}
+
+int TreeEvaluator::getIdleCancelCount() const
+{
+    return idleCancelCount_;
 }
 
 } // namespace DirtSim

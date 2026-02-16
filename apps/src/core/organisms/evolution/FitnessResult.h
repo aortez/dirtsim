@@ -12,6 +12,7 @@ struct FitnessResult {
     double maxEnergy = 0.0;        // Peak energy achieved during lifetime.
     int commandsAccepted = 0;      // Total accepted commands during lifetime.
     int commandsRejected = 0;      // Total rejected commands during lifetime.
+    int idleCancels = 0;           // Cancel commands issued while no action was active.
 };
 
 } // namespace DirtSim
