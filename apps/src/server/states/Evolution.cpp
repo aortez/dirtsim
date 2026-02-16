@@ -152,6 +152,23 @@ std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(con
     return stats;
 }
 
+const char* toProgressSource(Evolution::IndividualOrigin origin)
+{
+    switch (origin) {
+        case Evolution::IndividualOrigin::Unknown:
+            return "none";
+        case Evolution::IndividualOrigin::Seed:
+            return "seed";
+        case Evolution::IndividualOrigin::EliteCarryover:
+            return "elite_carryover";
+        case Evolution::IndividualOrigin::OffspringMutated:
+            return "offspring_mutated";
+        case Evolution::IndividualOrigin::OffspringClone:
+            return "offspring_clone";
+    }
+    return "none";
+}
+
 GenomeId storeManagedGenome(
     StateMachine& dsm,
     const Genome& genome,
@@ -362,6 +379,7 @@ Any Evolution::onEvent(const Api::Exit::Cwc& cwc, StateMachine& /*dsm*/)
 void Evolution::initializePopulation(StateMachine& dsm)
 {
     population.clear();
+    populationOrigins.clear();
     fitnessScores.clear();
 
     DIRTSIM_ASSERT(!trainingSpec.population.empty(), "Training population must not be empty");
@@ -388,6 +406,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .scenarioId = spec.scenarioId,
                                 .genome = genome.value(),
                                 .allowsMutation = entry->allowsMutation });
+                populationOrigins.push_back(IndividualOrigin::Seed);
             }
 
             for (int i = 0; i < spec.randomCount; ++i) {
@@ -397,6 +416,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .scenarioId = spec.scenarioId,
                                 .genome = Genome::random(rng),
                                 .allowsMutation = entry->allowsMutation });
+                populationOrigins.push_back(IndividualOrigin::Seed);
             }
         }
         else {
@@ -414,9 +434,14 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .scenarioId = spec.scenarioId,
                                 .genome = std::nullopt,
                                 .allowsMutation = entry->allowsMutation });
+                populationOrigins.push_back(IndividualOrigin::Seed);
             }
         }
     }
+
+    DIRTSIM_ASSERT(
+        populationOrigins.size() == population.size(),
+        "Evolution: population origins must align with population");
 
     evolutionConfig.populationSize = static_cast<int>(population.size());
     fitnessScores.resize(population.size(), 0.0);
@@ -426,6 +451,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     bestFitnessThisGen = 0.0;
     bestFitnessAllTime = std::numeric_limits<double>::lowest();
     bestGenomeId = INVALID_GENOME_ID;
+    bestThisGenOrigin_ = IndividualOrigin::Unknown;
     sumFitnessThisGen_ = 0.0;
 
     visibleRunner_.reset();
@@ -718,6 +744,12 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
     if (result.fitness > bestFitnessThisGen) {
         bestFitnessThisGen = result.fitness;
+        if (result.index >= 0 && result.index < static_cast<int>(populationOrigins.size())) {
+            bestThisGenOrigin_ = populationOrigins[result.index];
+        }
+        else {
+            bestThisGenOrigin_ = IndividualOrigin::Unknown;
+        }
     }
     if (result.fitness > bestFitnessAllTime) {
         bestFitnessAllTime = result.fitness;
@@ -863,8 +895,10 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     // Selection and mutation: create offspring.
     std::vector<Individual> offspring;
     std::vector<double> offspringFitness;
+    std::vector<IndividualOrigin> offspringOrigins;
     offspring.reserve(evolutionConfig.populationSize);
     offspringFitness.reserve(evolutionConfig.populationSize);
+    offspringOrigins.reserve(evolutionConfig.populationSize);
 
     for (int i = 0; i < evolutionConfig.populationSize; ++i) {
         const int parentIdx =
@@ -872,18 +906,25 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         const Individual& parent = population[parentIdx];
 
         Individual child = parent;
+        bool offspringMutated = false;
         if (parent.genome.has_value() && parent.allowsMutation) {
-            child.genome = mutate(parent.genome.value(), mutationConfig, rng);
+            Genome mutatedGenome = mutate(parent.genome.value(), mutationConfig, rng);
+            offspringMutated = !(mutatedGenome == parent.genome.value());
+            child.genome = std::move(mutatedGenome);
         }
         offspring.push_back(std::move(child));
         // Seed offspring with parent fitness so mutated children can survive selection.
         offspringFitness.push_back(fitnessScores[parentIdx]);
+        offspringOrigins.push_back(
+            offspringMutated ? IndividualOrigin::OffspringMutated
+                             : IndividualOrigin::OffspringClone);
     }
 
     // Elitist replacement: keep best from parents + offspring.
     struct PoolEntry {
         double fitness = 0.0;
         Individual individual;
+        IndividualOrigin origin = IndividualOrigin::Unknown;
         bool isOffspring = false;
         int order = 0;
     };
@@ -895,6 +936,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             PoolEntry{
                 .fitness = fitnessScores[i],
                 .individual = population[i],
+                .origin = IndividualOrigin::EliteCarryover,
                 .isOffspring = false,
                 .order = static_cast<int>(i),
             });
@@ -905,6 +947,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             PoolEntry{
                 .fitness = offspringFitness[i],
                 .individual = offspring[i],
+                .origin = offspringOrigins[i],
                 .isOffspring = true,
                 .order = parentCount + static_cast<int>(i),
             });
@@ -922,10 +965,14 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     population.clear();
     population.reserve(evolutionConfig.populationSize);
+    std::vector<IndividualOrigin> nextOrigins;
+    nextOrigins.reserve(evolutionConfig.populationSize);
     const int count = std::min(evolutionConfig.populationSize, static_cast<int>(pool.size()));
     for (int i = 0; i < count; ++i) {
         population.push_back(pool[i].individual);
+        nextOrigins.push_back(pool[i].origin);
     }
+    populationOrigins = std::move(nextOrigins);
 
     // Advance to next generation.
     generation++;
@@ -936,6 +983,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     if (evolutionConfig.maxGenerations <= 0 || generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
         bestFitnessThisGen = 0.0;
+        bestThisGenOrigin_ = IndividualOrigin::Unknown;
         sumFitnessThisGen_ = 0.0;
         std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
     }
@@ -1040,6 +1088,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
         .averageFitness = avgFitness,
+        .bestThisGenSource = toProgressSource(bestThisGenOrigin_),
         .bestGenomeId = bestGenomeId,
         .totalTrainingSeconds = totalSeconds,
         .currentSimTime = visibleSimTime,

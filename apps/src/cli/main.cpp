@@ -2048,6 +2048,7 @@ int main(int argc, char** argv)
                 line << " allBest=" << std::fixed << std::setprecision(4)
                      << progress.bestFitnessAllTime;
                 line << " avg=" << std::fixed << std::setprecision(4) << progress.averageFitness;
+                line << " src=" << progress.bestThisGenSource;
                 if (!progress.bestGenomeId.isNil()) {
                     const std::string genomeId = progress.bestGenomeId.toString();
                     line << " bestGenome=" << genomeId.substr(0, 8);

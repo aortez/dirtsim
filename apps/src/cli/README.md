@@ -458,7 +458,7 @@ timeout 10 ./build-debug/bin/cli progress --address ws://garden.local:8080
 Sample output:
 
 ```text
-gen=3/inf eval=42/100 genBest=2.7312 allBest=2.8120 avg=0.6649 bestGenome=1c515ca1
+gen=3/inf eval=42/100 genBest=2.7312 allBest=2.8120 avg=0.6649 src=offspring_mutated bestGenome=1c515ca1
 ```
 
 Use `watch` for a raw JSON stream of all server broadcasts.

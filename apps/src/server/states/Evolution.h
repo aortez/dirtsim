@@ -20,6 +20,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <mutex>
@@ -44,6 +45,14 @@ namespace State {
  * handling of EvolutionStop and other commands during long evaluations.
  */
 struct Evolution {
+    enum class IndividualOrigin : uint8_t {
+        Unknown = 0,
+        Seed = 1,
+        EliteCarryover = 2,
+        OffspringMutated = 3,
+        OffspringClone = 4,
+    };
+
     struct Individual {
         std::string brainKind;
         std::optional<std::string> brainVariant;
@@ -69,6 +78,7 @@ struct Evolution {
 
     // Population.
     std::vector<Individual> population;
+    std::vector<IndividualOrigin> populationOrigins;
     std::vector<double> fitnessScores;
     int generation = 0;
     int currentEval = 0;
@@ -77,6 +87,7 @@ struct Evolution {
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     GenomeId bestGenomeId{};
+    IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
     int saveInterval = 10; // Store best every N generations.
 
     // RNG.
