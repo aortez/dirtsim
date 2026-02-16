@@ -997,6 +997,8 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     std::vector<IndividualOrigin> offspringOrigins;
     offspring.reserve(survivorPopulationSize);
     offspringOrigins.reserve(survivorPopulationSize);
+    MutationOutcomeStats mutationStats;
+    mutationStats.totalOffspring = survivorPopulationSize;
 
     for (int i = 0; i < survivorPopulationSize; ++i) {
         const int parentIdx =
@@ -1005,9 +1007,21 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
         Individual child = parent;
         bool offspringMutated = false;
-        if (parent.genome.has_value() && parent.allowsMutation) {
+        if (!parent.genome.has_value()) {
+            mutationStats.cloneNoGenome++;
+        }
+        else if (!parent.allowsMutation) {
+            mutationStats.cloneMutationDisabled++;
+        }
+        else {
             Genome mutatedGenome = mutate(parent.genome.value(), mutationConfig, rng);
             offspringMutated = !(mutatedGenome == parent.genome.value());
+            if (offspringMutated) {
+                mutationStats.mutated++;
+            }
+            else {
+                mutationStats.cloneNoMutationDelta++;
+            }
             child.genome = std::move(mutatedGenome);
         }
         offspring.push_back(std::move(child));
@@ -1015,6 +1029,18 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             offspringMutated ? IndividualOrigin::OffspringMutated
                              : IndividualOrigin::OffspringClone);
     }
+
+    LOG_INFO(
+        State,
+        "Evolution: offspring cycle gen={} total={} mutated={} clones={} (no_genome={} "
+        "mutation_disabled={} no_delta={})",
+        generation,
+        mutationStats.totalOffspring,
+        mutationStats.mutated,
+        mutationStats.cloneCount(),
+        mutationStats.cloneNoGenome,
+        mutationStats.cloneMutationDisabled,
+        mutationStats.cloneNoMutationDelta);
 
     population.reserve(population.size() + offspring.size());
     populationOrigins.reserve(populationOrigins.size() + offspringOrigins.size());

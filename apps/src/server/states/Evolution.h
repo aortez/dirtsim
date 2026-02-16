@@ -71,6 +71,19 @@ struct Evolution {
         uint32_t calls = 0;
     };
 
+    struct MutationOutcomeStats {
+        int totalOffspring = 0;
+        int mutated = 0;
+        int cloneNoGenome = 0;
+        int cloneMutationDisabled = 0;
+        int cloneNoMutationDelta = 0;
+
+        int cloneCount() const
+        {
+            return cloneNoGenome + cloneMutationDisabled + cloneNoMutationDelta;
+        }
+    };
+
     // Config.
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
