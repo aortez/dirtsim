@@ -826,8 +826,7 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
-void TrainingActiveView::updateFitnessPlots(
-    const std::vector<float>& /*distributionSeries*/, const std::vector<float>& bestFitnessSeries)
+void TrainingActiveView::updateFitnessPlots(const std::vector<float>& bestFitnessSeries)
 {
     if (bestFitnessPlot_) {
         bestFitnessPlot_->setSamples(bestFitnessSeries);
