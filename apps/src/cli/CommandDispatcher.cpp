@@ -78,9 +78,14 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::UserSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDelete::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingResultList::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSave::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::TrainingStreamConfigSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingBestSnapshotGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::WebSocketAccessSet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::WebUiAccessSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::WorldResize::Cwc>(serverHandlers_, serverExampleHandlers_);
 
     spdlog::debug("CommandDispatcher: Registering UI API commands...");

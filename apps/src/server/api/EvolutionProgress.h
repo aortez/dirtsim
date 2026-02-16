@@ -1,7 +1,10 @@
 #pragma once
 
 #include "core/organisms/evolution/GenomeMetadata.h"
+#include <cstdint>
 #include <nlohmann/json.hpp>
+#include <string>
+#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -16,9 +19,16 @@ struct EvolutionProgress {
     int maxGenerations = 0;
     int currentEval = 0;
     int populationSize = 0;
+    int totalGenomeCount = 0;
+    int genomeArchiveMaxSize = 0;
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     double averageFitness = 0.0;
+    int lastCompletedGeneration = -1;
+    double lastGenerationFitnessMin = 0.0;
+    double lastGenerationFitnessMax = 0.0;
+    std::vector<uint32_t> lastGenerationFitnessHistogram;
+    std::string bestThisGenSource = "none";
     GenomeId bestGenomeId{};
     double totalTrainingSeconds = 0.0; // Real-world seconds since training started.
     double currentSimTime = 0.0;       // Sim time for current individual.
@@ -31,7 +41,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<15>;
+    using serialize = zpp::bits::members<22>;
 };
 
 } // namespace Api

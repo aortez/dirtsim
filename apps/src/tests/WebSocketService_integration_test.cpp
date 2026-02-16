@@ -156,6 +156,7 @@ TEST(WebSocketServiceIntegrationTest, ServerToClientRequestResponse)
     });
     ClientHello hello{
         .protocolVersion = kClientHelloProtocolVersion,
+        .wantsRender = true,
         .wantsEvents = true,
     };
     client.setClientHello(hello);
@@ -216,6 +217,7 @@ TEST(WebSocketServiceIntegrationTest, PushPathUnchanged)
     WebSocketService client;
     ClientHello hello{
         .protocolVersion = kClientHelloProtocolVersion,
+        .wantsRender = true,
         .wantsEvents = true,
     };
     client.setClientHello(hello);
@@ -278,6 +280,7 @@ TEST(WebSocketServiceIntegrationTest, ServerToClientTimeout)
     WebSocketService client;
     ClientHello hello{
         .protocolVersion = kClientHelloProtocolVersion,
+        .wantsRender = true,
         .wantsEvents = true,
     };
     client.setClientHello(hello);

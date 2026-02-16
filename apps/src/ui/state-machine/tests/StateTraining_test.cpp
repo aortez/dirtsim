@@ -15,6 +15,7 @@
 #include "ui/UiComponentManager.h"
 #include "ui/state-machine/Event.h"
 #include "ui/state-machine/states/State.h"
+#include "ui/state-machine/states/TrainingFitnessHistory.h"
 #include "ui/state-machine/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 #include <lvgl.h>
@@ -88,6 +89,127 @@ TEST(StateTrainingTest, HasCorrectStateName)
     EXPECT_STREQ(idle.name(), "TrainingIdle");
     EXPECT_STREQ(active.name(), "TrainingActive");
     EXPECT_STREQ(unsaved.name(), "TrainingUnsavedResult");
+}
+
+TEST(StateTrainingTest, TrainingFitnessHistoryKeepsRollingWindow)
+{
+    TrainingFitnessHistory history;
+
+    Api::EvolutionProgress p0;
+    p0.totalTrainingSeconds = 0.0;
+    p0.currentEval = 1;
+    p0.averageFitness = 0.1;
+    p0.bestFitnessAllTime = 0.2;
+    history.append(p0);
+
+    Api::EvolutionProgress p60;
+    p60.totalTrainingSeconds = 60.0;
+    p60.currentEval = 2;
+    p60.averageFitness = 1.1;
+    p60.bestFitnessAllTime = 1.2;
+    history.append(p60);
+
+    Api::EvolutionProgress p121;
+    p121.totalTrainingSeconds = 121.0;
+    p121.currentEval = 3;
+    p121.averageFitness = 2.1;
+    p121.bestFitnessAllTime = 2.2;
+    history.append(p121);
+
+    std::vector<float> average;
+    std::vector<float> best;
+    history.getSeries(10, average, best);
+
+    ASSERT_EQ(average.size(), 2u);
+    ASSERT_EQ(best.size(), 2u);
+    EXPECT_FLOAT_EQ(average[0], 1.1f);
+    EXPECT_FLOAT_EQ(average[1], 2.1f);
+    EXPECT_FLOAT_EQ(best[0], 1.2f);
+    EXPECT_FLOAT_EQ(best[1], 2.2f);
+}
+
+TEST(StateTrainingTest, TrainingFitnessHistoryDownsamplesSeries)
+{
+    TrainingFitnessHistory history;
+    for (int i = 0; i < 10; ++i) {
+        Api::EvolutionProgress progress;
+        progress.totalTrainingSeconds = static_cast<double>(i);
+        progress.currentEval = i + 1;
+        progress.averageFitness = static_cast<double>(i);
+        progress.bestFitnessAllTime = static_cast<double>(100 + i);
+        history.append(progress);
+    }
+
+    std::vector<float> average;
+    std::vector<float> best;
+    history.getSeries(4, average, best);
+
+    ASSERT_EQ(average.size(), 4u);
+    ASSERT_EQ(best.size(), 4u);
+    EXPECT_FLOAT_EQ(average[0], 0.0f);
+    EXPECT_FLOAT_EQ(average[1], 3.0f);
+    EXPECT_FLOAT_EQ(average[2], 6.0f);
+    EXPECT_FLOAT_EQ(average[3], 9.0f);
+    EXPECT_FLOAT_EQ(best[0], 100.0f);
+    EXPECT_FLOAT_EQ(best[1], 103.0f);
+    EXPECT_FLOAT_EQ(best[2], 106.0f);
+    EXPECT_FLOAT_EQ(best[3], 109.0f);
+}
+
+TEST(StateTrainingTest, TrainingFitnessHistoryResetsOnTimestampRollback)
+{
+    TrainingFitnessHistory history;
+
+    Api::EvolutionProgress p10;
+    p10.totalTrainingSeconds = 10.0;
+    p10.currentEval = 10;
+    p10.averageFitness = 1.0;
+    p10.bestFitnessAllTime = 2.0;
+    history.append(p10);
+
+    Api::EvolutionProgress p5;
+    p5.totalTrainingSeconds = 5.0;
+    p5.currentEval = 1;
+    p5.averageFitness = 7.0;
+    p5.bestFitnessAllTime = 8.0;
+    history.append(p5);
+
+    std::vector<float> average;
+    std::vector<float> best;
+    history.getSeries(10, average, best);
+
+    ASSERT_EQ(average.size(), 1u);
+    ASSERT_EQ(best.size(), 1u);
+    EXPECT_FLOAT_EQ(average[0], 7.0f);
+    EXPECT_FLOAT_EQ(best[0], 8.0f);
+}
+
+TEST(StateTrainingTest, TrainingFitnessHistorySkipsEvalZeroSamples)
+{
+    TrainingFitnessHistory history;
+
+    Api::EvolutionProgress reset;
+    reset.totalTrainingSeconds = 100.0;
+    reset.currentEval = 0;
+    reset.averageFitness = 0.0;
+    reset.bestFitnessAllTime = 2.7;
+    history.append(reset);
+
+    Api::EvolutionProgress evalOne;
+    evalOne.totalTrainingSeconds = 101.0;
+    evalOne.currentEval = 1;
+    evalOne.averageFitness = 1.9;
+    evalOne.bestFitnessAllTime = 2.7;
+    history.append(evalOne);
+
+    std::vector<float> average;
+    std::vector<float> best;
+    history.getSeries(10, average, best);
+
+    ASSERT_EQ(average.size(), 1u);
+    ASSERT_EQ(best.size(), 1u);
+    EXPECT_FLOAT_EQ(average[0], 1.9f);
+    EXPECT_FLOAT_EQ(best[0], 2.7f);
 }
 
 TEST(StateTrainingTest, EvolutionProgressUpdatesState)

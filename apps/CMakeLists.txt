@@ -482,6 +482,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/state-machine/states/SynthConfig.cpp
     src/ui/state-machine/states/SynthKeyboard.cpp
     src/ui/state-machine/states/TrainingActive.cpp
+    src/ui/state-machine/states/TrainingFitnessHistory.cpp
     src/ui/state-machine/states/TrainingIdle.cpp
     src/ui/state-machine/states/TrainingUnsavedResult.cpp
 
@@ -571,6 +572,7 @@ add_library(dirtsim-ui-lib STATIC
     src/ui/controls/TreeGerminationControls.cpp
     src/ui/ScenarioMetadataCache.cpp
     src/ui/ui_builders/LVGLBuilder.cpp
+    src/ui/widgets/TimeSeriesPlotWidget.cpp
 )
 target_include_directories(dirtsim-ui-lib PUBLIC ${CMAKE_SOURCE_DIR}/src ${CMAKE_SOURCE_DIR}/external ${zpp_bits_SOURCE_DIR})
 target_link_libraries(dirtsim-ui-lib PUBLIC dirtsim-core dirtsim-server-lib lvgl_linux lvgl)

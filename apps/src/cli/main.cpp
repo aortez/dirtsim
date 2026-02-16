@@ -20,6 +20,8 @@
 #include "server/api/EvolutionStart.h"
 #include "server/api/RenderFormatSet.h"
 #include "server/api/StatusGet.h"
+#include "server/api/TrainingBestSnapshot.h"
+#include "server/api/TrainingBestSnapshotGet.h"
 #include "server/api/TrainingResultDiscard.h"
 #include "server/api/UserSettingsGet.h"
 #include "ui/controls/IconRail.h"
@@ -47,18 +49,95 @@
 #include <iomanip>
 #include <iostream>
 #include <limits>
+#include <mutex>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include <unordered_map>
 #include <variant>
 
 using namespace DirtSim;
+
+namespace {
+constexpr int kProgressFitnessPrecision = 6;
+
+std::string commandTypeFromSignature(const std::string& signature)
+{
+    const std::string_view delimiter = " -> ";
+    const std::string_view signatureView{ signature };
+    const size_t outcomePos = signatureView.find(delimiter);
+    const std::string_view commandView =
+        outcomePos == std::string_view::npos ? signatureView : signatureView.substr(0, outcomePos);
+    const size_t parenPos = commandView.find('(');
+    return std::string(
+        parenPos == std::string_view::npos ? commandView : commandView.substr(0, parenPos));
+}
+
+std::vector<std::pair<std::string, int>> aggregateCommandHistogram(
+    const std::vector<Api::TrainingBestSnapshot::CommandSignatureCount>& topCommandSignatures)
+{
+    std::unordered_map<std::string, int> histogramByType;
+    for (const auto& signatureCount : topCommandSignatures) {
+        if (signatureCount.count <= 0) {
+            continue;
+        }
+        histogramByType[commandTypeFromSignature(signatureCount.signature)] += signatureCount.count;
+    }
+
+    std::vector<std::pair<std::string, int>> histogram;
+    histogram.reserve(histogramByType.size());
+    for (const auto& [commandType, count] : histogramByType) {
+        histogram.emplace_back(commandType, count);
+    }
+
+    std::sort(histogram.begin(), histogram.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+
+    return histogram;
+}
+
+void printBestCommandHistogram(
+    const GenomeId& bestGenomeId, const std::optional<Api::TrainingBestSnapshot>& bestSnapshot)
+{
+    const std::string genomeId = bestGenomeId.toString();
+    const std::string genomeShort = genomeId.substr(0, 8);
+
+    std::ostringstream line;
+    line << "bestCmdHistogram genome=" << genomeShort;
+
+    if (!bestSnapshot.has_value()) {
+        line << " unavailable=true";
+        std::cout << line.str() << std::endl;
+        return;
+    }
+
+    const auto histogram = aggregateCommandHistogram(bestSnapshot->topCommandSignatures);
+    line << " accepted=" << bestSnapshot->commandsAccepted;
+    line << " rejected=" << bestSnapshot->commandsRejected;
+    line << " source=topSignatures";
+    if (histogram.empty()) {
+        line << " empty=true";
+    }
+    else {
+        for (const auto& [commandType, count] : histogram) {
+            line << " " << commandType << "=" << count;
+        }
+    }
+
+    std::cout << line.str() << std::endl;
+}
+} // namespace
 
 // Base64 decoding for screenshot data.
 std::vector<uint8_t> base64Decode(const std::string& encoded)
@@ -300,6 +379,7 @@ static const std::vector<CliCommandInfo> CLI_COMMANDS = {
     { "gamepad-test", "Test gamepad input (prints state to console)" },
     { "genome-db-benchmark", "Test genome CRUD correctness and performance" },
     { "network", "WiFi status, saved/open networks, connect, and forget (NetworkManager)" },
+    { "progress", "Watch evolution progress broadcasts in a concise text stream" },
     { "run-all", "Launch server + UI + audio and monitor (exits when UI closes)" },
     { "screenshot", "Capture screenshot from UI and save as PNG" },
     { "test_binary", "Test binary protocol with type-safe StatusGet command" },
@@ -361,6 +441,7 @@ std::string getGlobalHelp()
     help += "  genome-db-benchmark\n";
     help += "  network\n";
     help += "  os-manager\n";
+    help += "  progress\n";
     help += "  run-all\n";
     help += "  screenshot\n";
     help += "  server\n";
@@ -509,6 +590,7 @@ std::string getExamplesHelp()
     examples += "  cli --address ws://dirtsim.local:9090 os-manager SystemStatus\n";
     examples += "  cli run-all\n";
     examples += "  cli network status\n";
+    examples += "  cli --address ws://dirtsim.local:8080 progress\n";
     examples += "  cli docs-screenshots /tmp/dirtsim-ui-docs\n";
 
     // Screenshot examples.
@@ -1994,6 +2076,168 @@ int main(int argc, char** argv)
         return 0;
     }
 
+    // Handle progress command - subscribe to evolution progress and best snapshot broadcasts.
+    if (targetName == "progress") {
+        std::string serverAddress;
+        if (addressOverride) {
+            serverAddress = args::get(addressOverride);
+        }
+        else {
+            serverAddress = "ws://localhost:8080";
+        }
+
+        std::cerr << "Connecting to " << serverAddress << " to watch evolution progress..."
+                  << std::endl;
+        std::cerr << "Press Ctrl+C to exit.\n" << std::endl;
+
+        Network::WebSocketService client;
+        client.setProtocol(Network::Protocol::BINARY);
+        Network::ClientHello hello{
+            .protocolVersion = Network::kClientHelloProtocolVersion,
+            .wantsRender = false,
+            .wantsEvents = true,
+        };
+        client.setClientHello(hello);
+
+        std::atomic<bool> connected{ false };
+        int lastGeneration = -1;
+        int lastEval = -1;
+        GenomeId lastBestGenomeId = INVALID_GENOME_ID;
+        std::mutex latestBestSnapshotMutex;
+        std::optional<Api::TrainingBestSnapshot> latestBestSnapshot;
+        client.onServerCommand([&lastGeneration,
+                                &lastEval,
+                                &lastBestGenomeId,
+                                &latestBestSnapshotMutex,
+                                &latestBestSnapshot](
+                                   const std::string& messageType,
+                                   const std::vector<std::byte>& payload) {
+            try {
+                if (messageType == Api::TrainingBestSnapshot::name()) {
+                    auto snapshot =
+                        Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
+                    {
+                        std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
+                        latestBestSnapshot = std::move(snapshot);
+                    }
+                    return;
+                }
+
+                if (messageType != Api::EvolutionProgress::name()) {
+                    return;
+                }
+
+                auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                if (progress.generation == lastGeneration && progress.currentEval == lastEval) {
+                    return;
+                }
+                lastGeneration = progress.generation;
+                lastEval = progress.currentEval;
+
+                bool bestGenomeChanged = false;
+                if (progress.bestGenomeId.isNil()) {
+                    lastBestGenomeId = INVALID_GENOME_ID;
+                }
+                else {
+                    bestGenomeChanged = progress.bestGenomeId != lastBestGenomeId;
+                    if (bestGenomeChanged) {
+                        lastBestGenomeId = progress.bestGenomeId;
+                    }
+                }
+
+                std::ostringstream line;
+                line << "gen=" << progress.generation << "/"
+                     << (progress.maxGenerations > 0 ? std::to_string(progress.maxGenerations)
+                                                     : std::string("inf"));
+                line << " eval=" << progress.currentEval << "/" << progress.populationSize;
+                line << " genomes=" << progress.totalGenomeCount << "/"
+                     << (progress.genomeArchiveMaxSize > 0
+                             ? std::to_string(progress.genomeArchiveMaxSize)
+                             : std::string("inf"));
+                line << " genBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
+                     << progress.bestFitnessThisGen;
+                line << " allBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
+                     << progress.bestFitnessAllTime;
+                line << " avg=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
+                     << progress.averageFitness;
+                line << " src=" << progress.bestThisGenSource;
+                if (!progress.bestGenomeId.isNil()) {
+                    const std::string genomeId = progress.bestGenomeId.toString();
+                    line << " bestGenome=" << genomeId.substr(0, 8);
+                }
+                std::cout << line.str() << std::endl;
+                if (bestGenomeChanged) {
+                    std::optional<Api::TrainingBestSnapshot> snapshotCopy;
+                    {
+                        std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
+                        snapshotCopy = latestBestSnapshot;
+                    }
+                    printBestCommandHistogram(progress.bestGenomeId, snapshotCopy);
+                }
+            }
+            catch (const std::exception& e) {
+                std::cerr << "Error parsing message: " << e.what() << std::endl;
+            }
+        });
+
+        client.onDisconnected([&connected]() {
+            std::cerr << "Disconnected from server." << std::endl;
+            connected = false;
+        });
+
+        auto connectResult = client.connect(serverAddress, 5000);
+        if (connectResult.isError()) {
+            std::cerr << "Failed to connect: " << connectResult.errorValue() << std::endl;
+            return 1;
+        }
+
+        Api::EventSubscribe::Command eventCmd{
+            .enabled = true,
+            .connectionId = "",
+        };
+        auto eventResult =
+            client.sendCommandAndGetResponse<Api::EventSubscribe::Okay>(eventCmd, 5000);
+        if (eventResult.isError()) {
+            std::cerr << "Failed to subscribe to event stream: " << eventResult.errorValue()
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+        if (eventResult.value().isError()) {
+            std::cerr << "EventSubscribe rejected: " << eventResult.value().errorValue().message
+                      << std::endl;
+            client.disconnect();
+            return 1;
+        }
+
+        Api::TrainingBestSnapshotGet::Command snapshotGetCmd;
+        const auto snapshotGetResult =
+            client.sendCommandAndGetResponse<Api::TrainingBestSnapshotGet::Okay>(
+                snapshotGetCmd, 5000);
+        if (snapshotGetResult.isError()) {
+            std::cerr << "Warning: failed to fetch cached best snapshot: "
+                      << snapshotGetResult.errorValue() << std::endl;
+        }
+        else if (snapshotGetResult.value().isError()) {
+            std::cerr << "Warning: TrainingBestSnapshotGet rejected: "
+                      << snapshotGetResult.value().errorValue().message << std::endl;
+        }
+        else if (snapshotGetResult.value().value().hasSnapshot) {
+            std::lock_guard<std::mutex> lock(latestBestSnapshotMutex);
+            latestBestSnapshot = snapshotGetResult.value().value().snapshot;
+        }
+
+        connected = true;
+        std::cerr << "Connected and subscribed. Streaming EvolutionProgress..." << std::endl;
+
+        while (connected) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        client.disconnect();
+        return 0;
+    }
+
     // Handle watch command - subscribe to server broadcasts and dump to stdout.
     if (targetName == "watch") {
         std::string serverAddress;
@@ -2016,25 +2260,30 @@ int main(int argc, char** argv)
         };
         client.setClientHello(hello);
 
-        // Set up binary message handler.
-        std::atomic<bool> connected{ false };
-        client.onBinary([](const std::vector<std::byte>& data) {
-            try {
-                auto envelope = Network::deserialize_envelope(data);
+        // Render payloads are routed through the binary callback.
+        client.onBinary([](const std::vector<std::byte>& payload) {
+            nlohmann::json output;
+            output["_type"] = "RenderMessage";
+            output["_payload_size"] = payload.size();
+            std::cout << output.dump() << std::endl;
+        });
 
-                // Check for EvolutionProgress messages.
-                if (envelope.message_type == "EvolutionProgress") {
-                    auto progress =
-                        Network::deserialize_payload<Api::EvolutionProgress>(envelope.payload);
+        // Event and command broadcasts are routed through serverCommandCallback.
+        std::atomic<bool> connected{ false };
+        client.onServerCommand([](const std::string& messageType,
+                                  const std::vector<std::byte>& payload) {
+            try {
+                if (messageType == "EvolutionProgress") {
+                    auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
                     nlohmann::json output = progress.toJson();
-                    output["_type"] = envelope.message_type;
+                    output["_type"] = messageType;
                     std::cout << output.dump() << std::endl;
                 }
                 else {
                     // Generic output for other message types.
                     nlohmann::json output;
-                    output["_type"] = envelope.message_type;
-                    output["_payload_size"] = envelope.payload.size();
+                    output["_type"] = messageType;
+                    output["_payload_size"] = payload.size();
                     std::cout << output.dump() << std::endl;
                 }
             }
@@ -2392,8 +2641,8 @@ int main(int argc, char** argv)
         std::cerr << "Error: unknown target '" << targetName << "'\n";
         std::cerr << "Valid targets: server, ui, audio, benchmark, cleanup, "
                      "docs-screenshots, functional-test, gamepad-test, "
-                     "genome-db-benchmark, network, os-manager, run-all, "
-                     "test_binary, train\n\n";
+                     "genome-db-benchmark, network, os-manager, progress, run-all, "
+                     "screenshot, test_binary, train, watch\n\n";
         std::cerr << parser;
         return 1;
     }

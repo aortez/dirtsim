@@ -32,6 +32,7 @@ namespace Ui {
 class CellRenderer;
 class EventSink;
 class Starfield;
+class TimeSeriesPlotWidget;
 class UiComponentManager;
 
 class TrainingActiveView {
@@ -45,6 +46,9 @@ public:
     ~TrainingActiveView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
+    void updateFitnessPlots(
+        const std::vector<float>& distributionSeries, const std::vector<float>& bestFitnessSeries);
+    void clearFitnessPlots();
     void updateAnimations();
 
     void renderWorld(const WorldData& worldData);
@@ -66,6 +70,8 @@ public:
     Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
+    static std::vector<float> buildDistributionSeries(const Api::EvolutionProgress& progress);
+
     void createUI();
     void destroyUI();
     void createActiveUI(int displayWidth, int displayHeight);
@@ -84,7 +90,6 @@ private:
     Network::WebSocketServiceInterface* wsService_ = nullptr;
     UserSettings& userSettings_;
 
-    lv_obj_t* averageLabel_ = nullptr;
     lv_obj_t* bestAllTimeLabel_ = nullptr;
     lv_obj_t* bestThisGenLabel_ = nullptr;
     lv_obj_t* container_ = nullptr;
@@ -93,6 +98,7 @@ private:
     lv_obj_t* evalLabel_ = nullptr;
     lv_obj_t* evaluationBar_ = nullptr;
     lv_obj_t* genLabel_ = nullptr;
+    lv_obj_t* genomeCountLabel_ = nullptr;
     lv_obj_t* generationBar_ = nullptr;
     lv_obj_t* statsPanel_ = nullptr;
     lv_obj_t* etaLabel_ = nullptr;
@@ -105,6 +111,8 @@ private:
     lv_obj_t* longTermPanel_ = nullptr;
     lv_obj_t* parallelismLabel_ = nullptr;
     lv_obj_t* bottomRow_ = nullptr;
+    lv_obj_t* fitnessPlotsPanel_ = nullptr;
+    lv_obj_t* fitnessPlotsRow_ = nullptr;
     lv_obj_t* streamPanel_ = nullptr;
     int progressUiUpdateCount_ = 0;
     std::chrono::steady_clock::time_point lastLabelStateLog_{};
@@ -122,6 +130,8 @@ private:
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
     std::unique_ptr<Starfield> starfield_;
+    std::unique_ptr<TimeSeriesPlotWidget> bestFitnessPlot_;
+    std::unique_ptr<TimeSeriesPlotWidget> lastGenerationDistributionPlot_;
     const Starfield::Snapshot* starfieldSnapshot_ = nullptr;
 
     std::unique_ptr<WorldData> bestWorldData_;

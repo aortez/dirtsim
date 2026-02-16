@@ -22,7 +22,7 @@ constexpr auto kAuthRejectDelay = std::chrono::milliseconds(500);
 
 bool isUiHello(const ClientHello& hello)
 {
-    return hello.wantsEvents || hello.wantsRender;
+    return hello.wantsRender;
 }
 
 bool isResponseMessageType(const std::string& messageType)

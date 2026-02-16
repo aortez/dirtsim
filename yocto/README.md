@@ -257,6 +257,11 @@ If the file doesn't exist, the script prompts interactively. WiFi credentials ar
 
 The image uses **A/B partitions** for safe remote updates - no more corrupted filesystems! The disk has two rootfs partitions (sda2/sda3). Updates are written to the inactive partition while the system runs from the active one.
 
+Host convention in this repo:
+- `garden.local`: Dedicated x86 long-term training box.
+- `dirtsim.local`: Default device host.
+- Any host/IP can be used with `--target`.
+
 ```bash
 npm run yolo                            # Build + flash to inactive slot + reboot
 npm run yolo -- --target 192.168.1.50   # Target a specific host (default: dirtsim.local)
@@ -266,6 +271,28 @@ npm run yolo -- --clean                 # Force rebuild (cleans sstate first)
 npm run yolo -- --skip-build            # Flash existing image (skip kas build)
 npm run yolo -- --hold-my-mead          # Skip confirmation prompt (for scripts)
 npm run yolo -- --dry-run               # Show what would happen
+```
+
+Dedicated trainer setup (`garden.local`, one-time x86 provisioning):
+
+```bash
+cd yocto
+npm run provision-x86 -- --target garden.local
+npm run yolo -- --target garden.local --fast --hold-my-mead
+```
+
+Trainer status checks:
+
+```bash
+ssh garden.local "dirtsim-cli server StatusGet"
+ssh garden.local "dirtsim-cli ui StatusGet"
+ssh garden.local "sudo journalctl -u dirtsim-server.service --since '5 min ago' --no-pager | grep -E 'Evolution: gen=|Generation [0-9]+ complete' | tail -n 20"
+
+# Optional: query trainer-only server commands from workstation CLI.
+ssh -N -L 28080:localhost:8080 garden.local
+cd apps
+./build-debug/bin/cli --address ws://localhost:28080 server TrainingResultList
+./build-debug/bin/cli --address ws://localhost:28080 server TrainingResultGet '{"trainingSessionId":"<uuid>"}'
 ```
 
 ### Fast Dev Deploy (--fast)
