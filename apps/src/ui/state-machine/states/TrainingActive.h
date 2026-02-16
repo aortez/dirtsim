@@ -1,7 +1,6 @@
 #pragma once
 
 #include "StateForward.h"
-#include "TrainingFitnessHistory.h"
 #include "ui/TrainingActiveView.h"
 #include "ui/state-machine/Event.h"
 #include <chrono>
@@ -51,8 +50,6 @@ struct TrainingActive {
     bool hasTrainingSpec_ = false;
     std::optional<Starfield::Snapshot> starfieldSnapshot_;
     bool trainingPaused_ = false;
-    TrainingFitnessHistory fitnessHistory_{};
-    std::vector<float> plotDistributionSeries_;
     std::vector<float> plotBestSeries_;
     int lastFitnessInsightsGeneration_ = -1;
     uint64_t progressEventCount_ = 0;
