@@ -88,7 +88,13 @@ struct Evolution {
     double bestFitnessAllTime = 0.0;
     GenomeId bestGenomeId{};
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    int lastCompletedGeneration_ = -1;
+    double lastGenerationFitnessMin_ = 0.0;
+    double lastGenerationFitnessMax_ = 0.0;
+    std::vector<uint32_t> lastGenerationFitnessHistogram_;
     int saveInterval = 10; // Store best every N generations.
+    bool pruneBeforeBreeding_ = false;
+    int completedEvaluations_ = 0;
 
     // RNG.
     std::mt19937 rng;
@@ -180,6 +186,7 @@ private:
     void startNextVisibleEvaluation(StateMachine& dsm);
     void stepVisibleEvaluation(StateMachine& dsm);
     static WorkerResult runEvaluationTask(const WorkerTask& task, WorkerState& state);
+    void captureLastGenerationFitnessDistribution();
     void processResult(StateMachine& dsm, WorkerResult result);
     static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);

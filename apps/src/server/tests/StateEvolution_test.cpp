@@ -439,7 +439,7 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
     for (const auto& individual : evolutionState.population) {
         ASSERT_TRUE(individual.genome.has_value());
@@ -543,7 +543,7 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
     bool foundMutation = false;
     for (const auto& individual : evolutionState.population) {
@@ -626,7 +626,7 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     }
 
     ASSERT_EQ(evolutionState.generation, 1);
-    ASSERT_EQ(evolutionState.population.size(), parents.size());
+    ASSERT_EQ(evolutionState.population.size(), parents.size() * 2);
 
     bool foundMutation = false;
     for (const auto& individual : evolutionState.population) {

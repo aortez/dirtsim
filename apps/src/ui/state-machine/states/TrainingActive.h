@@ -1,11 +1,13 @@
 #pragma once
 
 #include "StateForward.h"
+#include "TrainingFitnessHistory.h"
 #include "ui/TrainingActiveView.h"
 #include "ui/state-machine/Event.h"
 #include <chrono>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace DirtSim {
 namespace Ui {
@@ -49,8 +51,12 @@ struct TrainingActive {
     bool hasTrainingSpec_ = false;
     std::optional<Starfield::Snapshot> starfieldSnapshot_;
     bool trainingPaused_ = false;
+    TrainingFitnessHistory fitnessHistory_{};
+    std::vector<float> plotDistributionSeries_;
+    std::vector<float> plotBestSeries_;
     uint64_t progressEventCount_ = 0;
     uint64_t renderMessageCount_ = 0;
+    std::chrono::steady_clock::time_point lastPlotUpdate_;
     std::chrono::steady_clock::time_point lastRenderRateLog_;
     uint64_t uiLoopCount_ = 0;
     std::chrono::steady_clock::time_point lastUiLoopLog_;

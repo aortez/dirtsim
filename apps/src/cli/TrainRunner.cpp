@@ -248,6 +248,7 @@ void TrainRunner::displayProgress(
     }
     std::cerr << "] ";
     std::cerr << std::setw(3) << currentEval << "/" << populationSize << " ";
+    std::cerr << "pop=" << populationSize << " ";
     std::cerr << "gen=" << std::fixed << std::setprecision(2) << bestThisGen << " ";
     std::cerr << "best=" << std::setprecision(2) << bestAllTime << " ";
     std::cerr << "avg=" << std::setprecision(2) << avgFitness;

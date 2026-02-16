@@ -33,6 +33,31 @@ namespace State {
 namespace {
 constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
 constexpr size_t kTopCommandSignatureLimit = 20;
+constexpr size_t kFitnessDistributionBinCount = 16;
+
+int estimateTotalEvaluations(const EvolutionConfig& evolutionConfig)
+{
+    if (evolutionConfig.maxGenerations <= 0 || evolutionConfig.populationSize <= 0) {
+        return 0;
+    }
+
+    const int64_t basePopulation = evolutionConfig.populationSize;
+    int64_t total = basePopulation;
+    if (evolutionConfig.maxGenerations > 1) {
+        total += static_cast<int64_t>(evolutionConfig.maxGenerations - 1) * (basePopulation * 2);
+    }
+
+    if (total > std::numeric_limits<int>::max()) {
+        return std::numeric_limits<int>::max();
+    }
+    return static_cast<int>(total);
+}
+
+bool isOffspringOrigin(Evolution::IndividualOrigin origin)
+{
+    return origin == Evolution::IndividualOrigin::OffspringMutated
+        || origin == Evolution::IndividualOrigin::OffspringClone;
+}
 
 int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
 {
@@ -452,6 +477,12 @@ void Evolution::initializePopulation(StateMachine& dsm)
     bestFitnessAllTime = std::numeric_limits<double>::lowest();
     bestGenomeId = INVALID_GENOME_ID;
     bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    lastCompletedGeneration_ = -1;
+    lastGenerationFitnessMin_ = 0.0;
+    lastGenerationFitnessMax_ = 0.0;
+    lastGenerationFitnessHistogram_.clear();
+    pruneBeforeBreeding_ = false;
+    completedEvaluations_ = 0;
     sumFitnessThisGen_ = 0.0;
 
     visibleRunner_.reset();
@@ -728,6 +759,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
     fitnessScores[result.index] = result.fitness;
     sumFitnessThisGen_ += result.fitness;
+    completedEvaluations_++;
     currentEval++;
     cumulativeSimTime_ += result.simTime;
     for (const auto& [name, entry] : result.timerStats) {
@@ -826,6 +858,8 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             result.index);
     }
 
+    const int generationPopulationSize = static_cast<int>(population.size());
+
     if (result.treeFitnessBreakdown.has_value()) {
         const auto& breakdown = result.treeFitnessBreakdown.value();
         LOG_INFO(
@@ -834,7 +868,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             "stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
             generation,
             currentEval,
-            evolutionConfig.populationSize,
+            generationPopulationSize,
             result.fitness,
             breakdown.survivalScore,
             breakdown.energyScore,
@@ -850,7 +884,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             "Evolution: gen={} eval={}/{} fitness={:.4f}",
             generation,
             currentEval,
-            evolutionConfig.populationSize,
+            generationPopulationSize,
             result.fitness);
     }
 
@@ -859,14 +893,16 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
 void Evolution::maybeCompleteGeneration(StateMachine& dsm)
 {
-    if (currentEval < evolutionConfig.populationSize) {
+    const int generationPopulationSize = static_cast<int>(population.size());
+    if (currentEval < generationPopulationSize) {
         return;
     }
 
+    captureLastGenerationFitnessDistribution();
+
     if (evolutionConfig.maxGenerations > 0 && generation + 1 >= evolutionConfig.maxGenerations) {
-        finalAverageFitness_ = evolutionConfig.populationSize > 0
-            ? (sumFitnessThisGen_ / evolutionConfig.populationSize)
-            : 0.0;
+        finalAverageFitness_ =
+            generationPopulationSize > 0 ? (sumFitnessThisGen_ / generationPopulationSize) : 0.0;
         auto now = std::chrono::steady_clock::now();
         finalTrainingSeconds_ = std::chrono::duration<double>(now - trainingStartTime_).count();
         trainingComplete_ = true;
@@ -892,15 +928,77 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         storeBestGenome(dsm);
     }
 
-    // Selection and mutation: create offspring.
-    std::vector<Individual> offspring;
-    std::vector<double> offspringFitness;
-    std::vector<IndividualOrigin> offspringOrigins;
-    offspring.reserve(evolutionConfig.populationSize);
-    offspringFitness.reserve(evolutionConfig.populationSize);
-    offspringOrigins.reserve(evolutionConfig.populationSize);
+    const int survivorPopulationSize = evolutionConfig.populationSize;
+    DIRTSIM_ASSERT(survivorPopulationSize > 0, "Evolution: survivor population must be positive");
 
-    for (int i = 0; i < evolutionConfig.populationSize; ++i) {
+    if (pruneBeforeBreeding_) {
+        // Prune only after the expanded population has been fully evaluated.
+        struct RankedIndividual {
+            double fitness = 0.0;
+            Individual individual;
+            IndividualOrigin origin = IndividualOrigin::Unknown;
+            int order = 0;
+        };
+
+        std::vector<RankedIndividual> ranked;
+        ranked.reserve(population.size());
+        for (size_t i = 0; i < population.size(); ++i) {
+            const IndividualOrigin origin =
+                i < populationOrigins.size() ? populationOrigins[i] : IndividualOrigin::Unknown;
+            ranked.push_back(
+                RankedIndividual{
+                    .fitness = fitnessScores[i],
+                    .individual = population[i],
+                    .origin = origin,
+                    .order = static_cast<int>(i),
+                });
+        }
+
+        std::sort(
+            ranked.begin(), ranked.end(), [](const RankedIndividual& a, const RankedIndividual& b) {
+                if (a.fitness != b.fitness) {
+                    return a.fitness > b.fitness;
+                }
+                const bool aIsOffspring = isOffspringOrigin(a.origin);
+                const bool bIsOffspring = isOffspringOrigin(b.origin);
+                if (aIsOffspring != bIsOffspring) {
+                    return aIsOffspring;
+                }
+                return a.order < b.order;
+            });
+
+        const int keepCount = std::min(survivorPopulationSize, static_cast<int>(ranked.size()));
+        DIRTSIM_ASSERT(keepCount > 0, "Evolution: pruning would remove entire population");
+
+        std::vector<Individual> survivors;
+        std::vector<double> survivorFitness;
+        std::vector<IndividualOrigin> survivorOrigins;
+        survivors.reserve(keepCount);
+        survivorFitness.reserve(keepCount);
+        survivorOrigins.reserve(keepCount);
+        for (int i = 0; i < keepCount; ++i) {
+            survivors.push_back(ranked[i].individual);
+            survivorFitness.push_back(ranked[i].fitness);
+            survivorOrigins.push_back(IndividualOrigin::EliteCarryover);
+        }
+
+        population = std::move(survivors);
+        fitnessScores = std::move(survivorFitness);
+        populationOrigins = std::move(survivorOrigins);
+    }
+
+    DIRTSIM_ASSERT(!population.empty(), "Evolution: population must not be empty when breeding");
+    DIRTSIM_ASSERT(
+        population.size() == fitnessScores.size(),
+        "Evolution: fitness scores must align with population");
+
+    // Selection and mutation: create offspring and append them.
+    std::vector<Individual> offspring;
+    std::vector<IndividualOrigin> offspringOrigins;
+    offspring.reserve(survivorPopulationSize);
+    offspringOrigins.reserve(survivorPopulationSize);
+
+    for (int i = 0; i < survivorPopulationSize; ++i) {
         const int parentIdx =
             tournamentSelectIndex(fitnessScores, evolutionConfig.tournamentSize, rng);
         const Individual& parent = population[parentIdx];
@@ -913,82 +1011,75 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             child.genome = std::move(mutatedGenome);
         }
         offspring.push_back(std::move(child));
-        // Seed offspring with parent fitness so mutated children can survive selection.
-        offspringFitness.push_back(fitnessScores[parentIdx]);
         offspringOrigins.push_back(
             offspringMutated ? IndividualOrigin::OffspringMutated
                              : IndividualOrigin::OffspringClone);
     }
 
-    // Elitist replacement: keep best from parents + offspring.
-    struct PoolEntry {
-        double fitness = 0.0;
-        Individual individual;
-        IndividualOrigin origin = IndividualOrigin::Unknown;
-        bool isOffspring = false;
-        int order = 0;
-    };
-
-    std::vector<PoolEntry> pool;
-    pool.reserve(population.size() + offspring.size());
-    for (size_t i = 0; i < population.size(); ++i) {
-        pool.push_back(
-            PoolEntry{
-                .fitness = fitnessScores[i],
-                .individual = population[i],
-                .origin = IndividualOrigin::EliteCarryover,
-                .isOffspring = false,
-                .order = static_cast<int>(i),
-            });
-    }
-    const int parentCount = static_cast<int>(population.size());
+    population.reserve(population.size() + offspring.size());
+    populationOrigins.reserve(populationOrigins.size() + offspringOrigins.size());
     for (size_t i = 0; i < offspring.size(); ++i) {
-        pool.push_back(
-            PoolEntry{
-                .fitness = offspringFitness[i],
-                .individual = offspring[i],
-                .origin = offspringOrigins[i],
-                .isOffspring = true,
-                .order = parentCount + static_cast<int>(i),
-            });
+        population.push_back(offspring[i]);
+        populationOrigins.push_back(offspringOrigins[i]);
     }
 
-    std::sort(pool.begin(), pool.end(), [](const PoolEntry& a, const PoolEntry& b) {
-        if (a.fitness != b.fitness) {
-            return a.fitness > b.fitness;
-        }
-        if (a.isOffspring != b.isOffspring) {
-            return a.isOffspring;
-        }
-        return a.order < b.order;
-    });
-
-    population.clear();
-    population.reserve(evolutionConfig.populationSize);
-    std::vector<IndividualOrigin> nextOrigins;
-    nextOrigins.reserve(evolutionConfig.populationSize);
-    const int count = std::min(evolutionConfig.populationSize, static_cast<int>(pool.size()));
-    for (int i = 0; i < count; ++i) {
-        population.push_back(pool[i].individual);
-        nextOrigins.push_back(pool[i].origin);
-    }
-    populationOrigins = std::move(nextOrigins);
+    pruneBeforeBreeding_ = !offspring.empty();
 
     // Advance to next generation.
     generation++;
 
     // Only reset for next generation if we're not at the end.
-    // This preserves currentEval = populationSize in the final broadcast,
+    // This preserves currentEval at the generation-complete value in the final broadcast,
     // giving the UI a clean "all evals complete" signal.
     if (evolutionConfig.maxGenerations <= 0 || generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
         bestFitnessThisGen = 0.0;
         bestThisGenOrigin_ = IndividualOrigin::Unknown;
         sumFitnessThisGen_ = 0.0;
-        std::fill(fitnessScores.begin(), fitnessScores.end(), 0.0);
+        fitnessScores.assign(population.size(), 0.0);
     }
 
     adjustConcurrency();
+}
+
+void Evolution::captureLastGenerationFitnessDistribution()
+{
+    const int evaluatedCount = std::min(currentEval, static_cast<int>(fitnessScores.size()));
+    if (evaluatedCount <= 0) {
+        lastCompletedGeneration_ = -1;
+        lastGenerationFitnessMin_ = 0.0;
+        lastGenerationFitnessMax_ = 0.0;
+        lastGenerationFitnessHistogram_.clear();
+        return;
+    }
+
+    double minFitness = fitnessScores[0];
+    double maxFitness = fitnessScores[0];
+    for (int i = 1; i < evaluatedCount; ++i) {
+        minFitness = std::min(minFitness, fitnessScores[i]);
+        maxFitness = std::max(maxFitness, fitnessScores[i]);
+    }
+
+    std::vector<uint32_t> bins(kFitnessDistributionBinCount, 0);
+    const double range = maxFitness - minFitness;
+    if (range <= std::numeric_limits<double>::epsilon()) {
+        bins[kFitnessDistributionBinCount / 2] = static_cast<uint32_t>(evaluatedCount);
+    }
+    else {
+        for (int i = 0; i < evaluatedCount; ++i) {
+            const double normalized = std::clamp((fitnessScores[i] - minFitness) / range, 0.0, 1.0);
+            const size_t bin = std::min(
+                kFitnessDistributionBinCount - 1,
+                static_cast<size_t>(
+                    normalized * static_cast<double>(kFitnessDistributionBinCount)));
+            bins[bin]++;
+        }
+    }
+
+    lastCompletedGeneration_ = generation;
+    lastGenerationFitnessMin_ = minFitness;
+    lastGenerationFitnessMax_ = maxFitness;
+    lastGenerationFitnessHistogram_ = std::move(bins);
 }
 
 void Evolution::adjustConcurrency()
@@ -1055,8 +1146,8 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     double speedup = (totalSeconds > 0.0) ? (cumulative / totalSeconds) : 0.0;
 
     // ETA calculation based on throughput.
-    int completedIndividuals = generation * evolutionConfig.populationSize + currentEval;
-    int totalIndividuals = evolutionConfig.maxGenerations * evolutionConfig.populationSize;
+    int completedIndividuals = completedEvaluations_;
+    int totalIndividuals = estimateTotalEvaluations(evolutionConfig);
     int remainingIndividuals = totalIndividuals - completedIndividuals;
     double eta = 0.0;
     if (completedIndividuals > 0 && remainingIndividuals > 0) {
@@ -1080,14 +1171,26 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         latestCpu = cpuSamples_.back();
     }
 
+    const size_t totalGenomeCount = dsm.getGenomeRepository().count();
+    const int totalGenomeCountForProgress =
+        totalGenomeCount > static_cast<size_t>(std::numeric_limits<int>::max())
+        ? std::numeric_limits<int>::max()
+        : static_cast<int>(totalGenomeCount);
+
     const Api::EvolutionProgress progress{
         .generation = generation,
         .maxGenerations = evolutionConfig.maxGenerations,
         .currentEval = currentEval,
-        .populationSize = evolutionConfig.populationSize,
+        .populationSize = static_cast<int>(population.size()),
+        .totalGenomeCount = totalGenomeCountForProgress,
+        .genomeArchiveMaxSize = evolutionConfig.genomeArchiveMaxSize,
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
         .averageFitness = avgFitness,
+        .lastCompletedGeneration = lastCompletedGeneration_,
+        .lastGenerationFitnessMin = lastGenerationFitnessMin_,
+        .lastGenerationFitnessMax = lastGenerationFitnessMax_,
+        .lastGenerationFitnessHistogram = lastGenerationFitnessHistogram_,
         .bestThisGenSource = toProgressSource(bestThisGenOrigin_),
         .bestGenomeId = bestGenomeId,
         .totalTrainingSeconds = totalSeconds,
