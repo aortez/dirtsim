@@ -211,7 +211,7 @@ TEST(FitnessCalculatorTest, TreeHeldEnergyScoreScalesAfterMinimalStructure)
     EXPECT_DOUBLE_EQ(breakdown.energyScore, 1.0);
 }
 
-TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtOneAcceptedCommand)
+TEST(FitnessCalculatorTest, TreeCommandScoreIsDisabled)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult oneAccepted{
@@ -246,49 +246,26 @@ TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtOneAcceptedCommand)
     const TreeFitnessBreakdown oneBreakdown = evaluator.evaluateWithBreakdown(oneContext);
     const TreeFitnessBreakdown manyBreakdown = evaluator.evaluateWithBreakdown(manyContext);
 
-    EXPECT_DOUBLE_EQ(oneBreakdown.commandScore, 0.1);
-    EXPECT_DOUBLE_EQ(manyBreakdown.commandScore, 0.1);
-}
+    EXPECT_DOUBLE_EQ(oneBreakdown.commandScore, 0.0);
+    EXPECT_DOUBLE_EQ(manyBreakdown.commandScore, 0.0);
 
-TEST(FitnessCalculatorTest, TreeCommandScorePenalizesIdleCancels)
-{
-    const EvolutionConfig config = makeConfig();
-    const FitnessResult noIdleCancels{
+    const FitnessResult manyRejects{
         .lifespan = config.maxSimulationTime,
         .distanceTraveled = 0.0,
         .maxEnergy = 0.0,
-        .idleCancels = 0,
+        .commandsRejected = 1234,
+        .idleCancels = 999,
     };
-    const FitnessResult manyIdleCancels{
-        .lifespan = config.maxSimulationTime,
-        .distanceTraveled = 0.0,
-        .maxEnergy = 0.0,
-        .idleCancels = 1000,
-    };
-
-    const FitnessContext noIdleCancelContext{
-        .result = noIdleCancels,
+    const FitnessContext rejectsContext{
+        .result = manyRejects,
         .organismType = OrganismType::TREE,
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
     };
-    const FitnessContext manyIdleCancelContext{
-        .result = manyIdleCancels,
-        .organismType = OrganismType::TREE,
-        .worldWidth = 10,
-        .worldHeight = 10,
-        .evolutionConfig = config,
-    };
+    const TreeFitnessBreakdown rejectsBreakdown = evaluator.evaluateWithBreakdown(rejectsContext);
 
-    TreeEvaluator evaluator;
-    const TreeFitnessBreakdown noIdleCancelBreakdown =
-        evaluator.evaluateWithBreakdown(noIdleCancelContext);
-    const TreeFitnessBreakdown manyIdleCancelBreakdown =
-        evaluator.evaluateWithBreakdown(manyIdleCancelContext);
-
-    EXPECT_GT(noIdleCancelBreakdown.commandScore, manyIdleCancelBreakdown.commandScore);
-    EXPECT_LT(manyIdleCancelBreakdown.commandScore, 0.0);
+    EXPECT_DOUBLE_EQ(rejectsBreakdown.commandScore, 0.0);
 }
 
 TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)

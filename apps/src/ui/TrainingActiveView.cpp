@@ -456,6 +456,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
             .defaultMaxY = 1.0f,
             .valueScale = 100.0f,
             .autoScaleY = false,
+            .hideZeroValuePoints = true,
             .chartType = LV_CHART_TYPE_BAR,
             .minPointCount = 1,
         });

@@ -16,6 +16,7 @@ public:
         float defaultMaxY = 1.0f;
         float valueScale = 100.0f;
         bool autoScaleY = true;
+        bool hideZeroValuePoints = false;
         lv_chart_type_t chartType = LV_CHART_TYPE_LINE;
         uint32_t minPointCount = 2;
     };

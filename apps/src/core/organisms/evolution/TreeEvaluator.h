@@ -12,6 +12,7 @@ struct TreeFitnessBreakdown {
     double survivalScore = 0.0;
     double energyScore = 0.0;
     double resourceScore = 0.0;
+    double partialStructureBonus = 0.0;
     double stageBonus = 0.0;
     double structureBonus = 0.0;
     double milestoneBonus = 0.0;

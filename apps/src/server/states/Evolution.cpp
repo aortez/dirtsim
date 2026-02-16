@@ -865,7 +865,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         LOG_INFO(
             State,
             "Evolution: gen={} eval={}/{} fitness={:.4f} (surv={:.3f} energy={:.3f} res={:.3f} "
-            "stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
+            "partial={:.3f} stage={:.3f} struct={:.3f} milestone={:.3f} cmd={:.3f})",
             generation,
             currentEval,
             generationPopulationSize,
@@ -873,6 +873,7 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             breakdown.survivalScore,
             breakdown.energyScore,
             breakdown.resourceScore,
+            breakdown.partialStructureBonus,
             breakdown.stageBonus,
             breakdown.structureBonus,
             breakdown.milestoneBonus,

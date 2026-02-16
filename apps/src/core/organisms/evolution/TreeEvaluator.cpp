@@ -16,16 +16,13 @@ constexpr double kTreeResourceWaterWeight = 0.4;
 constexpr double kTreeMinimalStructureBonus = 1;
 constexpr double kTreeRootBelowSeedBonus = 1.0;
 constexpr double kTreeWoodAboveSeedBonus = 1.5;
+constexpr double kTreePartialStructurePartBonus = 0.25;
 constexpr double kTreeSaplingStageBonus = 0.5;
 constexpr double kTreeMatureStageBonus = 1;
 constexpr double kTreeMatureAgeSeconds = 1000.0;
 constexpr int kTreeMatureLeafCount = 10;
 constexpr int kTreeMatureRootCount = 10;
 constexpr int kTreeMatureWoodCount = 10;
-constexpr int kTreeCommandAcceptedSaturationCount = 1;
-constexpr double kTreeCommandAcceptedSaturationReward = 0.1;
-constexpr double kTreeCommandRejectedPenalty = 0.00001;
-constexpr double kTreeIdleCancelPenalty = 0.0000001;
 
 struct TreeStructureMetrics {
     bool hasLeaf = false;
@@ -40,6 +37,7 @@ struct TreeStructureMetrics {
 
 TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree);
 double computeMinimalStructureBonus(const TreeStructureMetrics& metrics);
+double computePartialStructureBonus(const TreeStructureMetrics& metrics);
 
 double clamp01(double value)
 {
@@ -72,40 +70,22 @@ double computeMaxEnergyScore(const FitnessContext& context)
     return clamp01(normalize(context.result.maxEnergy, context.evolutionConfig.energyReference));
 }
 
-double computeFinalEnergyScore(const FitnessContext& context)
-{
-    if (!context.finalOrganism || context.finalOrganism->getType() != OrganismType::TREE) {
-        return 0.0;
-    }
-    const auto* tree = static_cast<const Tree*>(context.finalOrganism);
-    return clamp01(normalize(tree->getEnergy(), context.evolutionConfig.energyReference));
-}
-
-const TreeResourceTotals* resolveTreeResources(const FitnessContext& context)
+const TreeResourceTotals* resolveTreeResources(const FitnessContext& context, const Tree& tree)
 {
     if (context.treeResources) {
         return context.treeResources;
     }
-    if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
-        const auto* tree = static_cast<const Tree*>(context.finalOrganism);
-        return &tree->getResourceTotals();
-    }
-    return context.treeResources;
+    return &tree.getResourceTotals();
 }
 
-double computeTreeResourceScore(const FitnessContext& context)
+double computeTreeResourceScore(
+    const FitnessContext& context, const Tree& tree, const TreeStructureMetrics& metrics)
 {
-    if (!context.finalOrganism || context.finalOrganism->getType() != OrganismType::TREE) {
-        return 0.0;
-    }
-
-    const auto* tree = static_cast<const Tree*>(context.finalOrganism);
-    const TreeStructureMetrics metrics = computeTreeStructureMetrics(*tree);
     if (computeMinimalStructureBonus(metrics) <= 0.0) {
         return 0.0;
     }
 
-    const TreeResourceTotals* resources = resolveTreeResources(context);
+    const TreeResourceTotals* resources = resolveTreeResources(context, tree);
     if (!resources) {
         return 0.0;
     }
@@ -118,36 +98,23 @@ double computeTreeResourceScore(const FitnessContext& context)
     return (kTreeResourceEnergyWeight * energyScore) + (kTreeResourceWaterWeight * waterScore);
 }
 
-double computeTreeEnergyScore(const FitnessContext& context)
+double computeTreeEnergyScore(
+    const FitnessContext& context, const Tree& tree, const TreeStructureMetrics& metrics)
 {
-    if (!context.finalOrganism || context.finalOrganism->getType() != OrganismType::TREE) {
-        return 0.0;
-    }
-
-    const auto* tree = static_cast<const Tree*>(context.finalOrganism);
-    const TreeStructureMetrics metrics = computeTreeStructureMetrics(*tree);
     if (computeMinimalStructureBonus(metrics) <= 0.0) {
         return 0.0;
     }
 
     const double maxEnergyScore = computeMaxEnergyScore(context);
-    const double finalEnergyScore = computeFinalEnergyScore(context);
+    const double finalEnergyScore =
+        clamp01(normalize(tree.getEnergy(), context.evolutionConfig.energyReference));
     return (kTreeEnergyMaxWeight * maxEnergyScore) + (kTreeEnergyFinalWeight * finalEnergyScore);
 }
 
 double computeCommandOutcomeScore(const FitnessContext& context)
 {
-    const int accepted = std::max(0, context.result.commandsAccepted);
-    const int rejected = std::max(0, context.result.commandsRejected);
-    const int idleCancels = std::max(0, context.result.idleCancels);
-
-    const int cappedAccepted = std::min(accepted, kTreeCommandAcceptedSaturationCount);
-    const double acceptedRatio = static_cast<double>(cappedAccepted)
-        / static_cast<double>(kTreeCommandAcceptedSaturationCount);
-    const double acceptedScore = acceptedRatio * kTreeCommandAcceptedSaturationReward;
-
-    return acceptedScore - (rejected * kTreeCommandRejectedPenalty)
-        - (idleCancels * kTreeIdleCancelPenalty);
+    (void)context;
+    return 0.0;
 }
 
 TreeStructureMetrics computeTreeStructureMetrics(const Tree& tree)
@@ -232,6 +199,26 @@ double computeMinimalStructureBonus(const TreeStructureMetrics& metrics)
 
     return 0.0;
 }
+
+double computePartialStructureBonus(const TreeStructureMetrics& metrics)
+{
+    if (!metrics.hasSeed) {
+        return 0.0;
+    }
+
+    int parts = 0;
+    if (metrics.hasLeaf) {
+        parts++;
+    }
+    if (metrics.hasRoot) {
+        parts++;
+    }
+    if (metrics.hasWoodAboveSeed) {
+        parts++;
+    }
+
+    return static_cast<double>(parts) * kTreePartialStructurePartBonus;
+}
 } // namespace
 
 void TreeEvaluator::reset()
@@ -278,24 +265,28 @@ TreeFitnessBreakdown TreeEvaluator::evaluateWithBreakdown(const FitnessContext& 
         return breakdown;
     }
 
-    breakdown.energyScore = computeTreeEnergyScore(context);
-    breakdown.resourceScore = computeTreeResourceScore(context);
     breakdown.commandScore = computeCommandOutcomeScore(context);
 
+    const Tree* tree = nullptr;
+    TreeStructureMetrics metrics;
     if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
-        const auto* tree = static_cast<const Tree*>(context.finalOrganism);
-        const TreeStructureMetrics metrics = computeTreeStructureMetrics(*tree);
+        tree = static_cast<const Tree*>(context.finalOrganism);
+        metrics = computeTreeStructureMetrics(*tree);
+
+        breakdown.partialStructureBonus = computePartialStructureBonus(metrics);
         breakdown.stageBonus = computeStageBonus(*tree, metrics);
         breakdown.structureBonus = computeMinimalStructureBonus(metrics);
         breakdown.milestoneBonus = computeMilestoneBonus(metrics);
+
+        breakdown.energyScore = computeTreeEnergyScore(context, *tree, metrics);
+        breakdown.resourceScore = computeTreeResourceScore(context, *tree, metrics);
     }
 
     breakdown.totalFitness =
         breakdown.survivalScore * (1.0 + breakdown.energyScore) * (1.0 + breakdown.resourceScore)
-        + breakdown.stageBonus + breakdown.structureBonus + breakdown.milestoneBonus
-        + breakdown.commandScore;
-    if (context.finalOrganism && context.finalOrganism->getType() == OrganismType::TREE) {
-        const auto* tree = static_cast<const Tree*>(context.finalOrganism);
+        + breakdown.partialStructureBonus + breakdown.stageBonus + breakdown.structureBonus
+        + breakdown.milestoneBonus + breakdown.commandScore;
+    if (tree) {
         tree->setLastFitness(breakdown.totalFitness);
     }
 
