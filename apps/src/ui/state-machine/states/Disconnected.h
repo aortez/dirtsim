@@ -32,10 +32,12 @@ struct Disconnected {
     static constexpr const char* name() { return "Disconnected"; }
 
 private:
-    static constexpr int MAX_RETRY_ATTEMPTS = 10;
-    static constexpr double RETRY_INTERVAL_SECONDS = 1.0;
+    static constexpr int INITIAL_RETRY_ATTEMPTS = 10;
+    static constexpr double INITIAL_RETRY_INTERVAL_SECONDS = 1.0;
+    static constexpr double BACKGROUND_RETRY_INTERVAL_SECONDS = 10.0;
 
     void createDiagnosticsScreen(StateMachine& sm);
+    double getCurrentRetryIntervalSeconds() const;
     void updateStatusLabel();
 
     StateMachine* sm_ = nullptr;

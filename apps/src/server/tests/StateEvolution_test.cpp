@@ -137,7 +137,7 @@ TEST(StateEvolutionTest, TrainingBestSnapshotCacheRoundTrips)
     EXPECT_FALSE(fixture.stateMachine->getCachedTrainingBestSnapshot().has_value());
 }
 
-TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
+TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdReturnsError)
 {
     TestStateMachineFixture fixture;
 
@@ -152,12 +152,24 @@ TEST(StateEvolutionTest, EvolutionStartMissingGenomeIdTriggersDeath)
     PopulationSpec spec;
     spec.brainKind = TrainingBrainKind::NeuralNet;
     spec.count = 1;
-    spec.seedGenomes.push_back(INVALID_GENOME_ID);
+    const GenomeId missingGenomeId = UUID::generate();
+    spec.seedGenomes.push_back(missingGenomeId);
     cmd.population.push_back(spec);
 
-    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& /*response*/) {});
+    bool callbackInvoked = false;
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& result) {
+        callbackInvoked = true;
+        response = std::move(result);
+    });
 
-    EXPECT_DEATH({ idleState.onEvent(cwc, *fixture.stateMachine); }, ".*");
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isError());
+    EXPECT_EQ(
+        response.errorValue().message, "Seed genome not found: " + missingGenomeId.toShortString());
+    EXPECT_TRUE(std::holds_alternative<Idle>(newState.getVariant()));
 }
 
 TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)

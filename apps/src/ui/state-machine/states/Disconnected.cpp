@@ -193,21 +193,31 @@ void Disconnected::updateStatusLabel()
 
     std::string status;
     if (retry_pending_) {
+        const double retryIntervalSeconds = getCurrentRetryIntervalSeconds();
         auto now = std::chrono::steady_clock::now();
         double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
-        double remaining = RETRY_INTERVAL_SECONDS - elapsed;
+        double remaining = retryIntervalSeconds - elapsed;
         if (remaining < 0) {
             remaining = 0;
         }
 
         status = "Unable to connect to server\n";
-        status +=
-            "Retry " + std::to_string(retry_count_) + "/" + std::to_string(MAX_RETRY_ATTEMPTS);
-        status += " in " + std::to_string(static_cast<int>(remaining + 0.5)) + "s...";
+        if (retry_count_ < INITIAL_RETRY_ATTEMPTS) {
+            status += "Retry " + std::to_string(retry_count_) + "/"
+                + std::to_string(INITIAL_RETRY_ATTEMPTS);
+            status += " in " + std::to_string(static_cast<int>(remaining + 0.5)) + "s...";
+        }
+        else {
+            status += "Retrying every "
+                + std::to_string(static_cast<int>(BACKGROUND_RETRY_INTERVAL_SECONDS + 0.5))
+                + "s (attempt " + std::to_string(retry_count_) + ")\n";
+            status += "Next retry in " + std::to_string(static_cast<int>(remaining + 0.5)) + "s...";
+        }
     }
-    else if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
-        status = "Connection failed after " + std::to_string(MAX_RETRY_ATTEMPTS) + " attempts\n";
-        status += "Check server status and restart";
+    else if (retry_count_ >= INITIAL_RETRY_ATTEMPTS) {
+        status = "Connection unavailable\n";
+        status += "Retrying every "
+            + std::to_string(static_cast<int>(BACKGROUND_RETRY_INTERVAL_SECONDS + 0.5)) + "s";
     }
     else {
         status = "Connecting to server...";
@@ -229,25 +239,28 @@ void Disconnected::updateAnimations()
     auto now = std::chrono::steady_clock::now();
     double elapsed = std::chrono::duration<double>(now - last_attempt_time_).count();
 
-    if (elapsed >= RETRY_INTERVAL_SECONDS) {
-        if (retry_count_ >= MAX_RETRY_ATTEMPTS) {
-            LOG_ERROR(
-                State, "Connection failed after {} retry attempts, giving up", MAX_RETRY_ATTEMPTS);
-            retry_pending_ = false;
-            return;
-        }
+    if (elapsed >= getCurrentRetryIntervalSeconds()) {
+        const bool isInitialRetryPhase = retry_count_ < INITIAL_RETRY_ATTEMPTS;
 
         LOG_INFO(
             State,
-            "Retrying connection to {}:{} (attempt {}/{})",
+            "Retrying connection to {}:{} ({} attempt {})",
             pending_host_,
             pending_port_,
-            retry_count_ + 1,
-            MAX_RETRY_ATTEMPTS);
+            isInitialRetryPhase ? "initial" : "background",
+            retry_count_ + 1);
 
         // Queue a new connection attempt.
         sm_->queueEvent(ConnectToServerCommand{ pending_host_, pending_port_ });
     }
+}
+
+double Disconnected::getCurrentRetryIntervalSeconds() const
+{
+    if (retry_count_ < INITIAL_RETRY_ATTEMPTS) {
+        return INITIAL_RETRY_INTERVAL_SECONDS;
+    }
+    return BACKGROUND_RETRY_INTERVAL_SECONDS;
 }
 
 State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine& sm)
@@ -446,14 +459,19 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
         last_attempt_time_ = std::chrono::steady_clock::now();
         retry_pending_ = true;
 
-        if (retry_count_ < MAX_RETRY_ATTEMPTS) {
-            LOG_INFO(
+        if (retry_count_ == INITIAL_RETRY_ATTEMPTS) {
+            LOG_WARN(
                 State,
-                "Will retry connection in {:.0f}s (attempt {}/{})",
-                RETRY_INTERVAL_SECONDS,
-                retry_count_,
-                MAX_RETRY_ATTEMPTS);
+                "Initial retry attempts exhausted ({}), continuing background retries every "
+                "{:.0f}s",
+                INITIAL_RETRY_ATTEMPTS,
+                BACKGROUND_RETRY_INTERVAL_SECONDS);
         }
+        LOG_INFO(
+            State,
+            "Will retry connection in {:.0f}s (attempt {})",
+            getCurrentRetryIntervalSeconds(),
+            retry_count_);
 
         updateStatusLabel();
         return std::move(*this);
@@ -504,14 +522,18 @@ State::Any Disconnected::onEvent(const ServerDisconnectedEvent& evt, StateMachin
     last_attempt_time_ = std::chrono::steady_clock::now();
     retry_pending_ = true;
 
-    if (retry_count_ < MAX_RETRY_ATTEMPTS) {
-        LOG_INFO(
+    if (retry_count_ == INITIAL_RETRY_ATTEMPTS) {
+        LOG_WARN(
             State,
-            "Will retry connection in {:.0f}s (attempt {}/{})",
-            RETRY_INTERVAL_SECONDS,
-            retry_count_,
-            MAX_RETRY_ATTEMPTS);
+            "Initial retry attempts exhausted ({}), continuing background retries every {:.0f}s",
+            INITIAL_RETRY_ATTEMPTS,
+            BACKGROUND_RETRY_INTERVAL_SECONDS);
     }
+    LOG_INFO(
+        State,
+        "Will retry connection in {:.0f}s (attempt {})",
+        getCurrentRetryIntervalSeconds(),
+        retry_count_);
 
     updateStatusLabel();
     return std::move(*this);

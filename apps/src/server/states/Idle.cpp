@@ -1,5 +1,4 @@
 #include "State.h"
-#include "core/Assert.h"
 #include "core/LoggingChannels.h"
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
@@ -13,6 +12,7 @@
 #include "server/StateMachine.h"
 #include "server/api/ApiError.h"
 #include <algorithm>
+#include <cassert>
 #include <thread>
 
 namespace DirtSim {
@@ -236,7 +236,8 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
         populationSize,
         warmSeedInjected);
     if (error.has_value()) {
-        DIRTSIM_ASSERT(false, error->message);
+        LOG_WARN(State, "EvolutionStart rejected: {}", error->message);
+        cwc.sendResponse(Api::EvolutionStart::Response::error(error.value()));
         return Idle{};
     }
 

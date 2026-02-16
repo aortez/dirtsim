@@ -1,8 +1,14 @@
+#include "core/MaterialType.h"
+#include "core/organisms/Tree.h"
+#include "core/organisms/TreeCommandProcessor.h"
 #include "core/organisms/TreeResourceTotals.h"
+#include "core/organisms/brains/RuleBasedBrain.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
+#include "core/organisms/evolution/TreeEvaluator.h"
 #include <gtest/gtest.h>
+#include <memory>
 
 namespace DirtSim {
 
@@ -14,6 +20,14 @@ EvolutionConfig makeConfig()
     config.energyReference = 100.0;
     config.waterReference = 100.0;
     return config;
+}
+
+std::unique_ptr<Tree> makeTree()
+{
+    return std::make_unique<Tree>(
+        OrganismId{ 1 },
+        std::make_unique<RuleBasedBrain>(),
+        std::make_unique<TreeCommandProcessor>());
 }
 } // namespace
 
@@ -58,7 +72,11 @@ TEST(FitnessCalculatorTest, TreeFitnessIncludesEnergy)
     const FitnessResult high_energy{ .lifespan = 10.0,
                                      .distanceTraveled = 0.0,
                                      .maxEnergy = 100.0 };
-    const TreeResourceTotals resources{};
+    auto tree = makeTree();
+    tree->setEnergy(100.0);
+    tree->addCellToLocalShape({ 0, -1 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Root, 1.0);
+    tree->addCellToLocalShape({ 1, -1 }, Material::EnumType::Leaf, 1.0);
 
     const FitnessContext low_context{
         .result = low_energy,
@@ -66,8 +84,8 @@ TEST(FitnessCalculatorTest, TreeFitnessIncludesEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
-        .treeResources = &resources,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
     };
     const FitnessContext high_context{
         .result = high_energy,
@@ -75,8 +93,8 @@ TEST(FitnessCalculatorTest, TreeFitnessIncludesEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
-        .treeResources = &resources,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
     };
 
     const double fitness_low = computeFitnessForOrganism(low_context);
@@ -91,6 +109,10 @@ TEST(FitnessCalculatorTest, TreeFitnessRewardsResourceCollection)
     const FitnessResult result{ .lifespan = 10.0, .distanceTraveled = 0.0, .maxEnergy = 0.0 };
     const TreeResourceTotals low_resources{ .waterAbsorbed = 0.0, .energyProduced = 0.0 };
     const TreeResourceTotals high_resources{ .waterAbsorbed = 100.0, .energyProduced = 100.0 };
+    auto tree = makeTree();
+    tree->addCellToLocalShape({ 0, -1 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Root, 1.0);
+    tree->addCellToLocalShape({ 1, -1 }, Material::EnumType::Leaf, 1.0);
 
     const FitnessContext low_context{
         .result = result,
@@ -98,7 +120,7 @@ TEST(FitnessCalculatorTest, TreeFitnessRewardsResourceCollection)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
+        .finalOrganism = tree.get(),
         .treeResources = &low_resources,
     };
     const FitnessContext high_context{
@@ -107,7 +129,7 @@ TEST(FitnessCalculatorTest, TreeFitnessRewardsResourceCollection)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
+        .finalOrganism = tree.get(),
         .treeResources = &high_resources,
     };
 
@@ -115,6 +137,158 @@ TEST(FitnessCalculatorTest, TreeFitnessRewardsResourceCollection)
     const double fitness_high = computeFitnessForOrganism(high_context);
 
     EXPECT_GT(fitness_high, fitness_low);
+}
+
+TEST(FitnessCalculatorTest, TreeResourceScoreRequiresMinimalStructure)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .distanceTraveled = 0.0, .maxEnergy = 0.0 };
+    const TreeResourceTotals high_resources{ .waterAbsorbed = 100.0, .energyProduced = 100.0 };
+    auto tree = makeTree();
+
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+        .finalOrganism = tree.get(),
+        .treeResources = &high_resources,
+    };
+
+    TreeEvaluator evaluator;
+    const TreeFitnessBreakdown breakdown = evaluator.evaluateWithBreakdown(context);
+
+    EXPECT_DOUBLE_EQ(breakdown.resourceScore, 0.0);
+}
+
+TEST(FitnessCalculatorTest, TreeHeldEnergyScoreRequiresMinimalStructure)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .distanceTraveled = 0.0, .maxEnergy = 100.0 };
+    auto tree = makeTree();
+    tree->setEnergy(100.0);
+
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
+    };
+
+    TreeEvaluator evaluator;
+    const TreeFitnessBreakdown breakdown = evaluator.evaluateWithBreakdown(context);
+
+    EXPECT_DOUBLE_EQ(breakdown.energyScore, 0.0);
+}
+
+TEST(FitnessCalculatorTest, TreeHeldEnergyScoreScalesAfterMinimalStructure)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .distanceTraveled = 0.0, .maxEnergy = 100.0 };
+    auto tree = makeTree();
+    tree->setEnergy(100.0);
+    tree->addCellToLocalShape({ 0, -1 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Root, 1.0);
+    tree->addCellToLocalShape({ 1, -1 }, Material::EnumType::Leaf, 1.0);
+
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
+    };
+
+    TreeEvaluator evaluator;
+    const TreeFitnessBreakdown breakdown = evaluator.evaluateWithBreakdown(context);
+
+    EXPECT_DOUBLE_EQ(breakdown.energyScore, 1.0);
+}
+
+TEST(FitnessCalculatorTest, TreeCommandScoreSaturatesAtFiveAcceptedCommands)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult fiveAccepted{
+        .lifespan = config.maxSimulationTime,
+        .distanceTraveled = 0.0,
+        .maxEnergy = 0.0,
+        .commandsAccepted = 5,
+    };
+    const FitnessResult manyAccepted{
+        .lifespan = config.maxSimulationTime,
+        .distanceTraveled = 0.0,
+        .maxEnergy = 0.0,
+        .commandsAccepted = 42,
+    };
+
+    const FitnessContext fiveContext{
+        .result = fiveAccepted,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+    };
+    const FitnessContext manyContext{
+        .result = manyAccepted,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+    };
+
+    TreeEvaluator evaluator;
+    const TreeFitnessBreakdown fiveBreakdown = evaluator.evaluateWithBreakdown(fiveContext);
+    const TreeFitnessBreakdown manyBreakdown = evaluator.evaluateWithBreakdown(manyContext);
+
+    EXPECT_DOUBLE_EQ(fiveBreakdown.commandScore, 0.5);
+    EXPECT_DOUBLE_EQ(manyBreakdown.commandScore, 0.5);
+}
+
+TEST(FitnessCalculatorTest, TreeCommandScorePenalizesIdleCancels)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult noIdleCancels{
+        .lifespan = config.maxSimulationTime,
+        .distanceTraveled = 0.0,
+        .maxEnergy = 0.0,
+        .idleCancels = 0,
+    };
+    const FitnessResult manyIdleCancels{
+        .lifespan = config.maxSimulationTime,
+        .distanceTraveled = 0.0,
+        .maxEnergy = 0.0,
+        .idleCancels = 1000,
+    };
+
+    const FitnessContext noIdleCancelContext{
+        .result = noIdleCancels,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+    };
+    const FitnessContext manyIdleCancelContext{
+        .result = manyIdleCancels,
+        .organismType = OrganismType::TREE,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+    };
+
+    TreeEvaluator evaluator;
+    const TreeFitnessBreakdown noIdleCancelBreakdown =
+        evaluator.evaluateWithBreakdown(noIdleCancelContext);
+    const TreeFitnessBreakdown manyIdleCancelBreakdown =
+        evaluator.evaluateWithBreakdown(manyIdleCancelContext);
+
+    EXPECT_GT(noIdleCancelBreakdown.commandScore, manyIdleCancelBreakdown.commandScore);
+    EXPECT_LT(manyIdleCancelBreakdown.commandScore, 0.0);
 }
 
 TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)

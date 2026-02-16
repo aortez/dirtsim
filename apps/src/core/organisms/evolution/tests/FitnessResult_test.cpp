@@ -1,8 +1,13 @@
+#include "core/MaterialType.h"
+#include "core/organisms/Tree.h"
+#include "core/organisms/TreeCommandProcessor.h"
 #include "core/organisms/TreeResourceTotals.h"
+#include "core/organisms/brains/RuleBasedBrain.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
 #include <gtest/gtest.h>
+#include <memory>
 
 namespace DirtSim {
 
@@ -14,6 +19,14 @@ EvolutionConfig makeConfig()
     config.energyReference = 100.0;
     config.waterReference = 100.0;
     return config;
+}
+
+std::unique_ptr<Tree> makeTree()
+{
+    return std::make_unique<Tree>(
+        OrganismId{ 1 },
+        std::make_unique<RuleBasedBrain>(),
+        std::make_unique<TreeCommandProcessor>());
 }
 } // namespace
 
@@ -48,7 +61,11 @@ TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
     FitnessResult lowEnergy{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 0.0 };
     FitnessResult highEnergy{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 100.0 };
     const EvolutionConfig config = makeConfig();
-    const TreeResourceTotals resources{};
+    auto tree = makeTree();
+    tree->setEnergy(0.0);
+    tree->addCellToLocalShape({ 0, -1 }, Material::EnumType::Wood, 1.0);
+    tree->addCellToLocalShape({ 0, 1 }, Material::EnumType::Root, 1.0);
+    tree->addCellToLocalShape({ 1, -1 }, Material::EnumType::Leaf, 1.0);
 
     const FitnessContext lowContext{
         .result = lowEnergy,
@@ -56,8 +73,8 @@ TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
-        .treeResources = &resources,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
     };
     const FitnessContext highContext{
         .result = highEnergy,
@@ -65,8 +82,8 @@ TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
-        .finalOrganism = nullptr,
-        .treeResources = &resources,
+        .finalOrganism = tree.get(),
+        .treeResources = &tree->getResourceTotals(),
     };
     const double lowFitness = computeFitnessForOrganism(lowContext);
     const double highFitness = computeFitnessForOrganism(highContext);
