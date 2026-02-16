@@ -68,33 +68,12 @@ GenomeId getBestGenomeId(const std::vector<Api::TrainingResult::Candidate>& cand
     return bestIt != candidates.end() ? bestIt->id : INVALID_GENOME_ID;
 }
 
-void rebuildDistributionSeries(
-    const Api::EvolutionProgress& progress, std::vector<float>& distributionSeries)
-{
-    distributionSeries.clear();
-    if (progress.lastGenerationFitnessHistogram.empty()) {
-        return;
-    }
-
-    uint64_t total = 0;
-    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
-        total += count;
-    }
-    if (total == 0) {
-        return;
-    }
-
-    distributionSeries.reserve(progress.lastGenerationFitnessHistogram.size());
-    for (const uint32_t count : progress.lastGenerationFitnessHistogram) {
-        distributionSeries.push_back(static_cast<float>(count) / static_cast<float>(total));
-    }
-}
-
 void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
 {
-    state.fitnessHistory_.clear();
-    state.plotDistributionSeries_.clear();
     state.plotBestSeries_.clear();
+
+    state.plotBestSeries_.push_back(0.0f);
+  
     state.lastFitnessInsightsGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
@@ -107,7 +86,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     DIRTSIM_ASSERT(state.view_, "TrainingActiveView must exist");
     state.view_->setEvolutionStarted(true);
     state.view_->setTrainingPaused(false);
-    state.view_->clearFitnessPlots();
+    state.view_->updateFitnessPlots(state.plotBestSeries_);
 
     // Stream setup is also done in TrainingIdle before EvolutionStart to prevent a deadlock
     // when training completes quickly. This second call handles the restart-from-unsaved-result
@@ -281,8 +260,8 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
         }
 
-        rebuildDistributionSeries(progress, plotDistributionSeries_);
-        view_->updateFitnessPlots(plotDistributionSeries_, plotBestSeries_);
+
+        view_->updateFitnessPlots(plotBestSeries_);
     }
 
     return std::move(*this);
