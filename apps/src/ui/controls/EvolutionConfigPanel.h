@@ -55,7 +55,12 @@ private:
     // Config steppers.
     lv_obj_t* populationStepper_ = nullptr;
     lv_obj_t* generationsStepper_ = nullptr;
+    lv_obj_t* mutationBudgetToggle_ = nullptr;
+    lv_obj_t* mutationPerturbationsStepper_ = nullptr;
+    lv_obj_t* mutationResetsStepper_ = nullptr;
     lv_obj_t* mutationRateStepper_ = nullptr;
+    lv_obj_t* resetRateStepper_ = nullptr;
+    lv_obj_t* sigmaStepper_ = nullptr;
     lv_obj_t* tournamentSizeStepper_ = nullptr;
     lv_obj_t* maxSimTimeStepper_ = nullptr;
     lv_obj_t* targetCpuStepper_ = nullptr;
@@ -67,7 +72,12 @@ private:
     static void onPopulationChanged(lv_event_t* e);
     static void onGenerationsChanged(lv_event_t* e);
     static void onMaxSimTimeChanged(lv_event_t* e);
+    static void onMutationBudgetToggled(lv_event_t* e);
+    static void onMutationPerturbationsChanged(lv_event_t* e);
+    static void onMutationResetsChanged(lv_event_t* e);
     static void onMutationRateChanged(lv_event_t* e);
+    static void onResetRateChanged(lv_event_t* e);
+    static void onSigmaChanged(lv_event_t* e);
     static void onStartClicked(lv_event_t* e);
     static void onStopClicked(lv_event_t* e);
     static void onTargetCpuChanged(lv_event_t* e);

@@ -16,6 +16,8 @@
 #include <iomanip>
 #include <lvgl/lvgl.h>
 #include <sstream>
+#include <string_view>
+#include <unordered_map>
 
 namespace DirtSim {
 namespace Ui {
@@ -586,7 +588,56 @@ void TrainingActiveView::updateBestSnapshot(
         summary << "Accepted: " << commandsAccepted << "\n";
         summary << "Rejected: " << commandsRejected << "\n";
         summary << "Acceptance: " << std::fixed << std::setprecision(1) << acceptedRatio << "%\n";
-        summary << "\nTop Command Signatures:\n";
+
+        const auto commandTypeFromSignature = [](const std::string& signature) -> std::string {
+            constexpr std::string_view delimiter = " -> ";
+            const std::string_view signatureView{ signature };
+            const size_t outcomePos = signatureView.find(delimiter);
+            const std::string_view commandView = outcomePos == std::string_view::npos
+                ? signatureView
+                : signatureView.substr(0, outcomePos);
+            const size_t parenPos = commandView.find('(');
+            return std::string(
+                parenPos == std::string_view::npos ? commandView : commandView.substr(0, parenPos));
+        };
+
+        std::unordered_map<std::string, int> histogramByType;
+        histogramByType.reserve(topCommandSignatures.size());
+        for (const auto& [signature, count] : topCommandSignatures) {
+            if (count <= 0) {
+                continue;
+            }
+            histogramByType[commandTypeFromSignature(signature)] += count;
+        }
+
+        std::vector<std::pair<std::string, int>> histogram;
+        histogram.reserve(histogramByType.size());
+        for (const auto& [commandType, count] : histogramByType) {
+            histogram.emplace_back(commandType, count);
+        }
+        std::sort(histogram.begin(), histogram.end(), [](const auto& lhs, const auto& rhs) {
+            if (lhs.second != rhs.second) {
+                return lhs.second > rhs.second;
+            }
+            return lhs.first < rhs.first;
+        });
+
+        summary << "\nCommand Histogram:\n";
+        if (histogram.empty()) {
+            summary << "(none)";
+        }
+        else {
+            constexpr size_t histogramLimit = 10;
+            const size_t limit = std::min(histogram.size(), histogramLimit);
+            for (size_t i = 0; i < limit; ++i) {
+                summary << (i + 1) << ". " << histogram[i].first << " x" << histogram[i].second;
+                if (i + 1 < limit) {
+                    summary << "\n";
+                }
+            }
+        }
+
+        summary << "\n\nTop Command Signatures:\n";
         if (topCommandSignatures.empty()) {
             summary << "(none)";
         }

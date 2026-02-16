@@ -10,7 +10,8 @@ namespace DirtSim {
 namespace Api {
 
 /**
- * Best snapshot broadcast when a new all-time fitness record is reached.
+ * Best snapshot broadcast when a new all-time fitness record is reached, and
+ * occasionally for tied-best variants to help visualize plateau diversity.
  * Includes a renderable WorldData snapshot and organism grid.
  */
 struct TrainingBestSnapshot {
