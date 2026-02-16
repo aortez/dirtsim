@@ -13,6 +13,8 @@ struct LightConfig {
     float diffusion_rate;
     bool sky_access_enabled;
     float sky_access_falloff;
+    bool sky_access_multi_directional;
+    int sky_probe_steps;
     uint32_t sun_color;
     bool sun_enabled;
     float sun_intensity;
