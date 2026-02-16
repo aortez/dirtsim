@@ -565,7 +565,7 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     EXPECT_TRUE(foundMutation);
 }
 
-TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
+TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
 {
     TestStateMachineFixture fixture;
 
@@ -628,6 +628,7 @@ TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
     ASSERT_EQ(evolutionState.generation, 1);
     ASSERT_EQ(evolutionState.population.size(), parents.size());
 
+    bool foundMutation = false;
     for (const auto& individual : evolutionState.population) {
         ASSERT_TRUE(individual.genome.has_value());
         const auto& genome = individual.genome.value();
@@ -638,8 +639,11 @@ TEST(StateEvolutionTest, NeuralNetMutationNotSelectedWithPositiveFitness)
                 break;
             }
         }
-        EXPECT_TRUE(matchesParent);
+        if (!matchesParent) {
+            foundMutation = true;
+        }
     }
+    EXPECT_TRUE(foundMutation);
 }
 
 /**

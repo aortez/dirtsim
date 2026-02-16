@@ -876,7 +876,8 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             child.genome = mutate(parent.genome.value(), mutationConfig, rng);
         }
         offspring.push_back(std::move(child));
-        offspringFitness.push_back(0.0); // Will be evaluated next generation.
+        // Seed offspring with parent fitness so mutated children can survive selection.
+        offspringFitness.push_back(fitnessScores[parentIdx]);
     }
 
     // Elitist replacement: keep best from parents + offspring.
