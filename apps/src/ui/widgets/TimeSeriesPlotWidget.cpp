@@ -1,6 +1,7 @@
 #include "TimeSeriesPlotWidget.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <utility>
 
 namespace DirtSim {
@@ -149,9 +150,17 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
         lv_chart_set_point_count(chart_, pointCount);
     }
 
+    const auto toPlotValue = [this](float value) {
+        if (config_.hideZeroValuePoints
+            && std::abs(value) <= std::numeric_limits<float>::epsilon()) {
+            return static_cast<int32_t>(LV_CHART_POINT_NONE);
+        }
+        return toChartValue(value);
+    };
+
     chartValues_.assign(pointCount, 0);
     if (samples.size() == 1 && pointCount > 1) {
-        const int32_t value = toChartValue(samples.front());
+        const int32_t value = toPlotValue(samples.front());
         chartValues_[0] = value;
         for (uint32_t i = 1; i < pointCount; ++i) {
             chartValues_[i] = value;
@@ -159,7 +168,7 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
     }
     else {
         for (size_t i = 0; i < samples.size(); ++i) {
-            chartValues_[i] = toChartValue(samples[i]);
+            chartValues_[i] = toPlotValue(samples[i]);
         }
     }
 
