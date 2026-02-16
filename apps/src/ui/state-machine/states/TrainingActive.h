@@ -54,9 +54,9 @@ struct TrainingActive {
     TrainingFitnessHistory fitnessHistory_{};
     std::vector<float> plotDistributionSeries_;
     std::vector<float> plotBestSeries_;
+    int lastFitnessInsightsGeneration_ = -1;
     uint64_t progressEventCount_ = 0;
     uint64_t renderMessageCount_ = 0;
-    std::chrono::steady_clock::time_point lastPlotUpdate_;
     std::chrono::steady_clock::time_point lastRenderRateLog_;
     uint64_t uiLoopCount_ = 0;
     std::chrono::steady_clock::time_point lastUiLoopLog_;
