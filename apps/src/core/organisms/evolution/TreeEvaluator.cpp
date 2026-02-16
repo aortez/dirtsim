@@ -22,8 +22,8 @@ constexpr double kTreeMatureAgeSeconds = 1000.0;
 constexpr int kTreeMatureLeafCount = 10;
 constexpr int kTreeMatureRootCount = 10;
 constexpr int kTreeMatureWoodCount = 10;
-constexpr int kTreeCommandAcceptedSaturationCount = 5;
-constexpr double kTreeCommandAcceptedSaturationReward = 0.5;
+constexpr int kTreeCommandAcceptedSaturationCount = 1;
+constexpr double kTreeCommandAcceptedSaturationReward = 0.1;
 constexpr double kTreeCommandRejectedPenalty = 0.00001;
 constexpr double kTreeIdleCancelPenalty = 0.0000001;
 
