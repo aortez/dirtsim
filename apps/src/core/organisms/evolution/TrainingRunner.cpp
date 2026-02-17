@@ -118,6 +118,15 @@ TrainingRunner::TrainingRunner(
     int height = metadata.requiredHeight > 0 ? metadata.requiredHeight : 9;
     world_ = std::make_unique<World>(width, height);
 
+    if (trainingSpec_.organismType == OrganismType::DUCK
+        && individual_.scenarioId == Scenario::EnumType::Clock) {
+        ScenarioConfig scenarioConfig = scenario_->getConfig();
+        if (auto* clockConfig = std::get_if<DirtSim::Config::Clock>(&scenarioConfig)) {
+            clockConfig->duckEnabled = false;
+            scenario_->setConfig(scenarioConfig, *world_);
+        }
+    }
+
     // Setup scenario.
     scenario_->setup(*world_);
     world_->setScenario(scenario_.get());

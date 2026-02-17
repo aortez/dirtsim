@@ -972,6 +972,24 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     EXPECT_TRUE(foundRunRight);
 }
 
+TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::Random;
+    individual.scenarioId = Scenario::EnumType::Clock;
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const ScenarioConfig scenarioConfig = runner.getScenarioConfig();
+    const auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig);
+    ASSERT_NE(clockConfig, nullptr);
+    EXPECT_FALSE(clockConfig->duckEnabled);
+}
+
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
 {
     TrainingSpec spec;
