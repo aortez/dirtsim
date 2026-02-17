@@ -9,6 +9,7 @@
 #include "core/organisms/Tree.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include <algorithm>
 #include <limits>
 #include <optional>
 
@@ -285,7 +286,22 @@ void TrainingRunner::spawnEvaluationOrganism()
     DIRTSIM_ASSERT(world_, "TrainingRunner: World must exist before spawn");
     DIRTSIM_ASSERT(scenario_, "TrainingRunner: Scenario must exist before spawn");
 
-    const Vector2i spawnCell = findSpawnCell(*world_);
+    Vector2i spawnCell{ 0, 0 };
+    const WorldData& data = world_->getData();
+    if (trainingSpec_.organismType == OrganismType::DUCK
+        && individual_.scenarioId == Scenario::EnumType::DuckTraining) {
+        Vector2i candidate{ 1, std::max(1, data.height - 2) };
+        if (data.inBounds(candidate.x, candidate.y) && data.at(candidate.x, candidate.y).isAir()
+            && !world_->getOrganismManager().hasOrganism(candidate)) {
+            spawnCell = candidate;
+        }
+        else {
+            spawnCell = findSpawnCell(*world_);
+        }
+    }
+    else {
+        spawnCell = findSpawnCell(*world_);
+    }
 
     const std::string variant = individual_.brain.brainVariant.value_or("");
     const BrainRegistryEntry* entry =

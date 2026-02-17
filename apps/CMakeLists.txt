@@ -396,6 +396,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/RainEvent.cpp
     src/core/scenarios/clock_scenario/StormManager.cpp
     src/core/scenarios/DamBreakScenario.cpp
+    src/core/scenarios/DuckTrainingScenario.cpp
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
@@ -437,6 +438,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/TreeCommandProcessor.cpp
     src/core/organisms/TreeSensoryData.cpp
     src/core/organisms/brains/Genome.cpp
+    src/core/organisms/brains/DuckNeuralNetBrain.cpp
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp

@@ -37,6 +37,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             };
         case OrganismType::DUCK:
             return {
+                { TrainingBrainKind::NeuralNet, true },
                 { TrainingBrainKind::Random, false },
                 { TrainingBrainKind::WallBouncing, false },
                 { TrainingBrainKind::DuckBrain2, false },
@@ -104,11 +105,17 @@ TrainingPopulationPanel::TrainingPopulationPanel(
       trainingSpec_(trainingSpec)
 {
     scenarioOptions_ = {
-        Scenario::EnumType::Benchmark,       Scenario::EnumType::Clock,
-        Scenario::EnumType::DamBreak,        Scenario::EnumType::Empty,
-        Scenario::EnumType::GooseTest,       Scenario::EnumType::Lights,
-        Scenario::EnumType::Raining,         Scenario::EnumType::Sandbox,
-        Scenario::EnumType::TreeGermination, Scenario::EnumType::WaterEqualization,
+        Scenario::EnumType::Benchmark,
+        Scenario::EnumType::Clock,
+        Scenario::EnumType::DamBreak,
+        Scenario::EnumType::Empty,
+        Scenario::EnumType::DuckTraining,
+        Scenario::EnumType::GooseTest,
+        Scenario::EnumType::Lights,
+        Scenario::EnumType::Raining,
+        Scenario::EnumType::Sandbox,
+        Scenario::EnumType::TreeGermination,
+        Scenario::EnumType::WaterEqualization,
     };
     scenarioLabels_.reserve(scenarioOptions_.size());
     for (const auto& scenarioId : scenarioOptions_) {
@@ -608,6 +615,16 @@ void TrainingPopulationPanel::refreshFromSpec()
     }
 
     for (auto& spec : trainingSpec_.population) {
+        if (brainRequiresGenome_ && spec.seedGenomes.empty() && spec.randomCount == 0
+            && spec.count > 0) {
+            spec.randomCount = spec.count;
+        }
+        else if (
+            !brainRequiresGenome_ && spec.count == 0
+            && (!spec.seedGenomes.empty() || spec.randomCount > 0)) {
+            spec.count = static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
+        }
+
         spec.brainKind = brainKind_;
         spec.brainVariant.reset();
         if (!brainRequiresGenome_) {

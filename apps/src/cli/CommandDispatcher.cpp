@@ -74,6 +74,7 @@ CommandDispatcher::CommandDispatcher()
     registerCommand<Api::StatusGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TimerStatsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::UserSettingsGet::Cwc>(serverHandlers_, serverExampleHandlers_);
+    registerCommand<Api::UserSettingsPatch::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::UserSettingsReset::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::UserSettingsSet::Cwc>(serverHandlers_, serverExampleHandlers_);
     registerCommand<Api::TrainingResultDiscard::Cwc>(serverHandlers_, serverExampleHandlers_);

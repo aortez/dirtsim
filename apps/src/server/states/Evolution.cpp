@@ -435,11 +435,14 @@ void Evolution::initializePopulation(StateMachine& dsm)
             }
 
             for (int i = 0; i < spec.randomCount; ++i) {
+                DIRTSIM_ASSERT(
+                    entry->createRandomGenome,
+                    "Evolution: createRandomGenome must be set for genome brains");
                 population.push_back(
                     Individual{ .brainKind = spec.brainKind,
                                 .brainVariant = spec.brainVariant,
                                 .scenarioId = spec.scenarioId,
-                                .genome = Genome::random(rng),
+                                .genome = entry->createRandomGenome(rng),
                                 .allowsMutation = entry->allowsMutation });
                 populationOrigins.push_back(IndividualOrigin::Seed);
             }

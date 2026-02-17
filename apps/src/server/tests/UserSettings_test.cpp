@@ -2,6 +2,7 @@
 #include "server/Event.h"
 #include "server/UserSettings.h"
 #include "server/api/TrainingResult.h"
+#include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsReset.h"
 #include "server/api/UserSettingsSet.h"
 #include "server/tests/TestStateMachineFixture.h"
@@ -185,4 +186,85 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
     EXPECT_FALSE(fromDisk.startMenuAutoRun);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+}
+
+TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-patch");
+
+    UserSettings baseSettings = fixture.stateMachine->getUserSettings();
+    baseSettings.timezoneIndex = 7;
+    baseSettings.volumePercent = 65;
+    baseSettings.defaultScenario = Scenario::EnumType::Clock;
+    baseSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
+    baseSettings.startMenuAutoRun = true;
+    baseSettings.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    baseSettings.trainingSpec.organismType = OrganismType::TREE;
+    baseSettings.trainingSpec.population.clear();
+
+    Api::UserSettingsSet::Command setCommand{ .settings = baseSettings };
+    Api::UserSettingsSet::Cwc setCwc(setCommand, [](Api::UserSettingsSet::Response&&) {});
+    fixture.stateMachine->handleEvent(Event{ setCwc });
+
+    bool callbackInvoked = false;
+    Api::UserSettingsPatch::Response response;
+
+    TrainingSpec updatedTrainingSpec;
+    updatedTrainingSpec.scenarioId = Scenario::EnumType::DuckTraining;
+    updatedTrainingSpec.organismType = OrganismType::DUCK;
+    updatedTrainingSpec.population.clear();
+
+    Api::UserSettingsPatch::Command patchCommand{};
+    patchCommand.trainingSpec = updatedTrainingSpec;
+    Api::UserSettingsPatch::Cwc patchCwc(
+        patchCommand, [&](Api::UserSettingsPatch::Response&& result) {
+            callbackInvoked = true;
+            response = std::move(result);
+        });
+
+    fixture.stateMachine->handleEvent(Event{ patchCwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(response.isValue());
+
+    const UserSettings& inMemory = response.value().settings;
+    EXPECT_EQ(inMemory.timezoneIndex, 7);
+    EXPECT_EQ(inMemory.volumePercent, 65);
+    EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
+    EXPECT_TRUE(inMemory.startMenuAutoRun);
+    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::DUCK);
+
+    const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
+    const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
+    EXPECT_EQ(fromDisk.timezoneIndex, 7);
+    EXPECT_EQ(fromDisk.volumePercent, 65);
+    EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
+    EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
+    EXPECT_TRUE(fromDisk.startMenuAutoRun);
+    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::DUCK);
+}
+
+TEST(UserSettingsTest, UserSettingsPatchRejectsEmptyCommand)
+{
+    TestStateMachineFixture fixture("dirtsim-user-settings-patch-empty");
+
+    bool callbackInvoked = false;
+    Api::UserSettingsPatch::Response response;
+    Api::UserSettingsPatch::Command patchCommand{};
+    Api::UserSettingsPatch::Cwc patchCwc(
+        patchCommand, [&](Api::UserSettingsPatch::Response&& result) {
+            callbackInvoked = true;
+            response = std::move(result);
+        });
+
+    fixture.stateMachine->handleEvent(Event{ patchCwc });
+
+    ASSERT_TRUE(callbackInvoked);
+    EXPECT_TRUE(response.isError());
+    if (response.isError()) {
+        EXPECT_EQ(response.errorValue().message, "No fields provided to patch");
+    }
 }

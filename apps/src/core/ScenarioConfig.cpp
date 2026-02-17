@@ -31,6 +31,8 @@ ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
             return Config::TreeGermination{};
         case Scenario::EnumType::WaterEqualization:
             return Config::WaterEqualization{};
+        case Scenario::EnumType::DuckTraining:
+            return Config::DuckTraining{};
     }
     return Config::Empty{};
 }

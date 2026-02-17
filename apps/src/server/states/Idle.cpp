@@ -88,7 +88,8 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::Random;
+                defaultSpec.brainKind = TrainingBrainKind::NeuralNet;
+                defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
                 defaultSpec.brainKind = TrainingBrainKind::Random;
@@ -165,6 +166,16 @@ std::optional<ApiError> validateTrainingConfig(
                 }
                 if (!repo.exists(id)) {
                     return ApiError("Seed genome not found: " + id.toShortString());
+                }
+                if (entry->isGenomeCompatible) {
+                    auto genome = repo.get(id);
+                    if (!genome.has_value()) {
+                        return ApiError("Seed genome not found: " + id.toShortString());
+                    }
+                    if (!entry->isGenomeCompatible(genome.value())) {
+                        return ApiError(
+                            "Seed genome incompatible with brain kind: " + spec.brainKind);
+                    }
                 }
             }
         }

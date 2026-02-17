@@ -488,6 +488,8 @@ TEST_F(TrainingRunnerTest, UsesConfiguredBrainRegistry)
                     return world.getOrganismManager().createTree(
                         world, x, y, std::make_unique<TestTreeBrain>(&decided));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
@@ -543,6 +545,11 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                             return world.getOrganismManager().createTree(
                                 world, x, y, std::move(brain));
                         },
+                    .createRandomGenome = [](std::mt19937& rng) { return Genome::random(rng); },
+                    .isGenomeCompatible =
+                        [](const Genome& genome) {
+                            return genome.weights.size() == Genome::EXPECTED_WEIGHT_COUNT;
+                        },
                 });
         }
         else if (brainCase.brainKind == TrainingBrainKind::RuleBased) {
@@ -561,6 +568,8 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                             return world.getOrganismManager().createTree(
                                 world, x, y, std::move(brain));
                         },
+                    .createRandomGenome = nullptr,
+                    .isGenomeCompatible = nullptr,
                 });
         }
         else if (brainCase.brainKind == TrainingBrainKind::RuleBased2) {
@@ -579,6 +588,8 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
                             return world.getOrganismManager().createTree(
                                 world, x, y, std::move(brain));
                         },
+                    .createRandomGenome = nullptr,
+                    .isGenomeCompatible = nullptr,
                 });
         }
 
@@ -729,6 +740,8 @@ TEST_F(TrainingRunnerTest, TopCommandSignaturesAreTop20AndTieBreakBySignature)
                         std::make_unique<RecordingTreeBrain>(std::move(baseBrain), &issued);
                     return world.getOrganismManager().createTree(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     TrainingRunner::Individual individual;
@@ -794,6 +807,8 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
                     auto brain = std::make_unique<TestTreeBrain>(nullptr);
                     return world.getOrganismManager().createTree(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     TrainingRunner::Individual individual;

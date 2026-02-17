@@ -42,6 +42,7 @@ private:
     static void onDefaultScenarioSelected(lv_event_t* e);
     static void onResetConfirmToggled(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
+    static void onTrainingTargetChanged(lv_event_t* e);
     static void onTimezoneButtonClicked(lv_event_t* e);
     static void onTimezoneSelected(lv_event_t* e);
     static void onVolumeChanged(lv_event_t* e);
@@ -49,6 +50,7 @@ private:
     static void onIdleActionChanged(lv_event_t* e);
     void updateAutoRunToggle();
     void updateIdleActionDropdown();
+    void updateTrainingTargetDropdown();
 
     lv_obj_t* autoRunToggle_ = nullptr;
     lv_obj_t* container_ = nullptr;
@@ -56,6 +58,7 @@ private:
     lv_obj_t* idleActionDropdown_ = nullptr;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* resetConfirmCheckbox_ = nullptr;
+    lv_obj_t* trainingTargetDropdown_ = nullptr;
     lv_obj_t* timezoneButton_ = nullptr;
     lv_obj_t* volumeStepper_ = nullptr;
     Network::WebSocketServiceInterface* wsService_ = nullptr;
