@@ -11,6 +11,7 @@
 #include "core/organisms/OrganismManager.h"
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace {
 // Physics constants.
@@ -36,6 +37,28 @@ static constexpr float SPARKLE_IMPULSE = 3.0f;  // Max random impulse magnitude.
 static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f; // Chance per frame of impulse.
 static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (cells/sec^2).
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
+
+std::string duckCommandSignature(const DirtSim::DuckInput& input)
+{
+    if (input.jump) {
+        return "Jump";
+    }
+
+    if (input.move.x < -0.01f) {
+        return "RunLeft";
+    }
+
+    if (input.move.x > 0.01f) {
+        return "RunRight";
+    }
+
+    return "Wait";
+}
+
+std::string duckCommandOutcomeSignature(const std::string& commandSignature, const char* outcome)
+{
+    return commandSignature + " -> " + outcome;
+}
 } // namespace
 
 namespace DirtSim {
@@ -51,10 +74,9 @@ void Duck::update(World& world, double deltaTime)
     age_seconds_ += deltaTime;
     frame_counter_++;
 
-    // Update jump cooldown.
-    if (jump_cooldown_ > 0.0f) {
-        jump_cooldown_ -= static_cast<float>(deltaTime);
-    }
+    // Promote queued landing cooldown to active for this frame.
+    jump_cooldown_active_ = jump_cooldown_queued_;
+    jump_cooldown_queued_ = false;
 
     // INVARIANT CHECKS: Verify duck's anchor_cell_ matches world state.
     const WorldData& data = world.getData();
@@ -128,6 +150,8 @@ void Duck::update(World& world, double deltaTime)
         brain_->think(*this, sensory, deltaTime);
     }
 
+    recordCommandSignature(duckCommandSignature(current_input_));
+
     // Apply movement intent to the cell.
     applyMovementToCell(world, deltaTime);
 
@@ -161,6 +185,7 @@ void Duck::setInput(DuckInput input)
 void Duck::updateGroundDetection(const World& world)
 {
     const WorldData& data = world.getData();
+    bool had_ground_contact = on_ground_;
 
     // Check if there's solid ground below us.
     int below_y = anchor_cell_.y + 1;
@@ -168,6 +193,9 @@ void Duck::updateGroundDetection(const World& world)
     if (below_y >= data.height) {
         // At bottom of world - consider this as ground (wall border).
         on_ground_ = true;
+        if (!had_ground_contact) {
+            jump_cooldown_queued_ = true;
+        }
         return;
     }
 
@@ -183,37 +211,56 @@ void Duck::updateGroundDetection(const World& world)
                            || below.material_type == Material::EnumType::Root)
         && below.fill_ratio > 0.5;
 
-    // Also check our own cell's COM - if it's near the bottom, we might be resting.
-    const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
-    bool com_at_bottom = our_cell.com.y > 0.5;
+    if (!is_solid_below) {
+        on_ground_ = false;
+        return;
+    }
 
-    on_ground_ = is_solid_below || (com_at_bottom && is_solid_below);
-
-    // Alternative: check if our velocity is near zero and we're not falling.
-    if (!on_ground_ && std::abs(our_cell.velocity.y) < 0.1 && is_solid_below) {
+    // Keep grounded while support remains once contact has been established.
+    if (had_ground_contact) {
         on_ground_ = true;
+        return;
+    }
+
+    // For first contact, require COM near the bottom (or near-rest vertical speed).
+    const Cell& our_cell = data.at(anchor_cell_.x, anchor_cell_.y);
+    bool com_at_bottom = our_cell.com.y > GROUND_CONTACT_COM_THRESHOLD;
+    bool near_resting_vertical_speed =
+        std::abs(our_cell.velocity.y) < GROUND_REST_VERTICAL_SPEED_THRESHOLD;
+
+    on_ground_ = com_at_bottom || near_resting_vertical_speed;
+    if (on_ground_ && !had_ground_contact) {
+        jump_cooldown_queued_ = true;
     }
 }
 
 void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
 {
+    const std::string commandSignature = duckCommandSignature(current_input_);
+    const auto recordOutcome = [this, &commandSignature](const char* outcome) {
+        recordCommandOutcomeSignature(duckCommandOutcomeSignature(commandSignature, outcome));
+    };
+
     WorldData& data = world.getData();
 
     // Bounds check.
     if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+        recordOutcome("OUT_OF_BOUNDS");
         return;
     }
 
     Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
+    const char* outcome = "APPLIED";
 
     // Process jump input (independent of movement).
     if (current_input_.jump) {
         if (!on_ground_) {
             LOG_WARN(Brain, "Duck {}: Jump requested but not on ground.", id_);
+            outcome = "NOT_ON_GROUND";
         }
-        else if (jump_cooldown_ > 0.0f) {
-            LOG_WARN(
-                Brain, "Duck {}: Jump requested but in cooldown ({:.2f}s).", id_, jump_cooldown_);
+        else if (jump_cooldown_active_) {
+            LOG_WARN(Brain, "Duck {}: Jump requested but in cooldown.", id_);
+            outcome = "COOLDOWN";
         }
         else {
             double gravity = world.getPhysicsSettings().gravity;
@@ -221,7 +268,6 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
             Vector2d jump_force(0.0, jump_direction * JUMP_FORCE);
             cell.addPendingForce(jump_force);
             on_ground_ = false;
-            jump_cooldown_ = JUMP_COOLDOWN;
             LOG_INFO(Brain, "Duck {}: Jump applied, force={:.1f}.", id_, jump_force.y);
         }
     }
@@ -256,6 +302,8 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
             facing_.y = 0.0f;
         }
     }
+
+    recordOutcome(outcome);
 }
 
 void Duck::logPhysicsState(const World& world)

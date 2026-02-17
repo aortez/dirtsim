@@ -20,7 +20,7 @@ struct UserSettings {
     int volumePercent = 20;
     Scenario::EnumType defaultScenario = Scenario::EnumType::Sandbox;
     StartMenuIdleAction startMenuIdleAction = StartMenuIdleAction::ClockScenario;
-    bool startMenuAutoRun = false;
+    int startMenuIdleTimeoutMs = 60000;
     TrainingSpec trainingSpec;
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;

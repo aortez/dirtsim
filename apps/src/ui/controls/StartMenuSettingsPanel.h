@@ -33,13 +33,14 @@ private:
     void sendSettingsReset();
 
     void updateDefaultScenarioButtonText();
+    void updateIdleTimeoutControl();
     void updateResetButtonEnabled();
     void updateTimezoneButtonText();
 
-    static void onAutoRunChanged(lv_event_t* e);
     static void onBackToMainClicked(lv_event_t* e);
     static void onDefaultScenarioButtonClicked(lv_event_t* e);
     static void onDefaultScenarioSelected(lv_event_t* e);
+    static void onIdleTimeoutChanged(lv_event_t* e);
     static void onResetConfirmToggled(lv_event_t* e);
     static void onResetClicked(lv_event_t* e);
     static void onTrainingTargetChanged(lv_event_t* e);
@@ -48,14 +49,15 @@ private:
     static void onVolumeChanged(lv_event_t* e);
 
     static void onIdleActionChanged(lv_event_t* e);
-    void updateAutoRunToggle();
     void updateIdleActionDropdown();
     void updateTrainingTargetDropdown();
 
-    lv_obj_t* autoRunToggle_ = nullptr;
     lv_obj_t* container_ = nullptr;
     lv_obj_t* defaultScenarioButton_ = nullptr;
     lv_obj_t* idleActionDropdown_ = nullptr;
+    lv_obj_t* idleTimeoutControl_ = nullptr;
+    lv_obj_t* idleTimeoutSlider_ = nullptr;
+    lv_obj_t* idleTimeoutValueLabel_ = nullptr;
     lv_obj_t* resetButton_ = nullptr;
     lv_obj_t* resetConfirmCheckbox_ = nullptr;
     lv_obj_t* trainingTargetDropdown_ = nullptr;

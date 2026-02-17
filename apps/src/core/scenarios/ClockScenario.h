@@ -182,7 +182,7 @@ private:
         std::vector<Vector2i>& digitPositions);
     void updateDuckEvent(
         World& world, DuckEventState& state, double& remaining_time, double deltaTime);
-    void spawnDuck(World& world, DuckEventState& state);
+    bool spawnDuck(World& world, DuckEventState& state);
     void updateMarqueeEvent(
         World& world,
         MarqueeEventState& state,

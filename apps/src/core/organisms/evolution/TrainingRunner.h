@@ -1,10 +1,10 @@
 #pragma once
 
 #include "core/ScenarioConfig.h"
-#include "core/Vector2.h"
 #include "core/organisms/OrganismType.h"
 #include "core/organisms/brains/Genome.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
+#include "core/organisms/evolution/OrganismTracker.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
@@ -42,7 +42,6 @@ public:
     struct Status {
         State state = State::Running;
         double simTime = 0.0;
-        double distanceTraveled = 0.0;
         double maxEnergy = 0.0;
         double lifespan = 0.0;
         int commandsAccepted = 0;
@@ -93,6 +92,7 @@ public:
     ScenarioConfig getScenarioConfig() const;
 
     const Organism::Body* getOrganism() const;
+    const OrganismTrackingHistory& getOrganismTrackingHistory() const;
     const std::optional<TreeResourceTotals>& getTreeResourceTotals() const;
     std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
     std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
@@ -117,9 +117,8 @@ private:
 
     double simTime_ = 0.0;
     double maxTime_ = 600.0;
+    OrganismTracker organismTracker_;
     TreeEvaluator treeEvaluator_;
-    Vector2d spawnPosition_{ 0.0, 0.0 };
-    Vector2d lastPosition_{ 0.0, 0.0 };
 
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;

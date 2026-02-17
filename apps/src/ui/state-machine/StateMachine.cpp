@@ -89,16 +89,6 @@ FractalAnimator& StateMachine::getFractalAnimator()
     return *fractalAnimator_.get();
 }
 
-bool StateMachine::consumeStartupAutoRun()
-{
-    if (startupAutoRunConsumed_) {
-        return false;
-    }
-
-    startupAutoRunConsumed_ = true;
-    return serverUserSettings_.startMenuAutoRun;
-}
-
 void StateMachine::setupWebSocketService()
 {
     LOG_INFO(Network, "Setting up WebSocketService command handlers...");
@@ -399,17 +389,23 @@ void StateMachine::autoShrinkIfIdle()
             "Auto-shrink activity detected, inactivity timer reset ({}ms -> {}ms)",
             lastInactiveMs_,
             inactiveMs);
-        startMenuIdleClockTriggered_ = false;
+        startMenuIdleActionTriggered_ = false;
     }
     lastInactiveMs_ = inactiveMs;
 
-    if (!startMenuIdleClockTriggered_ && inactiveMs >= StartMenuIdleClockTimeoutMs
+    const uint32_t startMenuIdleTimeoutMs = static_cast<uint32_t>(std::clamp(
+        serverUserSettings_.startMenuIdleTimeoutMs,
+        static_cast<int>(StartMenuIdleTimeoutMinMs),
+        static_cast<int>(StartMenuIdleTimeoutMaxMs)));
+
+    if (!startMenuIdleActionTriggered_ && inactiveMs >= startMenuIdleTimeoutMs
         && std::holds_alternative<State::StartMenu>(fsmState.getVariant())) {
-        startMenuIdleClockTriggered_ = true;
+        startMenuIdleActionTriggered_ = true;
         LOG_INFO(
             State,
-            "StartMenu idle timeout reached (inactive={}ms), launching clock scenario",
-            inactiveMs);
+            "StartMenu idle timeout reached (inactive={}ms, timeout={}ms), dispatching idle action",
+            inactiveMs,
+            startMenuIdleTimeoutMs);
         queueEvent(StartMenuIdleTimeoutEvent{});
     }
 
@@ -752,7 +748,7 @@ void StateMachine::handleEvent(const Event& event)
         if (display) {
             lv_display_trigger_activity(display);
             lastInactiveMs_ = 0;
-            startMenuIdleClockTriggered_ = false;
+            startMenuIdleActionTriggered_ = false;
         }
         UiApi::IconRailShowIcons::Okay response{ .shown = !iconRail->isMinimized() };
         cwc.sendResponse(UiApi::IconRailShowIcons::Response::okay(std::move(response)));
@@ -1193,7 +1189,7 @@ void StateMachine::transitionTo(State::Any newState)
             lv_display_trigger_activity(display);
         }
         lastInactiveMs_ = 0;
-        startMenuIdleClockTriggered_ = false;
+        startMenuIdleActionTriggered_ = false;
         LOG_INFO(State, "StartMenu entered, reset idle auto-start timer");
     }
 

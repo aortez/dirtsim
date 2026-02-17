@@ -123,7 +123,7 @@ struct StartButtonClickedEvent {
 };
 
 /**
- * @brief StartMenu idle timeout reached (auto-launch clock scenario).
+ * @brief StartMenu idle timeout reached (runs configured idle action).
  */
 struct StartMenuIdleTimeoutEvent {
     static constexpr const char* name() { return "StartMenuIdleTimeoutEvent"; }

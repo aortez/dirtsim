@@ -74,7 +74,7 @@ Send commands to the server, UI, audio, or os-manager:
 
 # User settings (patch updates only specified fields)
 ./build-debug/bin/cli server UserSettingsGet
-./build-debug/bin/cli server UserSettingsPatch '{"trainingSpec":{"scenarioId":"DuckTraining","organismType":"DUCK","population":[]}}'
+./build-debug/bin/cli server UserSettingsPatch '{"trainingSpec":{"scenarioId":"Clock","organismType":"DUCK","population":[]}}'
 ./build-debug/bin/cli server UserSettingsPatch '{"trainingSpec":{"scenarioId":"TreeGermination","organismType":"TREE","population":[]}}'
 
 # UI commands
@@ -397,14 +397,14 @@ Run evolution training with JSON configuration:
   ]
 }'
 
-# Train ducks with the clock-style obstacle course
+# Train ducks on Clock scenario
 ./build-debug/bin/cli train '{
   "evolution": {
     "maxGenerations": 10,
     "populationSize": 20,
     "tournamentSize": 3
   },
-  "scenarioId": "DuckTraining",
+  "scenarioId": "Clock",
   "organismType": "DUCK",
   "resumePolicy": "WarmFromBest",
   "population": [

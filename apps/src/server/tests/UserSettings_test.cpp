@@ -39,14 +39,14 @@ TEST(UserSettingsTest, MissingFileLoadsDefaultsAndWritesFile)
     EXPECT_EQ(inMemory.timezoneIndex, 2);
     EXPECT_EQ(inMemory.volumePercent, 20);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Sandbox);
-    EXPECT_FALSE(inMemory.startMenuAutoRun);
+    EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(inMemory.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
-    EXPECT_FALSE(fromDisk.startMenuAutoRun);
+    EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
@@ -109,9 +109,13 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .volumePercent = 999,
                 .defaultScenario = Scenario::EnumType::Clock,
                 .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
-                .startMenuAutoRun = true,
+                .startMenuIdleTimeoutMs = 99999999,
                 .trainingSpec = {},
-                .evolutionConfig = {},
+                .evolutionConfig =
+                    EvolutionConfig{
+                        .diversityEliteCount = -5,
+                        .diversityEliteFitnessEpsilon = -0.5,
+                    },
                 .mutationConfig = {},
                 .trainingResumePolicy = static_cast<TrainingResumePolicy>(99),
             },
@@ -128,16 +132,20 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 0);
     EXPECT_EQ(response.value().settings.volumePercent, 100);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
-    EXPECT_TRUE(response.value().settings.startMenuAutoRun);
+    EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(response.value().settings.evolutionConfig.diversityEliteCount, 0);
+    EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
     EXPECT_EQ(fromDisk.timezoneIndex, 0);
     EXPECT_EQ(fromDisk.volumePercent, 100);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
-    EXPECT_TRUE(fromDisk.startMenuAutoRun);
+    EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(fromDisk.evolutionConfig.diversityEliteCount, 0);
+    EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 }
 
 TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
@@ -151,7 +159,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
                 .volumePercent = 65,
                 .defaultScenario = Scenario::EnumType::Clock,
                 .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
-                .startMenuAutoRun = true,
+                .startMenuIdleTimeoutMs = 90000,
                 .trainingSpec = {},
                 .evolutionConfig = {},
                 .mutationConfig = {},
@@ -176,7 +184,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(response.value().settings.timezoneIndex, 2);
     EXPECT_EQ(response.value().settings.volumePercent, 20);
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Sandbox);
-    EXPECT_FALSE(response.value().settings.startMenuAutoRun);
+    EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
@@ -184,7 +192,7 @@ TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)
     EXPECT_EQ(fromDisk.timezoneIndex, 2);
     EXPECT_EQ(fromDisk.volumePercent, 20);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Sandbox);
-    EXPECT_FALSE(fromDisk.startMenuAutoRun);
+    EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 60000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
 }
 
@@ -197,7 +205,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     baseSettings.volumePercent = 65;
     baseSettings.defaultScenario = Scenario::EnumType::Clock;
     baseSettings.startMenuIdleAction = StartMenuIdleAction::TrainingSession;
-    baseSettings.startMenuAutoRun = true;
+    baseSettings.startMenuIdleTimeoutMs = 90000;
     baseSettings.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
     baseSettings.trainingSpec.organismType = OrganismType::TREE;
     baseSettings.trainingSpec.population.clear();
@@ -232,8 +240,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(inMemory.volumePercent, 65);
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
-    EXPECT_TRUE(inMemory.startMenuAutoRun);
-    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(inMemory.startMenuIdleTimeoutMs, 90000);
+    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::DUCK);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
@@ -242,8 +250,8 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(fromDisk.volumePercent, 65);
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
-    EXPECT_TRUE(fromDisk.startMenuAutoRun);
-    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 90000);
+    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::DUCK);
 }
 

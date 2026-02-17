@@ -385,6 +385,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
+    src/core/scenarios/clock_scenario/DoorEntrySpawn.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
     src/core/scenarios/clock_scenario/DrainManager.cpp
     src/core/scenarios/clock_scenario/EventManager.cpp
@@ -396,7 +397,6 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/RainEvent.cpp
     src/core/scenarios/clock_scenario/StormManager.cpp
     src/core/scenarios/DamBreakScenario.cpp
-    src/core/scenarios/DuckTrainingScenario.cpp
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
@@ -442,10 +442,12 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
+    src/core/organisms/evolution/DuckEvaluator.cpp
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
+    src/core/organisms/evolution/OrganismTracker.cpp
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp

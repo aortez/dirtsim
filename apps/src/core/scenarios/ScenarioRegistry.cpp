@@ -5,7 +5,6 @@
 #include "core/scenarios/BenchmarkScenario.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/DamBreakScenario.h"
-#include "core/scenarios/DuckTrainingScenario.h"
 #include "core/scenarios/EmptyScenario.h"
 #include "core/scenarios/GooseTestScenario.h"
 #include "core/scenarios/LightsScenario.h"
@@ -71,11 +70,6 @@ ScenarioRegistry ScenarioRegistry::createDefault(GenomeRepository& genomeReposit
     registry.registerScenario(
         Scenario::EnumType::WaterEqualization, WaterEqualizationScenario{}.getMetadata(), []() {
             return std::make_unique<WaterEqualizationScenario>();
-        });
-
-    registry.registerScenario(
-        Scenario::EnumType::DuckTraining, DuckTrainingScenario{}.getMetadata(), []() {
-            return std::make_unique<DuckTrainingScenario>();
         });
 
     return registry;

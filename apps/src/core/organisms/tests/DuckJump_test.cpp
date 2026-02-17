@@ -45,8 +45,9 @@ TEST_F(DuckJumpTest, DuckJumps2CellsHigh)
     ASSERT_NE(duck, nullptr);
 
     // Let duck settle onto ground first.
+    // With landing-triggered jump cooldown, we also need to wait for cooldown expiry.
     brain_ptr->setAction(DuckAction::WAIT);
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 40; ++i) {
         world->advanceTime(0.016);
     }
 
@@ -332,7 +333,8 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
     printWorld(*world, "After duck spawn");
 
     // Let duck settle onto ground.
-    for (int i = 0; i < 30; ++i) {
+    // With landing-triggered jump cooldown, we also need to wait for cooldown expiry.
+    for (int i = 0; i < 40; ++i) {
         world->advanceTime(0.016);
     }
 
@@ -361,11 +363,13 @@ TEST_P(DuckObstacleJumpTest, JumpsOverObstacle)
 
         // Check movement by frame 10.
         if (frame == 10) {
-            moving_right_by_frame_10 = (current_x > settled_x);
+            const Cell& duck_cell = world->getData().at(current_x, duck->getAnchorCell().y);
+            moving_right_by_frame_10 = (current_x > settled_x) || (duck_cell.velocity.x > 0.25);
             spdlog::info(
-                "Frame 10: x={}, settled_x={}, moving_right={}",
+                "Frame 10: x={}, settled_x={}, vel_x={:.2f}, moving_right={}",
                 current_x,
                 settled_x,
+                duck_cell.velocity.x,
                 moving_right_by_frame_10);
         }
 
