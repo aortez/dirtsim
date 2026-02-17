@@ -45,8 +45,9 @@ TEST_F(DuckJumpTest, DuckJumps2CellsHigh)
     ASSERT_NE(duck, nullptr);
 
     // Let duck settle onto ground first.
+    // With landing-triggered jump cooldown, we also need to wait for cooldown expiry.
     brain_ptr->setAction(DuckAction::WAIT);
-    for (int i = 0; i < 20; ++i) {
+    for (int i = 0; i < 40; ++i) {
         world->advanceTime(0.016);
     }
 
