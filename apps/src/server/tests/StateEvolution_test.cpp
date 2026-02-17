@@ -418,6 +418,7 @@ TEST(StateEvolutionTest, NeuralNetNoMutationPreservesGenomesUnderTiedFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
+        .useBudget = false,
         .rate = 0.0,
         .sigma = 0.5,
         .resetRate = 0.0,
@@ -520,6 +521,7 @@ TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.0;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
+        .useBudget = false,
         .rate = 0.0,
         .sigma = 0.5,
         .resetRate = 1.0,
@@ -576,6 +578,7 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     evolutionState.evolutionConfig.maxSimulationTime = 0.048;
     evolutionState.evolutionConfig.maxParallelEvaluations = 1;
     evolutionState.mutationConfig = MutationConfig{
+        .useBudget = false,
         .rate = 0.0,
         .sigma = 0.5,
         .resetRate = 1.0,

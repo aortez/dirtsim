@@ -26,7 +26,15 @@ struct EvolutionConfig {
  * Configuration for genome mutation during evolution.
  */
 struct MutationConfig {
-    double rate = 0.015;       // Probability each weight is mutated.
+    // Budgeted mutation (recommended for large genomes): mutate a fixed number of weights.
+    // per offspring, regardless of genome length.
+    bool useBudget = true;
+    int perturbationsPerOffspring = 200; // Count of Gaussian perturbations applied each offspring.
+    int resetsPerOffspring = 1;          // Count of full resets applied each offspring.
+
+    // Per-weight mutation (legacy): probabilities apply independently to each weight.
+    // Only used when useBudget=false.
+    double rate = 0.015;       // Probability each weight is perturbed.
     double sigma = 0.05;       // Gaussian noise standard deviation.
     double resetRate = 0.0005; // Probability of full weight reset (escapes local optima).
 };

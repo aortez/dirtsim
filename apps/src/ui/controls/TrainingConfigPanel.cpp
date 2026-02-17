@@ -302,8 +302,52 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                               .callback(onGenerationsChanged, this)
                               .buildOrLog();
 
+    mutationBudgetToggle_ = LVGLBuilder::actionButton(parent)
+                                .text("Budgeted Mutation")
+                                .mode(LVGLBuilder::ActionMode::Toggle)
+                                .checked(mutationConfig_.useBudget)
+                                .width(LV_PCT(95))
+                                .height(LVGLBuilder::Style::ACTION_SIZE)
+                                .layoutRow()
+                                .alignLeft()
+                                .callback(onMutationBudgetToggled, this)
+                                .buildOrLog();
+
+    mutationPerturbationsStepper_ = LVGLBuilder::actionStepper(parent)
+                                        .label("Perturbations/Offspring")
+                                        .range(0, 5000)
+                                        .step(10)
+                                        .value(mutationConfig_.perturbationsPerOffspring)
+                                        .valueFormat("%.0f")
+                                        .valueScale(1.0)
+                                        .width(LV_PCT(95))
+                                        .callback(onMutationPerturbationsChanged, this)
+                                        .buildOrLog();
+
+    mutationResetsStepper_ = LVGLBuilder::actionStepper(parent)
+                                 .label("Resets/Offspring")
+                                 .range(0, 200)
+                                 .step(1)
+                                 .value(mutationConfig_.resetsPerOffspring)
+                                 .valueFormat("%.0f")
+                                 .valueScale(1.0)
+                                 .width(LV_PCT(95))
+                                 .callback(onMutationResetsChanged, this)
+                                 .buildOrLog();
+
+    sigmaStepper_ = LVGLBuilder::actionStepper(parent)
+                        .label("Mutation Sigma")
+                        .range(0, 300)
+                        .step(1)
+                        .value(static_cast<int32_t>(mutationConfig_.sigma * 1000.0))
+                        .valueFormat("%.3f")
+                        .valueScale(0.001)
+                        .width(LV_PCT(95))
+                        .callback(onSigmaChanged, this)
+                        .buildOrLog();
+
     mutationRateStepper_ = LVGLBuilder::actionStepper(parent)
-                               .label("Mutation Rate")
+                               .label("Mutation Rate (legacy)")
                                .range(0, 200)
                                .step(1)
                                .value(static_cast<int32_t>(mutationConfig_.rate * 1000.0))
@@ -312,6 +356,17 @@ void TrainingConfigPanel::createEvolutionView(lv_obj_t* parent)
                                .width(LV_PCT(95))
                                .callback(onMutationRateChanged, this)
                                .buildOrLog();
+
+    resetRateStepper_ = LVGLBuilder::actionStepper(parent)
+                            .label("Reset Rate (legacy)")
+                            .range(0, 10000)
+                            .step(1)
+                            .value(static_cast<int32_t>(mutationConfig_.resetRate * 1'000'000.0))
+                            .valueFormat("%.4f%%")
+                            .valueScale(0.0001)
+                            .width(LV_PCT(95))
+                            .callback(onResetRateChanged, this)
+                            .buildOrLog();
 
     tournamentSizeStepper_ = LVGLBuilder::actionStepper(parent)
                                  .label("Tournament Size")
@@ -411,10 +466,33 @@ void TrainingConfigPanel::updateControlsEnabled()
     setEnabled(populationButton_, enabled);
     setEnabled(populationStepper_, enabled);
     setEnabled(generationsStepper_, enabled);
-    setEnabled(mutationRateStepper_, enabled);
     setEnabled(tournamentSizeStepper_, enabled);
     setEnabled(maxSimTimeStepper_, enabled);
     setEnabled(streamIntervalStepper_, true);
+
+    setEnabled(mutationBudgetToggle_, enabled);
+    if (enabled) {
+        setEnabled(sigmaStepper_, true);
+        if (mutationConfig_.useBudget) {
+            setEnabled(mutationPerturbationsStepper_, true);
+            setEnabled(mutationResetsStepper_, true);
+            setEnabled(mutationRateStepper_, false);
+            setEnabled(resetRateStepper_, false);
+        }
+        else {
+            setEnabled(mutationPerturbationsStepper_, false);
+            setEnabled(mutationResetsStepper_, false);
+            setEnabled(mutationRateStepper_, true);
+            setEnabled(resetRateStepper_, true);
+        }
+    }
+    else {
+        setEnabled(mutationPerturbationsStepper_, false);
+        setEnabled(mutationResetsStepper_, false);
+        setEnabled(sigmaStepper_, false);
+        setEnabled(mutationRateStepper_, false);
+        setEnabled(resetRateStepper_, false);
+    }
 
     if (startButton_) {
         if (evolutionStarted_) {
@@ -518,6 +596,35 @@ void TrainingConfigPanel::onGenerationsChanged(lv_event_t* e)
     self->updateGenerationsStep(value);
 }
 
+void TrainingConfigPanel::onMutationBudgetToggled(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationBudgetToggle_) return;
+
+    self->mutationConfig_.useBudget =
+        LVGLBuilder::ActionButtonBuilder::isChecked(self->mutationBudgetToggle_);
+    self->updateControlsEnabled();
+}
+
+void TrainingConfigPanel::onMutationPerturbationsChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationPerturbationsStepper_) return;
+
+    const int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->mutationPerturbationsStepper_);
+    self->mutationConfig_.perturbationsPerOffspring = value;
+}
+
+void TrainingConfigPanel::onMutationResetsChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->mutationResetsStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationResetsStepper_);
+    self->mutationConfig_.resetsPerOffspring = value;
+}
+
 void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
 {
     auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
@@ -525,6 +632,24 @@ void TrainingConfigPanel::onMutationRateChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->mutationRateStepper_);
     self->mutationConfig_.rate = value / 1000.0;
+}
+
+void TrainingConfigPanel::onResetRateChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->resetRateStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->resetRateStepper_);
+    self->mutationConfig_.resetRate = value / 1'000'000.0;
+}
+
+void TrainingConfigPanel::onSigmaChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingConfigPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->sigmaStepper_) return;
+
+    const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->sigmaStepper_);
+    self->mutationConfig_.sigma = value / 1000.0;
 }
 
 void TrainingConfigPanel::onTournamentSizeChanged(lv_event_t* e)

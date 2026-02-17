@@ -29,6 +29,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -59,6 +60,7 @@ struct Evolution {
         Scenario::EnumType scenarioId = Scenario::EnumType::TreeGermination;
         std::optional<Genome> genome;
         bool allowsMutation = false;
+        std::optional<double> parentFitness;
     };
 
     struct EvaluationSnapshot {
@@ -191,6 +193,73 @@ struct Evolution {
     static constexpr const char* name() { return "Evolution"; }
 
 private:
+    struct GenerationTelemetry {
+        int eliteCarryoverCount = 0;
+        int offspringCloneCount = 0;
+        int offspringMutatedCount = 0;
+        int seedCount = 0;
+
+        int offspringCloneBeatsParentCount = 0;
+        int offspringCloneComparedCount = 0;
+        double offspringCloneDeltaFitnessSum = 0.0;
+
+        int offspringMutatedBeatsParentCount = 0;
+        int offspringMutatedComparedCount = 0;
+        double offspringMutatedDeltaFitnessSum = 0.0;
+
+        std::unordered_set<uint64_t> phenotypeAll;
+        std::unordered_set<uint64_t> phenotypeEliteCarryover;
+        std::unordered_set<uint64_t> phenotypeOffspringMutated;
+        std::unordered_set<uint64_t> phenotypeSeed;
+
+        void reset()
+        {
+            eliteCarryoverCount = 0;
+            offspringCloneCount = 0;
+            offspringMutatedCount = 0;
+            seedCount = 0;
+
+            offspringCloneBeatsParentCount = 0;
+            offspringCloneComparedCount = 0;
+            offspringCloneDeltaFitnessSum = 0.0;
+
+            offspringMutatedBeatsParentCount = 0;
+            offspringMutatedComparedCount = 0;
+            offspringMutatedDeltaFitnessSum = 0.0;
+
+            phenotypeAll.clear();
+            phenotypeEliteCarryover.clear();
+            phenotypeOffspringMutated.clear();
+            phenotypeSeed.clear();
+        }
+    };
+
+    GenerationTelemetry generationTelemetry_;
+
+    int lastGenerationEliteCarryoverCount_ = 0;
+    int lastGenerationSeedCount_ = 0;
+    int lastGenerationOffspringCloneCount_ = 0;
+    int lastGenerationOffspringMutatedCount_ = 0;
+    int lastGenerationOffspringCloneBeatsParentCount_ = 0;
+    double lastGenerationOffspringCloneAvgDeltaFitness_ = 0.0;
+    int lastGenerationOffspringMutatedBeatsParentCount_ = 0;
+    double lastGenerationOffspringMutatedAvgDeltaFitness_ = 0.0;
+    int lastGenerationPhenotypeUniqueCount_ = 0;
+    int lastGenerationPhenotypeUniqueEliteCarryoverCount_ = 0;
+    int lastGenerationPhenotypeUniqueOffspringMutatedCount_ = 0;
+    int lastGenerationPhenotypeNovelOffspringMutatedCount_ = 0;
+
+    double lastBreedingPerturbationsAvg_ = 0.0;
+    double lastBreedingResetsAvg_ = 0.0;
+    double lastBreedingWeightChangesAvg_ = 0.0;
+    int lastBreedingWeightChangesMin_ = 0;
+    int lastBreedingWeightChangesMax_ = 0;
+
+    std::unordered_set<uint64_t> bestSnapshotVariantFingerprints_;
+    std::deque<uint64_t> bestSnapshotVariantFingerprintOrder_;
+    std::chrono::steady_clock::time_point lastBestSnapshotBroadcastTime_{};
+    int bestSnapshotVariantBroadcastCountThisGen_ = 0;
+
     void initializePopulation(StateMachine& dsm);
     void startWorkers(StateMachine& dsm);
     void stopWorkers();
@@ -200,6 +269,7 @@ private:
     void stepVisibleEvaluation(StateMachine& dsm);
     static WorkerResult runEvaluationTask(const WorkerTask& task, WorkerState& state);
     void captureLastGenerationFitnessDistribution();
+    void captureLastGenerationTelemetry();
     void processResult(StateMachine& dsm, WorkerResult result);
     static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);

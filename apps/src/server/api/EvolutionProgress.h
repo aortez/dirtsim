@@ -38,10 +38,31 @@ struct EvolutionProgress {
     int activeParallelism = 0;         // Current allowed concurrency (background + main).
     double cpuPercent = 0.0;           // Latest system CPU measurement.
 
+    // Breeding telemetry from the most recent offspring generation step.
+    double lastBreedingPerturbationsAvg = 0.0;
+    double lastBreedingResetsAvg = 0.0;
+    double lastBreedingWeightChangesAvg = 0.0;
+    int lastBreedingWeightChangesMin = 0;
+    int lastBreedingWeightChangesMax = 0;
+
+    // Telemetry from the most recently completed generation evaluation.
+    int lastGenerationEliteCarryoverCount = 0;
+    int lastGenerationSeedCount = 0;
+    int lastGenerationOffspringCloneCount = 0;
+    int lastGenerationOffspringMutatedCount = 0;
+    int lastGenerationOffspringCloneBeatsParentCount = 0;
+    double lastGenerationOffspringCloneAvgDeltaFitness = 0.0;
+    int lastGenerationOffspringMutatedBeatsParentCount = 0;
+    double lastGenerationOffspringMutatedAvgDeltaFitness = 0.0;
+    int lastGenerationPhenotypeUniqueCount = 0;
+    int lastGenerationPhenotypeUniqueEliteCarryoverCount = 0;
+    int lastGenerationPhenotypeUniqueOffspringMutatedCount = 0;
+    int lastGenerationPhenotypeNovelOffspringMutatedCount = 0;
+
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<22>;
+    using serialize = zpp::bits::members<39>;
 };
 
 } // namespace Api

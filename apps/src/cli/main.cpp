@@ -2102,11 +2102,13 @@ int main(int argc, char** argv)
         std::atomic<bool> connected{ false };
         int lastGeneration = -1;
         int lastEval = -1;
+        int lastTelemetryCompletedGeneration = -1;
         GenomeId lastBestGenomeId = INVALID_GENOME_ID;
         std::mutex latestBestSnapshotMutex;
         std::optional<Api::TrainingBestSnapshot> latestBestSnapshot;
         client.onServerCommand([&lastGeneration,
                                 &lastEval,
+                                &lastTelemetryCompletedGeneration,
                                 &lastBestGenomeId,
                                 &latestBestSnapshotMutex,
                                 &latestBestSnapshot](
@@ -2166,6 +2168,36 @@ int main(int argc, char** argv)
                     line << " bestGenome=" << genomeId.substr(0, 8);
                 }
                 std::cout << line.str() << std::endl;
+
+                if (progress.lastCompletedGeneration >= 0
+                    && progress.lastCompletedGeneration != lastTelemetryCompletedGeneration) {
+                    lastTelemetryCompletedGeneration = progress.lastCompletedGeneration;
+
+                    std::ostringstream telemetry;
+                    telemetry << "telemetry lastGen=" << progress.lastCompletedGeneration;
+
+                    telemetry << " mutWin="
+                              << progress.lastGenerationOffspringMutatedBeatsParentCount << "/"
+                              << progress.lastGenerationOffspringMutatedCount;
+                    telemetry << " Δmut=" << std::fixed
+                              << std::setprecision(kProgressFitnessPrecision)
+                              << progress.lastGenerationOffspringMutatedAvgDeltaFitness;
+
+                    telemetry << " phenos=" << progress.lastGenerationPhenotypeUniqueCount;
+                    telemetry << " mutPhenos="
+                              << progress.lastGenerationPhenotypeUniqueOffspringMutatedCount;
+                    telemetry << " novel="
+                              << progress.lastGenerationPhenotypeNovelOffspringMutatedCount;
+
+                    telemetry << " breedΔw=" << std::fixed << std::setprecision(0)
+                              << progress.lastBreedingWeightChangesAvg;
+                    telemetry << "[" << progress.lastBreedingWeightChangesMin << ".."
+                              << progress.lastBreedingWeightChangesMax << "]";
+                    telemetry << " resetAvg=" << progress.lastBreedingResetsAvg;
+
+                    std::cout << telemetry.str() << std::endl;
+                }
+
                 if (bestGenomeChanged) {
                     std::optional<Api::TrainingBestSnapshot> snapshotCopy;
                     {
