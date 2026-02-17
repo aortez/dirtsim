@@ -32,6 +32,7 @@
 #include "server/api/TrainingResultSet.h"
 #include "server/api/TrainingStreamConfigSet.h"
 #include "server/api/UserSettingsGet.h"
+#include "server/api/UserSettingsPatch.h"
 #include "server/api/UserSettingsReset.h"
 #include "server/api/UserSettingsSet.h"
 #include "server/api/WebUiAccessSet.h"
@@ -150,6 +151,10 @@ Result<ApiCommand, ApiError> CommandDeserializerJson::deserialize(const std::str
         }
         else if (commandName == Api::UserSettingsGet::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(Api::UserSettingsGet::Command::fromJson(cmd));
+        }
+        else if (commandName == Api::UserSettingsPatch::Command::name()) {
+            return Result<ApiCommand, ApiError>::okay(
+                Api::UserSettingsPatch::Command::fromJson(cmd));
         }
         else if (commandName == Api::UserSettingsReset::Command::name()) {
             return Result<ApiCommand, ApiError>::okay(

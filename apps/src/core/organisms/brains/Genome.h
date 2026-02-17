@@ -14,6 +14,7 @@ struct Genome {
     std::vector<WeightType> weights;
 
     Genome();
+    explicit Genome(size_t weightCount);
 
     static Genome random(std::mt19937& rng);
     static Genome constant(WeightType value);
