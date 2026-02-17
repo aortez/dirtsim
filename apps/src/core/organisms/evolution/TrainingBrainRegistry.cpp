@@ -4,6 +4,7 @@
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/GooseBrain.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/organisms/brains/DuckNeuralNetBrain.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
@@ -18,6 +19,21 @@ void TrainingBrainRegistry::registerBrain(
 {
     DIRTSIM_ASSERT(!brainKind.empty(), "TrainingBrainRegistry: brainKind must not be empty");
     DIRTSIM_ASSERT(entry.spawn, "TrainingBrainRegistry: spawn function must be set");
+    if (entry.requiresGenome) {
+        DIRTSIM_ASSERT(
+            entry.createRandomGenome, "TrainingBrainRegistry: requiresGenome requires generator");
+        DIRTSIM_ASSERT(
+            entry.isGenomeCompatible,
+            "TrainingBrainRegistry: requiresGenome requires compatibility check");
+    }
+    else {
+        DIRTSIM_ASSERT(
+            !entry.createRandomGenome,
+            "TrainingBrainRegistry: createRandomGenome must be unset when requiresGenome=false");
+        DIRTSIM_ASSERT(
+            !entry.isGenomeCompatible,
+            "TrainingBrainRegistry: isGenomeCompatible must be unset when requiresGenome=false");
+    }
 
     BrainRegistryKey key{ .organismType = organismType,
                           .brainKind = brainKind,
@@ -54,6 +70,29 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                 auto brain = std::make_unique<NeuralNetBrain>(*genome);
                 return world.getOrganismManager().createTree(world, x, y, std::move(brain));
             },
+            .createRandomGenome = [](std::mt19937& rng) { return Genome::random(rng); },
+            .isGenomeCompatible =
+                [](const Genome& genome) {
+                    return genome.weights.size() == Genome::EXPECTED_WEIGHT_COUNT;
+                },
+        });
+
+    registry.registerBrain(
+        OrganismType::DUCK,
+        TrainingBrainKind::NeuralNet,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = true,
+            .allowsMutation = true,
+            .spawn = [](World& world, uint32_t x, uint32_t y, const Genome* genome) -> OrganismId {
+                DIRTSIM_ASSERT(genome != nullptr, "DuckNeuralNet brain requires a genome");
+                auto brain = std::make_unique<DuckNeuralNetBrain>(*genome);
+                return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
+            },
+            .createRandomGenome =
+                [](std::mt19937& rng) { return DuckNeuralNetBrain::randomGenome(rng); },
+            .isGenomeCompatible =
+                [](const Genome& genome) { return DuckNeuralNetBrain::isGenomeCompatible(genome); },
         });
 
     registry.registerBrain(
@@ -68,6 +107,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<RuleBasedBrain>();
                     return world.getOrganismManager().createTree(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     registry.registerBrain(
@@ -82,6 +123,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<RuleBased2Brain>();
                     return world.getOrganismManager().createTree(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     registry.registerBrain(
@@ -96,6 +139,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<RandomDuckBrain>();
                     return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     registry.registerBrain(
@@ -110,6 +155,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<WallBouncingBrain>();
                     return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     registry.registerBrain(
@@ -124,6 +171,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<DuckBrain2>();
                     return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     registry.registerBrain(
@@ -138,6 +187,8 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
                     auto brain = std::make_unique<RandomGooseBrain>();
                     return world.getOrganismManager().createGoose(world, x, y, std::move(brain));
                 },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
         });
 
     return registry;

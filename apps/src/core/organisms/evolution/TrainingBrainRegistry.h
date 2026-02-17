@@ -1,15 +1,16 @@
 #pragma once
 
 #include "core/organisms/OrganismType.h"
+#include "core/organisms/brains/Genome.h"
 
 #include <functional>
+#include <random>
 #include <string>
 #include <unordered_map>
 
 namespace DirtSim {
 
 class World;
-struct Genome;
 
 namespace TrainingBrainKind {
 inline constexpr const char* NeuralNet = "NeuralNet";
@@ -46,6 +47,8 @@ struct BrainRegistryEntry {
     bool requiresGenome = false;
     bool allowsMutation = false;
     std::function<OrganismId(World& world, uint32_t x, uint32_t y, const Genome* genome)> spawn;
+    std::function<Genome(std::mt19937& rng)> createRandomGenome;
+    std::function<bool(const Genome& genome)> isGenomeCompatible;
 };
 
 class TrainingBrainRegistry {
