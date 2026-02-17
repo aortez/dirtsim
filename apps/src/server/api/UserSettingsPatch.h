@@ -22,7 +22,7 @@ struct Command {
     std::optional<int> volumePercent = std::nullopt;
     std::optional<Scenario::EnumType> defaultScenario = std::nullopt;
     std::optional<StartMenuIdleAction> startMenuIdleAction = std::nullopt;
-    std::optional<bool> startMenuAutoRun = std::nullopt;
+    std::optional<int> startMenuIdleTimeoutMs = std::nullopt;
     std::optional<TrainingSpec> trainingSpec = std::nullopt;
     std::optional<EvolutionConfig> evolutionConfig = std::nullopt;
     std::optional<MutationConfig> mutationConfig = std::nullopt;
@@ -35,7 +35,7 @@ struct Command {
     {
         return !timezoneIndex.has_value() && !volumePercent.has_value()
             && !defaultScenario.has_value() && !startMenuIdleAction.has_value()
-            && !startMenuAutoRun.has_value() && !trainingSpec.has_value()
+            && !startMenuIdleTimeoutMs.has_value() && !trainingSpec.has_value()
             && !evolutionConfig.has_value() && !mutationConfig.has_value()
             && !trainingResumePolicy.has_value();
     }

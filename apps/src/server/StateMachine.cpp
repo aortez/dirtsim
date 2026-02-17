@@ -84,6 +84,9 @@ int getMaxTimezoneIndex()
     return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
 }
 
+constexpr int kStartMenuIdleTimeoutMinMs = 5000;
+constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
+
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
     return dataDir / "user_settings.json";
@@ -199,6 +202,15 @@ UserSettings sanitizeUserSettings(
     if (settings.startMenuIdleAction > StartMenuIdleAction::TrainingSession) {
         settings.startMenuIdleAction = StartMenuIdleAction::ClockScenario;
         recordUpdate("startMenuIdleAction reset to ClockScenario");
+    }
+
+    if (settings.startMenuIdleTimeoutMs < kStartMenuIdleTimeoutMinMs) {
+        settings.startMenuIdleTimeoutMs = kStartMenuIdleTimeoutMinMs;
+        recordUpdate("startMenuIdleTimeoutMs clamped to minimum timeout");
+    }
+    else if (settings.startMenuIdleTimeoutMs > kStartMenuIdleTimeoutMaxMs) {
+        settings.startMenuIdleTimeoutMs = kStartMenuIdleTimeoutMaxMs;
+        recordUpdate("startMenuIdleTimeoutMs clamped to maximum timeout");
     }
 
     if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
@@ -1473,8 +1485,8 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.startMenuIdleAction.has_value()) {
             patched.startMenuIdleAction = *cwc.command.startMenuIdleAction;
         }
-        if (cwc.command.startMenuAutoRun.has_value()) {
-            patched.startMenuAutoRun = *cwc.command.startMenuAutoRun;
+        if (cwc.command.startMenuIdleTimeoutMs.has_value()) {
+            patched.startMenuIdleTimeoutMs = *cwc.command.startMenuIdleTimeoutMs;
         }
         if (cwc.command.trainingSpec.has_value()) {
             patched.trainingSpec = *cwc.command.trainingSpec;

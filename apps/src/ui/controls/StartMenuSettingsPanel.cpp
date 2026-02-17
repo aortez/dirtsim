@@ -18,6 +18,15 @@ namespace Ui {
 
 namespace {
 
+constexpr int kIdleTimeoutMinSeconds = 5;
+constexpr int kIdleTimeoutMaxSeconds = 3600;
+
+int timeoutMsToSeconds(int timeoutMs)
+{
+    const int roundedSeconds = (timeoutMs + 500) / 1000;
+    return std::clamp(roundedSeconds, kIdleTimeoutMinSeconds, kIdleTimeoutMaxSeconds);
+}
+
 void setActionButtonText(lv_obj_t* buttonContainer, const std::string& text)
 {
     if (!buttonContainer) {
@@ -81,6 +90,7 @@ StartMenuSettingsPanel::StartMenuSettingsPanel(
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
+    updateIdleTimeoutControl();
     updateTrainingTargetDropdown();
     updateResetButtonEnabled();
 
@@ -162,6 +172,62 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                               .callback(onIdleActionChanged, this)
                               .buildOrLog();
 
+    idleTimeoutControl_ = lv_obj_create(view);
+    lv_obj_set_size(idleTimeoutControl_, LV_PCT(95), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(idleTimeoutControl_, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(
+        idleTimeoutControl_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_color(
+        idleTimeoutControl_, lv_color_hex(LVGLBuilder::Style::TROUGH_COLOR), 0);
+    lv_obj_set_style_bg_opa(idleTimeoutControl_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(idleTimeoutControl_, 0, 0);
+    lv_obj_set_style_pad_all(idleTimeoutControl_, LVGLBuilder::Style::TROUGH_PADDING, 0);
+    lv_obj_set_style_pad_row(idleTimeoutControl_, 6, 0);
+    lv_obj_clear_flag(idleTimeoutControl_, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* idleTimeoutHeader = lv_obj_create(idleTimeoutControl_);
+    lv_obj_set_size(idleTimeoutHeader, LV_PCT(100), LV_SIZE_CONTENT);
+    lv_obj_set_flex_flow(idleTimeoutHeader, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(
+        idleTimeoutHeader, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_bg_opa(idleTimeoutHeader, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(idleTimeoutHeader, 0, 0);
+    lv_obj_set_style_pad_all(idleTimeoutHeader, 0, 0);
+    lv_obj_set_style_pad_column(idleTimeoutHeader, 8, 0);
+    lv_obj_clear_flag(idleTimeoutHeader, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_t* idleTimeoutLabel = lv_label_create(idleTimeoutHeader);
+    lv_label_set_text(idleTimeoutLabel, "Idle Timeout:");
+    lv_obj_set_style_text_color(idleTimeoutLabel, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(idleTimeoutLabel, LVGLBuilder::Style::CONTROL_FONT, 0);
+
+    idleTimeoutValueLabel_ = lv_label_create(idleTimeoutHeader);
+    lv_obj_set_style_text_color(idleTimeoutValueLabel_, lv_color_hex(0xFFFFFF), 0);
+    lv_obj_set_style_text_font(idleTimeoutValueLabel_, LVGLBuilder::Style::CONTROL_FONT, 0);
+
+    idleTimeoutSlider_ = lv_slider_create(idleTimeoutControl_);
+    lv_obj_set_size(idleTimeoutSlider_, LV_PCT(100), LVGLBuilder::Style::SLIDER_TRACK_HEIGHT);
+    lv_slider_set_range(idleTimeoutSlider_, kIdleTimeoutMinSeconds, kIdleTimeoutMaxSeconds);
+    lv_slider_set_value(
+        idleTimeoutSlider_, timeoutMsToSeconds(settings_.startMenuIdleTimeoutMs), LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(
+        idleTimeoutSlider_, lv_color_hex(LVGLBuilder::Style::TROUGH_INNER_COLOR), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(idleTimeoutSlider_, lv_color_hex(0x3399FF), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(idleTimeoutSlider_, lv_color_hex(0x3399FF), LV_PART_KNOB);
+    lv_obj_set_style_radius(
+        idleTimeoutSlider_, LVGLBuilder::Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(
+        idleTimeoutSlider_, LVGLBuilder::Style::SLIDER_TRACK_HEIGHT / 2, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(
+        idleTimeoutSlider_, LVGLBuilder::Style::SLIDER_KNOB_RADIUS, LV_PART_KNOB);
+    lv_obj_set_style_pad_all(
+        idleTimeoutSlider_,
+        LVGLBuilder::Style::SLIDER_KNOB_SIZE / 2 - LVGLBuilder::Style::SLIDER_TRACK_HEIGHT / 2,
+        LV_PART_KNOB);
+    lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_VALUE_CHANGED, this);
+    lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_RELEASED, this);
+    lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_PRESS_LOST, this);
+
     trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
                                   .label("Trainer Target:")
                                   .options("Trees (Germination)\nDucks (Clock Scenario)")
@@ -169,17 +235,6 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                                   .width(LV_PCT(95))
                                   .callback(onTrainingTargetChanged, this)
                                   .buildOrLog();
-
-    autoRunToggle_ = LVGLBuilder::actionButton(view)
-                         .text("Auto-Run on Startup")
-                         .mode(LVGLBuilder::ActionMode::Toggle)
-                         .checked(settings_.startMenuAutoRun)
-                         .width(LV_PCT(95))
-                         .height(LVGLBuilder::Style::ACTION_SIZE)
-                         .layoutRow()
-                         .alignLeft()
-                         .callback(onAutoRunChanged, this)
-                         .buildOrLog();
 
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
@@ -329,8 +384,8 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
-    updateAutoRunToggle();
     updateIdleActionDropdown();
+    updateIdleTimeoutControl();
     updateTrainingTargetDropdown();
     updateResetButtonEnabled();
 
@@ -391,6 +446,20 @@ void StartMenuSettingsPanel::updateDefaultScenarioButtonText()
     setActionButtonText(defaultScenarioButton_, "Default Scenario: " + scenarioName);
 }
 
+void StartMenuSettingsPanel::updateIdleTimeoutControl()
+{
+    if (!idleTimeoutSlider_ || !idleTimeoutValueLabel_) {
+        return;
+    }
+
+    const int timeoutSeconds = timeoutMsToSeconds(settings_.startMenuIdleTimeoutMs);
+    lv_slider_set_value(idleTimeoutSlider_, timeoutSeconds, LV_ANIM_OFF);
+    lv_label_set_text(idleTimeoutValueLabel_, (std::to_string(timeoutSeconds) + " s").c_str());
+
+    const bool enabled = settings_.startMenuIdleAction != StartMenuIdleAction::None;
+    setControlEnabled(idleTimeoutControl_, enabled);
+}
+
 void StartMenuSettingsPanel::updateResetButtonEnabled()
 {
     const bool confirmed =
@@ -433,31 +502,6 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
     setControlEnabled(trainingTargetDropdown_, enabled);
 }
 
-void StartMenuSettingsPanel::updateAutoRunToggle()
-{
-    if (!autoRunToggle_) {
-        return;
-    }
-
-    LVGLBuilder::ActionButtonBuilder::setChecked(autoRunToggle_, settings_.startMenuAutoRun);
-}
-
-void StartMenuSettingsPanel::onAutoRunChanged(lv_event_t* e)
-{
-    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
-    if (!self || !self->autoRunToggle_) {
-        return;
-    }
-
-    if (self->updatingUi_) {
-        return;
-    }
-
-    self->settings_.startMenuAutoRun =
-        LVGLBuilder::ActionButtonBuilder::isChecked(self->autoRunToggle_);
-    self->sendSettingsUpdate();
-}
-
 void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
 {
     auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
@@ -479,8 +523,34 @@ void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
         self->settings_.startMenuIdleAction = static_cast<StartMenuIdleAction>(index);
     }
 
+    self->updateIdleTimeoutControl();
     self->updateTrainingTargetDropdown();
     self->sendSettingsUpdate();
+}
+
+void StartMenuSettingsPanel::onIdleTimeoutChanged(lv_event_t* e)
+{
+    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->idleTimeoutSlider_ || !self->idleTimeoutValueLabel_) {
+        return;
+    }
+
+    if (self->updatingUi_) {
+        return;
+    }
+
+    const int timeoutSeconds = std::clamp(
+        static_cast<int>(lv_slider_get_value(self->idleTimeoutSlider_)),
+        kIdleTimeoutMinSeconds,
+        kIdleTimeoutMaxSeconds);
+    self->settings_.startMenuIdleTimeoutMs = timeoutSeconds * 1000;
+    lv_label_set_text(
+        self->idleTimeoutValueLabel_, (std::to_string(timeoutSeconds) + " s").c_str());
+
+    const auto code = lv_event_get_code(e);
+    if (code == LV_EVENT_RELEASED || code == LV_EVENT_PRESS_LOST) {
+        self->sendSettingsUpdate();
+    }
 }
 
 void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
