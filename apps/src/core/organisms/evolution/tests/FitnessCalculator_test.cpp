@@ -312,6 +312,32 @@ TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)
     EXPECT_DOUBLE_EQ(fitness_low, fitness_high);
 }
 
+TEST(FitnessCalculatorTest, DuckFitnessDistanceIsNotClamped)
+{
+    EvolutionConfig config = makeConfig();
+    config.maxSimulationTime = 10.0;
+
+    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory longPathHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 20.0, 0.0 },
+            Vector2d{ 40.0, 0.0 },
+            Vector2d{ 60.0, 0.0 },
+        });
+    const FitnessContext context{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 10,
+        .worldHeight = 10,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &longPathHistory,
+    };
+
+    const double fitness = computeFitnessForOrganism(context);
+    EXPECT_GT(fitness, 2.0);
+}
+
 TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
 {
     const EvolutionConfig config = makeConfig();

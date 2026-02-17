@@ -43,7 +43,7 @@ double computeDistanceScore(const FitnessContext& context)
         std::hypot(
             static_cast<double>(context.worldWidth), static_cast<double>(context.worldHeight)));
     const double pathDistance = computePathDistanceFromSamples(context.organismTrackingHistory);
-    return clamp01(normalize(pathDistance, maxDistance));
+    return normalize(pathDistance, maxDistance);
 }
 
 double computeSurvivalScore(const FitnessContext& context)
