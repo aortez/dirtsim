@@ -538,13 +538,13 @@ void Evolution::onEnter(StateMachine& dsm)
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
 
-    // Initialize CPU auto-tuning.
-    if (evolutionConfig.targetCpuPercent > 0) {
-        cpuMetrics_ = std::make_unique<SystemMetrics>();
-        cpuSamples_.clear();
-        lastCpuSampleTime_ = {};
-        cpuMetrics_->get(); // Prime the delta with an initial reading.
-    }
+    // Initialize CPU telemetry.
+    cpuMetrics_ = std::make_unique<SystemMetrics>();
+    cpuSamples_.clear();
+    lastCpuPercent_ = 0.0;
+    lastCpuPercentPerCore_.clear();
+    lastCpuSampleTime_ = {};
+    cpuMetrics_->get(); // Prime the delta with an initial reading.
 
     startWorkers(dsm);
     queueGenerationTasks();
@@ -556,6 +556,8 @@ void Evolution::onExit(StateMachine& dsm)
     stopWorkers();
     cpuMetrics_.reset();
     cpuSamples_.clear();
+    lastCpuPercent_ = 0.0;
+    lastCpuPercentPerCore_.clear();
     storeBestGenome(dsm);
 }
 
@@ -576,7 +578,12 @@ std::optional<Any> Evolution::tick(StateMachine& dsm)
         if (lastCpuSampleTime_ == std::chrono::steady_clock::time_point{}
             || now - lastCpuSampleTime_ >= kCpuSampleInterval) {
             lastCpuSampleTime_ = now;
-            cpuSamples_.push_back(cpuMetrics_->get().cpu_percent);
+            const auto metrics = cpuMetrics_->get();
+            lastCpuPercent_ = metrics.cpu_percent;
+            lastCpuPercentPerCore_ = metrics.cpu_percent_per_core;
+            if (evolutionConfig.targetCpuPercent > 0) {
+                cpuSamples_.push_back(metrics.cpu_percent);
+            }
         }
     }
 
@@ -1645,12 +1652,9 @@ void Evolution::broadcastProgress(StateMachine& dsm)
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
-    double latestCpu = 0.0;
+    double latestCpu = lastCpuPercent_;
     if (workerState_) {
         activeParallelism = workerState_->allowedConcurrency.load() + 1; // +1 for main thread.
-    }
-    if (!cpuSamples_.empty()) {
-        latestCpu = cpuSamples_.back();
     }
 
     const size_t totalGenomeCount = dsm.getGenomeRepository().count();
@@ -1682,6 +1686,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .etaSeconds = eta,
         .activeParallelism = activeParallelism,
         .cpuPercent = latestCpu,
+        .cpuPercentPerCore = lastCpuPercentPerCore_,
         .lastBreedingPerturbationsAvg = lastBreedingPerturbationsAvg_,
         .lastBreedingResetsAvg = lastBreedingResetsAvg_,
         .lastBreedingWeightChangesAvg = lastBreedingWeightChangesAvg_,
