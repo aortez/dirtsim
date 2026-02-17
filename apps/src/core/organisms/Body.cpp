@@ -59,14 +59,6 @@ void Body::onCellTransfer(Vector2i from, Vector2i to)
 {
     // Update anchor if it moved.
     if (from == getAnchorCell()) {
-        spdlog::info(
-            "Organism {} (type={}): ANCHOR UPDATE from ({},{}) to ({},{})",
-            id_,
-            static_cast<int>(type_),
-            from.x,
-            from.y,
-            to.x,
-            to.y);
         setAnchorCell(to);
     }
 

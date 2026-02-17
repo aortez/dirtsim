@@ -385,6 +385,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/clock_scenario/CharacterMetrics.cpp
     src/core/scenarios/clock_scenario/ColorCycleEvent.cpp
     src/core/scenarios/clock_scenario/ColorShowcaseEvent.cpp
+    src/core/scenarios/clock_scenario/DoorEntrySpawn.cpp
     src/core/scenarios/clock_scenario/DoorManager.cpp
     src/core/scenarios/clock_scenario/DrainManager.cpp
     src/core/scenarios/clock_scenario/EventManager.cpp
