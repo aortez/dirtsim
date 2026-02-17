@@ -154,19 +154,14 @@ TrainingRunner::Status TrainingRunner::step(int frames)
             state_ = State::OrganismDied;
             break;
         }
-        lastPosition_ = organism->position;
+        organismTracker_.track(simTime_, organism->position);
 
         if (trainingSpec_.organismType == OrganismType::TREE) {
             Tree* tree = world_->getOrganismManager().getTree(organismId_);
             if (tree) {
                 treeEvaluator_.update(*tree);
-                const Vector2d delta{
-                    lastPosition_.x - spawnPosition_.x,
-                    lastPosition_.y - spawnPosition_.y,
-                };
                 const FitnessResult result{
                     .lifespan = tree->getAge(),
-                    .distanceTraveled = delta.mag(),
                     .maxEnergy = treeEvaluator_.getMaxEnergy(),
                     .commandsAccepted = treeEvaluator_.getCommandAcceptedCount(),
                     .commandsRejected = treeEvaluator_.getCommandRejectedCount(),
@@ -180,6 +175,7 @@ TrainingRunner::Status TrainingRunner::step(int frames)
                     .worldHeight = data.height,
                     .evolutionConfig = evolutionConfig_,
                     .finalOrganism = tree,
+                    .organismTrackingHistory = &organismTracker_.getHistory(),
                     .treeResources = &tree->getResourceTotals(),
                 };
                 TreeEvaluator::evaluate(context);
@@ -201,10 +197,6 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     Status status;
     status.state = state_;
     status.simTime = simTime_;
-    if (organismId_ != INVALID_ORGANISM_ID) {
-        Vector2d delta{ lastPosition_.x - spawnPosition_.x, lastPosition_.y - spawnPosition_.y };
-        status.distanceTraveled = delta.mag();
-    }
     status.maxEnergy = treeEvaluator_.getMaxEnergy();
     status.commandsAccepted = treeEvaluator_.getCommandAcceptedCount();
     status.commandsRejected = treeEvaluator_.getCommandRejectedCount();
@@ -220,6 +212,11 @@ TrainingRunner::Status TrainingRunner::getStatus() const
     return status;
 }
 
+const OrganismTrackingHistory& TrainingRunner::getOrganismTrackingHistory() const
+{
+    return organismTracker_.getHistory();
+}
+
 const std::optional<TreeResourceTotals>& TrainingRunner::getTreeResourceTotals() const
 {
     return treeEvaluator_.getResourceTotals();
@@ -228,31 +225,23 @@ const std::optional<TreeResourceTotals>& TrainingRunner::getTreeResourceTotals()
 std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandSignatures(
     size_t maxEntries) const
 {
-    if (!world_ || trainingSpec_.organismType != OrganismType::TREE) {
+    const Organism::Body* organism = getOrganism();
+    if (!organism) {
         return {};
     }
 
-    const Tree* tree = world_->getOrganismManager().getTree(organismId_);
-    if (!tree) {
-        return {};
-    }
-
-    return tree->getTopCommandSignatures(maxEntries);
+    return organism->getTopCommandSignatures(maxEntries);
 }
 
 std::vector<std::pair<std::string, int>> TrainingRunner::getTopCommandOutcomeSignatures(
     size_t maxEntries) const
 {
-    if (!world_ || trainingSpec_.organismType != OrganismType::TREE) {
+    const Organism::Body* organism = getOrganism();
+    if (!organism) {
         return {};
     }
 
-    const Tree* tree = world_->getOrganismManager().getTree(organismId_);
-    if (!tree) {
-        return {};
-    }
-
-    return tree->getTopCommandOutcomeSignatures(maxEntries);
+    return organism->getTopCommandOutcomeSignatures(maxEntries);
 }
 
 double TrainingRunner::getCurrentMaxEnergy() const
@@ -319,8 +308,8 @@ void TrainingRunner::spawnEvaluationOrganism()
 
     const Organism::Body* organism = world_->getOrganismManager().getOrganism(organismId_);
     DIRTSIM_ASSERT(organism != nullptr, "TrainingRunner: Spawned organism not found");
-    spawnPosition_ = organism->position;
-    lastPosition_ = spawnPosition_;
+    organismTracker_.reset();
+    organismTracker_.track(simTime_, organism->position);
     if (trainingSpec_.organismType == OrganismType::TREE) {
         treeEvaluator_.start();
     }

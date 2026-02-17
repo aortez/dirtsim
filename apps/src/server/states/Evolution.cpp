@@ -210,7 +210,6 @@ double computeFitnessForRunner(
 
     const FitnessResult result{
         .lifespan = status.lifespan,
-        .distanceTraveled = status.distanceTraveled,
         .maxEnergy = status.maxEnergy,
         .commandsAccepted = status.commandsAccepted,
         .commandsRejected = status.commandsRejected,
@@ -228,6 +227,7 @@ double computeFitnessForRunner(
         .worldHeight = world->getData().height,
         .evolutionConfig = evolutionConfig,
         .finalOrganism = runner.getOrganism(),
+        .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
         .treeResources = treeResourcesPtr,
     };
 

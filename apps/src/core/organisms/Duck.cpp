@@ -11,6 +11,7 @@
 #include "core/organisms/OrganismManager.h"
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 namespace {
 // Physics constants.
@@ -36,6 +37,28 @@ static constexpr float SPARKLE_IMPULSE = 3.0f;  // Max random impulse magnitude.
 static constexpr float SPARKLE_IMPULSE_CHANCE = 0.15f; // Chance per frame of impulse.
 static constexpr float SPARKLE_GRAVITY = 20.0f;        // Gravity acceleration (cells/sec^2).
 static constexpr float SPARKLE_BOUNCE = 0.7f;          // Velocity retained after bounce (0-1).
+
+std::string duckCommandSignature(const DirtSim::DuckInput& input)
+{
+    if (input.jump) {
+        return "Jump";
+    }
+
+    if (input.move.x < -0.01f) {
+        return "RunLeft";
+    }
+
+    if (input.move.x > 0.01f) {
+        return "RunRight";
+    }
+
+    return "Wait";
+}
+
+std::string duckCommandOutcomeSignature(const std::string& commandSignature, const char* outcome)
+{
+    return commandSignature + " -> " + outcome;
+}
 } // namespace
 
 namespace DirtSim {
@@ -128,6 +151,8 @@ void Duck::update(World& world, double deltaTime)
         brain_->think(*this, sensory, deltaTime);
     }
 
+    recordCommandSignature(duckCommandSignature(current_input_));
+
     // Apply movement intent to the cell.
     applyMovementToCell(world, deltaTime);
 
@@ -197,23 +222,32 @@ void Duck::updateGroundDetection(const World& world)
 
 void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
 {
+    const std::string commandSignature = duckCommandSignature(current_input_);
+    const auto recordOutcome = [this, &commandSignature](const char* outcome) {
+        recordCommandOutcomeSignature(duckCommandOutcomeSignature(commandSignature, outcome));
+    };
+
     WorldData& data = world.getData();
 
     // Bounds check.
     if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+        recordOutcome("OUT_OF_BOUNDS");
         return;
     }
 
     Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
+    const char* outcome = "APPLIED";
 
     // Process jump input (independent of movement).
     if (current_input_.jump) {
         if (!on_ground_) {
             LOG_WARN(Brain, "Duck {}: Jump requested but not on ground.", id_);
+            outcome = "NOT_ON_GROUND";
         }
         else if (jump_cooldown_ > 0.0f) {
             LOG_WARN(
                 Brain, "Duck {}: Jump requested but in cooldown ({:.2f}s).", id_, jump_cooldown_);
+            outcome = "COOLDOWN";
         }
         else {
             double gravity = world.getPhysicsSettings().gravity;
@@ -256,6 +290,8 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
             facing_.y = 0.0f;
         }
     }
+
+    recordOutcome(outcome);
 }
 
 void Duck::logPhysicsState(const World& world)

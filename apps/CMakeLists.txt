@@ -441,10 +441,12 @@ add_library(dirtsim-server-lib STATIC
     src/core/organisms/brains/NeuralNetBrain.cpp
     src/core/organisms/brains/RuleBasedBrain.cpp
     src/core/organisms/brains/RuleBased2Brain.cpp
+    src/core/organisms/evolution/DuckEvaluator.cpp
     src/core/organisms/evolution/FitnessCalculator.cpp
     src/core/organisms/evolution/GenomeMetadata.cpp
     src/core/organisms/evolution/GenomeRepository.cpp
     src/core/organisms/evolution/Mutation.cpp
+    src/core/organisms/evolution/OrganismTracker.cpp
     src/core/organisms/evolution/Selection.cpp
     src/core/organisms/evolution/TrainingBrainRegistry.cpp
     src/core/organisms/evolution/TrainingRunner.cpp

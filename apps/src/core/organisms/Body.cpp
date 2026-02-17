@@ -12,8 +12,48 @@
 namespace DirtSim {
 namespace Organism {
 
+namespace {
+std::vector<std::pair<std::string, int>> getTopSignatureEntries(
+    const std::unordered_map<std::string, int>& counts, size_t maxEntries)
+{
+    if (maxEntries == 0 || counts.empty()) {
+        return {};
+    }
+
+    std::vector<std::pair<std::string, int>> entries;
+    entries.reserve(counts.size());
+    for (const auto& [signature, count] : counts) {
+        entries.emplace_back(signature, count);
+    }
+
+    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
+        if (lhs.second != rhs.second) {
+            return lhs.second > rhs.second;
+        }
+        return lhs.first < rhs.first;
+    });
+
+    if (entries.size() > maxEntries) {
+        entries.resize(maxEntries);
+    }
+
+    return entries;
+}
+} // namespace
+
 Body::Body(OrganismId id, OrganismType type) : id_(id), type_(type)
 {}
+
+std::vector<std::pair<std::string, int>> Body::getTopCommandSignatures(size_t maxEntries) const
+{
+    return getTopSignatureEntries(commandSignatureCounts_, maxEntries);
+}
+
+std::vector<std::pair<std::string, int>> Body::getTopCommandOutcomeSignatures(
+    size_t maxEntries) const
+{
+    return getTopSignatureEntries(commandOutcomeSignatureCounts_, maxEntries);
+}
 
 void Body::onCellTransfer(Vector2i from, Vector2i to)
 {
@@ -245,6 +285,22 @@ void Body::detachLight(LightId id)
             return attachment.handle.id() == id;
         });
     attached_lights_.erase(it, attached_lights_.end());
+}
+
+void Body::recordCommandSignature(std::string signature)
+{
+    if (signature.empty()) {
+        return;
+    }
+    ++commandSignatureCounts_[std::move(signature)];
+}
+
+void Body::recordCommandOutcomeSignature(std::string signature)
+{
+    if (signature.empty()) {
+        return;
+    }
+    ++commandOutcomeSignatureCounts_[std::move(signature)];
 }
 
 void Body::updateAttachedLights(World& world, double deltaTime)
