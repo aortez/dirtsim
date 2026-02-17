@@ -53,6 +53,16 @@ std::vector<float> TrainingActiveView::buildDistributionSeries(
     return distribution;
 }
 
+std::vector<float> TrainingActiveView::buildCpuCoreSeries(const Api::EvolutionProgress& progress)
+{
+    std::vector<float> cpuByCore;
+    cpuByCore.reserve(progress.cpuPercentPerCore.size());
+    for (const double cpuPercent : progress.cpuPercentPerCore) {
+        cpuByCore.push_back(static_cast<float>(std::clamp(cpuPercent, 0.0, 100.0)));
+    }
+    return cpuByCore;
+}
+
 TrainingActiveView::TrainingActiveView(
     UiComponentManager* uiManager,
     EventSink& eventSink,
@@ -488,6 +498,7 @@ void TrainingActiveView::destroyUI()
     if (bestRenderer_) {
         bestRenderer_->cleanup();
     }
+    cpuCorePlot_.reset();
     bestFitnessPlot_.reset();
     lastGenerationDistributionPlot_.reset();
 
@@ -780,6 +791,21 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             lv_label_set_text(cpuLabel_, "CPU: --");
         }
     }
+    if (cpuCorePlot_) {
+        if (progress.cpuPercentPerCore.empty()) {
+            cpuCorePlot_->clear();
+            cpuCorePlot_->clearBottomLabels();
+        }
+        else {
+            cpuCorePlot_->setSamples(buildCpuCoreSeries(progress));
+            char firstCoreBuf[16];
+            char lastCoreBuf[16];
+            snprintf(firstCoreBuf, sizeof(firstCoreBuf), "C0");
+            snprintf(
+                lastCoreBuf, sizeof(lastCoreBuf), "C%zu", progress.cpuPercentPerCore.size() - 1);
+            cpuCorePlot_->setBottomLabels(firstCoreBuf, lastCoreBuf);
+        }
+    }
 
     if (parallelismLabel_) {
         if (progress.activeParallelism > 0) {
@@ -925,6 +951,10 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         bestGeneration_ = 0;
         hasShownBestSnapshot_ = false;
         clearFitnessPlots();
+        if (cpuCorePlot_) {
+            cpuCorePlot_->clear();
+            cpuCorePlot_->clearBottomLabels();
+        }
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
         }
@@ -1105,6 +1135,30 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
         .callback(onPauseResumeClicked, this);
     pauseResumeButton_ = pauseBuilder.buildOrLog();
     pauseResumeLabel_ = pauseBuilder.getLabel();
+
+    cpuCorePlot_ = std::make_unique<TimeSeriesPlotWidget>(
+        streamPanel_,
+        TimeSeriesPlotWidget::Config{
+            .title = "CPU",
+            .lineColor = lv_color_hex(0x66CC88),
+            .defaultMinY = 0.0f,
+            .defaultMaxY = 100.0f,
+            .valueScale = 1.0f,
+            .autoScaleY = false,
+            .showYAxisRangeLabels = false,
+            .chartType = LV_CHART_TYPE_BAR,
+            .minPointCount = 1,
+        });
+    if (cpuCorePlot_ && cpuCorePlot_->getContainer()) {
+        lv_obj_t* cpuPlotContainer = cpuCorePlot_->getContainer();
+        lv_obj_set_width(cpuPlotContainer, LV_PCT(100));
+        lv_obj_set_height(cpuPlotContainer, 118);
+        lv_obj_set_flex_grow(cpuPlotContainer, 0);
+    }
+    if (cpuCorePlot_) {
+        cpuCorePlot_->clear();
+        cpuCorePlot_->clearBottomLabels();
+    }
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)

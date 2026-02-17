@@ -30,13 +30,14 @@ struct EvolutionProgress {
     std::vector<uint32_t> lastGenerationFitnessHistogram;
     std::string bestThisGenSource = "none";
     GenomeId bestGenomeId{};
-    double totalTrainingSeconds = 0.0; // Real-world seconds since training started.
-    double currentSimTime = 0.0;       // Sim time for current individual.
-    double cumulativeSimTime = 0.0;    // Total sim time across all individuals.
-    double speedupFactor = 0.0;        // Sim time / real time.
-    double etaSeconds = 0.0;           // Estimated time remaining.
-    int activeParallelism = 0;         // Current allowed concurrency (background + main).
-    double cpuPercent = 0.0;           // Latest system CPU measurement.
+    double totalTrainingSeconds = 0.0;     // Real-world seconds since training started.
+    double currentSimTime = 0.0;           // Sim time for current individual.
+    double cumulativeSimTime = 0.0;        // Total sim time across all individuals.
+    double speedupFactor = 0.0;            // Sim time / real time.
+    double etaSeconds = 0.0;               // Estimated time remaining.
+    int activeParallelism = 0;             // Current allowed concurrency (background + main).
+    double cpuPercent = 0.0;               // Latest system CPU measurement.
+    std::vector<double> cpuPercentPerCore; // Latest per-core CPU measurements.
 
     // Breeding telemetry from the most recent offspring generation step.
     double lastBreedingPerturbationsAvg = 0.0;
@@ -62,7 +63,7 @@ struct EvolutionProgress {
     nlohmann::json toJson() const;
     static constexpr const char* name() { return "EvolutionProgress"; }
 
-    using serialize = zpp::bits::members<39>;
+    using serialize = zpp::bits::members<40>;
 };
 
 } // namespace Api

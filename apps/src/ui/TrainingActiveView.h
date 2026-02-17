@@ -69,6 +69,7 @@ public:
     Starfield::Snapshot captureStarfieldSnapshot() const;
 
 private:
+    static std::vector<float> buildCpuCoreSeries(const Api::EvolutionProgress& progress);
     static std::vector<float> buildDistributionSeries(const Api::EvolutionProgress& progress);
 
     void createUI();
@@ -128,6 +129,7 @@ private:
 
     std::unique_ptr<CellRenderer> renderer_;
     std::unique_ptr<CellRenderer> bestRenderer_;
+    std::unique_ptr<TimeSeriesPlotWidget> cpuCorePlot_;
     std::unique_ptr<Starfield> starfield_;
     std::unique_ptr<TimeSeriesPlotWidget> bestFitnessPlot_;
     std::unique_ptr<TimeSeriesPlotWidget> lastGenerationDistributionPlot_;

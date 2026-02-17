@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 namespace DirtSim {
 
@@ -9,10 +10,11 @@ namespace DirtSim {
 class SystemMetrics {
 public:
     struct Metrics {
-        double cpu_percent = 0.0;     // CPU usage as percentage (0-100).
-        double memory_percent = 0.0;  // Memory usage as percentage (0-100).
-        uint64_t memory_used_kb = 0;  // Memory used in KB.
-        uint64_t memory_total_kb = 0; // Total memory in KB.
+        double cpu_percent = 0.0;                 // CPU usage as percentage (0-100).
+        std::vector<double> cpu_percent_per_core; // Per-core CPU usage percentages (0-100).
+        double memory_percent = 0.0;              // Memory usage as percentage (0-100).
+        uint64_t memory_used_kb = 0;              // Memory used in KB.
+        uint64_t memory_total_kb = 0;             // Total memory in KB.
     };
 
     SystemMetrics();
@@ -37,9 +39,10 @@ private:
         uint64_t total() const;
     };
 
-    CpuSnapshot readCpuSnapshot();
+    void readCpuSnapshots(CpuSnapshot& totalSnapshot, std::vector<CpuSnapshot>& coreSnapshots);
 
     CpuSnapshot prev_cpu_;
+    std::vector<CpuSnapshot> prev_cpu_per_core_;
     bool has_prev_snapshot_ = false;
 };
 

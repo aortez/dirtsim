@@ -176,6 +176,8 @@ struct Evolution {
     // CPU auto-tuning.
     std::unique_ptr<SystemMetrics> cpuMetrics_;
     std::vector<double> cpuSamples_;
+    double lastCpuPercent_ = 0.0;
+    std::vector<double> lastCpuPercentPerCore_;
     std::chrono::steady_clock::time_point lastCpuSampleTime_{};
 
     void onEnter(StateMachine& dsm);
