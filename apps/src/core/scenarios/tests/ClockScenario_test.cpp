@@ -4,9 +4,11 @@
 #include "core/WorldDiagramGeneratorEmoji.h"
 #include "core/scenarios/ClockScenario.h"
 #include "core/scenarios/clock_scenario/CharacterMetrics.h"
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <initializer_list>
 #include <map>
+#include <optional>
 
 using namespace DirtSim;
 
@@ -200,6 +202,48 @@ TEST_F(ClockScenarioTest, DuckEvent_StartsWhenEnabled)
 
     EXPECT_TRUE(scenario_->isEventActive(ClockEventType::DUCK));
     EXPECT_EQ(scenario_->getActiveEventCount(), 1u);
+}
+
+TEST_F(ClockScenarioTest, DuckEvent_SpawnsAfterDoorOpenDelay)
+{
+    auto config = std::get<Config::Clock>(scenario_->getConfig());
+    setEventConfig(config, { ClockEventType::DUCK });
+    scenario_->setConfig(config, *world_);
+
+    const double dt = 0.05;
+    const double max_wait = 2.0;
+
+    double wait_for_start = 0.0;
+    while (!scenario_->isEventActive(ClockEventType::DUCK) && wait_for_start < max_wait) {
+        scenario_->tick(*world_, dt);
+        world_->advanceTime(dt);
+        wait_for_start += dt;
+    }
+    ASSERT_TRUE(scenario_->isEventActive(ClockEventType::DUCK));
+
+    auto duck_entity_count = [&]() {
+        return std::count_if(
+            world_->getData().entities.begin(),
+            world_->getData().entities.end(),
+            [](const Entity& entity) { return entity.type == EntityType::Duck; });
+    };
+
+    std::optional<double> spawn_time;
+    double elapsed = 0.0;
+    const double max_observation = 3.0;
+    while (!spawn_time.has_value() && elapsed < max_observation) {
+        scenario_->tick(*world_, dt);
+        world_->advanceTime(dt);
+        elapsed += dt;
+
+        if (duck_entity_count() > 0) {
+            spawn_time = elapsed;
+        }
+    }
+
+    ASSERT_TRUE(spawn_time.has_value()) << "Duck should spawn during DUCK event";
+    EXPECT_GE(*spawn_time, 1.9) << "Duck spawned too early (before door-open delay)";
+    EXPECT_LE(*spawn_time, 2.5) << "Duck spawned too late after door-open delay";
 }
 
 TEST_F(ClockScenarioTest, DuckEvent_CompletesAfterDuration)

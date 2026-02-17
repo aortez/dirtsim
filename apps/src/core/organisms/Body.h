@@ -6,7 +6,11 @@
 #include "core/LightManager.h"
 #include "core/Vector2.h"
 
+#include <cstddef>
+#include <string>
+#include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace DirtSim {
@@ -72,6 +76,10 @@ public:
     // Age tracking.
     double getAge() const { return age_seconds_; }
 
+    std::vector<std::pair<std::string, int>> getTopCommandSignatures(size_t maxEntries) const;
+    std::vector<std::pair<std::string, int>> getTopCommandOutcomeSignatures(
+        size_t maxEntries) const;
+
     void attachLight(LightHandle handle, bool follows_facing = true);
     void detachLight(LightId id);
     const std::vector<LightAttachment>& getAttachedLights() const { return attached_lights_; }
@@ -115,7 +123,14 @@ protected:
     double age_seconds_ = 0.0;
     std::vector<LightAttachment> attached_lights_;
 
+    void recordCommandSignature(std::string signature);
+    void recordCommandOutcomeSignature(std::string signature);
+
     void updateAttachedLights(World& world, double deltaTime);
+
+private:
+    std::unordered_map<std::string, int> commandSignatureCounts_;
+    std::unordered_map<std::string, int> commandOutcomeSignatureCounts_;
 };
 
 } // namespace Organism

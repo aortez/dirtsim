@@ -105,17 +105,11 @@ TrainingPopulationPanel::TrainingPopulationPanel(
       trainingSpec_(trainingSpec)
 {
     scenarioOptions_ = {
-        Scenario::EnumType::Benchmark,
-        Scenario::EnumType::Clock,
-        Scenario::EnumType::DamBreak,
-        Scenario::EnumType::Empty,
-        Scenario::EnumType::DuckTraining,
-        Scenario::EnumType::GooseTest,
-        Scenario::EnumType::Lights,
-        Scenario::EnumType::Raining,
-        Scenario::EnumType::Sandbox,
-        Scenario::EnumType::TreeGermination,
-        Scenario::EnumType::WaterEqualization,
+        Scenario::EnumType::Benchmark,       Scenario::EnumType::Clock,
+        Scenario::EnumType::DamBreak,        Scenario::EnumType::Empty,
+        Scenario::EnumType::GooseTest,       Scenario::EnumType::Lights,
+        Scenario::EnumType::Raining,         Scenario::EnumType::Sandbox,
+        Scenario::EnumType::TreeGermination, Scenario::EnumType::WaterEqualization,
     };
     scenarioLabels_.reserve(scenarioOptions_.size());
     for (const auto& scenarioId : scenarioOptions_) {

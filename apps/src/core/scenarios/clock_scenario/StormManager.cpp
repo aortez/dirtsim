@@ -57,11 +57,6 @@ void StormManager::enterDormant(double stormIntensity, std::mt19937& rng)
 
     auto now = std::chrono::steady_clock::now();
     nextStrikeTime_ = now + std::chrono::milliseconds(static_cast<int64_t>(intervalMs));
-
-    spdlog::info(
-        "StormManager: Next strike in {:.1f}s (intensity: {:.2f})",
-        intervalMs / 1000.0,
-        intensityFactor);
 }
 
 void StormManager::enterStriking(std::mt19937& rng)
@@ -76,8 +71,6 @@ void StormManager::enterStriking(std::mt19937& rng)
     auto now = std::chrono::steady_clock::now();
     strokeStartTime_ = now;
     nextStrokeTime_ = now;
-
-    spdlog::info("StormManager: Lightning strike starting ({} strokes)", totalStrokes_);
 }
 
 void StormManager::updateDormant(double stormIntensity, std::mt19937& rng)

@@ -1,6 +1,8 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/WorldDiagramGeneratorEmoji.h"
+#include "core/organisms/Duck.h"
+#include "core/organisms/DuckBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/Tree.h"
 #include "core/organisms/TreeBrain.h"
@@ -91,6 +93,38 @@ public:
 private:
     std::unique_ptr<TreeBrain> inner_;
     std::vector<TreeCommand>* issued_ = nullptr;
+};
+
+class ScriptedDuckBrain : public DuckBrain {
+public:
+    explicit ScriptedDuckBrain(std::vector<DuckInput> inputs) : inputs_(std::move(inputs)) {}
+
+    void think(Duck& duck, const DuckSensoryData& /*sensory*/, double /*deltaTime*/) override
+    {
+        DuckInput input{};
+        if (nextInputIndex_ < inputs_.size()) {
+            input = inputs_[nextInputIndex_++];
+        }
+
+        if (input.jump) {
+            current_action_ = DuckAction::JUMP;
+        }
+        else if (input.move.x < -0.01f) {
+            current_action_ = DuckAction::RUN_LEFT;
+        }
+        else if (input.move.x > 0.01f) {
+            current_action_ = DuckAction::RUN_RIGHT;
+        }
+        else {
+            current_action_ = DuckAction::WAIT;
+        }
+
+        duck.setInput(input);
+    }
+
+private:
+    std::vector<DuckInput> inputs_;
+    size_t nextInputIndex_ = 0;
 };
 
 struct ExecutedCommand {
@@ -461,7 +495,7 @@ TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 
     // Verify fitness metrics are populated.
     EXPECT_NEAR(status.lifespan, config_.maxSimulationTime, 0.02);
-    EXPECT_GE(status.distanceTraveled, 0.0);
+    EXPECT_FALSE(runner.getOrganismTrackingHistory().samples.empty());
     EXPECT_GE(status.maxEnergy, 0.0);
 }
 
@@ -644,7 +678,6 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 
         const FitnessResult fitnessResult{
             .lifespan = status.lifespan,
-            .distanceTraveled = status.distanceTraveled,
             .maxEnergy = status.maxEnergy,
             .commandsAccepted = status.commandsAccepted,
             .commandsRejected = status.commandsRejected,
@@ -660,6 +693,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
             .worldHeight = world->getData().height,
             .evolutionConfig = config_,
             .finalOrganism = runner.getOrganism(),
+            .organismTrackingHistory = &runner.getOrganismTrackingHistory(),
             .treeResources = treeResourcesPtr,
         };
         const TreeFitnessBreakdown breakdown = TreeEvaluator::evaluateWithBreakdown(context);
@@ -859,6 +893,101 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
 
     EXPECT_TRUE(foundExpectedPrefix);
     EXPECT_FALSE(foundExecutionAnchorPrefix);
+}
+
+TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
+{
+    config_.maxSimulationTime = 5.0;
+
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    std::vector<DuckInput> scriptedInputs;
+    for (int i = 0; i < 6; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { 0.0f, 0.0f }, .jump = false });
+    }
+    for (int i = 0; i < 8; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { 1.0f, 0.0f }, .jump = false });
+    }
+    for (int i = 0; i < 8; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { -1.0f, 0.0f }, .jump = false });
+    }
+    for (int i = 0; i < 3; ++i) {
+        scriptedInputs.push_back(DuckInput{ .move = { 0.0f, 0.0f }, .jump = true });
+    }
+
+    const std::string brainKind = "ScriptedDuckHistogram";
+    TrainingBrainRegistry registry;
+    registry.registerBrain(
+        OrganismType::DUCK,
+        brainKind,
+        "",
+        BrainRegistryEntry{
+            .requiresGenome = false,
+            .allowsMutation = false,
+            .spawn =
+                [&scriptedInputs](World& world, uint32_t x, uint32_t y, const Genome* /*genome*/) {
+                    return world.getOrganismManager().createDuck(
+                        world, x, y, std::make_unique<ScriptedDuckBrain>(scriptedInputs));
+                },
+            .createRandomGenome = nullptr,
+            .isGenomeCompatible = nullptr,
+        });
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = brainKind;
+    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+    const int stepsToRun = static_cast<int>(scriptedInputs.size()) + 12;
+    for (int step = 0; step < stepsToRun; ++step) {
+        const TrainingRunner::Status status = runner.step(1);
+        ASSERT_EQ(status.state, TrainingRunner::State::Running);
+    }
+
+    const auto commands = runner.getTopCommandSignatures(20);
+    const auto outcomes = runner.getTopCommandOutcomeSignatures(20);
+
+    ASSERT_FALSE(commands.empty());
+    ASSERT_FALSE(outcomes.empty());
+
+    bool foundWait = false;
+    bool foundRunLeft = false;
+    bool foundRunRight = false;
+    for (const auto& [signature, count] : commands) {
+        if (signature == "Wait" && count > 0) {
+            foundWait = true;
+        }
+        if (signature == "RunLeft" && count > 0) {
+            foundRunLeft = true;
+        }
+        if (signature == "RunRight" && count > 0) {
+            foundRunRight = true;
+        }
+    }
+
+    EXPECT_TRUE(foundWait);
+    EXPECT_TRUE(foundRunLeft);
+    EXPECT_TRUE(foundRunRight);
+}
+
+TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::Random;
+    individual.scenarioId = Scenario::EnumType::Clock;
+
+    TrainingRunner runner(spec, individual, config_, genomeRepository_);
+
+    const ScenarioConfig scenarioConfig = runner.getScenarioConfig();
+    const auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig);
+    ASSERT_NE(clockConfig, nullptr);
+    EXPECT_FALSE(clockConfig->duckEnabled);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)

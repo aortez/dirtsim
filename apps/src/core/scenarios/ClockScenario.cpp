@@ -1,5 +1,6 @@
 #include "ClockScenario.h"
 #include "clock_scenario/CharacterMetrics.h"
+#include "clock_scenario/DoorEntrySpawn.h"
 #include "clock_scenario/GlowManager.h"
 #include "core/Assert.h"
 #include "core/Cell.h"
@@ -1189,7 +1190,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         ColorCycleEventState state;
         ClockEvents::startColorCycle(state, config_.colorsPerSecond);
         event.state = state;
-        spdlog::info(
+        spdlog::debug(
             "ClockScenario: Starting COLOR_CYCLE event (duration: {}s, rate: {} colors/sec)",
             eventTiming.duration,
             config_.colorsPerSecond);
@@ -1198,12 +1199,12 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         MeltdownEventState melt_state;
         ClockEvents::startMeltdown(melt_state, world);
         event.state = melt_state;
-        spdlog::info(
+        spdlog::debug(
             "ClockScenario: Starting MELTDOWN event (duration: {}s)", eventTiming.duration);
     }
     else if (type == ClockEventType::RAIN) {
         event.state = RainEventState{};
-        spdlog::info("ClockScenario: Starting RAIN event (duration: {}s)", eventTiming.duration);
+        spdlog::debug("ClockScenario: Starting RAIN event (duration: {}s)", eventTiming.duration);
     }
     else if (type == ClockEventType::COLOR_SHOWCASE) {
         ColorShowcaseEventState state;
@@ -1213,14 +1214,14 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         Material::EnumType display_material = getColorShowcaseMaterial(state);
         event.state = state;
         if (showcase_materials.empty()) {
-            spdlog::info(
+            spdlog::debug(
                 "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, showcase list empty; "
                 "digits use {})",
                 eventTiming.duration,
                 toString(display_material));
         }
         else {
-            spdlog::info(
+            spdlog::debug(
                 "ClockScenario: Starting COLOR_SHOWCASE event (duration: {}s, starting color: {} "
                 "at index {})",
                 eventTiming.duration,
@@ -1237,7 +1238,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         // Initialize with current time so the next change triggers animation.
         slide_event_state.slide_state.new_time_str = getCurrentTimeString();
         event.state = slide_event_state;
-        spdlog::info(
+        spdlog::debug(
             "ClockScenario: Starting DIGIT_SLIDE event (speed: {})",
             event_configs_.digit_slide.animation_speed);
     }
@@ -1253,7 +1254,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
             event_configs_.marquee.scroll_speed,
             metrics.widthFunction());
         event.state = marquee_state;
-        spdlog::info(
+        spdlog::debug(
             "ClockScenario: Starting MARQUEE event (duration: {}s, speed: {})",
             eventTiming.duration,
             event_configs_.marquee.scroll_speed);
@@ -1262,16 +1263,18 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
         DuckEventState duck_state;
 
         // Choose random entrance side. Door is 1 cell above floor.
-        duck_state.entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
+        DoorSide entrance_side = (uniform_dist_(rng_) < 0.5) ? DoorSide::LEFT : DoorSide::RIGHT;
+        constexpr double kDuckDoorOpenDelaySeconds = 2.0;
         constexpr uint32_t kCellsAboveFloor = 1;
 
         // Create entrance door (DoorManager computes position from side + cells_above_floor).
-        duck_state.entrance_door_id =
-            door_manager_.createDoor(duck_state.entrance_side, kCellsAboveFloor);
+        DoorId entrance_door_id = door_manager_.createDoor(entrance_side, kCellsAboveFloor);
+        ClockEvents::initializeDoorEntrySpawn(
+            duck_state.entrance_spawn, entrance_door_id, entrance_side, kDuckDoorOpenDelaySeconds);
 
         // Create exit door on opposite side at same height.
         DoorSide exit_side =
-            (duck_state.entrance_side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
+            (duck_state.entrance_spawn.side == DoorSide::LEFT) ? DoorSide::RIGHT : DoorSide::LEFT;
         duck_state.exit_door_id = door_manager_.createDoor(exit_side, kCellsAboveFloor);
 
         // Add indicator lights for both doors.
@@ -1286,7 +1289,7 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
 
         // Entrance door light (will be bright since door opens immediately).
         Vector2f entrance_light_pos =
-            door_manager_.getLightPosition(duck_state.entrance_door_id, data);
+            door_manager_.getLightPosition(duck_state.entrance_spawn.door_id, data);
         duck_state.entrance_light = lights.createLight(
             PointLight{ .position = entrance_light_pos,
                         .color = ColorNames::torchOrange(),
@@ -1304,13 +1307,12 @@ void ClockScenario::startEvent(World& world, ClockEventType type)
                         .attenuation = kDoorLightAttenuation });
 
         // Open entrance door via DoorManager. Duck spawns after delay.
-        door_manager_.openDoor(duck_state.entrance_door_id, world);
+        door_manager_.openDoor(duck_state.entrance_spawn.door_id, world);
         duck_state.phase = DuckEventPhase::DOOR_OPENING;
-        duck_state.door_open_timer = 0.0;
 
         spdlog::info(
             "ClockScenario: Opening {} door for duck entrance",
-            duck_state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT");
+            duck_state.entrance_spawn.side == DoorSide::LEFT ? "LEFT" : "RIGHT");
 
         event.state = std::move(duck_state);
         spdlog::info("ClockScenario: Starting DUCK event (duration: {}s)", eventTiming.duration);
@@ -1481,10 +1483,11 @@ void ClockScenario::updateMarqueeEvent(
     last_drawn_time_ = time_str;
 }
 
-void ClockScenario::spawnDuck(World& world, DuckEventState& state)
+bool ClockScenario::spawnDuck(World& world, DuckEventState& state)
 {
     // Spawn duck in the door opening.
-    Vector2i spawn_pos = door_manager_.getDoorPosition(state.entrance_door_id, world.getData());
+    Vector2i spawn_pos =
+        ClockEvents::getDoorEntryPosition(state.entrance_spawn, door_manager_, world.getData());
 
     // Check if spawn location is blocked by another organism.
     OrganismId blocking = world.getOrganismManager().at(spawn_pos);
@@ -1528,7 +1531,7 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
                 blocking,
                 spawn_pos.x,
                 spawn_pos.y);
-            return;
+            return false;
         }
 
         // Displace the blocking organism by swapping cells.
@@ -1553,7 +1556,7 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
     spdlog::info(
         "ClockScenario: Duck organism {} enters through {} door at ({}, {})",
         state.organism_id,
-        state.entrance_side == DoorSide::LEFT ? "LEFT" : "RIGHT",
+        state.entrance_spawn.side == DoorSide::LEFT ? "LEFT" : "RIGHT",
         spawn_pos.x,
         spawn_pos.y);
 
@@ -1572,22 +1575,27 @@ void ClockScenario::spawnDuck(World& world, DuckEventState& state)
 
         auto handheld = std::make_unique<LightHandHeld>(std::move(flashlight));
         duck->setHandheldLight(std::move(handheld));
-        spdlog::info("ClockScenario: Attached handheld flashlight to duck {}", state.organism_id);
     }
 
-    state.phase = DuckEventPhase::DUCK_ACTIVE;
+    return true;
 }
 
 void ClockScenario::updateDuckEvent(
     World& world, DuckEventState& state, double& remaining_time, double deltaTime)
 {
-    // Phase 1: Wait for door to be open a bit before spawning duck.
-    constexpr double DOOR_OPEN_DELAY = 2.0;
-
     if (state.phase == DuckEventPhase::DOOR_OPENING) {
-        state.door_open_timer += deltaTime;
-        if (state.door_open_timer >= DOOR_OPEN_DELAY) {
-            spawnDuck(world, state);
+        const ClockEvents::DoorEntrySpawnStep step =
+            ClockEvents::updateDoorEntrySpawn(state.entrance_spawn, deltaTime);
+        if (step == ClockEvents::DoorEntrySpawnStep::WaitingForDelay) {
+            return;
+        }
+
+        if (step == ClockEvents::DoorEntrySpawnStep::ReadyToSpawn && spawnDuck(world, state)) {
+            ClockEvents::markDoorEntrySpawnComplete(state.entrance_spawn);
+            state.phase = DuckEventPhase::DUCK_ACTIVE;
+        }
+        else if (step == ClockEvents::DoorEntrySpawnStep::SpawnComplete) {
+            state.phase = DuckEventPhase::DUCK_ACTIVE;
         }
         return;
     }
@@ -1639,11 +1647,8 @@ void ClockScenario::updateDuckEvent(
     constexpr float kDoorLightClosedIntensity = 0.08f;
 
     // Close entrance door once duck moves away from it and schedule removal.
-    Vector2i entrance_pos = door_manager_.getDoorPosition(state.entrance_door_id, data);
-    if (door_manager_.isOpen(state.entrance_door_id) && duck_cell != entrance_pos) {
-        door_manager_.closeDoor(state.entrance_door_id, world);
-        door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
-
+    if (ClockEvents::closeDoorAfterActorLeaves(
+            state.entrance_spawn, door_manager_, world, duck_cell, std::chrono::seconds(2))) {
         // Dim the entrance door light.
         if (state.entrance_light) {
             if (auto* light = lights.getLight<PointLight>(state.entrance_light->id())) {
@@ -1674,7 +1679,7 @@ void ClockScenario::updateDuckEvent(
     Vector2i exit_pos = door_manager_.getDoorPosition(state.exit_door_id, data);
     if (door_manager_.isOpen(state.exit_door_id) && duck_cell == exit_pos) {
         bool past_middle =
-            (state.entrance_side == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
+            (state.entrance_spawn.side == DoorSide::LEFT) ? (duck_com.x > 0.0) : (duck_com.x < 0.0);
         if (past_middle) {
             spdlog::info(
                 "ClockScenario: Duck exited through door at ({}, {}), COM.x={:.2f}",
@@ -1718,7 +1723,7 @@ static const char* eventTypeName(ClockEventType type)
 void ClockScenario::endEvent(
     World& world, ClockEventType type, ActiveEvent& event, bool setCooldown)
 {
-    spdlog::info("ClockScenario: Ending {} event", eventTypeName(type));
+    spdlog::debug("ClockScenario: Ending {} event", eventTypeName(type));
 
     if (type == ClockEventType::MELTDOWN) {
         // Convert any stray digit material (fallen digits) to water.
@@ -1740,15 +1745,15 @@ void ClockScenario::endEvent(
         state.exit_light.reset();
 
         // Close doors and schedule removal after a delay.
-        door_manager_.closeDoor(state.entrance_door_id, world);
+        door_manager_.closeDoor(state.entrance_spawn.door_id, world);
         door_manager_.closeDoor(state.exit_door_id, world);
-        door_manager_.scheduleRemoval(state.entrance_door_id, std::chrono::seconds(2));
+        door_manager_.scheduleRemoval(state.entrance_spawn.door_id, std::chrono::seconds(2));
         door_manager_.scheduleRemoval(state.exit_door_id, std::chrono::seconds(2));
     }
     if (setCooldown) {
         const auto& timing = getEventTiming(type);
         event_manager_.setCooldown(type, timing.cooldown);
-        spdlog::info(
+        spdlog::debug(
             "ClockScenario: Event {} on cooldown for {:.1f}s",
             eventTypeName(type),
             timing.cooldown);

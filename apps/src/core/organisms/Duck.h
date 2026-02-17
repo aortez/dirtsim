@@ -96,10 +96,13 @@ private:
     Vector2i anchor_cell_{ 0, 0 };
     bool on_ground_ = false;
     DuckInput current_input_{};
-    float jump_cooldown_ = 0.0f;
+    bool jump_cooldown_active_ = false;
+    bool jump_cooldown_queued_ = false;
     uint32_t frame_counter_ = 0;
 
-    static constexpr float JUMP_COOLDOWN = 0.5f; // Minimum time between jumps.
+    static constexpr float GROUND_CONTACT_COM_THRESHOLD = 0.80f; // COM must be near cell bottom.
+    static constexpr float GROUND_REST_VERTICAL_SPEED_THRESHOLD =
+        0.10f; // Near-resting vertical speed.
 
     std::unique_ptr<DuckBrain> brain_;
 

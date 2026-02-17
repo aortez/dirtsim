@@ -6,7 +6,9 @@
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
+#include "core/organisms/evolution/OrganismTracker.h"
 #include <gtest/gtest.h>
+#include <initializer_list>
 #include <memory>
 
 namespace DirtSim {
@@ -28,13 +30,29 @@ std::unique_ptr<Tree> makeTree()
         std::make_unique<RuleBasedBrain>(),
         std::make_unique<TreeCommandProcessor>());
 }
+
+OrganismTrackingHistory makeHistory(std::initializer_list<Vector2d> positions)
+{
+    OrganismTrackingHistory history;
+    double simTime = 0.0;
+    for (const Vector2d& position : positions) {
+        history.samples.push_back({ .simTime = simTime, .position = position });
+        simTime += 0.016;
+    }
+    return history;
+}
 } // namespace
 
 TEST(FitnessResultTest, DefaultFitnessIgnoresEnergy)
 {
-    FitnessResult base{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 0.0 };
-    FitnessResult boosted{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 100.0 };
+    FitnessResult base{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    FitnessResult boosted{ .lifespan = 10.0, .maxEnergy = 100.0 };
     const EvolutionConfig config = makeConfig();
+    const OrganismTrackingHistory history = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 5.0, 0.0 },
+        });
 
     const FitnessContext baseContext{
         .result = base,
@@ -42,6 +60,7 @@ TEST(FitnessResultTest, DefaultFitnessIgnoresEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
+        .organismTrackingHistory = &history,
     };
     const FitnessContext boostedContext{
         .result = boosted,
@@ -49,6 +68,7 @@ TEST(FitnessResultTest, DefaultFitnessIgnoresEnergy)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
+        .organismTrackingHistory = &history,
     };
     const double baseFitness = computeFitnessForOrganism(baseContext);
     const double boostedFitness = computeFitnessForOrganism(boostedContext);
@@ -58,8 +78,8 @@ TEST(FitnessResultTest, DefaultFitnessIgnoresEnergy)
 
 TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
 {
-    FitnessResult lowEnergy{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 0.0 };
-    FitnessResult highEnergy{ .lifespan = 10.0, .distanceTraveled = 5.0, .maxEnergy = 100.0 };
+    FitnessResult lowEnergy{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    FitnessResult highEnergy{ .lifespan = 10.0, .maxEnergy = 100.0 };
     const EvolutionConfig config = makeConfig();
     auto tree = makeTree();
     tree->setEnergy(0.0);
@@ -93,9 +113,19 @@ TEST(FitnessResultTest, TreeFitnessIncludesEnergy)
 
 TEST(FitnessResultTest, DistanceIncreasesFitness)
 {
-    FitnessResult base{ .lifespan = 10.0, .distanceTraveled = 0.0, .maxEnergy = 0.0 };
-    FitnessResult moved{ .lifespan = 10.0, .distanceTraveled = 10.0, .maxEnergy = 0.0 };
+    FitnessResult base{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    FitnessResult moved{ .lifespan = 10.0, .maxEnergy = 0.0 };
     const EvolutionConfig config = makeConfig();
+    const OrganismTrackingHistory baseHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 0.0, 0.0 },
+        });
+    const OrganismTrackingHistory movedHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 10.0, 0.0 },
+        });
 
     const FitnessContext baseContext{
         .result = base,
@@ -103,6 +133,7 @@ TEST(FitnessResultTest, DistanceIncreasesFitness)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
+        .organismTrackingHistory = &baseHistory,
     };
     const FitnessContext movedContext{
         .result = moved,
@@ -110,6 +141,7 @@ TEST(FitnessResultTest, DistanceIncreasesFitness)
         .worldWidth = 10,
         .worldHeight = 10,
         .evolutionConfig = config,
+        .organismTrackingHistory = &movedHistory,
     };
     const double baseFitness = computeFitnessForOrganism(baseContext);
     const double movedFitness = computeFitnessForOrganism(movedContext);

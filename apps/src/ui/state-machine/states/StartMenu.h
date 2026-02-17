@@ -42,8 +42,7 @@ private:
     static void onDisplayResized(lv_event_t* e);
     static void onTouchEvent(lv_event_t* e);
     void updateInfoPanelVisibility(RailMode mode);
-    Any startSimulation(
-        StateMachine& sm, std::optional<Scenario::EnumType> scenarioId, bool startupAutoRun);
+    Any startSimulation(StateMachine& sm, std::optional<Scenario::EnumType> scenarioId);
 
     StateMachine* sm_ = nullptr;                       // State machine reference for callbacks.
     std::unique_ptr<SparklingDuckButton> startButton_; // Animated start button.
@@ -54,7 +53,6 @@ private:
     lv_obj_t* infoLabel_ = nullptr;                         // Fractal info label.
     int updateFrameCount_ = 0;                              // Frame counter for periodic logging.
     int labelUpdateCounter_ = 0; // Frame counter for label updates (~1/sec).
-    bool startupAutoRunPending_ = false;
 };
 
 } // namespace State

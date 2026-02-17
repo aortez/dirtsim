@@ -131,6 +131,15 @@ enum class DoorSide { LEFT, RIGHT };
 using DoorId = StrongType<struct DoorIdTag>;
 const DoorId INVALID_DOOR_ID{};
 
+struct DoorEntrySpawnState {
+    DoorId door_id = INVALID_DOOR_ID;
+    DoorSide side = DoorSide::LEFT;
+    double spawn_delay_seconds = 0.0;
+    double spawn_delay_timer = 0.0;
+    bool spawn_complete = false;
+    bool door_closed_after_entry = false;
+};
+
 enum class DuckEventPhase {
     DOOR_OPENING, // Door open, waiting before spawning duck.
     DUCK_ACTIVE,  // Duck spawned and walking.
@@ -139,11 +148,9 @@ enum class DuckEventPhase {
 
 struct DuckEventState {
     OrganismId organism_id = INVALID_ORGANISM_ID;
-    DoorSide entrance_side = DoorSide::LEFT;
-    DoorId entrance_door_id = INVALID_DOOR_ID;
+    DoorEntrySpawnState entrance_spawn;
     DoorId exit_door_id = INVALID_DOOR_ID;
     DuckEventPhase phase = DuckEventPhase::DOOR_OPENING;
-    double door_open_timer = 0.0;
     double door_close_timer = 0.0;
     double obstacle_spawn_timer = 0.0;
 

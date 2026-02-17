@@ -10,6 +10,7 @@ namespace Organism {
 class Body;
 }
 
+struct OrganismTrackingHistory;
 struct TreeResourceTotals;
 
 struct FitnessContext {
@@ -19,6 +20,7 @@ struct FitnessContext {
     int worldHeight;
     const EvolutionConfig& evolutionConfig;
     const Organism::Body* finalOrganism = nullptr;
+    const OrganismTrackingHistory* organismTrackingHistory = nullptr;
     const TreeResourceTotals* treeResources = nullptr;
 };
 

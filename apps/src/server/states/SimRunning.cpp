@@ -45,6 +45,14 @@ namespace State {
 
 namespace {
 
+Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
+{
+    if (scenarioId == Scenario::EnumType::DuckTraining) {
+        return Scenario::EnumType::Clock;
+    }
+    return scenarioId;
+}
+
 void applyUserClockTimezoneToConfig(ScenarioConfig& config, const UserSettings& userSettings)
 {
     auto* clockConfig = std::get_if<Config::Clock>(&config);
@@ -188,7 +196,8 @@ void SimRunning::onEnter(StateMachine& dsm)
 
     // Apply default scenario if no scenario is set.
     if (world && scenario_id == Scenario::EnumType::Empty && dsm.serverConfig) {
-        const Scenario::EnumType defaultScenarioId = dsm.getUserSettings().defaultScenario;
+        const Scenario::EnumType defaultScenarioId =
+            normalizeLegacyScenarioId(dsm.getUserSettings().defaultScenario);
         spdlog::info("SimRunning: Applying default scenario '{}'", toString(defaultScenarioId));
 
         auto& registry = dsm.getScenarioRegistry();
@@ -836,7 +845,7 @@ State::Any SimRunning::onEvent(const Api::ScenarioSwitch::Cwc& cwc, StateMachine
 
     assert(world && "World must exist in SimRunning");
 
-    Scenario::EnumType newScenarioId = cwc.command.scenario_id;
+    Scenario::EnumType newScenarioId = normalizeLegacyScenarioId(cwc.command.scenario_id);
     LOG_INFO(
         State,
         "Switching scenario from '{}' to '{}'",

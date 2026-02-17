@@ -84,6 +84,9 @@ int getMaxTimezoneIndex()
     return static_cast<int>(ClockScenario::TIMEZONES.size()) - 1;
 }
 
+constexpr int kStartMenuIdleTimeoutMinMs = 5000;
+constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
+
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
     return dataDir / "user_settings.json";
@@ -201,6 +204,15 @@ UserSettings sanitizeUserSettings(
         recordUpdate("startMenuIdleAction reset to ClockScenario");
     }
 
+    if (settings.startMenuIdleTimeoutMs < kStartMenuIdleTimeoutMinMs) {
+        settings.startMenuIdleTimeoutMs = kStartMenuIdleTimeoutMinMs;
+        recordUpdate("startMenuIdleTimeoutMs clamped to minimum timeout");
+    }
+    else if (settings.startMenuIdleTimeoutMs > kStartMenuIdleTimeoutMaxMs) {
+        settings.startMenuIdleTimeoutMs = kStartMenuIdleTimeoutMaxMs;
+        recordUpdate("startMenuIdleTimeoutMs clamped to maximum timeout");
+    }
+
     if (settings.trainingResumePolicy > TrainingResumePolicy::WarmFromBest) {
         settings.trainingResumePolicy = TrainingResumePolicy::WarmFromBest;
         recordUpdate("trainingResumePolicy reset to WarmFromBest");
@@ -219,9 +231,29 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = 0;
         recordUpdate("genomeArchiveMaxSize clamped to 0");
     }
+    if (settings.evolutionConfig.diversityEliteCount < 0) {
+        settings.evolutionConfig.diversityEliteCount = 0;
+        recordUpdate("diversityEliteCount clamped to 0");
+    }
+    if (settings.evolutionConfig.diversityEliteFitnessEpsilon < 0.0) {
+        settings.evolutionConfig.diversityEliteFitnessEpsilon = 0.0;
+        recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
+    }
+
+    if (settings.trainingSpec.scenarioId == Scenario::EnumType::DuckTraining) {
+        settings.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+        recordUpdate("trainingSpec.scenarioId migrated from DuckTraining to Clock");
+    }
 
     for (size_t index = 0; index < settings.trainingSpec.population.size(); ++index) {
         auto& population = settings.trainingSpec.population[index];
+        if (population.scenarioId == Scenario::EnumType::DuckTraining) {
+            population.scenarioId = Scenario::EnumType::Clock;
+            recordUpdate(
+                "trainingSpec population[" + std::to_string(index)
+                + "] scenarioId migrated from DuckTraining to Clock");
+        }
+
         const int originalSeedCount = static_cast<int>(population.seedGenomes.size());
         population.seedGenomes.erase(
             std::remove_if(
@@ -1461,8 +1493,8 @@ void StateMachine::handleEvent(const Event& event)
         if (cwc.command.startMenuIdleAction.has_value()) {
             patched.startMenuIdleAction = *cwc.command.startMenuIdleAction;
         }
-        if (cwc.command.startMenuAutoRun.has_value()) {
-            patched.startMenuAutoRun = *cwc.command.startMenuAutoRun;
+        if (cwc.command.startMenuIdleTimeoutMs.has_value()) {
+            patched.startMenuIdleTimeoutMs = *cwc.command.startMenuIdleTimeoutMs;
         }
         if (cwc.command.trainingSpec.has_value()) {
             patched.trainingSpec = *cwc.command.trainingSpec;

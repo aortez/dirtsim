@@ -13,11 +13,9 @@
 #include "ui/rendering/FractalAnimator.h"
 #include "ui/state-machine/StateMachine.h"
 #include "ui/ui_builders/LVGLBuilder.h"
-#include <chrono>
 #include <lvgl/lvgl.h>
 #include <lvgl/src/misc/lv_timer_private.h>
 #include <nlohmann/json.hpp>
-#include <thread>
 
 namespace DirtSim {
 namespace Ui {
@@ -28,7 +26,7 @@ void StartMenu::onEnter(StateMachine& sm)
     sm_ = &sm; // Store for callbacks.
     LOG_INFO(State, "Connected to server, ready to start simulation");
 
-    // Request scenario list from server and cache it (needed even for startup auto-run).
+    // Request scenario list from server and cache it.
     auto& wsService = sm.getWebSocketService();
     if (wsService.isConnected()) {
         const Api::ScenarioListGet::Command cmd{};
@@ -48,14 +46,6 @@ void StartMenu::onEnter(StateMachine& sm)
         else {
             LOG_ERROR(State, "Failed to request scenario list: {}", result.errorValue());
         }
-    }
-
-    // Startup auto-run is a one-shot feature for this UI process.
-    if (sm.consumeStartupAutoRun()) {
-        LOG_INFO(State, "startMenuAutoRun enabled, starting simulation immediately");
-        startupAutoRunPending_ = true;
-        sm.queueEvent(StartButtonClickedEvent{});
-        return;
     }
 
     // Get main menu container (switches to menu screen with IconRail).
@@ -156,7 +146,6 @@ void StartMenu::onEnter(StateMachine& sm)
 void StartMenu::onExit(StateMachine& sm)
 {
     LOG_INFO(State, "Exiting");
-    startupAutoRunPending_ = false;
 
     // Clean up panels.
     corePanel_.reset();
@@ -369,9 +358,7 @@ State::Any StartMenu::onEvent(const RailModeChangedEvent& evt, StateMachine& /*s
 State::Any StartMenu::onEvent(const StartButtonClickedEvent& /*evt*/, StateMachine& sm)
 {
     LOG_INFO(State, "Start button clicked, sending SimRun to server");
-    const bool startupAutoRun = startupAutoRunPending_;
-    startupAutoRunPending_ = false;
-    return startSimulation(sm, std::nullopt, startupAutoRun);
+    return startSimulation(sm, std::nullopt);
 }
 
 State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMachine& sm)
@@ -379,7 +366,7 @@ State::Any StartMenu::onEvent(const StartMenuIdleTimeoutEvent& /*evt*/, StateMac
     const auto action = sm.getServerUserSettings().startMenuIdleAction;
     if (action == StartMenuIdleAction::ClockScenario) {
         LOG_INFO(State, "StartMenu idle: launching clock scenario");
-        return startSimulation(sm, Scenario::EnumType::Clock, false);
+        return startSimulation(sm, Scenario::EnumType::Clock);
     }
     if (action == StartMenuIdleAction::TrainingSession) {
         LOG_INFO(State, "StartMenu idle: auto-starting training session");
@@ -477,7 +464,7 @@ State::Any StartMenu::onEvent(const UiApi::SimRun::Cwc& cwc, StateMachine& sm)
 }
 
 State::Any StartMenu::startSimulation(
-    StateMachine& sm, std::optional<Scenario::EnumType> scenarioId, bool startupAutoRun)
+    StateMachine& sm, std::optional<Scenario::EnumType> scenarioId)
 {
     auto& wsService = sm.getWebSocketService();
     if (!wsService.isConnected()) {
@@ -498,45 +485,25 @@ State::Any StartMenu::startSimulation(
                                     .scenario_id = scenarioId,
                                     .start_paused = false,
                                     .container_size = containerSize };
-
-    // Startup auto-run gets a few retries to handle server startup race conditions.
-    const int maxRetries = startupAutoRun ? 3 : 1;
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-        if (attempt > 1) {
-            LOG_INFO(State, "Retrying SimRun (attempt {}/{})", attempt, maxRetries);
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
-        if (result.isError()) {
-            LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
-            continue; // Retry.
-        }
-
-        const auto& response = result.value();
-        if (response.isError()) {
-            const auto& errMsg = response.errorValue().message;
-            // Retry if server is still starting up.
-            if (errMsg.find("not supported in state") != std::string::npos
-                && attempt < maxRetries) {
-                LOG_WARN(State, "Server not ready ({}), retrying...", errMsg);
-                continue;
-            }
-            LOG_ERROR(State, "SimRun error: {}", errMsg);
-            return StartMenu{};
-        }
-
-        if (!response.value().running) {
-            LOG_WARN(State, "Server not running after SimRun");
-            return StartMenu{};
-        }
-
-        LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
-        return SimRunning{};
+    const auto result = wsService.sendCommandAndGetResponse<Api::SimRun::Okay>(cmd, 2000);
+    if (result.isError()) {
+        LOG_ERROR(State, "SimRun failed: {}", result.errorValue());
+        return StartMenu{};
     }
 
-    LOG_ERROR(State, "SimRun failed after {} attempts", maxRetries);
-    return StartMenu{};
+    const auto& response = result.value();
+    if (response.isError()) {
+        LOG_ERROR(State, "SimRun error: {}", response.errorValue().message);
+        return StartMenu{};
+    }
+
+    if (!response.value().running) {
+        LOG_WARN(State, "Server not running after SimRun");
+        return StartMenu{};
+    }
+
+    LOG_INFO(State, "Server confirmed running, transitioning to SimRunning");
+    return SimRunning{};
 }
 
 State::Any StartMenu::onEvent(const UiApi::TrainingStart::Cwc& cwc, StateMachine& sm)

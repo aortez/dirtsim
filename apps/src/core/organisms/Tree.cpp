@@ -217,59 +217,6 @@ Tree::Tree(
     recomputeCenterOfMass();
 }
 
-std::vector<std::pair<std::string, int>> Tree::getTopCommandSignatures(size_t maxEntries) const
-{
-    if (maxEntries == 0 || commandSignatureCounts_.empty()) {
-        return {};
-    }
-
-    std::vector<std::pair<std::string, int>> entries;
-    entries.reserve(commandSignatureCounts_.size());
-    for (const auto& [signature, count] : commandSignatureCounts_) {
-        entries.emplace_back(signature, count);
-    }
-
-    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.second != rhs.second) {
-            return lhs.second > rhs.second;
-        }
-        return lhs.first < rhs.first;
-    });
-
-    if (entries.size() > maxEntries) {
-        entries.resize(maxEntries);
-    }
-
-    return entries;
-}
-
-std::vector<std::pair<std::string, int>> Tree::getTopCommandOutcomeSignatures(
-    size_t maxEntries) const
-{
-    if (maxEntries == 0 || commandOutcomeSignatureCounts_.empty()) {
-        return {};
-    }
-
-    std::vector<std::pair<std::string, int>> entries;
-    entries.reserve(commandOutcomeSignatureCounts_.size());
-    for (const auto& [signature, count] : commandOutcomeSignatureCounts_) {
-        entries.emplace_back(signature, count);
-    }
-
-    std::sort(entries.begin(), entries.end(), [](const auto& lhs, const auto& rhs) {
-        if (lhs.second != rhs.second) {
-            return lhs.second > rhs.second;
-        }
-        return lhs.first < rhs.first;
-    });
-
-    if (entries.size() > maxEntries) {
-        entries.resize(maxEntries);
-    }
-
-    return entries;
-}
-
 Tree::~Tree() = default;
 
 Vector2i Tree::getAnchorCell() const
@@ -384,8 +331,8 @@ void Tree::executeCommand(World& world)
     const Vector2i seedPosition =
         currentCommandSeedPosition_.has_value() ? *currentCommandSeedPosition_ : getAnchorCell();
     CommandExecutionResult result = processor->execute(*this, world, *current_command_);
-    ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
-        *current_command_, seedPosition, result.result)];
+    recordCommandOutcomeSignature(
+        treeCommandOutcomeSignature(*current_command_, seedPosition, result.result));
     const bool accepted = result.succeeded();
     hasLastCommandResult_ = true;
     lastCommandAccepted_ = accepted;
@@ -429,7 +376,7 @@ void Tree::processBrainDecision(World& world)
             command = brain_->decide(sensory);
         }
     }
-    ++commandSignatureCounts_[treeCommandSignature(command, sensory.seed_position)];
+    recordCommandSignature(treeCommandSignature(command, sensory.seed_position));
 
     // Handle the command.
     std::visit(
@@ -463,8 +410,8 @@ void Tree::processBrainDecision(World& world)
                 if (!current_command_.has_value()) {
                     CommandExecutionResult validation = processor->validate(*this, world, cmd);
                     if (!validation.succeeded()) {
-                        ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
-                            cmd, sensory.seed_position, validation.result)];
+                        recordCommandOutcomeSignature(treeCommandOutcomeSignature(
+                            cmd, sensory.seed_position, validation.result));
                         hasLastCommandResult_ = true;
                         lastCommandAccepted_ = false;
                         ++commandRejectedCount_;
@@ -480,8 +427,8 @@ void Tree::processBrainDecision(World& world)
                     const double energyCost = processor->getEnergyCost(cmd);
                     if (energyCost > 0.0) {
                         if (total_energy_ < energyCost) {
-                            ++commandOutcomeSignatureCounts_[treeCommandOutcomeSignature(
-                                cmd, sensory.seed_position, CommandResult::INSUFFICIENT_ENERGY)];
+                            recordCommandOutcomeSignature(treeCommandOutcomeSignature(
+                                cmd, sensory.seed_position, CommandResult::INSUFFICIENT_ENERGY));
                             hasLastCommandResult_ = true;
                             lastCommandAccepted_ = false;
                             ++commandRejectedCount_;

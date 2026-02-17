@@ -1,9 +1,9 @@
 #include "FitnessCalculator.h"
 #include "core/Assert.h"
+#include "core/organisms/evolution/DuckEvaluator.h"
 #include "core/organisms/evolution/TreeEvaluator.h"
 
 #include <algorithm>
-#include <cmath>
 
 namespace DirtSim {
 
@@ -26,15 +26,6 @@ double computeSurvivalScore(const FitnessContext& context)
     return clamp01(normalize(context.result.lifespan, context.evolutionConfig.maxSimulationTime));
 }
 
-double computeDistanceScore(const FitnessContext& context)
-{
-    const double maxDistance = std::max(
-        1.0,
-        std::hypot(
-            static_cast<double>(context.worldWidth), static_cast<double>(context.worldHeight)));
-    return clamp01(normalize(context.result.distanceTraveled, maxDistance));
-}
-
 } // namespace
 
 double computeFitnessForOrganism(const FitnessContext& context)
@@ -47,8 +38,7 @@ double computeFitnessForOrganism(const FitnessContext& context)
     switch (context.organismType) {
         case OrganismType::DUCK:
         case OrganismType::GOOSE: {
-            const double distanceScore = computeDistanceScore(context);
-            return survivalScore * (1.0 + distanceScore);
+            return DuckEvaluator::evaluate(context);
         }
         case OrganismType::TREE: {
             return TreeEvaluator::evaluate(context);

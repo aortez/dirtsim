@@ -21,8 +21,18 @@ namespace State {
 
 namespace {
 
+Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
+{
+    if (scenarioId == Scenario::EnumType::DuckTraining) {
+        return Scenario::EnumType::Clock;
+    }
+    return scenarioId;
+}
+
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
+    scenarioId = normalizeLegacyScenarioId(scenarioId);
+
     ScenarioConfig scenarioConfig = makeDefaultConfig(scenarioId);
     if (dsm.serverConfig && getScenarioId(dsm.serverConfig->startupConfig) == scenarioId) {
         scenarioConfig = dsm.serverConfig->startupConfig;
@@ -69,9 +79,12 @@ std::optional<ApiError> validateTrainingConfig(
     bool& outWarmSeedInjected)
 {
     outWarmSeedInjected = false;
-    outSpec.scenarioId = command.scenarioId;
+    outSpec.scenarioId = normalizeLegacyScenarioId(command.scenarioId);
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
+    for (auto& populationSpec : outSpec.population) {
+        populationSpec.scenarioId = normalizeLegacyScenarioId(populationSpec.scenarioId);
+    }
 
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
@@ -303,6 +316,7 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     Scenario::EnumType scenarioId = cwc.command.scenario_id.has_value()
         ? cwc.command.scenario_id.value()
         : dsm.getUserSettings().defaultScenario;
+    scenarioId = normalizeLegacyScenarioId(scenarioId);
     LOG_INFO(State, "SimRun command received, using scenario '{}'", toString(scenarioId));
 
     // Validate max_frame_ms parameter.

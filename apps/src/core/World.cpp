@@ -1990,14 +1990,6 @@ void World::processMaterialMoves()
         if (organism_id != INVALID_ORGANISM_ID && fromCell.isEmpty()) {
             // Material fully transferred - update organism tracking.
             Vector2i to_pos{ static_cast<int>(move.to.x), static_cast<int>(move.to.y) };
-            spdlog::info(
-                "Organism tracking: organism {} moved ({},{}) → ({},{}) via {}",
-                organism_id,
-                from_pos.x,
-                from_pos.y,
-                to_pos.x,
-                to_pos.y,
-                static_cast<int>(move.collision_type));
             organism_manager_->moveOrganismCell(from_pos, to_pos, organism_id);
         }
     }
