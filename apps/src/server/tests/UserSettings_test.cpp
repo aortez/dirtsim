@@ -111,7 +111,11 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .startMenuIdleAction = StartMenuIdleAction::ClockScenario,
                 .startMenuIdleTimeoutMs = 99999999,
                 .trainingSpec = {},
-                .evolutionConfig = {},
+                .evolutionConfig =
+                    EvolutionConfig{
+                        .diversityEliteCount = -5,
+                        .diversityEliteFitnessEpsilon = -0.5,
+                    },
                 .mutationConfig = {},
                 .trainingResumePolicy = static_cast<TrainingResumePolicy>(99),
             },
@@ -130,6 +134,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(response.value().settings.evolutionConfig.diversityEliteCount, 0);
+    EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
     const UserSettings fromDisk = readUserSettingsFromDisk(settingsPath);
@@ -138,6 +144,8 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(fromDisk.evolutionConfig.diversityEliteCount, 0);
+    EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 }
 
 TEST(UserSettingsTest, UserSettingsResetRestoresDefaultsAndPersists)

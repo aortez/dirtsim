@@ -231,6 +231,14 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = 0;
         recordUpdate("genomeArchiveMaxSize clamped to 0");
     }
+    if (settings.evolutionConfig.diversityEliteCount < 0) {
+        settings.evolutionConfig.diversityEliteCount = 0;
+        recordUpdate("diversityEliteCount clamped to 0");
+    }
+    if (settings.evolutionConfig.diversityEliteFitnessEpsilon < 0.0) {
+        settings.evolutionConfig.diversityEliteFitnessEpsilon = 0.0;
+        recordUpdate("diversityEliteFitnessEpsilon clamped to 0");
+    }
 
     if (settings.trainingSpec.scenarioId == Scenario::EnumType::DuckTraining) {
         settings.trainingSpec.scenarioId = Scenario::EnumType::Clock;

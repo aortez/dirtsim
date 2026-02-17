@@ -150,6 +150,144 @@ bool isOffspringOrigin(Evolution::IndividualOrigin origin)
         || origin == Evolution::IndividualOrigin::OffspringClone;
 }
 
+struct RankedIndividual {
+    double fitness = 0.0;
+    Evolution::Individual individual;
+    Evolution::IndividualOrigin origin = Evolution::IndividualOrigin::Unknown;
+    int order = 0;
+};
+
+bool canComputeGenomeWeightDistance(
+    const Evolution::Individual& left, const Evolution::Individual& right)
+{
+    if (!left.genome.has_value() || !right.genome.has_value()) {
+        return false;
+    }
+
+    const auto& leftWeights = left.genome.value().weights;
+    const auto& rightWeights = right.genome.value().weights;
+    return !leftWeights.empty() && leftWeights.size() == rightWeights.size();
+}
+
+double computeGenomeWeightDistance(
+    const Evolution::Individual& left, const Evolution::Individual& right)
+{
+    DIRTSIM_ASSERT(
+        canComputeGenomeWeightDistance(left, right),
+        "Evolution: comparable genomes required for distance calculation");
+
+    const auto& leftWeights = left.genome.value().weights;
+    const auto& rightWeights = right.genome.value().weights;
+    DIRTSIM_ASSERT(
+        leftWeights.size() == rightWeights.size(),
+        "Evolution: comparable genomes must have equal weight count");
+    DIRTSIM_ASSERT(!leftWeights.empty(), "Evolution: genome distance requires non-empty weights");
+
+    double squaredDistance = 0.0;
+    for (size_t i = 0; i < leftWeights.size(); ++i) {
+        const double delta =
+            static_cast<double>(leftWeights[i]) - static_cast<double>(rightWeights[i]);
+        squaredDistance += delta * delta;
+    }
+
+    return std::sqrt(squaredDistance / static_cast<double>(leftWeights.size()));
+}
+
+bool isNearBestFitness(double fitness, double bestFitness, double fitnessEpsilon)
+{
+    if (fitnessTiesBest(fitness, bestFitness)) {
+        return true;
+    }
+    return fitness + fitnessEpsilon >= bestFitness;
+}
+
+std::vector<int> selectDiversityElitePositions(
+    const std::vector<RankedIndividual>& ranked,
+    int keepCount,
+    int diversityEliteCount,
+    double diversityFitnessEpsilon)
+{
+    if (ranked.empty() || keepCount <= 1 || diversityEliteCount <= 0) {
+        return {};
+    }
+
+    const int diverseSlots = std::min(diversityEliteCount, keepCount - 1);
+    if (diverseSlots <= 0) {
+        return {};
+    }
+
+    const double bestFitness = ranked.front().fitness;
+
+    std::vector<int> candidates;
+    candidates.reserve(ranked.size());
+    for (int i = 1; i < static_cast<int>(ranked.size()); ++i) {
+        if (!isNearBestFitness(ranked[i].fitness, bestFitness, diversityFitnessEpsilon)) {
+            continue;
+        }
+        if (!ranked[i].individual.genome.has_value()) {
+            continue;
+        }
+        candidates.push_back(i);
+    }
+
+    if (candidates.empty()) {
+        return {};
+    }
+
+    std::vector<int> selected;
+    selected.reserve(diverseSlots);
+    std::vector<int> references{ 0 };
+    std::vector<bool> selectedMask(ranked.size(), false);
+    constexpr double kDistanceTieEpsilon = 1e-12;
+
+    while (static_cast<int>(selected.size()) < diverseSlots) {
+        int bestCandidate = -1;
+        double bestMinDistance = -1.0;
+
+        for (int candidatePos : candidates) {
+            if (selectedMask[candidatePos]) {
+                continue;
+            }
+
+            const Evolution::Individual& candidate = ranked[candidatePos].individual;
+            bool hasComparableReference = false;
+            double minDistance = std::numeric_limits<double>::infinity();
+
+            for (int referencePos : references) {
+                const Evolution::Individual& reference = ranked[referencePos].individual;
+                if (!canComputeGenomeWeightDistance(candidate, reference)) {
+                    continue;
+                }
+
+                hasComparableReference = true;
+                const double distance = computeGenomeWeightDistance(candidate, reference);
+                minDistance = std::min(minDistance, distance);
+            }
+
+            if (!hasComparableReference) {
+                continue;
+            }
+
+            if (bestCandidate < 0 || minDistance > bestMinDistance + kDistanceTieEpsilon
+                || (std::abs(minDistance - bestMinDistance) <= kDistanceTieEpsilon
+                    && candidatePos < bestCandidate)) {
+                bestCandidate = candidatePos;
+                bestMinDistance = minDistance;
+            }
+        }
+
+        if (bestCandidate < 0) {
+            break;
+        }
+
+        selectedMask[bestCandidate] = true;
+        selected.push_back(bestCandidate);
+        references.push_back(bestCandidate);
+    }
+
+    return selected;
+}
+
 int tournamentSelectIndex(const std::vector<double>& fitness, int tournamentSize, std::mt19937& rng)
 {
     DIRTSIM_ASSERT(!fitness.empty(), "Tournament selection requires non-empty fitness list");
@@ -1140,13 +1278,6 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     if (pruneBeforeBreeding_) {
         // Prune only after the expanded population has been fully evaluated.
-        struct RankedIndividual {
-            double fitness = 0.0;
-            Individual individual;
-            IndividualOrigin origin = IndividualOrigin::Unknown;
-            int order = 0;
-        };
-
         std::vector<RankedIndividual> ranked;
         ranked.reserve(population.size());
         for (size_t i = 0; i < population.size(); ++i) {
@@ -1177,17 +1308,61 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         const int keepCount = std::min(survivorPopulationSize, static_cast<int>(ranked.size()));
         DIRTSIM_ASSERT(keepCount > 0, "Evolution: pruning would remove entire population");
 
+        const std::vector<int> diversityElitePositions = selectDiversityElitePositions(
+            ranked,
+            keepCount,
+            evolutionConfig.diversityEliteCount,
+            evolutionConfig.diversityEliteFitnessEpsilon);
+        if (!diversityElitePositions.empty()) {
+            LOG_INFO(
+                State,
+                "Evolution: Diversity elitism retained {} near-best genome(s) (epsilon={:.4f})",
+                diversityElitePositions.size(),
+                evolutionConfig.diversityEliteFitnessEpsilon);
+        }
+
+        std::vector<bool> selectedMask(ranked.size(), false);
+        std::vector<int> selectedPositions;
+        selectedPositions.reserve(keepCount);
+        const auto selectPosition = [&](int position) {
+            if (position < 0 || position >= static_cast<int>(ranked.size())) {
+                return;
+            }
+            if (selectedMask[position]) {
+                return;
+            }
+            selectedMask[position] = true;
+            selectedPositions.push_back(position);
+        };
+
+        selectPosition(0);
+        for (int position : diversityElitePositions) {
+            if (static_cast<int>(selectedPositions.size()) >= keepCount) {
+                break;
+            }
+            selectPosition(position);
+        }
+        for (int i = 1; i < static_cast<int>(ranked.size())
+             && static_cast<int>(selectedPositions.size()) < keepCount;
+             ++i) {
+            selectPosition(i);
+        }
+
+        DIRTSIM_ASSERT(
+            static_cast<int>(selectedPositions.size()) == keepCount,
+            "Evolution: selected survivor count mismatch after pruning");
+
         std::vector<Individual> survivors;
         std::vector<double> survivorFitness;
         std::vector<IndividualOrigin> survivorOrigins;
         survivors.reserve(keepCount);
         survivorFitness.reserve(keepCount);
         survivorOrigins.reserve(keepCount);
-        for (int i = 0; i < keepCount; ++i) {
-            Individual survivor = ranked[i].individual;
+        for (int position : selectedPositions) {
+            Individual survivor = ranked[position].individual;
             survivor.parentFitness.reset();
             survivors.push_back(std::move(survivor));
-            survivorFitness.push_back(ranked[i].fitness);
+            survivorFitness.push_back(ranked[position].fitness);
             survivorOrigins.push_back(IndividualOrigin::EliteCarryover);
         }
 

@@ -1030,6 +1030,10 @@ TEST(StateEvolutionTest, TargetCpuPercentDefaultDisabled)
 {
     EvolutionConfig config;
     EXPECT_EQ(config.targetCpuPercent, 0) << "Auto-tune should be disabled by default";
+    EXPECT_EQ(config.diversityEliteCount, 1)
+        << "Diversity elitism should retain one near-best elite";
+    EXPECT_DOUBLE_EQ(config.diversityEliteFitnessEpsilon, 0.0)
+        << "Diversity elitism epsilon should default to exact best ties";
 }
 
 TEST(StateEvolutionTest, ConcurrencyThrottleInitializedToBackgroundWorkerCount)
