@@ -17,6 +17,7 @@ public:
         float valueScale = 100.0f;
         bool autoScaleY = true;
         bool hideZeroValuePoints = false;
+        bool showYAxisRangeLabels = true;
         lv_chart_type_t chartType = LV_CHART_TYPE_LINE;
         uint32_t minPointCount = 2;
     };
@@ -36,18 +37,24 @@ private:
     int32_t toChartValue(float value) const;
     void setYAxisRange(float minValue, float maxValue);
     void updateYAxisRange(const std::vector<float>& samples);
+    void updateYAxisRangeLabels(float minValue, float maxValue);
 
     Config config_;
 
     lv_obj_t* container_ = nullptr;
     lv_obj_t* titleLabel_ = nullptr;
     lv_obj_t* chart_ = nullptr;
+    lv_obj_t* yAxisMaxLabel_ = nullptr;
+    lv_obj_t* yAxisMinLabel_ = nullptr;
     lv_obj_t* bottomLabelsRow_ = nullptr;
     lv_obj_t* bottomLeftLabel_ = nullptr;
     lv_obj_t* bottomRightLabel_ = nullptr;
     lv_chart_series_t* series_ = nullptr;
     std::vector<int32_t> chartValues_;
     uint32_t minPointCount_ = 2;
+    bool hasDisplayedYAxisRange_ = false;
+    float displayedYAxisMin_ = 0.0f;
+    float displayedYAxisMax_ = 0.0f;
 };
 
 } // namespace Ui
