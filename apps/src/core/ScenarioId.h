@@ -24,6 +24,7 @@ enum class EnumType : uint8_t {
     Sandbox,
     TreeGermination,
     WaterEqualization,
+    // Legacy: retained for deserialization compatibility; normalized to Clock.
     DuckTraining,
 };
 

@@ -289,7 +289,7 @@ void TrainingRunner::spawnEvaluationOrganism()
     Vector2i spawnCell{ 0, 0 };
     const WorldData& data = world_->getData();
     if (trainingSpec_.organismType == OrganismType::DUCK
-        && individual_.scenarioId == Scenario::EnumType::DuckTraining) {
+        && individual_.scenarioId == Scenario::EnumType::Clock) {
         Vector2i candidate{ 1, std::max(1, data.height - 2) };
         if (data.inBounds(candidate.x, candidate.y) && data.at(candidate.x, candidate.y).isAir()
             && !world_->getOrganismManager().hasOrganism(candidate)) {

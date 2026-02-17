@@ -164,7 +164,7 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
 
     trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
                                   .label("Trainer Target:")
-                                  .options("Trees (Germination)\nDucks (Clock Course)")
+                                  .options("Trees (Germination)\nDucks (Clock Scenario)")
                                   .selected(0)
                                   .width(LV_PCT(95))
                                   .callback(onTrainingTargetChanged, this)
@@ -499,7 +499,7 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
 
     if (index == 1) {
         self->settings_.trainingSpec.organismType = OrganismType::DUCK;
-        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::DuckTraining;
+        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Clock;
     }
     else {
         self->settings_.trainingSpec.organismType = OrganismType::TREE;

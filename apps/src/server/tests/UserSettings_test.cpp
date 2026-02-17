@@ -233,7 +233,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(inMemory.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
     EXPECT_TRUE(inMemory.startMenuAutoRun);
-    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(inMemory.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(inMemory.trainingSpec.organismType, OrganismType::DUCK);
 
     const std::filesystem::path settingsPath = fixture.testDataDir / "user_settings.json";
@@ -243,7 +243,7 @@ TEST(UserSettingsTest, UserSettingsPatchMergesAndPersists)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleAction, StartMenuIdleAction::TrainingSession);
     EXPECT_TRUE(fromDisk.startMenuAutoRun);
-    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::DuckTraining);
+    EXPECT_EQ(fromDisk.trainingSpec.scenarioId, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.trainingSpec.organismType, OrganismType::DUCK);
 }
 
