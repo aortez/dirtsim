@@ -42,6 +42,7 @@
 #include "TrainingResultSet.h"
 #include "TrainingStreamConfigSet.h"
 #include "UserSettingsGet.h"
+#include "UserSettingsPatch.h"
 #include "UserSettingsReset.h"
 #include "UserSettingsSet.h"
 #include "WebSocketAccessSet.h"
@@ -108,6 +109,7 @@ using ApiCommand = std::variant<
     Api::TimerStatsGet::Command,
     Api::TrainingBestSnapshotGet::Command,
     Api::UserSettingsGet::Command,
+    Api::UserSettingsPatch::Command,
     Api::UserSettingsReset::Command,
     Api::UserSettingsSet::Command,
     Api::TrainingResultDiscard::Command,

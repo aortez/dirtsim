@@ -73,7 +73,7 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     state.plotBestSeries_.clear();
 
     state.plotBestSeries_.push_back(0.0f);
-  
+
     state.lastFitnessInsightsGeneration_ = -1;
     state.trainingPaused_ = false;
     state.progressEventCount_ = 0;
@@ -259,7 +259,6 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
             const size_t pruneCount = plotBestSeries_.size() - plotRefreshPointCount;
             plotBestSeries_.erase(plotBestSeries_.begin(), plotBestSeries_.begin() + pruneCount);
         }
-
 
         view_->updateFitnessPlots(plotBestSeries_);
     }

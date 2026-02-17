@@ -23,6 +23,9 @@ constexpr int TOTAL_WEIGHTS = W_IH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
 Genome::Genome() : weights(TOTAL_WEIGHTS, 0.0f)
 {}
 
+Genome::Genome(size_t weightCount) : weights(weightCount, 0.0f)
+{}
+
 Genome Genome::random(std::mt19937& rng)
 {
     Genome g;

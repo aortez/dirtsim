@@ -72,6 +72,11 @@ Send commands to the server, UI, audio, or os-manager:
 ./build-debug/bin/cli server Reset
 ./build-debug/bin/cli server Exit
 
+# User settings (patch updates only specified fields)
+./build-debug/bin/cli server UserSettingsGet
+./build-debug/bin/cli server UserSettingsPatch '{"trainingSpec":{"scenarioId":"DuckTraining","organismType":"DUCK","population":[]}}'
+./build-debug/bin/cli server UserSettingsPatch '{"trainingSpec":{"scenarioId":"TreeGermination","organismType":"TREE","population":[]}}'
+
 # UI commands
 ./build-debug/bin/cli ui SimPause
 ./build-debug/bin/cli ui SimStop
@@ -382,6 +387,25 @@ Run evolution training with JSON configuration:
   },
   "scenarioId": "TreeGermination",
   "organismType": "TREE",
+  "resumePolicy": "WarmFromBest",
+  "population": [
+    {
+      "brainKind": "NeuralNet",
+      "count": 20,
+      "randomCount": 20
+    }
+  ]
+}'
+
+# Train ducks with the clock-style obstacle course
+./build-debug/bin/cli train '{
+  "evolution": {
+    "maxGenerations": 10,
+    "populationSize": 20,
+    "tournamentSize": 3
+  },
+  "scenarioId": "DuckTraining",
+  "organismType": "DUCK",
   "resumePolicy": "WarmFromBest",
   "population": [
     {

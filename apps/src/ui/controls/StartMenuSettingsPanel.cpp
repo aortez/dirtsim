@@ -81,6 +81,7 @@ StartMenuSettingsPanel::StartMenuSettingsPanel(
 
     updateTimezoneButtonText();
     updateDefaultScenarioButtonText();
+    updateTrainingTargetDropdown();
     updateResetButtonEnabled();
 
     LOG_INFO(Controls, "StartMenuSettingsPanel created");
@@ -160,6 +161,14 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
                               .width(LV_PCT(95))
                               .callback(onIdleActionChanged, this)
                               .buildOrLog();
+
+    trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
+                                  .label("Trainer Target:")
+                                  .options("Trees (Germination)\nDucks (Clock Course)")
+                                  .selected(0)
+                                  .width(LV_PCT(95))
+                                  .callback(onTrainingTargetChanged, this)
+                                  .buildOrLog();
 
     autoRunToggle_ = LVGLBuilder::actionButton(view)
                          .text("Auto-Run on Startup")
@@ -322,6 +331,7 @@ void StartMenuSettingsPanel::applySettings(const DirtSim::UserSettings& settings
     updateDefaultScenarioButtonText();
     updateAutoRunToggle();
     updateIdleActionDropdown();
+    updateTrainingTargetDropdown();
     updateResetButtonEnabled();
 
     updatingUi_ = false;
@@ -406,6 +416,23 @@ void StartMenuSettingsPanel::updateIdleActionDropdown()
     LVGLBuilder::ActionDropdownBuilder::setSelected(idleActionDropdown_, index);
 }
 
+void StartMenuSettingsPanel::updateTrainingTargetDropdown()
+{
+    if (!trainingTargetDropdown_) {
+        return;
+    }
+
+    uint16_t index = 0;
+    if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
+        index = 1;
+    }
+
+    LVGLBuilder::ActionDropdownBuilder::setSelected(trainingTargetDropdown_, index);
+
+    const bool enabled = settings_.startMenuIdleAction == StartMenuIdleAction::TrainingSession;
+    setControlEnabled(trainingTargetDropdown_, enabled);
+}
+
 void StartMenuSettingsPanel::updateAutoRunToggle()
 {
     if (!autoRunToggle_) {
@@ -452,6 +479,34 @@ void StartMenuSettingsPanel::onIdleActionChanged(lv_event_t* e)
         self->settings_.startMenuIdleAction = static_cast<StartMenuIdleAction>(index);
     }
 
+    self->updateTrainingTargetDropdown();
+    self->sendSettingsUpdate();
+}
+
+void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
+{
+    auto* self = static_cast<StartMenuSettingsPanel*>(lv_event_get_user_data(e));
+    if (!self || !self->trainingTargetDropdown_) {
+        return;
+    }
+
+    if (self->updatingUi_) {
+        return;
+    }
+
+    const uint16_t index =
+        LVGLBuilder::ActionDropdownBuilder::getSelected(self->trainingTargetDropdown_);
+
+    if (index == 1) {
+        self->settings_.trainingSpec.organismType = OrganismType::DUCK;
+        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::DuckTraining;
+    }
+    else {
+        self->settings_.trainingSpec.organismType = OrganismType::TREE;
+        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    }
+
+    self->settings_.trainingSpec.population.clear();
     self->sendSettingsUpdate();
 }
 

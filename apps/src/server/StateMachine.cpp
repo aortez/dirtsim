@@ -12,6 +12,7 @@
 #include "api/TrainingResultSet.h"
 #include "api/TrainingStreamConfigSet.h"
 #include "api/UserSettingsGet.h"
+#include "api/UserSettingsPatch.h"
 #include "api/UserSettingsReset.h"
 #include "api/UserSettingsSet.h"
 #include "api/UserSettingsUpdated.h"
@@ -599,6 +600,7 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         DISPATCH_JSON_CMD_WITH_RESP(Api::TrainingBestSnapshotGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::TimerStatsGet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsGet);
+        DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsPatch);
         DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsReset);
         DISPATCH_JSON_CMD_WITH_RESP(Api::UserSettingsSet);
         DISPATCH_JSON_CMD_WITH_RESP(Api::WebSocketAccessSet);
@@ -851,6 +853,8 @@ void StateMachine::setupWebSocketService(Network::WebSocketService& service)
         [this](Api::TimerStatsGet::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::UserSettingsGet::Cwc>(
         [this](Api::UserSettingsGet::Cwc cwc) { queueEvent(cwc); });
+    service.registerHandler<Api::UserSettingsPatch::Cwc>(
+        [this](Api::UserSettingsPatch::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::UserSettingsReset::Cwc>(
         [this](Api::UserSettingsReset::Cwc cwc) { queueEvent(cwc); });
     service.registerHandler<Api::UserSettingsSet::Cwc>(
@@ -1432,6 +1436,73 @@ void StateMachine::handleEvent(const Event& event)
         const auto& cwc = std::get<Api::UserSettingsGet::Cwc>(event.getVariant());
         Api::UserSettingsGet::Okay response{ .settings = pImpl->userSettings_ };
         cwc.sendResponse(Api::UserSettingsGet::Response::okay(std::move(response)));
+        return;
+    }
+
+    if (std::holds_alternative<Api::UserSettingsPatch::Cwc>(event.getVariant())) {
+        const auto& cwc = std::get<Api::UserSettingsPatch::Cwc>(event.getVariant());
+
+        if (cwc.command.isEmpty()) {
+            cwc.sendResponse(
+                Api::UserSettingsPatch::Response::error(ApiError("No fields provided to patch")));
+            return;
+        }
+
+        UserSettings patched = pImpl->userSettings_;
+        if (cwc.command.timezoneIndex.has_value()) {
+            patched.timezoneIndex = *cwc.command.timezoneIndex;
+        }
+        if (cwc.command.volumePercent.has_value()) {
+            patched.volumePercent = *cwc.command.volumePercent;
+        }
+        if (cwc.command.defaultScenario.has_value()) {
+            patched.defaultScenario = *cwc.command.defaultScenario;
+        }
+        if (cwc.command.startMenuIdleAction.has_value()) {
+            patched.startMenuIdleAction = *cwc.command.startMenuIdleAction;
+        }
+        if (cwc.command.startMenuAutoRun.has_value()) {
+            patched.startMenuAutoRun = *cwc.command.startMenuAutoRun;
+        }
+        if (cwc.command.trainingSpec.has_value()) {
+            patched.trainingSpec = *cwc.command.trainingSpec;
+        }
+        if (cwc.command.evolutionConfig.has_value()) {
+            patched.evolutionConfig = *cwc.command.evolutionConfig;
+        }
+        if (cwc.command.mutationConfig.has_value()) {
+            patched.mutationConfig = *cwc.command.mutationConfig;
+        }
+        if (cwc.command.trainingResumePolicy.has_value()) {
+            patched.trainingResumePolicy = *cwc.command.trainingResumePolicy;
+        }
+
+        bool changed = false;
+        std::vector<std::string> updates;
+        const UserSettings sanitized = sanitizeUserSettings(
+            patched, pImpl->scenarioRegistry_, pImpl->genomeRepository_, changed, updates);
+
+        if (!persistUserSettingsToDisk(pImpl->userSettingsPath_, sanitized)) {
+            cwc.sendResponse(
+                Api::UserSettingsPatch::Response::error(
+                    ApiError("Failed to persist user settings")));
+            return;
+        }
+
+        if (changed) {
+            for (const auto& update : updates) {
+                LOG_WARN(State, "UserSettingsPatch: {}", update);
+            }
+        }
+
+        pImpl->userSettings_ = sanitized;
+
+        Api::UserSettingsPatch::Okay response{ .settings = pImpl->userSettings_ };
+        cwc.sendResponse(Api::UserSettingsPatch::Response::okay(std::move(response)));
+
+        const Api::UserSettingsUpdated updateEvent{ .settings = pImpl->userSettings_ };
+        broadcastEventData(
+            Api::UserSettingsUpdated::name(), Network::serialize_payload(updateEvent));
         return;
     }
 
