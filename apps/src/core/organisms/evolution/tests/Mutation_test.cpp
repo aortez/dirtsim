@@ -15,6 +15,7 @@ TEST_F(MutationTest, MutationChangesWeights)
 {
     const Genome parent = Genome::constant(1.0);
     const MutationConfig config{
+        .useBudget = false,
         .rate = 0.5, // High rate to ensure changes.
         .sigma = 0.1,
         .resetRate = 0.0,
@@ -36,6 +37,7 @@ TEST_F(MutationTest, ZeroRateProducesIdenticalGenome)
 {
     const Genome parent = Genome::constant(1.0);
     const MutationConfig config{
+        .useBudget = false,
         .rate = 0.0,
         .sigma = 0.1,
         .resetRate = 0.0,
@@ -50,6 +52,7 @@ TEST_F(MutationTest, MutationPreservesGenomeSize)
 {
     const Genome parent = Genome::random(rng);
     const MutationConfig config{
+        .useBudget = false,
         .rate = 0.1,
         .sigma = 0.05,
         .resetRate = 0.001,
@@ -64,6 +67,7 @@ TEST_F(MutationTest, HighResetRateChangesWeightsSignificantly)
 {
     const Genome parent = Genome::constant(0.0);
     const MutationConfig config{
+        .useBudget = false,
         .rate = 0.0,
         .sigma = 0.5,
         .resetRate = 1.0, // Reset everything.
@@ -79,4 +83,58 @@ TEST_F(MutationTest, HighResetRateChangesWeightsSignificantly)
         }
     }
     EXPECT_EQ(changed, static_cast<int>(parent.weights.size()));
+}
+
+TEST_F(MutationTest, StatsCountsMutations)
+{
+    const Genome parent = Genome::constant(0.0);
+    const MutationConfig config{
+        .useBudget = false,
+        .rate = 0.0,
+        .sigma = 0.5,
+        .resetRate = 1.0, // Reset everything.
+    };
+
+    MutationStats stats;
+    (void)mutate(parent, config, rng, &stats);
+
+    EXPECT_EQ(stats.resets, static_cast<int>(parent.weights.size()));
+    EXPECT_EQ(stats.perturbations, 0);
+    EXPECT_EQ(stats.totalChanges(), static_cast<int>(parent.weights.size()));
+}
+
+TEST_F(MutationTest, BudgetedMutationUsesFixedCounts)
+{
+    const Genome parent = Genome::constant(0.0);
+    const MutationConfig config{
+        .useBudget = true,
+        .perturbationsPerOffspring = 10,
+        .resetsPerOffspring = 5,
+        .sigma = 0.2,
+    };
+
+    MutationStats stats;
+    (void)mutate(parent, config, rng, &stats);
+
+    EXPECT_EQ(stats.perturbations, 10);
+    EXPECT_EQ(stats.resets, 5);
+    EXPECT_EQ(stats.totalChanges(), 15);
+}
+
+TEST_F(MutationTest, BudgetedMutationClampsToGenomeSize)
+{
+    const Genome parent = Genome::constant(0.0);
+    const MutationConfig config{
+        .useBudget = true,
+        .perturbationsPerOffspring = static_cast<int>(parent.weights.size()),
+        .resetsPerOffspring = static_cast<int>(parent.weights.size()) + 10,
+        .sigma = 0.2,
+    };
+
+    MutationStats stats;
+    (void)mutate(parent, config, rng, &stats);
+
+    EXPECT_EQ(stats.resets, static_cast<int>(parent.weights.size()));
+    EXPECT_EQ(stats.perturbations, 0);
+    EXPECT_EQ(stats.totalChanges(), static_cast<int>(parent.weights.size()));
 }

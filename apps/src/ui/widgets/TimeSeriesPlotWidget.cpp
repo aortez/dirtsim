@@ -1,6 +1,7 @@
 #include "TimeSeriesPlotWidget.h"
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <limits>
 #include <utility>
 
@@ -10,6 +11,8 @@ namespace Ui {
 namespace {
 constexpr float axisPaddingRatio = 0.1f;
 constexpr float minAxisPadding = 0.1f;
+constexpr int yAxisRangeLabelWidthPx = 44;
+constexpr int yAxisRangeLabelGapPx = 4;
 } // namespace
 
 TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
@@ -45,6 +48,9 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_set_style_border_width(chart_, 0, 0);
     lv_obj_set_style_pad_all(chart_, 4, 0);
     lv_obj_set_style_pad_bottom(chart_, 6, 0);
+    if (config_.showYAxisRangeLabels) {
+        lv_obj_set_style_pad_left(chart_, yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx, 0);
+    }
     lv_obj_set_style_line_width(chart_, 2, LV_PART_ITEMS);
     lv_obj_set_style_line_color(chart_, config_.lineColor, LV_PART_ITEMS);
     lv_obj_set_style_line_opa(chart_, LV_OPA_COVER, LV_PART_ITEMS);
@@ -58,6 +64,36 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
 
     series_ = lv_chart_add_series(chart_, config_.lineColor, LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(chart_, series_, 0);
+
+    if (config_.showYAxisRangeLabels) {
+        yAxisMaxLabel_ = lv_label_create(chart_);
+        lv_obj_set_width(yAxisMaxLabel_, yAxisRangeLabelWidthPx);
+        lv_label_set_long_mode(yAxisMaxLabel_, LV_LABEL_LONG_CLIP);
+        lv_label_set_text(yAxisMaxLabel_, "");
+        lv_obj_set_style_text_color(yAxisMaxLabel_, lv_color_hex(0xAAAAAA), 0);
+        lv_obj_set_style_text_font(yAxisMaxLabel_, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_align(yAxisMaxLabel_, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_clear_flag(yAxisMaxLabel_, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(yAxisMaxLabel_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(
+            yAxisMaxLabel_, LV_ALIGN_TOP_LEFT, -(yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx), 0);
+
+        yAxisMinLabel_ = lv_label_create(chart_);
+        lv_obj_set_width(yAxisMinLabel_, yAxisRangeLabelWidthPx);
+        lv_label_set_long_mode(yAxisMinLabel_, LV_LABEL_LONG_CLIP);
+        lv_label_set_text(yAxisMinLabel_, "");
+        lv_obj_set_style_text_color(yAxisMinLabel_, lv_color_hex(0xAAAAAA), 0);
+        lv_obj_set_style_text_font(yAxisMinLabel_, &lv_font_montserrat_12, 0);
+        lv_obj_set_style_text_align(yAxisMinLabel_, LV_TEXT_ALIGN_RIGHT, 0);
+        lv_obj_clear_flag(yAxisMinLabel_, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(yAxisMinLabel_, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_align(
+            yAxisMinLabel_,
+            LV_ALIGN_BOTTOM_LEFT,
+            -(yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx),
+            0);
+    }
+
     setYAxisRange(config_.defaultMinY, config_.defaultMaxY);
     lv_chart_refresh(chart_);
 
@@ -67,6 +103,11 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_set_style_border_width(bottomLabelsRow_, 0, 0);
     lv_obj_set_style_pad_all(bottomLabelsRow_, 0, 0);
     lv_obj_set_style_pad_gap(bottomLabelsRow_, 0, 0);
+    if (config_.showYAxisRangeLabels) {
+        lv_obj_set_style_pad_left(
+            bottomLabelsRow_, yAxisRangeLabelWidthPx + yAxisRangeLabelGapPx, 0);
+        lv_obj_set_style_pad_right(bottomLabelsRow_, 4, 0);
+    }
     lv_obj_set_flex_flow(bottomLabelsRow_, LV_FLEX_FLOW_ROW);
     lv_obj_set_flex_align(
         bottomLabelsRow_, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
@@ -200,6 +241,7 @@ void TimeSeriesPlotWidget::setYAxisRange(float minValue, float maxValue)
 
     lv_chart_set_axis_range(
         chart_, LV_CHART_AXIS_PRIMARY_Y, toChartValue(minValue), toChartValue(maxValue));
+    updateYAxisRangeLabels(minValue, maxValue);
 }
 
 void TimeSeriesPlotWidget::updateYAxisRange(const std::vector<float>& samples)
@@ -215,6 +257,36 @@ void TimeSeriesPlotWidget::updateYAxisRange(const std::vector<float>& samples)
     const float range = std::max(maxValue - minValue, minAxisPadding);
     const float padding = std::max(range * axisPaddingRatio, minAxisPadding);
     setYAxisRange(minValue - padding, maxValue + padding);
+}
+
+void TimeSeriesPlotWidget::updateYAxisRangeLabels(float minValue, float maxValue)
+{
+    if (!config_.showYAxisRangeLabels || !yAxisMinLabel_ || !yAxisMaxLabel_) {
+        return;
+    }
+
+    const int32_t minCent = static_cast<int32_t>(std::lround(minValue * 100.0f));
+    const int32_t maxCent = static_cast<int32_t>(std::lround(maxValue * 100.0f));
+    if (hasDisplayedYAxisRange_) {
+        const int32_t displayedMinCent =
+            static_cast<int32_t>(std::lround(displayedYAxisMin_ * 100.0f));
+        const int32_t displayedMaxCent =
+            static_cast<int32_t>(std::lround(displayedYAxisMax_ * 100.0f));
+        if (minCent == displayedMinCent && maxCent == displayedMaxCent) {
+            return;
+        }
+    }
+
+    char minBuf[24];
+    char maxBuf[24];
+    snprintf(minBuf, sizeof(minBuf), "%.2f", minValue);
+    snprintf(maxBuf, sizeof(maxBuf), "%.2f", maxValue);
+    lv_label_set_text(yAxisMinLabel_, minBuf);
+    lv_label_set_text(yAxisMaxLabel_, maxBuf);
+
+    hasDisplayedYAxisRange_ = true;
+    displayedYAxisMin_ = minValue;
+    displayedYAxisMax_ = maxValue;
 }
 
 } // namespace Ui

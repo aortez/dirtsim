@@ -22,9 +22,11 @@
 #include "server/api/TrainingResult.h"
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <ctime>
 #include <limits>
 #include <spdlog/spdlog.h>
+#include <string_view>
 
 namespace DirtSim {
 namespace Server {
@@ -33,7 +35,96 @@ namespace State {
 namespace {
 constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
 constexpr size_t kTopCommandSignatureLimit = 20;
+constexpr size_t kTelemetrySignatureLimit = 6;
 constexpr size_t kFitnessDistributionBinCount = 16;
+constexpr auto kBestSnapshotTieBroadcastMinInterval = std::chrono::seconds(1);
+constexpr size_t kBestSnapshotVariantFingerprintMax = 64;
+constexpr int kBestSnapshotVariantsMaxPerGeneration = 4;
+constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
+
+uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
+{
+    constexpr uint64_t kOffsetBasis = 14695981039346656037ull;
+    constexpr uint64_t kPrime = 1099511628211ull;
+
+    if (hash == 0) {
+        hash = kOffsetBasis;
+    }
+
+    for (size_t i = 0; i < len; ++i) {
+        hash ^= static_cast<uint64_t>(data[i]);
+        hash *= kPrime;
+    }
+
+    return hash;
+}
+
+uint64_t fnv1aAppendString(uint64_t hash, std::string_view text)
+{
+    return fnv1aAppendBytes(
+        hash, reinterpret_cast<const std::byte*>(text.data()), text.size() * sizeof(char));
+}
+
+bool fitnessTiesBest(double fitness, double bestFitness)
+{
+    if (fitness == bestFitness) {
+        return true;
+    }
+
+    const double scale = std::max(1.0, std::abs(bestFitness));
+    return std::abs(fitness - bestFitness) <= (kBestFitnessTieRelativeEpsilon * scale);
+}
+
+uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
+{
+    uint64_t hash = 0;
+
+    const auto appendTop = [&](const auto& entries, const char* label) {
+        hash = fnv1aAppendString(hash, label);
+        hash = fnv1aAppendString(hash, ":");
+        const size_t limit = std::min(entries.size(), kTelemetrySignatureLimit);
+        for (size_t i = 0; i < limit; ++i) {
+            hash = fnv1aAppendString(hash, entries[i].first);
+            hash = fnv1aAppendString(hash, "|");
+        }
+        hash = fnv1aAppendString(hash, ";");
+    };
+
+    appendTop(result.topCommandOutcomeSignatures, "out");
+    appendTop(result.topCommandSignatures, "cmd");
+
+    return hash;
+}
+
+uint64_t computeBestSnapshotFingerprint(const Evolution::WorkerResult& result)
+{
+    uint64_t hash = 0;
+
+    const auto appendInt = [&](int value) {
+        hash = fnv1aAppendBytes(hash, reinterpret_cast<const std::byte*>(&value), sizeof(value));
+    };
+
+    appendInt(result.commandsAccepted);
+    appendInt(result.commandsRejected);
+
+    const auto appendTopWithCounts = [&](const auto& entries, const char* label) {
+        hash = fnv1aAppendString(hash, label);
+        hash = fnv1aAppendString(hash, ":");
+        const size_t limit = std::min(entries.size(), kTopCommandSignatureLimit);
+        for (size_t i = 0; i < limit; ++i) {
+            hash = fnv1aAppendString(hash, entries[i].first);
+            hash = fnv1aAppendString(hash, "#");
+            appendInt(entries[i].second);
+            hash = fnv1aAppendString(hash, "|");
+        }
+        hash = fnv1aAppendString(hash, ";");
+    };
+
+    appendTopWithCounts(result.topCommandOutcomeSignatures, "out");
+    appendTopWithCounts(result.topCommandSignatures, "cmd");
+
+    return hash;
+}
 
 int estimateTotalEvaluations(const EvolutionConfig& evolutionConfig)
 {
@@ -269,6 +360,28 @@ void Evolution::onEnter(StateMachine& dsm)
     pendingTrainingResult_.reset();
     cumulativeSimTime_ = 0.0;
     sumFitnessThisGen_ = 0.0;
+    generationTelemetry_.reset();
+    lastGenerationEliteCarryoverCount_ = 0;
+    lastGenerationSeedCount_ = 0;
+    lastGenerationOffspringCloneCount_ = 0;
+    lastGenerationOffspringMutatedCount_ = 0;
+    lastGenerationOffspringCloneBeatsParentCount_ = 0;
+    lastGenerationOffspringCloneAvgDeltaFitness_ = 0.0;
+    lastGenerationOffspringMutatedBeatsParentCount_ = 0;
+    lastGenerationOffspringMutatedAvgDeltaFitness_ = 0.0;
+    lastGenerationPhenotypeUniqueCount_ = 0;
+    lastGenerationPhenotypeUniqueEliteCarryoverCount_ = 0;
+    lastGenerationPhenotypeUniqueOffspringMutatedCount_ = 0;
+    lastGenerationPhenotypeNovelOffspringMutatedCount_ = 0;
+    lastBreedingPerturbationsAvg_ = 0.0;
+    lastBreedingResetsAvg_ = 0.0;
+    lastBreedingWeightChangesAvg_ = 0.0;
+    lastBreedingWeightChangesMin_ = 0;
+    lastBreedingWeightChangesMax_ = 0;
+    bestSnapshotVariantFingerprints_.clear();
+    bestSnapshotVariantFingerprintOrder_.clear();
+    lastBestSnapshotBroadcastTime_ = std::chrono::steady_clock::time_point{};
+    bestSnapshotVariantBroadcastCountThisGen_ = 0;
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     visibleRunner_.reset();
@@ -430,7 +543,8 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .brainVariant = spec.brainVariant,
                                 .scenarioId = spec.scenarioId,
                                 .genome = genome.value(),
-                                .allowsMutation = entry->allowsMutation });
+                                .allowsMutation = entry->allowsMutation,
+                                .parentFitness = std::nullopt });
                 populationOrigins.push_back(IndividualOrigin::Seed);
             }
 
@@ -443,7 +557,8 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .brainVariant = spec.brainVariant,
                                 .scenarioId = spec.scenarioId,
                                 .genome = entry->createRandomGenome(rng),
-                                .allowsMutation = entry->allowsMutation });
+                                .allowsMutation = entry->allowsMutation,
+                                .parentFitness = std::nullopt });
                 populationOrigins.push_back(IndividualOrigin::Seed);
             }
         }
@@ -461,7 +576,8 @@ void Evolution::initializePopulation(StateMachine& dsm)
                                 .brainVariant = spec.brainVariant,
                                 .scenarioId = spec.scenarioId,
                                 .genome = std::nullopt,
-                                .allowsMutation = entry->allowsMutation });
+                                .allowsMutation = entry->allowsMutation,
+                                .parentFitness = std::nullopt });
                 populationOrigins.push_back(IndividualOrigin::Seed);
             }
         }
@@ -760,6 +876,53 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         return;
     }
 
+    IndividualOrigin origin = IndividualOrigin::Unknown;
+    if (result.index >= 0 && result.index < static_cast<int>(populationOrigins.size())) {
+        origin = populationOrigins[result.index];
+    }
+
+    const uint64_t phenotypeHash = computePhenotypeHash(result);
+    generationTelemetry_.phenotypeAll.insert(phenotypeHash);
+    switch (origin) {
+        case IndividualOrigin::EliteCarryover:
+            generationTelemetry_.eliteCarryoverCount++;
+            generationTelemetry_.phenotypeEliteCarryover.insert(phenotypeHash);
+            break;
+        case IndividualOrigin::OffspringClone: {
+            generationTelemetry_.offspringCloneCount++;
+            const Individual& individual = population[result.index];
+            if (individual.parentFitness.has_value()) {
+                generationTelemetry_.offspringCloneComparedCount++;
+                const double delta = result.fitness - individual.parentFitness.value();
+                generationTelemetry_.offspringCloneDeltaFitnessSum += delta;
+                if (delta > 0.0) {
+                    generationTelemetry_.offspringCloneBeatsParentCount++;
+                }
+            }
+            break;
+        }
+        case IndividualOrigin::OffspringMutated: {
+            generationTelemetry_.offspringMutatedCount++;
+            generationTelemetry_.phenotypeOffspringMutated.insert(phenotypeHash);
+            const Individual& individual = population[result.index];
+            if (individual.parentFitness.has_value()) {
+                generationTelemetry_.offspringMutatedComparedCount++;
+                const double delta = result.fitness - individual.parentFitness.value();
+                generationTelemetry_.offspringMutatedDeltaFitnessSum += delta;
+                if (delta > 0.0) {
+                    generationTelemetry_.offspringMutatedBeatsParentCount++;
+                }
+            }
+            break;
+        }
+        case IndividualOrigin::Seed:
+            generationTelemetry_.seedCount++;
+            generationTelemetry_.phenotypeSeed.insert(phenotypeHash);
+            break;
+        case IndividualOrigin::Unknown:
+            break;
+    }
+
     fitnessScores[result.index] = result.fitness;
     sumFitnessThisGen_ += result.fitness;
     completedEvaluations_++;
@@ -786,43 +949,60 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             bestThisGenOrigin_ = IndividualOrigin::Unknown;
         }
     }
-    if (result.fitness > bestFitnessAllTime) {
-        bestFitnessAllTime = result.fitness;
-        if (result.snapshot.has_value()) {
-            Api::TrainingBestSnapshot bestSnapshot;
-            bestSnapshot.worldData = std::move(result.snapshot->worldData);
-            bestSnapshot.organismIds = std::move(result.snapshot->organismIds);
-            bestSnapshot.fitness = result.fitness;
-            bestSnapshot.generation = generation;
-            bestSnapshot.commandsAccepted = result.commandsAccepted;
-            bestSnapshot.commandsRejected = result.commandsRejected;
-            bestSnapshot.topCommandSignatures.reserve(result.topCommandSignatures.size());
-            for (const auto& [signature, count] : result.topCommandSignatures) {
-                bestSnapshot.topCommandSignatures.push_back(
-                    Api::TrainingBestSnapshot::CommandSignatureCount{
-                        .signature = signature,
-                        .count = count,
-                    });
-            }
-            bestSnapshot.topCommandOutcomeSignatures.reserve(
-                result.topCommandOutcomeSignatures.size());
-            for (const auto& [signature, count] : result.topCommandOutcomeSignatures) {
-                bestSnapshot.topCommandOutcomeSignatures.push_back(
-                    Api::TrainingBestSnapshot::CommandSignatureCount{
-                        .signature = signature,
-                        .count = count,
-                    });
-            }
-            dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
-            dsm.broadcastEventData(
-                Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
-        }
-        else {
+    const uint64_t bestSnapshotFingerprint = computeBestSnapshotFingerprint(result);
+    const auto now = std::chrono::steady_clock::now();
+    const auto broadcastBestSnapshot = [&](const char* reason) -> bool {
+        if (!result.snapshot.has_value()) {
             LOG_WARN(
                 State,
-                "Evolution: Missing snapshot for new best (gen={} eval={})",
+                "Evolution: Missing snapshot for best snapshot broadcast (reason={} gen={} "
+                "eval={})",
+                reason,
                 generation,
                 result.index);
+            return false;
+        }
+
+        Api::TrainingBestSnapshot bestSnapshot;
+        bestSnapshot.worldData = std::move(result.snapshot->worldData);
+        bestSnapshot.organismIds = std::move(result.snapshot->organismIds);
+        bestSnapshot.fitness = result.fitness;
+        bestSnapshot.generation = generation;
+        bestSnapshot.commandsAccepted = result.commandsAccepted;
+        bestSnapshot.commandsRejected = result.commandsRejected;
+        bestSnapshot.topCommandSignatures.reserve(result.topCommandSignatures.size());
+        for (const auto& [signature, count] : result.topCommandSignatures) {
+            bestSnapshot.topCommandSignatures.push_back(
+                Api::TrainingBestSnapshot::CommandSignatureCount{
+                    .signature = signature,
+                    .count = count,
+                });
+        }
+        bestSnapshot.topCommandOutcomeSignatures.reserve(result.topCommandOutcomeSignatures.size());
+        for (const auto& [signature, count] : result.topCommandOutcomeSignatures) {
+            bestSnapshot.topCommandOutcomeSignatures.push_back(
+                Api::TrainingBestSnapshot::CommandSignatureCount{
+                    .signature = signature,
+                    .count = count,
+                });
+        }
+        dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
+        dsm.broadcastEventData(
+            Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
+        return true;
+    };
+
+    if (result.fitness > bestFitnessAllTime) {
+        bestFitnessAllTime = result.fitness;
+        bestSnapshotVariantFingerprints_.clear();
+        bestSnapshotVariantFingerprintOrder_.clear();
+        bestSnapshotVariantBroadcastCountThisGen_ = 0;
+        lastBestSnapshotBroadcastTime_ = std::chrono::steady_clock::time_point{};
+
+        if (broadcastBestSnapshot("new-record")) {
+            lastBestSnapshotBroadcastTime_ = now;
+            bestSnapshotVariantFingerprints_.insert(bestSnapshotFingerprint);
+            bestSnapshotVariantFingerprintOrder_.push_back(bestSnapshotFingerprint);
         }
 
         const Individual& individual = population[result.index];
@@ -859,6 +1039,28 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             result.fitness,
             generation,
             result.index);
+    }
+    else if (fitnessTiesBest(result.fitness, bestFitnessAllTime)) {
+        const bool reachedVariantLimit =
+            bestSnapshotVariantBroadcastCountThisGen_ >= kBestSnapshotVariantsMaxPerGeneration;
+        const bool fingerprintSeen = bestSnapshotVariantFingerprints_.find(bestSnapshotFingerprint)
+            != bestSnapshotVariantFingerprints_.end();
+        const bool withinCooldown =
+            lastBestSnapshotBroadcastTime_ != std::chrono::steady_clock::time_point{}
+            && now - lastBestSnapshotBroadcastTime_ < kBestSnapshotTieBroadcastMinInterval;
+        if (!reachedVariantLimit && !fingerprintSeen && !withinCooldown
+            && broadcastBestSnapshot("tied-best")) {
+            lastBestSnapshotBroadcastTime_ = now;
+            bestSnapshotVariantBroadcastCountThisGen_++;
+            bestSnapshotVariantFingerprints_.insert(bestSnapshotFingerprint);
+            bestSnapshotVariantFingerprintOrder_.push_back(bestSnapshotFingerprint);
+            while (bestSnapshotVariantFingerprintOrder_.size()
+                   > kBestSnapshotVariantFingerprintMax) {
+                const uint64_t oldFingerprint = bestSnapshotVariantFingerprintOrder_.front();
+                bestSnapshotVariantFingerprintOrder_.pop_front();
+                bestSnapshotVariantFingerprints_.erase(oldFingerprint);
+            }
+        }
     }
 
     const int generationPopulationSize = static_cast<int>(population.size());
@@ -903,6 +1105,7 @@ void Evolution::maybeCompleteGeneration(StateMachine& dsm)
     }
 
     captureLastGenerationFitnessDistribution();
+    captureLastGenerationTelemetry();
 
     if (evolutionConfig.maxGenerations > 0 && generation + 1 >= evolutionConfig.maxGenerations) {
         finalAverageFitness_ =
@@ -981,7 +1184,9 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         survivorFitness.reserve(keepCount);
         survivorOrigins.reserve(keepCount);
         for (int i = 0; i < keepCount; ++i) {
-            survivors.push_back(ranked[i].individual);
+            Individual survivor = ranked[i].individual;
+            survivor.parentFitness.reset();
+            survivors.push_back(std::move(survivor));
             survivorFitness.push_back(ranked[i].fitness);
             survivorOrigins.push_back(IndividualOrigin::EliteCarryover);
         }
@@ -1004,13 +1209,21 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     MutationOutcomeStats mutationStats;
     mutationStats.totalOffspring = survivorPopulationSize;
 
+    int perturbationsTotal = 0;
+    int resetsTotal = 0;
+    int weightChangesMin = std::numeric_limits<int>::max();
+    int weightChangesMax = 0;
+
     for (int i = 0; i < survivorPopulationSize; ++i) {
         const int parentIdx =
             tournamentSelectIndex(fitnessScores, evolutionConfig.tournamentSize, rng);
         const Individual& parent = population[parentIdx];
+        const double parentFitness = fitnessScores[parentIdx];
 
         Individual child = parent;
+        child.parentFitness = parentFitness;
         bool offspringMutated = false;
+        int weightChanges = 0;
         if (!parent.genome.has_value()) {
             mutationStats.cloneNoGenome++;
         }
@@ -1018,8 +1231,12 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             mutationStats.cloneMutationDisabled++;
         }
         else {
-            Genome mutatedGenome = mutate(parent.genome.value(), mutationConfig, rng);
-            offspringMutated = !(mutatedGenome == parent.genome.value());
+            MutationStats stats;
+            Genome mutatedGenome = mutate(parent.genome.value(), mutationConfig, rng, &stats);
+            perturbationsTotal += stats.perturbations;
+            resetsTotal += stats.resets;
+            weightChanges = stats.totalChanges();
+            offspringMutated = weightChanges > 0;
             if (offspringMutated) {
                 mutationStats.mutated++;
             }
@@ -1028,11 +1245,27 @@ void Evolution::advanceGeneration(StateMachine& dsm)
             }
             child.genome = std::move(mutatedGenome);
         }
+        weightChangesMin = std::min(weightChangesMin, weightChanges);
+        weightChangesMax = std::max(weightChangesMax, weightChanges);
         offspring.push_back(std::move(child));
         offspringOrigins.push_back(
             offspringMutated ? IndividualOrigin::OffspringMutated
                              : IndividualOrigin::OffspringClone);
     }
+
+    lastBreedingPerturbationsAvg_ = survivorPopulationSize > 0
+        ? static_cast<double>(perturbationsTotal) / static_cast<double>(survivorPopulationSize)
+        : 0.0;
+    lastBreedingResetsAvg_ = survivorPopulationSize > 0
+        ? static_cast<double>(resetsTotal) / static_cast<double>(survivorPopulationSize)
+        : 0.0;
+    lastBreedingWeightChangesAvg_ = survivorPopulationSize > 0
+        ? static_cast<double>(perturbationsTotal + resetsTotal)
+            / static_cast<double>(survivorPopulationSize)
+        : 0.0;
+    lastBreedingWeightChangesMin_ =
+        weightChangesMin == std::numeric_limits<int>::max() ? 0 : weightChangesMin;
+    lastBreedingWeightChangesMax_ = weightChangesMax;
 
     LOG_INFO(
         State,
@@ -1057,6 +1290,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     // Advance to next generation.
     generation++;
+    bestSnapshotVariantBroadcastCountThisGen_ = 0;
 
     // Only reset for next generation if we're not at the end.
     // This preserves currentEval at the generation-complete value in the final broadcast,
@@ -1065,6 +1299,7 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         currentEval = 0;
         bestFitnessThisGen = 0.0;
         bestThisGenOrigin_ = IndividualOrigin::Unknown;
+        generationTelemetry_.reset();
         sumFitnessThisGen_ = 0.0;
         fitnessScores.assign(population.size(), 0.0);
     }
@@ -1110,6 +1345,46 @@ void Evolution::captureLastGenerationFitnessDistribution()
     lastGenerationFitnessMin_ = minFitness;
     lastGenerationFitnessMax_ = maxFitness;
     lastGenerationFitnessHistogram_ = std::move(bins);
+}
+
+void Evolution::captureLastGenerationTelemetry()
+{
+    lastGenerationEliteCarryoverCount_ = generationTelemetry_.eliteCarryoverCount;
+    lastGenerationSeedCount_ = generationTelemetry_.seedCount;
+    lastGenerationOffspringCloneCount_ = generationTelemetry_.offspringCloneCount;
+    lastGenerationOffspringMutatedCount_ = generationTelemetry_.offspringMutatedCount;
+
+    lastGenerationOffspringCloneBeatsParentCount_ =
+        generationTelemetry_.offspringCloneBeatsParentCount;
+    lastGenerationOffspringCloneAvgDeltaFitness_ =
+        generationTelemetry_.offspringCloneComparedCount > 0
+        ? generationTelemetry_.offspringCloneDeltaFitnessSum
+            / static_cast<double>(generationTelemetry_.offspringCloneComparedCount)
+        : 0.0;
+
+    lastGenerationOffspringMutatedBeatsParentCount_ =
+        generationTelemetry_.offspringMutatedBeatsParentCount;
+    lastGenerationOffspringMutatedAvgDeltaFitness_ =
+        generationTelemetry_.offspringMutatedComparedCount > 0
+        ? generationTelemetry_.offspringMutatedDeltaFitnessSum
+            / static_cast<double>(generationTelemetry_.offspringMutatedComparedCount)
+        : 0.0;
+
+    lastGenerationPhenotypeUniqueCount_ =
+        static_cast<int>(generationTelemetry_.phenotypeAll.size());
+    lastGenerationPhenotypeUniqueEliteCarryoverCount_ =
+        static_cast<int>(generationTelemetry_.phenotypeEliteCarryover.size());
+    lastGenerationPhenotypeUniqueOffspringMutatedCount_ =
+        static_cast<int>(generationTelemetry_.phenotypeOffspringMutated.size());
+
+    int novelOffspringMutated = 0;
+    for (const uint64_t hash : generationTelemetry_.phenotypeOffspringMutated) {
+        if (generationTelemetry_.phenotypeEliteCarryover.find(hash)
+            == generationTelemetry_.phenotypeEliteCarryover.end()) {
+            novelOffspringMutated++;
+        }
+    }
+    lastGenerationPhenotypeNovelOffspringMutatedCount_ = novelOffspringMutated;
 }
 
 void Evolution::adjustConcurrency()
@@ -1232,6 +1507,29 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .etaSeconds = eta,
         .activeParallelism = activeParallelism,
         .cpuPercent = latestCpu,
+        .lastBreedingPerturbationsAvg = lastBreedingPerturbationsAvg_,
+        .lastBreedingResetsAvg = lastBreedingResetsAvg_,
+        .lastBreedingWeightChangesAvg = lastBreedingWeightChangesAvg_,
+        .lastBreedingWeightChangesMin = lastBreedingWeightChangesMin_,
+        .lastBreedingWeightChangesMax = lastBreedingWeightChangesMax_,
+        .lastGenerationEliteCarryoverCount = lastGenerationEliteCarryoverCount_,
+        .lastGenerationSeedCount = lastGenerationSeedCount_,
+        .lastGenerationOffspringCloneCount = lastGenerationOffspringCloneCount_,
+        .lastGenerationOffspringMutatedCount = lastGenerationOffspringMutatedCount_,
+        .lastGenerationOffspringCloneBeatsParentCount =
+            lastGenerationOffspringCloneBeatsParentCount_,
+        .lastGenerationOffspringCloneAvgDeltaFitness = lastGenerationOffspringCloneAvgDeltaFitness_,
+        .lastGenerationOffspringMutatedBeatsParentCount =
+            lastGenerationOffspringMutatedBeatsParentCount_,
+        .lastGenerationOffspringMutatedAvgDeltaFitness =
+            lastGenerationOffspringMutatedAvgDeltaFitness_,
+        .lastGenerationPhenotypeUniqueCount = lastGenerationPhenotypeUniqueCount_,
+        .lastGenerationPhenotypeUniqueEliteCarryoverCount =
+            lastGenerationPhenotypeUniqueEliteCarryoverCount_,
+        .lastGenerationPhenotypeUniqueOffspringMutatedCount =
+            lastGenerationPhenotypeUniqueOffspringMutatedCount_,
+        .lastGenerationPhenotypeNovelOffspringMutatedCount =
+            lastGenerationPhenotypeNovelOffspringMutatedCount_,
     };
 
     dsm.broadcastEventData(Api::EvolutionProgress::name(), Network::serialize_payload(progress));
