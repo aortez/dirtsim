@@ -25,6 +25,8 @@
 #include <spdlog/spdlog.h>
 
 #if LV_USE_X11
+#include <X11/Xlib.h>
+
 #include "ui/lib/backends.h"
 #include "ui/lib/simulator_settings.h"
 #include "ui/lib/simulator_util.h"
@@ -52,6 +54,31 @@ static void run_loop_x11(DirtSim::Ui::StateMachine& sm);
  *  STATIC VARIABLES
  **********************/
 static const char* backend_name = "X11";
+
+/**********************
+ *  HELPER FUNCTIONS
+ **********************/
+static bool tryGetX11ScreenSize(uint32_t& outWidth, uint32_t& outHeight)
+{
+    Display* display = XOpenDisplay(NULL);
+    if (!display) {
+        return false;
+    }
+
+    const int screen = DefaultScreen(display);
+    const int width = DisplayWidth(display, screen);
+    const int height = DisplayHeight(display, screen);
+
+    XCloseDisplay(display);
+
+    if (width <= 0 || height <= 0) {
+        return false;
+    }
+
+    outWidth = static_cast<uint32_t>(width);
+    outHeight = static_cast<uint32_t>(height);
+    return true;
+}
 
 /**********************
  *      MACROS
@@ -95,7 +122,27 @@ static lv_display_t* init_x11(void)
     lv_display_t* disp;
     LV_IMG_DECLARE(mouse_cursor_icon);
 
-    disp = lv_x11_window_create("Dirt Sim", settings.window_width, settings.window_height);
+    uint32_t width = settings.window_width;
+    uint32_t height = settings.window_height;
+
+    if (settings.fullscreen || settings.maximize) {
+        uint32_t screenWidth = 0;
+        uint32_t screenHeight = 0;
+        if (tryGetX11ScreenSize(screenWidth, screenHeight)) {
+            spdlog::info(
+                "X11: Using screen resolution {}x{} (fullscreen/maximize requested)",
+                screenWidth,
+                screenHeight);
+            width = screenWidth;
+            height = screenHeight;
+        }
+        else {
+            spdlog::warn("X11: Failed to query screen resolution; using {}x{}", width, height);
+        }
+    }
+
+    disp =
+        lv_x11_window_create("Dirt Sim", static_cast<int32_t>(width), static_cast<int32_t>(height));
 
     disp = lv_display_get_default();
 

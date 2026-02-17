@@ -150,6 +150,8 @@ int main(int argc, char** argv)
         parser, "width", "Set window width (default: 1200)", { 'W', "width" }, 1200);
     args::ValueFlag<int> window_height(
         parser, "height", "Set window height (default: 1200)", { 'H', "height" }, 1200);
+    args::Flag fullscreen(parser, "fullscreen", "Start in fullscreen mode", { "fullscreen" });
+    args::Flag maximize(parser, "maximize", "Start in maximized mode", { "maximize" });
     args::ValueFlag<int> max_steps(
         parser,
         "steps",
@@ -242,6 +244,8 @@ int main(int argc, char** argv)
     if (window_width) settings.window_width = args::get(window_width);
     if (window_height) settings.window_height = args::get(window_height);
     if (max_steps) settings.max_steps = args::get(max_steps);
+    if (fullscreen) settings.fullscreen = true;
+    if (maximize) settings.maximize = true;
 
     /* Initialize LVGL. */
     lv_init();

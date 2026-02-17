@@ -72,6 +72,7 @@ const IMAGE_DIR = join(KAS_BUILD_DIR, 'tmp/deploy/images/raspberrypi-dirtsim');
 const CONFIG_FILE = join(YOCTO_DIR, '.flash-config.json');
 const PROFILES_DIR = join(YOCTO_DIR, 'profiles');
 const APPS_DIR = join(YOCTO_DIR, '..', 'apps');
+const SERVICE_FILES_DIR = join(YOCTO_DIR, 'meta-dirtsim/recipes-dirtsim/dirtsim/files');
 const KAS_CONFIG_ARM = 'kas-dirtsim.yml';
 const KAS_CONFIG_X86 = 'kas-dirtsim-x86.yml';
 
@@ -81,6 +82,16 @@ const DEPLOY_ASSETS = [
     local: join(APPS_DIR, 'assets/fonts/fa-solid-900.ttf'),
     remote: '/usr/share/fonts/fontawesome/fa-solid-900.ttf',
   },
+];
+
+// Systemd service files to install/update on x86 targets during fast deploy.
+// x86 targets do not get their rootfs replaced, so service file changes need to be copied explicitly.
+const X86_SYSTEMD_SERVICES = [
+  { file: 'dirtsim-audio.service', name: 'dirtsim-audio.service' },
+  { file: 'dirtsim-config-setup-x86.service', name: 'dirtsim-config-setup.service' },
+  { file: 'dirtsim-os-manager.service', name: 'dirtsim-os-manager.service' },
+  { file: 'dirtsim-server.service', name: 'dirtsim-server.service' },
+  { file: 'dirtsim-ui-x86.service', name: 'dirtsim-ui.service' },
 ];
 
 // Remote target configuration (defaults).
@@ -567,7 +578,7 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
   success(`${remoteHost} is reachable`);
 
   // Detect target architecture to pick correct build dirs.
-  detectTargetArch(remoteTarget);
+  const targetArch = detectTargetArch(remoteTarget);
 
   // Find build directories.
   const uiResult = findBuildDir('dirtsim-ui');
@@ -713,6 +724,45 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     }
   } else {
     info(`Would stage files in ${remoteStageDir}`);
+  }
+
+  // Deploy x86 systemd service files (x86 targets don't get full rootfs updates).
+  const systemdInstallCmds = [];
+  if (targetArch === 'x86_64') {
+    banner('Deploying systemd services...', consola);
+
+    for (const svc of X86_SYSTEMD_SERVICES) {
+      const localPath = join(SERVICE_FILES_DIR, svc.file);
+      if (!existsSync(localPath)) {
+        warn(`Service file not found: ${localPath}`);
+        continue;
+      }
+
+      info(`${svc.name}`);
+      if (!dryRun) {
+        try {
+          execSync(
+            `scp ${buildScpOptions()} "${localPath}" "${remoteTarget}:${remoteStageDir}/${svc.name}"`,
+            { stdio: 'pipe' },
+          );
+          systemdInstallCmds.push(`sudo cp ${remoteStageDir}/${svc.name} /etc/systemd/system/${svc.name}`);
+          systemdInstallCmds.push(`sudo chmod 644 /etc/systemd/system/${svc.name}`);
+          success(`${svc.name} transferred`);
+        } catch (err) {
+          error(`Failed to transfer ${svc.name}`);
+          error(err.message);
+          process.exit(1);
+        }
+      } else {
+        info(`Would scp ${localPath} to ${remoteTarget}:/etc/systemd/system/${svc.name}`);
+      }
+    }
+
+    if (systemdInstallCmds.length > 0) {
+      systemdInstallCmds.push('sudo systemctl daemon-reload');
+    } else {
+      info('No systemd services to deploy');
+    }
   }
 
   // Strip and transfer binaries.
@@ -866,6 +916,11 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
       if (assetInstallCmds.length > 0) {
         info('Installing assets...');
         execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${assetInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
+      }
+
+      if (systemdInstallCmds.length > 0) {
+        info('Installing systemd services...');
+        execSync(`ssh ${buildSshOptions()} ${remoteTarget} "${systemdInstallCmds.join(' && ')}"`, { stdio: 'pipe' });
       }
 
       info('Starting services...');
