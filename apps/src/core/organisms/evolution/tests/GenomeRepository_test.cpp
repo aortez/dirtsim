@@ -24,6 +24,9 @@ protected:
         return GenomeMetadata{
             .name = name,
             .fitness = fitness,
+            .robustFitness = fitness,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { fitness },
             .generation = 1,
             .createdTimestamp = 1234567890,
             .scenarioId = Scenario::EnumType::TreeGermination,
@@ -199,6 +202,35 @@ TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashReusesExistingGenomeId)
     ASSERT_TRUE(metadata.has_value());
     EXPECT_EQ(metadata->name, "updated");
     EXPECT_DOUBLE_EQ(metadata->fitness, 9.0);
+    EXPECT_EQ(metadata->robustEvalCount, 2);
+    EXPECT_EQ(metadata->robustFitnessSamples.size(), 2u);
+}
+
+TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashKeepsPeakFitnessAndTracksRobustFitness)
+{
+    const auto genome = createTestGenome(0.77);
+    auto highOutlier = createManagedMetadata("high", 9999.0);
+    highOutlier.robustFitness = 9999.0;
+    highOutlier.robustEvalCount = 1;
+    highOutlier.robustFitnessSamples = { 9999.0 };
+
+    auto typical = createManagedMetadata("typical", 10.0);
+    typical.robustFitness = 10.0;
+    typical.robustEvalCount = 1;
+    typical.robustFitnessSamples = { 10.0 };
+
+    const auto first = repo.storeOrUpdateByHash(genome, highOutlier);
+    const auto second = repo.storeOrUpdateByHash(genome, typical);
+
+    ASSERT_EQ(first.id, second.id);
+    const auto metadata = repo.getMetadata(first.id);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_DOUBLE_EQ(metadata->fitness, 9999.0);
+    EXPECT_EQ(metadata->robustEvalCount, 2);
+    EXPECT_DOUBLE_EQ(metadata->robustFitness, 5004.5);
+    ASSERT_EQ(metadata->robustFitnessSamples.size(), 2u);
+    EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples[0], 9999.0);
+    EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples[1], 10.0);
 }
 
 TEST_F(GenomeRepositoryTest, PruneManagedByFitnessKeepsBestId)
@@ -327,6 +359,9 @@ protected:
         return GenomeMetadata{
             .name = name,
             .fitness = fitness,
+            .robustFitness = fitness,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { fitness },
             .generation = 42,
             .createdTimestamp = 1234567890,
             .scenarioId = Scenario::EnumType::TreeGermination,

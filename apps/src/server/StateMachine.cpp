@@ -231,6 +231,18 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.genomeArchiveMaxSize = 0;
         recordUpdate("genomeArchiveMaxSize clamped to 0");
     }
+    if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
+        settings.evolutionConfig.robustFitnessEvaluationCount = 1;
+        recordUpdate("robustFitnessEvaluationCount clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartSeedCount < 0) {
+        settings.evolutionConfig.warmStartSeedCount = 0;
+        recordUpdate("warmStartSeedCount clamped to 0");
+    }
+    if (settings.evolutionConfig.warmStartMinRobustEvalCount < 1) {
+        settings.evolutionConfig.warmStartMinRobustEvalCount = 1;
+        recordUpdate("warmStartMinRobustEvalCount clamped to 1");
+    }
     if (settings.evolutionConfig.diversityEliteCount < 0) {
         settings.evolutionConfig.diversityEliteCount = 0;
         recordUpdate("diversityEliteCount clamped to 0");
@@ -1213,6 +1225,9 @@ void StateMachine::handleEvent(const Event& event)
             GenomeMetadata{
                 .name = "imported_" + cwc.command.id.toShortString(),
                 .fitness = 0.0,
+                .robustFitness = 0.0,
+                .robustEvalCount = 1,
+                .robustFitnessSamples = { 0.0 },
                 .generation = 0,
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
                 .scenarioId = Scenario::EnumType::TreeGermination,

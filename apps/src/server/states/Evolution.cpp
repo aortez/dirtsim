@@ -41,6 +41,7 @@ constexpr auto kBestSnapshotTieBroadcastMinInterval = std::chrono::seconds(1);
 constexpr size_t kBestSnapshotVariantFingerprintMax = 64;
 constexpr int kBestSnapshotVariantsMaxPerGeneration = 4;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
+constexpr size_t kRobustFitnessSampleWindow = 7;
 
 uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
 {
@@ -73,6 +74,23 @@ bool fitnessTiesBest(double fitness, double bestFitness)
 
     const double scale = std::max(1.0, std::abs(bestFitness));
     return std::abs(fitness - bestFitness) <= (kBestFitnessTieRelativeEpsilon * scale);
+}
+
+double computeMedian(std::vector<double> samples)
+{
+    if (samples.empty()) {
+        return 0.0;
+    }
+
+    const size_t mid = samples.size() / 2;
+    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
+    const double upper = samples[mid];
+    if ((samples.size() % 2) != 0) {
+        return upper;
+    }
+
+    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
+    return (samples[mid - 1] + upper) * 0.5;
 }
 
 uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
@@ -326,6 +344,13 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+double computeFitnessForRunner(
+    const TrainingRunner& runner,
+    const TrainingRunner::Status& status,
+    OrganismType organismType,
+    const EvolutionConfig& evolutionConfig,
+    std::optional<TreeFitnessBreakdown>* breakdownOut);
+
 TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
 {
     TrainingRunner::Individual runner;
@@ -334,6 +359,66 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
     runner.scenarioId = individual.scenarioId;
     runner.genome = individual.genome;
     return runner;
+}
+
+double evaluateFitnessSample(
+    StateMachine& dsm,
+    const TrainingSpec& trainingSpec,
+    const Evolution::Individual& individual,
+    const EvolutionConfig& evolutionConfig,
+    const TrainingBrainRegistry& brainRegistry)
+{
+    const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry };
+    TrainingRunner runner(
+        trainingSpec,
+        makeRunnerIndividual(individual),
+        evolutionConfig,
+        dsm.getGenomeRepository(),
+        runnerConfig);
+
+    TrainingRunner::Status status;
+    while (status.state == TrainingRunner::State::Running) {
+        status = runner.step(1);
+    }
+
+    return computeFitnessForRunner(
+        runner, status, trainingSpec.organismType, evolutionConfig, nullptr);
+}
+
+struct RobustFitnessSummary {
+    double robustFitness = 0.0;
+    int robustEvalCount = 0;
+    std::vector<double> samples;
+};
+
+RobustFitnessSummary evaluateRobustFitness(
+    StateMachine& dsm,
+    const TrainingSpec& trainingSpec,
+    const Evolution::Individual& individual,
+    const EvolutionConfig& evolutionConfig,
+    const TrainingBrainRegistry& brainRegistry,
+    double firstSampleFitness)
+{
+    RobustFitnessSummary summary;
+    summary.samples.push_back(firstSampleFitness);
+
+    const int targetEvalCount = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    for (int i = 1; i < targetEvalCount; ++i) {
+        const double sample =
+            evaluateFitnessSample(dsm, trainingSpec, individual, evolutionConfig, brainRegistry);
+        summary.samples.push_back(sample);
+    }
+
+    if (summary.samples.size() > kRobustFitnessSampleWindow) {
+        summary.samples.erase(
+            summary.samples.begin(),
+            summary.samples.end()
+                - static_cast<std::vector<double>::difference_type>(kRobustFitnessSampleWindow));
+    }
+
+    summary.robustEvalCount = targetEvalCount;
+    summary.robustFitness = computeMedian(summary.samples);
+    return summary;
 }
 
 double computeFitnessForRunner(
@@ -1152,10 +1237,15 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 
         const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
+            const RobustFitnessSummary robust = evaluateRobustFitness(
+                dsm, trainingSpec, individual, evolutionConfig, brainRegistry_, result.fitness);
             const GenomeMetadata meta{
                 .name =
                     "gen_" + std::to_string(generation) + "_eval_" + std::to_string(result.index),
                 .fitness = result.fitness,
+                .robustFitness = robust.robustFitness,
+                .robustEvalCount = robust.robustEvalCount,
+                .robustFitnessSamples = robust.samples,
                 .generation = generation,
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
                 .scenarioId = individual.scenarioId,
@@ -1173,17 +1263,26 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
                 "all-time best");
             auto& repo = dsm.getGenomeRepository();
             repo.markAsBest(bestGenomeId);
+
+            LOG_INFO(
+                State,
+                "Evolution: Best fitness updated {:.4f} (robust {:.4f}, evals {}) at gen {} "
+                "eval {}",
+                result.fitness,
+                robust.robustFitness,
+                robust.robustEvalCount,
+                generation,
+                result.index);
         }
         else {
             bestGenomeId = INVALID_GENOME_ID;
+            LOG_INFO(
+                State,
+                "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
+                result.fitness,
+                generation,
+                result.index);
         }
-
-        LOG_INFO(
-            State,
-            "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
-            result.fitness,
-            generation,
-            result.index);
     }
     else if (fitnessTiesBest(result.fitness, bestFitnessAllTime)) {
         const bool reachedVariantLimit =
@@ -1782,6 +1881,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
     const GenomeMetadata meta{
         .name = "checkpoint_gen_" + std::to_string(generation),
         .fitness = bestFit,
+        .robustFitness = bestFit,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { bestFit },
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = population[bestIdx].scenarioId,
@@ -1857,6 +1959,9 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
         candidate.metadata = GenomeMetadata{
             .name = "",
             .fitness = candidate.fitness,
+            .robustFitness = candidate.fitness,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { candidate.fitness },
             .generation = generationIndex,
             .createdTimestamp = now,
             .scenarioId = population[i].scenarioId,

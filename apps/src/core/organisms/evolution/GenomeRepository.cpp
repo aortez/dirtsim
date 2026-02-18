@@ -4,6 +4,7 @@
 #include "core/organisms/brains/Genome.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <iomanip>
 #include <nlohmann/json.hpp>
@@ -19,6 +20,7 @@ namespace DirtSim {
 constexpr int SCHEMA_VERSION = 1;
 
 namespace {
+constexpr size_t kRobustFitnessSampleWindow = 7;
 
 // DRY helper for database operations with error handling.
 template <typename Func>
@@ -67,6 +69,145 @@ std::string toHexString(uint64_t value)
     std::ostringstream stream;
     stream << std::hex << std::setfill('0') << std::setw(16) << value;
     return stream.str();
+}
+
+double computeMedian(std::vector<double> samples)
+{
+    if (samples.empty()) {
+        return 0.0;
+    }
+
+    const size_t mid = samples.size() / 2;
+    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
+    const double upper = samples[mid];
+    if ((samples.size() % 2) != 0) {
+        return upper;
+    }
+
+    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
+    return (samples[mid - 1] + upper) * 0.5;
+}
+
+int effectiveRobustEvalCount(const GenomeMetadata& metadata)
+{
+    if (metadata.robustEvalCount > 0) {
+        return metadata.robustEvalCount;
+    }
+    if (!metadata.robustFitnessSamples.empty()) {
+        return static_cast<int>(metadata.robustFitnessSamples.size());
+    }
+    return std::isfinite(metadata.fitness) ? 1 : 0;
+}
+
+double effectiveRobustFitness(const GenomeMetadata& metadata)
+{
+    if (metadata.robustEvalCount > 0 || !metadata.robustFitnessSamples.empty()) {
+        return metadata.robustFitness;
+    }
+    return metadata.fitness;
+}
+
+GenomeMetadata normalizeRobustMetadata(const GenomeMetadata& input)
+{
+    GenomeMetadata normalized = input;
+    if (normalized.robustEvalCount < 0) {
+        normalized.robustEvalCount = 0;
+    }
+
+    if (!normalized.robustFitnessSamples.empty()) {
+        if (normalized.robustFitnessSamples.size() > kRobustFitnessSampleWindow) {
+            const size_t trimCount =
+                normalized.robustFitnessSamples.size() - kRobustFitnessSampleWindow;
+            normalized.robustFitnessSamples.erase(
+                normalized.robustFitnessSamples.begin(),
+                normalized.robustFitnessSamples.begin()
+                    + static_cast<std::vector<double>::difference_type>(trimCount));
+        }
+        normalized.robustFitness = computeMedian(normalized.robustFitnessSamples);
+        normalized.robustEvalCount = std::max(
+            normalized.robustEvalCount, static_cast<int>(normalized.robustFitnessSamples.size()));
+        return normalized;
+    }
+
+    if (normalized.robustEvalCount > 0) {
+        if (!std::isfinite(normalized.robustFitness)) {
+            normalized.robustFitness = normalized.fitness;
+        }
+        return normalized;
+    }
+
+    if (std::isfinite(normalized.fitness)) {
+        normalized.robustFitness = normalized.fitness;
+        normalized.robustEvalCount = 1;
+        normalized.robustFitnessSamples = { normalized.fitness };
+    }
+
+    return normalized;
+}
+
+void appendRobustSample(GenomeMetadata& metadata, double fitnessSample)
+{
+    if (!std::isfinite(fitnessSample)) {
+        return;
+    }
+
+    metadata.robustEvalCount = std::max(0, metadata.robustEvalCount) + 1;
+    metadata.robustFitnessSamples.push_back(fitnessSample);
+    if (metadata.robustFitnessSamples.size() > kRobustFitnessSampleWindow) {
+        metadata.robustFitnessSamples.erase(metadata.robustFitnessSamples.begin());
+    }
+    metadata.robustFitness = computeMedian(metadata.robustFitnessSamples);
+}
+
+GenomeMetadata mergeMetadata(const GenomeMetadata& existingRaw, const GenomeMetadata& incomingRaw)
+{
+    const GenomeMetadata existing = normalizeRobustMetadata(existingRaw);
+    const GenomeMetadata incoming = normalizeRobustMetadata(incomingRaw);
+
+    GenomeMetadata merged = incoming;
+    merged.fitness = std::max(existing.fitness, incoming.fitness);
+
+    if (merged.name.empty()) {
+        merged.name = existing.name;
+    }
+    if (merged.notes.empty()) {
+        merged.notes = existing.notes;
+    }
+    if (!merged.organismType.has_value()) {
+        merged.organismType = existing.organismType;
+    }
+    if (!merged.brainKind.has_value()) {
+        merged.brainKind = existing.brainKind;
+    }
+    if (!merged.brainVariant.has_value()) {
+        merged.brainVariant = existing.brainVariant;
+    }
+    if (!merged.trainingSessionId.has_value()) {
+        merged.trainingSessionId = existing.trainingSessionId;
+    }
+    if (merged.createdTimestamp == 0) {
+        merged.createdTimestamp = existing.createdTimestamp;
+    }
+
+    merged.robustFitnessSamples = existing.robustFitnessSamples;
+    merged.robustEvalCount = effectiveRobustEvalCount(existing);
+    for (double sample : incoming.robustFitnessSamples) {
+        appendRobustSample(merged, sample);
+    }
+
+    const int incomingEvalCount = effectiveRobustEvalCount(incoming);
+    const int missingEvalCount =
+        std::max(0, incomingEvalCount - static_cast<int>(incoming.robustFitnessSamples.size()));
+    merged.robustEvalCount += missingEvalCount;
+
+    if (merged.robustEvalCount <= 0) {
+        merged = normalizeRobustMetadata(merged);
+    }
+    else if (merged.robustFitnessSamples.empty()) {
+        merged.robustFitness = incoming.robustFitness;
+    }
+
+    return merged;
 }
 
 } // namespace
@@ -157,7 +298,7 @@ void GenomeRepository::loadFromDb()
 
             try {
                 auto json = nlohmann::json::parse(metaJson);
-                GenomeMetadata meta = json.get<GenomeMetadata>();
+                GenomeMetadata meta = normalizeRobustMetadata(json.get<GenomeMetadata>());
                 if (contentHash.empty()) {
                     contentHash = computeContentHash(genome, meta);
                     persistGenomeHash(id, contentHash);
@@ -175,7 +316,8 @@ void GenomeRepository::loadFromDb()
                     const GenomeId existingId = existingHash->second;
                     auto existingMeta = metadata_.find(existingId);
                     if (existingMeta == metadata_.end()
-                        || meta.fitness > existingMeta->second.fitness) {
+                        || effectiveRobustFitness(meta)
+                            > effectiveRobustFitness(existingMeta->second)) {
                         idToHash_.erase(existingId);
                         existingHash->second = id;
                         idToHash_[id] = contentHash;
@@ -279,7 +421,8 @@ void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMeta
     }
 
     std::lock_guard<std::mutex> lock(*mutex_);
-    const std::string contentHash = computeContentHash(genome, meta);
+    const GenomeMetadata normalizedMeta = normalizeRobustMetadata(meta);
+    const std::string contentHash = computeContentHash(genome, normalizedMeta);
 
     const auto oldHashIt = idToHash_.find(id);
     if (oldHashIt != idToHash_.end() && oldHashIt->second != contentHash) {
@@ -290,12 +433,12 @@ void GenomeRepository::store(GenomeId id, const Genome& genome, const GenomeMeta
     }
 
     genomes_[id] = genome;
-    metadata_[id] = meta;
+    metadata_[id] = normalizedMeta;
     hashToId_[contentHash] = id;
     idToHash_[id] = contentHash;
 
     if (db_) {
-        persistGenome(id, genome, meta, contentHash);
+        persistGenome(id, genome, normalizedMeta, contentHash);
     }
 }
 
@@ -303,16 +446,21 @@ GenomeRepository::StoreByHashResult GenomeRepository::storeOrUpdateByHash(
     const Genome& genome, const GenomeMetadata& meta, std::optional<GenomeId> preferredId)
 {
     std::lock_guard<std::mutex> lock(*mutex_);
-    const std::string contentHash = computeContentHash(genome, meta);
+    const GenomeMetadata normalizedMeta = normalizeRobustMetadata(meta);
+    const std::string contentHash = computeContentHash(genome, normalizedMeta);
 
     const auto existing = hashToId_.find(contentHash);
     if (existing != hashToId_.end()) {
         const GenomeId existingId = existing->second;
+        const auto existingMetaIt = metadata_.find(existingId);
+        const GenomeMetadata mergedMeta = existingMetaIt != metadata_.end()
+            ? mergeMetadata(existingMetaIt->second, normalizedMeta)
+            : normalizedMeta;
         genomes_[existingId] = genome;
-        metadata_[existingId] = meta;
+        metadata_[existingId] = mergedMeta;
         idToHash_[existingId] = contentHash;
         if (db_) {
-            persistGenome(existingId, genome, meta, contentHash);
+            persistGenome(existingId, genome, mergedMeta, contentHash);
         }
         return StoreByHashResult{
             .id = existingId,
@@ -330,12 +478,12 @@ GenomeRepository::StoreByHashResult GenomeRepository::storeOrUpdateByHash(
     }
 
     genomes_[id] = genome;
-    metadata_[id] = meta;
+    metadata_[id] = normalizedMeta;
     hashToId_[contentHash] = id;
     idToHash_[id] = contentHash;
 
     if (db_) {
-        persistGenome(id, genome, meta, contentHash);
+        persistGenome(id, genome, normalizedMeta, contentHash);
     }
 
     return StoreByHashResult{
@@ -373,8 +521,10 @@ size_t GenomeRepository::pruneManagedByFitness(size_t maxManagedGenomes)
 
         const auto& leftMeta = leftMetaIt->second;
         const auto& rightMeta = rightMetaIt->second;
-        if (leftMeta.fitness != rightMeta.fitness) {
-            return leftMeta.fitness < rightMeta.fitness;
+        const double leftScore = effectiveRobustFitness(leftMeta);
+        const double rightScore = effectiveRobustFitness(rightMeta);
+        if (leftScore != rightScore) {
+            return leftScore < rightScore;
         }
         if (leftMeta.createdTimestamp != rightMeta.createdTimestamp) {
             return leftMeta.createdTimestamp < rightMeta.createdTimestamp;

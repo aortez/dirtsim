@@ -13,6 +13,7 @@
 #include "server/tests/TestStateMachineFixture.h"
 #include <gtest/gtest.h>
 #include <optional>
+#include <string>
 #include <vector>
 
 using namespace DirtSim;
@@ -184,6 +185,9 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsBestGenomeSeed)
     const GenomeMetadata bestMetadata{
         .name = "warm-best",
         .fitness = 9.0,
+        .robustFitness = 8.5,
+        .robustEvalCount = 4,
+        .robustFitnessSamples = { 7.0, 8.0, 9.0, 10.0 },
         .generation = 7,
         .createdTimestamp = 1234567890,
         .scenarioId = Scenario::EnumType::TreeGermination,
@@ -240,6 +244,9 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
     const GenomeMetadata bestMetadata{
         .name = "fresh-best",
         .fitness = 4.0,
+        .robustFitness = 4.0,
+        .robustEvalCount = 4,
+        .robustFitnessSamples = { 3.0, 4.0, 4.0, 5.0 },
         .generation = 3,
         .createdTimestamp = 1234567890,
         .scenarioId = Scenario::EnumType::TreeGermination,
@@ -282,6 +289,82 @@ TEST(StateEvolutionTest, EvolutionStartFreshResumeDoesNotInjectBestGenomeSeed)
     EXPECT_TRUE(spec.seedGenomes.empty());
     EXPECT_EQ(spec.count, 4);
     EXPECT_EQ(spec.randomCount, 4);
+}
+
+TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    const auto makeMetadata = [](const std::string& name, double fitness, double robustFitness) {
+        return GenomeMetadata{
+            .name = name,
+            .fitness = fitness,
+            .robustFitness = robustFitness,
+            .robustEvalCount = 5,
+            .robustFitnessSamples = {
+                robustFitness - 1.0,
+                robustFitness,
+                robustFitness + 1.0,
+                robustFitness,
+                robustFitness,
+            },
+            .generation = 7,
+            .createdTimestamp = 1234567890,
+            .scenarioId = Scenario::EnumType::TreeGermination,
+            .notes = "",
+            .organismType = OrganismType::TREE,
+            .brainKind = TrainingBrainKind::NeuralNet,
+            .brainVariant = std::nullopt,
+            .trainingSessionId = std::nullopt,
+        };
+    };
+
+    const GenomeId outlierPeak = UUID::generate();
+    const GenomeId robustA = UUID::generate();
+    const GenomeId robustB = UUID::generate();
+    const GenomeId weak = UUID::generate();
+    repo.store(outlierPeak, Genome::constant(0.1), makeMetadata("outlier", 9999.0, 10.0));
+    repo.store(robustA, Genome::constant(0.2), makeMetadata("robust-a", 90.0, 50.0));
+    repo.store(robustB, Genome::constant(0.3), makeMetadata("robust-b", 80.0, 40.0));
+    repo.store(weak, Genome::constant(0.4), makeMetadata("weak", 70.0, 5.0));
+    repo.markAsBest(outlierPeak);
+
+    Idle idleState;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
+    cmd.evolution.populationSize = 5;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.warmStartSeedCount = 3;
+    cmd.evolution.warmStartMinRobustEvalCount = 3;
+    cmd.scenarioId = Scenario::EnumType::TreeGermination;
+    cmd.organismType = OrganismType::TREE;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 5;
+    population.randomCount = 5;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Response response;
+    Api::EvolutionStart::Cwc cwc(
+        cmd, [&](Api::EvolutionStart::Response&& result) { response = std::move(result); });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(response.isValue());
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+
+    const auto& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const auto& spec = evolution.trainingSpec.population.front();
+    ASSERT_EQ(spec.seedGenomes.size(), 3u);
+    EXPECT_EQ(spec.seedGenomes[0], robustA);
+    EXPECT_EQ(spec.seedGenomes[1], robustB);
+    EXPECT_EQ(spec.seedGenomes[2], outlierPeak);
+    EXPECT_EQ(spec.randomCount, 2);
 }
 
 TEST(StateEvolutionTest, MissingBrainKindTriggersDeath)
@@ -469,6 +552,9 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
     const GenomeMetadata seedMeta{
         .name = "seed",
         .fitness = 1.0,
+        .robustFitness = 1.0,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { 1.0 },
         .generation = 0,
         .createdTimestamp = 1234567890,
         .scenarioId = Scenario::EnumType::TreeGermination,
@@ -591,6 +677,9 @@ TEST(StateEvolutionTest, NeuralNetMutationCanSurviveWithPositiveFitness)
     const GenomeMetadata seedMeta{
         .name = "seed",
         .fitness = 1.0,
+        .robustFitness = 1.0,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { 1.0 },
         .generation = 0,
         .createdTimestamp = 1234567890,
         .scenarioId = Scenario::EnumType::TreeGermination,

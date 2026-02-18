@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cassert>
 #include <thread>
+#include <vector>
 
 namespace DirtSim {
 namespace Server {
@@ -48,7 +49,7 @@ ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType s
     return scenarioConfig;
 }
 
-bool isBestGenomeCompatibleForPopulation(
+bool isWarmGenomeCompatibleForPopulation(
     const GenomeMetadata& metadata, OrganismType organismType, const PopulationSpec& populationSpec)
 {
     if (!metadata.organismType.has_value() || metadata.organismType.value() != organismType) {
@@ -70,15 +71,81 @@ bool isBestGenomeCompatibleForPopulation(
     return true;
 }
 
+struct WarmSeedCandidate {
+    GenomeId id = INVALID_GENOME_ID;
+    GenomeMetadata metadata;
+    double robustFitness = 0.0;
+    int robustEvalCount = 0;
+};
+
+int getRobustEvalCount(const GenomeMetadata& metadata)
+{
+    if (metadata.robustEvalCount > 0) {
+        return metadata.robustEvalCount;
+    }
+    if (!metadata.robustFitnessSamples.empty()) {
+        return static_cast<int>(metadata.robustFitnessSamples.size());
+    }
+    return 1;
+}
+
+double getRobustFitness(const GenomeMetadata& metadata)
+{
+    if (metadata.robustEvalCount > 0 || !metadata.robustFitnessSamples.empty()) {
+        return metadata.robustFitness;
+    }
+    return metadata.fitness;
+}
+
+std::vector<WarmSeedCandidate> collectWarmSeedCandidates(
+    const GenomeRepository& repo, int minRobustEvalCount)
+{
+    std::vector<WarmSeedCandidate> candidates;
+    const auto entries = repo.list();
+    candidates.reserve(entries.size());
+
+    for (const auto& [id, metadata] : entries) {
+        const int robustEvalCount = getRobustEvalCount(metadata);
+        if (robustEvalCount < minRobustEvalCount) {
+            continue;
+        }
+        candidates.push_back(
+            WarmSeedCandidate{
+                .id = id,
+                .metadata = metadata,
+                .robustFitness = getRobustFitness(metadata),
+                .robustEvalCount = robustEvalCount,
+            });
+    }
+
+    std::sort(
+        candidates.begin(),
+        candidates.end(),
+        [](const WarmSeedCandidate& left, const WarmSeedCandidate& right) {
+            if (left.robustFitness != right.robustFitness) {
+                return left.robustFitness > right.robustFitness;
+            }
+            if (left.robustEvalCount != right.robustEvalCount) {
+                return left.robustEvalCount > right.robustEvalCount;
+            }
+            if (left.metadata.createdTimestamp != right.metadata.createdTimestamp) {
+                return left.metadata.createdTimestamp > right.metadata.createdTimestamp;
+            }
+            return left.id.toString() < right.id.toString();
+        });
+
+    return candidates;
+}
+
 std::optional<ApiError> validateTrainingConfig(
     const Api::EvolutionStart::Command& command,
     ScenarioRegistry& registry,
     GenomeRepository& repo,
     TrainingSpec& outSpec,
     int& outPopulationSize,
-    bool& outWarmSeedInjected)
+    int& outWarmSeedInjectedCount)
 {
-    outWarmSeedInjected = false;
+    outWarmSeedInjectedCount = 0;
     outSpec.scenarioId = normalizeLegacyScenarioId(command.scenarioId);
     outSpec.organismType = command.organismType;
     outSpec.population = command.population;
@@ -115,17 +182,12 @@ std::optional<ApiError> validateTrainingConfig(
     }
 
     TrainingBrainRegistry brainRegistry = TrainingBrainRegistry::createDefault();
-    std::optional<GenomeId> bestSeedId;
-    std::optional<GenomeMetadata> bestSeedMetadata;
+    std::vector<WarmSeedCandidate> warmSeedCandidates;
+    const int warmStartSeedCount = std::max(0, command.evolution.warmStartSeedCount);
+    const int warmStartMinRobustEvalCount =
+        std::max(1, command.evolution.warmStartMinRobustEvalCount);
     if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
-        auto bestId = repo.getBestId();
-        if (bestId.has_value()) {
-            auto metadata = repo.getMetadata(bestId.value());
-            if (metadata.has_value()) {
-                bestSeedId = bestId;
-                bestSeedMetadata = metadata;
-            }
-        }
+        warmSeedCandidates = collectWarmSeedCandidates(repo, warmStartMinRobustEvalCount);
     }
 
     outPopulationSize = 0;
@@ -154,15 +216,28 @@ std::optional<ApiError> validateTrainingConfig(
         }
 
         if (entry->requiresGenome) {
-            if (!outWarmSeedInjected && bestSeedId.has_value() && bestSeedMetadata.has_value()
-                && spec.randomCount > 0 && spec.count > 0
-                && isBestGenomeCompatibleForPopulation(
-                    bestSeedMetadata.value(), outSpec.organismType, spec)
-                && std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), bestSeedId.value())
-                    == spec.seedGenomes.end()) {
-                spec.seedGenomes.push_back(bestSeedId.value());
-                spec.randomCount -= 1;
-                outWarmSeedInjected = true;
+            if (!warmSeedCandidates.empty() && warmStartSeedCount > 0 && spec.randomCount > 0
+                && spec.count > 0) {
+                const int maxSeedsToInject = std::min(spec.randomCount, warmStartSeedCount);
+                int injectedForSpec = 0;
+                for (const auto& candidate : warmSeedCandidates) {
+                    if (injectedForSpec >= maxSeedsToInject) {
+                        break;
+                    }
+                    if (!isWarmGenomeCompatibleForPopulation(
+                            candidate.metadata, outSpec.organismType, spec)) {
+                        continue;
+                    }
+                    if (std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), candidate.id)
+                        != spec.seedGenomes.end()) {
+                        continue;
+                    }
+
+                    spec.seedGenomes.push_back(candidate.id);
+                    spec.randomCount -= 1;
+                    injectedForSpec += 1;
+                    outWarmSeedInjectedCount += 1;
+                }
             }
 
             if (spec.randomCount < 0) {
@@ -251,14 +326,14 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
 
     TrainingSpec trainingSpec;
     int populationSize = 0;
-    bool warmSeedInjected = false;
+    int warmSeedInjectedCount = 0;
     auto error = validateTrainingConfig(
         cwc.command,
         dsm.getScenarioRegistry(),
         dsm.getGenomeRepository(),
         trainingSpec,
         populationSize,
-        warmSeedInjected);
+        warmSeedInjectedCount);
     if (error.has_value()) {
         LOG_WARN(State, "EvolutionStart rejected: {}", error->message);
         cwc.sendResponse(Api::EvolutionStart::Response::error(error.value()));
@@ -285,11 +360,18 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
         "Evolution: max parallel evaluations = {}",
         newState.evolutionConfig.maxParallelEvaluations);
     if (cwc.command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
-        if (warmSeedInjected) {
-            LOG_INFO(State, "Evolution: Warm resume injected repository best genome into seeds");
+        if (warmSeedInjectedCount > 0) {
+            LOG_INFO(
+                State,
+                "Evolution: Warm resume injected {} robust genome seed(s)",
+                warmSeedInjectedCount);
         }
         else {
-            LOG_INFO(State, "Evolution: Warm resume found no compatible repository best genome");
+            LOG_INFO(
+                State,
+                "Evolution: Warm resume found no compatible robust genomes "
+                "(min_robust_eval_count={})",
+                std::max(1, cwc.command.evolution.warmStartMinRobustEvalCount));
         }
     }
 
