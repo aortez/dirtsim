@@ -508,7 +508,56 @@ const char* toProgressSource(Evolution::IndividualOrigin origin)
     return "none";
 }
 
-GenomeId storeManagedGenome(
+double getDisplayFitness(const GenomeMetadata& metadata)
+{
+    if (metadata.robustEvalCount > 0 || !metadata.robustFitnessSamples.empty()) {
+        return metadata.robustFitness;
+    }
+    return metadata.fitness;
+}
+
+std::optional<double> getRepositoryBestDisplayFitness(
+    GenomeRepository& repo, std::optional<GenomeId>* bestIdOut = nullptr)
+{
+    const std::optional<GenomeId> bestId = repo.getBestId();
+    if (bestIdOut) {
+        *bestIdOut = bestId;
+    }
+    if (!bestId.has_value()) {
+        return std::nullopt;
+    }
+
+    const std::optional<GenomeMetadata> bestMetadata = repo.getMetadata(bestId.value());
+    if (!bestMetadata.has_value()) {
+        return std::nullopt;
+    }
+
+    return getDisplayFitness(bestMetadata.value());
+}
+
+bool shouldPromoteInsertedBestGenome(
+    GenomeRepository& repo,
+    const GenomeRepository::StoreByHashResult& storeResult,
+    const GenomeMetadata& metadata)
+{
+    const std::optional<double> currentBestFitness = getRepositoryBestDisplayFitness(repo);
+    if (!currentBestFitness.has_value()) {
+        return true;
+    }
+
+    if (!storeResult.inserted) {
+        return false;
+    }
+
+    const double candidateFitness = getDisplayFitness(metadata);
+    if (fitnessTiesBest(candidateFitness, currentBestFitness.value())) {
+        return false;
+    }
+
+    return candidateFitness > currentBestFitness.value();
+}
+
+GenomeRepository::StoreByHashResult storeManagedGenome(
     StateMachine& dsm,
     const Genome& genome,
     const GenomeMetadata& metadata,
@@ -543,7 +592,7 @@ GenomeId storeManagedGenome(
         }
     }
 
-    return storeResult.id;
+    return storeResult;
 }
 } // namespace
 
@@ -824,7 +873,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     currentEval = 0;
     bestFitnessThisGen = 0.0;
     bestFitnessAllTime = std::numeric_limits<double>::lowest();
-    bestGenomeId = INVALID_GENOME_ID;
+    bestGenomeId = dsm.getGenomeRepository().getBestId().value_or(INVALID_GENOME_ID);
     bestThisGenOrigin_ = IndividualOrigin::Unknown;
     lastCompletedGeneration_ = -1;
     lastGenerationFitnessMin_ = 0.0;
@@ -1255,14 +1304,25 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
                 .brainVariant = individual.brainVariant,
                 .trainingSessionId = trainingSessionId_,
             };
-            bestGenomeId = storeManagedGenome(
+            const auto storeResult = storeManagedGenome(
                 dsm,
                 individual.genome.value(),
                 meta,
                 evolutionConfig.genomeArchiveMaxSize,
                 "all-time best");
             auto& repo = dsm.getGenomeRepository();
-            repo.markAsBest(bestGenomeId);
+            if (shouldPromoteInsertedBestGenome(repo, storeResult, meta)) {
+                repo.markAsBest(storeResult.id);
+                bestGenomeId = storeResult.id;
+                LOG_INFO(
+                    State,
+                    "Evolution: Promoted genome {} as persisted best (fitness {:.4f})",
+                    storeResult.id.toShortString(),
+                    getDisplayFitness(meta));
+            }
+            else {
+                bestGenomeId = repo.getBestId().value_or(INVALID_GENOME_ID);
+            }
 
             LOG_INFO(
                 State,
@@ -1743,11 +1803,11 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         eta = remainingIndividuals * avgRealTimePerIndividual;
     }
 
-    double bestAllTime = bestFitnessAllTime;
-    if (generation == 0 && currentEval == 0
-        && bestAllTime == std::numeric_limits<double>::lowest()) {
-        bestAllTime = 0.0;
-    }
+    auto& repo = dsm.getGenomeRepository();
+    std::optional<GenomeId> repoBestId;
+    const std::optional<double> repoBestFitness =
+        getRepositoryBestDisplayFitness(repo, &repoBestId);
+    const double bestAllTime = repoBestFitness.value_or(0.0);
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
@@ -1756,7 +1816,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         activeParallelism = workerState_->allowedConcurrency.load() + 1; // +1 for main thread.
     }
 
-    const size_t totalGenomeCount = dsm.getGenomeRepository().count();
+    const size_t totalGenomeCount = repo.count();
     const int totalGenomeCountForProgress =
         totalGenomeCount > static_cast<size_t>(std::numeric_limits<int>::max())
         ? std::numeric_limits<int>::max()
@@ -1777,7 +1837,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .lastGenerationFitnessMax = lastGenerationFitnessMax_,
         .lastGenerationFitnessHistogram = lastGenerationFitnessHistogram_,
         .bestThisGenSource = toProgressSource(bestThisGenOrigin_),
-        .bestGenomeId = bestGenomeId,
+        .bestGenomeId = repoBestId.value_or(INVALID_GENOME_ID),
         .totalTrainingSeconds = totalSeconds,
         .currentSimTime = visibleSimTime,
         .cumulativeSimTime = cumulative,
@@ -1893,17 +1953,25 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .brainVariant = population[bestIdx].brainVariant,
         .trainingSessionId = trainingSessionId_,
     };
-    const GenomeId id = storeManagedGenome(
+    const auto storeResult = storeManagedGenome(
         dsm,
         population[bestIdx].genome.value(),
         meta,
         evolutionConfig.genomeArchiveMaxSize,
         "checkpoint");
 
-    if (bestFit >= bestFitnessAllTime) {
-        auto& repo = dsm.getGenomeRepository();
-        repo.markAsBest(id);
-        bestGenomeId = id;
+    auto& repo = dsm.getGenomeRepository();
+    if (shouldPromoteInsertedBestGenome(repo, storeResult, meta)) {
+        repo.markAsBest(storeResult.id);
+        bestGenomeId = storeResult.id;
+        LOG_INFO(
+            State,
+            "Evolution: Promoted checkpoint genome {} as persisted best (fitness {:.4f})",
+            storeResult.id.toShortString(),
+            getDisplayFitness(meta));
+    }
+    else {
+        bestGenomeId = repo.getBestId().value_or(INVALID_GENOME_ID);
     }
 
     LOG_INFO(

@@ -583,11 +583,6 @@ void TrainingActiveView::updateBestSnapshot(
         worldData.organism_ids.size(),
         nonZeroColors,
         maxBrightness);
-    if (bestAllTimeLabel_) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "All Time: %.2f", fitness);
-        lv_label_set_text(bestAllTimeLabel_, buf);
-    }
     if (bestCommandSummaryLabel_) {
         std::ostringstream summary;
         const int totalOutcomes = commandsAccepted + commandsRejected;
