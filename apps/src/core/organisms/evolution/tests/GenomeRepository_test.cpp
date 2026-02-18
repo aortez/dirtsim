@@ -44,6 +44,18 @@ protected:
         meta.trainingSessionId = UUID::generate();
         return meta;
     }
+
+    GenomeMetadata createManagedMetadataForBucket(
+        const std::string& name,
+        double fitness,
+        OrganismType organismType,
+        const std::string& brainKind)
+    {
+        auto meta = createManagedMetadata(name, fitness);
+        meta.organismType = organismType;
+        meta.brainKind = brainKind;
+        return meta;
+    }
 };
 
 TEST_F(GenomeRepositoryTest, StoreAndRetrieveGenome)
@@ -253,6 +265,39 @@ TEST_F(GenomeRepositoryTest, PruneManagedByFitnessKeepsBestId)
     EXPECT_TRUE(repo.exists(idHigh));
     EXPECT_FALSE(repo.exists(idMidA));
     EXPECT_FALSE(repo.exists(idMidB));
+}
+
+TEST_F(GenomeRepositoryTest, PruneManagedByFitnessAppliesPerOrganismBrainBucket)
+{
+    const GenomeId treeLow = UUID::generate();
+    const GenomeId treeHigh = UUID::generate();
+    const GenomeId duckLow = UUID::generate();
+    const GenomeId duckHigh = UUID::generate();
+
+    repo.store(
+        treeLow,
+        createTestGenome(0.1),
+        createManagedMetadataForBucket("tree_low", 1.0, OrganismType::TREE, "NeuralNet"));
+    repo.store(
+        treeHigh,
+        createTestGenome(0.2),
+        createManagedMetadataForBucket("tree_high", 9.0, OrganismType::TREE, "NeuralNet"));
+    repo.store(
+        duckLow,
+        createTestGenome(0.3),
+        createManagedMetadataForBucket("duck_low", 2.0, OrganismType::DUCK, "NeuralNet"));
+    repo.store(
+        duckHigh,
+        createTestGenome(0.4),
+        createManagedMetadataForBucket("duck_high", 8.0, OrganismType::DUCK, "NeuralNet"));
+
+    const size_t removed = repo.pruneManagedByFitness(1);
+    EXPECT_EQ(removed, 2u);
+    EXPECT_EQ(repo.count(), 2u);
+    EXPECT_FALSE(repo.exists(treeLow));
+    EXPECT_TRUE(repo.exists(treeHigh));
+    EXPECT_FALSE(repo.exists(duckLow));
+    EXPECT_TRUE(repo.exists(duckHigh));
 }
 
 TEST_F(GenomeRepositoryTest, ConcurrentStoreAndReadIsThreadSafe)

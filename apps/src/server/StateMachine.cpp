@@ -86,6 +86,7 @@ int getMaxTimezoneIndex()
 
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
+constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -230,6 +231,10 @@ UserSettings sanitizeUserSettings(
     if (settings.evolutionConfig.genomeArchiveMaxSize < 0) {
         settings.evolutionConfig.genomeArchiveMaxSize = 0;
         recordUpdate("genomeArchiveMaxSize clamped to 0");
+    }
+    else if (settings.evolutionConfig.genomeArchiveMaxSize > kGenomeArchiveMaxSizePerBucketMax) {
+        settings.evolutionConfig.genomeArchiveMaxSize = kGenomeArchiveMaxSizePerBucketMax;
+        recordUpdate("genomeArchiveMaxSize clamped to 1000");
     }
     if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
         settings.evolutionConfig.robustFitnessEvaluationCount = 1;
@@ -449,7 +454,7 @@ struct StateMachine::Impl {
             if (pruned > 0) {
                 LOG_INFO(
                     State,
-                    "Pruned {} managed genomes on startup (max_archive={})",
+                    "Pruned {} managed genomes on startup (max_per_organism_brain={})",
                     pruned,
                     userSettings_.evolutionConfig.genomeArchiveMaxSize);
             }

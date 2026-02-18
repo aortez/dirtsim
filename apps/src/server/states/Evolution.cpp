@@ -483,7 +483,7 @@ GenomeRepository::StoreByHashResult storeManagedGenome(
         if (pruned > 0) {
             LOG_INFO(
                 State,
-                "Evolution: Pruned {} managed genomes (max_archive={})",
+                "Evolution: Pruned {} managed genomes (max_per_organism_brain={})",
                 pruned,
                 archiveMaxSize);
         }

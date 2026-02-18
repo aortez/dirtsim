@@ -113,6 +113,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                 .trainingSpec = {},
                 .evolutionConfig =
                     EvolutionConfig{
+                        .genomeArchiveMaxSize = 50000,
                         .diversityEliteCount = -5,
                         .diversityEliteFitnessEpsilon = -0.5,
                     },
@@ -134,6 +135,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(response.value().settings.evolutionConfig.genomeArchiveMaxSize, 1000);
     EXPECT_EQ(response.value().settings.evolutionConfig.diversityEliteCount, 0);
     EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 
@@ -144,6 +146,7 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.defaultScenario, Scenario::EnumType::Clock);
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
+    EXPECT_EQ(fromDisk.evolutionConfig.genomeArchiveMaxSize, 1000);
     EXPECT_EQ(fromDisk.evolutionConfig.diversityEliteCount, 0);
     EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 }

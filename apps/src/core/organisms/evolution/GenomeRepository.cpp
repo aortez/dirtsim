@@ -22,6 +22,25 @@ constexpr int SCHEMA_VERSION = 1;
 namespace {
 constexpr size_t kRobustFitnessSampleWindow = 7;
 
+struct ManagedGenomeBucketKey {
+    int organismType = -1;
+    std::string brainKind;
+
+    bool operator==(const ManagedGenomeBucketKey& other) const
+    {
+        return organismType == other.organismType && brainKind == other.brainKind;
+    }
+};
+
+struct ManagedGenomeBucketKeyHash {
+    size_t operator()(const ManagedGenomeBucketKey& key) const
+    {
+        const size_t typeHash = std::hash<int>{}(key.organismType);
+        const size_t brainKindHash = std::hash<std::string>{}(key.brainKind);
+        return typeHash ^ (brainKindHash << 1);
+    }
+};
+
 // DRY helper for database operations with error handling.
 template <typename Func>
 void execDb(sqlite::database& db, const char* operation, Func&& func)
@@ -501,48 +520,62 @@ size_t GenomeRepository::pruneManagedByFitness(size_t maxManagedGenomes)
 
     std::lock_guard<std::mutex> lock(*mutex_);
 
-    std::vector<GenomeId> managedIds;
-    managedIds.reserve(metadata_.size());
+    std::unordered_map<ManagedGenomeBucketKey, std::vector<GenomeId>, ManagedGenomeBucketKeyHash>
+        managedBucketToIds;
+    managedBucketToIds.reserve(metadata_.size());
     for (const auto& [id, meta] : metadata_) {
         if (meta.trainingSessionId.has_value()) {
-            managedIds.push_back(id);
+            const ManagedGenomeBucketKey key{
+                .organismType = meta.organismType.has_value()
+                    ? static_cast<int>(meta.organismType.value())
+                    : -1,
+                .brainKind = meta.brainKind.value_or(""),
+            };
+            managedBucketToIds[key].push_back(id);
         }
     }
 
-    if (managedIds.size() <= maxManagedGenomes) {
-        return 0;
-    }
-
-    std::sort(managedIds.begin(), managedIds.end(), [this](GenomeId left, GenomeId right) {
-        const auto leftMetaIt = metadata_.find(left);
-        const auto rightMetaIt = metadata_.find(right);
-        DIRTSIM_ASSERT(leftMetaIt != metadata_.end(), "GenomeRepository: Missing left metadata");
-        DIRTSIM_ASSERT(rightMetaIt != metadata_.end(), "GenomeRepository: Missing right metadata");
-
-        const auto& leftMeta = leftMetaIt->second;
-        const auto& rightMeta = rightMetaIt->second;
-        const double leftScore = effectiveRobustFitness(leftMeta);
-        const double rightScore = effectiveRobustFitness(rightMeta);
-        if (leftScore != rightScore) {
-            return leftScore < rightScore;
-        }
-        if (leftMeta.createdTimestamp != rightMeta.createdTimestamp) {
-            return leftMeta.createdTimestamp < rightMeta.createdTimestamp;
-        }
-        return left.toString() < right.toString();
-    });
-
-    const size_t targetRemovals = managedIds.size() - maxManagedGenomes;
     size_t removed = 0;
-    for (GenomeId id : managedIds) {
-        if (removed >= targetRemovals) {
-            break;
-        }
-        if (bestId_.has_value() && bestId_.value() == id) {
+    for (auto& [bucket, managedIds] : managedBucketToIds) {
+        (void)bucket;
+        if (managedIds.size() <= maxManagedGenomes) {
             continue;
         }
-        removeNoLock(id);
-        removed++;
+
+        std::sort(managedIds.begin(), managedIds.end(), [this](GenomeId left, GenomeId right) {
+            const auto leftMetaIt = metadata_.find(left);
+            const auto rightMetaIt = metadata_.find(right);
+            DIRTSIM_ASSERT(
+                leftMetaIt != metadata_.end(), "GenomeRepository: Missing left metadata");
+            DIRTSIM_ASSERT(
+                rightMetaIt != metadata_.end(), "GenomeRepository: Missing right metadata");
+
+            const auto& leftMeta = leftMetaIt->second;
+            const auto& rightMeta = rightMetaIt->second;
+            const double leftScore = effectiveRobustFitness(leftMeta);
+            const double rightScore = effectiveRobustFitness(rightMeta);
+            if (leftScore != rightScore) {
+                return leftScore < rightScore;
+            }
+            if (leftMeta.createdTimestamp != rightMeta.createdTimestamp) {
+                return leftMeta.createdTimestamp < rightMeta.createdTimestamp;
+            }
+            return left.toString() < right.toString();
+        });
+
+        const size_t targetRemovals = managedIds.size() - maxManagedGenomes;
+        size_t removedFromBucket = 0;
+        for (GenomeId id : managedIds) {
+            if (removedFromBucket >= targetRemovals) {
+                break;
+            }
+            if (bestId_.has_value() && bestId_.value() == id) {
+                continue;
+            }
+            removeNoLock(id);
+            removedFromBucket++;
+            removed++;
+        }
     }
 
     return removed;
