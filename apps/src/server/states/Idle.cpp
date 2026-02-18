@@ -13,7 +13,11 @@
 #include "server/api/ApiError.h"
 #include <algorithm>
 #include <cassert>
+#include <cmath>
+#include <limits>
+#include <random>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace DirtSim {
@@ -78,6 +82,11 @@ struct WarmSeedCandidate {
     int robustEvalCount = 0;
 };
 
+constexpr double kWarmStartSamplingFitnessWindowRatio = 0.25;
+constexpr double kWarmStartSamplingDistanceBias = 1.5;
+constexpr double kWarmStartSamplingEpsilon = 1e-9;
+constexpr int kWarmStartSamplingCandidateLimit = 24;
+
 int getRobustEvalCount(const GenomeMetadata& metadata)
 {
     if (metadata.robustEvalCount > 0) {
@@ -137,6 +146,153 @@ std::vector<WarmSeedCandidate> collectWarmSeedCandidates(
     return candidates;
 }
 
+const Genome* loadWarmGenome(
+    GenomeRepository& repo, GenomeId id, std::unordered_map<GenomeId, std::optional<Genome>>& cache)
+{
+    auto it = cache.find(id);
+    if (it == cache.end()) {
+        it = cache.emplace(id, repo.get(id)).first;
+    }
+    if (!it->second.has_value()) {
+        return nullptr;
+    }
+    return &it->second.value();
+}
+
+bool canComputeGenomeWeightDistance(const Genome& left, const Genome& right)
+{
+    return !left.weights.empty() && left.weights.size() == right.weights.size();
+}
+
+double computeGenomeWeightDistance(const Genome& left, const Genome& right)
+{
+    DIRTSIM_ASSERT(
+        canComputeGenomeWeightDistance(left, right),
+        "Idle: comparable genomes required for warm-start distance calculation");
+
+    double squaredDistance = 0.0;
+    for (size_t i = 0; i < left.weights.size(); ++i) {
+        const double delta =
+            static_cast<double>(left.weights[i]) - static_cast<double>(right.weights[i]);
+        squaredDistance += delta * delta;
+    }
+    return std::sqrt(squaredDistance / static_cast<double>(left.weights.size()));
+}
+
+int findNextWarmSeedByFitness(
+    const std::vector<const WarmSeedCandidate*>& compatibleCandidates,
+    const std::vector<bool>& selectedMask)
+{
+    for (int i = 0; i < static_cast<int>(compatibleCandidates.size()); ++i) {
+        if (!selectedMask[i]) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int sampleWarmSeedByFitnessAndDistance(
+    const std::vector<const WarmSeedCandidate*>& compatibleCandidates,
+    const std::vector<bool>& selectedMask,
+    const std::vector<GenomeId>& referenceSeedIds,
+    GenomeRepository& repo,
+    std::unordered_map<GenomeId, std::optional<Genome>>& genomeCache,
+    std::mt19937& rng)
+{
+    if (referenceSeedIds.empty()) {
+        return -1;
+    }
+
+    int bestRemainingIndex = -1;
+    double bestRemainingFitness = -std::numeric_limits<double>::infinity();
+    for (int i = 0; i < static_cast<int>(compatibleCandidates.size()); ++i) {
+        if (selectedMask[i]) {
+            continue;
+        }
+        const double fitness = compatibleCandidates[i]->robustFitness;
+        if (bestRemainingIndex < 0 || fitness > bestRemainingFitness) {
+            bestRemainingIndex = i;
+            bestRemainingFitness = fitness;
+        }
+    }
+    if (bestRemainingIndex < 0) {
+        return -1;
+    }
+
+    const double fitnessWindow =
+        std::max(1.0, std::abs(bestRemainingFitness) * kWarmStartSamplingFitnessWindowRatio);
+    std::vector<int> eligible;
+    for (int i = 0; i < static_cast<int>(compatibleCandidates.size()); ++i) {
+        if (selectedMask[i]) {
+            continue;
+        }
+        const double fitness = compatibleCandidates[i]->robustFitness;
+        if (fitness + fitnessWindow >= bestRemainingFitness) {
+            eligible.push_back(i);
+            if (static_cast<int>(eligible.size()) >= kWarmStartSamplingCandidateLimit) {
+                break;
+            }
+        }
+    }
+    if (eligible.size() < 2) {
+        return -1;
+    }
+
+    std::vector<double> minDistances(eligible.size(), 0.0);
+    double maxMinDistance = 0.0;
+    for (size_t i = 0; i < eligible.size(); ++i) {
+        const auto* candidate = compatibleCandidates[eligible[i]];
+        const Genome* candidateGenome = loadWarmGenome(repo, candidate->id, genomeCache);
+        if (candidateGenome == nullptr) {
+            continue;
+        }
+
+        bool hasComparableReference = false;
+        double minDistance = std::numeric_limits<double>::infinity();
+        for (const GenomeId& id : referenceSeedIds) {
+            const Genome* referenceGenome = loadWarmGenome(repo, id, genomeCache);
+            if (referenceGenome == nullptr) {
+                continue;
+            }
+            if (!canComputeGenomeWeightDistance(*candidateGenome, *referenceGenome)) {
+                continue;
+            }
+            hasComparableReference = true;
+            minDistance = std::min(
+                minDistance, computeGenomeWeightDistance(*candidateGenome, *referenceGenome));
+        }
+        if (hasComparableReference) {
+            minDistances[i] = minDistance;
+            maxMinDistance = std::max(maxMinDistance, minDistance);
+        }
+    }
+
+    std::vector<double> weights;
+    weights.reserve(eligible.size());
+    for (size_t i = 0; i < eligible.size(); ++i) {
+        const auto* candidate = compatibleCandidates[eligible[i]];
+        const double fitnessGap = bestRemainingFitness - candidate->robustFitness;
+        const double fitnessWeight = std::exp(-fitnessGap / std::max(fitnessWindow, 1.0));
+
+        double distanceNorm = 0.0;
+        if (maxMinDistance > kWarmStartSamplingEpsilon) {
+            distanceNorm = minDistances[i] / maxMinDistance;
+        }
+        double weight = fitnessWeight * (1.0 + (kWarmStartSamplingDistanceBias * distanceNorm));
+        if (!std::isfinite(weight) || weight <= 0.0) {
+            weight = kWarmStartSamplingEpsilon;
+        }
+        weights.push_back(weight);
+    }
+
+    std::discrete_distribution<int> dist(weights.begin(), weights.end());
+    const int chosenEligible = dist(rng);
+    if (chosenEligible < 0 || chosenEligible >= static_cast<int>(eligible.size())) {
+        return -1;
+    }
+    return eligible[chosenEligible];
+}
+
 std::optional<ApiError> validateTrainingConfig(
     const Api::EvolutionStart::Command& command,
     ScenarioRegistry& registry,
@@ -186,6 +342,7 @@ std::optional<ApiError> validateTrainingConfig(
     const int warmStartSeedCount = std::max(0, command.evolution.warmStartSeedCount);
     const int warmStartMinRobustEvalCount =
         std::max(1, command.evolution.warmStartMinRobustEvalCount);
+    std::mt19937 warmSeedSamplingRng(std::random_device{}());
     if (command.resumePolicy == TrainingResumePolicy::WarmFromBest) {
         warmSeedCandidates = collectWarmSeedCandidates(repo, warmStartMinRobustEvalCount);
     }
@@ -219,11 +376,9 @@ std::optional<ApiError> validateTrainingConfig(
             if (!warmSeedCandidates.empty() && warmStartSeedCount > 0 && spec.randomCount > 0
                 && spec.count > 0) {
                 const int maxSeedsToInject = std::min(spec.randomCount, warmStartSeedCount);
-                int injectedForSpec = 0;
+                std::vector<const WarmSeedCandidate*> compatibleCandidates;
+                compatibleCandidates.reserve(warmSeedCandidates.size());
                 for (const auto& candidate : warmSeedCandidates) {
-                    if (injectedForSpec >= maxSeedsToInject) {
-                        break;
-                    }
                     if (!isWarmGenomeCompatibleForPopulation(
                             candidate.metadata, outSpec.organismType, spec)) {
                         continue;
@@ -232,11 +387,48 @@ std::optional<ApiError> validateTrainingConfig(
                         != spec.seedGenomes.end()) {
                         continue;
                     }
+                    compatibleCandidates.push_back(&candidate);
+                }
 
-                    spec.seedGenomes.push_back(candidate.id);
-                    spec.randomCount -= 1;
-                    injectedForSpec += 1;
-                    outWarmSeedInjectedCount += 1;
+                if (!compatibleCandidates.empty()) {
+                    std::vector<bool> selectedMask(compatibleCandidates.size(), false);
+                    std::vector<GenomeId> selectedSeedIds = spec.seedGenomes;
+                    std::unordered_map<GenomeId, std::optional<Genome>> genomeCache;
+                    genomeCache.reserve(compatibleCandidates.size() + selectedSeedIds.size());
+
+                    int injectedForSpec = 0;
+                    const auto injectCandidate = [&](int index) {
+                        selectedMask[index] = true;
+                        const GenomeId id = compatibleCandidates[index]->id;
+                        spec.seedGenomes.push_back(id);
+                        selectedSeedIds.push_back(id);
+                        spec.randomCount -= 1;
+                        injectedForSpec += 1;
+                        outWarmSeedInjectedCount += 1;
+                    };
+
+                    int nextIndex = findNextWarmSeedByFitness(compatibleCandidates, selectedMask);
+                    if (nextIndex >= 0 && injectedForSpec < maxSeedsToInject) {
+                        injectCandidate(nextIndex);
+                    }
+
+                    while (injectedForSpec < maxSeedsToInject) {
+                        int sampledIndex = sampleWarmSeedByFitnessAndDistance(
+                            compatibleCandidates,
+                            selectedMask,
+                            selectedSeedIds,
+                            repo,
+                            genomeCache,
+                            warmSeedSamplingRng);
+                        if (sampledIndex < 0) {
+                            sampledIndex =
+                                findNextWarmSeedByFitness(compatibleCandidates, selectedMask);
+                        }
+                        if (sampledIndex < 0) {
+                            break;
+                        }
+                        injectCandidate(sampledIndex);
+                    }
                 }
             }
 
