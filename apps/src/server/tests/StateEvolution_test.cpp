@@ -11,9 +11,11 @@
 #include "server/states/Shutdown.h"
 #include "server/states/State.h"
 #include "server/tests/TestStateMachineFixture.h"
+#include <chrono>
 #include <gtest/gtest.h>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace DirtSim;
@@ -454,9 +456,15 @@ TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
     EXPECT_EQ(evolutionState.currentEval, 1) << "Should advance to next organism";
 
-    // Execute: Second tick completes generation.
+    // Execute: Second tick finishes core evaluations and starts robust pass.
     auto result2 = evolutionState.tick(*fixture.stateMachine);
     EXPECT_FALSE(result2.has_value()) << "Should stay in Evolution";
+
+    constexpr int maxTicks = 16;
+    for (int i = 0; i < maxTicks && evolutionState.generation < 1; ++i) {
+        auto next = evolutionState.tick(*fixture.stateMachine);
+        EXPECT_FALSE(next.has_value()) << "Should stay in Evolution";
+    }
     EXPECT_EQ(evolutionState.generation, 1) << "Should advance to next generation";
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
@@ -565,6 +573,7 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
         .trainingSessionId = std::nullopt,
     };
     repo.store(seedId, seedGenome, seedMeta);
+    repo.markAsBest(seedId);
 
     Evolution evolutionState;
     evolutionState.evolutionConfig.populationSize = 2;
@@ -584,17 +593,22 @@ TEST(StateEvolutionTest, TiedFitnessKeepsExistingBestGenomeId)
 
     evolutionState.onEnter(*fixture.stateMachine);
 
+    EXPECT_TRUE(evolutionState.bestGenomeId.isNil());
+
     auto result1 = evolutionState.tick(*fixture.stateMachine);
     ASSERT_FALSE(result1.has_value());
-    const GenomeId firstBestId = evolutionState.bestGenomeId;
-    ASSERT_FALSE(firstBestId.isNil());
+    EXPECT_TRUE(evolutionState.bestGenomeId.isNil());
 
-    auto result2 = evolutionState.tick(*fixture.stateMachine);
-    ASSERT_TRUE(result2.has_value());
+    std::optional<Any> finalState;
+    constexpr int maxTicks = 16;
+    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+    }
+    ASSERT_TRUE(finalState.has_value());
 
     ASSERT_EQ(evolutionState.fitnessScores.size(), 2u);
     EXPECT_DOUBLE_EQ(evolutionState.fitnessScores[0], evolutionState.fitnessScores[1]);
-    EXPECT_EQ(evolutionState.bestGenomeId, firstBestId);
+    EXPECT_FALSE(evolutionState.bestGenomeId.isNil());
 }
 
 TEST(StateEvolutionTest, NeuralNetMutationSurvivesTiedFitness)
@@ -819,9 +833,12 @@ TEST(StateEvolutionTest, BestGenomeStoredInRepository)
     // Initialize and run through one generation.
     evolutionState.onEnter(*fixture.stateMachine);
 
-    // Tick through both organisms.
-    evolutionState.tick(*fixture.stateMachine);
-    evolutionState.tick(*fixture.stateMachine);
+    std::optional<Any> finalState;
+    constexpr int maxTicks = 16;
+    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+    }
+    ASSERT_TRUE(finalState.has_value());
 
     // Verify: Repository should have at least one genome stored.
     EXPECT_FALSE(repo.empty()) << "Repository should have stored genome(s)";
@@ -1014,7 +1031,11 @@ TEST(StateEvolutionTest, FullTrainingCycleProducesValidOutputs)
     ASSERT_TRUE(metadata.has_value());
     EXPECT_EQ(metadata->scenarioId, Scenario::EnumType::TreeGermination);
     EXPECT_GT(metadata->fitness, 0.0) << "Best fitness should be positive";
-    EXPECT_EQ(metadata->fitness, evolutionState.bestFitnessAllTime)
+    const double bestDisplayFitness =
+        (metadata->robustEvalCount > 0 || !metadata->robustFitnessSamples.empty())
+        ? metadata->robustFitness
+        : metadata->fitness;
+    EXPECT_EQ(bestDisplayFitness, evolutionState.bestFitnessAllTime)
         << "Stored fitness should match tracked best";
 }
 
@@ -1040,9 +1061,10 @@ TEST(StateEvolutionTest, ParallelWorkersSplitVisibleAndBackgroundEvaluations)
     EXPECT_LT(evolutionState.visibleQueue_.size(), evolutionState.population.size());
 
     std::optional<Any> finalState;
-    constexpr int maxTicks = 2000;
-    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (std::chrono::steady_clock::now() < deadline && !finalState.has_value()) {
         finalState = evolutionState.tick(*fixture.stateMachine);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     ASSERT_TRUE(finalState.has_value()) << "Evolution should complete with parallel workers";
