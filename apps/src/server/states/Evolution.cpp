@@ -1457,8 +1457,9 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
     }
 
     const double robustFitness = computeMedian(robustnessPassSamples_);
-    const double firstSampleFitness =
-        robustnessPassSamples_.empty() ? 0.0 : robustnessPassSamples_.front();
+    const double firstSampleFitness = std::isfinite(pendingBestRobustnessFirstSample_)
+        ? pendingBestRobustnessFirstSample_
+        : (robustnessPassSamples_.empty() ? 0.0 : robustnessPassSamples_.front());
     const GenomeMetadata meta{
         .name = "gen_" + std::to_string(robustnessPassGeneration_) + "_eval_"
             + std::to_string(robustnessPassIndex_),

@@ -478,6 +478,71 @@ TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
 
+TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTrim)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.5;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 10;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+    population.scenarioId = Scenario::EnumType::Clock;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    bool firstSampleCaptured = false;
+    double firstSampleFitness = 0.0;
+    constexpr int maxTicksBeforeMutation = 8000;
+    for (int i = 0; i < maxTicksBeforeMutation && !firstSampleCaptured; ++i) {
+        auto next = evolutionState.tick(*fixture.stateMachine);
+        ASSERT_FALSE(next.has_value()) << "Evolution should still be running";
+        if (evolutionState.currentEval >= 1 && !evolutionState.fitnessScores.empty()) {
+            firstSampleFitness = evolutionState.fitnessScores[0];
+            firstSampleCaptured = true;
+        }
+    }
+
+    ASSERT_TRUE(firstSampleCaptured) << "Expected to capture first sample fitness";
+    EXPECT_GT(firstSampleFitness, 0.0);
+
+    // Force robust re-evaluations into a different regime while keeping the first sample intact.
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+
+    std::optional<Any> finalState;
+    constexpr int maxTicksAfterMutation = 8000;
+    for (int i = 0; i < maxTicksAfterMutation && !finalState.has_value(); ++i) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+    }
+
+    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()));
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    ASSERT_EQ(metadata->robustEvalCount, 10);
+    ASSERT_EQ(metadata->robustFitnessSamples.size(), 7u);
+
+    EXPECT_DOUBLE_EQ(metadata->fitness, firstSampleFitness)
+        << "Stored fitness should preserve the original first robust sample";
+    EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples.front(), 0.0)
+        << "Trimmed robust sample window should contain only post-mutation samples";
+}
+
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 {
     TestStateMachineFixture fixture;

@@ -245,6 +245,32 @@ TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashKeepsPeakFitnessAndTracksRobustF
     EXPECT_DOUBLE_EQ(metadata->robustFitnessSamples[1], 10.0);
 }
 
+TEST_F(GenomeRepositoryTest, StoreOrUpdateByHashKeepsPeakRobustFitnessWithoutSamples)
+{
+    const auto genome = createTestGenome(0.78);
+
+    auto robustHigh = createManagedMetadata("robust_high", 20.0);
+    robustHigh.robustFitness = 18.0;
+    robustHigh.robustEvalCount = 4;
+    robustHigh.robustFitnessSamples.clear();
+
+    auto robustLow = createManagedMetadata("robust_low", 8.0);
+    robustLow.robustFitness = 6.0;
+    robustLow.robustEvalCount = 3;
+    robustLow.robustFitnessSamples.clear();
+
+    const auto first = repo.storeOrUpdateByHash(genome, robustHigh);
+    const auto second = repo.storeOrUpdateByHash(genome, robustLow);
+
+    ASSERT_EQ(first.id, second.id);
+    const auto metadata = repo.getMetadata(first.id);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_DOUBLE_EQ(metadata->fitness, 20.0);
+    EXPECT_DOUBLE_EQ(metadata->robustFitness, 18.0);
+    EXPECT_EQ(metadata->robustEvalCount, 7);
+    EXPECT_TRUE(metadata->robustFitnessSamples.empty());
+}
+
 TEST_F(GenomeRepositoryTest, PruneManagedByFitnessKeepsBestId)
 {
     const GenomeId idLow = UUID::generate();

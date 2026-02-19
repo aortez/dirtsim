@@ -223,7 +223,8 @@ GenomeMetadata mergeMetadata(const GenomeMetadata& existingRaw, const GenomeMeta
         merged = normalizeRobustMetadata(merged);
     }
     else if (merged.robustFitnessSamples.empty()) {
-        merged.robustFitness = incoming.robustFitness;
+        merged.robustFitness =
+            std::max(effectiveRobustFitness(existing), effectiveRobustFitness(incoming));
     }
 
     return merged;
