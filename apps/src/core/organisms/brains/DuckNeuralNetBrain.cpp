@@ -190,7 +190,7 @@ void DuckNeuralNetBrain::think(Duck& duck, const DuckSensoryData& sensory, doubl
         return;
     }
 
-    if (std::abs(lastMoveX_) < 0.2f) {
+    if (std::abs(lastMoveX_) <= 0.05f) {
         current_action_ = DuckAction::WAIT;
         return;
     }
