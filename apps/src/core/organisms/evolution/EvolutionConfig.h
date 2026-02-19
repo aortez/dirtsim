@@ -19,9 +19,16 @@ struct EvolutionConfig {
     double diversityEliteFitnessEpsilon =
         0.0; // Absolute fitness gap from best allowed for diversity elites.
     int robustFitnessEvaluationCount = 3; // Total evaluations used to estimate robustFitness.
-    int warmStartSeedCount = 3;           // Max warm-start seeds injected per population entry.
+    int warmStartSeedCount = 3; // Legacy warm-start seed cap per population entry (used when
+                                // warmStartSeedPercent is 0).
+    double warmStartSeedPercent =
+        20.0; // Warm-start seed share of randomCount per population entry [0, 100].
     int warmStartMinRobustEvalCount =
         2; // Minimum robust evaluations required for warm-start candidates.
+    bool warmStartAlwaysIncludeBest = true; // Always inject the best compatible warm seed first.
+    double warmStartNoveltyWeight = 0.3;    // Blend of novelty bias in warm-seed sampling [0, 1].
+    double warmStartFitnessFloorPercentile =
+        60.0; // Minimum robust-fitness percentile allowed for stochastic warm-seed sampling.
 
     // Evaluation settings.
     double maxSimulationTime = 1000.0; // Seconds of sim time per organism.

@@ -244,9 +244,33 @@ UserSettings sanitizeUserSettings(
         settings.evolutionConfig.warmStartSeedCount = 0;
         recordUpdate("warmStartSeedCount clamped to 0");
     }
+    if (settings.evolutionConfig.warmStartSeedPercent < 0.0) {
+        settings.evolutionConfig.warmStartSeedPercent = 0.0;
+        recordUpdate("warmStartSeedPercent clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartSeedPercent > 100.0) {
+        settings.evolutionConfig.warmStartSeedPercent = 100.0;
+        recordUpdate("warmStartSeedPercent clamped to 100");
+    }
     if (settings.evolutionConfig.warmStartMinRobustEvalCount < 1) {
         settings.evolutionConfig.warmStartMinRobustEvalCount = 1;
         recordUpdate("warmStartMinRobustEvalCount clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartNoveltyWeight < 0.0) {
+        settings.evolutionConfig.warmStartNoveltyWeight = 0.0;
+        recordUpdate("warmStartNoveltyWeight clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartNoveltyWeight > 1.0) {
+        settings.evolutionConfig.warmStartNoveltyWeight = 1.0;
+        recordUpdate("warmStartNoveltyWeight clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartFitnessFloorPercentile < 0.0) {
+        settings.evolutionConfig.warmStartFitnessFloorPercentile = 0.0;
+        recordUpdate("warmStartFitnessFloorPercentile clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartFitnessFloorPercentile > 100.0) {
+        settings.evolutionConfig.warmStartFitnessFloorPercentile = 100.0;
+        recordUpdate("warmStartFitnessFloorPercentile clamped to 100");
     }
     if (settings.evolutionConfig.diversityEliteCount < 0) {
         settings.evolutionConfig.diversityEliteCount = 0;

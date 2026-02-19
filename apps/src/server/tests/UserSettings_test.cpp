@@ -116,6 +116,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
                         .genomeArchiveMaxSize = 50000,
                         .diversityEliteCount = -5,
                         .diversityEliteFitnessEpsilon = -0.5,
+                        .warmStartSeedPercent = 999.0,
+                        .warmStartNoveltyWeight = -0.5,
+                        .warmStartFitnessFloorPercentile = 999.0,
                     },
                 .mutationConfig = {},
                 .trainingResumePolicy = static_cast<TrainingResumePolicy>(99),
@@ -136,6 +139,10 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(response.value().settings.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(response.value().settings.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
     EXPECT_EQ(response.value().settings.evolutionConfig.genomeArchiveMaxSize, 1000);
+    EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.warmStartSeedPercent, 100.0);
+    EXPECT_DOUBLE_EQ(
+        response.value().settings.evolutionConfig.warmStartFitnessFloorPercentile, 100.0);
+    EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.warmStartNoveltyWeight, 0.0);
     EXPECT_EQ(response.value().settings.evolutionConfig.diversityEliteCount, 0);
     EXPECT_DOUBLE_EQ(response.value().settings.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 
@@ -147,6 +154,9 @@ TEST(UserSettingsTest, UserSettingsSetClampsAndPersists)
     EXPECT_EQ(fromDisk.startMenuIdleTimeoutMs, 3600000);
     EXPECT_EQ(fromDisk.trainingResumePolicy, TrainingResumePolicy::WarmFromBest);
     EXPECT_EQ(fromDisk.evolutionConfig.genomeArchiveMaxSize, 1000);
+    EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.warmStartSeedPercent, 100.0);
+    EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.warmStartFitnessFloorPercentile, 100.0);
+    EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.warmStartNoveltyWeight, 0.0);
     EXPECT_EQ(fromDisk.evolutionConfig.diversityEliteCount, 0);
     EXPECT_DOUBLE_EQ(fromDisk.evolutionConfig.diversityEliteFitnessEpsilon, 0.0);
 }

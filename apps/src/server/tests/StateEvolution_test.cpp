@@ -11,6 +11,7 @@
 #include "server/states/Shutdown.h"
 #include "server/states/State.h"
 #include "server/tests/TestStateMachineFixture.h"
+#include <algorithm>
 #include <chrono>
 #include <gtest/gtest.h>
 #include <optional>
@@ -339,7 +340,9 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
     cmd.resumePolicy = TrainingResumePolicy::WarmFromBest;
     cmd.evolution.populationSize = 5;
     cmd.evolution.maxGenerations = 1;
-    cmd.evolution.warmStartSeedCount = 3;
+    cmd.evolution.warmStartSeedCount = 1;
+    cmd.evolution.warmStartSeedPercent = 60.0;
+    cmd.evolution.warmStartFitnessFloorPercentile = 60.0;
     cmd.evolution.warmStartMinRobustEvalCount = 3;
     cmd.scenarioId = Scenario::EnumType::TreeGermination;
     cmd.organismType = OrganismType::TREE;
@@ -364,8 +367,14 @@ TEST(StateEvolutionTest, EvolutionStartWarmResumeInjectsMultipleRobustSeeds)
     const auto& spec = evolution.trainingSpec.population.front();
     ASSERT_EQ(spec.seedGenomes.size(), 3u);
     EXPECT_EQ(spec.seedGenomes[0], robustA);
-    EXPECT_EQ(spec.seedGenomes[1], robustB);
-    EXPECT_EQ(spec.seedGenomes[2], outlierPeak);
+    EXPECT_NE(
+        std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), robustB),
+        spec.seedGenomes.end());
+    EXPECT_NE(
+        std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), outlierPeak),
+        spec.seedGenomes.end());
+    EXPECT_EQ(
+        std::find(spec.seedGenomes.begin(), spec.seedGenomes.end(), weak), spec.seedGenomes.end());
     EXPECT_EQ(spec.randomCount, 2);
 }
 
@@ -1141,6 +1150,14 @@ TEST(StateEvolutionTest, TargetCpuPercentDefaultDisabled)
 {
     EvolutionConfig config;
     EXPECT_EQ(config.targetCpuPercent, 0) << "Auto-tune should be disabled by default";
+    EXPECT_DOUBLE_EQ(config.warmStartSeedPercent, 20.0)
+        << "Warm-start seed percent should default to 20%";
+    EXPECT_TRUE(config.warmStartAlwaysIncludeBest)
+        << "Warm start should include the best robust genome by default";
+    EXPECT_DOUBLE_EQ(config.warmStartNoveltyWeight, 0.3)
+        << "Warm-start novelty mixing should default to 30%";
+    EXPECT_DOUBLE_EQ(config.warmStartFitnessFloorPercentile, 60.0)
+        << "Warm-start stochastic sampling should default to top 40% by robust fitness";
     EXPECT_EQ(config.diversityEliteCount, 1)
         << "Diversity elitism should retain one near-best elite";
     EXPECT_DOUBLE_EQ(config.diversityEliteFitnessEpsilon, 0.0)
