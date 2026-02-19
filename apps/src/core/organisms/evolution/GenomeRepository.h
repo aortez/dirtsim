@@ -61,7 +61,8 @@ public:
         const GenomeMetadata& meta,
         std::optional<GenomeId> preferredId = std::nullopt);
 
-    // Keep only the highest-fitness managed genomes (trainingSessionId set).
+    // Keep only the highest-fitness managed genomes (trainingSessionId set),
+    // limited per organismType+brainKind bucket.
     // Returns number of genomes removed.
     size_t pruneManagedByFitness(size_t maxManagedGenomes);
 

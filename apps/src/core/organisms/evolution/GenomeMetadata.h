@@ -8,6 +8,7 @@
 #include <nlohmann/json_fwd.hpp>
 #include <optional>
 #include <string>
+#include <vector>
 #include <zpp_bits.h>
 
 namespace DirtSim {
@@ -20,10 +21,13 @@ inline const GenomeId INVALID_GENOME_ID = UUID::nil();
  * Tracks provenance and performance for selection and display.
  */
 struct GenomeMetadata {
-    std::string name;              // User-provided or auto-generated.
-    double fitness = 0.0;          // Best fitness achieved.
-    int generation = 0;            // Generation it came from.
-    uint64_t createdTimestamp = 0; // Unix timestamp.
+    std::string name;                         // User-provided or auto-generated.
+    double fitness = 0.0;                     // Peak fitness achieved.
+    double robustFitness = 0.0;               // Outlier-resistant fitness estimate.
+    int robustEvalCount = 0;                  // Number of evaluations merged into robustFitness.
+    std::vector<double> robustFitnessSamples; // Rolling samples used for robustFitness.
+    int generation = 0;                       // Generation it came from.
+    uint64_t createdTimestamp = 0;            // Unix timestamp.
     Scenario::EnumType scenarioId =
         Scenario::EnumType::TreeGermination; // Which scenario it was trained on.
     std::string notes;                       // Optional user notes.
@@ -32,7 +36,7 @@ struct GenomeMetadata {
     std::optional<std::string> brainVariant;
     std::optional<UUID> trainingSessionId;
 
-    using serialize = zpp::bits::members<10>;
+    using serialize = zpp::bits::members<13>;
 };
 
 void to_json(nlohmann::json& j, const GenomeMetadata& meta);
