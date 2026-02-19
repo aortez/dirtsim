@@ -2152,10 +2152,10 @@ int main(int argc, char** argv)
                      << (progress.maxGenerations > 0 ? std::to_string(progress.maxGenerations)
                                                      : std::string("inf"));
                 line << " eval=" << progress.currentEval << "/" << progress.populationSize;
-                line << " genomes=" << progress.totalGenomeCount << "/"
-                     << (progress.genomeArchiveMaxSize > 0
-                             ? std::to_string(progress.genomeArchiveMaxSize)
-                             : std::string("inf"));
+                line << " genomes=" << progress.totalGenomeCount;
+                if (progress.genomeArchiveMaxSize > 0) {
+                    line << " capPerOrganismBrain=" << progress.genomeArchiveMaxSize;
+                }
                 line << " genBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
                      << progress.bestFitnessThisGen;
                 line << " allBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)

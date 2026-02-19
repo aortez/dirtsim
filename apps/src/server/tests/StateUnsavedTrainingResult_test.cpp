@@ -25,6 +25,9 @@ UnsavedTrainingResult::Candidate makeCandidate(double fitness, double weightValu
     candidate.metadata = GenomeMetadata{
         .name = "candidate",
         .fitness = fitness,
+        .robustFitness = fitness,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { fitness },
         .generation = 1,
         .createdTimestamp = 1234567890,
         .scenarioId = Scenario::EnumType::TreeGermination,

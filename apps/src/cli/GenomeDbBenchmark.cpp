@@ -79,6 +79,9 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         cmd.metadata = GenomeMetadata{
             .name = "test-genome",
             .fitness = 42.0,
+            .robustFitness = 42.0,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { 42.0 },
             .generation = 1,
             .createdTimestamp = 0,
             .scenarioId = Scenario::EnumType::TreeGermination,
@@ -139,6 +142,9 @@ std::string GenomeDbBenchmark::runCorrectnessTests()
         cmd.metadata = GenomeMetadata{
             .name = "test-genome-updated",
             .fitness = 99.0,
+            .robustFitness = 99.0,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { 99.0 },
             .generation = 2,
             .createdTimestamp = 0,
             .scenarioId = Scenario::EnumType::TreeGermination,
@@ -246,6 +252,9 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
             cmd.metadata = GenomeMetadata{
                 .name = "perf-genome-" + std::to_string(i),
                 .fitness = static_cast<double>(i),
+                .robustFitness = static_cast<double>(i),
+                .robustEvalCount = 1,
+                .robustFitnessSamples = { static_cast<double>(i) },
                 .generation = i,
                 .createdTimestamp = 0,
                 .scenarioId = Scenario::EnumType::TreeGermination,
@@ -301,6 +310,9 @@ void GenomeDbBenchmark::runPerformanceTests(int count, GenomeDbBenchmarkResults&
             cmd.metadata = GenomeMetadata{
                 .name = "perf-genome-updated-" + std::to_string(i),
                 .fitness = static_cast<double>(i * 2),
+                .robustFitness = static_cast<double>(i * 2),
+                .robustEvalCount = 1,
+                .robustFitnessSamples = { static_cast<double>(i * 2) },
                 .generation = i + 100,
                 .createdTimestamp = 0,
                 .scenarioId = Scenario::EnumType::TreeGermination,

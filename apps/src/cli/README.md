@@ -482,7 +482,7 @@ timeout 10 ./build-debug/bin/cli progress --address ws://garden.local:8080
 Sample output:
 
 ```text
-gen=3/inf eval=42/100 genomes=71/5000 genBest=2.731234 allBest=2.812000 avg=0.664900 src=offspring_mutated bestGenome=1c515ca1
+gen=3/inf eval=42/100 genomes=71 capPerOrganismBrain=5000 genBest=2.731234 allBest=2.812000 avg=0.664900 src=offspring_mutated bestGenome=1c515ca1
 bestCmdHistogram genome=1c515ca1 accepted=118 rejected=42 source=topSignatures Wait=56 GrowLeaf=31 GrowRoot=19 GrowWood=7 ProduceSeed=5
 ```
 

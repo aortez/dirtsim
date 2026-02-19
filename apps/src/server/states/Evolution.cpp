@@ -37,10 +37,8 @@ constexpr auto kProgressBroadcastInterval = std::chrono::milliseconds(100);
 constexpr size_t kTopCommandSignatureLimit = 20;
 constexpr size_t kTelemetrySignatureLimit = 6;
 constexpr size_t kFitnessDistributionBinCount = 16;
-constexpr auto kBestSnapshotTieBroadcastMinInterval = std::chrono::seconds(1);
-constexpr size_t kBestSnapshotVariantFingerprintMax = 64;
-constexpr int kBestSnapshotVariantsMaxPerGeneration = 4;
 constexpr double kBestFitnessTieRelativeEpsilon = 1e-12;
+constexpr size_t kRobustFitnessSampleWindow = 7;
 
 uint64_t fnv1aAppendBytes(uint64_t hash, const std::byte* data, size_t len)
 {
@@ -75,6 +73,23 @@ bool fitnessTiesBest(double fitness, double bestFitness)
     return std::abs(fitness - bestFitness) <= (kBestFitnessTieRelativeEpsilon * scale);
 }
 
+double computeMedian(std::vector<double> samples)
+{
+    if (samples.empty()) {
+        return 0.0;
+    }
+
+    const size_t mid = samples.size() / 2;
+    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
+    const double upper = samples[mid];
+    if ((samples.size() % 2) != 0) {
+        return upper;
+    }
+
+    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
+    return (samples[mid - 1] + upper) * 0.5;
+}
+
 uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
 {
     uint64_t hash = 0;
@@ -92,36 +107,6 @@ uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
 
     appendTop(result.topCommandOutcomeSignatures, "out");
     appendTop(result.topCommandSignatures, "cmd");
-
-    return hash;
-}
-
-uint64_t computeBestSnapshotFingerprint(const Evolution::WorkerResult& result)
-{
-    uint64_t hash = 0;
-
-    const auto appendInt = [&](int value) {
-        hash = fnv1aAppendBytes(hash, reinterpret_cast<const std::byte*>(&value), sizeof(value));
-    };
-
-    appendInt(result.commandsAccepted);
-    appendInt(result.commandsRejected);
-
-    const auto appendTopWithCounts = [&](const auto& entries, const char* label) {
-        hash = fnv1aAppendString(hash, label);
-        hash = fnv1aAppendString(hash, ":");
-        const size_t limit = std::min(entries.size(), kTopCommandSignatureLimit);
-        for (size_t i = 0; i < limit; ++i) {
-            hash = fnv1aAppendString(hash, entries[i].first);
-            hash = fnv1aAppendString(hash, "#");
-            appendInt(entries[i].second);
-            hash = fnv1aAppendString(hash, "|");
-        }
-        hash = fnv1aAppendString(hash, ";");
-    };
-
-    appendTopWithCounts(result.topCommandOutcomeSignatures, "out");
-    appendTopWithCounts(result.topCommandSignatures, "cmd");
 
     return hash;
 }
@@ -326,6 +311,13 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+double computeFitnessForRunner(
+    const TrainingRunner& runner,
+    const TrainingRunner::Status& status,
+    OrganismType organismType,
+    const EvolutionConfig& evolutionConfig,
+    std::optional<TreeFitnessBreakdown>* breakdownOut);
+
 TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& individual)
 {
     TrainingRunner::Individual runner;
@@ -423,7 +415,46 @@ const char* toProgressSource(Evolution::IndividualOrigin origin)
     return "none";
 }
 
-GenomeId storeManagedGenome(
+void broadcastTrainingBestSnapshot(
+    StateMachine& dsm,
+    Evolution::EvaluationSnapshot snapshot,
+    double fitness,
+    int generation,
+    int commandsAccepted,
+    int commandsRejected,
+    const std::vector<std::pair<std::string, int>>& topCommandSignatures,
+    const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
+{
+    Api::TrainingBestSnapshot bestSnapshot;
+    bestSnapshot.worldData = std::move(snapshot.worldData);
+    bestSnapshot.organismIds = std::move(snapshot.organismIds);
+    bestSnapshot.fitness = fitness;
+    bestSnapshot.generation = generation;
+    bestSnapshot.commandsAccepted = commandsAccepted;
+    bestSnapshot.commandsRejected = commandsRejected;
+    bestSnapshot.topCommandSignatures.reserve(topCommandSignatures.size());
+    for (const auto& [signature, count] : topCommandSignatures) {
+        bestSnapshot.topCommandSignatures.push_back(
+            Api::TrainingBestSnapshot::CommandSignatureCount{
+                .signature = signature,
+                .count = count,
+            });
+    }
+    bestSnapshot.topCommandOutcomeSignatures.reserve(topCommandOutcomeSignatures.size());
+    for (const auto& [signature, count] : topCommandOutcomeSignatures) {
+        bestSnapshot.topCommandOutcomeSignatures.push_back(
+            Api::TrainingBestSnapshot::CommandSignatureCount{
+                .signature = signature,
+                .count = count,
+            });
+    }
+
+    dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
+    dsm.broadcastEventData(
+        Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
+}
+
+GenomeRepository::StoreByHashResult storeManagedGenome(
     StateMachine& dsm,
     const Genome& genome,
     const GenomeMetadata& metadata,
@@ -452,13 +483,13 @@ GenomeId storeManagedGenome(
         if (pruned > 0) {
             LOG_INFO(
                 State,
-                "Evolution: Pruned {} managed genomes (max_archive={})",
+                "Evolution: Pruned {} managed genomes (max_per_organism_brain={})",
                 pruned,
                 archiveMaxSize);
         }
     }
 
-    return storeResult.id;
+    return storeResult;
 }
 } // namespace
 
@@ -516,15 +547,18 @@ void Evolution::onEnter(StateMachine& dsm)
     lastBreedingWeightChangesAvg_ = 0.0;
     lastBreedingWeightChangesMin_ = 0;
     lastBreedingWeightChangesMax_ = 0;
-    bestSnapshotVariantFingerprints_.clear();
-    bestSnapshotVariantFingerprintOrder_.clear();
-    lastBestSnapshotBroadcastTime_ = std::chrono::steady_clock::time_point{};
-    bestSnapshotVariantBroadcastCountThisGen_ = 0;
+    pendingBestSnapshot_.reset();
+    pendingBestSnapshotCommandsAccepted_ = 0;
+    pendingBestSnapshotCommandsRejected_ = 0;
+    pendingBestSnapshotTopCommandSignatures_.clear();
+    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
     timerStatsAggregate_.clear();
     dsm.clearCachedTrainingBestSnapshot();
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
+    visibleEvalIsRobustness_ = false;
+    visibleRobustSampleOrdinal_ = 0;
     workerState_ = std::make_unique<WorkerState>();
 
     // Seed RNG.
@@ -748,10 +782,30 @@ void Evolution::initializePopulation(StateMachine& dsm)
     pruneBeforeBreeding_ = false;
     completedEvaluations_ = 0;
     sumFitnessThisGen_ = 0.0;
+    pendingBestRobustness_ = false;
+    pendingBestRobustnessGeneration_ = -1;
+    pendingBestRobustnessIndex_ = -1;
+    pendingBestRobustnessFirstSample_ = 0.0;
+    pendingBestSnapshot_.reset();
+    pendingBestSnapshotCommandsAccepted_ = 0;
+    pendingBestSnapshotCommandsRejected_ = 0;
+    pendingBestSnapshotTopCommandSignatures_.clear();
+    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
+    robustnessPassActive_ = false;
+    robustnessPassGeneration_ = -1;
+    robustnessPassIndex_ = -1;
+    robustnessPassTargetEvalCount_ = 0;
+    robustnessPassPendingSamples_ = 0;
+    robustnessPassCompletedSamples_ = 0;
+    robustnessPassVisibleSamplesRemaining_ = 0;
+    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassSamples_.clear();
 
     visibleRunner_.reset();
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
+    visibleEvalIsRobustness_ = false;
+    visibleRobustSampleOrdinal_ = 0;
     visibleScenarioConfig_ = Config::Empty{};
     visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
 }
@@ -843,6 +897,8 @@ void Evolution::stopWorkers()
     visibleQueue_.clear();
     visibleRunner_.reset();
     visibleEvalIndex_ = -1;
+    visibleEvalIsRobustness_ = false;
+    visibleRobustSampleOrdinal_ = 0;
 }
 
 void Evolution::queueGenerationTasks()
@@ -895,12 +951,42 @@ void Evolution::drainResults(StateMachine& dsm)
 
 void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
 {
-    if (visibleRunner_ || visibleQueue_.empty()) {
+    if (visibleRunner_) {
+        return;
+    }
+
+    if (robustnessPassActive_ && robustnessPassVisibleSamplesRemaining_ > 0) {
+        if (robustnessPassIndex_ < 0
+            || robustnessPassIndex_ >= static_cast<int>(population.size())) {
+            return;
+        }
+
+        visibleEvalIndex_ = robustnessPassIndex_;
+        visibleEvalIsRobustness_ = true;
+        visibleRobustSampleOrdinal_ = robustnessPassNextVisibleSampleOrdinal_++;
+        robustnessPassVisibleSamplesRemaining_--;
+
+        const Individual& individual = population[visibleEvalIndex_];
+        const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+        visibleRunner_ = std::make_unique<TrainingRunner>(
+            trainingSpec,
+            makeRunnerIndividual(individual),
+            evolutionConfig,
+            dsm.getGenomeRepository(),
+            runnerConfig);
+        visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+        visibleScenarioId_ = individual.scenarioId;
+        return;
+    }
+
+    if (robustnessPassActive_ || visibleQueue_.empty()) {
         return;
     }
 
     visibleEvalIndex_ = visibleQueue_.front();
     visibleQueue_.pop_front();
+    visibleEvalIsRobustness_ = false;
+    visibleRobustSampleOrdinal_ = 0;
 
     const Individual& individual = population[visibleEvalIndex_];
     const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
@@ -952,25 +1038,40 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
     const bool evalComplete = status.state != TrainingRunner::State::Running;
     if (status.state != TrainingRunner::State::Running) {
         WorkerResult result;
+        result.taskType = visibleEvalIsRobustness_ ? WorkerResult::TaskType::RobustnessEval
+                                                   : WorkerResult::TaskType::GenerationEval;
         result.index = visibleEvalIndex_;
+        if (visibleEvalIsRobustness_) {
+            result.robustGeneration = robustnessPassGeneration_;
+            result.robustSampleOrdinal = visibleRobustSampleOrdinal_;
+        }
         result.simTime = status.simTime;
         result.commandsAccepted = status.commandsAccepted;
         result.commandsRejected = status.commandsRejected;
-        result.topCommandSignatures =
-            visibleRunner_->getTopCommandSignatures(kTopCommandSignatureLimit);
-        result.topCommandOutcomeSignatures =
-            visibleRunner_->getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
-        std::optional<TreeFitnessBreakdown> breakdown;
-        result.fitness = computeFitnessForRunner(
-            *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
-        result.treeFitnessBreakdown = breakdown;
-        if (const World* world = visibleRunner_->getWorld()) {
-            result.timerStats = collectTimerStats(world->getTimers());
+
+        if (visibleEvalIsRobustness_) {
+            result.fitness = computeFitnessForRunner(
+                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, nullptr);
         }
-        result.snapshot = buildEvaluationSnapshot(*visibleRunner_);
+        else {
+            result.topCommandSignatures =
+                visibleRunner_->getTopCommandSignatures(kTopCommandSignatureLimit);
+            result.topCommandOutcomeSignatures =
+                visibleRunner_->getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
+            std::optional<TreeFitnessBreakdown> breakdown;
+            result.fitness = computeFitnessForRunner(
+                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
+            result.treeFitnessBreakdown = breakdown;
+            if (const World* world = visibleRunner_->getWorld()) {
+                result.timerStats = collectTimerStats(world->getTimers());
+            }
+            result.snapshot = buildEvaluationSnapshot(*visibleRunner_);
+        }
         processResult(dsm, std::move(result));
         visibleRunner_.reset();
         visibleEvalIndex_ = -1;
+        visibleEvalIsRobustness_ = false;
+        visibleRobustSampleOrdinal_ = 0;
     }
 
     if (shouldBroadcast || evalComplete) {
@@ -997,10 +1098,19 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     }
 
     WorkerResult result;
+    result.taskType = task.taskType;
     result.index = task.index;
+    result.robustGeneration = task.robustGeneration;
+    result.robustSampleOrdinal = task.robustSampleOrdinal;
     result.simTime = status.simTime;
     result.commandsAccepted = status.commandsAccepted;
     result.commandsRejected = status.commandsRejected;
+    if (task.taskType == WorkerResult::TaskType::RobustnessEval) {
+        result.fitness = computeFitnessForRunner(
+            runner, status, state.trainingSpec.organismType, state.evolutionConfig, nullptr);
+        return result;
+    }
+
     result.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
     result.topCommandOutcomeSignatures =
         runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
@@ -1018,6 +1128,12 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
 void Evolution::processResult(StateMachine& dsm, WorkerResult result)
 {
     if (result.index < 0 || result.index >= static_cast<int>(population.size())) {
+        return;
+    }
+
+    if (result.taskType == WorkerResult::TaskType::RobustnessEval) {
+        handleRobustnessSampleResult(dsm, result);
+        maybeCompleteGeneration(dsm);
         return;
     }
 
@@ -1094,117 +1210,57 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
             bestThisGenOrigin_ = IndividualOrigin::Unknown;
         }
     }
-    const uint64_t bestSnapshotFingerprint = computeBestSnapshotFingerprint(result);
-    const auto now = std::chrono::steady_clock::now();
-    const auto broadcastBestSnapshot = [&](const char* reason) -> bool {
-        if (!result.snapshot.has_value()) {
-            LOG_WARN(
-                State,
-                "Evolution: Missing snapshot for best snapshot broadcast (reason={} gen={} "
-                "eval={})",
-                reason,
-                generation,
-                result.index);
-            return false;
-        }
-
-        Api::TrainingBestSnapshot bestSnapshot;
-        bestSnapshot.worldData = std::move(result.snapshot->worldData);
-        bestSnapshot.organismIds = std::move(result.snapshot->organismIds);
-        bestSnapshot.fitness = result.fitness;
-        bestSnapshot.generation = generation;
-        bestSnapshot.commandsAccepted = result.commandsAccepted;
-        bestSnapshot.commandsRejected = result.commandsRejected;
-        bestSnapshot.topCommandSignatures.reserve(result.topCommandSignatures.size());
-        for (const auto& [signature, count] : result.topCommandSignatures) {
-            bestSnapshot.topCommandSignatures.push_back(
-                Api::TrainingBestSnapshot::CommandSignatureCount{
-                    .signature = signature,
-                    .count = count,
-                });
-        }
-        bestSnapshot.topCommandOutcomeSignatures.reserve(result.topCommandOutcomeSignatures.size());
-        for (const auto& [signature, count] : result.topCommandOutcomeSignatures) {
-            bestSnapshot.topCommandOutcomeSignatures.push_back(
-                Api::TrainingBestSnapshot::CommandSignatureCount{
-                    .signature = signature,
-                    .count = count,
-                });
-        }
-        dsm.updateCachedTrainingBestSnapshot(bestSnapshot);
-        dsm.broadcastEventData(
-            Api::TrainingBestSnapshot::name(), Network::serialize_payload(bestSnapshot));
-        return true;
-    };
-
     if (result.fitness > bestFitnessAllTime) {
-        bestFitnessAllTime = result.fitness;
-        bestSnapshotVariantFingerprints_.clear();
-        bestSnapshotVariantFingerprintOrder_.clear();
-        bestSnapshotVariantBroadcastCountThisGen_ = 0;
-        lastBestSnapshotBroadcastTime_ = std::chrono::steady_clock::time_point{};
-
-        if (broadcastBestSnapshot("new-record")) {
-            lastBestSnapshotBroadcastTime_ = now;
-            bestSnapshotVariantFingerprints_.insert(bestSnapshotFingerprint);
-            bestSnapshotVariantFingerprintOrder_.push_back(bestSnapshotFingerprint);
-        }
-
         const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
-            const GenomeMetadata meta{
-                .name =
-                    "gen_" + std::to_string(generation) + "_eval_" + std::to_string(result.index),
-                .fitness = result.fitness,
-                .generation = generation,
-                .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
-                .scenarioId = individual.scenarioId,
-                .notes = "",
-                .organismType = trainingSpec.organismType,
-                .brainKind = individual.brainKind,
-                .brainVariant = individual.brainVariant,
-                .trainingSessionId = trainingSessionId_,
-            };
-            bestGenomeId = storeManagedGenome(
-                dsm,
-                individual.genome.value(),
-                meta,
-                evolutionConfig.genomeArchiveMaxSize,
-                "all-time best");
-            auto& repo = dsm.getGenomeRepository();
-            repo.markAsBest(bestGenomeId);
+            const bool replacePendingCandidate = !pendingBestRobustness_
+                || pendingBestRobustnessGeneration_ != generation
+                || result.fitness > pendingBestRobustnessFirstSample_;
+            if (replacePendingCandidate) {
+                pendingBestRobustness_ = true;
+                pendingBestRobustnessGeneration_ = generation;
+                pendingBestRobustnessIndex_ = result.index;
+                pendingBestRobustnessFirstSample_ = result.fitness;
+                pendingBestSnapshot_ = std::move(result.snapshot);
+                pendingBestSnapshotCommandsAccepted_ = result.commandsAccepted;
+                pendingBestSnapshotCommandsRejected_ = result.commandsRejected;
+                pendingBestSnapshotTopCommandSignatures_ = std::move(result.topCommandSignatures);
+                pendingBestSnapshotTopCommandOutcomeSignatures_ =
+                    std::move(result.topCommandOutcomeSignatures);
+                if (!pendingBestSnapshot_.has_value()) {
+                    LOG_WARN(
+                        State,
+                        "Evolution: Missing snapshot for pending robust best (gen={} eval={})",
+                        generation,
+                        result.index);
+                }
+                LOG_INFO(
+                    State,
+                    "Evolution: Best candidate {:.4f} at gen {} eval {} "
+                    "(queued robust validation)",
+                    result.fitness,
+                    generation,
+                    result.index);
+            }
         }
         else {
+            bestFitnessAllTime = result.fitness;
+            pendingBestRobustness_ = false;
+            pendingBestRobustnessGeneration_ = -1;
+            pendingBestRobustnessIndex_ = -1;
+            pendingBestRobustnessFirstSample_ = 0.0;
+            pendingBestSnapshot_.reset();
+            pendingBestSnapshotCommandsAccepted_ = 0;
+            pendingBestSnapshotCommandsRejected_ = 0;
+            pendingBestSnapshotTopCommandSignatures_.clear();
+            pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
             bestGenomeId = INVALID_GENOME_ID;
-        }
-
-        LOG_INFO(
-            State,
-            "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
-            result.fitness,
-            generation,
-            result.index);
-    }
-    else if (fitnessTiesBest(result.fitness, bestFitnessAllTime)) {
-        const bool reachedVariantLimit =
-            bestSnapshotVariantBroadcastCountThisGen_ >= kBestSnapshotVariantsMaxPerGeneration;
-        const bool fingerprintSeen = bestSnapshotVariantFingerprints_.find(bestSnapshotFingerprint)
-            != bestSnapshotVariantFingerprints_.end();
-        const bool withinCooldown =
-            lastBestSnapshotBroadcastTime_ != std::chrono::steady_clock::time_point{}
-            && now - lastBestSnapshotBroadcastTime_ < kBestSnapshotTieBroadcastMinInterval;
-        if (!reachedVariantLimit && !fingerprintSeen && !withinCooldown
-            && broadcastBestSnapshot("tied-best")) {
-            lastBestSnapshotBroadcastTime_ = now;
-            bestSnapshotVariantBroadcastCountThisGen_++;
-            bestSnapshotVariantFingerprints_.insert(bestSnapshotFingerprint);
-            bestSnapshotVariantFingerprintOrder_.push_back(bestSnapshotFingerprint);
-            while (bestSnapshotVariantFingerprintOrder_.size()
-                   > kBestSnapshotVariantFingerprintMax) {
-                const uint64_t oldFingerprint = bestSnapshotVariantFingerprintOrder_.front();
-                bestSnapshotVariantFingerprintOrder_.pop_front();
-                bestSnapshotVariantFingerprints_.erase(oldFingerprint);
-            }
+            LOG_INFO(
+                State,
+                "Evolution: Best fitness updated {:.4f} at gen {} eval {}",
+                result.fitness,
+                generation,
+                result.index);
         }
     }
 
@@ -1242,11 +1298,263 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
     maybeCompleteGeneration(dsm);
 }
 
+void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
+{
+    if (robustnessPassActive_) {
+        return;
+    }
+
+    if (!pendingBestRobustness_) {
+        return;
+    }
+
+    if (pendingBestRobustnessGeneration_ != generation) {
+        pendingBestRobustness_ = false;
+        return;
+    }
+
+    if (pendingBestRobustnessIndex_ < 0
+        || pendingBestRobustnessIndex_ >= static_cast<int>(population.size())) {
+        pendingBestRobustness_ = false;
+        return;
+    }
+
+    const Individual& candidate = population[pendingBestRobustnessIndex_];
+    if (!candidate.genome.has_value()) {
+        pendingBestRobustness_ = false;
+        return;
+    }
+
+    robustnessPassActive_ = true;
+    robustnessPassGeneration_ = generation;
+    robustnessPassIndex_ = pendingBestRobustnessIndex_;
+    robustnessPassTargetEvalCount_ = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    robustnessPassCompletedSamples_ = 0;
+    robustnessPassPendingSamples_ = std::max(0, robustnessPassTargetEvalCount_ - 1);
+    robustnessPassVisibleSamplesRemaining_ = 0;
+    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassSamples_.clear();
+    robustnessPassSamples_.push_back(pendingBestRobustnessFirstSample_);
+
+    pendingBestRobustness_ = false;
+
+    const bool hasWorkerPool = workerState_ && workerState_->backgroundWorkerCount > 0;
+    if (robustnessPassPendingSamples_ > 0) {
+        robustnessPassVisibleSamplesRemaining_ = hasWorkerPool ? 1 : robustnessPassPendingSamples_;
+    }
+    const int workerSampleCount =
+        robustnessPassPendingSamples_ - robustnessPassVisibleSamplesRemaining_;
+
+    LOG_INFO(
+        State,
+        "Evolution: Starting robust pass for gen {} eval {} "
+        "(target evals={}, extra samples={}, visible samples={}, worker samples={})",
+        robustnessPassGeneration_,
+        robustnessPassIndex_,
+        robustnessPassTargetEvalCount_,
+        robustnessPassPendingSamples_,
+        robustnessPassVisibleSamplesRemaining_,
+        workerSampleCount);
+
+    if (workerSampleCount <= 0) {
+        return;
+    }
+
+    const int firstWorkerSampleOrdinal = 2 + robustnessPassVisibleSamplesRemaining_;
+    {
+        std::lock_guard<std::mutex> lock(workerState_->taskMutex);
+        for (int i = 0; i < workerSampleCount; ++i) {
+            workerState_->taskQueue.push_back(
+                WorkerTask{
+                    .taskType = WorkerResult::TaskType::RobustnessEval,
+                    .index = robustnessPassIndex_,
+                    .robustGeneration = robustnessPassGeneration_,
+                    .robustSampleOrdinal = firstWorkerSampleOrdinal + i,
+                    .individual = candidate,
+                });
+        }
+    }
+
+    workerState_->taskCv.notify_all();
+}
+
+void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result)
+{
+    if (!robustnessPassActive_) {
+        return;
+    }
+
+    if (result.robustGeneration != robustnessPassGeneration_) {
+        return;
+    }
+
+    if (result.index != robustnessPassIndex_) {
+        return;
+    }
+
+    if (robustnessPassPendingSamples_ <= 0) {
+        return;
+    }
+
+    robustnessPassSamples_.push_back(result.fitness);
+    robustnessPassPendingSamples_--;
+    robustnessPassCompletedSamples_++;
+
+    LOG_INFO(
+        State,
+        "Evolution: Robust sample {}/{} for gen {} eval {} = {:.4f}",
+        robustnessPassCompletedSamples_ + 1,
+        robustnessPassTargetEvalCount_,
+        robustnessPassGeneration_,
+        robustnessPassIndex_,
+        result.fitness);
+
+    broadcastProgress(dsm);
+}
+
+void Evolution::finalizeRobustnessPass(StateMachine& dsm)
+{
+    if (!robustnessPassActive_) {
+        return;
+    }
+
+    if (robustnessPassPendingSamples_ > 0) {
+        return;
+    }
+
+    if (robustnessPassSamples_.size() > kRobustFitnessSampleWindow) {
+        robustnessPassSamples_.erase(
+            robustnessPassSamples_.begin(),
+            robustnessPassSamples_.end()
+                - static_cast<std::vector<double>::difference_type>(kRobustFitnessSampleWindow));
+    }
+
+    if (robustnessPassIndex_ < 0 || robustnessPassIndex_ >= static_cast<int>(population.size())) {
+        robustnessPassActive_ = false;
+        robustnessPassGeneration_ = -1;
+        robustnessPassIndex_ = -1;
+        robustnessPassTargetEvalCount_ = 0;
+        robustnessPassPendingSamples_ = 0;
+        robustnessPassCompletedSamples_ = 0;
+        robustnessPassVisibleSamplesRemaining_ = 0;
+        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassSamples_.clear();
+        return;
+    }
+
+    const Individual& individual = population[robustnessPassIndex_];
+    if (!individual.genome.has_value()) {
+        robustnessPassActive_ = false;
+        robustnessPassGeneration_ = -1;
+        robustnessPassIndex_ = -1;
+        robustnessPassTargetEvalCount_ = 0;
+        robustnessPassPendingSamples_ = 0;
+        robustnessPassCompletedSamples_ = 0;
+        robustnessPassVisibleSamplesRemaining_ = 0;
+        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassSamples_.clear();
+        return;
+    }
+
+    const double robustFitness = computeMedian(robustnessPassSamples_);
+    const double firstSampleFitness = std::isfinite(pendingBestRobustnessFirstSample_)
+        ? pendingBestRobustnessFirstSample_
+        : (robustnessPassSamples_.empty() ? 0.0 : robustnessPassSamples_.front());
+    const GenomeMetadata meta{
+        .name = "gen_" + std::to_string(robustnessPassGeneration_) + "_eval_"
+            + std::to_string(robustnessPassIndex_),
+        .fitness = firstSampleFitness,
+        .robustFitness = robustFitness,
+        .robustEvalCount = robustnessPassTargetEvalCount_,
+        .robustFitnessSamples = robustnessPassSamples_,
+        .generation = robustnessPassGeneration_,
+        .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
+        .scenarioId = individual.scenarioId,
+        .notes = "",
+        .organismType = trainingSpec.organismType,
+        .brainKind = individual.brainKind,
+        .brainVariant = individual.brainVariant,
+        .trainingSessionId = trainingSessionId_,
+    };
+
+    const auto storeResult = storeManagedGenome(
+        dsm,
+        individual.genome.value(),
+        meta,
+        evolutionConfig.genomeArchiveMaxSize,
+        "all-time best (robust pass)");
+    auto& repo = dsm.getGenomeRepository();
+    const bool hasSessionBest = !bestGenomeId.isNil();
+    const bool robustBestUpdated = !hasSessionBest
+        || (!fitnessTiesBest(robustFitness, bestFitnessAllTime)
+            && robustFitness > bestFitnessAllTime);
+    if (robustBestUpdated) {
+        repo.markAsBest(storeResult.id);
+        bestGenomeId = storeResult.id;
+        bestFitnessAllTime = robustFitness;
+        LOG_INFO(
+            State,
+            "Evolution: Promoted genome {} as current-session best (robust {:.4f})",
+            storeResult.id.toShortString(),
+            robustFitness);
+
+        if (pendingBestSnapshot_.has_value()) {
+            broadcastTrainingBestSnapshot(
+                dsm,
+                std::move(pendingBestSnapshot_.value()),
+                robustFitness,
+                robustnessPassGeneration_,
+                pendingBestSnapshotCommandsAccepted_,
+                pendingBestSnapshotCommandsRejected_,
+                pendingBestSnapshotTopCommandSignatures_,
+                pendingBestSnapshotTopCommandOutcomeSignatures_);
+        }
+        else {
+            LOG_WARN(
+                State,
+                "Evolution: Missing snapshot for robust best broadcast (gen={} eval={})",
+                robustnessPassGeneration_,
+                robustnessPassIndex_);
+        }
+    }
+
+    LOG_INFO(
+        State,
+        "Evolution: Finalized robust pass for gen {} eval {} (robust {:.4f}, evals {})",
+        robustnessPassGeneration_,
+        robustnessPassIndex_,
+        robustFitness,
+        robustnessPassTargetEvalCount_);
+
+    robustnessPassActive_ = false;
+    robustnessPassGeneration_ = -1;
+    robustnessPassIndex_ = -1;
+    robustnessPassTargetEvalCount_ = 0;
+    robustnessPassPendingSamples_ = 0;
+    robustnessPassCompletedSamples_ = 0;
+    robustnessPassVisibleSamplesRemaining_ = 0;
+    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassSamples_.clear();
+    pendingBestSnapshot_.reset();
+    pendingBestSnapshotCommandsAccepted_ = 0;
+    pendingBestSnapshotCommandsRejected_ = 0;
+    pendingBestSnapshotTopCommandSignatures_.clear();
+    pendingBestSnapshotTopCommandOutcomeSignatures_.clear();
+}
+
 void Evolution::maybeCompleteGeneration(StateMachine& dsm)
 {
     const int generationPopulationSize = static_cast<int>(population.size());
     if (currentEval < generationPopulationSize) {
         return;
+    }
+
+    startRobustnessPass(dsm);
+    if (robustnessPassActive_) {
+        if (robustnessPassPendingSamples_ > 0) {
+            return;
+        }
+        finalizeRobustnessPass(dsm);
     }
 
     captureLastGenerationFitnessDistribution();
@@ -1274,6 +1582,11 @@ void Evolution::advanceGeneration(StateMachine& dsm)
         generation,
         bestFitnessThisGen,
         bestFitnessAllTime);
+    DIRTSIM_ASSERT(!robustnessPassActive_, "Evolution: robust pass must complete before advance");
+    pendingBestRobustness_ = false;
+    pendingBestRobustnessGeneration_ = -1;
+    pendingBestRobustnessIndex_ = -1;
+    pendingBestRobustnessFirstSample_ = 0.0;
 
     // Store best genome periodically.
     if (generation % saveInterval == 0) {
@@ -1472,7 +1785,6 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 
     // Advance to next generation.
     generation++;
-    bestSnapshotVariantBroadcastCountThisGen_ = 0;
 
     // Only reset for next generation if we're not at the end.
     // This preserves currentEval at the generation-complete value in the final broadcast,
@@ -1644,11 +1956,8 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         eta = remainingIndividuals * avgRealTimePerIndividual;
     }
 
-    double bestAllTime = bestFitnessAllTime;
-    if (generation == 0 && currentEval == 0
-        && bestAllTime == std::numeric_limits<double>::lowest()) {
-        bestAllTime = 0.0;
-    }
+    auto& repo = dsm.getGenomeRepository();
+    const double bestAllTime = bestGenomeId.isNil() ? 0.0 : bestFitnessAllTime;
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
@@ -1657,7 +1966,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         activeParallelism = workerState_->allowedConcurrency.load() + 1; // +1 for main thread.
     }
 
-    const size_t totalGenomeCount = dsm.getGenomeRepository().count();
+    const size_t totalGenomeCount = repo.count();
     const int totalGenomeCountForProgress =
         totalGenomeCount > static_cast<size_t>(std::numeric_limits<int>::max())
         ? std::numeric_limits<int>::max()
@@ -1782,6 +2091,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
     const GenomeMetadata meta{
         .name = "checkpoint_gen_" + std::to_string(generation),
         .fitness = bestFit,
+        .robustFitness = bestFit,
+        .robustEvalCount = 1,
+        .robustFitnessSamples = { bestFit },
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = population[bestIdx].scenarioId,
@@ -1791,18 +2103,16 @@ void Evolution::storeBestGenome(StateMachine& dsm)
         .brainVariant = population[bestIdx].brainVariant,
         .trainingSessionId = trainingSessionId_,
     };
-    const GenomeId id = storeManagedGenome(
+    const auto storeResult = storeManagedGenome(
         dsm,
         population[bestIdx].genome.value(),
         meta,
         evolutionConfig.genomeArchiveMaxSize,
         "checkpoint");
 
-    if (bestFit >= bestFitnessAllTime) {
-        auto& repo = dsm.getGenomeRepository();
-        repo.markAsBest(id);
-        bestGenomeId = id;
-    }
+    auto& repo = dsm.getGenomeRepository();
+    bestGenomeId = repo.getBestId().value_or(INVALID_GENOME_ID);
+    (void)storeResult;
 
     LOG_INFO(
         State, "Evolution: Stored checkpoint genome (gen {}, fitness {:.4f})", generation, bestFit);
@@ -1819,7 +2129,7 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
     result.summary.populationSize = evolutionConfig.populationSize;
     result.summary.maxGenerations = evolutionConfig.maxGenerations;
     result.summary.completedGenerations = evolutionConfig.maxGenerations;
-    result.summary.bestFitness = bestFitnessAllTime;
+    result.summary.bestFitness = bestGenomeId.isNil() ? 0.0 : bestFitnessAllTime;
     result.summary.averageFitness = finalAverageFitness_;
     result.summary.totalTrainingSeconds = finalTrainingSeconds_;
     result.summary.trainingSessionId = trainingSessionId_;
@@ -1857,6 +2167,9 @@ UnsavedTrainingResult Evolution::buildUnsavedTrainingResult()
         candidate.metadata = GenomeMetadata{
             .name = "",
             .fitness = candidate.fitness,
+            .robustFitness = candidate.fitness,
+            .robustEvalCount = 1,
+            .robustFitnessSamples = { candidate.fitness },
             .generation = generationIndex,
             .createdTimestamp = now,
             .scenarioId = population[i].scenarioId,
