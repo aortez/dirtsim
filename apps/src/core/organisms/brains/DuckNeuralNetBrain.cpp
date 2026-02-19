@@ -180,18 +180,12 @@ void DuckNeuralNetBrain::think(Duck& duck, const DuckSensoryData& sensory, doubl
         const auto& output = impl_->forward(input);
 
         lastMoveX_ = static_cast<float>(std::tanh(output[0]));
-        jumpLatch_ = output[1] > 0.0f;
+        jumpHeld_ = output[1] > 0.0f;
     }
 
-    bool should_jump = false;
-    if (jumpLatch_ && sensory.on_ground) {
-        should_jump = true;
-        jumpLatch_ = false;
-    }
+    duck.setInput({ .move = { lastMoveX_, 0.0f }, .jump = jumpHeld_ });
 
-    duck.setInput({ .move = { lastMoveX_, 0.0f }, .jump = should_jump });
-
-    if (should_jump) {
+    if (jumpHeld_ && sensory.on_ground) {
         current_action_ = DuckAction::JUMP;
         return;
     }

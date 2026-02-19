@@ -31,7 +31,7 @@ private:
 
     double decisionTimerSeconds_ = 0.0;
     float lastMoveX_ = 0.0f;
-    bool jumpLatch_ = false;
+    bool jumpHeld_ = false;
 
     static constexpr double kDecisionIntervalSeconds = 0.05;
 };

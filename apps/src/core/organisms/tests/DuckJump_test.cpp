@@ -14,6 +14,7 @@
 #include "core/organisms/DuckBrain.h"
 #include "core/organisms/DuckSensoryData.h"
 #include "core/organisms/OrganismManager.h"
+#include <algorithm>
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
@@ -132,6 +133,54 @@ TEST_F(DuckJumpTest, DuckJumps2CellsHigh)
 
     // Verify duck jumped at least 2 cells high.
     EXPECT_GE(jump_height, 2) << "Duck should jump at least 2 cells high";
+}
+
+TEST_F(DuckJumpTest, JumpHoldProducesHigherApexThanTap)
+{
+    auto runJumpAndMeasureHeight = [](int hold_frames) -> double {
+        DuckTestSetup setup = DuckTestSetup::create(8, 12, 3, 10, 40);
+        EXPECT_TRUE(setup.duck->isOnGround()) << "Duck should start grounded";
+
+        Vector2i settled_pos = setup.duck->getAnchorCell();
+        const Cell& settled_cell = setup.world->getData().at(settled_pos.x, settled_pos.y);
+        double settled_abs_y = static_cast<double>(settled_pos.y) + settled_cell.com.y;
+        double min_abs_y = settled_abs_y;
+
+        auto sample_apex = [&]() {
+            Vector2i pos = setup.duck->getAnchorCell();
+            const Cell& cell = setup.world->getData().at(pos.x, pos.y);
+            double abs_y = static_cast<double>(pos.y) + cell.com.y;
+            min_abs_y = std::min(min_abs_y, abs_y);
+        };
+
+        for (int i = 0; i < hold_frames; ++i) {
+            setup.brain->setDirectInput({ 0.0f, 0.0f }, true);
+            setup.advance(0.016);
+            sample_apex();
+        }
+
+        setup.brain->setDirectInput({ 0.0f, 0.0f }, false);
+        for (int i = 0; i < 120; ++i) {
+            setup.advance(0.016);
+            sample_apex();
+            if (i > 10 && setup.duck->isOnGround()) {
+                break;
+            }
+        }
+
+        return settled_abs_y - min_abs_y;
+    };
+
+    // Simulate a practical tap at 60 FPS (~64 ms total press duration).
+    const double tap_height = runJumpAndMeasureHeight(4);
+    // Hold long enough to reach the full jump apex.
+    const double hold_height = runJumpAndMeasureHeight(20);
+
+    spdlog::info("Jump height tap={:.3f}, hold={:.3f}", tap_height, hold_height);
+    EXPECT_GT(hold_height, tap_height) << "Holding jump should produce a higher jump apex";
+    EXPECT_GT(hold_height, tap_height * 1.2)
+        << "Holding jump should provide meaningful extra height over a tap";
+    EXPECT_LT(hold_height, 6.5) << "Held jump should stay close to the historical full-jump height";
 }
 
 // ============================================================================
