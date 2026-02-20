@@ -318,7 +318,7 @@ TEST_F(DuckJumpTest, DuckBrain2DetectsCliffInSensoryData)
     // Log the floor row of sensory grid.
     spdlog::info("CliffSensory: Duck at x={}, facing_x={}", sensory.position.x, sensory.facing_x);
     std::string floor_str;
-    constexpr int FLOOR_ROW = 5; // Row below duck center (4).
+    constexpr int FLOOR_ROW = (DuckSensoryData::GRID_SIZE / 2) + 1;
     for (int col = 0; col < DuckSensoryData::GRID_SIZE; ++col) {
         double total_fill = 0.0;
         for (int mat = 0; mat < DuckSensoryData::NUM_MATERIALS; ++mat) {
@@ -328,7 +328,7 @@ TEST_F(DuckJumpTest, DuckBrain2DetectsCliffInSensoryData)
         }
         floor_str += (total_fill >= 0.3) ? "#" : ".";
     }
-    spdlog::info("CliffSensory: Floor row (row 5): [{}]", floor_str);
+    spdlog::info("CliffSensory: Floor row (row {}): [{}]", FLOOR_ROW, floor_str);
 
     // The sensory grid should show floor dropping off ahead.
     // Verify the test setup works (duck should be near cliff edge by now).

@@ -374,8 +374,12 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
         return total;
     };
 
-    auto normalizeEntry = [](PopulationSpec& spec) {
-        const bool requiresGenome = (spec.brainKind == TrainingBrainKind::NeuralNet);
+    TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
+    const OrganismType organismType = self->trainingSpec_.organismType;
+    auto normalizeEntry = [&registry, organismType](PopulationSpec& spec) {
+        const std::string variant = spec.brainVariant.value_or("");
+        const BrainRegistryEntry* entry = registry.find(organismType, spec.brainKind, variant);
+        const bool requiresGenome = entry && entry->requiresGenome;
         if (!requiresGenome) {
             spec.seedGenomes.clear();
             spec.randomCount = 0;
@@ -398,7 +402,7 @@ void EvolutionConfigPanel::onPopulationChanged(lv_event_t* e)
                 entry.brainKind = TrainingBrainKind::NeuralNet;
                 break;
             case OrganismType::DUCK:
-                entry.brainKind = TrainingBrainKind::NeuralNet;
+                entry.brainKind = TrainingBrainKind::DuckNeuralNetRecurrant;
                 break;
             case OrganismType::GOOSE:
                 entry.brainKind = TrainingBrainKind::Random;

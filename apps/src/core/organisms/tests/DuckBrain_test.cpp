@@ -125,10 +125,16 @@ TEST_F(DuckBrainTest, WallBouncingBrainBouncesOffWall)
 
     // Print duck's sensory view.
     DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
-    spdlog::info("Duck sensory grid (9x9, center at [4][4], WALL=W, WOOD=D):");
-    for (int y = 0; y < 9; ++y) {
+    const int center = DuckSensoryData::GRID_SIZE / 2;
+    spdlog::info(
+        "Duck sensory grid ({}x{}, center at [{}][{}], WALL=W, WOOD=D):",
+        DuckSensoryData::GRID_SIZE,
+        DuckSensoryData::GRID_SIZE,
+        center,
+        center);
+    for (int y = 0; y < DuckSensoryData::GRID_SIZE; ++y) {
         std::string row;
-        for (int x = 0; x < 9; ++x) {
+        for (int x = 0; x < DuckSensoryData::GRID_SIZE; ++x) {
             // Check for WALL (material index 7).
             double wall_fill = sensory.material_histograms[y][x][7];
             if (wall_fill > 0.5) {

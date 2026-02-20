@@ -101,7 +101,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::NeuralNet;
+                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrant;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
