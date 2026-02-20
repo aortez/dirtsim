@@ -172,16 +172,12 @@ DuckNeuralNetBrain::~DuckNeuralNetBrain() = default;
 
 void DuckNeuralNetBrain::think(Duck& duck, const DuckSensoryData& sensory, double deltaTime)
 {
-    decisionTimerSeconds_ += deltaTime;
-    if (decisionTimerSeconds_ >= kDecisionIntervalSeconds) {
-        decisionTimerSeconds_ = 0.0;
+    (void)deltaTime;
+    const auto& input = impl_->flattenSensoryData(sensory);
+    const auto& output = impl_->forward(input);
 
-        const auto& input = impl_->flattenSensoryData(sensory);
-        const auto& output = impl_->forward(input);
-
-        lastMoveX_ = static_cast<float>(std::tanh(output[0]));
-        jumpHeld_ = output[1] > 0.0f;
-    }
+    lastMoveX_ = static_cast<float>(std::tanh(output[0]));
+    jumpHeld_ = output[1] > 0.0f;
 
     duck.setInput({ .move = { lastMoveX_, 0.0f }, .jump = jumpHeld_ });
 

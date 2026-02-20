@@ -29,11 +29,8 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 
-    double decisionTimerSeconds_ = 0.0;
     float lastMoveX_ = 0.0f;
     bool jumpHeld_ = false;
-
-    static constexpr double kDecisionIntervalSeconds = 0.05;
 };
 
 } // namespace DirtSim
