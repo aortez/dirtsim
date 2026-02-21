@@ -61,6 +61,8 @@ struct WorldData {
     // ===== NOT binary serialized (runtime/debug only) =====
     std::vector<CellDebug> debug_info; // Debug/viz info: debug_info[y * width + x]
     std::vector<BoneData> bones;       // Bone connections for organism structural visualization.
+    std::optional<ScenarioVideoFrame>
+        scenario_video_frame; // Optional scenario-native RGB565 video payload.
 
     // Bounds checking.
     inline bool inBounds(int x, int y) const { return x >= 0 && y >= 0 && x < width && y < height; }
@@ -98,7 +100,8 @@ struct WorldData {
             self.entities,
             self.colors,
             self.organism_debug);
-        // debug_info and bones intentionally excluded from binary serialization.
+        // debug_info, bones, and scenario_video_frame are intentionally excluded from binary
+        // serialization.
     }
 };
 

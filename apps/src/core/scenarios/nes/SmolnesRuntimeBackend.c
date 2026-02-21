@@ -20,6 +20,9 @@ static bool gHealthy = false;
 
 static uint64_t gRenderedFrames = 0;
 static uint64_t gTargetFrames = 0;
+static uint64_t gLatestFrameId = 0;
+static bool gHasLatestFrame = false;
+static uint8_t gLatestFrame[SMOLNES_RUNTIME_FRAME_BYTES] = { 0 };
 
 static char gLastError[256] = { 0 };
 static char gRomPath[1024] = { 0 };
@@ -133,9 +136,28 @@ int smolnesRuntimeWrappedUpdateTexture(
     SDL_Texture* texture, const SDL_Rect* rect, const void* pixels, int pitch)
 {
     (void)texture;
-    (void)rect;
-    (void)pixels;
-    (void)pitch;
+
+    if (pixels == NULL) {
+        return 0;
+    }
+
+    if (rect != NULL) {
+        return 0;
+    }
+
+    if (pitch < (int)SMOLNES_RUNTIME_FRAME_PITCH_BYTES) {
+        return 0;
+    }
+
+    pthread_mutex_lock(&gRuntimeMutex);
+    for (uint32_t row = 0; row < SMOLNES_RUNTIME_FRAME_HEIGHT; ++row) {
+        const uint8_t* src = (const uint8_t*)pixels + ((size_t)row * (size_t)pitch);
+        uint8_t* dst = gLatestFrame + (row * SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+        memcpy(dst, src, SMOLNES_RUNTIME_FRAME_PITCH_BYTES);
+    }
+    gHasLatestFrame = true;
+    pthread_mutex_unlock(&gRuntimeMutex);
+
     return 0;
 }
 
@@ -159,6 +181,7 @@ void smolnesRuntimeWrappedRenderPresent(SDL_Renderer* renderer)
     }
     if (!gStopRequested) {
         ++gRenderedFrames;
+        gLatestFrameId = gRenderedFrames;
         pthread_cond_broadcast(&gRuntimeCond);
     }
     pthread_mutex_unlock(&gRuntimeMutex);
@@ -237,6 +260,9 @@ bool smolnesRuntimeStart(const char* romPath)
     gHealthy = true;
     gRenderedFrames = 0;
     gTargetFrames = 0;
+    gLatestFrameId = 0;
+    gHasLatestFrame = false;
+    memset(gLatestFrame, 0, sizeof(gLatestFrame));
     gThreadRunning = true;
 
     const int createResult = pthread_create(&gRuntimeThread, NULL, runtimeThreadMain, NULL);
@@ -342,6 +368,26 @@ uint64_t smolnesRuntimeGetRenderedFrameCount(void)
     const uint64_t frameCount = gRenderedFrames;
     pthread_mutex_unlock(&gRuntimeMutex);
     return frameCount;
+}
+
+bool smolnesRuntimeCopyLatestFrame(uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)
+{
+    if (buffer == NULL || bufferSize < SMOLNES_RUNTIME_FRAME_BYTES) {
+        return false;
+    }
+
+    pthread_mutex_lock(&gRuntimeMutex);
+    if (!gHasLatestFrame) {
+        pthread_mutex_unlock(&gRuntimeMutex);
+        return false;
+    }
+
+    memcpy(buffer, gLatestFrame, SMOLNES_RUNTIME_FRAME_BYTES);
+    if (frameId != NULL) {
+        *frameId = gLatestFrameId;
+    }
+    pthread_mutex_unlock(&gRuntimeMutex);
+    return true;
 }
 
 void smolnesRuntimeGetLastErrorCopy(char* buffer, uint32_t bufferSize)

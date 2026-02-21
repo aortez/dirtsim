@@ -1,8 +1,10 @@
 #include "core/ScenarioConfig.h"
 #include "core/World.h"
+#include "core/WorldData.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/NesScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
+#include "core/scenarios/nes/SmolnesRuntimeBackend.h"
 
 #include <algorithm>
 #include <array>
@@ -146,6 +148,13 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
 
     EXPECT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
     EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), static_cast<uint64_t>(frameCount));
+
+    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
+    const ScenarioVideoFrame& videoFrame = world.getData().scenario_video_frame.value();
+    EXPECT_EQ(videoFrame.width, SMOLNES_RUNTIME_FRAME_WIDTH);
+    EXPECT_EQ(videoFrame.height, SMOLNES_RUNTIME_FRAME_HEIGHT);
+    EXPECT_EQ(videoFrame.frame_id, static_cast<uint64_t>(frameCount));
+    EXPECT_EQ(videoFrame.pixels.size(), static_cast<size_t>(SMOLNES_RUNTIME_FRAME_BYTES));
 }
 
 TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
@@ -175,13 +184,18 @@ TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
         scenario->tick(world, deltaTime);
     }
     ASSERT_EQ(scenario->getRuntimeRenderedFrameCount(), 10u);
+    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
+    EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 10u);
 
     scenario->reset(world);
 
     ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
     ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
     EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 0u);
+    EXPECT_FALSE(world.getData().scenario_video_frame.has_value());
 
     scenario->tick(world, deltaTime);
     EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 1u);
+    ASSERT_TRUE(world.getData().scenario_video_frame.has_value());
+    EXPECT_EQ(world.getData().scenario_video_frame->frame_id, 1u);
 }

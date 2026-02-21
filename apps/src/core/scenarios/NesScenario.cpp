@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <utility>
 
 namespace {
 
@@ -76,6 +77,7 @@ void NesScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 void NesScenario::setup(World& world)
 {
     stopRuntime();
+    world.getData().scenario_video_frame.reset();
 
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
@@ -143,7 +145,7 @@ void NesScenario::reset(World& world)
     setup(world);
 }
 
-void NesScenario::tick(World& /*world*/, double /*deltaTime*/)
+void NesScenario::tick(World& world, double /*deltaTime*/)
 {
     if (!runtime_ || !runtime_->isRunning()) {
         return;
@@ -171,7 +173,14 @@ void NesScenario::tick(World& /*world*/, double /*deltaTime*/)
             "NesScenario: smolnes frame step failed after {} frames: {}",
             runtime_->getRenderedFrameCount(),
             runtime_->getLastError());
+        world.getData().scenario_video_frame.reset();
         stopRuntime();
+        return;
+    }
+
+    auto frame = runtime_->copyLatestFrame();
+    if (frame.has_value()) {
+        world.getData().scenario_video_frame = std::move(frame.value());
     }
 }
 

@@ -1,4 +1,5 @@
 #include "core/Cell.h"
+#include "core/RenderMessage.h"
 #include "core/RenderMessageUtils.h"
 #include <gtest/gtest.h>
 #include <zpp_bits.h>
@@ -50,4 +51,35 @@ TEST(CellSerializationTest, DebugCellPackingPreservesValues)
     EXPECT_NEAR(unpacked.pressure_hydro, 50.0, 1.0);
     EXPECT_NEAR(unpacked.pressure_gradient.x, 0.1, 0.01);
     EXPECT_NEAR(unpacked.pressure_gradient.y, -0.2, 0.01);
+}
+
+TEST(CellSerializationTest, RenderMessageSerializationIncludesScenarioVideoFrame)
+{
+    RenderMessage original;
+    original.format = RenderFormat::EnumType::Basic;
+    original.width = 47;
+    original.height = 30;
+    original.timestep = 123;
+    original.fps_server = 60.0;
+
+    ScenarioVideoFrame frame;
+    frame.width = 256;
+    frame.height = 224;
+    frame.frame_id = 42;
+    frame.pixels = { std::byte{ 0x12 }, std::byte{ 0x34 }, std::byte{ 0xAB }, std::byte{ 0xCD } };
+    original.scenario_video_frame = frame;
+
+    std::vector<std::byte> buffer;
+    auto out = zpp::bits::out(buffer);
+    out(original).or_throw();
+
+    RenderMessage decoded;
+    auto in = zpp::bits::in(buffer);
+    in(decoded).or_throw();
+
+    ASSERT_TRUE(decoded.scenario_video_frame.has_value());
+    EXPECT_EQ(decoded.scenario_video_frame->width, frame.width);
+    EXPECT_EQ(decoded.scenario_video_frame->height, frame.height);
+    EXPECT_EQ(decoded.scenario_video_frame->frame_id, frame.frame_id);
+    EXPECT_EQ(decoded.scenario_video_frame->pixels, frame.pixels);
 }

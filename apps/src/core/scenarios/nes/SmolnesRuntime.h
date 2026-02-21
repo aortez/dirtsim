@@ -1,6 +1,9 @@
 #pragma once
 
+#include "core/RenderMessage.h"
+
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace DirtSim {
@@ -14,6 +17,7 @@ public:
     bool isHealthy() const;
     bool isRunning() const;
     uint64_t getRenderedFrameCount() const;
+    std::optional<ScenarioVideoFrame> copyLatestFrame() const;
     std::string getLastError() const;
 };
 
