@@ -115,7 +115,15 @@ struct Evolution {
     std::mt19937 rng;
 
     struct WorkerResult {
+        enum class TaskType : uint8_t {
+            GenerationEval = 0,
+            RobustnessEval = 1,
+        };
+
+        TaskType taskType = TaskType::GenerationEval;
         int index = -1;
+        int robustGeneration = -1;
+        int robustSampleOrdinal = 0;
         double fitness = 0.0;
         double simTime = 0.0;
         int commandsAccepted = 0;
@@ -128,7 +136,10 @@ struct Evolution {
     };
 
     struct WorkerTask {
+        WorkerResult::TaskType taskType = WorkerResult::TaskType::GenerationEval;
         int index = -1;
+        int robustGeneration = -1;
+        int robustSampleOrdinal = 0;
         Individual individual;
     };
 
@@ -151,6 +162,8 @@ struct Evolution {
 
     std::unique_ptr<TrainingRunner> visibleRunner_;
     int visibleEvalIndex_ = -1;
+    bool visibleEvalIsRobustness_ = false;
+    int visibleRobustSampleOrdinal_ = 0;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
     std::deque<int> visibleQueue_;
@@ -257,10 +270,24 @@ private:
     int lastBreedingWeightChangesMin_ = 0;
     int lastBreedingWeightChangesMax_ = 0;
 
-    std::unordered_set<uint64_t> bestSnapshotVariantFingerprints_;
-    std::deque<uint64_t> bestSnapshotVariantFingerprintOrder_;
-    std::chrono::steady_clock::time_point lastBestSnapshotBroadcastTime_{};
-    int bestSnapshotVariantBroadcastCountThisGen_ = 0;
+    bool pendingBestRobustness_ = false;
+    int pendingBestRobustnessGeneration_ = -1;
+    int pendingBestRobustnessIndex_ = -1;
+    double pendingBestRobustnessFirstSample_ = 0.0;
+    std::optional<EvaluationSnapshot> pendingBestSnapshot_;
+    int pendingBestSnapshotCommandsAccepted_ = 0;
+    int pendingBestSnapshotCommandsRejected_ = 0;
+    std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandSignatures_;
+    std::vector<std::pair<std::string, int>> pendingBestSnapshotTopCommandOutcomeSignatures_;
+    bool robustnessPassActive_ = false;
+    int robustnessPassGeneration_ = -1;
+    int robustnessPassIndex_ = -1;
+    int robustnessPassTargetEvalCount_ = 0;
+    int robustnessPassPendingSamples_ = 0;
+    int robustnessPassCompletedSamples_ = 0;
+    int robustnessPassVisibleSamplesRemaining_ = 0;
+    int robustnessPassNextVisibleSampleOrdinal_ = 2;
+    std::vector<double> robustnessPassSamples_;
 
     void initializePopulation(StateMachine& dsm);
     void startWorkers(StateMachine& dsm);
@@ -275,6 +302,9 @@ private:
     void processResult(StateMachine& dsm, WorkerResult result);
     static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);
+    void startRobustnessPass(StateMachine& dsm);
+    void handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result);
+    void finalizeRobustnessPass(StateMachine& dsm);
     void adjustConcurrency();
     void advanceGeneration(StateMachine& dsm);
     void broadcastProgress(StateMachine& dsm);

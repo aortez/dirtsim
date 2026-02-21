@@ -83,7 +83,7 @@ Any UnsavedTrainingResult::onEvent(const Api::TrainingResultSave::Cwc& cwc, Stat
         if (pruned > 0) {
             LOG_INFO(
                 State,
-                "UnsavedTrainingResult: Pruned {} managed genomes (max_archive={})",
+                "UnsavedTrainingResult: Pruned {} managed genomes (max_per_organism_brain={})",
                 pruned,
                 evolutionConfig.genomeArchiveMaxSize);
         }

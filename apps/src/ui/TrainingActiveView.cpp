@@ -583,11 +583,6 @@ void TrainingActiveView::updateBestSnapshot(
         worldData.organism_ids.size(),
         nonZeroColors,
         maxBrightness);
-    if (bestAllTimeLabel_) {
-        char buf[64];
-        snprintf(buf, sizeof(buf), "All Time: %.2f", fitness);
-        lv_label_set_text(bestAllTimeLabel_, buf);
-    }
     if (bestCommandSummaryLabel_) {
         std::ostringstream summary;
         const int totalOutcomes = commandsAccepted + commandsRejected;
@@ -843,13 +838,11 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
             snprintf(
                 buf,
                 sizeof(buf),
-                "Genomes: %d/%d",
+                "Genomes: %d (cap/organism+brain: %d)",
                 progress.totalGenomeCount,
                 progress.genomeArchiveMaxSize);
             lv_label_set_text(genomeCountLabel_, buf);
-            const bool atCapacity = progress.totalGenomeCount >= progress.genomeArchiveMaxSize;
-            lv_obj_set_style_text_color(
-                genomeCountLabel_, atCapacity ? lv_color_hex(0xFF9966) : lv_color_hex(0x88AACC), 0);
+            lv_obj_set_style_text_color(genomeCountLabel_, lv_color_hex(0x88AACC), 0);
         }
         else {
             snprintf(buf, sizeof(buf), "Genomes: %d", progress.totalGenomeCount);

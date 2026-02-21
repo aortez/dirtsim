@@ -86,6 +86,7 @@ int getMaxTimezoneIndex()
 
 constexpr int kStartMenuIdleTimeoutMinMs = 5000;
 constexpr int kStartMenuIdleTimeoutMaxMs = 3600000;
+constexpr int kGenomeArchiveMaxSizePerBucketMax = 1000;
 
 std::filesystem::path getUserSettingsPath(const std::filesystem::path& dataDir)
 {
@@ -230,6 +231,46 @@ UserSettings sanitizeUserSettings(
     if (settings.evolutionConfig.genomeArchiveMaxSize < 0) {
         settings.evolutionConfig.genomeArchiveMaxSize = 0;
         recordUpdate("genomeArchiveMaxSize clamped to 0");
+    }
+    else if (settings.evolutionConfig.genomeArchiveMaxSize > kGenomeArchiveMaxSizePerBucketMax) {
+        settings.evolutionConfig.genomeArchiveMaxSize = kGenomeArchiveMaxSizePerBucketMax;
+        recordUpdate("genomeArchiveMaxSize clamped to 1000");
+    }
+    if (settings.evolutionConfig.robustFitnessEvaluationCount < 1) {
+        settings.evolutionConfig.robustFitnessEvaluationCount = 1;
+        recordUpdate("robustFitnessEvaluationCount clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartSeedCount < 0) {
+        settings.evolutionConfig.warmStartSeedCount = 0;
+        recordUpdate("warmStartSeedCount clamped to 0");
+    }
+    if (settings.evolutionConfig.warmStartSeedPercent < 0.0) {
+        settings.evolutionConfig.warmStartSeedPercent = 0.0;
+        recordUpdate("warmStartSeedPercent clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartSeedPercent > 100.0) {
+        settings.evolutionConfig.warmStartSeedPercent = 100.0;
+        recordUpdate("warmStartSeedPercent clamped to 100");
+    }
+    if (settings.evolutionConfig.warmStartMinRobustEvalCount < 1) {
+        settings.evolutionConfig.warmStartMinRobustEvalCount = 1;
+        recordUpdate("warmStartMinRobustEvalCount clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartNoveltyWeight < 0.0) {
+        settings.evolutionConfig.warmStartNoveltyWeight = 0.0;
+        recordUpdate("warmStartNoveltyWeight clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartNoveltyWeight > 1.0) {
+        settings.evolutionConfig.warmStartNoveltyWeight = 1.0;
+        recordUpdate("warmStartNoveltyWeight clamped to 1");
+    }
+    if (settings.evolutionConfig.warmStartFitnessFloorPercentile < 0.0) {
+        settings.evolutionConfig.warmStartFitnessFloorPercentile = 0.0;
+        recordUpdate("warmStartFitnessFloorPercentile clamped to 0");
+    }
+    else if (settings.evolutionConfig.warmStartFitnessFloorPercentile > 100.0) {
+        settings.evolutionConfig.warmStartFitnessFloorPercentile = 100.0;
+        recordUpdate("warmStartFitnessFloorPercentile clamped to 100");
     }
     if (settings.evolutionConfig.diversityEliteCount < 0) {
         settings.evolutionConfig.diversityEliteCount = 0;
@@ -437,7 +478,7 @@ struct StateMachine::Impl {
             if (pruned > 0) {
                 LOG_INFO(
                     State,
-                    "Pruned {} managed genomes on startup (max_archive={})",
+                    "Pruned {} managed genomes on startup (max_per_organism_brain={})",
                     pruned,
                     userSettings_.evolutionConfig.genomeArchiveMaxSize);
             }
@@ -1213,6 +1254,9 @@ void StateMachine::handleEvent(const Event& event)
             GenomeMetadata{
                 .name = "imported_" + cwc.command.id.toShortString(),
                 .fitness = 0.0,
+                .robustFitness = 0.0,
+                .robustEvalCount = 1,
+                .robustFitnessSamples = { 0.0 },
                 .generation = 0,
                 .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
                 .scenarioId = Scenario::EnumType::TreeGermination,

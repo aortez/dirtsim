@@ -20,7 +20,7 @@ struct EvolutionProgress {
     int currentEval = 0;
     int populationSize = 0;
     int totalGenomeCount = 0;
-    int genomeArchiveMaxSize = 0;
+    int genomeArchiveMaxSize = 0; // Per organismType+brainKind cap for managed genomes.
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     double averageFitness = 0.0;
