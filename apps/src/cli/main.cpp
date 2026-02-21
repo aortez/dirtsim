@@ -604,6 +604,7 @@ std::string getExamplesHelp()
     examples += "  cli functional-test canExit\n";
     examples += "  cli functional-test canExit --restart\n";
     examples += "  cli functional-test canTrain\n";
+    examples += "  cli functional-test canTrainNesFlappy\n";
     examples += "  cli functional-test canSetGenerationsAndTrain\n";
     examples += "  cli functional-test canPlantTreeSeed\n";
     examples += "  cli functional-test canLoadGenomeFromBrowser\n";
@@ -1130,7 +1131,7 @@ int main(int argc, char** argv)
         }
 
         const std::string testName = args::get(command);
-        if (testName != "canExit" && testName != "canTrain"
+        if (testName != "canExit" && testName != "canTrain" && testName != "canTrainNesFlappy"
             && testName != "canSetGenerationsAndTrain" && testName != "canPlantTreeSeed"
             && testName != "canLoadGenomeFromBrowser" && testName != "canOpenTrainingConfigPanel"
             && testName != "canUpdateUserSettings" && testName != "canResetUserSettings"
@@ -1140,7 +1141,8 @@ int main(int argc, char** argv)
             && testName != "canApplyClockTimezoneFromUserSettings" && testName != "canPlaySynthKeys"
             && testName != "verifyTraining") {
             std::cerr << "Error: unknown functional test '" << testName << "'\n";
-            std::cerr << "Valid tests: canExit, canTrain, canSetGenerationsAndTrain, "
+            std::cerr << "Valid tests: canExit, canTrain, canTrainNesFlappy, "
+                         "canSetGenerationsAndTrain, "
                          "canPlantTreeSeed, canLoadGenomeFromBrowser, "
                          "canOpenTrainingConfigPanel, canUpdateUserSettings, "
                          "canResetUserSettings, canPersistUserSettingsAcrossRestart, "
@@ -1179,6 +1181,10 @@ int main(int argc, char** argv)
         }
         else if (testName == "canTrain") {
             summary = runner.runCanTrain(uiAddress, serverAddress, osManagerAddress, timeoutMs);
+        }
+        else if (testName == "canTrainNesFlappy") {
+            summary =
+                runner.runCanTrainNesFlappy(uiAddress, serverAddress, osManagerAddress, timeoutMs);
         }
         else if (testName == "canSetGenerationsAndTrain") {
             summary = runner.runCanSetGenerationsAndTrain(

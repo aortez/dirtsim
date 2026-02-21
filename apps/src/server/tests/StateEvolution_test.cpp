@@ -100,6 +100,74 @@ TEST(StateEvolutionTest, EvolutionStartTransitionsIdleToEvolution)
     EXPECT_TRUE(capturedResponse.value().started) << "Response should indicate started";
 }
 
+TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    bool callbackInvoked = false;
+    Api::EvolutionStart::Response capturedResponse;
+
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 4;
+    cmd.evolution.maxParallelEvaluations = 4;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::Nes;
+    cmd.organismType = OrganismType::DUCK;
+
+    PopulationSpec population;
+    population.scenarioId = Scenario::EnumType::Nes;
+    population.brainKind = TrainingBrainKind::NesFlappyBird;
+    population.count = 4;
+    population.randomCount = 4;
+    cmd.population.push_back(population);
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        callbackInvoked = true;
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    EXPECT_EQ(evolution.evolutionConfig.maxParallelEvaluations, 1);
+
+    ASSERT_TRUE(callbackInvoked);
+    ASSERT_TRUE(capturedResponse.isValue());
+}
+
+TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForDuckNesScenario)
+{
+    TestStateMachineFixture fixture;
+    Idle idleState;
+
+    Api::EvolutionStart::Response capturedResponse;
+    Api::EvolutionStart::Command cmd;
+    cmd.evolution.populationSize = 3;
+    cmd.evolution.maxGenerations = 1;
+    cmd.evolution.maxSimulationTime = 0.1;
+    cmd.scenarioId = Scenario::EnumType::Nes;
+    cmd.organismType = OrganismType::DUCK;
+
+    Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
+        capturedResponse = std::move(response);
+    });
+
+    State::Any newState = idleState.onEvent(cwc, *fixture.stateMachine);
+
+    ASSERT_TRUE(std::holds_alternative<Evolution>(newState.getVariant()));
+    ASSERT_TRUE(capturedResponse.isValue());
+
+    const Evolution& evolution = std::get<Evolution>(newState.getVariant());
+    ASSERT_EQ(evolution.trainingSpec.population.size(), 1u);
+    const PopulationSpec& population = evolution.trainingSpec.population.front();
+    EXPECT_EQ(population.brainKind, TrainingBrainKind::NesFlappyBird);
+    EXPECT_EQ(population.count, 3);
+    EXPECT_EQ(population.randomCount, 3);
+}
+
 TEST(StateEvolutionTest, TrainingBestSnapshotCacheRoundTrips)
 {
     TestStateMachineFixture fixture;

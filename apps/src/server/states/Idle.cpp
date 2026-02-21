@@ -352,7 +352,9 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+                defaultSpec.brainKind = outSpec.scenarioId == Scenario::EnumType::Nes
+                    ? TrainingBrainKind::NesFlappyBird
+                    : TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
@@ -542,6 +544,16 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+bool hasNesFlappyPopulation(const TrainingSpec& spec)
+{
+    for (const auto& entry : spec.population) {
+        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 void Idle::onEnter(StateMachine& /*dsm*/)
@@ -582,6 +594,14 @@ State::Any Idle::onEvent(const Api::EvolutionStart::Cwc& cwc, StateMachine& dsm)
     newState.evolutionConfig.populationSize = populationSize;
     newState.evolutionConfig.maxParallelEvaluations =
         resolveParallelEvaluations(cwc.command.evolution.maxParallelEvaluations, populationSize);
+    if (hasNesFlappyPopulation(newState.trainingSpec)
+        && newState.evolutionConfig.maxParallelEvaluations > 1) {
+        LOG_WARN(
+            State,
+            "Evolution: capping max parallel evaluations to 1 for NES training "
+            "(smolnes runtime is currently process-global)");
+        newState.evolutionConfig.maxParallelEvaluations = 1;
+    }
 
     LOG_INFO(
         State,

@@ -39,6 +39,7 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             return {
                 { TrainingBrainKind::DuckNeuralNetRecurrent, true },
                 { TrainingBrainKind::NeuralNet, true },
+                { TrainingBrainKind::NesFlappyBird, true },
                 { TrainingBrainKind::Random, false },
                 { TrainingBrainKind::WallBouncing, false },
                 { TrainingBrainKind::DuckBrain2, false },
@@ -106,11 +107,17 @@ TrainingPopulationPanel::TrainingPopulationPanel(
       trainingSpec_(trainingSpec)
 {
     scenarioOptions_ = {
-        Scenario::EnumType::Benchmark,       Scenario::EnumType::Clock,
-        Scenario::EnumType::DamBreak,        Scenario::EnumType::Empty,
-        Scenario::EnumType::GooseTest,       Scenario::EnumType::Lights,
-        Scenario::EnumType::Raining,         Scenario::EnumType::Sandbox,
-        Scenario::EnumType::TreeGermination, Scenario::EnumType::WaterEqualization,
+        Scenario::EnumType::Benchmark,
+        Scenario::EnumType::Clock,
+        Scenario::EnumType::DamBreak,
+        Scenario::EnumType::Empty,
+        Scenario::EnumType::GooseTest,
+        Scenario::EnumType::Lights,
+        Scenario::EnumType::Nes,
+        Scenario::EnumType::Raining,
+        Scenario::EnumType::Sandbox,
+        Scenario::EnumType::TreeGermination,
+        Scenario::EnumType::WaterEqualization,
     };
     scenarioLabels_.reserve(scenarioOptions_.size());
     for (const auto& scenarioId : scenarioOptions_) {

@@ -329,9 +329,20 @@ int resolveParallelEvaluations(int requested, int populationSize)
     return resolved;
 }
 
+bool hasNesFlappyPopulation(const TrainingSpec& spec)
+{
+    for (const auto& entry : spec.population) {
+        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+    return false;
+}
+
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
+    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut);
@@ -349,10 +360,18 @@ TrainingRunner::Individual makeRunnerIndividual(const Evolution::Individual& ind
 double computeFitnessForRunner(
     const TrainingRunner& runner,
     const TrainingRunner::Status& status,
+    const std::string& brainKind,
     OrganismType organismType,
     const EvolutionConfig& evolutionConfig,
     std::optional<TreeFitnessBreakdown>* breakdownOut)
 {
+    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+        if (breakdownOut) {
+            breakdownOut->reset();
+        }
+        return status.nesRewardTotal;
+    }
+
     const World* world = runner.getWorld();
     DIRTSIM_ASSERT(world != nullptr, "Evolution: TrainingRunner missing World");
 
@@ -589,6 +608,13 @@ void Evolution::onEnter(StateMachine& dsm)
 
     evolutionConfig.maxParallelEvaluations = resolveParallelEvaluations(
         evolutionConfig.maxParallelEvaluations, static_cast<int>(population.size()));
+    if (hasNesFlappyPopulation(trainingSpec) && evolutionConfig.maxParallelEvaluations > 1) {
+        LOG_WARN(
+            State,
+            "Evolution: forcing max parallel evaluations to 1 for NES training "
+            "(smolnes runtime is process-global)");
+        evolutionConfig.maxParallelEvaluations = 1;
+    }
 
     // Initialize CPU telemetry.
     cpuMetrics_ = std::make_unique<SystemMetrics>();
@@ -1082,7 +1108,12 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 
         if (visibleEvalIsRobustness_) {
             result.fitness = computeFitnessForRunner(
-                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, nullptr);
+                *visibleRunner_,
+                status,
+                population[visibleEvalIndex_].brainKind,
+                trainingSpec.organismType,
+                evolutionConfig,
+                nullptr);
         }
         else {
             result.topCommandSignatures =
@@ -1091,7 +1122,12 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
                 visibleRunner_->getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
             std::optional<TreeFitnessBreakdown> breakdown;
             result.fitness = computeFitnessForRunner(
-                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
+                *visibleRunner_,
+                status,
+                population[visibleEvalIndex_].brainKind,
+                trainingSpec.organismType,
+                evolutionConfig,
+                &breakdown);
             result.treeFitnessBreakdown = breakdown;
             if (const World* world = visibleRunner_->getWorld()) {
                 result.timerStats = collectTimerStats(world->getTimers());
@@ -1146,7 +1182,12 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     result.commandsRejected = status.commandsRejected;
     if (task.taskType == WorkerResult::TaskType::RobustnessEval) {
         result.fitness = computeFitnessForRunner(
-            runner, status, state.trainingSpec.organismType, state.evolutionConfig, nullptr);
+            runner,
+            status,
+            task.individual.brainKind,
+            state.trainingSpec.organismType,
+            state.evolutionConfig,
+            nullptr);
         return result;
     }
 
@@ -1155,7 +1196,12 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
         runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
     std::optional<TreeFitnessBreakdown> breakdown;
     result.fitness = computeFitnessForRunner(
-        runner, status, state.trainingSpec.organismType, state.evolutionConfig, &breakdown);
+        runner,
+        status,
+        task.individual.brainKind,
+        state.trainingSpec.organismType,
+        state.evolutionConfig,
+        &breakdown);
     result.treeFitnessBreakdown = breakdown;
     if (const World* world = runner.getWorld()) {
         result.timerStats = collectTimerStats(world->getTimers());

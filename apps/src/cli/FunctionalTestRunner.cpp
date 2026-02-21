@@ -671,7 +671,8 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     const std::string& uiAddress,
     const std::string& serverAddress,
     int timeoutMs,
-    int maxGenerations)
+    int maxGenerations,
+    const std::optional<UiApi::TrainingStart::Command>& trainingStartOverride = std::nullopt)
 {
     Network::WebSocketService uiClient;
     std::cerr << "Connecting to UI at " << uiAddress << "..." << std::endl;
@@ -789,16 +790,21 @@ Result<FunctionalTrainingSummary, std::string> runTrainingSession(
     }
 
     UiApi::TrainingStart::Command trainCmd;
-    trainCmd.evolution.populationSize = 2;
-    trainCmd.evolution.maxGenerations = maxGenerations;
-    trainCmd.evolution.maxSimulationTime = 0.1;
-    trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
-    trainCmd.training.organismType = OrganismType::TREE;
-    PopulationSpec population;
-    population.brainKind = TrainingBrainKind::NeuralNet;
-    population.count = trainCmd.evolution.populationSize;
-    population.randomCount = trainCmd.evolution.populationSize;
-    trainCmd.training.population = { population };
+    if (trainingStartOverride.has_value()) {
+        trainCmd = trainingStartOverride.value();
+    }
+    else {
+        trainCmd.evolution.populationSize = 2;
+        trainCmd.evolution.maxGenerations = maxGenerations;
+        trainCmd.evolution.maxSimulationTime = 0.1;
+        trainCmd.training.scenarioId = Scenario::EnumType::TreeGermination;
+        trainCmd.training.organismType = OrganismType::TREE;
+        PopulationSpec population;
+        population.brainKind = TrainingBrainKind::NeuralNet;
+        population.count = trainCmd.evolution.populationSize;
+        population.randomCount = trainCmd.evolution.populationSize;
+        trainCmd.training.population = { population };
+    }
 
     auto trainResult = unwrapResponse(
         uiClient.sendCommandAndGetResponse<UiApi::TrainingStart::Okay>(trainCmd, timeoutMs));
@@ -1225,6 +1231,83 @@ FunctionalTestSummary FunctionalTestRunner::runCanTrain(
 
     return FunctionalTestSummary{
         .name = "canTrain",
+        .duration_ms = durationMs,
+        .result = std::move(testResult),
+        .failure_screenshot_path = std::nullopt,
+        .training_summary = std::move(trainingSummary),
+    };
+}
+
+FunctionalTestSummary FunctionalTestRunner::runCanTrainNesFlappy(
+    const std::string& uiAddress,
+    const std::string& serverAddress,
+    const std::string& osManagerAddress,
+    int timeoutMs)
+{
+    const auto startTime = std::chrono::steady_clock::now();
+    std::optional<FunctionalTrainingSummary> trainingSummary;
+
+    auto testResult = [&]() -> Result<std::monostate, std::string> {
+        auto restartResult = restartServices(osManagerAddress, timeoutMs);
+        if (restartResult.isError()) {
+            return Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+
+        UiApi::TrainingStart::Command trainCmd;
+        trainCmd.evolution.populationSize = 2;
+        trainCmd.evolution.maxParallelEvaluations = 4;
+        trainCmd.evolution.maxGenerations = 1;
+        trainCmd.evolution.maxSimulationTime = 0.1;
+        trainCmd.training.scenarioId = Scenario::EnumType::Nes;
+        trainCmd.training.organismType = OrganismType::DUCK;
+
+        PopulationSpec population;
+        population.scenarioId = Scenario::EnumType::Nes;
+        population.brainKind = TrainingBrainKind::NesFlappyBird;
+        population.count = trainCmd.evolution.populationSize;
+        population.randomCount = trainCmd.evolution.populationSize;
+        trainCmd.training.population = { population };
+
+        const auto trainingResult =
+            runTrainingSession(uiAddress, serverAddress, timeoutMs, 1, trainCmd);
+        if (trainingResult.isError()) {
+            return Result<std::monostate, std::string>::error(trainingResult.errorValue());
+        }
+
+        const auto& summary = trainingResult.value();
+        if (summary.scenario_id != Scenario::toString(Scenario::EnumType::Nes)) {
+            return Result<std::monostate, std::string>::error(
+                "Expected NES scenario summary, got " + summary.scenario_id);
+        }
+        if (summary.primary_brain_kind != TrainingBrainKind::NesFlappyBird) {
+            return Result<std::monostate, std::string>::error(
+                "Expected primary brain kind NesFlappyBird, got " + summary.primary_brain_kind);
+        }
+        if (summary.organism_type != static_cast<int>(OrganismType::DUCK)) {
+            return Result<std::monostate, std::string>::error(
+                "Expected organism type DUCK for NES training summary");
+        }
+
+        trainingSummary = summary;
+        return Result<std::monostate, std::string>::okay(std::monostate{});
+    }();
+
+    auto restartResult = restartServices(osManagerAddress, timeoutMs);
+    if (restartResult.isError()) {
+        if (testResult.isError()) {
+            std::cerr << "Restart failed: " << restartResult.errorValue() << std::endl;
+        }
+        else {
+            testResult = Result<std::monostate, std::string>::error(restartResult.errorValue());
+        }
+    }
+
+    const auto durationMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - startTime)
+                                .count();
+
+    return FunctionalTestSummary{
+        .name = "canTrainNesFlappy",
         .duration_ms = durationMs,
         .result = std::move(testResult),
         .failure_screenshot_path = std::nullopt,

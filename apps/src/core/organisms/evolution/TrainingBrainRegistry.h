@@ -55,6 +55,12 @@ struct BrainRegistryKeyHash {
 };
 
 struct BrainRegistryEntry {
+    enum class ControlMode : uint8_t {
+        OrganismDriven = 0,
+        ScenarioDriven = 1,
+    };
+
+    ControlMode controlMode = ControlMode::OrganismDriven;
     bool requiresGenome = false;
     bool allowsMutation = false;
     std::function<OrganismId(World& world, uint32_t x, uint32_t y, const Genome* genome)> spawn;
