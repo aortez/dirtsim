@@ -5,9 +5,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <string>
 
 namespace DirtSim {
+
+class SmolnesRuntime;
 
 enum class NesRomCheckStatus : uint8_t {
     Compatible = 0,
@@ -33,6 +36,7 @@ struct NesRomCheckResult {
 class NesScenario : public ScenarioRunner {
 public:
     NesScenario();
+    ~NesScenario() override;
 
     const ScenarioMetadata& getMetadata() const override;
     ScenarioConfig getConfig() const override;
@@ -42,14 +46,21 @@ public:
     void tick(World& world, double deltaTime) override;
 
     const NesRomCheckResult& getLastRomCheck() const;
+    bool isRuntimeHealthy() const;
+    bool isRuntimeRunning() const;
+    uint64_t getRuntimeRenderedFrameCount() const;
+    std::string getRuntimeLastError() const;
 
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:
+    void stopRuntime();
+
     ScenarioMetadata metadata_;
     Config::Nes config_;
     NesRomCheckResult lastRomCheck_;
+    std::unique_ptr<SmolnesRuntime> runtime_;
 };
 
 } // namespace DirtSim

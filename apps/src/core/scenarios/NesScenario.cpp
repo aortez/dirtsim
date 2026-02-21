@@ -6,7 +6,9 @@
 #include "core/World.h"
 #include "core/WorldData.h"
 #include "core/organisms/OrganismManager.h"
+#include "core/scenarios/nes/SmolnesRuntime.h"
 
+#include <algorithm>
 #include <array>
 #include <fstream>
 
@@ -42,6 +44,12 @@ NesScenario::NesScenario()
     metadata_.category = "organisms";
     metadata_.requiredWidth = 47;
     metadata_.requiredHeight = 30;
+    runtime_ = std::make_unique<SmolnesRuntime>();
+}
+
+NesScenario::~NesScenario()
+{
+    stopRuntime();
 }
 
 const ScenarioMetadata& NesScenario::getMetadata() const
@@ -67,6 +75,8 @@ void NesScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
 
 void NesScenario::setup(World& world)
 {
+    stopRuntime();
+
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
             world.getData().at(x, y) = Cell();
@@ -95,6 +105,16 @@ void NesScenario::setup(World& world)
             lastRomCheck_.mapper,
             static_cast<uint32_t>(lastRomCheck_.prgBanks16k),
             static_cast<uint32_t>(lastRomCheck_.chrBanks8k));
+        if (!runtime_) {
+            runtime_ = std::make_unique<SmolnesRuntime>();
+        }
+
+        if (!runtime_->start(config_.romPath)) {
+            LOG_ERROR(
+                Scenario,
+                "NesScenario: Failed to start smolnes runtime: {}",
+                runtime_->getLastError());
+        }
         return;
     }
 
@@ -124,11 +144,66 @@ void NesScenario::reset(World& world)
 }
 
 void NesScenario::tick(World& /*world*/, double /*deltaTime*/)
-{}
+{
+    if (!runtime_ || !runtime_->isRunning()) {
+        return;
+    }
+    if (!runtime_->isHealthy()) {
+        LOG_ERROR(Scenario, "NesScenario: smolnes runtime unhealthy: {}", runtime_->getLastError());
+        stopRuntime();
+        return;
+    }
+
+    const uint64_t renderedFrames = runtime_->getRenderedFrameCount();
+    if (renderedFrames >= config_.maxEpisodeFrames) {
+        return;
+    }
+
+    const uint32_t maxFramesPerTick = std::max<uint32_t>(1, config_.frameSkip);
+    const uint64_t framesRemaining = config_.maxEpisodeFrames - renderedFrames;
+    const uint32_t framesToRun =
+        static_cast<uint32_t>(std::min<uint64_t>(maxFramesPerTick, framesRemaining));
+
+    constexpr uint32_t tickTimeoutMs = 2000;
+    if (!runtime_->runFrames(framesToRun, tickTimeoutMs)) {
+        LOG_ERROR(
+            Scenario,
+            "NesScenario: smolnes frame step failed after {} frames: {}",
+            runtime_->getRenderedFrameCount(),
+            runtime_->getLastError());
+        stopRuntime();
+    }
+}
 
 const NesRomCheckResult& NesScenario::getLastRomCheck() const
 {
     return lastRomCheck_;
+}
+
+bool NesScenario::isRuntimeHealthy() const
+{
+    return runtime_ && runtime_->isHealthy();
+}
+
+bool NesScenario::isRuntimeRunning() const
+{
+    return runtime_ && runtime_->isRunning();
+}
+
+uint64_t NesScenario::getRuntimeRenderedFrameCount() const
+{
+    if (!runtime_) {
+        return 0;
+    }
+    return runtime_->getRenderedFrameCount();
+}
+
+std::string NesScenario::getRuntimeLastError() const
+{
+    if (!runtime_) {
+        return {};
+    }
+    return runtime_->getLastError();
 }
 
 NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)
@@ -190,6 +265,14 @@ bool NesScenario::isMapperSupportedBySmolnes(uint16_t mapper)
         }
     }
     return false;
+}
+
+void NesScenario::stopRuntime()
+{
+    if (!runtime_) {
+        return;
+    }
+    runtime_->stop();
 }
 
 } // namespace DirtSim

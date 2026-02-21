@@ -401,6 +401,8 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
     src/core/scenarios/NesScenario.cpp
+    src/core/scenarios/nes/SmolnesRuntime.cpp
+    src/core/scenarios/nes/SmolnesRuntimeBackend.c
     src/core/scenarios/RainingScenario.cpp
     src/core/scenarios/SandboxScenario.cpp
     src/core/scenarios/TreeGerminationScenario.cpp
@@ -465,6 +467,7 @@ target_include_directories(dirtsim-server-lib SYSTEM PUBLIC ${CMAKE_SOURCE_DIR}/
 target_link_libraries(dirtsim-server-lib PUBLIC dirtsim-core datachannel-static lvgl lvgl_linux ${SQLITE3_LIBRARIES})
 add_dependencies(dirtsim-server-lib web_resources_generate)
 target_compile_options(dirtsim-server-lib PRIVATE ${DIRTSIM_WARNINGS})
+set_source_files_properties(src/core/scenarios/nes/SmolnesRuntimeBackend.c PROPERTIES COMPILE_OPTIONS "-w")
 
 # Link OpenMP for parallel physics calculations (cohesion, adhesion loops).
 if(OpenMP_CXX_FOUND)
@@ -780,7 +783,6 @@ add_executable(dirtsim-tests
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp
     src/tests/RigidBodyIntegration_test.cpp
-    src/tests/SmolnesHarness.c
     src/tests/StrongType_test.cpp
     src/tests/TimersTest.cpp
     src/tests/Vector2d_test.cpp
@@ -842,7 +844,6 @@ add_executable(dirtsim-tests
     # Core tests.
     src/core/tests/FontSampler_test.cpp
 )
-set_source_files_properties(src/tests/SmolnesHarness.c PROPERTIES COMPILE_OPTIONS "-w")
 target_link_libraries(dirtsim-tests
     PRIVATE
     dirtsim-server-lib

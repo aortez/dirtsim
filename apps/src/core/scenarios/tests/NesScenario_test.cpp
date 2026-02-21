@@ -3,7 +3,6 @@
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/NesScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
-#include "tests/SmolnesHarness.h"
 
 #include <algorithm>
 #include <array>
@@ -128,6 +127,7 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
 
     Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
     config.romPath = romPath.value().string();
+    config.frameSkip = 1;
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
     scenario->setup(world);
@@ -135,15 +135,53 @@ TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
     const NesRomCheckResult& romCheck = scenario->getLastRomCheck();
     ASSERT_TRUE(romCheck.isCompatible()) << "ROM compatibility check failed: " << romCheck.message
                                          << " (mapper=" << romCheck.mapper << ")";
+    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
 
-    constexpr double frameTimeSeconds = 1.0 / 60.0;
+    constexpr double deltaTime = 1.0 / 60.0;
     constexpr int frameCount = 100;
     for (int frame = 0; frame < frameCount; ++frame) {
-        scenario->tick(world, frameTimeSeconds);
-        world.advanceTime(frameTimeSeconds);
+        scenario->tick(world, deltaTime);
     }
 
-    const int smolnesExitCode = runSmolnesFrames(romPath.value().c_str(), frameCount);
-    EXPECT_EQ(smolnesExitCode, 0);
-    EXPECT_EQ(getSmolnesRenderedFrameCount(), frameCount);
+    EXPECT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), static_cast<uint64_t>(frameCount));
+}
+
+TEST(NesScenarioTest, ResetRestartsRuntimeFrameCounter)
+{
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
+    }
+
+    auto scenario = std::make_unique<NesScenario>();
+    const ScenarioMetadata& metadata = scenario->getMetadata();
+    World world(metadata.requiredWidth, metadata.requiredHeight);
+
+    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    config.romPath = romPath.value().string();
+    config.frameSkip = 1;
+    config.requireSmolnesMapper = true;
+    scenario->setConfig(config, world);
+    scenario->setup(world);
+
+    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+
+    constexpr double deltaTime = 1.0 / 60.0;
+    for (int frame = 0; frame < 10; ++frame) {
+        scenario->tick(world, deltaTime);
+    }
+    ASSERT_EQ(scenario->getRuntimeRenderedFrameCount(), 10u);
+
+    scenario->reset(world);
+
+    ASSERT_TRUE(scenario->isRuntimeRunning()) << scenario->getRuntimeLastError();
+    ASSERT_TRUE(scenario->isRuntimeHealthy()) << scenario->getRuntimeLastError();
+    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 0u);
+
+    scenario->tick(world, deltaTime);
+    EXPECT_EQ(scenario->getRuntimeRenderedFrameCount(), 1u);
 }
