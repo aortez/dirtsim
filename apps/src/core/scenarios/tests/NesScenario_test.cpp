@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
+#include <optional>
 #include <string>
 
 using namespace DirtSim;
@@ -24,6 +25,24 @@ void writeRomHeader(const std::filesystem::path& path, const std::array<uint8_t,
     file.write(
         reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
     ASSERT_TRUE(file.good()) << "Failed to write ROM fixture: " << path.string();
+}
+
+std::optional<std::filesystem::path> resolveNesFixtureRomPath()
+{
+    if (const char* romPathEnv = std::getenv("DIRTSIM_NES_TEST_ROM_PATH"); romPathEnv != nullptr) {
+        const std::filesystem::path romPath{ romPathEnv };
+        if (std::filesystem::exists(romPath)) {
+            return romPath;
+        }
+    }
+
+    const std::filesystem::path repoRelativeRomPath =
+        std::filesystem::path("testdata") / "roms" / "Flappy.Paratroopa.World.Unl.nes";
+    if (std::filesystem::exists(repoRelativeRomPath)) {
+        return repoRelativeRomPath;
+    }
+
+    return std::nullopt;
 }
 
 } // namespace
@@ -95,14 +114,12 @@ TEST(NesScenarioTest, ScenarioRegistryRegistersNesScenario)
     EXPECT_TRUE(std::holds_alternative<Config::Nes>(scenario->getConfig()));
 }
 
-TEST(NesScenarioTest, CelesteRomFromDownloadsLoadsAndTicks100Frames)
+TEST(NesScenarioTest, FlappyParatroopaRomLoadsAndTicks100Frames)
 {
-    const char* home = std::getenv("HOME");
-    ASSERT_NE(home, nullptr);
-
-    const std::filesystem::path romPath = std::filesystem::path(home) / "Downloads" / "celeste.nes";
-    if (!std::filesystem::exists(romPath)) {
-        GTEST_SKIP() << "ROM fixture not found at: " << romPath.string();
+    const std::optional<std::filesystem::path> romPath = resolveNesFixtureRomPath();
+    if (!romPath.has_value()) {
+        GTEST_SKIP() << "ROM fixture missing. Run 'cd apps && make fetch-nes-test-rom' or set "
+                        "DIRTSIM_NES_TEST_ROM_PATH.";
     }
 
     auto scenario = std::make_unique<NesScenario>();
@@ -110,7 +127,7 @@ TEST(NesScenarioTest, CelesteRomFromDownloadsLoadsAndTicks100Frames)
     World world(metadata.requiredWidth, metadata.requiredHeight);
 
     Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
-    config.romPath = romPath.string();
+    config.romPath = romPath.value().string();
     config.requireSmolnesMapper = true;
     scenario->setConfig(config, world);
     scenario->setup(world);
@@ -126,7 +143,7 @@ TEST(NesScenarioTest, CelesteRomFromDownloadsLoadsAndTicks100Frames)
         world.advanceTime(frameTimeSeconds);
     }
 
-    const int smolnesExitCode = runSmolnesFrames(romPath.c_str(), frameCount);
+    const int smolnesExitCode = runSmolnesFrames(romPath.value().c_str(), frameCount);
     EXPECT_EQ(smolnesExitCode, 0);
     EXPECT_EQ(getSmolnesRenderedFrameCount(), frameCount);
 }
