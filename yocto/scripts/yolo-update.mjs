@@ -85,6 +85,7 @@ const DEPLOY_ASSETS = [
 ];
 const NES_ROM_FIXTURE_DIR = join(APPS_DIR, 'testdata/roms');
 const NES_ROM_REMOTE_DIR = '/data/dirtsim/testdata/roms';
+const FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS = 45000;
 
 // Systemd service files to install/update on x86 targets during fast deploy.
 // x86 targets do not get their rootfs replaced, so service file changes need to be copied explicitly.
@@ -176,6 +177,43 @@ function runCapture(command, options = {}) {
   } catch {
     return '';
   }
+}
+
+function runCaptureWithStatus(command, options = {}) {
+  try {
+    const output = execSync(command, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
+      .toString()
+      .trim();
+    return { ok: true, output };
+  } catch (err) {
+    const stdout = err?.stdout ? err.stdout.toString() : '';
+    const stderr = err?.stderr ? err.stderr.toString() : '';
+    const output = `${stdout}${stderr}`.trim();
+    return { ok: false, output };
+  }
+}
+
+function parseTrailingJsonObject(output) {
+  if (!output) {
+    return null;
+  }
+  const lines = output
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+
+  for (let idx = lines.length - 1; idx >= 0; idx -= 1) {
+    const line = lines[idx];
+    if (!line.startsWith('{') || !line.endsWith('}')) {
+      continue;
+    }
+    try {
+      return JSON.parse(line);
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 function getSshIdentity() {
@@ -554,6 +592,38 @@ async function waitForSystemStatusOk(remoteTarget, remoteHost, timeoutSec = 120)
     error('SystemStatus check failed (no response)');
   }
   return false;
+}
+
+function runFastDeployFunctionalTest(remoteTarget, testName, timeoutMs) {
+  info(`Running functional test (${testName})...`);
+  const remoteCommand =
+    `dirtsim-cli functional-test ${testName} ` +
+    `--timeout ${timeoutMs} ` +
+    '--ui-address ws://localhost:7070 ' +
+    '--server-address ws://localhost:8080 ' +
+    '--os-manager-address ws://localhost:9090 2>&1';
+
+  const result = runCaptureWithStatus(
+    `ssh ${buildSshOptions()} ${remoteTarget} "${remoteCommand}"`
+  );
+  const parsed = parseTrailingJsonObject(result.output);
+
+  if (!parsed) {
+    error(`Functional test ${testName} did not produce JSON output.`);
+    if (result.output) {
+      warn(result.output);
+    }
+    return false;
+  }
+
+  if (parsed?.result?.success !== true) {
+    const errorMessage = parsed?.result?.error || 'unknown error';
+    error(`Functional test ${testName} failed: ${errorMessage}`);
+    return false;
+  }
+
+  success(`Functional test ${testName} passed.`);
+  return true;
 }
 
 /**
@@ -987,6 +1057,16 @@ async function fastDeploy(remoteHost, remoteTarget, dryRun) {
     const statusOk = await waitForSystemStatusOk(remoteTarget, remoteHost, 120);
     if (!statusOk) {
       error('SystemStatus check failed after fast deploy.');
+      process.exit(1);
+    }
+
+    const nesControlTestOk = runFastDeployFunctionalTest(
+      remoteTarget,
+      'canControlNesScenario',
+      FAST_DEPLOY_FUNCTIONAL_TEST_TIMEOUT_MS
+    );
+    if (!nesControlTestOk) {
+      error('NES control functional test failed after fast deploy.');
       process.exit(1);
     }
 
