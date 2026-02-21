@@ -5,7 +5,7 @@
 #include "core/organisms/GooseBrain.h"
 #include "core/organisms/OrganismManager.h"
 #include "core/organisms/brains/DuckNeuralNetBrain.h"
-#include "core/organisms/brains/DuckNeuralNetRecurrantBrain.h"
+#include "core/organisms/brains/DuckNeuralNetRecurrentBrain.h"
 #include "core/organisms/brains/NeuralNetBrain.h"
 #include "core/organisms/brains/RuleBased2Brain.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
@@ -98,21 +98,21 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
 
     registry.registerBrain(
         OrganismType::DUCK,
-        TrainingBrainKind::DuckNeuralNetRecurrant,
+        TrainingBrainKind::DuckNeuralNetRecurrent,
         "",
         BrainRegistryEntry{
             .requiresGenome = true,
             .allowsMutation = true,
             .spawn = [](World& world, uint32_t x, uint32_t y, const Genome* genome) -> OrganismId {
-                DIRTSIM_ASSERT(genome != nullptr, "DuckNeuralNetRecurrant brain requires a genome");
-                auto brain = std::make_unique<DuckNeuralNetRecurrantBrain>(*genome);
+                DIRTSIM_ASSERT(genome != nullptr, "DuckNeuralNetRecurrent brain requires a genome");
+                auto brain = std::make_unique<DuckNeuralNetRecurrentBrain>(*genome);
                 return world.getOrganismManager().createDuck(world, x, y, std::move(brain));
             },
             .createRandomGenome =
-                [](std::mt19937& rng) { return DuckNeuralNetRecurrantBrain::randomGenome(rng); },
+                [](std::mt19937& rng) { return DuckNeuralNetRecurrentBrain::randomGenome(rng); },
             .isGenomeCompatible =
                 [](const Genome& genome) {
-                    return DuckNeuralNetRecurrantBrain::isGenomeCompatible(genome);
+                    return DuckNeuralNetRecurrentBrain::isGenomeCompatible(genome);
                 },
         });
 

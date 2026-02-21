@@ -3,6 +3,7 @@
 #include "core/ScenarioConfig.h"
 #include "core/Timers.h"
 #include "core/World.h"
+#include "core/organisms/evolution/GenomeMetadataUtils.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
@@ -86,25 +87,6 @@ constexpr double kWarmStartSamplingFitnessBaseWeight = 0.1;
 constexpr double kWarmStartSamplingEpsilon = 1e-9;
 constexpr int kWarmStartSamplingCandidateLimit = 64;
 
-int getRobustEvalCount(const GenomeMetadata& metadata)
-{
-    if (metadata.robustEvalCount > 0) {
-        return metadata.robustEvalCount;
-    }
-    if (!metadata.robustFitnessSamples.empty()) {
-        return static_cast<int>(metadata.robustFitnessSamples.size());
-    }
-    return 1;
-}
-
-double getRobustFitness(const GenomeMetadata& metadata)
-{
-    if (metadata.robustEvalCount > 0 || !metadata.robustFitnessSamples.empty()) {
-        return metadata.robustFitness;
-    }
-    return metadata.fitness;
-}
-
 std::vector<WarmSeedCandidate> collectWarmSeedCandidates(
     const GenomeRepository& repo, int minRobustEvalCount)
 {
@@ -113,7 +95,7 @@ std::vector<WarmSeedCandidate> collectWarmSeedCandidates(
     candidates.reserve(entries.size());
 
     for (const auto& [id, metadata] : entries) {
-        const int robustEvalCount = getRobustEvalCount(metadata);
+        const int robustEvalCount = effectiveRobustEvalCount(metadata);
         if (robustEvalCount < minRobustEvalCount) {
             continue;
         }
@@ -121,7 +103,7 @@ std::vector<WarmSeedCandidate> collectWarmSeedCandidates(
             WarmSeedCandidate{
                 .id = id,
                 .metadata = metadata,
-                .robustFitness = getRobustFitness(metadata),
+                .robustFitness = effectiveRobustFitness(metadata),
                 .robustEvalCount = robustEvalCount,
             });
     }
@@ -369,7 +351,7 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrant;
+                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:

@@ -345,7 +345,7 @@ void TrainingIdleView::addGenomeToTraining(const GenomeId& genomeId, Scenario::E
                 spec.brainKind = TrainingBrainKind::NeuralNet;
                 break;
             case OrganismType::DUCK:
-                spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrant;
+                spec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
                 break;
             case OrganismType::GOOSE:
                 spec.brainKind = TrainingBrainKind::Random;

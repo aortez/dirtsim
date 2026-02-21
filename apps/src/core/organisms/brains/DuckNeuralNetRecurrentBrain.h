@@ -10,12 +10,12 @@ namespace DirtSim {
 
 class Duck;
 
-class DuckNeuralNetRecurrantBrain : public DuckBrain {
+class DuckNeuralNetRecurrentBrain : public DuckBrain {
 public:
-    DuckNeuralNetRecurrantBrain();
-    explicit DuckNeuralNetRecurrantBrain(const Genome& genome);
-    explicit DuckNeuralNetRecurrantBrain(uint32_t seed);
-    ~DuckNeuralNetRecurrantBrain() override;
+    DuckNeuralNetRecurrentBrain();
+    explicit DuckNeuralNetRecurrentBrain(const Genome& genome);
+    explicit DuckNeuralNetRecurrentBrain(uint32_t seed);
+    ~DuckNeuralNetRecurrentBrain() override;
 
     void think(Duck& duck, const DuckSensoryData& sensory, double deltaTime) override;
 

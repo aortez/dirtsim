@@ -12,6 +12,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
+#include "core/organisms/evolution/GenomeMetadataUtils.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
@@ -71,23 +72,6 @@ bool fitnessTiesBest(double fitness, double bestFitness)
 
     const double scale = std::max(1.0, std::abs(bestFitness));
     return std::abs(fitness - bestFitness) <= (kBestFitnessTieRelativeEpsilon * scale);
-}
-
-double computeMedian(std::vector<double> samples)
-{
-    if (samples.empty()) {
-        return 0.0;
-    }
-
-    const size_t mid = samples.size() / 2;
-    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
-    const double upper = samples[mid];
-    if ((samples.size() % 2) != 0) {
-        return upper;
-    }
-
-    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
-    return (samples[mid - 1] + upper) * 0.5;
 }
 
 bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioId)
@@ -2169,9 +2153,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
     const GenomeMetadata meta{
         .name = "checkpoint_gen_" + std::to_string(generation),
         .fitness = bestFit,
-        .robustFitness = bestFit,
-        .robustEvalCount = 1,
-        .robustFitnessSamples = { bestFit },
+        .robustFitness = 0.0,
+        .robustEvalCount = 0,
+        .robustFitnessSamples = {},
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = population[bestIdx].scenarioId,

@@ -1,4 +1,4 @@
-#include "DuckNeuralNetRecurrantBrain.h"
+#include "DuckNeuralNetRecurrentBrain.h"
 
 #include "WeightType.h"
 #include "core/Assert.h"
@@ -52,7 +52,7 @@ WeightType sigmoid(WeightType x)
 
 } // namespace
 
-struct DuckNeuralNetRecurrantBrain::Impl {
+struct DuckNeuralNetRecurrentBrain::Impl {
     std::vector<WeightType> w_ih;
     std::vector<WeightType> w_hh;
     std::vector<WeightType> b_h;
@@ -81,7 +81,7 @@ struct DuckNeuralNetRecurrantBrain::Impl {
     {
         DIRTSIM_ASSERT(
             genome.weights.size() == TOTAL_WEIGHTS,
-            "DuckNeuralNetRecurrantBrain: Genome weight count mismatch");
+            "DuckNeuralNetRecurrentBrain: Genome weight count mismatch");
 
         int idx = 0;
         for (int i = 0; i < W_IH_SIZE; ++i) {
@@ -151,7 +151,7 @@ struct DuckNeuralNetRecurrantBrain::Impl {
             sensory.on_ground ? static_cast<WeightType>(1.0f) : static_cast<WeightType>(0.0f);
         input_buffer[index++] = static_cast<WeightType>(sensory.facing_x);
 
-        DIRTSIM_ASSERT(index == INPUT_SIZE, "DuckNeuralNetRecurrantBrain: Input size mismatch");
+        DIRTSIM_ASSERT(index == INPUT_SIZE, "DuckNeuralNetRecurrentBrain: Input size mismatch");
 
         return input_buffer;
     }
@@ -207,20 +207,20 @@ struct DuckNeuralNetRecurrantBrain::Impl {
     }
 };
 
-DuckNeuralNetRecurrantBrain::DuckNeuralNetRecurrantBrain() : impl_(std::make_unique<Impl>())
+DuckNeuralNetRecurrentBrain::DuckNeuralNetRecurrentBrain() : impl_(std::make_unique<Impl>())
 {
     std::mt19937 rng(std::random_device{}());
     const Genome genome = randomGenome(rng);
     impl_->loadFromGenome(genome);
 }
 
-DuckNeuralNetRecurrantBrain::DuckNeuralNetRecurrantBrain(const Genome& genome)
+DuckNeuralNetRecurrentBrain::DuckNeuralNetRecurrentBrain(const Genome& genome)
     : impl_(std::make_unique<Impl>())
 {
     impl_->loadFromGenome(genome);
 }
 
-DuckNeuralNetRecurrantBrain::DuckNeuralNetRecurrantBrain(uint32_t seed)
+DuckNeuralNetRecurrentBrain::DuckNeuralNetRecurrentBrain(uint32_t seed)
     : impl_(std::make_unique<Impl>())
 {
     std::mt19937 rng(seed);
@@ -228,9 +228,9 @@ DuckNeuralNetRecurrantBrain::DuckNeuralNetRecurrantBrain(uint32_t seed)
     impl_->loadFromGenome(genome);
 }
 
-DuckNeuralNetRecurrantBrain::~DuckNeuralNetRecurrantBrain() = default;
+DuckNeuralNetRecurrentBrain::~DuckNeuralNetRecurrentBrain() = default;
 
-void DuckNeuralNetRecurrantBrain::think(
+void DuckNeuralNetRecurrentBrain::think(
     Duck& duck, const DuckSensoryData& sensory, double deltaTime)
 {
     (void)deltaTime;
@@ -255,17 +255,17 @@ void DuckNeuralNetRecurrantBrain::think(
     current_action_ = lastMoveX_ < 0.0f ? DuckAction::RUN_LEFT : DuckAction::RUN_RIGHT;
 }
 
-Genome DuckNeuralNetRecurrantBrain::getGenome() const
+Genome DuckNeuralNetRecurrentBrain::getGenome() const
 {
     return impl_->toGenome();
 }
 
-void DuckNeuralNetRecurrantBrain::setGenome(const Genome& genome)
+void DuckNeuralNetRecurrentBrain::setGenome(const Genome& genome)
 {
     impl_->loadFromGenome(genome);
 }
 
-Genome DuckNeuralNetRecurrantBrain::randomGenome(std::mt19937& rng)
+Genome DuckNeuralNetRecurrentBrain::randomGenome(std::mt19937& rng)
 {
     Genome genome(static_cast<size_t>(TOTAL_WEIGHTS));
 
@@ -298,11 +298,11 @@ Genome DuckNeuralNetRecurrantBrain::randomGenome(std::mt19937& rng)
     }
 
     DIRTSIM_ASSERT(
-        idx == TOTAL_WEIGHTS, "DuckNeuralNetRecurrantBrain: Generated genome size mismatch");
+        idx == TOTAL_WEIGHTS, "DuckNeuralNetRecurrentBrain: Generated genome size mismatch");
     return genome;
 }
 
-bool DuckNeuralNetRecurrantBrain::isGenomeCompatible(const Genome& genome)
+bool DuckNeuralNetRecurrentBrain::isGenomeCompatible(const Genome& genome)
 {
     return genome.weights.size() == static_cast<size_t>(TOTAL_WEIGHTS);
 }

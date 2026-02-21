@@ -19,7 +19,7 @@ inline constexpr const char* RuleBased2 = "RuleBased2";
 inline constexpr const char* Random = "Random";
 inline constexpr const char* WallBouncing = "WallBouncing";
 inline constexpr const char* DuckBrain2 = "DuckBrain2";
-inline constexpr const char* DuckNeuralNetRecurrant = "DuckNeuralNetRecurrant";
+inline constexpr const char* DuckNeuralNetRecurrent = "DuckNeuralNetRecurrent";
 } // namespace TrainingBrainKind
 
 struct BrainRegistryKey {
