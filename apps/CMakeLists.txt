@@ -363,6 +363,7 @@ add_library(dirtsim-server-lib STATIC
     src/server/api/StateGet.cpp
     src/server/api/StatusGet.cpp
     src/server/api/TimerStatsGet.cpp
+    src/server/api/TrainingBestPlaybackFrame.cpp
     src/server/api/UserSettingsSet.cpp
     src/server/api/TrainingBestSnapshot.cpp
     src/server/api/TrainingResult.cpp

@@ -35,12 +35,16 @@ public:
         EvolutionConfig& evolutionConfig,
         MutationConfig& mutationConfig,
         TrainingSpec& trainingSpec,
-        int& streamIntervalMs);
+        int& streamIntervalMs,
+        bool& bestPlaybackEnabled,
+        int& bestPlaybackIntervalMs);
     ~TrainingConfigPanel();
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted();
     void setStreamIntervalMs(int value);
+    void setBestPlaybackEnabled(bool enabled);
+    void setBestPlaybackIntervalMs(int value);
     void showView(View view);
     void addSeedGenome(const GenomeId& genomeId, Scenario::EnumType scenarioId);
 
@@ -57,6 +61,8 @@ private:
     MutationConfig& mutationConfig_;
     TrainingSpec& trainingSpec_;
     int& streamIntervalMs_;
+    bool& bestPlaybackEnabled_;
+    int& bestPlaybackIntervalMs_;
 
     int collapsedWidth_ = 0;
     int expandedWidth_ = 0;
@@ -85,6 +91,8 @@ private:
     lv_obj_t* tournamentSizeStepper_ = nullptr;
     lv_obj_t* maxSimTimeStepper_ = nullptr;
     lv_obj_t* streamIntervalStepper_ = nullptr;
+    lv_obj_t* bestPlaybackToggle_ = nullptr;
+    lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
 
     std::unique_ptr<TrainingPopulationPanel> trainingPopulationPanel_;
 
@@ -113,6 +121,8 @@ private:
     static void onTournamentSizeChanged(lv_event_t* e);
     static void onMaxSimTimeChanged(lv_event_t* e);
     static void onStreamIntervalChanged(lv_event_t* e);
+    static void onBestPlaybackToggled(lv_event_t* e);
+    static void onBestPlaybackIntervalChanged(lv_event_t* e);
 };
 
 } // namespace Ui

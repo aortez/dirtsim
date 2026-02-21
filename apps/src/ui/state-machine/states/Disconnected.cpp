@@ -12,6 +12,7 @@
 #include "core/network/WebSocketService.h"
 #include "server/api/EvolutionProgress.h"
 #include "server/api/StatusGet.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/UserSettingsUpdated.h"
 #include "ui/UiComponentManager.h"
@@ -302,56 +303,67 @@ State::Any Disconnected::onEvent(const ConnectToServerCommand& cmd, StateMachine
     wsService.setClientHello(hello);
 
     // Setup callback for server-pushed commands (e.g., DrawDebugToggle from gamepad).
-    wsService.onServerCommand(
-        [&sm](const std::string& messageType, const std::vector<std::byte>& payload) {
-            if (messageType == "DrawDebugToggle") {
-                LOG_INFO(Network, "Received DrawDebugToggle command from server");
-                UiApi::DrawDebugToggle::Cwc cwc;
-                sm.queueEvent(std::move(cwc));
+    wsService.onServerCommand([&sm](
+                                  const std::string& messageType,
+                                  const std::vector<std::byte>& payload) {
+        if (messageType == "DrawDebugToggle") {
+            LOG_INFO(Network, "Received DrawDebugToggle command from server");
+            UiApi::DrawDebugToggle::Cwc cwc;
+            sm.queueEvent(std::move(cwc));
+        }
+        else if (messageType == "EvolutionProgress") {
+            // Deserialize evolution progress broadcast.
+            try {
+                auto progress =
+                    DirtSim::Network::deserialize_payload<Api::EvolutionProgress>(payload);
+                LOG_DEBUG(
+                    Network,
+                    "Received EvolutionProgress: gen {}/{}, eval {}/{}",
+                    progress.generation,
+                    progress.maxGenerations,
+                    progress.currentEval,
+                    progress.populationSize);
+                sm.queueEvent(EvolutionProgressReceivedEvent{ progress });
             }
-            else if (messageType == "EvolutionProgress") {
-                // Deserialize evolution progress broadcast.
-                try {
-                    auto progress =
-                        DirtSim::Network::deserialize_payload<Api::EvolutionProgress>(payload);
-                    LOG_DEBUG(
-                        Network,
-                        "Received EvolutionProgress: gen {}/{}, eval {}/{}",
-                        progress.generation,
-                        progress.maxGenerations,
-                        progress.currentEval,
-                        progress.populationSize);
-                    sm.queueEvent(EvolutionProgressReceivedEvent{ progress });
-                }
-                catch (const std::exception& e) {
-                    LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
-                }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize EvolutionProgress: {}", e.what());
             }
-            else if (messageType == Api::TrainingBestSnapshot::name()) {
-                try {
-                    auto snapshot =
-                        DirtSim::Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
-                    sm.queueEvent(TrainingBestSnapshotReceivedEvent{ std::move(snapshot) });
-                }
-                catch (const std::exception& e) {
-                    LOG_ERROR(Network, "Failed to deserialize TrainingBestSnapshot: {}", e.what());
-                }
+        }
+        else if (messageType == Api::TrainingBestSnapshot::name()) {
+            try {
+                auto snapshot =
+                    DirtSim::Network::deserialize_payload<Api::TrainingBestSnapshot>(payload);
+                sm.queueEvent(TrainingBestSnapshotReceivedEvent{ std::move(snapshot) });
             }
-            else if (messageType == Api::UserSettingsUpdated::name()) {
-                try {
-                    auto settingsUpdate =
-                        DirtSim::Network::deserialize_payload<Api::UserSettingsUpdated>(payload);
-                    sm.queueEvent(
-                        UserSettingsUpdatedEvent{ .settings = std::move(settingsUpdate.settings) });
-                }
-                catch (const std::exception& e) {
-                    LOG_ERROR(Network, "Failed to deserialize UserSettingsUpdated: {}", e.what());
-                }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize TrainingBestSnapshot: {}", e.what());
             }
-            else {
-                LOG_WARN(Network, "Unknown server command: {}", messageType);
+        }
+        else if (messageType == Api::TrainingBestPlaybackFrame::name()) {
+            try {
+                auto frame =
+                    DirtSim::Network::deserialize_payload<Api::TrainingBestPlaybackFrame>(payload);
+                sm.queueEvent(TrainingBestPlaybackFrameReceivedEvent{ std::move(frame) });
             }
-        });
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize TrainingBestPlaybackFrame: {}", e.what());
+            }
+        }
+        else if (messageType == Api::UserSettingsUpdated::name()) {
+            try {
+                auto settingsUpdate =
+                    DirtSim::Network::deserialize_payload<Api::UserSettingsUpdated>(payload);
+                sm.queueEvent(
+                    UserSettingsUpdatedEvent{ .settings = std::move(settingsUpdate.settings) });
+            }
+            catch (const std::exception& e) {
+                LOG_ERROR(Network, "Failed to deserialize UserSettingsUpdated: {}", e.what());
+            }
+        }
+        else {
+            LOG_WARN(Network, "Unknown server command: {}", messageType);
+        }
+    });
 
     // Setup binary callback for RenderMessage pushes from server.
     wsService.onBinary([&sm](const std::vector<std::byte>& bytes) {

@@ -24,7 +24,11 @@ namespace {
 constexpr size_t plotRefreshPointCount = 120;
 
 Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamConfig(
-    StateMachine& sm, int intervalMs, int timeoutMs = 2000)
+    StateMachine& sm,
+    int intervalMs,
+    bool bestPlaybackEnabled,
+    int bestPlaybackIntervalMs,
+    int timeoutMs = 2000)
 {
     if (!sm.hasWebSocketService()) {
         return Result<Api::TrainingStreamConfigSet::OkayType, std::string>::error(
@@ -39,6 +43,8 @@ Result<Api::TrainingStreamConfigSet::OkayType, std::string> sendTrainingStreamCo
 
     Api::TrainingStreamConfigSet::Command cmd{
         .intervalMs = intervalMs,
+        .bestPlaybackEnabled = bestPlaybackEnabled,
+        .bestPlaybackIntervalMs = bestPlaybackIntervalMs,
     };
     const auto result =
         wsService.sendCommandAndGetResponse<Api::TrainingStreamConfigSet::OkayType>(cmd, timeoutMs);
@@ -104,17 +110,31 @@ void beginEvolutionSession(TrainingActive& state, StateMachine& sm)
     }
 
     constexpr int startupStreamSetupTimeoutMs = 250;
+    const auto& settings = sm.getUserSettings();
     const auto streamResult = sendTrainingStreamConfig(
-        sm, sm.getUserSettings().streamIntervalMs, startupStreamSetupTimeoutMs);
+        sm,
+        settings.streamIntervalMs,
+        settings.bestPlaybackEnabled,
+        settings.bestPlaybackIntervalMs,
+        startupStreamSetupTimeoutMs);
     if (streamResult.isError()) {
         LOG_WARN(
             State,
-            "TrainingStreamConfigSet failed (intervalMs={}): {}",
-            sm.getUserSettings().streamIntervalMs,
+            "TrainingStreamConfigSet failed (intervalMs={}, bestPlaybackEnabled={}, "
+            "bestPlaybackIntervalMs={}): {}",
+            settings.streamIntervalMs,
+            settings.bestPlaybackEnabled,
+            settings.bestPlaybackIntervalMs,
             streamResult.errorValue());
     }
     else {
-        LOG_INFO(State, "Training stream interval set to {}ms", streamResult.value().intervalMs);
+        LOG_INFO(
+            State,
+            "Training stream config set (interval={}ms, bestPlaybackEnabled={}, "
+            "bestPlaybackInterval={}ms)",
+            streamResult.value().intervalMs,
+            streamResult.value().bestPlaybackEnabled,
+            streamResult.value().bestPlaybackIntervalMs);
     }
 
     Api::RenderFormatSet::Command renderCmd;
@@ -280,6 +300,17 @@ State::Any TrainingActive::onEvent(const EvolutionProgressReceivedEvent& evt, St
 }
 
 State::Any TrainingActive::onEvent(
+    const TrainingBestPlaybackFrameReceivedEvent& evt, StateMachine& /*sm*/)
+{
+    DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
+
+    WorldData worldData = evt.frame.worldData;
+    worldData.organism_ids = evt.frame.organismIds;
+    view_->updateBestPlaybackFrame(worldData, evt.frame.fitness, evt.frame.generation);
+    return std::move(*this);
+}
+
+State::Any TrainingActive::onEvent(
     const TrainingBestSnapshotReceivedEvent& evt, StateMachine& /*sm*/)
 {
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
@@ -406,21 +437,38 @@ State::Any TrainingActive::onEvent(const TrainingStreamConfigChangedEvent& evt, 
 {
     auto& settings = sm.getUserSettings();
     settings.streamIntervalMs = std::max(0, evt.intervalMs);
+    settings.bestPlaybackEnabled = evt.bestPlaybackEnabled;
+    settings.bestPlaybackIntervalMs = std::max(1, evt.bestPlaybackIntervalMs);
 
     DIRTSIM_ASSERT(view_, "TrainingActiveView must exist");
     view_->setStreamIntervalMs(settings.streamIntervalMs);
+    view_->setBestPlaybackEnabled(settings.bestPlaybackEnabled);
+    view_->setBestPlaybackIntervalMs(settings.bestPlaybackIntervalMs);
 
-    const auto result = sendTrainingStreamConfig(sm, settings.streamIntervalMs);
+    const auto result = sendTrainingStreamConfig(
+        sm,
+        settings.streamIntervalMs,
+        settings.bestPlaybackEnabled,
+        settings.bestPlaybackIntervalMs);
     if (result.isError()) {
         LOG_WARN(
             State,
-            "TrainingStreamConfigSet failed (intervalMs={}): {}",
+            "TrainingStreamConfigSet failed (intervalMs={}, bestPlaybackEnabled={}, "
+            "bestPlaybackIntervalMs={}): {}",
             settings.streamIntervalMs,
+            settings.bestPlaybackEnabled,
+            settings.bestPlaybackIntervalMs,
             result.errorValue());
         return std::move(*this);
     }
 
-    LOG_INFO(State, "Training stream interval set to {}ms", result.value().intervalMs);
+    LOG_INFO(
+        State,
+        "Training stream config set (interval={}ms, bestPlaybackEnabled={}, "
+        "bestPlaybackInterval={}ms)",
+        result.value().intervalMs,
+        result.value().bestPlaybackEnabled,
+        result.value().bestPlaybackIntervalMs);
     return std::move(*this);
 }
 

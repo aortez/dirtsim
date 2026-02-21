@@ -38,6 +38,7 @@
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "server/UserSettings.h"
 #include "server/api/EvolutionProgress.h"
+#include "server/api/TrainingBestPlaybackFrame.h"
 #include "server/api/TrainingBestSnapshot.h"
 #include "server/api/TrainingResult.h"
 #include "ui/state-machine/api/TrainingStart.h"
@@ -196,6 +197,8 @@ struct TrainingResultDiscardClickedEvent {
 
 struct TrainingStreamConfigChangedEvent {
     int intervalMs = 0;
+    bool bestPlaybackEnabled = false;
+    int bestPlaybackIntervalMs = 16;
     static constexpr const char* name() { return "TrainingStreamConfigChangedEvent"; }
 };
 struct GenomeLoadClickedEvent {
@@ -232,6 +235,11 @@ struct EvolutionProgressReceivedEvent {
 struct TrainingBestSnapshotReceivedEvent {
     Api::TrainingBestSnapshot snapshot;
     static constexpr const char* name() { return "TrainingBestSnapshotReceivedEvent"; }
+};
+
+struct TrainingBestPlaybackFrameReceivedEvent {
+    Api::TrainingBestPlaybackFrame frame;
+    static constexpr const char* name() { return "TrainingBestPlaybackFrameReceivedEvent"; }
 };
 
 struct UserSettingsUpdatedEvent {
@@ -296,6 +304,7 @@ using Event = std::variant<
     DirtSim::UiUpdateEvent,
     EvolutionProgressReceivedEvent,
     UserSettingsUpdatedEvent,
+    TrainingBestPlaybackFrameReceivedEvent,
     TrainingBestSnapshotReceivedEvent,
     PhysicsSettingsReceivedEvent,
 

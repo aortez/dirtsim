@@ -530,6 +530,8 @@ void TrainingActiveView::destroyUI()
     parallelismLabel_ = nullptr;
     streamPanel_ = nullptr;
     streamIntervalStepper_ = nullptr;
+    bestPlaybackToggle_ = nullptr;
+    bestPlaybackIntervalStepper_ = nullptr;
     pauseResumeButton_ = nullptr;
     pauseResumeLabel_ = nullptr;
     stopTrainingButton_ = nullptr;
@@ -558,9 +560,15 @@ void TrainingActiveView::updateBestSnapshot(
     const std::vector<std::pair<std::string, int>>& topCommandSignatures,
     const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures)
 {
-    bestWorldData_ = std::make_unique<WorldData>(worldData);
-    bestFitness_ = fitness;
-    bestGeneration_ = generation;
+    bestSnapshotWorldData_ = std::make_unique<WorldData>(worldData);
+    bestSnapshotFitness_ = fitness;
+    bestSnapshotGeneration_ = generation;
+    hasBestSnapshot_ = true;
+    if (!userSettings_.bestPlaybackEnabled) {
+        bestWorldData_ = std::make_unique<WorldData>(worldData);
+        bestFitness_ = fitness;
+        bestGeneration_ = generation;
+    }
     int nonZeroColors = 0;
     float maxBrightness = 0.0f;
     for (const auto& color : worldData.colors.data) {
@@ -673,7 +681,9 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
-    scheduleBestRender();
+    if (!userSettings_.bestPlaybackEnabled) {
+        scheduleBestRender();
+    }
 }
 
 void TrainingActiveView::setStreamIntervalMs(int value)
@@ -682,6 +692,53 @@ void TrainingActiveView::setStreamIntervalMs(int value)
     if (streamIntervalStepper_) {
         LVGLBuilder::ActionStepperBuilder::setValue(streamIntervalStepper_, value);
     }
+}
+
+void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
+{
+    userSettings_.bestPlaybackEnabled = enabled;
+    if (bestPlaybackToggle_) {
+        LVGLBuilder::ActionButtonBuilder::setChecked(bestPlaybackToggle_, enabled);
+    }
+    if (bestPlaybackIntervalStepper_) {
+        if (enabled) {
+            lv_obj_clear_state(bestPlaybackIntervalStepper_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(bestPlaybackIntervalStepper_, LV_OPA_COVER, 0);
+        }
+        else {
+            lv_obj_add_state(bestPlaybackIntervalStepper_, LV_STATE_DISABLED);
+            lv_obj_set_style_opa(bestPlaybackIntervalStepper_, LV_OPA_50, 0);
+        }
+    }
+
+    if (!enabled && hasBestSnapshot_ && bestSnapshotWorldData_) {
+        bestWorldData_ = std::make_unique<WorldData>(*bestSnapshotWorldData_);
+        bestFitness_ = bestSnapshotFitness_;
+        bestGeneration_ = bestSnapshotGeneration_;
+        scheduleBestRender();
+    }
+}
+
+void TrainingActiveView::setBestPlaybackIntervalMs(int value)
+{
+    userSettings_.bestPlaybackIntervalMs = std::max(1, value);
+    if (bestPlaybackIntervalStepper_) {
+        LVGLBuilder::ActionStepperBuilder::setValue(
+            bestPlaybackIntervalStepper_, userSettings_.bestPlaybackIntervalMs);
+    }
+}
+
+void TrainingActiveView::updateBestPlaybackFrame(
+    const WorldData& worldData, double fitness, int generation)
+{
+    if (!userSettings_.bestPlaybackEnabled) {
+        return;
+    }
+
+    bestWorldData_ = std::make_unique<WorldData>(worldData);
+    bestFitness_ = fitness;
+    bestGeneration_ = generation;
+    scheduleBestRender();
 }
 
 void TrainingActiveView::setTrainingPaused(bool paused)
@@ -942,8 +999,12 @@ void TrainingActiveView::setEvolutionStarted(bool started)
     evolutionStarted_ = started;
     if (started) {
         bestWorldData_.reset();
+        bestSnapshotWorldData_.reset();
         bestFitness_ = 0.0;
         bestGeneration_ = 0;
+        bestSnapshotFitness_ = 0.0;
+        bestSnapshotGeneration_ = 0;
+        hasBestSnapshot_ = false;
         hasShownBestSnapshot_ = false;
         clearFitnessPlots();
         if (cpuCorePlot_) {
@@ -976,6 +1037,8 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         }
     }
     setTrainingPaused(false);
+    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::setEvolutionCompleted(GenomeId /*bestGenomeId*/)
@@ -1037,7 +1100,7 @@ void TrainingActiveView::renderBestWorld()
 
     if (bestFitnessLabel_) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "Best: %.2f (Gen %d)", bestFitness_, bestGeneration_);
+        snprintf(buf, sizeof(buf), "Best: %.4f (Gen %d)", bestFitness_, bestGeneration_);
         lv_label_set_text(bestFitnessLabel_, buf);
     }
 }
@@ -1105,6 +1168,28 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
                                  .callback(onStreamIntervalChanged, this)
                                  .buildOrLog();
 
+    bestPlaybackToggle_ = LVGLBuilder::actionButton(streamPanel_)
+                              .text("Best Playback")
+                              .mode(LVGLBuilder::ActionMode::Toggle)
+                              .checked(userSettings_.bestPlaybackEnabled)
+                              .width(LV_PCT(100))
+                              .height(LVGLBuilder::Style::ACTION_SIZE)
+                              .layoutRow()
+                              .alignLeft()
+                              .callback(onBestPlaybackToggled, this)
+                              .buildOrLog();
+
+    bestPlaybackIntervalStepper_ = LVGLBuilder::actionStepper(streamPanel_)
+                                       .label("Best Playback (ms)")
+                                       .range(1, 5000)
+                                       .step(1)
+                                       .value(std::max(1, userSettings_.bestPlaybackIntervalMs))
+                                       .valueFormat("%.0f")
+                                       .valueScale(1.0)
+                                       .width(LV_PCT(100))
+                                       .callback(onBestPlaybackIntervalChanged, this)
+                                       .buildOrLog();
+
     LVGLBuilder::ActionButtonBuilder stopBuilder(streamPanel_);
     stopBuilder.text("Stop Training")
         .icon(LV_SYMBOL_STOP)
@@ -1154,6 +1239,9 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     if (cpuCorePlot_) {
         cpuCorePlot_->clear();
     }
+
+    setBestPlaybackEnabled(userSettings_.bestPlaybackEnabled);
+    setBestPlaybackIntervalMs(userSettings_.bestPlaybackIntervalMs);
 }
 
 void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
@@ -1165,7 +1253,47 @@ void TrainingActiveView::onStreamIntervalChanged(lv_event_t* e)
 
     const int32_t value = LVGLBuilder::ActionStepperBuilder::getValue(self->streamIntervalStepper_);
     self->setStreamIntervalMs(value);
-    self->eventSink_.queueEvent(TrainingStreamConfigChangedEvent{ .intervalMs = value });
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = value,
+            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+        });
+}
+
+void TrainingActiveView::onBestPlaybackToggled(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->bestPlaybackToggle_) {
+        return;
+    }
+
+    const bool enabled = LVGLBuilder::ActionButtonBuilder::isChecked(self->bestPlaybackToggle_);
+    self->setBestPlaybackEnabled(enabled);
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->userSettings_.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+        });
+}
+
+void TrainingActiveView::onBestPlaybackIntervalChanged(lv_event_t* e)
+{
+    auto* self = static_cast<TrainingActiveView*>(lv_event_get_user_data(e));
+    if (!self || !self->bestPlaybackIntervalStepper_) {
+        return;
+    }
+
+    const int32_t value =
+        LVGLBuilder::ActionStepperBuilder::getValue(self->bestPlaybackIntervalStepper_);
+    self->setBestPlaybackIntervalMs(value);
+    self->eventSink_.queueEvent(
+        TrainingStreamConfigChangedEvent{
+            .intervalMs = self->userSettings_.streamIntervalMs,
+            .bestPlaybackEnabled = self->userSettings_.bestPlaybackEnabled,
+            .bestPlaybackIntervalMs = self->userSettings_.bestPlaybackIntervalMs,
+        });
 }
 
 void TrainingActiveView::onStopTrainingClicked(lv_event_t* e)

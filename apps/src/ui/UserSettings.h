@@ -10,6 +10,8 @@ struct UserSettings {
     EvolutionConfig evolutionConfig;
     MutationConfig mutationConfig;
     int streamIntervalMs = 16;
+    bool bestPlaybackEnabled = false;
+    int bestPlaybackIntervalMs = 16;
 };
 
 } // namespace DirtSim::Ui
