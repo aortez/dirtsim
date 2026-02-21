@@ -27,6 +27,8 @@ constexpr int B_H_SIZE = HIDDEN_SIZE;
 constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
 constexpr int B_O_SIZE = OUTPUT_SIZE;
 constexpr int TOTAL_WEIGHTS = W_IH_SIZE + W_HH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
+constexpr WeightType HIDDEN_LEAK_ALPHA = 0.2f;
+constexpr WeightType HIDDEN_STATE_CLAMP_ABS = 3.0f;
 
 WeightType relu(WeightType x)
 {
@@ -160,16 +162,22 @@ struct DuckNeuralNetRecurrantBrain::Impl {
             hidden_buffer[h] = relu(hidden_buffer[h]);
         }
 
+        for (int h = 0; h < HIDDEN_SIZE; ++h) {
+            const WeightType candidate =
+                std::clamp(hidden_buffer[h], -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
+            const WeightType blended =
+                ((1.0f - HIDDEN_LEAK_ALPHA) * hidden_state[h]) + (HIDDEN_LEAK_ALPHA * candidate);
+            hidden_state[h] = std::clamp(blended, -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
+        }
+
         std::copy(b_o.begin(), b_o.end(), output_buffer.begin());
         for (int h = 0; h < HIDDEN_SIZE; ++h) {
-            const WeightType hiddenValue = hidden_buffer[h];
+            const WeightType hiddenValue = hidden_state[h];
             const WeightType* weights = &w_ho[h * OUTPUT_SIZE];
             for (int o = 0; o < OUTPUT_SIZE; ++o) {
                 output_buffer[o] += hiddenValue * weights[o];
             }
         }
-
-        std::copy(hidden_buffer.begin(), hidden_buffer.end(), hidden_state.begin());
         return output_buffer;
     }
 };
