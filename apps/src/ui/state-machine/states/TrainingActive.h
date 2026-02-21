@@ -4,6 +4,7 @@
 #include "ui/TrainingActiveView.h"
 #include "ui/state-machine/Event.h"
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -51,7 +52,7 @@ struct TrainingActive {
     std::optional<Starfield::Snapshot> starfieldSnapshot_;
     bool trainingPaused_ = false;
     std::vector<float> plotBestSeries_;
-    int lastFitnessInsightsGeneration_ = -1;
+    uint64_t lastPlottedRobustEvaluationCount_ = 0;
     uint64_t progressEventCount_ = 0;
     uint64_t renderMessageCount_ = 0;
     std::chrono::steady_clock::time_point lastRenderRateLog_;

@@ -478,6 +478,41 @@ TEST(StateEvolutionTest, TickEvaluatesOrganismsAndAdvancesGeneration)
     EXPECT_EQ(evolutionState.currentEval, 0) << "Should reset eval counter";
 }
 
+TEST(StateEvolutionTest, BestFitnessThisGenUpdatesOnlyAfterRobustPass)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 2;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.016; // Single frame.
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.trainingSpec = makeTrainingSpec(2);
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0);
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    auto result1 = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(result1.has_value()) << "Should stay in Evolution";
+    EXPECT_DOUBLE_EQ(evolutionState.bestFitnessThisGen, 0.0)
+        << "Raw generation evals should not update latest robust fitness";
+    EXPECT_EQ(evolutionState.robustEvaluationCount_, 0u);
+
+    constexpr int maxTicks = 16;
+    for (int i = 0; i < maxTicks && evolutionState.robustEvaluationCount_ == 0; ++i) {
+        auto next = evolutionState.tick(*fixture.stateMachine);
+        if (next.has_value()) {
+            break;
+        }
+    }
+
+    EXPECT_GT(evolutionState.robustEvaluationCount_, 0u);
+    EXPECT_GT(evolutionState.bestFitnessThisGen, 0.0)
+        << "Latest robust fitness should update after robust pass finalization";
+}
+
 TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTrim)
 {
     TestStateMachineFixture fixture;

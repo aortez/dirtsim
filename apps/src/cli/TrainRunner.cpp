@@ -27,6 +27,10 @@ TrainResults TrainRunner::run(
     const Api::EvolutionStart::Command& config,
     const std::string& remoteAddress)
 {
+    lastGeneration_ = -1;
+    lastEval_ = -1;
+    lastRobustEvaluationCount_ = 0;
+
     TrainResults results;
     results.scenarioId = config.scenarioId;
     if (!config.population.empty()) {
@@ -169,6 +173,7 @@ TrainResults TrainRunner::run(
                 latestProgress.maxGenerations,
                 latestProgress.currentEval,
                 latestProgress.populationSize,
+                latestProgress.robustEvaluationCount,
                 latestProgress.bestFitnessThisGen,
                 latestProgress.bestFitnessAllTime,
                 latestProgress.averageFitness);
@@ -225,16 +230,19 @@ void TrainRunner::displayProgress(
     int maxGenerations,
     int currentEval,
     int populationSize,
-    double bestThisGen,
+    uint64_t robustEvaluationCount,
+    double latestRobustFitness,
     double bestAllTime,
     double avgFitness)
 {
-    // Only update on generation or evaluation change.
-    if (generation == lastGeneration_ && currentEval == lastEval_) {
+    // Only update on generation/eval change or on robust pass completion.
+    if (generation == lastGeneration_ && currentEval == lastEval_
+        && robustEvaluationCount == lastRobustEvaluationCount_) {
         return;
     }
     lastGeneration_ = generation;
     lastEval_ = currentEval;
+    lastRobustEvaluationCount_ = robustEvaluationCount;
 
     // Progress bar for current generation's evaluations.
     const int barWidth = 30;
@@ -249,7 +257,7 @@ void TrainRunner::displayProgress(
     std::cerr << "] ";
     std::cerr << std::setw(3) << currentEval << "/" << populationSize << " ";
     std::cerr << "pop=" << populationSize << " ";
-    std::cerr << "gen=" << std::fixed << std::setprecision(2) << bestThisGen << " ";
+    std::cerr << "robust=" << std::fixed << std::setprecision(2) << latestRobustFitness << " ";
     std::cerr << "best=" << std::setprecision(2) << bestAllTime << " ";
     std::cerr << "avg=" << std::setprecision(2) << avgFitness;
     std::cerr << std::flush;

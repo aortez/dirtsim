@@ -348,7 +348,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     lv_obj_clear_flag(fitnessRow, LV_OBJ_FLAG_SCROLLABLE);
 
     bestThisGenLabel_ = lv_label_create(fitnessRow);
-    lv_label_set_text(bestThisGenLabel_, "This Gen: --");
+    lv_label_set_text(bestThisGenLabel_, "Last Robust: --");
     lv_obj_set_style_text_color(bestThisGenLabel_, lv_color_hex(0xAAAACC), 0);
     lv_obj_set_style_text_font(bestThisGenLabel_, &lv_font_montserrat_12, 0);
 
@@ -476,7 +476,7 @@ void TrainingActiveView::createActiveUI(int displayWidth, int displayHeight)
     bestFitnessPlot_ = std::make_unique<TimeSeriesPlotWidget>(
         fitnessPlotsRow_,
         TimeSeriesPlotWidget::Config{
-            .title = "Best",
+            .title = "Robust Evaluated",
             .lineColor = lv_color_hex(0xFFDD66),
             .defaultMinY = 0.0f,
             .defaultMaxY = 1.0f,
@@ -853,8 +853,13 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
 
     // Update fitness labels (compact format).
     if (bestThisGenLabel_) {
-        snprintf(buf, sizeof(buf), "This Gen: %.2f", progress.bestFitnessThisGen);
-        lv_label_set_text(bestThisGenLabel_, buf);
+        if (progress.robustEvaluationCount > 0) {
+            snprintf(buf, sizeof(buf), "Last Robust: %.2f", progress.bestFitnessThisGen);
+            lv_label_set_text(bestThisGenLabel_, buf);
+        }
+        else {
+            lv_label_set_text(bestThisGenLabel_, "Last Robust: --");
+        }
     }
 
     if (bestAllTimeLabel_) {
@@ -897,10 +902,10 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
 }
 
-void TrainingActiveView::updateFitnessPlots(const std::vector<float>& bestFitnessSeries)
+void TrainingActiveView::updateFitnessPlots(const std::vector<float>& robustFitnessSeries)
 {
     if (bestFitnessPlot_) {
-        bestFitnessPlot_->setSamples(bestFitnessSeries);
+        bestFitnessPlot_->setSamples(robustFitnessSeries);
     }
     if (fitnessPlotsPanel_) {
         lv_obj_invalidate(fitnessPlotsPanel_);

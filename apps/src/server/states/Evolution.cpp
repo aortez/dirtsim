@@ -808,6 +808,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     bestFitnessThisGen = 0.0;
     bestFitnessAllTime = std::numeric_limits<double>::lowest();
     bestGenomeId = INVALID_GENOME_ID;
+    robustEvaluationCount_ = 0;
     bestThisGenOrigin_ = IndividualOrigin::Unknown;
     lastCompletedGeneration_ = -1;
     lastGenerationFitnessMin_ = 0.0;
@@ -1255,15 +1256,6 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         aggregate.calls += totalSimulation->second.calls;
     }
 
-    if (result.fitness > bestFitnessThisGen) {
-        bestFitnessThisGen = result.fitness;
-        if (result.index >= 0 && result.index < static_cast<int>(populationOrigins.size())) {
-            bestThisGenOrigin_ = populationOrigins[result.index];
-        }
-        else {
-            bestThisGenOrigin_ = IndividualOrigin::Unknown;
-        }
-    }
     if (result.fitness > bestFitnessAllTime) {
         const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
@@ -1547,6 +1539,17 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         meta,
         evolutionConfig.genomeArchiveMaxSize,
         "all-time best (robust pass)");
+
+    bestFitnessThisGen = robustFitness;
+    robustEvaluationCount_++;
+    if (robustnessPassIndex_ >= 0
+        && robustnessPassIndex_ < static_cast<int>(populationOrigins.size())) {
+        bestThisGenOrigin_ = populationOrigins[robustnessPassIndex_];
+    }
+    else {
+        bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    }
+
     auto& repo = dsm.getGenomeRepository();
     const bool hasSessionBest = !bestGenomeId.isNil();
     const bool robustBestUpdated = !hasSessionBest
@@ -1642,10 +1645,11 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 {
     LOG_INFO(
         State,
-        "Evolution: Generation {} complete. Best={:.4f}, All-time={:.4f}",
+        "Evolution: Generation {} complete. Last robust={:.4f}, All-time={:.4f}, robust_passes={}",
         generation,
         bestFitnessThisGen,
-        bestFitnessAllTime);
+        bestFitnessAllTime,
+        robustEvaluationCount_);
     DIRTSIM_ASSERT(!robustnessPassActive_, "Evolution: robust pass must complete before advance");
     pendingBestRobustness_ = false;
     pendingBestRobustnessGeneration_ = -1;
@@ -1855,8 +1859,6 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     // giving the UI a clean "all evals complete" signal.
     if (evolutionConfig.maxGenerations <= 0 || generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
-        bestFitnessThisGen = 0.0;
-        bestThisGenOrigin_ = IndividualOrigin::Unknown;
         generationTelemetry_.reset();
         sumFitnessThisGen_ = 0.0;
         fitnessScores.assign(population.size(), 0.0);
@@ -2045,6 +2047,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .genomeArchiveMaxSize = evolutionConfig.genomeArchiveMaxSize,
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
+        .robustEvaluationCount = robustEvaluationCount_,
         .averageFitness = avgFitness,
         .lastCompletedGeneration = lastCompletedGeneration_,
         .lastGenerationFitnessMin = lastGenerationFitnessMin_,
