@@ -543,6 +543,47 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Trimmed robust sample window should contain only post-mutation samples";
 }
 
+TEST(StateEvolutionTest, DuckClockRobustPassRoundsOddEvalCountUpToEven)
+{
+    TestStateMachineFixture fixture;
+    auto& repo = fixture.stateMachine->getGenomeRepository();
+    repo.clear();
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 3;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+    population.scenarioId = Scenario::EnumType::Clock;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    std::optional<Any> finalState;
+    constexpr int maxTicks = 8000;
+    for (int i = 0; i < maxTicks && !finalState.has_value(); ++i) {
+        finalState = evolutionState.tick(*fixture.stateMachine);
+    }
+
+    ASSERT_TRUE(finalState.has_value()) << "Evolution should complete";
+    ASSERT_TRUE(std::holds_alternative<UnsavedTrainingResult>(finalState->getVariant()));
+
+    const auto bestId = repo.getBestId();
+    ASSERT_TRUE(bestId.has_value());
+    const auto metadata = repo.getMetadata(*bestId);
+    ASSERT_TRUE(metadata.has_value());
+    EXPECT_EQ(metadata->robustEvalCount, 4);
+}
+
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
 {
     TestStateMachineFixture fixture;

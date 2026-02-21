@@ -63,6 +63,7 @@ public:
 
     struct Config {
         TrainingBrainRegistry brainRegistry;
+        std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
         std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
     };
 
@@ -124,6 +125,7 @@ private:
 
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;
+    std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
     std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
 

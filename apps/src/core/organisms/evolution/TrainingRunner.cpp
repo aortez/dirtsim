@@ -106,6 +106,7 @@ TrainingRunner::TrainingRunner(
       individual_(individual),
       maxTime_(evolutionConfig.maxSimulationTime),
       brainRegistry_(runnerConfig.brainRegistry),
+      duckClockSpawnLeftFirst_(runnerConfig.duckClockSpawnLeftFirst),
       spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
           static_cast<uint32_t>(std::random_device{}()))),
       evolutionConfig_(evolutionConfig)
@@ -299,8 +300,14 @@ void TrainingRunner::spawnEvaluationOrganism()
             Vector2i{ rightX, spawnY },
         };
 
-        std::bernoulli_distribution sideDist(0.5);
-        const bool spawnLeftFirst = sideDist(spawnRng_);
+        bool spawnLeftFirst = false;
+        if (duckClockSpawnLeftFirst_.has_value()) {
+            spawnLeftFirst = duckClockSpawnLeftFirst_.value();
+        }
+        else {
+            std::bernoulli_distribution sideDist(0.5);
+            spawnLeftFirst = sideDist(spawnRng_);
+        }
         if (!spawnLeftFirst) {
             std::swap(sideCandidates[0], sideCandidates[1]);
         }

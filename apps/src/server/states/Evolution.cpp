@@ -90,6 +90,40 @@ double computeMedian(std::vector<double> samples)
     return (samples[mid - 1] + upper) * 0.5;
 }
 
+bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioId)
+{
+    return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
+}
+
+int resolveRobustnessEvalCount(
+    int configuredCount, OrganismType organismType, Scenario::EnumType scenarioId)
+{
+    int resolvedCount = std::max(1, configuredCount);
+    if (isDuckClockScenario(organismType, scenarioId) && (resolvedCount % 2) != 0) {
+        resolvedCount += 1;
+    }
+    return resolvedCount;
+}
+
+std::optional<bool> resolveDuckClockSpawnSideOverride(
+    Evolution::WorkerResult::TaskType taskType,
+    OrganismType organismType,
+    Scenario::EnumType scenarioId,
+    int robustSampleOrdinal)
+{
+    if (taskType != Evolution::WorkerResult::TaskType::RobustnessEval) {
+        return std::nullopt;
+    }
+    if (!isDuckClockScenario(organismType, scenarioId)) {
+        return std::nullopt;
+    }
+
+    DIRTSIM_ASSERT(
+        robustSampleOrdinal > 0,
+        "Evolution: robust sample ordinal must be positive for duck clock alternation");
+    return (robustSampleOrdinal % 2) != 0;
+}
+
 uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
 {
     uint64_t hash = 0;
@@ -798,7 +832,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     robustnessPassPendingSamples_ = 0;
     robustnessPassCompletedSamples_ = 0;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
 
     visibleRunner_.reset();
@@ -967,7 +1001,15 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
         robustnessPassVisibleSamplesRemaining_--;
 
         const Individual& individual = population[visibleEvalIndex_];
-        const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+        const TrainingRunner::Config runnerConfig{
+            .brainRegistry = brainRegistry_,
+            .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
+                WorkerResult::TaskType::RobustnessEval,
+                trainingSpec.organismType,
+                individual.scenarioId,
+                visibleRobustSampleOrdinal_),
+            .duckClockSpawnRngSeed = std::nullopt,
+        };
         visibleRunner_ = std::make_unique<TrainingRunner>(
             trainingSpec,
             makeRunnerIndividual(individual),
@@ -991,6 +1033,7 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
     const Individual& individual = population[visibleEvalIndex_];
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = brainRegistry_,
+        .duckClockSpawnLeftFirst = std::nullopt,
         .duckClockSpawnRngSeed = std::nullopt,
     };
 
@@ -1089,6 +1132,11 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
 
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = state.brainRegistry,
+        .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
+            task.taskType,
+            state.trainingSpec.organismType,
+            task.individual.scenarioId,
+            task.robustSampleOrdinal),
         .duckClockSpawnRngSeed = std::nullopt,
     };
     TrainingRunner runner(
@@ -1334,13 +1382,23 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
     robustnessPassActive_ = true;
     robustnessPassGeneration_ = generation;
     robustnessPassIndex_ = pendingBestRobustnessIndex_;
-    robustnessPassTargetEvalCount_ = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    const int configuredRobustEvalCount = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    robustnessPassTargetEvalCount_ = resolveRobustnessEvalCount(
+        evolutionConfig.robustFitnessEvaluationCount,
+        trainingSpec.organismType,
+        candidate.scenarioId);
+    if (robustnessPassTargetEvalCount_ != configuredRobustEvalCount) {
+        LOG_INFO(
+            State,
+            "Evolution: Rounded robust eval count from {} to {} for duck clock alternation",
+            configuredRobustEvalCount,
+            robustnessPassTargetEvalCount_);
+    }
     robustnessPassCompletedSamples_ = 0;
-    robustnessPassPendingSamples_ = std::max(0, robustnessPassTargetEvalCount_ - 1);
+    robustnessPassPendingSamples_ = robustnessPassTargetEvalCount_;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
-    robustnessPassSamples_.push_back(pendingBestRobustnessFirstSample_);
 
     pendingBestRobustness_ = false;
 
@@ -1366,7 +1424,7 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         return;
     }
 
-    const int firstWorkerSampleOrdinal = 2 + robustnessPassVisibleSamplesRemaining_;
+    const int firstWorkerSampleOrdinal = 1 + robustnessPassVisibleSamplesRemaining_;
     {
         std::lock_guard<std::mutex> lock(workerState_->taskMutex);
         for (int i = 0; i < workerSampleCount; ++i) {
@@ -1409,7 +1467,7 @@ void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResu
     LOG_INFO(
         State,
         "Evolution: Robust sample {}/{} for gen {} eval {} = {:.4f}",
-        robustnessPassCompletedSamples_ + 1,
+        robustnessPassCompletedSamples_,
         robustnessPassTargetEvalCount_,
         robustnessPassGeneration_,
         robustnessPassIndex_,
@@ -1443,7 +1501,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         robustnessPassPendingSamples_ = 0;
         robustnessPassCompletedSamples_ = 0;
         robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassNextVisibleSampleOrdinal_ = 1;
         robustnessPassSamples_.clear();
         return;
     }
@@ -1457,7 +1515,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         robustnessPassPendingSamples_ = 0;
         robustnessPassCompletedSamples_ = 0;
         robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassNextVisibleSampleOrdinal_ = 1;
         robustnessPassSamples_.clear();
         return;
     }
@@ -1539,7 +1597,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
     robustnessPassPendingSamples_ = 0;
     robustnessPassCompletedSamples_ = 0;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
     pendingBestSnapshot_.reset();
     pendingBestSnapshotCommandsAccepted_ = 0;

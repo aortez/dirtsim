@@ -286,7 +286,7 @@ private:
     int robustnessPassPendingSamples_ = 0;
     int robustnessPassCompletedSamples_ = 0;
     int robustnessPassVisibleSamplesRemaining_ = 0;
-    int robustnessPassNextVisibleSampleOrdinal_ = 2;
+    int robustnessPassNextVisibleSampleOrdinal_ = 1;
     std::vector<double> robustnessPassSamples_;
 
     void initializePopulation(StateMachine& dsm);

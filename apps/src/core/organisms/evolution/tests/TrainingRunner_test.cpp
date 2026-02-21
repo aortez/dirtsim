@@ -528,6 +528,7 @@ TEST_F(TrainingRunnerTest, UsesConfiguredBrainRegistry)
 
     TrainingRunner::Config runnerConfig{
         .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = std::nullopt,
         .duckClockSpawnRngSeed = std::nullopt,
     };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -636,6 +637,7 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
 
         TrainingRunner::Config runnerConfig{
             .brainRegistry = registry,
+            .duckClockSpawnLeftFirst = std::nullopt,
             .duckClockSpawnRngSeed = std::nullopt,
         };
         TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -789,6 +791,7 @@ TEST_F(TrainingRunnerTest, TopCommandSignaturesAreTop20AndTieBreakBySignature)
 
     TrainingRunner::Config runnerConfig{
         .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = std::nullopt,
         .duckClockSpawnRngSeed = std::nullopt,
     };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -859,6 +862,7 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
 
     TrainingRunner::Config runnerConfig{
         .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = std::nullopt,
         .duckClockSpawnRngSeed = std::nullopt,
     };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -951,6 +955,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
     individual.brain.brainKind = brainKind;
     TrainingRunner::Config runnerConfig{
         .brainRegistry = registry,
+        .duckClockSpawnLeftFirst = std::nullopt,
         .duckClockSpawnRngSeed = std::nullopt,
     };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -1020,6 +1025,7 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
     for (uint32_t seed = 0; seed < 64; ++seed) {
         const TrainingRunner::Config runnerConfig{
             .brainRegistry = TrainingBrainRegistry::createDefault(),
+            .duckClockSpawnLeftFirst = std::nullopt,
             .duckClockSpawnRngSeed = seed,
         };
         TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
@@ -1062,6 +1068,58 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
 
     EXPECT_TRUE(sawLeftSpawn);
     EXPECT_TRUE(sawRightSpawn);
+}
+
+TEST_F(TrainingRunnerTest, DuckTrainingOnClockSpawnSideOverrideRespectsRequestedSide)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::Random;
+    individual.scenarioId = Scenario::EnumType::Clock;
+
+    const auto spawnWithOverride = [&](bool spawnLeftFirst) -> int {
+        const TrainingRunner::Config runnerConfig{
+            .brainRegistry = TrainingBrainRegistry::createDefault(),
+            .duckClockSpawnLeftFirst = spawnLeftFirst,
+            .duckClockSpawnRngSeed = std::nullopt,
+        };
+        TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+        World* world = runner.getWorld();
+        if (!world) {
+            ADD_FAILURE() << "World must exist for duck spawn test";
+            return -1;
+        }
+
+        auto& data = world->getData();
+        const int spawnY = std::max(1, data.height - 2);
+        const int leftX = 1;
+        const int rightX = std::max(0, data.width - 2);
+        if (data.inBounds(leftX, spawnY)) {
+            data.at(leftX, spawnY).clear();
+        }
+        if (data.inBounds(rightX, spawnY)) {
+            data.at(rightX, spawnY).clear();
+        }
+
+        runner.step(0);
+        const Organism::Body* organism = runner.getOrganism();
+        if (!organism) {
+            ADD_FAILURE() << "Duck must spawn during first step";
+            return -1;
+        }
+
+        return organism->getAnchorCell().x;
+    };
+
+    const int leftSpawnX = spawnWithOverride(true);
+    const int rightSpawnX = spawnWithOverride(false);
+
+    EXPECT_EQ(leftSpawnX, 1);
+    EXPECT_NE(rightSpawnX, leftSpawnX);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)
