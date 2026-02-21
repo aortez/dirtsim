@@ -357,10 +357,10 @@ TEST(DuckSensoryDataTest, GatherSensoryDataReturnsCorrectPositionAndState)
     // Should be on ground (settled on floor).
     EXPECT_TRUE(sensory.on_ground);
 
-    // Grid size should be 9x9.
+    // Grid size should match duck sensory constants.
     EXPECT_EQ(sensory.actual_width, DuckSensoryData::GRID_SIZE);
     EXPECT_EQ(sensory.actual_height, DuckSensoryData::GRID_SIZE);
-    EXPECT_EQ(DuckSensoryData::GRID_SIZE, 9);
+    EXPECT_EQ(DuckSensoryData::GRID_SIZE, 15);
 }
 
 /**
@@ -397,34 +397,50 @@ TEST(DuckSensoryDataTest, GatherSensoryDataSamplesEnvironment)
     // Gather sensory data immediately (before physics moves duck).
     DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
 
-    // Duck at (7,12), 9x9 grid centered on duck.
-    // Offset = (7-4, 12-4) = (3, 8). No clamping - out-of-bounds treated as WALL.
-    EXPECT_EQ(sensory.world_offset.x, 3);
-    EXPECT_EQ(sensory.world_offset.y, 8);
+    const int halfWindow = DuckSensoryData::GRID_SIZE / 2;
+    EXPECT_EQ(sensory.world_offset.x, sensory.position.x - halfWindow);
+    EXPECT_EQ(sensory.world_offset.y, sensory.position.y - halfWindow);
 
-    // Floor at y=13 should be at neural y = 13 - 8 = 5.
-    // Check that row 5 has DIRT.
+    const int floorNeuralY = 13 - sensory.world_offset.y;
+    ASSERT_GE(floorNeuralY, 0);
+    ASSERT_LT(floorNeuralY, DuckSensoryData::GRID_SIZE);
+
+    // Floor at y=13 should appear in the sensory grid as DIRT.
     bool found_dirt = false;
     for (int x = 0; x < DuckSensoryData::GRID_SIZE; x++) {
-        if (sensory.material_histograms[5][x][static_cast<int>(Material::EnumType::Dirt)] > 0.5) {
+        if (sensory.material_histograms[floorNeuralY][x][static_cast<int>(Material::EnumType::Dirt)]
+            > 0.5) {
             found_dirt = true;
             break;
         }
     }
     EXPECT_TRUE(found_dirt) << "Should see DIRT floor in sensory grid";
 
-    // Wall at x=10 should be at neural x = 10 - 3 = 7.
+    const int wallNeuralX = 10 - sensory.world_offset.x;
+    ASSERT_GE(wallNeuralX, 0);
+    ASSERT_LT(wallNeuralX, DuckSensoryData::GRID_SIZE);
+
+    // Wall at x=10 should be visible to the duck.
     bool found_wall = false;
     for (int y = 0; y < DuckSensoryData::GRID_SIZE; y++) {
-        if (sensory.material_histograms[y][7][static_cast<int>(Material::EnumType::Wall)] > 0.5) {
+        if (sensory.material_histograms[y][wallNeuralX][static_cast<int>(Material::EnumType::Wall)]
+            > 0.5) {
             found_wall = true;
             break;
         }
     }
     EXPECT_TRUE(found_wall) << "Should see WALL to the right in sensory grid";
 
-    // Water at (4,12) should be at neural (4-3, 12-8) = (1, 4).
-    EXPECT_GT(sensory.material_histograms[4][1][static_cast<int>(Material::EnumType::Water)], 0.5)
+    const int waterNeuralX = 4 - sensory.world_offset.x;
+    const int waterNeuralY = 12 - sensory.world_offset.y;
+    ASSERT_GE(waterNeuralX, 0);
+    ASSERT_LT(waterNeuralX, DuckSensoryData::GRID_SIZE);
+    ASSERT_GE(waterNeuralY, 0);
+    ASSERT_LT(waterNeuralY, DuckSensoryData::GRID_SIZE);
+    EXPECT_GT(
+        sensory.material_histograms[waterNeuralY][waterNeuralX]
+                                   [static_cast<int>(Material::EnumType::Water)],
+        0.5)
         << "Should see WATER to the left in sensory grid";
 }
 
@@ -457,8 +473,7 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
     DuckSensoryData sensory = duck->gatherSensoryData(*world, 0.016);
 
     // Duck at (7,12), wall at (9,12).
-    // Neural coords: duck center at (4,4), wall at (9-3, 12-8) = (6, 4).
-    // So wall is 2 cells to the right of center in neural grid.
+    // Neural coords are computed from world_offset.
 
     int wall_neural_x = 9 - sensory.world_offset.x;
     int wall_neural_y = 12 - sensory.world_offset.y;
@@ -476,9 +491,10 @@ TEST(DuckSensoryDataTest, SensoryDataDetectsWallAhead)
 
     // Center should not be solid (it's the duck's WOOD cell, but let's check air around it).
     // Actually the duck itself is WOOD which is solid, so check one cell away.
-    int left_of_duck_x = 4 - 1; // One cell left of center in neural coords.
+    const int center = DuckSensoryData::GRID_SIZE / 2;
+    int left_of_duck_x = center - 1; // One cell left of center in neural coords.
     bool left_is_solid =
         SensoryUtils::isSolid<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
-            sensory.material_histograms, left_of_duck_x, 4);
+            sensory.material_histograms, left_of_duck_x, center);
     EXPECT_FALSE(left_is_solid) << "Air to the left of duck should not be solid";
 }
