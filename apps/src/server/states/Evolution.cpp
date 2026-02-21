@@ -12,6 +12,7 @@
 #include "core/organisms/Tree.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
+#include "core/organisms/evolution/GenomeMetadataUtils.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/organisms/evolution/Mutation.h"
 #include "core/scenarios/ScenarioRegistry.h"
@@ -73,21 +74,38 @@ bool fitnessTiesBest(double fitness, double bestFitness)
     return std::abs(fitness - bestFitness) <= (kBestFitnessTieRelativeEpsilon * scale);
 }
 
-double computeMedian(std::vector<double> samples)
+bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioId)
 {
-    if (samples.empty()) {
-        return 0.0;
+    return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
+}
+
+int resolveRobustnessEvalCount(
+    int configuredCount, OrganismType organismType, Scenario::EnumType scenarioId)
+{
+    int resolvedCount = std::max(1, configuredCount);
+    if (isDuckClockScenario(organismType, scenarioId) && (resolvedCount % 2) != 0) {
+        resolvedCount += 1;
+    }
+    return resolvedCount;
+}
+
+std::optional<bool> resolveDuckClockSpawnSideOverride(
+    Evolution::WorkerResult::TaskType taskType,
+    OrganismType organismType,
+    Scenario::EnumType scenarioId,
+    int robustSampleOrdinal)
+{
+    if (taskType != Evolution::WorkerResult::TaskType::RobustnessEval) {
+        return std::nullopt;
+    }
+    if (!isDuckClockScenario(organismType, scenarioId)) {
+        return std::nullopt;
     }
 
-    const size_t mid = samples.size() / 2;
-    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
-    const double upper = samples[mid];
-    if ((samples.size() % 2) != 0) {
-        return upper;
-    }
-
-    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
-    return (samples[mid - 1] + upper) * 0.5;
+    DIRTSIM_ASSERT(
+        robustSampleOrdinal > 0,
+        "Evolution: robust sample ordinal must be positive for duck clock alternation");
+    return (robustSampleOrdinal % 2) != 0;
 }
 
 uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
@@ -774,6 +792,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     bestFitnessThisGen = 0.0;
     bestFitnessAllTime = std::numeric_limits<double>::lowest();
     bestGenomeId = INVALID_GENOME_ID;
+    robustEvaluationCount_ = 0;
     bestThisGenOrigin_ = IndividualOrigin::Unknown;
     lastCompletedGeneration_ = -1;
     lastGenerationFitnessMin_ = 0.0;
@@ -798,7 +817,7 @@ void Evolution::initializePopulation(StateMachine& dsm)
     robustnessPassPendingSamples_ = 0;
     robustnessPassCompletedSamples_ = 0;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
 
     visibleRunner_.reset();
@@ -967,7 +986,15 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
         robustnessPassVisibleSamplesRemaining_--;
 
         const Individual& individual = population[visibleEvalIndex_];
-        const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+        const TrainingRunner::Config runnerConfig{
+            .brainRegistry = brainRegistry_,
+            .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
+                WorkerResult::TaskType::RobustnessEval,
+                trainingSpec.organismType,
+                individual.scenarioId,
+                visibleRobustSampleOrdinal_),
+            .duckClockSpawnRngSeed = std::nullopt,
+        };
         visibleRunner_ = std::make_unique<TrainingRunner>(
             trainingSpec,
             makeRunnerIndividual(individual),
@@ -989,7 +1016,11 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
     visibleRobustSampleOrdinal_ = 0;
 
     const Individual& individual = population[visibleEvalIndex_];
-    const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = brainRegistry_,
+        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
 
     visibleRunner_ = std::make_unique<TrainingRunner>(
         trainingSpec,
@@ -1084,7 +1115,15 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
     DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
 
-    const TrainingRunner::Config runnerConfig{ .brainRegistry = state.brainRegistry };
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = state.brainRegistry,
+        .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
+            task.taskType,
+            state.trainingSpec.organismType,
+            task.individual.scenarioId,
+            task.robustSampleOrdinal),
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(
         state.trainingSpec,
         makeRunnerIndividual(task.individual),
@@ -1201,17 +1240,16 @@ void Evolution::processResult(StateMachine& dsm, WorkerResult result)
         aggregate.calls += totalSimulation->second.calls;
     }
 
-    if (result.fitness > bestFitnessThisGen) {
-        bestFitnessThisGen = result.fitness;
-        if (result.index >= 0 && result.index < static_cast<int>(populationOrigins.size())) {
-            bestThisGenOrigin_ = populationOrigins[result.index];
-        }
-        else {
-            bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    const Individual& individual = population[result.index];
+    if (!individual.genome.has_value()) {
+        const bool firstEvaluationThisGeneration = currentEval == 1;
+        if (firstEvaluationThisGeneration || result.fitness > bestFitnessThisGen) {
+            bestFitnessThisGen = result.fitness;
+            bestThisGenOrigin_ = origin;
         }
     }
+
     if (result.fitness > bestFitnessAllTime) {
-        const Individual& individual = population[result.index];
         if (individual.genome.has_value()) {
             const bool replacePendingCandidate = !pendingBestRobustness_
                 || pendingBestRobustnessGeneration_ != generation
@@ -1328,13 +1366,23 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
     robustnessPassActive_ = true;
     robustnessPassGeneration_ = generation;
     robustnessPassIndex_ = pendingBestRobustnessIndex_;
-    robustnessPassTargetEvalCount_ = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    const int configuredRobustEvalCount = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
+    robustnessPassTargetEvalCount_ = resolveRobustnessEvalCount(
+        evolutionConfig.robustFitnessEvaluationCount,
+        trainingSpec.organismType,
+        candidate.scenarioId);
+    if (robustnessPassTargetEvalCount_ != configuredRobustEvalCount) {
+        LOG_INFO(
+            State,
+            "Evolution: Rounded robust eval count from {} to {} for duck clock alternation",
+            configuredRobustEvalCount,
+            robustnessPassTargetEvalCount_);
+    }
     robustnessPassCompletedSamples_ = 0;
-    robustnessPassPendingSamples_ = std::max(0, robustnessPassTargetEvalCount_ - 1);
+    robustnessPassPendingSamples_ = robustnessPassTargetEvalCount_;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
-    robustnessPassSamples_.push_back(pendingBestRobustnessFirstSample_);
 
     pendingBestRobustness_ = false;
 
@@ -1360,7 +1408,7 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
         return;
     }
 
-    const int firstWorkerSampleOrdinal = 2 + robustnessPassVisibleSamplesRemaining_;
+    const int firstWorkerSampleOrdinal = 1 + robustnessPassVisibleSamplesRemaining_;
     {
         std::lock_guard<std::mutex> lock(workerState_->taskMutex);
         for (int i = 0; i < workerSampleCount; ++i) {
@@ -1403,7 +1451,7 @@ void Evolution::handleRobustnessSampleResult(StateMachine& dsm, const WorkerResu
     LOG_INFO(
         State,
         "Evolution: Robust sample {}/{} for gen {} eval {} = {:.4f}",
-        robustnessPassCompletedSamples_ + 1,
+        robustnessPassCompletedSamples_,
         robustnessPassTargetEvalCount_,
         robustnessPassGeneration_,
         robustnessPassIndex_,
@@ -1437,7 +1485,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         robustnessPassPendingSamples_ = 0;
         robustnessPassCompletedSamples_ = 0;
         robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassNextVisibleSampleOrdinal_ = 1;
         robustnessPassSamples_.clear();
         return;
     }
@@ -1451,7 +1499,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         robustnessPassPendingSamples_ = 0;
         robustnessPassCompletedSamples_ = 0;
         robustnessPassVisibleSamplesRemaining_ = 0;
-        robustnessPassNextVisibleSampleOrdinal_ = 2;
+        robustnessPassNextVisibleSampleOrdinal_ = 1;
         robustnessPassSamples_.clear();
         return;
     }
@@ -1483,6 +1531,17 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         meta,
         evolutionConfig.genomeArchiveMaxSize,
         "all-time best (robust pass)");
+
+    bestFitnessThisGen = robustFitness;
+    robustEvaluationCount_++;
+    if (robustnessPassIndex_ >= 0
+        && robustnessPassIndex_ < static_cast<int>(populationOrigins.size())) {
+        bestThisGenOrigin_ = populationOrigins[robustnessPassIndex_];
+    }
+    else {
+        bestThisGenOrigin_ = IndividualOrigin::Unknown;
+    }
+
     auto& repo = dsm.getGenomeRepository();
     const bool hasSessionBest = !bestGenomeId.isNil();
     const bool robustBestUpdated = !hasSessionBest
@@ -1533,7 +1592,7 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
     robustnessPassPendingSamples_ = 0;
     robustnessPassCompletedSamples_ = 0;
     robustnessPassVisibleSamplesRemaining_ = 0;
-    robustnessPassNextVisibleSampleOrdinal_ = 2;
+    robustnessPassNextVisibleSampleOrdinal_ = 1;
     robustnessPassSamples_.clear();
     pendingBestSnapshot_.reset();
     pendingBestSnapshotCommandsAccepted_ = 0;
@@ -1578,10 +1637,11 @@ void Evolution::advanceGeneration(StateMachine& dsm)
 {
     LOG_INFO(
         State,
-        "Evolution: Generation {} complete. Best={:.4f}, All-time={:.4f}",
+        "Evolution: Generation {} complete. Last robust={:.4f}, All-time={:.4f}, robust_passes={}",
         generation,
         bestFitnessThisGen,
-        bestFitnessAllTime);
+        bestFitnessAllTime,
+        robustEvaluationCount_);
     DIRTSIM_ASSERT(!robustnessPassActive_, "Evolution: robust pass must complete before advance");
     pendingBestRobustness_ = false;
     pendingBestRobustnessGeneration_ = -1;
@@ -1791,8 +1851,6 @@ void Evolution::advanceGeneration(StateMachine& dsm)
     // giving the UI a clean "all evals complete" signal.
     if (evolutionConfig.maxGenerations <= 0 || generation < evolutionConfig.maxGenerations) {
         currentEval = 0;
-        bestFitnessThisGen = 0.0;
-        bestThisGenOrigin_ = IndividualOrigin::Unknown;
         generationTelemetry_.reset();
         sumFitnessThisGen_ = 0.0;
         fitnessScores.assign(population.size(), 0.0);
@@ -1957,7 +2015,10 @@ void Evolution::broadcastProgress(StateMachine& dsm)
     }
 
     auto& repo = dsm.getGenomeRepository();
-    const double bestAllTime = bestGenomeId.isNil() ? 0.0 : bestFitnessAllTime;
+    const bool hasAllTimeFitness = completedEvaluations_ > 0 && std::isfinite(bestFitnessAllTime)
+        && bestFitnessAllTime > std::numeric_limits<double>::lowest();
+    const double bestAllTime =
+        (!bestGenomeId.isNil() || hasAllTimeFitness) ? bestFitnessAllTime : 0.0;
 
     // Compute CPU auto-tune fields.
     int activeParallelism = evolutionConfig.maxParallelEvaluations;
@@ -1981,6 +2042,7 @@ void Evolution::broadcastProgress(StateMachine& dsm)
         .genomeArchiveMaxSize = evolutionConfig.genomeArchiveMaxSize,
         .bestFitnessThisGen = bestFitnessThisGen,
         .bestFitnessAllTime = bestAllTime,
+        .robustEvaluationCount = robustEvaluationCount_,
         .averageFitness = avgFitness,
         .lastCompletedGeneration = lastCompletedGeneration_,
         .lastGenerationFitnessMin = lastGenerationFitnessMin_,
@@ -2091,9 +2153,9 @@ void Evolution::storeBestGenome(StateMachine& dsm)
     const GenomeMetadata meta{
         .name = "checkpoint_gen_" + std::to_string(generation),
         .fitness = bestFit,
-        .robustFitness = bestFit,
-        .robustEvalCount = 1,
-        .robustFitnessSamples = { bestFit },
+        .robustFitness = 0.0,
+        .robustEvalCount = 0,
+        .robustFitnessSamples = {},
         .generation = generation,
         .createdTimestamp = static_cast<uint64_t>(std::time(nullptr)),
         .scenarioId = population[bestIdx].scenarioId,

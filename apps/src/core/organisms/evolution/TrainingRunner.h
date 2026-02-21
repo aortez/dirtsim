@@ -10,6 +10,7 @@
 #include "core/organisms/evolution/TreeEvaluator.h"
 #include <memory>
 #include <optional>
+#include <random>
 #include <string>
 #include <utility>
 #include <vector>
@@ -62,6 +63,8 @@ public:
 
     struct Config {
         TrainingBrainRegistry brainRegistry;
+        std::optional<bool> duckClockSpawnLeftFirst = std::nullopt;
+        std::optional<uint32_t> duckClockSpawnRngSeed = std::nullopt;
     };
 
     TrainingRunner(
@@ -122,6 +125,8 @@ private:
 
     State state_ = State::Running;
     TrainingBrainRegistry brainRegistry_;
+    std::optional<bool> duckClockSpawnLeftFirst_ = std::nullopt;
+    std::mt19937 spawnRng_;
     EvolutionConfig evolutionConfig_;
 
     static constexpr double TIMESTEP = 0.016;
