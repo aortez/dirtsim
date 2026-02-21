@@ -1,6 +1,7 @@
 #pragma once
 
 #include "lvgl/lvgl.h"
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,8 @@ public:
         bool hideZeroValuePoints = false;
         bool showYAxisRangeLabels = true;
         lv_chart_type_t chartType = LV_CHART_TYPE_LINE;
+        int32_t barGroupGapPx = -1;
+        int32_t barSeriesGapPx = -1;
         uint32_t minPointCount = 2;
     };
 

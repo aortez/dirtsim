@@ -578,7 +578,7 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Trimmed robust sample window should contain only post-mutation samples";
 }
 
-TEST(StateEvolutionTest, DuckClockRobustPassRoundsOddEvalCountUpToEven)
+TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
 {
     TestStateMachineFixture fixture;
     auto& repo = fixture.stateMachine->getGenomeRepository();
@@ -616,7 +616,43 @@ TEST(StateEvolutionTest, DuckClockRobustPassRoundsOddEvalCountUpToEven)
     ASSERT_TRUE(bestId.has_value());
     const auto metadata = repo.getMetadata(*bestId);
     ASSERT_TRUE(metadata.has_value());
-    EXPECT_EQ(metadata->robustEvalCount, 4);
+    EXPECT_EQ(metadata->robustEvalCount, 3);
+}
+
+TEST(StateEvolutionTest, DuckClockVisibleEvaluationWaitsForSecondPassBeforeAdvancingEval)
+{
+    TestStateMachineFixture fixture;
+
+    Evolution evolutionState;
+    evolutionState.evolutionConfig.populationSize = 1;
+    evolutionState.evolutionConfig.maxGenerations = 1;
+    evolutionState.evolutionConfig.maxSimulationTime = 0.0;
+    evolutionState.evolutionConfig.maxParallelEvaluations = 1;
+    evolutionState.evolutionConfig.robustFitnessEvaluationCount = 1;
+
+    PopulationSpec population;
+    population.brainKind = TrainingBrainKind::NeuralNet;
+    population.count = 1;
+    population.randomCount = 1;
+    population.scenarioId = Scenario::EnumType::Clock;
+
+    evolutionState.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+    evolutionState.trainingSpec.organismType = OrganismType::DUCK;
+    evolutionState.trainingSpec.population = { population };
+
+    evolutionState.onEnter(*fixture.stateMachine);
+
+    EXPECT_EQ(evolutionState.currentEval, 0);
+
+    auto firstTick = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(firstTick.has_value());
+    EXPECT_EQ(evolutionState.currentEval, 0)
+        << "Duck clock visible eval should keep first pass in-progress until side swap completes";
+
+    auto secondTick = evolutionState.tick(*fixture.stateMachine);
+    EXPECT_FALSE(secondTick.has_value());
+    EXPECT_EQ(evolutionState.currentEval, 1)
+        << "Duck clock visible eval should advance only after the second side pass completes";
 }
 
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)

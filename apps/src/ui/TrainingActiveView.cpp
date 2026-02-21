@@ -789,16 +789,9 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     if (cpuCorePlot_) {
         if (progress.cpuPercentPerCore.empty()) {
             cpuCorePlot_->clear();
-            cpuCorePlot_->clearBottomLabels();
         }
         else {
             cpuCorePlot_->setSamples(buildCpuCoreSeries(progress));
-            char firstCoreBuf[16];
-            char lastCoreBuf[16];
-            snprintf(firstCoreBuf, sizeof(firstCoreBuf), "C0");
-            snprintf(
-                lastCoreBuf, sizeof(lastCoreBuf), "C%zu", progress.cpuPercentPerCore.size() - 1);
-            cpuCorePlot_->setBottomLabels(firstCoreBuf, lastCoreBuf);
         }
     }
 
@@ -867,7 +860,7 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
 
     if (bestAllTimeLabel_) {
-        snprintf(buf, sizeof(buf), "All Time: %.2f", progress.bestFitnessAllTime);
+        snprintf(buf, sizeof(buf), "All Time: %.4f", progress.bestFitnessAllTime);
         lv_label_set_text(bestAllTimeLabel_, buf);
     }
 
@@ -955,7 +948,6 @@ void TrainingActiveView::setEvolutionStarted(bool started)
         clearFitnessPlots();
         if (cpuCorePlot_) {
             cpuCorePlot_->clear();
-            cpuCorePlot_->clearBottomLabels();
         }
         if (bestCommandSummaryLabel_) {
             lv_label_set_text(bestCommandSummaryLabel_, "No best snapshot yet.");
@@ -1147,8 +1139,10 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
             .defaultMaxY = 100.0f,
             .valueScale = 1.0f,
             .autoScaleY = false,
-            .showYAxisRangeLabels = false,
+            .showYAxisRangeLabels = true,
             .chartType = LV_CHART_TYPE_BAR,
+            .barGroupGapPx = 1,
+            .barSeriesGapPx = 0,
             .minPointCount = 1,
         });
     if (cpuCorePlot_ && cpuCorePlot_->getContainer()) {
@@ -1159,7 +1153,6 @@ void TrainingActiveView::createStreamPanel(lv_obj_t* parent)
     }
     if (cpuCorePlot_) {
         cpuCorePlot_->clear();
-        cpuCorePlot_->clearBottomLabels();
     }
 }
 

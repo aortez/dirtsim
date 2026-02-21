@@ -127,6 +127,8 @@ TrainingRunner::TrainingRunner(
         ScenarioConfig scenarioConfig = scenario_->getConfig();
         if (auto* clockConfig = std::get_if<DirtSim::Config::Clock>(&scenarioConfig)) {
             clockConfig->duckEnabled = false;
+            clockConfig->meltdownEnabled = false;
+            clockConfig->rainEnabled = false;
             scenario_->setConfig(scenarioConfig, *world_);
         }
     }

@@ -58,6 +58,14 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     lv_obj_clear_flag(chart_, LV_OBJ_FLAG_CLICKABLE);
 
     lv_chart_set_type(chart_, config_.chartType);
+    if (config_.chartType == LV_CHART_TYPE_BAR) {
+        if (config_.barGroupGapPx >= 0) {
+            lv_obj_set_style_pad_column(chart_, config_.barGroupGapPx, LV_PART_MAIN);
+        }
+        if (config_.barSeriesGapPx >= 0) {
+            lv_obj_set_style_pad_column(chart_, config_.barSeriesGapPx, LV_PART_ITEMS);
+        }
+    }
     lv_chart_set_update_mode(chart_, LV_CHART_UPDATE_MODE_SHIFT);
     lv_chart_set_div_line_count(chart_, 2, 3);
     lv_chart_set_point_count(chart_, minPointCount_);
@@ -279,8 +287,16 @@ void TimeSeriesPlotWidget::updateYAxisRangeLabels(float minValue, float maxValue
 
     char minBuf[24];
     char maxBuf[24];
-    snprintf(minBuf, sizeof(minBuf), "%.2f", minValue);
-    snprintf(maxBuf, sizeof(maxBuf), "%.2f", maxValue);
+    const auto formatLabel = [](char* out, size_t outSize, float value) {
+        const float roundedValue = std::round(value);
+        if (std::abs(value - roundedValue) <= 0.005f) {
+            snprintf(out, outSize, "%.0f", roundedValue);
+            return;
+        }
+        snprintf(out, outSize, "%.2f", value);
+    };
+    formatLabel(minBuf, sizeof(minBuf), minValue);
+    formatLabel(maxBuf, sizeof(maxBuf), maxValue);
     lv_label_set_text(yAxisMinLabel_, minBuf);
     lv_label_set_text(yAxisMaxLabel_, maxBuf);
 
