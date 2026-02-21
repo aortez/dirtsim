@@ -1,0 +1,195 @@
+#include "NesScenario.h"
+
+#include "core/Cell.h"
+#include "core/LoggingChannels.h"
+#include "core/ScenarioConfig.h"
+#include "core/World.h"
+#include "core/WorldData.h"
+#include "core/organisms/OrganismManager.h"
+
+#include <array>
+#include <fstream>
+
+namespace {
+
+constexpr std::array<uint16_t, 6> kSmolnesSupportedMappers = { 0, 1, 2, 3, 4, 7 };
+
+const char* romCheckStatusToString(DirtSim::NesRomCheckStatus status)
+{
+    switch (status) {
+        case DirtSim::NesRomCheckStatus::Compatible:
+            return "compatible";
+        case DirtSim::NesRomCheckStatus::FileNotFound:
+            return "file_not_found";
+        case DirtSim::NesRomCheckStatus::InvalidHeader:
+            return "invalid_header";
+        case DirtSim::NesRomCheckStatus::ReadError:
+            return "read_error";
+        case DirtSim::NesRomCheckStatus::UnsupportedMapper:
+            return "unsupported_mapper";
+    }
+    return "unknown";
+}
+
+} // namespace
+
+namespace DirtSim {
+
+NesScenario::NesScenario()
+{
+    metadata_.name = "NES";
+    metadata_.description = "NES ROM runner scaffold for smolnes-compatible mapper workflows";
+    metadata_.category = "organisms";
+    metadata_.requiredWidth = 47;
+    metadata_.requiredHeight = 30;
+}
+
+const ScenarioMetadata& NesScenario::getMetadata() const
+{
+    return metadata_;
+}
+
+ScenarioConfig NesScenario::getConfig() const
+{
+    return config_;
+}
+
+void NesScenario::setConfig(const ScenarioConfig& newConfig, World& /*world*/)
+{
+    if (!std::holds_alternative<Config::Nes>(newConfig)) {
+        LOG_ERROR(Scenario, "NesScenario: Invalid config type provided");
+        return;
+    }
+
+    config_ = std::get<Config::Nes>(newConfig);
+    LOG_INFO(Scenario, "NesScenario: Config updated");
+}
+
+void NesScenario::setup(World& world)
+{
+    for (int y = 0; y < world.getData().height; ++y) {
+        for (int x = 0; x < world.getData().width; ++x) {
+            world.getData().at(x, y) = Cell();
+        }
+    }
+    world.getOrganismManager().clear();
+
+    for (int x = 0; x < world.getData().width; ++x) {
+        world.getData()
+            .at(x, world.getData().height - 1)
+            .replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+    for (int y = 0; y < world.getData().height; ++y) {
+        world.getData().at(0, y).replaceMaterial(Material::EnumType::Wall, 1.0);
+        world.getData()
+            .at(world.getData().width - 1, y)
+            .replaceMaterial(Material::EnumType::Wall, 1.0);
+    }
+
+    lastRomCheck_ = inspectRom(config_.romPath);
+    if (lastRomCheck_.isCompatible()) {
+        LOG_INFO(
+            Scenario,
+            "NesScenario: ROM '{}' compatible (mapper={}, prg16k={}, chr8k={})",
+            config_.romPath,
+            lastRomCheck_.mapper,
+            static_cast<uint32_t>(lastRomCheck_.prgBanks16k),
+            static_cast<uint32_t>(lastRomCheck_.chrBanks8k));
+        return;
+    }
+
+    const char* statusText = romCheckStatusToString(lastRomCheck_.status);
+    if (config_.requireSmolnesMapper
+        && lastRomCheck_.status == NesRomCheckStatus::UnsupportedMapper) {
+        LOG_ERROR(
+            Scenario,
+            "NesScenario: ROM '{}' rejected ({}, mapper={})",
+            config_.romPath,
+            statusText,
+            lastRomCheck_.mapper);
+        return;
+    }
+
+    LOG_WARN(
+        Scenario,
+        "NesScenario: ROM '{}' check failed ({}, mapper={})",
+        config_.romPath,
+        statusText,
+        lastRomCheck_.mapper);
+}
+
+void NesScenario::reset(World& world)
+{
+    setup(world);
+}
+
+void NesScenario::tick(World& /*world*/, double /*deltaTime*/)
+{}
+
+const NesRomCheckResult& NesScenario::getLastRomCheck() const
+{
+    return lastRomCheck_;
+}
+
+NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)
+{
+    NesRomCheckResult result{};
+    if (!std::filesystem::exists(romPath)) {
+        result.status = NesRomCheckStatus::FileNotFound;
+        result.message = "ROM path does not exist.";
+        return result;
+    }
+
+    std::ifstream romFile(romPath, std::ios::binary);
+    if (!romFile.is_open()) {
+        result.status = NesRomCheckStatus::ReadError;
+        result.message = "Failed to open ROM file.";
+        return result;
+    }
+
+    std::array<uint8_t, 16> header{};
+    romFile.read(
+        reinterpret_cast<char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    if (romFile.gcount() != static_cast<std::streamsize>(header.size())) {
+        result.status = NesRomCheckStatus::ReadError;
+        result.message = "Failed to read iNES header.";
+        return result;
+    }
+
+    if (header[0] != 'N' || header[1] != 'E' || header[2] != 'S' || header[3] != 0x1A) {
+        result.status = NesRomCheckStatus::InvalidHeader;
+        result.message = "ROM is missing iNES magic bytes.";
+        return result;
+    }
+
+    result.prgBanks16k = header[4];
+    result.chrBanks8k = header[5];
+    const uint8_t flags6 = header[6];
+    const uint8_t flags7 = header[7];
+    result.mapper = static_cast<uint16_t>((flags6 >> 4) | (flags7 & 0xF0));
+    result.hasBattery = (flags6 & 0x02) != 0;
+    result.hasTrainer = (flags6 & 0x04) != 0;
+    result.verticalMirroring = (flags6 & 0x01) != 0;
+
+    if (!isMapperSupportedBySmolnes(result.mapper)) {
+        result.status = NesRomCheckStatus::UnsupportedMapper;
+        result.message = "Mapper is unsupported by smolnes.";
+        return result;
+    }
+
+    result.status = NesRomCheckStatus::Compatible;
+    result.message = "ROM is compatible with smolnes mapper support.";
+    return result;
+}
+
+bool NesScenario::isMapperSupportedBySmolnes(uint16_t mapper)
+{
+    for (const uint16_t supportedMapper : kSmolnesSupportedMappers) {
+        if (supportedMapper == mapper) {
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace DirtSim

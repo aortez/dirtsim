@@ -400,6 +400,7 @@ add_library(dirtsim-server-lib STATIC
     src/core/scenarios/EmptyScenario.cpp
     src/core/scenarios/GooseTestScenario.cpp
     src/core/scenarios/LightsScenario.cpp
+    src/core/scenarios/NesScenario.cpp
     src/core/scenarios/RainingScenario.cpp
     src/core/scenarios/SandboxScenario.cpp
     src/core/scenarios/TreeGerminationScenario.cpp
@@ -779,6 +780,7 @@ add_executable(dirtsim-tests
     src/tests/Pimpl_test.cpp
     src/tests/ResultTest.cpp
     src/tests/RigidBodyIntegration_test.cpp
+    src/tests/SmolnesHarness.c
     src/tests/StrongType_test.cpp
     src/tests/TimersTest.cpp
     src/tests/Vector2d_test.cpp
@@ -805,6 +807,7 @@ add_executable(dirtsim-tests
     # Scenario tests.
     src/core/scenarios/clock_scenario/tests/MarqueeTypes_test.cpp
     src/core/scenarios/tests/ClockScenario_test.cpp
+    src/core/scenarios/tests/NesScenario_test.cpp
 
     # Organism tests.
     src/core/organisms/components/LightHandHeld_test.cpp
@@ -839,6 +842,7 @@ add_executable(dirtsim-tests
     # Core tests.
     src/core/tests/FontSampler_test.cpp
 )
+set_source_files_properties(src/tests/SmolnesHarness.c PROPERTIES COMPILE_OPTIONS "-w")
 target_link_libraries(dirtsim-tests
     PRIVATE
     dirtsim-server-lib

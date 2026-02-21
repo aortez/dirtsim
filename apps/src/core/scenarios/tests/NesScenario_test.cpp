@@ -1,0 +1,132 @@
+#include "core/ScenarioConfig.h"
+#include "core/World.h"
+#include "core/organisms/evolution/GenomeRepository.h"
+#include "core/scenarios/NesScenario.h"
+#include "core/scenarios/ScenarioRegistry.h"
+#include "tests/SmolnesHarness.h"
+
+#include <algorithm>
+#include <array>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <gtest/gtest.h>
+#include <string>
+
+using namespace DirtSim;
+
+namespace {
+
+void writeRomHeader(const std::filesystem::path& path, const std::array<uint8_t, 16>& header)
+{
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    ASSERT_TRUE(file.is_open()) << "Failed to create ROM fixture: " << path.string();
+    file.write(
+        reinterpret_cast<const char*>(header.data()), static_cast<std::streamsize>(header.size()));
+    ASSERT_TRUE(file.good()) << "Failed to write ROM fixture: " << path.string();
+}
+
+} // namespace
+
+TEST(NesScenarioTest, InspectRomAcceptsMapperZero)
+{
+    const std::filesystem::path romPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_mapper0_fixture.nes";
+    writeRomHeader(
+        romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+
+    EXPECT_EQ(result.status, NesRomCheckStatus::Compatible);
+    EXPECT_TRUE(result.isCompatible());
+    EXPECT_EQ(result.mapper, 0u);
+    EXPECT_EQ(result.prgBanks16k, 2u);
+    EXPECT_EQ(result.chrBanks8k, 1u);
+}
+
+TEST(NesScenarioTest, InspectRomRejectsUnsupportedMapper)
+{
+    const std::filesystem::path romPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_mapper30_fixture.nes";
+    writeRomHeader(
+        romPath, { 'N', 'E', 'S', 0x1A, 0x20, 0x00, 0xE3, 0x10, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+
+    EXPECT_EQ(result.status, NesRomCheckStatus::UnsupportedMapper);
+    EXPECT_FALSE(result.isCompatible());
+    EXPECT_EQ(result.mapper, 30u);
+}
+
+TEST(NesScenarioTest, InspectRomRejectsInvalidHeader)
+{
+    const std::filesystem::path romPath =
+        std::filesystem::path(::testing::TempDir()) / "nes_invalid_header_fixture.nes";
+    writeRomHeader(
+        romPath, { 'B', 'A', 'D', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+    const NesRomCheckResult result = NesScenario::inspectRom(romPath);
+
+    EXPECT_EQ(result.status, NesRomCheckStatus::InvalidHeader);
+    EXPECT_FALSE(result.isCompatible());
+}
+
+TEST(NesScenarioTest, ScenarioConfigMapsToNesEnum)
+{
+    const ScenarioConfig config = makeDefaultConfig(Scenario::EnumType::Nes);
+    ASSERT_TRUE(std::holds_alternative<Config::Nes>(config));
+    EXPECT_EQ(getScenarioId(config), Scenario::EnumType::Nes);
+}
+
+TEST(NesScenarioTest, ScenarioRegistryRegistersNesScenario)
+{
+    GenomeRepository genomeRepository;
+    const ScenarioRegistry registry = ScenarioRegistry::createDefault(genomeRepository);
+
+    const auto ids = registry.getScenarioIds();
+    EXPECT_NE(std::find(ids.begin(), ids.end(), Scenario::EnumType::Nes), ids.end());
+
+    const ScenarioMetadata* metadata = registry.getMetadata(Scenario::EnumType::Nes);
+    ASSERT_NE(metadata, nullptr);
+    EXPECT_EQ(metadata->name, "NES");
+
+    std::unique_ptr<ScenarioRunner> scenario = registry.createScenario(Scenario::EnumType::Nes);
+    ASSERT_NE(scenario, nullptr);
+    EXPECT_TRUE(std::holds_alternative<Config::Nes>(scenario->getConfig()));
+}
+
+TEST(NesScenarioTest, CelesteRomFromDownloadsLoadsAndTicks100Frames)
+{
+    const char* home = std::getenv("HOME");
+    ASSERT_NE(home, nullptr);
+
+    const std::filesystem::path romPath = std::filesystem::path(home) / "Downloads" / "celeste.nes";
+    if (!std::filesystem::exists(romPath)) {
+        GTEST_SKIP() << "ROM fixture not found at: " << romPath.string();
+    }
+
+    auto scenario = std::make_unique<NesScenario>();
+    const ScenarioMetadata& metadata = scenario->getMetadata();
+    World world(metadata.requiredWidth, metadata.requiredHeight);
+
+    Config::Nes config = std::get<Config::Nes>(scenario->getConfig());
+    config.romPath = romPath.string();
+    config.requireSmolnesMapper = true;
+    scenario->setConfig(config, world);
+    scenario->setup(world);
+
+    const NesRomCheckResult& romCheck = scenario->getLastRomCheck();
+    ASSERT_TRUE(romCheck.isCompatible()) << "ROM compatibility check failed: " << romCheck.message
+                                         << " (mapper=" << romCheck.mapper << ")";
+
+    constexpr double frameTimeSeconds = 1.0 / 60.0;
+    constexpr int frameCount = 100;
+    for (int frame = 0; frame < frameCount; ++frame) {
+        scenario->tick(world, frameTimeSeconds);
+        world.advanceTime(frameTimeSeconds);
+    }
+
+    const int smolnesExitCode = runSmolnesFrames(romPath.c_str(), frameCount);
+    EXPECT_EQ(smolnesExitCode, 0);
+    EXPECT_EQ(getSmolnesRenderedFrameCount(), frameCount);
+}

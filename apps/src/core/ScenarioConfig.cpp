@@ -33,6 +33,8 @@ ScenarioConfig makeDefaultConfig(Scenario::EnumType id)
             return Config::WaterEqualization{};
         case Scenario::EnumType::DuckTraining:
             return Config::Clock{};
+        case Scenario::EnumType::Nes:
+            return Config::Nes{};
     }
     return Config::Empty{};
 }
