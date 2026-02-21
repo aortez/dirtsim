@@ -79,14 +79,9 @@ bool isDuckClockScenario(OrganismType organismType, Scenario::EnumType scenarioI
     return organismType == OrganismType::DUCK && scenarioId == Scenario::EnumType::Clock;
 }
 
-int resolveRobustnessEvalCount(
-    int configuredCount, OrganismType organismType, Scenario::EnumType scenarioId)
+int resolveRobustnessEvalCount(int configuredCount)
 {
-    int resolvedCount = std::max(1, configuredCount);
-    if (isDuckClockScenario(organismType, scenarioId) && (resolvedCount % 2) != 0) {
-        resolvedCount += 1;
-    }
-    return resolvedCount;
+    return std::max(1, configuredCount);
 }
 
 std::optional<bool> resolveDuckClockSpawnSideOverride(
@@ -106,6 +101,20 @@ std::optional<bool> resolveDuckClockSpawnSideOverride(
         robustSampleOrdinal > 0,
         "Evolution: robust sample ordinal must be positive for duck clock alternation");
     return (robustSampleOrdinal % 2) != 0;
+}
+
+std::optional<bool> resolvePrimaryDuckClockSpawnSide(
+    Evolution::WorkerResult::TaskType taskType,
+    OrganismType organismType,
+    Scenario::EnumType scenarioId,
+    int robustSampleOrdinal)
+{
+    std::optional<bool> side =
+        resolveDuckClockSpawnSideOverride(taskType, organismType, scenarioId, robustSampleOrdinal);
+    if (isDuckClockScenario(organismType, scenarioId) && !side.has_value()) {
+        side = true;
+    }
+    return side;
 }
 
 uint64_t computePhenotypeHash(const Evolution::WorkerResult& result)
@@ -416,6 +425,104 @@ std::unordered_map<std::string, Evolution::TimerAggregate> collectTimerStats(con
     return stats;
 }
 
+struct EvaluationPassResult {
+    int commandsAccepted = 0;
+    int commandsRejected = 0;
+    double fitness = 0.0;
+    double simTime = 0.0;
+    std::vector<std::pair<std::string, int>> topCommandSignatures;
+    std::vector<std::pair<std::string, int>> topCommandOutcomeSignatures;
+    std::optional<Evolution::EvaluationSnapshot> snapshot;
+    std::unordered_map<std::string, Evolution::TimerAggregate> timerStats;
+    std::optional<TreeFitnessBreakdown> treeFitnessBreakdown;
+};
+
+std::optional<Evolution::EvaluationSnapshot> buildEvaluationSnapshotForRunner(
+    const TrainingRunner& runner)
+{
+    const World* world = runner.getWorld();
+    if (!world) {
+        return std::nullopt;
+    }
+
+    Evolution::EvaluationSnapshot snapshot;
+    snapshot.worldData = world->getData();
+    snapshot.organismIds = world->getOrganismManager().getGrid();
+    return snapshot;
+}
+
+EvaluationPassResult buildEvaluationPassResult(
+    TrainingRunner& runner,
+    const TrainingRunner::Status& status,
+    OrganismType organismType,
+    const EvolutionConfig& evolutionConfig,
+    bool includeGenerationDetails)
+{
+    EvaluationPassResult pass;
+    pass.commandsAccepted = status.commandsAccepted;
+    pass.commandsRejected = status.commandsRejected;
+    pass.simTime = status.simTime;
+
+    if (!includeGenerationDetails) {
+        pass.fitness =
+            computeFitnessForRunner(runner, status, organismType, evolutionConfig, nullptr);
+        return pass;
+    }
+
+    pass.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
+    pass.topCommandOutcomeSignatures =
+        runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
+
+    std::optional<TreeFitnessBreakdown> breakdown;
+    pass.fitness =
+        computeFitnessForRunner(runner, status, organismType, evolutionConfig, &breakdown);
+    pass.treeFitnessBreakdown = breakdown;
+    if (const World* world = runner.getWorld()) {
+        pass.timerStats = collectTimerStats(world->getTimers());
+    }
+    pass.snapshot = buildEvaluationSnapshotForRunner(runner);
+    return pass;
+}
+
+EvaluationPassResult runEvaluationPass(
+    const TrainingSpec& trainingSpec,
+    const TrainingRunner::Individual& individual,
+    const EvolutionConfig& evolutionConfig,
+    GenomeRepository& genomeRepository,
+    const TrainingBrainRegistry& brainRegistry,
+    std::optional<bool> duckClockSpawnLeftFirst,
+    bool includeGenerationDetails,
+    std::atomic<bool>* stopRequested)
+{
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = brainRegistry,
+        .duckClockSpawnLeftFirst = duckClockSpawnLeftFirst,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
+    TrainingRunner runner(
+        trainingSpec, individual, evolutionConfig, genomeRepository, runnerConfig);
+
+    TrainingRunner::Status status;
+    while (status.state == TrainingRunner::State::Running
+           && !(stopRequested && stopRequested->load())) {
+        status = runner.step(1);
+    }
+
+    return buildEvaluationPassResult(
+        runner, status, trainingSpec.organismType, evolutionConfig, includeGenerationDetails);
+}
+
+void mergeTimerStats(
+    std::unordered_map<std::string, Evolution::TimerAggregate>& target,
+    const std::unordered_map<std::string, Evolution::TimerAggregate>& source)
+{
+    for (const auto& [name, aggregate] : source) {
+        auto& merged = target[name];
+        merged.totalMs += aggregate.totalMs;
+        merged.calls += aggregate.calls;
+    }
+}
+
 const char* toProgressSource(Evolution::IndividualOrigin origin)
 {
     switch (origin) {
@@ -510,20 +617,6 @@ GenomeRepository::StoreByHashResult storeManagedGenome(
     return storeResult;
 }
 } // namespace
-
-std::optional<Evolution::EvaluationSnapshot> Evolution::buildEvaluationSnapshot(
-    const TrainingRunner& runner)
-{
-    const World* world = runner.getWorld();
-    if (!world) {
-        return std::nullopt;
-    }
-
-    EvaluationSnapshot snapshot;
-    snapshot.worldData = world->getData();
-    snapshot.organismIds = world->getOrganismManager().getGrid();
-    return snapshot;
-}
 
 void Evolution::onEnter(StateMachine& dsm)
 {
@@ -986,13 +1079,14 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
         robustnessPassVisibleSamplesRemaining_--;
 
         const Individual& individual = population[visibleEvalIndex_];
+        const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
+            WorkerResult::TaskType::RobustnessEval,
+            trainingSpec.organismType,
+            individual.scenarioId,
+            visibleRobustSampleOrdinal_);
         const TrainingRunner::Config runnerConfig{
             .brainRegistry = brainRegistry_,
-            .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
-                WorkerResult::TaskType::RobustnessEval,
-                trainingSpec.organismType,
-                individual.scenarioId,
-                visibleRobustSampleOrdinal_),
+            .duckClockSpawnLeftFirst = spawnSideOverride,
             .duckClockSpawnRngSeed = std::nullopt,
         };
         visibleRunner_ = std::make_unique<TrainingRunner>(
@@ -1016,9 +1110,14 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
     visibleRobustSampleOrdinal_ = 0;
 
     const Individual& individual = population[visibleEvalIndex_];
+    const std::optional<bool> spawnSideOverride = resolvePrimaryDuckClockSpawnSide(
+        WorkerResult::TaskType::GenerationEval,
+        trainingSpec.organismType,
+        individual.scenarioId,
+        visibleRobustSampleOrdinal_);
     const TrainingRunner::Config runnerConfig{
         .brainRegistry = brainRegistry_,
-        .duckClockSpawnLeftFirst = std::nullopt,
+        .duckClockSpawnLeftFirst = spawnSideOverride,
         .duckClockSpawnRngSeed = std::nullopt,
     };
 
@@ -1076,27 +1175,77 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
             result.robustGeneration = robustnessPassGeneration_;
             result.robustSampleOrdinal = visibleRobustSampleOrdinal_;
         }
-        result.simTime = status.simTime;
-        result.commandsAccepted = status.commandsAccepted;
-        result.commandsRejected = status.commandsRejected;
+        const bool includeGenerationDetails = !visibleEvalIsRobustness_;
+        EvaluationPassResult primaryPass = buildEvaluationPassResult(
+            *visibleRunner_,
+            status,
+            trainingSpec.organismType,
+            evolutionConfig,
+            includeGenerationDetails);
 
-        if (visibleEvalIsRobustness_) {
-            result.fitness = computeFitnessForRunner(
-                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, nullptr);
-        }
-        else {
-            result.topCommandSignatures =
-                visibleRunner_->getTopCommandSignatures(kTopCommandSignatureLimit);
-            result.topCommandOutcomeSignatures =
-                visibleRunner_->getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
-            std::optional<TreeFitnessBreakdown> breakdown;
-            result.fitness = computeFitnessForRunner(
-                *visibleRunner_, status, trainingSpec.organismType, evolutionConfig, &breakdown);
-            result.treeFitnessBreakdown = breakdown;
-            if (const World* world = visibleRunner_->getWorld()) {
-                result.timerStats = collectTimerStats(world->getTimers());
+        result.simTime = primaryPass.simTime;
+        result.commandsAccepted = primaryPass.commandsAccepted;
+        result.commandsRejected = primaryPass.commandsRejected;
+        result.fitness = primaryPass.fitness;
+
+        const Individual& individual = population[visibleEvalIndex_];
+        if (isDuckClockScenario(trainingSpec.organismType, individual.scenarioId)) {
+            const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
+                result.taskType,
+                trainingSpec.organismType,
+                individual.scenarioId,
+                visibleRobustSampleOrdinal_);
+            const std::optional<bool> secondarySpawnSide = primarySpawnSide.has_value()
+                ? std::optional<bool>(!primarySpawnSide.value())
+                : std::optional<bool>(false);
+            EvaluationPassResult secondaryPass = runEvaluationPass(
+                trainingSpec,
+                makeRunnerIndividual(individual),
+                evolutionConfig,
+                dsm.getGenomeRepository(),
+                brainRegistry_,
+                secondarySpawnSide,
+                includeGenerationDetails,
+                workerState_ ? &workerState_->stopRequested : nullptr);
+
+            result.simTime += secondaryPass.simTime;
+            result.fitness = std::min(primaryPass.fitness, secondaryPass.fitness);
+
+            if (includeGenerationDetails) {
+                if (secondaryPass.fitness < primaryPass.fitness) {
+                    result.commandsAccepted = secondaryPass.commandsAccepted;
+                    result.commandsRejected = secondaryPass.commandsRejected;
+                    result.topCommandSignatures = std::move(secondaryPass.topCommandSignatures);
+                    result.topCommandOutcomeSignatures =
+                        std::move(secondaryPass.topCommandOutcomeSignatures);
+                    result.snapshot = std::move(secondaryPass.snapshot);
+                    result.treeFitnessBreakdown = std::move(secondaryPass.treeFitnessBreakdown);
+                    result.timerStats = std::move(secondaryPass.timerStats);
+                    mergeTimerStats(result.timerStats, primaryPass.timerStats);
+                }
+                else {
+                    result.commandsAccepted = primaryPass.commandsAccepted;
+                    result.commandsRejected = primaryPass.commandsRejected;
+                    result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
+                    result.topCommandOutcomeSignatures =
+                        std::move(primaryPass.topCommandOutcomeSignatures);
+                    result.snapshot = std::move(primaryPass.snapshot);
+                    result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
+                    result.timerStats = std::move(primaryPass.timerStats);
+                    mergeTimerStats(result.timerStats, secondaryPass.timerStats);
+                }
             }
-            result.snapshot = buildEvaluationSnapshot(*visibleRunner_);
+            else {
+                result.commandsAccepted += secondaryPass.commandsAccepted;
+                result.commandsRejected += secondaryPass.commandsRejected;
+            }
+        }
+        else if (includeGenerationDetails) {
+            result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
+            result.topCommandOutcomeSignatures = std::move(primaryPass.topCommandOutcomeSignatures);
+            result.snapshot = std::move(primaryPass.snapshot);
+            result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
+            result.timerStats = std::move(primaryPass.timerStats);
         }
         processResult(dsm, std::move(result));
         visibleRunner_.reset();
@@ -1115,52 +1264,87 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
     DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
 
-    const TrainingRunner::Config runnerConfig{
-        .brainRegistry = state.brainRegistry,
-        .duckClockSpawnLeftFirst = resolveDuckClockSpawnSideOverride(
-            task.taskType,
-            state.trainingSpec.organismType,
-            task.individual.scenarioId,
-            task.robustSampleOrdinal),
-        .duckClockSpawnRngSeed = std::nullopt,
-    };
-    TrainingRunner runner(
+    const bool includeGenerationDetails = task.taskType == WorkerResult::TaskType::GenerationEval;
+    const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
+        task.taskType,
+        state.trainingSpec.organismType,
+        task.individual.scenarioId,
+        task.robustSampleOrdinal);
+    EvaluationPassResult primaryPass = runEvaluationPass(
         state.trainingSpec,
         makeRunnerIndividual(task.individual),
         state.evolutionConfig,
         *state.genomeRepository,
-        runnerConfig);
-
-    TrainingRunner::Status status;
-    while (status.state == TrainingRunner::State::Running && !state.stopRequested) {
-        status = runner.step(1);
-    }
+        state.brainRegistry,
+        primarySpawnSide,
+        includeGenerationDetails,
+        &state.stopRequested);
 
     WorkerResult result;
     result.taskType = task.taskType;
     result.index = task.index;
     result.robustGeneration = task.robustGeneration;
     result.robustSampleOrdinal = task.robustSampleOrdinal;
-    result.simTime = status.simTime;
-    result.commandsAccepted = status.commandsAccepted;
-    result.commandsRejected = status.commandsRejected;
-    if (task.taskType == WorkerResult::TaskType::RobustnessEval) {
-        result.fitness = computeFitnessForRunner(
-            runner, status, state.trainingSpec.organismType, state.evolutionConfig, nullptr);
+    result.simTime = primaryPass.simTime;
+    result.commandsAccepted = primaryPass.commandsAccepted;
+    result.commandsRejected = primaryPass.commandsRejected;
+    result.fitness = primaryPass.fitness;
+
+    if (isDuckClockScenario(state.trainingSpec.organismType, task.individual.scenarioId)) {
+        const std::optional<bool> secondarySpawnSide = primarySpawnSide.has_value()
+            ? std::optional<bool>(!primarySpawnSide.value())
+            : std::optional<bool>(false);
+        EvaluationPassResult secondaryPass = runEvaluationPass(
+            state.trainingSpec,
+            makeRunnerIndividual(task.individual),
+            state.evolutionConfig,
+            *state.genomeRepository,
+            state.brainRegistry,
+            secondarySpawnSide,
+            includeGenerationDetails,
+            &state.stopRequested);
+
+        result.simTime += secondaryPass.simTime;
+        result.fitness = std::min(primaryPass.fitness, secondaryPass.fitness);
+
+        if (includeGenerationDetails) {
+            if (secondaryPass.fitness < primaryPass.fitness) {
+                result.commandsAccepted = secondaryPass.commandsAccepted;
+                result.commandsRejected = secondaryPass.commandsRejected;
+                result.topCommandSignatures = std::move(secondaryPass.topCommandSignatures);
+                result.topCommandOutcomeSignatures =
+                    std::move(secondaryPass.topCommandOutcomeSignatures);
+                result.snapshot = std::move(secondaryPass.snapshot);
+                result.treeFitnessBreakdown = std::move(secondaryPass.treeFitnessBreakdown);
+                result.timerStats = std::move(secondaryPass.timerStats);
+                mergeTimerStats(result.timerStats, primaryPass.timerStats);
+            }
+            else {
+                result.commandsAccepted = primaryPass.commandsAccepted;
+                result.commandsRejected = primaryPass.commandsRejected;
+                result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
+                result.topCommandOutcomeSignatures =
+                    std::move(primaryPass.topCommandOutcomeSignatures);
+                result.snapshot = std::move(primaryPass.snapshot);
+                result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
+                result.timerStats = std::move(primaryPass.timerStats);
+                mergeTimerStats(result.timerStats, secondaryPass.timerStats);
+            }
+        }
+        else {
+            result.commandsAccepted += secondaryPass.commandsAccepted;
+            result.commandsRejected += secondaryPass.commandsRejected;
+        }
         return result;
     }
 
-    result.topCommandSignatures = runner.getTopCommandSignatures(kTopCommandSignatureLimit);
-    result.topCommandOutcomeSignatures =
-        runner.getTopCommandOutcomeSignatures(kTopCommandSignatureLimit);
-    std::optional<TreeFitnessBreakdown> breakdown;
-    result.fitness = computeFitnessForRunner(
-        runner, status, state.trainingSpec.organismType, state.evolutionConfig, &breakdown);
-    result.treeFitnessBreakdown = breakdown;
-    if (const World* world = runner.getWorld()) {
-        result.timerStats = collectTimerStats(world->getTimers());
+    if (includeGenerationDetails) {
+        result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
+        result.topCommandOutcomeSignatures = std::move(primaryPass.topCommandOutcomeSignatures);
+        result.snapshot = std::move(primaryPass.snapshot);
+        result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
+        result.timerStats = std::move(primaryPass.timerStats);
     }
-    result.snapshot = buildEvaluationSnapshot(runner);
     return result;
 }
 
@@ -1366,18 +1550,8 @@ void Evolution::startRobustnessPass(StateMachine& /*dsm*/)
     robustnessPassActive_ = true;
     robustnessPassGeneration_ = generation;
     robustnessPassIndex_ = pendingBestRobustnessIndex_;
-    const int configuredRobustEvalCount = std::max(1, evolutionConfig.robustFitnessEvaluationCount);
-    robustnessPassTargetEvalCount_ = resolveRobustnessEvalCount(
-        evolutionConfig.robustFitnessEvaluationCount,
-        trainingSpec.organismType,
-        candidate.scenarioId);
-    if (robustnessPassTargetEvalCount_ != configuredRobustEvalCount) {
-        LOG_INFO(
-            State,
-            "Evolution: Rounded robust eval count from {} to {} for duck clock alternation",
-            configuredRobustEvalCount,
-            robustnessPassTargetEvalCount_);
-    }
+    robustnessPassTargetEvalCount_ =
+        resolveRobustnessEvalCount(evolutionConfig.robustFitnessEvaluationCount);
     robustnessPassCompletedSamples_ = 0;
     robustnessPassPendingSamples_ = robustnessPassTargetEvalCount_;
     robustnessPassVisibleSamplesRemaining_ = 0;

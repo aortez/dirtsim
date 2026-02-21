@@ -301,7 +301,6 @@ private:
     void captureLastGenerationFitnessDistribution();
     void captureLastGenerationTelemetry();
     void processResult(StateMachine& dsm, WorkerResult result);
-    static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);
     void startRobustnessPass(StateMachine& dsm);
     void handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result);

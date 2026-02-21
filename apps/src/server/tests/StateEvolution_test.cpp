@@ -578,7 +578,7 @@ TEST(StateEvolutionTest, RobustPassKeepsOriginalFirstSampleFitnessAfterWindowTri
         << "Trimmed robust sample window should contain only post-mutation samples";
 }
 
-TEST(StateEvolutionTest, DuckClockRobustPassRoundsOddEvalCountUpToEven)
+TEST(StateEvolutionTest, DuckClockRobustPassKeepsConfiguredEvalCount)
 {
     TestStateMachineFixture fixture;
     auto& repo = fixture.stateMachine->getGenomeRepository();
@@ -616,7 +616,7 @@ TEST(StateEvolutionTest, DuckClockRobustPassRoundsOddEvalCountUpToEven)
     ASSERT_TRUE(bestId.has_value());
     const auto metadata = repo.getMetadata(*bestId);
     ASSERT_TRUE(metadata.has_value());
-    EXPECT_EQ(metadata->robustEvalCount, 4);
+    EXPECT_EQ(metadata->robustEvalCount, 3);
 }
 
 TEST(StateEvolutionTest, NonNeuralBrainsCloneAcrossGeneration)
