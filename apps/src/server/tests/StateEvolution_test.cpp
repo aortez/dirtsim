@@ -114,7 +114,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::Nes;
-    cmd.organismType = OrganismType::DUCK;
+    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     PopulationSpec population;
     population.scenarioId = Scenario::EnumType::Nes;
@@ -138,7 +138,7 @@ TEST(StateEvolutionTest, EvolutionStartCapsNesFlappyParallelismToOne)
     ASSERT_TRUE(capturedResponse.isValue());
 }
 
-TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForDuckNesScenario)
+TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForNesFlappyOrganism)
 {
     TestStateMachineFixture fixture;
     Idle idleState;
@@ -149,7 +149,7 @@ TEST(StateEvolutionTest, EvolutionStartDefaultsToNesFlappyBrainForDuckNesScenari
     cmd.evolution.maxGenerations = 1;
     cmd.evolution.maxSimulationTime = 0.1;
     cmd.scenarioId = Scenario::EnumType::Nes;
-    cmd.organismType = OrganismType::DUCK;
+    cmd.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     Api::EvolutionStart::Cwc cwc(cmd, [&](Api::EvolutionStart::Response&& response) {
         capturedResponse = std::move(response);

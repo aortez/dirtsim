@@ -481,7 +481,7 @@ TEST_F(TrainingRunnerTest, TrainingBrainRegistryIncludesNesFlappyScenarioDrivenE
 {
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::DUCK, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
     ASSERT_NE(entry, nullptr);
     EXPECT_EQ(entry->controlMode, BrainRegistryEntry::ControlMode::ScenarioDriven);
     EXPECT_TRUE(entry->requiresGenome);
@@ -496,11 +496,11 @@ TEST_F(TrainingRunnerTest, NesFlappyScenarioDrivenRunnerDoesNotSpawnOrganism)
 {
     TrainingSpec spec;
     spec.scenarioId = Scenario::EnumType::Nes;
-    spec.organismType = OrganismType::DUCK;
+    spec.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     TrainingBrainRegistry registry = TrainingBrainRegistry::createDefault();
     const BrainRegistryEntry* entry =
-        registry.find(OrganismType::DUCK, TrainingBrainKind::NesFlappyBird, "");
+        registry.find(OrganismType::NES_FLAPPY_BIRD, TrainingBrainKind::NesFlappyBird, "");
     ASSERT_NE(entry, nullptr);
     ASSERT_TRUE(entry->createRandomGenome);
 

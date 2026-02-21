@@ -253,7 +253,7 @@ TrainingBrainRegistry TrainingBrainRegistry::createDefault()
         });
 
     registry.registerBrain(
-        OrganismType::DUCK,
+        OrganismType::NES_FLAPPY_BIRD,
         TrainingBrainKind::NesFlappyBird,
         "",
         BrainRegistryEntry{

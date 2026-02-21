@@ -352,9 +352,12 @@ std::optional<ApiError> validateTrainingConfig(
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::DUCK:
-                defaultSpec.brainKind = outSpec.scenarioId == Scenario::EnumType::Nes
-                    ? TrainingBrainKind::NesFlappyBird
-                    : TrainingBrainKind::DuckNeuralNetRecurrent;
+                defaultSpec.brainKind = TrainingBrainKind::DuckNeuralNetRecurrent;
+                defaultSpec.randomCount = defaultSpec.count;
+                break;
+            case OrganismType::NES_FLAPPY_BIRD:
+                defaultSpec.scenarioId = Scenario::EnumType::Nes;
+                defaultSpec.brainKind = TrainingBrainKind::NesFlappyBird;
                 defaultSpec.randomCount = defaultSpec.count;
                 break;
             case OrganismType::GOOSE:
@@ -386,6 +389,10 @@ std::optional<ApiError> validateTrainingConfig(
 
     outPopulationSize = 0;
     for (auto& spec : outSpec.population) {
+        if (outSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
+            spec.scenarioId = Scenario::EnumType::Nes;
+            outSpec.scenarioId = Scenario::EnumType::Nes;
+        }
         const ScenarioMetadata* metadata = registry.getMetadata(spec.scenarioId);
         if (!metadata) {
             return ApiError(

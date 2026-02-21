@@ -201,6 +201,9 @@ void populateOrganismDebug(World& world, WorldData& data)
             case OrganismType::DUCK:
                 debug.type = "DUCK";
                 break;
+            case OrganismType::NES_FLAPPY_BIRD:
+                debug.type = "NES_FLAPPY_BIRD";
+                break;
             case OrganismType::TREE:
                 debug.type = "TREE";
                 break;

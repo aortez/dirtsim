@@ -39,10 +39,13 @@ std::vector<TrainingPopulationPanel::BrainOption> getBrainOptions(OrganismType o
             return {
                 { TrainingBrainKind::DuckNeuralNetRecurrent, true },
                 { TrainingBrainKind::NeuralNet, true },
-                { TrainingBrainKind::NesFlappyBird, true },
                 { TrainingBrainKind::Random, false },
                 { TrainingBrainKind::WallBouncing, false },
                 { TrainingBrainKind::DuckBrain2, false },
+            };
+        case OrganismType::NES_FLAPPY_BIRD:
+            return {
+                { TrainingBrainKind::NesFlappyBird, true },
             };
         case OrganismType::GOOSE:
             return {
@@ -60,6 +63,8 @@ const char* organismLabel(OrganismType organismType)
             return "Tree";
         case OrganismType::DUCK:
             return "Duck";
+        case OrganismType::NES_FLAPPY_BIRD:
+            return "Nes Flappy Bird";
         case OrganismType::GOOSE:
             return "Goose";
         default:
@@ -124,11 +129,19 @@ TrainingPopulationPanel::TrainingPopulationPanel(
         scenarioLabels_.push_back(Scenario::toString(scenarioId));
     }
 
-    organismOptions_ = { OrganismType::TREE, OrganismType::DUCK, OrganismType::GOOSE };
-    organismLabels_ = { "Tree", "Duck", "Goose" };
+    organismOptions_ = {
+        OrganismType::TREE,
+        OrganismType::DUCK,
+        OrganismType::NES_FLAPPY_BIRD,
+        OrganismType::GOOSE,
+    };
+    organismLabels_ = { "Tree", "Duck", "Nes Flappy Bird", "Goose" };
 
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
+    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+        selectedScenario_ = Scenario::EnumType::Nes;
+    }
     setBrainOptionsForOrganism(selectedOrganism_);
 
     createLayout();
@@ -460,13 +473,14 @@ void TrainingPopulationPanel::setOrganismListVisible(bool visible)
 void TrainingPopulationPanel::updateControlsEnabled()
 {
     const bool enabled = !evolutionStarted_;
-    setControlEnabled(scenarioButton_, enabled);
+    const bool scenarioEnabled = enabled && selectedOrganism_ != OrganismType::NES_FLAPPY_BIRD;
+    setControlEnabled(scenarioButton_, scenarioEnabled);
     setControlEnabled(organismButton_, enabled);
     setControlEnabled(addCountStepper_, enabled);
     setControlEnabled(addButton_, enabled);
     setControlEnabled(clearAllButton_, enabled);
     setControlEnabled(clearAllConfirmCheckbox_, enabled);
-    if (!enabled) {
+    if (!enabled || !scenarioEnabled) {
         setOrganismListVisible(false);
         setScenarioColumnVisible(false);
     }
@@ -603,6 +617,9 @@ void TrainingPopulationPanel::refreshFromSpec()
 {
     selectedScenario_ = trainingSpec_.scenarioId;
     selectedOrganism_ = trainingSpec_.organismType;
+    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+        selectedScenario_ = Scenario::EnumType::Nes;
+    }
     setBrainOptionsForOrganism(selectedOrganism_);
 
     if (trainingSpec_.population.empty() && evolutionConfig_.populationSize > 0) {
@@ -656,7 +673,13 @@ void TrainingPopulationPanel::refreshFromSpec()
 void TrainingPopulationPanel::applySpecUpdates()
 {
     trainingSpec_.organismType = selectedOrganism_;
+    if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+        selectedScenario_ = Scenario::EnumType::Nes;
+    }
     for (auto& spec : trainingSpec_.population) {
+        if (selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+            spec.scenarioId = Scenario::EnumType::Nes;
+        }
         const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
         const bool specRequiresGenome = resolvedBrain.requiresGenome;
 
@@ -690,7 +713,7 @@ void TrainingPopulationPanel::applySpecUpdates()
 }
 
 TrainingPopulationPanel::BrainOption TrainingPopulationPanel::resolveBrainOptionForScenario(
-    Scenario::EnumType scenarioId) const
+    Scenario::EnumType /*scenarioId*/) const
 {
     if (brainOptions_.empty()) {
         return {
@@ -698,27 +721,6 @@ TrainingPopulationPanel::BrainOption TrainingPopulationPanel::resolveBrainOption
             .requiresGenome = false,
         };
     }
-
-    const auto findByKind = [this](const std::string& kind) -> std::optional<BrainOption> {
-        auto it = std::find_if(
-            brainOptions_.begin(), brainOptions_.end(), [&kind](const BrainOption& option) {
-                return option.kind == kind;
-            });
-        if (it == brainOptions_.end()) {
-            return std::nullopt;
-        }
-        return *it;
-    };
-
-    if (selectedOrganism_ == OrganismType::DUCK) {
-        const std::string preferredKind = scenarioId == Scenario::EnumType::Nes
-            ? TrainingBrainKind::NesFlappyBird
-            : TrainingBrainKind::DuckNeuralNetRecurrent;
-        if (auto option = findByKind(preferredKind); option.has_value()) {
-            return option.value();
-        }
-    }
-
     return brainOptions_.front();
 }
 
@@ -1253,6 +1255,9 @@ void TrainingPopulationPanel::onScenarioSelected(lv_event_t* e)
         return;
     }
     self->selectedScenario_ = it->second;
+    if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+        self->selectedScenario_ = Scenario::EnumType::Nes;
+    }
     self->applySpecUpdates();
     self->syncUiFromState();
     self->setOrganismListVisible(false);
@@ -1270,6 +1275,9 @@ void TrainingPopulationPanel::onOrganismSelected(lv_event_t* e)
         return;
     }
     self->selectedOrganism_ = it->second;
+    if (self->selectedOrganism_ == OrganismType::NES_FLAPPY_BIRD) {
+        self->selectedScenario_ = Scenario::EnumType::Nes;
+    }
     self->setBrainOptionsForOrganism(self->selectedOrganism_);
     self->trainingSpec_.population.clear();
     self->populationTotal_ = 0;

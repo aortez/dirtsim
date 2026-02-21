@@ -517,7 +517,7 @@ TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
     evt.evolution.maxGenerations = 0;
     evt.mutation.rate = 0.1;
     evt.training.scenarioId = Scenario::EnumType::Nes;
-    evt.training.organismType = OrganismType::DUCK;
+    evt.training.organismType = OrganismType::NES_FLAPPY_BIRD;
 
     State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
 

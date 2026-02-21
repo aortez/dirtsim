@@ -228,13 +228,14 @@ void StartMenuSettingsPanel::createMainView(lv_obj_t* view)
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_RELEASED, this);
     lv_obj_add_event_cb(idleTimeoutSlider_, onIdleTimeoutChanged, LV_EVENT_PRESS_LOST, this);
 
-    trainingTargetDropdown_ = LVGLBuilder::actionDropdown(view)
-                                  .label("Trainer Target:")
-                                  .options("Trees (Germination)\nDucks (Clock Scenario)")
-                                  .selected(0)
-                                  .width(LV_PCT(95))
-                                  .callback(onTrainingTargetChanged, this)
-                                  .buildOrLog();
+    trainingTargetDropdown_ =
+        LVGLBuilder::actionDropdown(view)
+            .label("Trainer Target:")
+            .options("Trees (Germination)\nDucks (Clock Scenario)\nNes Flappy Bird")
+            .selected(0)
+            .width(LV_PCT(95))
+            .callback(onTrainingTargetChanged, this)
+            .buildOrLog();
 
     defaultScenarioButton_ = LVGLBuilder::actionButton(view)
                                  .text("Default Scenario")
@@ -495,6 +496,9 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
     if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
         index = 1;
     }
+    else if (settings_.trainingSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
+        index = 2;
+    }
 
     LVGLBuilder::ActionDropdownBuilder::setSelected(trainingTargetDropdown_, index);
 
@@ -567,13 +571,20 @@ void StartMenuSettingsPanel::onTrainingTargetChanged(lv_event_t* e)
     const uint16_t index =
         LVGLBuilder::ActionDropdownBuilder::getSelected(self->trainingTargetDropdown_);
 
-    if (index == 1) {
-        self->settings_.trainingSpec.organismType = OrganismType::DUCK;
-        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Clock;
-    }
-    else {
-        self->settings_.trainingSpec.organismType = OrganismType::TREE;
-        self->settings_.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+    switch (index) {
+        case 1:
+            self->settings_.trainingSpec.organismType = OrganismType::DUCK;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Clock;
+            break;
+        case 2:
+            self->settings_.trainingSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::Nes;
+            break;
+        case 0:
+        default:
+            self->settings_.trainingSpec.organismType = OrganismType::TREE;
+            self->settings_.trainingSpec.scenarioId = Scenario::EnumType::TreeGermination;
+            break;
     }
 
     self->settings_.trainingSpec.population.clear();
