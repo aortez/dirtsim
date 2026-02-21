@@ -26,13 +26,28 @@ constexpr int W_HH_SIZE = HIDDEN_SIZE * HIDDEN_SIZE;
 constexpr int B_H_SIZE = HIDDEN_SIZE;
 constexpr int W_HO_SIZE = HIDDEN_SIZE * OUTPUT_SIZE;
 constexpr int B_O_SIZE = OUTPUT_SIZE;
-constexpr int TOTAL_WEIGHTS = W_IH_SIZE + W_HH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE;
-constexpr WeightType HIDDEN_LEAK_ALPHA = 0.2f;
+constexpr int ALPHA_LOGIT_SIZE = HIDDEN_SIZE;
+constexpr int TOTAL_WEIGHTS =
+    W_IH_SIZE + W_HH_SIZE + B_H_SIZE + W_HO_SIZE + B_O_SIZE + ALPHA_LOGIT_SIZE;
 constexpr WeightType HIDDEN_STATE_CLAMP_ABS = 3.0f;
+constexpr WeightType HIDDEN_LEAK_ALPHA_MIN = 0.02f;
+constexpr WeightType HIDDEN_LEAK_ALPHA_MAX = 0.98f;
+constexpr WeightType HIDDEN_LEAK_ALPHA_LOGIT_INIT = -1.3862944f; // logit(0.2).
 
 WeightType relu(WeightType x)
 {
     return std::max(static_cast<WeightType>(0.0f), x);
+}
+
+WeightType sigmoid(WeightType x)
+{
+    if (x >= 0.0f) {
+        const WeightType z = std::exp(-x);
+        return 1.0f / (1.0f + z);
+    }
+
+    const WeightType z = std::exp(x);
+    return z / (1.0f + z);
 }
 
 } // namespace
@@ -43,6 +58,7 @@ struct DuckNeuralNetRecurrantBrain::Impl {
     std::vector<WeightType> b_h;
     std::vector<WeightType> w_ho;
     std::vector<WeightType> b_o;
+    std::vector<WeightType> alpha_logit;
     std::vector<WeightType> input_buffer;
     std::vector<WeightType> hidden_buffer;
     std::vector<WeightType> hidden_state;
@@ -54,6 +70,7 @@ struct DuckNeuralNetRecurrantBrain::Impl {
           b_h(B_H_SIZE, 0.0f),
           w_ho(W_HO_SIZE, 0.0f),
           b_o(B_O_SIZE, 0.0f),
+          alpha_logit(ALPHA_LOGIT_SIZE, HIDDEN_LEAK_ALPHA_LOGIT_INIT),
           input_buffer(INPUT_SIZE, 0.0f),
           hidden_buffer(HIDDEN_SIZE, 0.0f),
           hidden_state(HIDDEN_SIZE, 0.0f),
@@ -82,6 +99,9 @@ struct DuckNeuralNetRecurrantBrain::Impl {
         for (int i = 0; i < B_O_SIZE; ++i) {
             b_o[i] = genome.weights[idx++];
         }
+        for (int i = 0; i < ALPHA_LOGIT_SIZE; ++i) {
+            alpha_logit[i] = genome.weights[idx++];
+        }
         std::fill(hidden_state.begin(), hidden_state.end(), 0.0f);
     }
 
@@ -104,6 +124,9 @@ struct DuckNeuralNetRecurrantBrain::Impl {
         }
         for (int i = 0; i < B_O_SIZE; ++i) {
             genome.weights[idx++] = b_o[i];
+        }
+        for (int i = 0; i < ALPHA_LOGIT_SIZE; ++i) {
+            genome.weights[idx++] = alpha_logit[i];
         }
 
         return genome;
@@ -165,8 +188,10 @@ struct DuckNeuralNetRecurrantBrain::Impl {
         for (int h = 0; h < HIDDEN_SIZE; ++h) {
             const WeightType candidate =
                 std::clamp(hidden_buffer[h], -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
+            const WeightType learnedAlpha =
+                std::clamp(sigmoid(alpha_logit[h]), HIDDEN_LEAK_ALPHA_MIN, HIDDEN_LEAK_ALPHA_MAX);
             const WeightType blended =
-                ((1.0f - HIDDEN_LEAK_ALPHA) * hidden_state[h]) + (HIDDEN_LEAK_ALPHA * candidate);
+                ((1.0f - learnedAlpha) * hidden_state[h]) + (learnedAlpha * candidate);
             hidden_state[h] = std::clamp(blended, -HIDDEN_STATE_CLAMP_ABS, HIDDEN_STATE_CLAMP_ABS);
         }
 
@@ -267,6 +292,9 @@ Genome DuckNeuralNetRecurrantBrain::randomGenome(std::mt19937& rng)
     }
     for (int i = 0; i < B_O_SIZE; ++i) {
         genome.weights[idx++] = 0.0f;
+    }
+    for (int i = 0; i < ALPHA_LOGIT_SIZE; ++i) {
+        genome.weights[idx++] = HIDDEN_LEAK_ALPHA_LOGIT_INIT;
     }
 
     DIRTSIM_ASSERT(
