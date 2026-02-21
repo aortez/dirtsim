@@ -2257,14 +2257,6 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         return;
     }
 
-    const auto now = std::chrono::steady_clock::now();
-    const auto interval = std::chrono::milliseconds(bestPlaybackIntervalMs_);
-    if (lastBestPlaybackBroadcastTime_ != std::chrono::steady_clock::time_point{}
-        && now - lastBestPlaybackBroadcastTime_ < interval) {
-        return;
-    }
-    lastBestPlaybackBroadcastTime_ = now;
-
     const auto startRunner = [&](std::optional<bool> spawnSideOverride) {
         const TrainingRunner::Config runnerConfig{
             .brainRegistry = brainRegistry_,
@@ -2290,15 +2282,24 @@ void Evolution::stepBestPlayback(StateMachine& dsm)
         startRunner(primarySpawnSide);
     }
 
+    // Always advance the sim every tick to play back at real speed.
     const TrainingRunner::Status status = bestPlaybackRunner_->step(1);
-    World* world = bestPlaybackRunner_->getWorld();
-    DIRTSIM_ASSERT(world != nullptr, "Evolution: Best playback runner missing World");
-    broadcastTrainingBestPlaybackFrame(
-        dsm,
-        world->getData(),
-        world->getOrganismManager().getGrid(),
-        bestPlaybackFitness_,
-        bestPlaybackGeneration_);
+
+    // Broadcast frames at the configured interval, independent of sim step rate.
+    const auto now = std::chrono::steady_clock::now();
+    const auto interval = std::chrono::milliseconds(bestPlaybackIntervalMs_);
+    if (lastBestPlaybackBroadcastTime_ == std::chrono::steady_clock::time_point{}
+        || now - lastBestPlaybackBroadcastTime_ >= interval) {
+        lastBestPlaybackBroadcastTime_ = now;
+        World* world = bestPlaybackRunner_->getWorld();
+        DIRTSIM_ASSERT(world != nullptr, "Evolution: Best playback runner missing World");
+        broadcastTrainingBestPlaybackFrame(
+            dsm,
+            world->getData(),
+            world->getOrganismManager().getGrid(),
+            bestPlaybackFitness_,
+            bestPlaybackGeneration_);
+    }
 
     if (status.state == TrainingRunner::State::Running) {
         return;

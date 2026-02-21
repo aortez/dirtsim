@@ -148,7 +148,6 @@ private:
     int bestGeneration_ = 0;
     double bestSnapshotFitness_ = 0.0;
     int bestSnapshotGeneration_ = 0;
-    bool bestPlaybackEnabled_ = false;
     bool hasBestSnapshot_ = false;
     bool hasShownBestSnapshot_ = false;
     std::shared_ptr<std::atomic<bool>> alive_;

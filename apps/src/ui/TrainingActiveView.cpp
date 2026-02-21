@@ -564,7 +564,7 @@ void TrainingActiveView::updateBestSnapshot(
     bestSnapshotFitness_ = fitness;
     bestSnapshotGeneration_ = generation;
     hasBestSnapshot_ = true;
-    if (!bestPlaybackEnabled_) {
+    if (!userSettings_.bestPlaybackEnabled) {
         bestWorldData_ = std::make_unique<WorldData>(worldData);
         bestFitness_ = fitness;
         bestGeneration_ = generation;
@@ -681,7 +681,7 @@ void TrainingActiveView::updateBestSnapshot(
         }
         lv_label_set_text(bestCommandSummaryLabel_, summary.str().c_str());
     }
-    if (!bestPlaybackEnabled_) {
+    if (!userSettings_.bestPlaybackEnabled) {
         scheduleBestRender();
     }
 }
@@ -697,7 +697,6 @@ void TrainingActiveView::setStreamIntervalMs(int value)
 void TrainingActiveView::setBestPlaybackEnabled(bool enabled)
 {
     userSettings_.bestPlaybackEnabled = enabled;
-    bestPlaybackEnabled_ = enabled;
     if (bestPlaybackToggle_) {
         LVGLBuilder::ActionButtonBuilder::setChecked(bestPlaybackToggle_, enabled);
     }
@@ -732,7 +731,7 @@ void TrainingActiveView::setBestPlaybackIntervalMs(int value)
 void TrainingActiveView::updateBestPlaybackFrame(
     const WorldData& worldData, double fitness, int generation)
 {
-    if (!bestPlaybackEnabled_) {
+    if (!userSettings_.bestPlaybackEnabled) {
         return;
     }
 
