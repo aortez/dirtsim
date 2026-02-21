@@ -46,7 +46,8 @@ public:
     ~TrainingActiveView();
 
     void updateProgress(const Api::EvolutionProgress& progress);
-    void updateFitnessPlots(const std::vector<float>& robustFitnessSeries);
+    void updateFitnessPlots(
+        const std::vector<float>& robustFitnessSeries, const std::vector<uint8_t>& robustHighMask);
     void clearFitnessPlots();
     void updateAnimations();
 

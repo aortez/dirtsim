@@ -76,6 +76,37 @@ TimeSeriesPlotWidget::TimeSeriesPlotWidget(lv_obj_t* parent, Config config)
     series_ = lv_chart_add_series(chart_, config_.lineColor, LV_CHART_AXIS_PRIMARY_Y);
     lv_chart_set_all_values(chart_, series_, 0);
 
+    if (config_.showHighlights) {
+        highlightChart_ = lv_chart_create(chart_);
+        lv_obj_set_size(highlightChart_, LV_PCT(100), LV_PCT(100));
+        lv_obj_set_style_bg_opa(highlightChart_, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(highlightChart_, 0, 0);
+        lv_obj_set_style_pad_all(highlightChart_, 0, 0);
+        lv_obj_set_style_pad_gap(highlightChart_, 0, 0);
+        lv_obj_set_style_line_width(highlightChart_, 0, LV_PART_ITEMS);
+        lv_obj_set_style_line_opa(highlightChart_, LV_OPA_TRANSP, LV_PART_ITEMS);
+        const int32_t markerSizePx = std::max<int32_t>(1, config_.highlightMarkerSizePx);
+        lv_obj_set_style_width(highlightChart_, markerSizePx, LV_PART_INDICATOR);
+        lv_obj_set_style_height(highlightChart_, markerSizePx, LV_PART_INDICATOR);
+        lv_obj_set_style_radius(highlightChart_, LV_RADIUS_CIRCLE, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(highlightChart_, config_.highlightColor, LV_PART_INDICATOR);
+        lv_obj_set_style_bg_opa(highlightChart_, LV_OPA_COVER, LV_PART_INDICATOR);
+        lv_obj_set_style_border_color(highlightChart_, config_.highlightColor, LV_PART_INDICATOR);
+        lv_obj_set_style_border_opa(highlightChart_, LV_OPA_80, LV_PART_INDICATOR);
+        lv_obj_set_style_border_width(highlightChart_, 1, LV_PART_INDICATOR);
+        lv_obj_clear_flag(highlightChart_, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_clear_flag(highlightChart_, LV_OBJ_FLAG_CLICKABLE);
+
+        lv_chart_set_type(highlightChart_, LV_CHART_TYPE_LINE);
+        lv_chart_set_update_mode(highlightChart_, LV_CHART_UPDATE_MODE_SHIFT);
+        lv_chart_set_div_line_count(highlightChart_, 0, 0);
+        lv_chart_set_point_count(highlightChart_, minPointCount_);
+
+        highlightSeries_ =
+            lv_chart_add_series(highlightChart_, config_.highlightColor, LV_CHART_AXIS_PRIMARY_Y);
+        lv_chart_set_all_values(highlightChart_, highlightSeries_, LV_CHART_POINT_NONE);
+    }
+
     if (config_.showYAxisRangeLabels) {
         yAxisMaxLabel_ = lv_label_create(chart_);
         lv_obj_set_width(yAxisMaxLabel_, yAxisRangeLabelWidthPx_);
@@ -152,6 +183,11 @@ void TimeSeriesPlotWidget::clear()
     chartValues_.assign(minPointCount_, 0);
     lv_chart_set_point_count(chart_, minPointCount_);
     lv_chart_set_all_values(chart_, series_, 0);
+    if (highlightChart_ && highlightSeries_) {
+        lv_chart_set_point_count(highlightChart_, minPointCount_);
+        lv_chart_set_all_values(highlightChart_, highlightSeries_, LV_CHART_POINT_NONE);
+        lv_chart_refresh(highlightChart_);
+    }
     setYAxisRange(config_.defaultMinY, config_.defaultMaxY);
     lv_chart_refresh(chart_);
 }
@@ -189,6 +225,18 @@ void TimeSeriesPlotWidget::clearBottomLabels()
 
 void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
 {
+    setSamplesInternal(samples, nullptr);
+}
+
+void TimeSeriesPlotWidget::setSamplesWithHighlights(
+    const std::vector<float>& samples, const std::vector<uint8_t>& highlightMask)
+{
+    setSamplesInternal(samples, &highlightMask);
+}
+
+void TimeSeriesPlotWidget::setSamplesInternal(
+    const std::vector<float>& samples, const std::vector<uint8_t>* highlightMask)
+{
     if (!chart_ || !series_) {
         return;
     }
@@ -203,6 +251,9 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
     const uint32_t pointCount = std::max(minPointCount_, static_cast<uint32_t>(samples.size()));
     if (lv_chart_get_point_count(chart_) != pointCount) {
         lv_chart_set_point_count(chart_, pointCount);
+    }
+    if (highlightChart_ && lv_chart_get_point_count(highlightChart_) != pointCount) {
+        lv_chart_set_point_count(highlightChart_, pointCount);
     }
 
     const auto toPlotValue = [this](float value) {
@@ -230,6 +281,19 @@ void TimeSeriesPlotWidget::setSamples(const std::vector<float>& samples)
     for (uint32_t i = 0; i < pointCount; ++i) {
         lv_chart_set_series_value_by_id(chart_, series_, i, chartValues_[i]);
     }
+
+    if (highlightChart_ && highlightSeries_) {
+        for (uint32_t i = 0; i < pointCount; ++i) {
+            int32_t highlightValue = LV_CHART_POINT_NONE;
+            if (highlightMask && i < highlightMask->size() && (*highlightMask)[i]
+                && i < samples.size()) {
+                highlightValue = toChartValue(samples[i]);
+            }
+            lv_chart_set_series_value_by_id(highlightChart_, highlightSeries_, i, highlightValue);
+        }
+        lv_chart_refresh(highlightChart_);
+    }
+
     lv_chart_refresh(chart_);
 }
 
@@ -308,6 +372,13 @@ void TimeSeriesPlotWidget::setYAxisRange(float minValue, float maxValue)
 
     lv_chart_set_axis_range(
         chart_, LV_CHART_AXIS_PRIMARY_Y, toChartValue(minValue), toChartValue(maxValue));
+    if (highlightChart_) {
+        lv_chart_set_axis_range(
+            highlightChart_,
+            LV_CHART_AXIS_PRIMARY_Y,
+            toChartValue(minValue),
+            toChartValue(maxValue));
+    }
     updateYAxisRangeLabels(minValue, maxValue);
 }
 
