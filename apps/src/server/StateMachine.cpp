@@ -1153,6 +1153,14 @@ void StateMachine::mainLoopRun()
         }
     }
 
+    if (!std::holds_alternative<State::Shutdown>(pImpl->fsmState_.getVariant())) {
+        LOG_INFO(
+            State,
+            "Exit requested while in state {}, transitioning to Shutdown for cleanup",
+            getCurrentStateName());
+        transitionTo(State::Shutdown{});
+    }
+
     spdlog::info("State machine event loop exiting (shouldExit=true)");
 
     spdlog::info("Main event loop exiting");
