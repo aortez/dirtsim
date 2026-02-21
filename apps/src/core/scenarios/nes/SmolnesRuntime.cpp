@@ -19,6 +19,11 @@ void SmolnesRuntime::stop()
     smolnesRuntimeStop();
 }
 
+void SmolnesRuntime::setController1State(uint8_t buttonMask)
+{
+    smolnesRuntimeSetController1State(buttonMask);
+}
+
 bool SmolnesRuntime::isHealthy() const
 {
     return smolnesRuntimeIsHealthy();

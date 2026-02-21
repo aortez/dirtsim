@@ -78,6 +78,7 @@ void NesScenario::setup(World& world)
 {
     stopRuntime();
     world.getData().scenario_video_frame.reset();
+    controller1State_ = 0;
 
     for (int y = 0; y < world.getData().height; ++y) {
         for (int x = 0; x < world.getData().width; ++x) {
@@ -116,6 +117,9 @@ void NesScenario::setup(World& world)
                 Scenario,
                 "NesScenario: Failed to start smolnes runtime: {}",
                 runtime_->getLastError());
+        }
+        else {
+            runtime_->setController1State(controller1State_);
         }
         return;
     }
@@ -167,6 +171,7 @@ void NesScenario::tick(World& world, double /*deltaTime*/)
         static_cast<uint32_t>(std::min<uint64_t>(maxFramesPerTick, framesRemaining));
 
     constexpr uint32_t tickTimeoutMs = 2000;
+    runtime_->setController1State(controller1State_);
     if (!runtime_->runFrames(framesToRun, tickTimeoutMs)) {
         LOG_ERROR(
             Scenario,
@@ -213,6 +218,14 @@ std::string NesScenario::getRuntimeLastError() const
         return {};
     }
     return runtime_->getLastError();
+}
+
+void NesScenario::setController1State(uint8_t buttonMask)
+{
+    controller1State_ = buttonMask;
+    if (runtime_ && runtime_->isRunning()) {
+        runtime_->setController1State(controller1State_);
+    }
 }
 
 NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)

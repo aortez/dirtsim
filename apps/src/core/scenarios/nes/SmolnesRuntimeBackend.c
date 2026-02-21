@@ -23,6 +23,7 @@ static uint64_t gTargetFrames = 0;
 static uint64_t gLatestFrameId = 0;
 static bool gHasLatestFrame = false;
 static uint8_t gLatestFrame[SMOLNES_RUNTIME_FRAME_BYTES] = { 0 };
+static uint8_t gController1State = 0;
 
 static char gLastError[256] = { 0 };
 static char gRomPath[1024] = { 0 };
@@ -53,6 +54,23 @@ static void setLastError(const char* message)
     pthread_mutex_lock(&gRuntimeMutex);
     setLastErrorLocked(message);
     pthread_mutex_unlock(&gRuntimeMutex);
+}
+
+static void applyController1StateToKeyboardLocked(void)
+{
+    memset(gKeyboardState, 0, sizeof(gKeyboardState));
+
+    gKeyboardState[SDL_SCANCODE_X] = (gController1State & SMOLNES_RUNTIME_BUTTON_A) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_Z] = (gController1State & SMOLNES_RUNTIME_BUTTON_B) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_TAB] =
+        (gController1State & SMOLNES_RUNTIME_BUTTON_SELECT) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_RETURN] =
+        (gController1State & SMOLNES_RUNTIME_BUTTON_START) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_UP] = (gController1State & SMOLNES_RUNTIME_BUTTON_UP) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_DOWN] = (gController1State & SMOLNES_RUNTIME_BUTTON_DOWN) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_LEFT] = (gController1State & SMOLNES_RUNTIME_BUTTON_LEFT) ? 1 : 0;
+    gKeyboardState[SDL_SCANCODE_RIGHT] =
+        (gController1State & SMOLNES_RUNTIME_BUTTON_RIGHT) ? 1 : 0;
 }
 
 static struct timespec buildDeadline(uint32_t timeoutMs)
@@ -89,7 +107,9 @@ static void* runtimeThreadMain(void* arg)
 int smolnesRuntimeWrappedInit(Uint32 flags)
 {
     (void)flags;
-    memset(gKeyboardState, 0, sizeof(gKeyboardState));
+    pthread_mutex_lock(&gRuntimeMutex);
+    applyController1StateToKeyboardLocked();
+    pthread_mutex_unlock(&gRuntimeMutex);
     return 0;
 }
 
@@ -263,6 +283,8 @@ bool smolnesRuntimeStart(const char* romPath)
     gLatestFrameId = 0;
     gHasLatestFrame = false;
     memset(gLatestFrame, 0, sizeof(gLatestFrame));
+    gController1State = 0;
+    applyController1StateToKeyboardLocked();
     gThreadRunning = true;
 
     const int createResult = pthread_create(&gRuntimeThread, NULL, runtimeThreadMain, NULL);
@@ -368,6 +390,14 @@ uint64_t smolnesRuntimeGetRenderedFrameCount(void)
     const uint64_t frameCount = gRenderedFrames;
     pthread_mutex_unlock(&gRuntimeMutex);
     return frameCount;
+}
+
+void smolnesRuntimeSetController1State(uint8_t buttonMask)
+{
+    pthread_mutex_lock(&gRuntimeMutex);
+    gController1State = buttonMask;
+    applyController1StateToKeyboardLocked();
+    pthread_mutex_unlock(&gRuntimeMutex);
 }
 
 bool smolnesRuntimeCopyLatestFrame(uint8_t* buffer, uint32_t bufferSize, uint64_t* frameId)

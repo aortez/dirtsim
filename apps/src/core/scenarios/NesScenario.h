@@ -50,6 +50,7 @@ public:
     bool isRuntimeRunning() const;
     uint64_t getRuntimeRenderedFrameCount() const;
     std::string getRuntimeLastError() const;
+    void setController1State(uint8_t buttonMask);
 
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
@@ -61,6 +62,7 @@ private:
     Config::Nes config_;
     NesRomCheckResult lastRomCheck_;
     std::unique_ptr<SmolnesRuntime> runtime_;
+    uint8_t controller1State_ = 0;
 };
 
 } // namespace DirtSim

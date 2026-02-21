@@ -22,6 +22,7 @@
 #include "core/organisms/components/LightHandHeld.h"
 #include "core/organisms/evolution/GenomeRepository.h"
 #include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/NesScenario.h"
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
@@ -51,6 +52,54 @@ Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
         return Scenario::EnumType::Clock;
     }
     return scenarioId;
+}
+
+constexpr float NES_ANALOG_DEADZONE = 0.25f;
+constexpr uint8_t NES_BUTTON_A = 1u << 0;
+constexpr uint8_t NES_BUTTON_B = 1u << 1;
+constexpr uint8_t NES_BUTTON_SELECT = 1u << 2;
+constexpr uint8_t NES_BUTTON_START = 1u << 3;
+constexpr uint8_t NES_BUTTON_UP = 1u << 4;
+constexpr uint8_t NES_BUTTON_DOWN = 1u << 5;
+constexpr uint8_t NES_BUTTON_LEFT = 1u << 6;
+constexpr uint8_t NES_BUTTON_RIGHT = 1u << 7;
+
+uint8_t mapGamepadStateToNesButtons(const GamepadState& state)
+{
+    uint8_t result = 0;
+
+    if (state.button_a) {
+        result |= NES_BUTTON_A;
+    }
+    if (state.button_b) {
+        result |= NES_BUTTON_B;
+    }
+    if (state.button_back) {
+        result |= NES_BUTTON_SELECT;
+    }
+    if (state.button_start) {
+        result |= NES_BUTTON_START;
+    }
+
+    const bool left = state.dpad_x < 0.0f || state.stick_x < -NES_ANALOG_DEADZONE;
+    const bool right = state.dpad_x > 0.0f || state.stick_x > NES_ANALOG_DEADZONE;
+    const bool up = state.dpad_y < 0.0f || state.stick_y < -NES_ANALOG_DEADZONE;
+    const bool down = state.dpad_y > 0.0f || state.stick_y > NES_ANALOG_DEADZONE;
+
+    if (up && !down) {
+        result |= NES_BUTTON_UP;
+    }
+    if (down && !up) {
+        result |= NES_BUTTON_DOWN;
+    }
+    if (left && !right) {
+        result |= NES_BUTTON_LEFT;
+    }
+    if (right && !left) {
+        result |= NES_BUTTON_RIGHT;
+    }
+
+    return result;
 }
 
 void applyUserClockTimezoneToConfig(ScenarioConfig& config, const UserSettings& userSettings)
@@ -255,111 +304,136 @@ void SimRunning::tick(StateMachine& dsm)
     auto& gm = dsm.getGamepadManager();
     gm.poll();
 
-    // Handle gamepad disconnects - remove ducks.
-    for (size_t idx : gm.getNewlyDisconnected()) {
-        auto it = gamepad_to_duck_.find(idx);
-        if (it != gamepad_to_duck_.end()) {
-            spdlog::info("SimRunning: Gamepad {} disconnected, removing duck {}", idx, it->second);
-            world->getOrganismManager().removeOrganismFromWorld(*world, it->second);
-            gamepad_to_duck_.erase(it);
+    auto* nesScenario = (scenario_id == Scenario::EnumType::Nes)
+        ? dynamic_cast<NesScenario*>(scenario.get())
+        : nullptr;
+
+    if (nesScenario != nullptr) {
+        uint8_t controller1Buttons = 0;
+        for (size_t i = 0; i < gm.getDeviceCount(); ++i) {
+            const auto* state = gm.getGamepadState(i);
+            if (!state || !state->connected) {
+                continue;
+            }
+            controller1Buttons = mapGamepadStateToNesButtons(*state);
+            break; // Use first connected gamepad for player one.
         }
-        prev_start_button_.erase(idx);
-        prev_back_button_.erase(idx);
-        prev_y_button_.erase(idx);
+        nesScenario->setController1State(controller1Buttons);
     }
-
-    // Process each connected gamepad.
-    for (size_t i = 0; i < gm.getDeviceCount(); i++) {
-        auto* state = gm.getGamepadState(i);
-        if (!state || !state->connected) {
-            continue;
+    else {
+        // Handle gamepad disconnects - remove ducks.
+        for (size_t idx : gm.getNewlyDisconnected()) {
+            auto it = gamepad_to_duck_.find(idx);
+            if (it != gamepad_to_duck_.end()) {
+                spdlog::info(
+                    "SimRunning: Gamepad {} disconnected, removing duck {}", idx, it->second);
+                world->getOrganismManager().removeOrganismFromWorld(*world, it->second);
+                gamepad_to_duck_.erase(it);
+            }
+            prev_start_button_.erase(idx);
+            prev_back_button_.erase(idx);
+            prev_y_button_.erase(idx);
         }
 
-        // Check for Start button press (edge-detected) to spawn duck.
-        bool prev_start = prev_start_button_[i];
-        if (state->button_start && !prev_start
-            && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
-            // Spawn a new player-controlled duck at center-top of world.
-            uint32_t spawn_x = world->getData().width / 2;
-            uint32_t spawn_y = 2;
-
-            // Check if spawn location is occupied.
-            Vector2i spawn_pos{ static_cast<int>(spawn_x), static_cast<int>(spawn_y) };
-            OrganismId blocking = world->getOrganismManager().at(spawn_pos);
-            if (blocking != INVALID_ORGANISM_ID) {
-                spdlog::warn(
-                    "SimRunning: Gamepad {} spawn blocked by organism {} at ({}, {})",
-                    i,
-                    blocking,
-                    spawn_x,
-                    spawn_y);
+        // Process each connected gamepad.
+        for (size_t i = 0; i < gm.getDeviceCount(); i++) {
+            auto* state = gm.getGamepadState(i);
+            if (!state || !state->connected) {
                 continue;
             }
 
-            auto brain = std::make_unique<PlayerDuckBrain>();
-            OrganismId duck_id =
-                world->getOrganismManager().createDuck(*world, spawn_x, spawn_y, std::move(brain));
+            // Check for Start button press (edge-detected) to spawn duck.
+            bool prev_start = prev_start_button_[i];
+            if (state->button_start && !prev_start
+                && gamepad_to_duck_.find(i) == gamepad_to_duck_.end()) {
+                // Spawn a new player-controlled duck at center-top of world.
+                uint32_t spawn_x = world->getData().width / 2;
+                uint32_t spawn_y = 2;
 
-            gamepad_to_duck_[i] = duck_id;
-            spdlog::info(
-                "SimRunning: Gamepad {} spawned duck {} at ({}, {})", i, duck_id, spawn_x, spawn_y);
+                // Check if spawn location is occupied.
+                Vector2i spawn_pos{ static_cast<int>(spawn_x), static_cast<int>(spawn_y) };
+                OrganismId blocking = world->getOrganismManager().at(spawn_pos);
+                if (blocking != INVALID_ORGANISM_ID) {
+                    spdlog::warn(
+                        "SimRunning: Gamepad {} spawn blocked by organism {} at ({}, {})",
+                        i,
+                        blocking,
+                        spawn_x,
+                        spawn_y);
+                    continue;
+                }
 
-            // Attach a handheld flashlight to the player-controlled duck.
-            Duck* duck = world->getOrganismManager().getDuck(duck_id);
-            if (duck) {
-                LightHandle flashlight = world->getLightManager().createLight(
-                    SpotLight{ .position = Vector2d{ static_cast<double>(spawn_x),
-                                                     static_cast<double>(spawn_y) },
-                               .color = ColorNames::warmSunlight(),
-                               .intensity = 1.0f,
-                               .radius = 15.0f,
-                               .attenuation = 0.1f,
-                               .direction = 0.0f,
-                               .arc_width = static_cast<float>(M_PI / 3.0),
-                               .focus = 1.0f });
+                auto brain = std::make_unique<PlayerDuckBrain>();
+                OrganismId duck_id = world->getOrganismManager().createDuck(
+                    *world, spawn_x, spawn_y, std::move(brain));
 
-                auto handheld = std::make_unique<LightHandHeld>(std::move(flashlight));
-                duck->setHandheldLight(std::move(handheld));
-                spdlog::info("SimRunning: Attached flashlight to duck {}", duck_id);
-            }
-        }
-        prev_start_button_[i] = state->button_start;
+                gamepad_to_duck_[i] = duck_id;
+                spdlog::info(
+                    "SimRunning: Gamepad {} spawned duck {} at ({}, {})",
+                    i,
+                    duck_id,
+                    spawn_x,
+                    spawn_y);
 
-        // Check for Back/Select button press (edge-detected) to reset scenario.
-        bool prev_back = prev_back_button_[i];
-        if (state->button_back && !prev_back) {
-            spdlog::info("SimRunning: Gamepad {} pressed Back, resetting scenario", i);
-            if (scenario) {
-                scenario->reset(*world);
-                world->getData().tree_vision.reset();
-                world->getData().bones.clear();
-                gamepad_to_duck_.clear();
-                stepCount = 0;
-            }
-        }
-        prev_back_button_[i] = state->button_back;
+                // Attach a handheld flashlight to the player-controlled duck.
+                Duck* duck = world->getOrganismManager().getDuck(duck_id);
+                if (duck) {
+                    LightHandle flashlight = world->getLightManager().createLight(
+                        SpotLight{ .position = Vector2d{ static_cast<double>(spawn_x),
+                                                         static_cast<double>(spawn_y) },
+                                   .color = ColorNames::warmSunlight(),
+                                   .intensity = 1.0f,
+                                   .radius = 15.0f,
+                                   .attenuation = 0.1f,
+                                   .direction = 0.0f,
+                                   .arc_width = static_cast<float>(M_PI / 3.0),
+                                   .focus = 1.0f });
 
-        // Check for Y button press (edge-detected) to toggle debug rendering.
-        bool prev_y = prev_y_button_[i];
-        if (state->button_y && !prev_y) {
-            spdlog::info("SimRunning: Gamepad {} pressed Y, broadcasting DrawDebugToggle", i);
-            dsm.broadcastCommand("DrawDebugToggle");
-        }
-        prev_y_button_[i] = state->button_y;
-
-        // Pass gamepad input to existing duck's brain.
-        auto it = gamepad_to_duck_.find(i);
-        if (it != gamepad_to_duck_.end()) {
-            if (auto* duck = world->getOrganismManager().getDuck(it->second)) {
-                if (auto* brain = duck->getBrain()) {
-                    brain->setGamepadInput(*state);
+                    auto handheld = std::make_unique<LightHandHeld>(std::move(flashlight));
+                    duck->setHandheldLight(std::move(handheld));
+                    spdlog::info("SimRunning: Attached flashlight to duck {}", duck_id);
                 }
             }
-            else {
-                // Duck no longer exists (died, removed, etc.) - clean up mapping.
-                spdlog::debug(
-                    "SimRunning: Gamepad {} duck {} no longer exists, cleaning up", i, it->second);
-                gamepad_to_duck_.erase(it);
+            prev_start_button_[i] = state->button_start;
+
+            // Check for Back/Select button press (edge-detected) to reset scenario.
+            bool prev_back = prev_back_button_[i];
+            if (state->button_back && !prev_back) {
+                spdlog::info("SimRunning: Gamepad {} pressed Back, resetting scenario", i);
+                if (scenario) {
+                    scenario->reset(*world);
+                    world->getData().tree_vision.reset();
+                    world->getData().bones.clear();
+                    gamepad_to_duck_.clear();
+                    stepCount = 0;
+                }
+            }
+            prev_back_button_[i] = state->button_back;
+
+            // Check for Y button press (edge-detected) to toggle debug rendering.
+            bool prev_y = prev_y_button_[i];
+            if (state->button_y && !prev_y) {
+                spdlog::info("SimRunning: Gamepad {} pressed Y, broadcasting DrawDebugToggle", i);
+                dsm.broadcastCommand("DrawDebugToggle");
+            }
+            prev_y_button_[i] = state->button_y;
+
+            // Pass gamepad input to existing duck's brain.
+            auto it = gamepad_to_duck_.find(i);
+            if (it != gamepad_to_duck_.end()) {
+                if (auto* duck = world->getOrganismManager().getDuck(it->second)) {
+                    if (auto* brain = duck->getBrain()) {
+                        brain->setGamepadInput(*state);
+                    }
+                }
+                else {
+                    // Duck no longer exists (died, removed, etc.) - clean up mapping.
+                    spdlog::debug(
+                        "SimRunning: Gamepad {} duck {} no longer exists, cleaning up",
+                        i,
+                        it->second);
+                    gamepad_to_duck_.erase(it);
+                }
             }
         }
     }
