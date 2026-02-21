@@ -31,6 +31,7 @@ struct TrainingActive {
     void updateAnimations();
 
     Any onEvent(const EvolutionProgressReceivedEvent& evt, StateMachine& sm);
+    Any onEvent(const TrainingBestPlaybackFrameReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const TrainingBestSnapshotReceivedEvent& evt, StateMachine& sm);
     Any onEvent(const Api::TrainingResult::Cwc& cwc, StateMachine& sm);
     Any onEvent(const IconSelectedEvent& evt, StateMachine& sm);

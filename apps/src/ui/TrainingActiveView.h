@@ -59,11 +59,14 @@ public:
         int commandsRejected,
         const std::vector<std::pair<std::string, int>>& topCommandSignatures,
         const std::vector<std::pair<std::string, int>>& topCommandOutcomeSignatures);
+    void updateBestPlaybackFrame(const WorldData& worldData, double fitness, int generation);
 
     void setEvolutionStarted(bool started);
     void setEvolutionCompleted(GenomeId bestGenomeId);
     void setTrainingPaused(bool paused);
     void setStreamIntervalMs(int value);
+    void setBestPlaybackEnabled(bool enabled);
+    void setBestPlaybackIntervalMs(int value);
 
     bool isTrainingResultModalVisible() const;
     Starfield::Snapshot captureStarfieldSnapshot() const;
@@ -81,6 +84,8 @@ private:
     void createStreamPanel(lv_obj_t* parent);
 
     static void onStreamIntervalChanged(lv_event_t* e);
+    static void onBestPlaybackToggled(lv_event_t* e);
+    static void onBestPlaybackIntervalChanged(lv_event_t* e);
     static void onStopTrainingClicked(lv_event_t* e);
     static void onPauseResumeClicked(lv_event_t* e);
 
@@ -119,6 +124,8 @@ private:
     std::chrono::steady_clock::time_point lastProgressUiLog_{};
     std::chrono::steady_clock::time_point lastStatsInvalidate_{};
     lv_obj_t* streamIntervalStepper_ = nullptr;
+    lv_obj_t* bestPlaybackToggle_ = nullptr;
+    lv_obj_t* bestPlaybackIntervalStepper_ = nullptr;
     lv_obj_t* pauseResumeButton_ = nullptr;
     lv_obj_t* pauseResumeLabel_ = nullptr;
     lv_obj_t* stopTrainingButton_ = nullptr;
@@ -136,8 +143,12 @@ private:
     const Starfield::Snapshot* starfieldSnapshot_ = nullptr;
 
     std::unique_ptr<WorldData> bestWorldData_;
+    std::unique_ptr<WorldData> bestSnapshotWorldData_;
     double bestFitness_ = 0.0;
     int bestGeneration_ = 0;
+    double bestSnapshotFitness_ = 0.0;
+    int bestSnapshotGeneration_ = 0;
+    bool hasBestSnapshot_ = false;
     bool hasShownBestSnapshot_ = false;
     std::shared_ptr<std::atomic<bool>> alive_;
 };
