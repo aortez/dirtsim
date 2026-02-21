@@ -523,6 +523,70 @@ void mergeTimerStats(
     }
 }
 
+Evolution::WorkerResult buildWorkerResultFromPass(
+    Evolution::WorkerResult::TaskType taskType,
+    int index,
+    int robustGeneration,
+    int robustSampleOrdinal,
+    EvaluationPassResult pass,
+    bool includeGenerationDetails)
+{
+    Evolution::WorkerResult result;
+    result.taskType = taskType;
+    result.index = index;
+    result.robustGeneration = robustGeneration;
+    result.robustSampleOrdinal = robustSampleOrdinal;
+    result.simTime = pass.simTime;
+    result.commandsAccepted = pass.commandsAccepted;
+    result.commandsRejected = pass.commandsRejected;
+    result.fitness = pass.fitness;
+
+    if (!includeGenerationDetails) {
+        return result;
+    }
+
+    result.topCommandSignatures = std::move(pass.topCommandSignatures);
+    result.topCommandOutcomeSignatures = std::move(pass.topCommandOutcomeSignatures);
+    result.snapshot = std::move(pass.snapshot);
+    result.timerStats = std::move(pass.timerStats);
+    result.treeFitnessBreakdown = std::move(pass.treeFitnessBreakdown);
+    return result;
+}
+
+void mergeDuckClockEvaluationPasses(
+    Evolution::WorkerResult& primaryResult,
+    Evolution::WorkerResult secondaryResult,
+    bool includeGenerationDetails)
+{
+    const double primaryFitness = primaryResult.fitness;
+    const bool secondaryIsWorse = secondaryResult.fitness < primaryFitness;
+
+    primaryResult.simTime += secondaryResult.simTime;
+    primaryResult.fitness = std::min(primaryFitness, secondaryResult.fitness);
+
+    if (!includeGenerationDetails) {
+        primaryResult.commandsAccepted += secondaryResult.commandsAccepted;
+        primaryResult.commandsRejected += secondaryResult.commandsRejected;
+        return;
+    }
+
+    if (secondaryIsWorse) {
+        primaryResult.commandsAccepted = secondaryResult.commandsAccepted;
+        primaryResult.commandsRejected = secondaryResult.commandsRejected;
+        primaryResult.topCommandSignatures = std::move(secondaryResult.topCommandSignatures);
+        primaryResult.topCommandOutcomeSignatures =
+            std::move(secondaryResult.topCommandOutcomeSignatures);
+        primaryResult.snapshot = std::move(secondaryResult.snapshot);
+        primaryResult.treeFitnessBreakdown = std::move(secondaryResult.treeFitnessBreakdown);
+        auto primaryTimerStats = std::move(primaryResult.timerStats);
+        primaryResult.timerStats = std::move(secondaryResult.timerStats);
+        mergeTimerStats(primaryResult.timerStats, primaryTimerStats);
+        return;
+    }
+
+    mergeTimerStats(primaryResult.timerStats, secondaryResult.timerStats);
+}
+
 const char* toProgressSource(Evolution::IndividualOrigin origin)
 {
     switch (origin) {
@@ -669,6 +733,8 @@ void Evolution::onEnter(StateMachine& dsm)
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
     visibleEvalIsRobustness_ = false;
+    visibleDuckSecondPassActive_ = false;
+    visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
     workerState_ = std::make_unique<WorkerState>();
 
@@ -917,6 +983,8 @@ void Evolution::initializePopulation(StateMachine& dsm)
     visibleQueue_.clear();
     visibleEvalIndex_ = -1;
     visibleEvalIsRobustness_ = false;
+    visibleDuckSecondPassActive_ = false;
+    visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
     visibleScenarioConfig_ = Config::Empty{};
     visibleScenarioId_ = getPrimaryScenarioId(trainingSpec);
@@ -1010,6 +1078,8 @@ void Evolution::stopWorkers()
     visibleRunner_.reset();
     visibleEvalIndex_ = -1;
     visibleEvalIsRobustness_ = false;
+    visibleDuckSecondPassActive_ = false;
+    visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
 }
 
@@ -1075,6 +1145,8 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
 
         visibleEvalIndex_ = robustnessPassIndex_;
         visibleEvalIsRobustness_ = true;
+        visibleDuckSecondPassActive_ = false;
+        visibleDuckPrimaryPassResult_.reset();
         visibleRobustSampleOrdinal_ = robustnessPassNextVisibleSampleOrdinal_++;
         robustnessPassVisibleSamplesRemaining_--;
 
@@ -1107,6 +1179,8 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
     visibleEvalIndex_ = visibleQueue_.front();
     visibleQueue_.pop_front();
     visibleEvalIsRobustness_ = false;
+    visibleDuckSecondPassActive_ = false;
+    visibleDuckPrimaryPassResult_.reset();
     visibleRobustSampleOrdinal_ = 0;
 
     const Individual& individual = population[visibleEvalIndex_];
@@ -1167,91 +1241,74 @@ void Evolution::stepVisibleEvaluation(StateMachine& dsm)
 
     const bool evalComplete = status.state != TrainingRunner::State::Running;
     if (status.state != TrainingRunner::State::Running) {
-        WorkerResult result;
-        result.taskType = visibleEvalIsRobustness_ ? WorkerResult::TaskType::RobustnessEval
-                                                   : WorkerResult::TaskType::GenerationEval;
-        result.index = visibleEvalIndex_;
-        if (visibleEvalIsRobustness_) {
-            result.robustGeneration = robustnessPassGeneration_;
-            result.robustSampleOrdinal = visibleRobustSampleOrdinal_;
-        }
+        const WorkerResult::TaskType taskType = visibleEvalIsRobustness_
+            ? WorkerResult::TaskType::RobustnessEval
+            : WorkerResult::TaskType::GenerationEval;
         const bool includeGenerationDetails = !visibleEvalIsRobustness_;
-        EvaluationPassResult primaryPass = buildEvaluationPassResult(
+        EvaluationPassResult completedPass = buildEvaluationPassResult(
             *visibleRunner_,
             status,
             trainingSpec.organismType,
             evolutionConfig,
             includeGenerationDetails);
-
-        result.simTime = primaryPass.simTime;
-        result.commandsAccepted = primaryPass.commandsAccepted;
-        result.commandsRejected = primaryPass.commandsRejected;
-        result.fitness = primaryPass.fitness;
+        WorkerResult passResult = buildWorkerResultFromPass(
+            taskType,
+            visibleEvalIndex_,
+            visibleEvalIsRobustness_ ? robustnessPassGeneration_ : -1,
+            visibleEvalIsRobustness_ ? visibleRobustSampleOrdinal_ : 0,
+            std::move(completedPass),
+            includeGenerationDetails);
 
         const Individual& individual = population[visibleEvalIndex_];
-        if (isDuckClockScenario(trainingSpec.organismType, individual.scenarioId)) {
+        const bool duckClockVisibleEval =
+            isDuckClockScenario(trainingSpec.organismType, individual.scenarioId);
+        if (duckClockVisibleEval && !visibleDuckSecondPassActive_) {
             const std::optional<bool> primarySpawnSide = resolvePrimaryDuckClockSpawnSide(
-                result.taskType,
+                taskType,
                 trainingSpec.organismType,
                 individual.scenarioId,
                 visibleRobustSampleOrdinal_);
             const std::optional<bool> secondarySpawnSide = primarySpawnSide.has_value()
                 ? std::optional<bool>(!primarySpawnSide.value())
                 : std::optional<bool>(false);
-            EvaluationPassResult secondaryPass = runEvaluationPass(
+            const TrainingRunner::Config runnerConfig{
+                .brainRegistry = brainRegistry_,
+                .duckClockSpawnLeftFirst = secondarySpawnSide,
+                .duckClockSpawnRngSeed = std::nullopt,
+            };
+            visibleRunner_ = std::make_unique<TrainingRunner>(
                 trainingSpec,
                 makeRunnerIndividual(individual),
                 evolutionConfig,
                 dsm.getGenomeRepository(),
-                brainRegistry_,
-                secondarySpawnSide,
-                includeGenerationDetails,
-                workerState_ ? &workerState_->stopRequested : nullptr);
-
-            result.simTime += secondaryPass.simTime;
-            result.fitness = std::min(primaryPass.fitness, secondaryPass.fitness);
-
-            if (includeGenerationDetails) {
-                if (secondaryPass.fitness < primaryPass.fitness) {
-                    result.commandsAccepted = secondaryPass.commandsAccepted;
-                    result.commandsRejected = secondaryPass.commandsRejected;
-                    result.topCommandSignatures = std::move(secondaryPass.topCommandSignatures);
-                    result.topCommandOutcomeSignatures =
-                        std::move(secondaryPass.topCommandOutcomeSignatures);
-                    result.snapshot = std::move(secondaryPass.snapshot);
-                    result.treeFitnessBreakdown = std::move(secondaryPass.treeFitnessBreakdown);
-                    result.timerStats = std::move(secondaryPass.timerStats);
-                    mergeTimerStats(result.timerStats, primaryPass.timerStats);
-                }
-                else {
-                    result.commandsAccepted = primaryPass.commandsAccepted;
-                    result.commandsRejected = primaryPass.commandsRejected;
-                    result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
-                    result.topCommandOutcomeSignatures =
-                        std::move(primaryPass.topCommandOutcomeSignatures);
-                    result.snapshot = std::move(primaryPass.snapshot);
-                    result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
-                    result.timerStats = std::move(primaryPass.timerStats);
-                    mergeTimerStats(result.timerStats, secondaryPass.timerStats);
-                }
+                runnerConfig);
+            visibleScenarioConfig_ = visibleRunner_->getScenarioConfig();
+            visibleScenarioId_ = individual.scenarioId;
+            visibleDuckPrimaryPassResult_ = std::move(passResult);
+            visibleDuckSecondPassActive_ = true;
+        }
+        else {
+            WorkerResult result;
+            if (duckClockVisibleEval && visibleDuckSecondPassActive_) {
+                DIRTSIM_ASSERT(
+                    visibleDuckPrimaryPassResult_.has_value(),
+                    "Evolution: visible duck second pass missing stored primary result");
+                result = std::move(visibleDuckPrimaryPassResult_.value());
+                mergeDuckClockEvaluationPasses(
+                    result, std::move(passResult), includeGenerationDetails);
             }
             else {
-                result.commandsAccepted += secondaryPass.commandsAccepted;
-                result.commandsRejected += secondaryPass.commandsRejected;
+                result = std::move(passResult);
             }
+
+            processResult(dsm, std::move(result));
+            visibleRunner_.reset();
+            visibleEvalIndex_ = -1;
+            visibleEvalIsRobustness_ = false;
+            visibleDuckSecondPassActive_ = false;
+            visibleDuckPrimaryPassResult_.reset();
+            visibleRobustSampleOrdinal_ = 0;
         }
-        else if (includeGenerationDetails) {
-            result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
-            result.topCommandOutcomeSignatures = std::move(primaryPass.topCommandOutcomeSignatures);
-            result.snapshot = std::move(primaryPass.snapshot);
-            result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
-            result.timerStats = std::move(primaryPass.timerStats);
-        }
-        processResult(dsm, std::move(result));
-        visibleRunner_.reset();
-        visibleEvalIndex_ = -1;
-        visibleEvalIsRobustness_ = false;
-        visibleRobustSampleOrdinal_ = 0;
     }
 
     if (shouldBroadcast || evalComplete) {
@@ -1280,15 +1337,13 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
         includeGenerationDetails,
         &state.stopRequested);
 
-    WorkerResult result;
-    result.taskType = task.taskType;
-    result.index = task.index;
-    result.robustGeneration = task.robustGeneration;
-    result.robustSampleOrdinal = task.robustSampleOrdinal;
-    result.simTime = primaryPass.simTime;
-    result.commandsAccepted = primaryPass.commandsAccepted;
-    result.commandsRejected = primaryPass.commandsRejected;
-    result.fitness = primaryPass.fitness;
+    WorkerResult result = buildWorkerResultFromPass(
+        task.taskType,
+        task.index,
+        task.robustGeneration,
+        task.robustSampleOrdinal,
+        std::move(primaryPass),
+        includeGenerationDetails);
 
     if (isDuckClockScenario(state.trainingSpec.organismType, task.individual.scenarioId)) {
         const std::optional<bool> secondarySpawnSide = primarySpawnSide.has_value()
@@ -1304,46 +1359,16 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
             includeGenerationDetails,
             &state.stopRequested);
 
-        result.simTime += secondaryPass.simTime;
-        result.fitness = std::min(primaryPass.fitness, secondaryPass.fitness);
-
-        if (includeGenerationDetails) {
-            if (secondaryPass.fitness < primaryPass.fitness) {
-                result.commandsAccepted = secondaryPass.commandsAccepted;
-                result.commandsRejected = secondaryPass.commandsRejected;
-                result.topCommandSignatures = std::move(secondaryPass.topCommandSignatures);
-                result.topCommandOutcomeSignatures =
-                    std::move(secondaryPass.topCommandOutcomeSignatures);
-                result.snapshot = std::move(secondaryPass.snapshot);
-                result.treeFitnessBreakdown = std::move(secondaryPass.treeFitnessBreakdown);
-                result.timerStats = std::move(secondaryPass.timerStats);
-                mergeTimerStats(result.timerStats, primaryPass.timerStats);
-            }
-            else {
-                result.commandsAccepted = primaryPass.commandsAccepted;
-                result.commandsRejected = primaryPass.commandsRejected;
-                result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
-                result.topCommandOutcomeSignatures =
-                    std::move(primaryPass.topCommandOutcomeSignatures);
-                result.snapshot = std::move(primaryPass.snapshot);
-                result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
-                result.timerStats = std::move(primaryPass.timerStats);
-                mergeTimerStats(result.timerStats, secondaryPass.timerStats);
-            }
-        }
-        else {
-            result.commandsAccepted += secondaryPass.commandsAccepted;
-            result.commandsRejected += secondaryPass.commandsRejected;
-        }
+        WorkerResult secondaryResult = buildWorkerResultFromPass(
+            task.taskType,
+            task.index,
+            task.robustGeneration,
+            task.robustSampleOrdinal,
+            std::move(secondaryPass),
+            includeGenerationDetails);
+        mergeDuckClockEvaluationPasses(
+            result, std::move(secondaryResult), includeGenerationDetails);
         return result;
-    }
-
-    if (includeGenerationDetails) {
-        result.topCommandSignatures = std::move(primaryPass.topCommandSignatures);
-        result.topCommandOutcomeSignatures = std::move(primaryPass.topCommandOutcomeSignatures);
-        result.snapshot = std::move(primaryPass.snapshot);
-        result.treeFitnessBreakdown = std::move(primaryPass.treeFitnessBreakdown);
-        result.timerStats = std::move(primaryPass.timerStats);
     }
     return result;
 }

@@ -164,6 +164,8 @@ struct Evolution {
     std::unique_ptr<TrainingRunner> visibleRunner_;
     int visibleEvalIndex_ = -1;
     bool visibleEvalIsRobustness_ = false;
+    bool visibleDuckSecondPassActive_ = false;
+    std::optional<WorkerResult> visibleDuckPrimaryPassResult_;
     int visibleRobustSampleOrdinal_ = 0;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
