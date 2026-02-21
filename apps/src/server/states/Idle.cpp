@@ -36,6 +36,22 @@ Scenario::EnumType normalizeLegacyScenarioId(Scenario::EnumType scenarioId)
     return scenarioId;
 }
 
+bool hasNesTrainingPopulation(const TrainingSpec& spec)
+{
+    if (spec.scenarioId == Scenario::EnumType::Nes) {
+        return true;
+    }
+
+    for (const auto& entry : spec.population) {
+        if (entry.scenarioId == Scenario::EnumType::Nes
+            || entry.brainKind == TrainingBrainKind::NesFlappyBird) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 ScenarioConfig buildScenarioConfigForRun(StateMachine& dsm, Scenario::EnumType scenarioId)
 {
     scenarioId = normalizeLegacyScenarioId(scenarioId);
@@ -337,6 +353,28 @@ std::optional<ApiError> validateTrainingConfig(
         populationSpec.scenarioId = normalizeLegacyScenarioId(populationSpec.scenarioId);
     }
 
+    if (hasNesTrainingPopulation(outSpec)) {
+        if (outSpec.organismType != OrganismType::NES_FLAPPY_BIRD) {
+            LOG_WARN(
+                State,
+                "EvolutionStart: promoting organism type {} to NES_FLAPPY_BIRD for NES scenario",
+                static_cast<int>(outSpec.organismType));
+            outSpec.organismType = OrganismType::NES_FLAPPY_BIRD;
+        }
+
+        outSpec.scenarioId = Scenario::EnumType::Nes;
+        for (auto& spec : outSpec.population) {
+            spec.scenarioId = Scenario::EnumType::Nes;
+            if (spec.brainKind != TrainingBrainKind::NesFlappyBird
+                || spec.brainVariant.has_value()) {
+                spec.brainKind = TrainingBrainKind::NesFlappyBird;
+                spec.brainVariant.reset();
+                spec.seedGenomes.clear();
+                spec.randomCount = spec.count;
+            }
+        }
+    }
+
     if (outSpec.population.empty()) {
         if (command.evolution.populationSize <= 0) {
             return ApiError("populationSize must be > 0 when population is empty");
@@ -553,12 +591,7 @@ int resolveParallelEvaluations(int requested, int populationSize)
 
 bool hasNesFlappyPopulation(const TrainingSpec& spec)
 {
-    for (const auto& entry : spec.population) {
-        if (entry.brainKind == TrainingBrainKind::NesFlappyBird) {
-            return true;
-        }
-    }
-    return false;
+    return hasNesTrainingPopulation(spec);
 }
 
 } // namespace

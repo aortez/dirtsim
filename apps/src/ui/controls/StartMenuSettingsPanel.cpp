@@ -493,11 +493,12 @@ void StartMenuSettingsPanel::updateTrainingTargetDropdown()
     }
 
     uint16_t index = 0;
-    if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
-        index = 1;
-    }
-    else if (settings_.trainingSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
+    if (settings_.trainingSpec.scenarioId == Scenario::EnumType::Nes
+        || settings_.trainingSpec.organismType == OrganismType::NES_FLAPPY_BIRD) {
         index = 2;
+    }
+    else if (settings_.trainingSpec.organismType == OrganismType::DUCK) {
+        index = 1;
     }
 
     LVGLBuilder::ActionDropdownBuilder::setSelected(trainingTargetDropdown_, index);
