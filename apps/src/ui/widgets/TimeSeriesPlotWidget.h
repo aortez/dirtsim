@@ -38,7 +38,9 @@ public:
 
 private:
     int32_t toChartValue(float value) const;
+    int32_t measureYAxisLabelTextWidth(const char* text) const;
     void setYAxisRange(float minValue, float maxValue);
+    void updateYAxisLabelLayout(int32_t requiredLabelWidthPx);
     void updateYAxisRange(const std::vector<float>& samples);
     void updateYAxisRangeLabels(float minValue, float maxValue);
 
@@ -55,6 +57,7 @@ private:
     lv_chart_series_t* series_ = nullptr;
     std::vector<int32_t> chartValues_;
     uint32_t minPointCount_ = 2;
+    int32_t yAxisRangeLabelWidthPx_ = 20;
     bool hasDisplayedYAxisRange_ = false;
     float displayedYAxisMin_ = 0.0f;
     float displayedYAxisMax_ = 0.0f;
