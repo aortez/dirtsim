@@ -7,6 +7,7 @@
 #include "server/api/EvolutionStart.h"
 
 #include <atomic>
+#include <cstdint>
 #include <string>
 
 namespace DirtSim {
@@ -67,13 +68,15 @@ private:
 
     int lastGeneration_ = -1;
     int lastEval_ = -1;
+    uint64_t lastRobustEvaluationCount_ = 0;
 
     void displayProgress(
         int generation,
         int maxGenerations,
         int currentEval,
         int populationSize,
-        double bestThisGen,
+        uint64_t robustEvaluationCount,
+        double latestFitness,
         double bestAllTime,
         double avgFitness);
 };

@@ -42,6 +42,7 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -2102,12 +2103,14 @@ int main(int argc, char** argv)
         std::atomic<bool> connected{ false };
         int lastGeneration = -1;
         int lastEval = -1;
+        uint64_t lastRobustEvaluationCount = 0;
         int lastTelemetryCompletedGeneration = -1;
         GenomeId lastBestGenomeId = INVALID_GENOME_ID;
         std::mutex latestBestSnapshotMutex;
         std::optional<Api::TrainingBestSnapshot> latestBestSnapshot;
         client.onServerCommand([&lastGeneration,
                                 &lastEval,
+                                &lastRobustEvaluationCount,
                                 &lastTelemetryCompletedGeneration,
                                 &lastBestGenomeId,
                                 &latestBestSnapshotMutex,
@@ -2130,11 +2133,13 @@ int main(int argc, char** argv)
                 }
 
                 auto progress = Network::deserialize_payload<Api::EvolutionProgress>(payload);
-                if (progress.generation == lastGeneration && progress.currentEval == lastEval) {
+                if (progress.generation == lastGeneration && progress.currentEval == lastEval
+                    && progress.robustEvaluationCount == lastRobustEvaluationCount) {
                     return;
                 }
                 lastGeneration = progress.generation;
                 lastEval = progress.currentEval;
+                lastRobustEvaluationCount = progress.robustEvaluationCount;
 
                 bool bestGenomeChanged = false;
                 if (progress.bestGenomeId.isNil()) {
@@ -2156,7 +2161,7 @@ int main(int argc, char** argv)
                 if (progress.genomeArchiveMaxSize > 0) {
                     line << " capPerOrganismBrain=" << progress.genomeArchiveMaxSize;
                 }
-                line << " genBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
+                line << " robustLast=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
                      << progress.bestFitnessThisGen;
                 line << " allBest=" << std::fixed << std::setprecision(kProgressFitnessPrecision)
                      << progress.bestFitnessAllTime;

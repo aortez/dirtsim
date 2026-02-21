@@ -259,6 +259,95 @@ TEST(StateTrainingTest, EvolutionProgressUpdatesState)
     trainingState.view_.reset();
 }
 
+TEST(StateTrainingTest, TrainingFitnessPlotAppendsOnRobustAndNonGenomeProgress)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    TrainingActive trainingState;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+
+    trainingState.onEnter(*fixture.stateMachine);
+
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 1u);
+    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 0.0f);
+
+    const auto dispatchProgress = [&trainingState,
+                                   &fixture](const EvolutionProgressReceivedEvent& evt) {
+        State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
+        ASSERT_TRUE(std::holds_alternative<TrainingActive>(result.getVariant()));
+        trainingState = std::move(std::get<TrainingActive>(result.getVariant()));
+    };
+
+    EvolutionProgressReceivedEvent p0;
+    p0.progress.generation = 5;
+    p0.progress.currentEval = 10;
+    p0.progress.populationSize = 50;
+    p0.progress.bestFitnessThisGen = 9.9;
+    p0.progress.robustEvaluationCount = 0;
+    dispatchProgress(p0);
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 1u)
+        << "Mid-generation non-robust progress should not append yet";
+
+    EvolutionProgressReceivedEvent p0Complete;
+    p0Complete.progress.generation = 5;
+    p0Complete.progress.currentEval = 50;
+    p0Complete.progress.populationSize = 50;
+    p0Complete.progress.lastCompletedGeneration = 5;
+    p0Complete.progress.bestThisGenSource = "seed";
+    p0Complete.progress.bestFitnessThisGen = 9.9;
+    p0Complete.progress.robustEvaluationCount = 0;
+    dispatchProgress(p0Complete);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 2u);
+    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 9.9f);
+
+    EvolutionProgressReceivedEvent p0CompleteRepeat = p0Complete;
+    p0CompleteRepeat.progress.bestFitnessThisGen = 8.8;
+    dispatchProgress(p0CompleteRepeat);
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 2u)
+        << "Repeated completed generation should not append duplicate points";
+
+    EvolutionProgressReceivedEvent p1;
+    p1.progress.generation = 5;
+    p1.progress.currentEval = 50;
+    p1.progress.populationSize = 50;
+    p1.progress.bestFitnessThisGen = 1.5;
+    p1.progress.robustEvaluationCount = 1;
+    dispatchProgress(p1);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 3u);
+    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 1.5f);
+
+    EvolutionProgressReceivedEvent p1Repeat;
+    p1Repeat.progress.generation = 5;
+    p1Repeat.progress.currentEval = 50;
+    p1Repeat.progress.populationSize = 50;
+    p1Repeat.progress.bestFitnessThisGen = 1.4;
+    p1Repeat.progress.robustEvaluationCount = 1;
+    dispatchProgress(p1Repeat);
+    EXPECT_EQ(trainingState.plotBestSeries_.size(), 3u)
+        << "Repeated robust evaluation count should not append duplicate points";
+
+    EvolutionProgressReceivedEvent p2;
+    p2.progress.generation = 6;
+    p2.progress.currentEval = 50;
+    p2.progress.populationSize = 50;
+    p2.progress.bestFitnessThisGen = 0.8;
+    p2.progress.robustEvaluationCount = 2;
+    dispatchProgress(p2);
+    ASSERT_EQ(trainingState.plotBestSeries_.size(), 4u);
+    EXPECT_FLOAT_EQ(trainingState.plotBestSeries_.back(), 0.8f);
+
+    trainingState.view_.reset();
+}
+
 TEST(StateTrainingTest, ServerDisconnectedTransitionsToDisconnected)
 {
     LvglTestDisplay lvgl;

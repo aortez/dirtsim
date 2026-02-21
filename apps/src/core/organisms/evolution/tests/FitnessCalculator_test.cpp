@@ -3,6 +3,7 @@
 #include "core/organisms/TreeCommandProcessor.h"
 #include "core/organisms/TreeResourceTotals.h"
 #include "core/organisms/brains/RuleBasedBrain.h"
+#include "core/organisms/evolution/DuckEvaluator.h"
 #include "core/organisms/evolution/EvolutionConfig.h"
 #include "core/organisms/evolution/FitnessCalculator.h"
 #include "core/organisms/evolution/FitnessResult.h"
@@ -312,7 +313,7 @@ TEST(FitnessCalculatorTest, DuckFitnessIgnoresEnergy)
     EXPECT_DOUBLE_EQ(fitness_low, fitness_high);
 }
 
-TEST(FitnessCalculatorTest, DuckFitnessDistanceIsNotClamped)
+TEST(FitnessCalculatorTest, DuckFitnessMovementIsBounded)
 {
     EvolutionConfig config = makeConfig();
     config.maxSimulationTime = 10.0;
@@ -335,7 +336,8 @@ TEST(FitnessCalculatorTest, DuckFitnessDistanceIsNotClamped)
     };
 
     const double fitness = computeFitnessForOrganism(context);
-    EXPECT_GT(fitness, 2.0);
+    EXPECT_GT(fitness, 1.0);
+    EXPECT_LT(fitness, 2.0);
 }
 
 TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
@@ -376,7 +378,7 @@ TEST(FitnessCalculatorTest, GooseFitnessRewardsDistance)
     EXPECT_GT(fitness_moved, fitness_static);
 }
 
-TEST(FitnessCalculatorTest, GooseFitnessUsesPathHistory)
+TEST(FitnessCalculatorTest, GooseFitnessPenalizesBackAndForthPath)
 {
     const EvolutionConfig config = makeConfig();
     const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
@@ -396,16 +398,16 @@ TEST(FitnessCalculatorTest, GooseFitnessUsesPathHistory)
     const FitnessContext directContext{
         .result = result,
         .organismType = OrganismType::GOOSE,
-        .worldWidth = 1000,
-        .worldHeight = 1000,
+        .worldWidth = 10,
+        .worldHeight = 10,
         .evolutionConfig = config,
         .organismTrackingHistory = &directHistory,
     };
     const FitnessContext longPathContext{
         .result = result,
         .organismType = OrganismType::GOOSE,
-        .worldWidth = 1000,
-        .worldHeight = 1000,
+        .worldWidth = 10,
+        .worldHeight = 10,
         .evolutionConfig = config,
         .organismTrackingHistory = &longPathHistory,
     };
@@ -413,7 +415,139 @@ TEST(FitnessCalculatorTest, GooseFitnessUsesPathHistory)
     const double directFitness = computeFitnessForOrganism(directContext);
     const double longPathFitness = computeFitnessForOrganism(longPathContext);
 
-    EXPECT_GT(longPathFitness, directFitness);
+    EXPECT_GT(directFitness, longPathFitness);
+}
+
+TEST(FitnessCalculatorTest, GooseFitnessPrefersHorizontalMovement)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory horizontalHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 6.0, 0.0 },
+        });
+    const OrganismTrackingHistory verticalHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 0.0, 6.0 },
+        });
+
+    const FitnessContext horizontalContext{
+        .result = result,
+        .organismType = OrganismType::GOOSE,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &horizontalHistory,
+    };
+    const FitnessContext verticalContext{
+        .result = result,
+        .organismType = OrganismType::GOOSE,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &verticalHistory,
+    };
+
+    const double horizontalFitness = computeFitnessForOrganism(horizontalContext);
+    const double verticalFitness = computeFitnessForOrganism(verticalContext);
+
+    EXPECT_GT(horizontalFitness, verticalFitness);
+}
+
+TEST(FitnessCalculatorTest, DuckCoverageRewardsColumnsPrimarily)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory columnsHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 2.0, 0.0 },
+            Vector2d{ 3.0, 0.0 },
+            Vector2d{ 4.0, 0.0 },
+            Vector2d{ 5.0, 0.0 },
+        });
+    const OrganismTrackingHistory singleColumnVerticalHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 0.0, 1.0 },
+            Vector2d{ 0.0, 2.0 },
+            Vector2d{ 0.0, 3.0 },
+            Vector2d{ 0.0, 4.0 },
+            Vector2d{ 0.0, 5.0 },
+        });
+
+    const FitnessContext columnsContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &columnsHistory,
+    };
+    const FitnessContext verticalContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &singleColumnVerticalHistory,
+    };
+
+    const DuckFitnessBreakdown columnsBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(columnsContext);
+    const DuckFitnessBreakdown verticalBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(verticalContext);
+
+    EXPECT_GT(columnsBreakdown.coverageColumnScore, verticalBreakdown.coverageColumnScore);
+    EXPECT_DOUBLE_EQ(columnsBreakdown.coverageCellScore, verticalBreakdown.coverageCellScore);
+    EXPECT_GT(columnsBreakdown.coverageScore, verticalBreakdown.coverageScore);
+}
+
+TEST(FitnessCalculatorTest, DuckCoverageIncludesSecondaryCellTerm)
+{
+    const EvolutionConfig config = makeConfig();
+    const FitnessResult result{ .lifespan = 10.0, .maxEnergy = 0.0 };
+    const OrganismTrackingHistory baseHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 2.0, 0.0 },
+        });
+    const OrganismTrackingHistory cellRichHistory = makeHistory(
+        {
+            Vector2d{ 0.0, 0.0 },
+            Vector2d{ 1.0, 0.0 },
+            Vector2d{ 1.0, 1.0 },
+            Vector2d{ 2.0, 1.0 },
+        });
+
+    const FitnessContext baseContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &baseHistory,
+    };
+    const FitnessContext cellRichContext{
+        .result = result,
+        .organismType = OrganismType::DUCK,
+        .worldWidth = 20,
+        .worldHeight = 20,
+        .evolutionConfig = config,
+        .organismTrackingHistory = &cellRichHistory,
+    };
+
+    const DuckFitnessBreakdown baseBreakdown = DuckEvaluator::evaluateWithBreakdown(baseContext);
+    const DuckFitnessBreakdown cellRichBreakdown =
+        DuckEvaluator::evaluateWithBreakdown(cellRichContext);
+
+    EXPECT_DOUBLE_EQ(baseBreakdown.coverageColumnScore, cellRichBreakdown.coverageColumnScore);
+    EXPECT_GT(cellRichBreakdown.coverageCellScore, baseBreakdown.coverageCellScore);
+    EXPECT_GT(cellRichBreakdown.coverageScore, baseBreakdown.coverageScore);
 }
 
 } // namespace DirtSim

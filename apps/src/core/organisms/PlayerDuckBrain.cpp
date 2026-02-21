@@ -43,10 +43,10 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
         current_action_ = DuckAction::WAIT;
     }
 
-    // Jump: A button, edge-detected, only when on ground.
-    bool jump_pressed = input.button_a;
-    bool should_jump = jump_pressed && !last_jump_pressed_ && sensory.on_ground;
-    if (should_jump) {
+    // Track press edges for action/logging while forwarding held state to the duck.
+    const bool jump_held = input.button_a;
+    const bool jump_pressed = jump_held && !last_jump_pressed_;
+    if (jump_pressed && sensory.on_ground) {
         current_action_ = DuckAction::JUMP;
         LOG_DEBUG(
             Brain,
@@ -55,10 +55,10 @@ void PlayerDuckBrain::think(Duck& duck, const DuckSensoryData& sensory, double /
             sensory.position.x,
             sensory.position.y);
     }
-    last_jump_pressed_ = jump_pressed;
+    last_jump_pressed_ = jump_held;
 
     // Send combined input (movement AND jump together).
-    duck.setInput({ .move = { move_x, 0.0f }, .jump = should_jump });
+    duck.setInput({ .move = { move_x, 0.0f }, .jump = jump_held });
 
     // Clear input after consuming (brain receives fresh input each tick).
     gamepad_input_.reset();

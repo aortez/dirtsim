@@ -16,7 +16,15 @@
 namespace {
 // Physics constants.
 static constexpr float WALK_FORCE = 10.0f;  // Force applied each frame when walking.
-static constexpr float JUMP_FORCE = 300.0f; // Impulse force applied once when jumping.
+static constexpr float JUMP_FORCE = 250.0f; // Impulse force applied once when jumping.
+static constexpr float JUMP_HOLD_BOOST_FORCE =
+    16.0f; // Extra upward force while jump is held during the boost window.
+static constexpr double JUMP_HOLD_BOOST_WINDOW_SECONDS =
+    0.050; // Max duration for hold-based jump boost.
+static constexpr double JUMP_RELEASE_CUT_WINDOW_SECONDS =
+    0.120; // Max time after launch where releasing jump can shorten the arc.
+static constexpr float JUMP_RELEASE_CUT_VELOCITY_SCALE =
+    0.50f; // Scale upward velocity when jump is released early.
 
 // SMB1-style asymmetric air steering: you accelerate faster in the direction
 // you are NOT facing. This enables the "backwards jump trick".
@@ -234,7 +242,7 @@ void Duck::updateGroundDetection(const World& world)
     }
 }
 
-void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
+void Duck::applyMovementToCell(World& world, double deltaTime)
 {
     const std::string commandSignature = duckCommandSignature(current_input_);
     const auto recordOutcome = [this, &commandSignature](const char* outcome) {
@@ -245,15 +253,26 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
 
     // Bounds check.
     if (!data.inBounds(anchor_cell_.x, anchor_cell_.y)) {
+        jump_input_was_held_last_frame_ = current_input_.jump;
         recordOutcome("OUT_OF_BOUNDS");
         return;
     }
 
     Cell& cell = data.at(anchor_cell_.x, anchor_cell_.y);
     const char* outcome = "APPLIED";
+    const bool jump_held = current_input_.jump;
+    const bool jump_pressed = jump_held && !jump_input_was_held_last_frame_;
+    const bool jump_released = !jump_held && jump_input_was_held_last_frame_;
 
-    // Process jump input (independent of movement).
-    if (current_input_.jump) {
+    if (on_ground_) {
+        jump_boost_remaining_seconds_ = 0.0;
+        jump_release_cut_remaining_seconds_ = 0.0;
+        jump_hold_boost_applied_this_jump_ = false;
+    }
+
+    // Start jump on press only. Holding extends height via a short boost window.
+    bool jump_started_this_frame = false;
+    if (jump_pressed) {
         if (!on_ground_) {
             LOG_WARN(Brain, "Duck {}: Jump requested but not on ground.", id_);
             outcome = "NOT_ON_GROUND";
@@ -264,12 +283,44 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
         }
         else {
             double gravity = world.getPhysicsSettings().gravity;
-            double jump_direction = (gravity >= 0) ? -1.0 : 1.0;
-            Vector2d jump_force(0.0, jump_direction * JUMP_FORCE);
+            jump_boost_direction_ = (gravity >= 0) ? -1.0 : 1.0;
+            Vector2d jump_force(0.0, jump_boost_direction_ * JUMP_FORCE);
             cell.addPendingForce(jump_force);
             on_ground_ = false;
+            jump_boost_remaining_seconds_ = JUMP_HOLD_BOOST_WINDOW_SECONDS;
+            jump_release_cut_remaining_seconds_ = JUMP_RELEASE_CUT_WINDOW_SECONDS;
+            jump_hold_boost_applied_this_jump_ = false;
+            jump_started_this_frame = true;
             LOG_INFO(Brain, "Duck {}: Jump applied, force={:.1f}.", id_, jump_force.y);
         }
+    }
+
+    // Apply hold boost on frames after jump launch while the jump input remains held.
+    if (jump_held && !jump_started_this_frame && jump_boost_remaining_seconds_ > 0.0
+        && deltaTime > 0.0) {
+        const double boost_step_seconds = std::min(jump_boost_remaining_seconds_, deltaTime);
+        const double boost_scale = boost_step_seconds / deltaTime;
+        Vector2d jump_boost_force(0.0, jump_boost_direction_ * JUMP_HOLD_BOOST_FORCE * boost_scale);
+        cell.addPendingForce(jump_boost_force);
+        jump_boost_remaining_seconds_ -= boost_step_seconds;
+        jump_hold_boost_applied_this_jump_ = true;
+    }
+    else if (!jump_held) {
+        jump_boost_remaining_seconds_ = 0.0;
+    }
+
+    // Shorten jump when input is released while still moving upward.
+    if (jump_released) {
+        if (jump_hold_boost_applied_this_jump_ && jump_release_cut_remaining_seconds_ > 0.0
+            && !on_ground_ && (cell.velocity.y * jump_boost_direction_) > 0.0) {
+            cell.velocity.y *= JUMP_RELEASE_CUT_VELOCITY_SCALE;
+        }
+        jump_release_cut_remaining_seconds_ = 0.0;
+        jump_hold_boost_applied_this_jump_ = false;
+    }
+    else if (jump_release_cut_remaining_seconds_ > 0.0 && deltaTime > 0.0) {
+        jump_release_cut_remaining_seconds_ =
+            std::max(0.0, jump_release_cut_remaining_seconds_ - deltaTime);
     }
 
     // Apply movement force (reduced when airborne for SMB1-style air steering).
@@ -302,6 +353,8 @@ void Duck::applyMovementToCell(World& world, double /*deltaTime*/)
             facing_.y = 0.0f;
         }
     }
+
+    jump_input_was_held_last_frame_ = jump_held;
 
     recordOutcome(outcome);
 }

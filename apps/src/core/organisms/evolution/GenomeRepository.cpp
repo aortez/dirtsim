@@ -1,5 +1,6 @@
 #include "GenomeRepository.h"
 
+#include "GenomeMetadataUtils.h"
 #include "core/Assert.h"
 #include "core/organisms/brains/Genome.h"
 
@@ -90,42 +91,6 @@ std::string toHexString(uint64_t value)
     return stream.str();
 }
 
-double computeMedian(std::vector<double> samples)
-{
-    if (samples.empty()) {
-        return 0.0;
-    }
-
-    const size_t mid = samples.size() / 2;
-    std::nth_element(samples.begin(), samples.begin() + mid, samples.end());
-    const double upper = samples[mid];
-    if ((samples.size() % 2) != 0) {
-        return upper;
-    }
-
-    std::nth_element(samples.begin(), samples.begin() + mid - 1, samples.begin() + mid);
-    return (samples[mid - 1] + upper) * 0.5;
-}
-
-int effectiveRobustEvalCount(const GenomeMetadata& metadata)
-{
-    if (metadata.robustEvalCount > 0) {
-        return metadata.robustEvalCount;
-    }
-    if (!metadata.robustFitnessSamples.empty()) {
-        return static_cast<int>(metadata.robustFitnessSamples.size());
-    }
-    return std::isfinite(metadata.fitness) ? 1 : 0;
-}
-
-double effectiveRobustFitness(const GenomeMetadata& metadata)
-{
-    if (metadata.robustEvalCount > 0 || !metadata.robustFitnessSamples.empty()) {
-        return metadata.robustFitness;
-    }
-    return metadata.fitness;
-}
-
 GenomeMetadata normalizeRobustMetadata(const GenomeMetadata& input)
 {
     GenomeMetadata normalized = input;
@@ -153,12 +118,6 @@ GenomeMetadata normalizeRobustMetadata(const GenomeMetadata& input)
             normalized.robustFitness = normalized.fitness;
         }
         return normalized;
-    }
-
-    if (std::isfinite(normalized.fitness)) {
-        normalized.robustFitness = normalized.fitness;
-        normalized.robustEvalCount = 1;
-        normalized.robustFitnessSamples = { normalized.fitness };
     }
 
     return normalized;
@@ -209,6 +168,9 @@ GenomeMetadata mergeMetadata(const GenomeMetadata& existingRaw, const GenomeMeta
     }
 
     merged.robustFitnessSamples = existing.robustFitnessSamples;
+    if (!merged.robustFitnessSamples.empty()) {
+        merged.robustFitness = computeMedian(merged.robustFitnessSamples);
+    }
     merged.robustEvalCount = effectiveRobustEvalCount(existing);
     for (double sample : incoming.robustFitnessSamples) {
         appendRobustSample(merged, sample);

@@ -13,7 +13,7 @@ namespace DirtSim {
  * - D-pad/stick left → RUN_LEFT
  * - D-pad/stick right → RUN_RIGHT
  * - Neutral → WAIT (stop)
- * - A button (edge-detected, on ground) → JUMP
+ * - A button held → jump hold signal (press starts jump, hold extends jump boost).
  *
  * Note: Duck must be spawned first by pressing any button (handled by SimRunning).
  */

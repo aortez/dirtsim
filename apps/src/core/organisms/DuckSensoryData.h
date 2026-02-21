@@ -11,14 +11,14 @@ namespace DirtSim {
 /**
  * Duck-specific sensory data.
  *
- * Contains a 9x9 grid of material histograms representing the duck's
+ * Contains a 15x15 grid of material histograms representing the duck's
  * view of the world around it, plus duck-specific state.
  *
- * The 9x9 grid provides a smaller perception window suitable for
- * a mobile creature that needs to react quickly to nearby obstacles.
+ * The 15x15 grid matches tree sensory coverage so duck and tree brains can
+ * share a wider world context.
  */
 struct DuckSensoryData {
-    static constexpr int GRID_SIZE = 9;
+    static constexpr int GRID_SIZE = 15;
     static constexpr int NUM_MATERIALS = 10;
 
     // Material histogram grid: [y][x][material] = fill contribution.

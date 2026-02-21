@@ -102,6 +102,7 @@ struct Evolution {
     double bestFitnessThisGen = 0.0;
     double bestFitnessAllTime = 0.0;
     GenomeId bestGenomeId{};
+    uint64_t robustEvaluationCount_ = 0;
     IndividualOrigin bestThisGenOrigin_ = IndividualOrigin::Unknown;
     int lastCompletedGeneration_ = -1;
     double lastGenerationFitnessMin_ = 0.0;
@@ -286,7 +287,7 @@ private:
     int robustnessPassPendingSamples_ = 0;
     int robustnessPassCompletedSamples_ = 0;
     int robustnessPassVisibleSamplesRemaining_ = 0;
-    int robustnessPassNextVisibleSampleOrdinal_ = 2;
+    int robustnessPassNextVisibleSampleOrdinal_ = 1;
     std::vector<double> robustnessPassSamples_;
 
     void initializePopulation(StateMachine& dsm);

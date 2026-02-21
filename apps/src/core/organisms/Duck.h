@@ -96,8 +96,13 @@ private:
     Vector2i anchor_cell_{ 0, 0 };
     bool on_ground_ = false;
     DuckInput current_input_{};
+    bool jump_input_was_held_last_frame_ = false;
     bool jump_cooldown_active_ = false;
     bool jump_cooldown_queued_ = false;
+    double jump_boost_direction_ = -1.0;
+    double jump_boost_remaining_seconds_ = 0.0;
+    double jump_release_cut_remaining_seconds_ = 0.0;
+    bool jump_hold_boost_applied_this_jump_ = false;
     uint32_t frame_counter_ = 0;
 
     static constexpr float GROUND_CONTACT_COM_THRESHOLD = 0.80f; // COM must be near cell bottom.

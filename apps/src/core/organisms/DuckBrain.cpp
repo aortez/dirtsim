@@ -156,7 +156,7 @@ void WallBouncingBrain::think(Duck& duck, const DuckSensoryData& sensory, double
     // Debug: log wall detection every 30 frames.
     static int debug_frame_counter = 0;
     if (debug_frame_counter++ % 30 == 0) {
-        constexpr int CENTER = 4;
+        constexpr int CENTER = DuckSensoryData::GRID_SIZE / 2;
         constexpr int WALL_MATERIAL_INDEX = 7;
         double left_wall = sensory.material_histograms[CENTER][CENTER - 1][WALL_MATERIAL_INDEX];
         double right_wall = sensory.material_histograms[CENTER][CENTER + 1][WALL_MATERIAL_INDEX];
@@ -224,20 +224,20 @@ void WallBouncingBrain::pickFurthestWall(const DuckSensoryData& sensory)
 bool WallBouncingBrain::isTouchingWall(const DuckSensoryData& sensory, TargetWall wall) const
 {
     // Check material histogram for WALL in adjacent cell.
-    // Sensory grid is 9x9, center is at (4, 4).
+    // Sensory grid center is at GRID_SIZE / 2.
     // Material::EnumType::Wall = 7.
     // Note: Out-of-bounds cells are marked as WALL by the sensory system.
-    constexpr int CENTER = 4;
+    constexpr int CENTER = DuckSensoryData::GRID_SIZE / 2;
     constexpr int WALL_MATERIAL_INDEX = 7;
     constexpr double WALL_THRESHOLD = 0.5; // Consider wall present if >= 50% fill.
 
     if (wall == TargetWall::LEFT) {
-        // Check left neighbor (grid position [4][3]).
+        // Check left neighbor (CENTER - 1).
         double wall_fill = sensory.material_histograms[CENTER][CENTER - 1][WALL_MATERIAL_INDEX];
         return wall_fill >= WALL_THRESHOLD;
     }
     else {
-        // Check right neighbor (grid position [4][5]).
+        // Check right neighbor (CENTER + 1).
         double wall_fill = sensory.material_histograms[CENTER][CENTER + 1][WALL_MATERIAL_INDEX];
         return wall_fill >= WALL_THRESHOLD;
     }
@@ -571,7 +571,7 @@ DuckBrain2::Side DuckBrain2::detectSpawnSide(const DuckSensoryData& sensory) con
 {
     // Check which side has more wall - that's where we spawned.
     constexpr int WALL_MATERIAL_INDEX = 7;
-    constexpr int CENTER_Y = 4;
+    constexpr int CENTER_Y = DuckSensoryData::GRID_SIZE / 2;
 
     double left_wall_total = 0.0;
     double right_wall_total = 0.0;
@@ -607,7 +607,7 @@ DuckBrain2::Side DuckBrain2::detectSpawnSide(const DuckSensoryData& sensory) con
 
 bool DuckBrain2::isTouchingWall(const DuckSensoryData& sensory, Side side) const
 {
-    constexpr int CENTER = 4;
+    constexpr int CENTER = DuckSensoryData::GRID_SIZE / 2;
     constexpr int WALL_MATERIAL_INDEX = 7;
     constexpr double WALL_THRESHOLD = 0.5;
 
@@ -645,7 +645,7 @@ bool DuckBrain2::detectsGapInExitWall(const DuckSensoryData& sensory) const
         SensoryUtils::CellPattern(SensoryUtils::MatchMode::Is, { Material::EnumType::Wall });
 
     // Check around center row for door pattern at the recorded wall position.
-    constexpr int CENTER_Y = 4;
+    constexpr int CENTER_Y = DuckSensoryData::GRID_SIZE / 2;
     for (int check_y = CENTER_Y - 1; check_y <= CENTER_Y + 1; ++check_y) {
         if (SensoryUtils::
                 matchesTemplate<DuckSensoryData::GRID_SIZE, DuckSensoryData::NUM_MATERIALS>(
@@ -663,7 +663,7 @@ int DuckBrain2::findObstacleDistance(const DuckSensoryData& sensory) const
     // These are solid materials at duck's level with empty space above.
     //
     // Returns distance to nearest obstacle (1-4 cells), or -1 if none found.
-    constexpr int CENTER = 4;
+    constexpr int CENTER = DuckSensoryData::GRID_SIZE / 2;
     constexpr int FLOOR_ROW = CENTER + 1; // Row below duck.
 
     int direction = (sensory.facing_x > 0) ? 1 : -1;
@@ -859,12 +859,12 @@ bool DuckBrain2::detectsCliffAhead(const DuckSensoryData& sensory) const
 {
     // Detect a cliff: we have floor under us, but floor drops off ahead.
     //
-    // Sensory grid layout (9x9, CENTER at row 4, col 4):
-    //   Row 4 = duck's level
-    //   Row 5 = floor level (one below duck)
+    // Sensory grid layout (GRID_SIZE x GRID_SIZE, CENTER at row/col GRID_SIZE / 2):
+    //   Row CENTER = duck's level.
+    //   Row CENTER + 1 = floor level (one below duck).
     //
     // Cliff pattern: floor exists at current position, absent ahead.
-    constexpr int CENTER = 4;
+    constexpr int CENTER = DuckSensoryData::GRID_SIZE / 2;
     constexpr int FLOOR_ROW = CENTER + 1; // Row below duck.
 
     // Determine which column to check based on facing direction.
