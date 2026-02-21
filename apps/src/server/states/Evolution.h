@@ -164,6 +164,8 @@ struct Evolution {
     std::unique_ptr<TrainingRunner> visibleRunner_;
     int visibleEvalIndex_ = -1;
     bool visibleEvalIsRobustness_ = false;
+    bool visibleDuckSecondPassActive_ = false;
+    std::optional<WorkerResult> visibleDuckPrimaryPassResult_;
     int visibleRobustSampleOrdinal_ = 0;
     ScenarioConfig visibleScenarioConfig_ = Config::Empty{};
     Scenario::EnumType visibleScenarioId_ = Scenario::EnumType::TreeGermination;
@@ -301,7 +303,6 @@ private:
     void captureLastGenerationFitnessDistribution();
     void captureLastGenerationTelemetry();
     void processResult(StateMachine& dsm, WorkerResult result);
-    static std::optional<EvaluationSnapshot> buildEvaluationSnapshot(const TrainingRunner& runner);
     void maybeCompleteGeneration(StateMachine& dsm);
     void startRobustnessPass(StateMachine& dsm);
     void handleRobustnessSampleResult(StateMachine& dsm, const WorkerResult& result);
