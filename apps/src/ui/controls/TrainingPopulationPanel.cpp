@@ -617,23 +617,26 @@ void TrainingPopulationPanel::refreshFromSpec()
     }
 
     for (auto& spec : trainingSpec_.population) {
-        if (brainRequiresGenome_ && spec.seedGenomes.empty() && spec.randomCount == 0
+        const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
+        const bool specRequiresGenome = resolvedBrain.requiresGenome;
+
+        if (specRequiresGenome && spec.seedGenomes.empty() && spec.randomCount == 0
             && spec.count > 0) {
             spec.randomCount = spec.count;
         }
         else if (
-            !brainRequiresGenome_ && spec.count == 0
+            !specRequiresGenome && spec.count == 0
             && (!spec.seedGenomes.empty() || spec.randomCount > 0)) {
             spec.count = static_cast<int>(spec.seedGenomes.size()) + spec.randomCount;
         }
 
-        spec.brainKind = brainKind_;
+        spec.brainKind = resolvedBrain.kind;
         spec.brainVariant.reset();
-        if (!brainRequiresGenome_) {
+        if (!specRequiresGenome) {
             spec.seedGenomes.clear();
             spec.randomCount = 0;
         }
-        if (brainRequiresGenome_) {
+        if (specRequiresGenome) {
             const int seedCount = static_cast<int>(spec.seedGenomes.size());
             if (spec.count < seedCount) {
                 spec.count = seedCount;
@@ -654,9 +657,12 @@ void TrainingPopulationPanel::applySpecUpdates()
 {
     trainingSpec_.organismType = selectedOrganism_;
     for (auto& spec : trainingSpec_.population) {
-        spec.brainKind = brainKind_;
+        const BrainOption resolvedBrain = resolveBrainOptionForScenario(spec.scenarioId);
+        const bool specRequiresGenome = resolvedBrain.requiresGenome;
+
+        spec.brainKind = resolvedBrain.kind;
         spec.brainVariant.reset();
-        if (brainRequiresGenome_) {
+        if (specRequiresGenome) {
             if (spec.randomCount < 0) {
                 spec.randomCount = 0;
             }
@@ -670,12 +676,50 @@ void TrainingPopulationPanel::applySpecUpdates()
             }
         }
     }
+
+    const BrainOption selectedBrain = resolveBrainOptionForScenario(selectedScenario_);
+    brainKind_ = selectedBrain.kind;
+    brainRequiresGenome_ = selectedBrain.requiresGenome;
+
     updatePrimaryScenario();
     populationTotal_ = computeTotalPopulation();
     evolutionConfig_.populationSize = populationTotal_;
     if (populationTotalChangedCallback_) {
         populationTotalChangedCallback_(populationTotal_);
     }
+}
+
+TrainingPopulationPanel::BrainOption TrainingPopulationPanel::resolveBrainOptionForScenario(
+    Scenario::EnumType scenarioId) const
+{
+    if (brainOptions_.empty()) {
+        return {
+            .kind = TrainingBrainKind::Random,
+            .requiresGenome = false,
+        };
+    }
+
+    const auto findByKind = [this](const std::string& kind) -> std::optional<BrainOption> {
+        auto it = std::find_if(
+            brainOptions_.begin(), brainOptions_.end(), [&kind](const BrainOption& option) {
+                return option.kind == kind;
+            });
+        if (it == brainOptions_.end()) {
+            return std::nullopt;
+        }
+        return *it;
+    };
+
+    if (selectedOrganism_ == OrganismType::DUCK) {
+        const std::string preferredKind = scenarioId == Scenario::EnumType::Nes
+            ? TrainingBrainKind::NesFlappyBird
+            : TrainingBrainKind::DuckNeuralNetRecurrent;
+        if (auto option = findByKind(preferredKind); option.has_value()) {
+            return option.value();
+        }
+    }
+
+    return brainOptions_.front();
 }
 
 void TrainingPopulationPanel::setBrainOptionsForOrganism(OrganismType organismType)
@@ -687,8 +731,9 @@ void TrainingPopulationPanel::setBrainOptionsForOrganism(OrganismType organismTy
         return;
     }
 
-    brainKind_ = brainOptions_.front().kind;
-    brainRequiresGenome_ = brainOptions_.front().requiresGenome;
+    const BrainOption resolvedBrain = resolveBrainOptionForScenario(selectedScenario_);
+    brainKind_ = resolvedBrain.kind;
+    brainRequiresGenome_ = resolvedBrain.requiresGenome;
 }
 
 void TrainingPopulationPanel::syncUiFromState()

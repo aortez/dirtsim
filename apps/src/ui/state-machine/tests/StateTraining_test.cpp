@@ -492,6 +492,49 @@ TEST(StateTrainingTest, StartEvolutionSendsCommand)
     fixture.stateMachine->uiManager_.reset();
 }
 
+TEST(StateTrainingTest, StartEvolutionAllowsZeroGenerations)
+{
+    LvglTestDisplay lvgl;
+    TestStateMachineFixture fixture;
+
+    fixture.stateMachine->uiManager_ = std::make_unique<UiComponentManager>(lvgl.display);
+    fixture.stateMachine->uiManager_->setEventSink(fixture.stateMachine.get());
+
+    fixture.mockWebSocketService->expectSuccess<Api::TrainingStreamConfigSet::Command>(
+        { .intervalMs = fixture.stateMachine->getUserSettings().streamIntervalMs,
+          .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::RenderFormatSet::Command>(
+        { .active_format = RenderFormat::EnumType::Basic, .message = "OK" });
+    fixture.mockWebSocketService->expectSuccess<Api::EvolutionStart::Command>({ .started = true });
+    fixture.mockWebSocketService->expectSuccess<Api::UserSettingsSet::Command>(
+        { .settings = fixture.stateMachine->getServerUserSettings() });
+
+    TrainingIdle trainingState;
+    trainingState.onEnter(*fixture.stateMachine);
+
+    StartEvolutionButtonClickedEvent evt;
+    evt.evolution.populationSize = 10;
+    evt.evolution.maxGenerations = 0;
+    evt.mutation.rate = 0.1;
+    evt.training.scenarioId = Scenario::EnumType::Nes;
+    evt.training.organismType = OrganismType::DUCK;
+
+    State::Any result = trainingState.onEvent(evt, *fixture.stateMachine);
+
+    auto* activeState = std::get_if<TrainingActive>(&result.getVariant());
+    ASSERT_NE(activeState, nullptr);
+
+    const auto& sentCommands = fixture.mockWebSocketService->sentCommands();
+    ASSERT_GE(sentCommands.size(), 4u);
+    EXPECT_EQ(sentCommands[0], "TrainingStreamConfigSet");
+    EXPECT_EQ(sentCommands[1], "RenderFormatSet");
+    EXPECT_EQ(sentCommands[2], "EvolutionStart");
+    EXPECT_EQ(sentCommands[3], "UserSettingsSet");
+
+    trainingState.view_.reset();
+    fixture.stateMachine->uiManager_.reset();
+}
+
 TEST(StateTrainingTest, StopButtonSendsCommandAndTransitions)
 {
     TestStateMachineFixture fixture;
