@@ -1525,13 +1525,6 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         .trainingSessionId = trainingSessionId_,
     };
 
-    const auto storeResult = storeManagedGenome(
-        dsm,
-        individual.genome.value(),
-        meta,
-        evolutionConfig.genomeArchiveMaxSize,
-        "all-time best (robust pass)");
-
     bestFitnessThisGen = robustFitness;
     robustEvaluationCount_++;
     if (robustnessPassIndex_ >= 0
@@ -1548,6 +1541,12 @@ void Evolution::finalizeRobustnessPass(StateMachine& dsm)
         || (!fitnessTiesBest(robustFitness, bestFitnessAllTime)
             && robustFitness > bestFitnessAllTime);
     if (robustBestUpdated) {
+        const auto storeResult = storeManagedGenome(
+            dsm,
+            individual.genome.value(),
+            meta,
+            evolutionConfig.genomeArchiveMaxSize,
+            "current-session best (robust pass)");
         repo.markAsBest(storeResult.id);
         bestGenomeId = storeResult.id;
         bestFitnessAllTime = robustFitness;

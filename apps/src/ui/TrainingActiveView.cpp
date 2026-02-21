@@ -860,7 +860,7 @@ void TrainingActiveView::updateProgress(const Api::EvolutionProgress& progress)
     }
 
     if (bestAllTimeLabel_) {
-        snprintf(buf, sizeof(buf), "All Time: %.2f", progress.bestFitnessAllTime);
+        snprintf(buf, sizeof(buf), "All Time: %.4f", progress.bestFitnessAllTime);
         lv_label_set_text(bestAllTimeLabel_, buf);
     }
 
