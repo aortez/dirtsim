@@ -10,6 +10,7 @@
 #include "core/scenarios/Scenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include <algorithm>
+#include <array>
 #include <limits>
 #include <optional>
 
@@ -105,6 +106,8 @@ TrainingRunner::TrainingRunner(
       individual_(individual),
       maxTime_(evolutionConfig.maxSimulationTime),
       brainRegistry_(runnerConfig.brainRegistry),
+      spawnRng_(runnerConfig.duckClockSpawnRngSeed.value_or(
+          static_cast<uint32_t>(std::random_device{}()))),
       evolutionConfig_(evolutionConfig)
 {
     // Create scenario from registry.
@@ -288,10 +291,30 @@ void TrainingRunner::spawnEvaluationOrganism()
     const WorldData& data = world_->getData();
     if (trainingSpec_.organismType == OrganismType::DUCK
         && individual_.scenarioId == Scenario::EnumType::Clock) {
-        Vector2i candidate{ 1, std::max(1, data.height - 2) };
-        if (data.inBounds(candidate.x, candidate.y) && data.at(candidate.x, candidate.y).isAir()
-            && !world_->getOrganismManager().hasOrganism(candidate)) {
-            spawnCell = candidate;
+        const int spawnY = std::max(1, data.height - 2);
+        const int leftX = 1;
+        const int rightX = std::max(0, data.width - 2);
+        std::array<Vector2i, 2> sideCandidates{
+            Vector2i{ leftX, spawnY },
+            Vector2i{ rightX, spawnY },
+        };
+
+        std::bernoulli_distribution sideDist(0.5);
+        const bool spawnLeftFirst = sideDist(spawnRng_);
+        if (!spawnLeftFirst) {
+            std::swap(sideCandidates[0], sideCandidates[1]);
+        }
+
+        const auto isSpawnable = [&data, this](const Vector2i& cell) {
+            return data.inBounds(cell.x, cell.y) && data.at(cell.x, cell.y).isAir()
+                && !world_->getOrganismManager().hasOrganism(cell);
+        };
+
+        if (isSpawnable(sideCandidates[0])) {
+            spawnCell = sideCandidates[0];
+        }
+        else if (isSpawnable(sideCandidates[1])) {
+            spawnCell = sideCandidates[1];
         }
         else {
             spawnCell = findSpawnCell(*world_);

@@ -526,7 +526,10 @@ TEST_F(TrainingRunnerTest, UsesConfiguredBrainRegistry)
             .isGenomeCompatible = nullptr,
         });
 
-    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 
     runner.step(1);
@@ -631,7 +634,10 @@ TEST_F(TrainingRunnerTest, TreeScenarioBrainHarness)
         individual.brain.brainKind = brainCase.brainKind;
         individual.genome = brainCase.genome;
 
-        TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+        TrainingRunner::Config runnerConfig{
+            .brainRegistry = registry,
+            .duckClockSpawnRngSeed = std::nullopt,
+        };
         TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 
         TrainingRunner::Status status;
@@ -781,7 +787,10 @@ TEST_F(TrainingRunnerTest, TopCommandSignaturesAreTop20AndTieBreakBySignature)
     TrainingRunner::Individual individual;
     individual.brain.brainKind = brainKind;
 
-    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 
     int steps = 0;
@@ -848,7 +857,10 @@ TEST_F(TrainingRunnerTest, CommandOutcomeSignaturesUseDecisionAnchorWhenTreeMove
     TrainingRunner::Individual individual;
     individual.brain.brainKind = brainKind;
 
-    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 
     const TrainingRunner::Status firstStatus = runner.step(1);
@@ -937,7 +949,10 @@ TEST_F(TrainingRunnerTest, DuckTrainingPopulatesCommandSignatures)
 
     TrainingRunner::Individual individual;
     individual.brain.brainKind = brainKind;
-    TrainingRunner::Config runnerConfig{ .brainRegistry = registry };
+    TrainingRunner::Config runnerConfig{
+        .brainRegistry = registry,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
 
     const int stepsToRun = static_cast<int>(scriptedInputs.size()) + 12;
@@ -988,6 +1003,65 @@ TEST_F(TrainingRunnerTest, DuckTrainingOnClockDisablesClockDuckEvent)
     const auto* clockConfig = std::get_if<Config::Clock>(&scenarioConfig);
     ASSERT_NE(clockConfig, nullptr);
     EXPECT_FALSE(clockConfig->duckEnabled);
+}
+
+TEST_F(TrainingRunnerTest, DuckTrainingOnClockRandomizesSpawnSide)
+{
+    TrainingSpec spec;
+    spec.scenarioId = Scenario::EnumType::Clock;
+    spec.organismType = OrganismType::DUCK;
+
+    TrainingRunner::Individual individual;
+    individual.brain.brainKind = TrainingBrainKind::Random;
+    individual.scenarioId = Scenario::EnumType::Clock;
+
+    bool sawLeftSpawn = false;
+    bool sawRightSpawn = false;
+    for (uint32_t seed = 0; seed < 64; ++seed) {
+        const TrainingRunner::Config runnerConfig{
+            .brainRegistry = TrainingBrainRegistry::createDefault(),
+            .duckClockSpawnRngSeed = seed,
+        };
+        TrainingRunner runner(spec, individual, config_, genomeRepository_, runnerConfig);
+
+        World* world = runner.getWorld();
+        if (!world) {
+            ADD_FAILURE() << "World must exist for duck spawn test";
+            continue;
+        }
+
+        auto& data = world->getData();
+        const int spawnY = std::max(1, data.height - 2);
+        const int leftX = 1;
+        const int rightX = std::max(0, data.width - 2);
+        if (data.inBounds(leftX, spawnY)) {
+            data.at(leftX, spawnY).clear();
+        }
+        if (data.inBounds(rightX, spawnY)) {
+            data.at(rightX, spawnY).clear();
+        }
+
+        runner.step(0);
+        const Organism::Body* organism = runner.getOrganism();
+        if (!organism) {
+            ADD_FAILURE() << "Duck must spawn during first step";
+            continue;
+        }
+
+        const int spawnX = organism->getAnchorCell().x;
+        if (spawnX == leftX) {
+            sawLeftSpawn = true;
+        }
+        else if (spawnX == rightX) {
+            sawRightSpawn = true;
+        }
+        else {
+            ADD_FAILURE() << "Duck spawned outside expected clock side cells";
+        }
+    }
+
+    EXPECT_TRUE(sawLeftSpawn);
+    EXPECT_TRUE(sawRightSpawn);
 }
 
 TEST_F(TrainingRunnerTest, SpawnPrefersNearestAirInTopHalf)

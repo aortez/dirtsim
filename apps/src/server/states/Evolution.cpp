@@ -903,7 +903,10 @@ void Evolution::startNextVisibleEvaluation(StateMachine& dsm)
     visibleQueue_.pop_front();
 
     const Individual& individual = population[visibleEvalIndex_];
-    const TrainingRunner::Config runnerConfig{ .brainRegistry = brainRegistry_ };
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = brainRegistry_,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
 
     visibleRunner_ = std::make_unique<TrainingRunner>(
         trainingSpec,
@@ -983,7 +986,10 @@ Evolution::WorkerResult Evolution::runEvaluationTask(WorkerTask const& task, Wor
     DIRTSIM_ASSERT(task.index >= 0, "Evolution: Invalid evaluation index");
     DIRTSIM_ASSERT(state.genomeRepository != nullptr, "Evolution: GenomeRepository missing");
 
-    const TrainingRunner::Config runnerConfig{ .brainRegistry = state.brainRegistry };
+    const TrainingRunner::Config runnerConfig{
+        .brainRegistry = state.brainRegistry,
+        .duckClockSpawnRngSeed = std::nullopt,
+    };
     TrainingRunner runner(
         state.trainingSpec,
         makeRunnerIndividual(task.individual),
