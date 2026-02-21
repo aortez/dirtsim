@@ -120,12 +120,6 @@ GenomeMetadata normalizeRobustMetadata(const GenomeMetadata& input)
         return normalized;
     }
 
-    if (std::isfinite(normalized.fitness)) {
-        normalized.robustFitness = normalized.fitness;
-        normalized.robustEvalCount = 1;
-        normalized.robustFitnessSamples = { normalized.fitness };
-    }
-
     return normalized;
 }
 
@@ -174,6 +168,9 @@ GenomeMetadata mergeMetadata(const GenomeMetadata& existingRaw, const GenomeMeta
     }
 
     merged.robustFitnessSamples = existing.robustFitnessSamples;
+    if (!merged.robustFitnessSamples.empty()) {
+        merged.robustFitness = computeMedian(merged.robustFitnessSamples);
+    }
     merged.robustEvalCount = effectiveRobustEvalCount(existing);
     for (double sample : incoming.robustFitnessSamples) {
         appendRobustSample(merged, sample);

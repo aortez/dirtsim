@@ -35,7 +35,7 @@ inline int effectiveRobustEvalCount(const GenomeMetadata& metadata)
     if (!metadata.robustFitnessSamples.empty()) {
         return static_cast<int>(metadata.robustFitnessSamples.size());
     }
-    return std::isfinite(metadata.fitness) ? 1 : 0;
+    return 0;
 }
 
 // Effective robust fitness with fallback to raw fitness for old genomes.
