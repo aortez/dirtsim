@@ -10,7 +10,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <fstream>
+#include <system_error>
 #include <utility>
 
 namespace {
@@ -32,6 +34,62 @@ const char* romCheckStatusToString(DirtSim::NesRomCheckStatus status)
             return "unsupported_mapper";
     }
     return "unknown";
+}
+
+std::string normalizeRomId(std::string rawName)
+{
+    std::string normalized;
+    normalized.reserve(rawName.size());
+
+    bool pendingSeparator = false;
+    for (char ch : rawName) {
+        const unsigned char uch = static_cast<unsigned char>(ch);
+        if (std::isalnum(uch)) {
+            if (pendingSeparator && !normalized.empty() && normalized.back() != '-') {
+                normalized.push_back('-');
+            }
+            normalized.push_back(static_cast<char>(std::tolower(uch)));
+            pendingSeparator = false;
+            continue;
+        }
+        pendingSeparator = true;
+    }
+
+    while (!normalized.empty() && normalized.back() == '-') {
+        normalized.pop_back();
+    }
+    return normalized;
+}
+
+bool hasNesExtension(const std::filesystem::path& path)
+{
+    std::string extension = path.extension().string();
+    std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    return extension == ".nes";
+}
+
+std::filesystem::path resolveRomDirectory(const DirtSim::Config::Nes& config)
+{
+    if (!config.romDirectory.empty()) {
+        return config.romDirectory;
+    }
+    if (!config.romPath.empty()) {
+        const std::filesystem::path configuredPath = config.romPath;
+        if (configuredPath.has_parent_path()) {
+            return configuredPath.parent_path();
+        }
+    }
+    return std::filesystem::path{ "testdata/roms" };
+}
+
+std::string describeRomSource(const DirtSim::Config::Nes& config)
+{
+    if (!config.romId.empty()) {
+        return "romId '" + config.romId + "'";
+    }
+    return "romPath '" + config.romPath + "'";
 }
 
 } // namespace
@@ -99,49 +157,39 @@ void NesScenario::setup(World& world)
             .replaceMaterial(Material::EnumType::Wall, 1.0);
     }
 
-    lastRomCheck_ = inspectRom(config_.romPath);
-    if (lastRomCheck_.isCompatible()) {
-        LOG_INFO(
-            Scenario,
-            "NesScenario: ROM '{}' compatible (mapper={}, prg16k={}, chr8k={})",
-            config_.romPath,
-            lastRomCheck_.mapper,
-            static_cast<uint32_t>(lastRomCheck_.prgBanks16k),
-            static_cast<uint32_t>(lastRomCheck_.chrBanks8k));
-        if (!runtime_) {
-            runtime_ = std::make_unique<SmolnesRuntime>();
-        }
-
-        if (!runtime_->start(config_.romPath)) {
-            LOG_ERROR(
-                Scenario,
-                "NesScenario: Failed to start smolnes runtime: {}",
-                runtime_->getLastError());
-        }
-        else {
-            runtime_->setController1State(controller1State_);
-        }
-        return;
-    }
-
-    const char* statusText = romCheckStatusToString(lastRomCheck_.status);
-    if (config_.requireSmolnesMapper
-        && lastRomCheck_.status == NesRomCheckStatus::UnsupportedMapper) {
+    const NesConfigValidationResult validation = validateConfig(config_);
+    lastRomCheck_ = validation.romCheck;
+    if (!validation.valid) {
+        const char* statusText = romCheckStatusToString(lastRomCheck_.status);
         LOG_ERROR(
             Scenario,
-            "NesScenario: ROM '{}' rejected ({}, mapper={})",
-            config_.romPath,
+            "NesScenario: {} invalid ({}, mapper={}): {}",
+            describeRomSource(config_),
             statusText,
-            lastRomCheck_.mapper);
+            lastRomCheck_.mapper,
+            validation.message);
         return;
     }
 
-    LOG_WARN(
+    LOG_INFO(
         Scenario,
-        "NesScenario: ROM '{}' check failed ({}, mapper={})",
-        config_.romPath,
-        statusText,
-        lastRomCheck_.mapper);
+        "NesScenario: ROM '{}' compatible (id='{}', mapper={}, prg16k={}, chr8k={})",
+        validation.resolvedRomPath.string(),
+        validation.resolvedRomId,
+        lastRomCheck_.mapper,
+        static_cast<uint32_t>(lastRomCheck_.prgBanks16k),
+        static_cast<uint32_t>(lastRomCheck_.chrBanks8k));
+    if (!runtime_) {
+        runtime_ = std::make_unique<SmolnesRuntime>();
+    }
+
+    if (!runtime_->start(validation.resolvedRomPath.string())) {
+        LOG_ERROR(
+            Scenario, "NesScenario: Failed to start smolnes runtime: {}", runtime_->getLastError());
+    }
+    else {
+        runtime_->setController1State(controller1State_);
+    }
 }
 
 void NesScenario::reset(World& world)
@@ -226,6 +274,118 @@ void NesScenario::setController1State(uint8_t buttonMask)
     if (runtime_ && runtime_->isRunning()) {
         runtime_->setController1State(controller1State_);
     }
+}
+
+std::vector<NesRomCatalogEntry> NesScenario::scanRomCatalog(const std::filesystem::path& romDir)
+{
+    std::vector<NesRomCatalogEntry> entries;
+
+    std::error_code ec;
+    if (romDir.empty() || !std::filesystem::exists(romDir, ec)
+        || !std::filesystem::is_directory(romDir, ec)) {
+        return entries;
+    }
+
+    for (std::filesystem::directory_iterator it(romDir, ec), end; it != end && !ec;
+         it.increment(ec)) {
+        if (!it->is_regular_file(ec)) {
+            continue;
+        }
+
+        const std::filesystem::path romPath = it->path();
+        if (!hasNesExtension(romPath)) {
+            continue;
+        }
+
+        NesRomCatalogEntry entry;
+        entry.romPath = romPath;
+        entry.displayName = romPath.stem().string();
+        entry.romId = makeRomId(entry.displayName);
+        entry.check = inspectRom(romPath);
+        entries.push_back(std::move(entry));
+    }
+
+    std::sort(
+        entries.begin(),
+        entries.end(),
+        [](const NesRomCatalogEntry& lhs, const NesRomCatalogEntry& rhs) {
+            if (lhs.romId != rhs.romId) {
+                return lhs.romId < rhs.romId;
+            }
+            return lhs.romPath.string() < rhs.romPath.string();
+        });
+    return entries;
+}
+
+std::string NesScenario::makeRomId(const std::string& rawName)
+{
+    return normalizeRomId(rawName);
+}
+
+NesConfigValidationResult NesScenario::validateConfig(const Config::Nes& config)
+{
+    NesConfigValidationResult validation{};
+
+    std::filesystem::path resolvedRomPath;
+    if (!config.romId.empty()) {
+        const std::string requestedRomId = makeRomId(config.romId);
+        if (requestedRomId.empty()) {
+            validation.message = "romId must contain at least one alphanumeric character";
+            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
+            validation.romCheck.message = validation.message;
+            return validation;
+        }
+
+        const std::filesystem::path romDir = resolveRomDirectory(config);
+        const std::vector<NesRomCatalogEntry> entries = scanRomCatalog(romDir);
+        std::vector<std::filesystem::path> matchingPaths;
+        for (const auto& entry : entries) {
+            if (entry.romId == requestedRomId) {
+                matchingPaths.push_back(entry.romPath);
+            }
+        }
+
+        if (matchingPaths.empty()) {
+            validation.message =
+                "No ROM found for romId '" + config.romId + "' in '" + romDir.string() + "'";
+            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
+            validation.romCheck.message = validation.message;
+            return validation;
+        }
+        if (matchingPaths.size() > 1) {
+            validation.message = "romId '" + config.romId + "' matched multiple ROM files in '"
+                + romDir.string() + "'";
+            validation.romCheck.status = NesRomCheckStatus::ReadError;
+            validation.romCheck.message = validation.message;
+            return validation;
+        }
+
+        resolvedRomPath = matchingPaths.front();
+        validation.resolvedRomId = requestedRomId;
+    }
+    else {
+        if (config.romPath.empty()) {
+            validation.message = "romPath must not be empty when romId is not set";
+            validation.romCheck.status = NesRomCheckStatus::FileNotFound;
+            validation.romCheck.message = validation.message;
+            return validation;
+        }
+
+        resolvedRomPath = config.romPath;
+        validation.resolvedRomId = makeRomId(resolvedRomPath.stem().string());
+    }
+
+    validation.romCheck = inspectRom(resolvedRomPath);
+    validation.resolvedRomPath = resolvedRomPath;
+    validation.valid = validation.romCheck.isCompatible();
+    if (!validation.valid) {
+        validation.message =
+            "ROM '" + resolvedRomPath.string() + "' rejected: " + validation.romCheck.message;
+        return validation;
+    }
+
+    validation.message = "ROM is compatible";
+    return validation;
 }
 
 NesRomCheckResult NesScenario::inspectRom(const std::filesystem::path& romPath)

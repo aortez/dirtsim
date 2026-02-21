@@ -8,6 +8,7 @@
 #include "core/organisms/evolution/TrainingBrainRegistry.h"
 #include "core/organisms/evolution/TrainingSpec.h"
 #include "core/scenarios/ClockScenario.h"
+#include "core/scenarios/NesScenario.h"
 #include "core/scenarios/ScenarioRegistry.h"
 #include "server/ServerConfig.h"
 #include "server/StateMachine.h"
@@ -693,7 +694,24 @@ State::Any Idle::onEvent(const Api::SimRun::Cwc& cwc, StateMachine& dsm)
     newState.scenario_id = scenarioId;
 
     // Apply config from server settings and user settings.
-    const ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
+    ScenarioConfig scenarioConfig = buildScenarioConfigForRun(dsm, scenarioId);
+    if (scenarioId == Scenario::EnumType::Nes) {
+        const auto* nesConfig = std::get_if<Config::Nes>(&scenarioConfig);
+        if (!nesConfig) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Scenario config mismatch for NES scenario")));
+            return Idle{};
+        }
+        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        if (!validation.valid) {
+            cwc.sendResponse(
+                Api::SimRun::Response::error(
+                    ApiError("Invalid NES config: " + validation.message)));
+            return Idle{};
+        }
+    }
+
     newState.scenario->setConfig(scenarioConfig, *newState.world);
 
     // Run scenario setup to initialize world.

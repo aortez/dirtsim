@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace DirtSim {
 
@@ -33,6 +34,21 @@ struct NesRomCheckResult {
     bool isCompatible() const { return status == NesRomCheckStatus::Compatible; }
 };
 
+struct NesRomCatalogEntry {
+    std::string romId;
+    std::filesystem::path romPath;
+    std::string displayName;
+    NesRomCheckResult check;
+};
+
+struct NesConfigValidationResult {
+    bool valid = false;
+    std::filesystem::path resolvedRomPath;
+    std::string resolvedRomId;
+    NesRomCheckResult romCheck;
+    std::string message;
+};
+
 class NesScenario : public ScenarioRunner {
 public:
     NesScenario();
@@ -53,6 +69,9 @@ public:
     void setController1State(uint8_t buttonMask);
 
     static NesRomCheckResult inspectRom(const std::filesystem::path& romPath);
+    static std::vector<NesRomCatalogEntry> scanRomCatalog(const std::filesystem::path& romDir);
+    static std::string makeRomId(const std::string& rawName);
+    static NesConfigValidationResult validateConfig(const Config::Nes& config);
     static bool isMapperSupportedBySmolnes(uint16_t mapper);
 
 private:

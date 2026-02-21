@@ -91,6 +91,44 @@ TEST(NesScenarioTest, InspectRomRejectsInvalidHeader)
     EXPECT_FALSE(result.isCompatible());
 }
 
+TEST(NesScenarioTest, ValidateConfigResolvesRomIdFromCatalog)
+{
+    const std::filesystem::path romDir =
+        std::filesystem::path(::testing::TempDir()) / "nes_catalog_valid";
+    std::filesystem::create_directories(romDir);
+    const std::filesystem::path romPath = romDir / "Flappy.Paratroopa.World.Unl.nes";
+    writeRomHeader(
+        romPath, { 'N', 'E', 'S', 0x1A, 0x02, 0x01, 0x01, 0x00, 0, 0, 0, 0, 0, 0, 0, 0 });
+
+    Config::Nes config{};
+    config.romPath = "";
+    config.romId = "flappy-paratroopa-world-unl";
+    config.romDirectory = romDir.string();
+
+    const NesConfigValidationResult validation = NesScenario::validateConfig(config);
+    EXPECT_TRUE(validation.valid);
+    EXPECT_EQ(validation.resolvedRomPath, romPath);
+    EXPECT_EQ(validation.resolvedRomId, "flappy-paratroopa-world-unl");
+    EXPECT_TRUE(validation.romCheck.isCompatible());
+}
+
+TEST(NesScenarioTest, ValidateConfigRejectsUnknownRomId)
+{
+    const std::filesystem::path romDir =
+        std::filesystem::path(::testing::TempDir()) / "nes_catalog_missing";
+    std::filesystem::create_directories(romDir);
+
+    Config::Nes config{};
+    config.romPath = "";
+    config.romId = "missing-rom";
+    config.romDirectory = romDir.string();
+
+    const NesConfigValidationResult validation = NesScenario::validateConfig(config);
+    EXPECT_FALSE(validation.valid);
+    EXPECT_EQ(validation.romCheck.status, NesRomCheckStatus::FileNotFound);
+    EXPECT_NE(validation.message.find("No ROM found"), std::string::npos);
+}
+
 TEST(NesScenarioTest, ScenarioConfigMapsToNesEnum)
 {
     const ScenarioConfig config = makeDefaultConfig(Scenario::EnumType::Nes);

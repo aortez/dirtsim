@@ -12,6 +12,32 @@
 
 namespace DirtSim {
 
+std::optional<TrainingBrainDefaults> getTrainingBrainDefaults(const std::string& brainKind)
+{
+    if (brainKind == TrainingBrainKind::NeuralNet) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::TreeGermination,
+            .defaultNesRomId = std::nullopt,
+        };
+    }
+    if (brainKind == TrainingBrainKind::DuckNeuralNetRecurrent
+        || brainKind == TrainingBrainKind::Random || brainKind == TrainingBrainKind::WallBouncing
+        || brainKind == TrainingBrainKind::DuckBrain2) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::Clock,
+            .defaultNesRomId = std::nullopt,
+        };
+    }
+    if (brainKind == TrainingBrainKind::NesFlappyBird) {
+        return TrainingBrainDefaults{
+            .defaultScenarioId = Scenario::EnumType::Nes,
+            .defaultNesRomId = std::string{ "flappy-paratroopa-world-unl" },
+        };
+    }
+
+    return std::nullopt;
+}
+
 void TrainingBrainRegistry::registerBrain(
     OrganismType organismType,
     const std::string& brainKind,

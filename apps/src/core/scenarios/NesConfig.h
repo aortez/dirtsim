@@ -7,8 +7,10 @@
 namespace DirtSim::Config {
 
 struct Nes {
-    using serialize = zpp::bits::members<4>;
+    using serialize = zpp::bits::members<6>;
 
+    std::string romId = "";
+    std::string romDirectory = "testdata/roms";
     std::string romPath = "testdata/roms/Flappy.Paratroopa.World.Unl.nes";
     uint32_t frameSkip = 4;
     uint32_t maxEpisodeFrames = 108000;

@@ -467,6 +467,16 @@ TEST_F(TrainingRunnerTest, StepIsIncrementalNotBlocking)
     EXPECT_NE(runner.getWorld(), nullptr);
 }
 
+TEST_F(TrainingRunnerTest, TrainingBrainDefaultsExposeNesFlappyBirdMapping)
+{
+    const std::optional<TrainingBrainDefaults> defaults =
+        getTrainingBrainDefaults(TrainingBrainKind::NesFlappyBird);
+    ASSERT_TRUE(defaults.has_value());
+    EXPECT_EQ(defaults->defaultScenarioId, Scenario::EnumType::Nes);
+    ASSERT_TRUE(defaults->defaultNesRomId.has_value());
+    EXPECT_EQ(defaults->defaultNesRomId.value(), "flappy-paratroopa-world-unl");
+}
+
 // Proves we can finish and get results.
 TEST_F(TrainingRunnerTest, CompletionReturnsFitnessResults)
 {

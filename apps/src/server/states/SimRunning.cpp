@@ -931,6 +931,22 @@ State::Any SimRunning::onEvent(const Api::ScenarioConfigSet::Cwc& cwc, StateMach
     assert(world && "World must exist in SimRunning");
     assert(scenario && "Scenario must exist in SimRunning");
 
+    if (scenario_id == Scenario::EnumType::Nes) {
+        const auto* nesConfig = std::get_if<Config::Nes>(&cwc.command.config);
+        if (!nesConfig) {
+            cwc.sendResponse(
+                Response::error(ApiError("Nes scenario requires Config::Nes payload")));
+            return std::move(*this);
+        }
+
+        const NesConfigValidationResult validation = NesScenario::validateConfig(*nesConfig);
+        if (!validation.valid) {
+            cwc.sendResponse(
+                Response::error(ApiError("Invalid NES config: " + validation.message)));
+            return std::move(*this);
+        }
+    }
+
     // Update scenario's config (scenario is source of truth).
     scenario->setConfig(cwc.command.config, *world);
 
